@@ -16,12 +16,14 @@ namespace Sportarr.Api.Services;
 /// land within one poll interval instead of waiting for the daily
 /// auto-sync or a manual refresh click.
 ///
-/// The 24h <see cref="LeagueEventAutoSyncService"/> stays as the
-/// correctness backstop: when the feed reports the cursor is unusable
-/// (fresh install, or it predates the feed's retention window) this
-/// service just stores the new head cursor and lets the backstop handle
-/// any gap. Individual league sync failures also advance the cursor —
-/// a permanently failing league must not dam the feed for the others.
+/// The 24h <see cref="LeagueEventAutoSyncService"/> is designed as the
+/// correctness backstop for feed gaps (fresh installs, cursors older
+/// than the feed's retention window). During the poller-only soak test
+/// it is unregistered — see ServiceCollectionExtensions — so resync
+/// answers currently rely on the manual refresh button until the final
+/// shape is decided. Individual league sync failures advance the cursor
+/// either way: a permanently failing league must not dam the feed for
+/// the others.
 /// </summary>
 public class HubChangesPollerService : BackgroundService
 {

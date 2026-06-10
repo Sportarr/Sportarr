@@ -346,7 +346,14 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<TvScheduleSyncService>();
         services.AddHostedService<FileWatcherService>();
         services.AddHostedService<EventMappingSyncBackgroundService>();
-        services.AddHostedService<LeagueEventAutoSyncService>();
+        // LeagueEventAutoSyncService (24h full league walk) is deliberately
+        // NOT registered on this branch: the hub changes poller below is
+        // being soak-tested as the sole ongoing event ingest. Initial league
+        // add still runs its one-time full historical sync (the feed is
+        // delta-only and cannot backfill history), and the manual refresh
+        // button remains as the escape hatch. Before this promotes to dev,
+        // decide the final shape: re-register the auto-sync at a stretched
+        // interval (e.g. weekly) as a self-heal pass, or keep poller-only.
         services.AddHostedService<HubChangesPollerService>();
         services.AddHostedService<DvrSchedulerService>();
 
