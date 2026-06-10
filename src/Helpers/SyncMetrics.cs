@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace Sportarr.Api.Helpers;
@@ -23,6 +24,7 @@ public static class SyncMetrics
     {
         public int DbCommands;
         public int HttpCalls;
+        public readonly ConcurrentDictionary<string, int> DbCommandShapes = new();
     }
 
     private static readonly AsyncLocal<Counter?> Current = new();
@@ -50,6 +52,16 @@ public static class SyncMetrics
         public int HttpCalls => _counter.HttpCalls;
         public long ElapsedMs => (Stopwatch.GetTimestamp() - _startTicks) * 1000 / Stopwatch.Frequency;
 
+        /// <summary>
+        /// Distinct SQL command shapes executed in this block, ordered by
+        /// execution count (descending). Parameterized EF SQL is stable per
+        /// call site, so each entry maps a code path to how many round-trips
+        /// it issued — the breakdown that pinpoints which query an N+1 hides
+        /// behind.
+        /// </summary>
+        public IReadOnlyList<KeyValuePair<string, int>> CommandShapes =>
+            _counter.DbCommandShapes.OrderByDescending(kv => kv.Value).ToList();
+
         public void Dispose() => Current.Value = _previous;
     }
 
@@ -63,13 +75,30 @@ public static class SyncMetrics
     }
 
     /// <summary>Record one executed DB command. Called by the interceptor.</summary>
-    public static void IncrementDbCommands()
+    public static void IncrementDbCommands(string? commandText = null)
     {
         var c = Current.Value;
-        if (c != null)
+        if (c == null)
         {
-            c.DbCommands++;
+            return;
         }
+        c.DbCommands++;
+        if (commandText != null)
+        {
+            c.DbCommandShapes.AddOrUpdate(Shape(commandText), 1, static (_, n) => n + 1);
+        }
+    }
+
+    /// <summary>
+    /// Collapse a command text to a grouping key: whitespace normalized,
+    /// truncated. Batched DML shares its leading INSERT/UPDATE clause, so
+    /// different batch sizes still group together.
+    /// </summary>
+    private static string Shape(string commandText)
+    {
+        var collapsed = string.Join(' ',
+            commandText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return collapsed.Length <= 160 ? collapsed : collapsed[..160];
     }
 
     /// <summary>Record one outbound hub HTTP call. Called by SportarrApiClient.</summary>

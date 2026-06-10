@@ -19,7 +19,7 @@ public sealed class CommandCountingInterceptor : DbCommandInterceptor
     public override DbDataReader ReaderExecuted(
         DbCommand command, CommandExecutedEventData eventData, DbDataReader result)
     {
-        SyncMetrics.IncrementDbCommands();
+        SyncMetrics.IncrementDbCommands(command.CommandText);
         return base.ReaderExecuted(command, eventData, result);
     }
 
@@ -27,14 +27,14 @@ public sealed class CommandCountingInterceptor : DbCommandInterceptor
         DbCommand command, CommandExecutedEventData eventData, DbDataReader result,
         CancellationToken cancellationToken = default)
     {
-        SyncMetrics.IncrementDbCommands();
+        SyncMetrics.IncrementDbCommands(command.CommandText);
         return base.ReaderExecutedAsync(command, eventData, result, cancellationToken);
     }
 
     public override object? ScalarExecuted(
         DbCommand command, CommandExecutedEventData eventData, object? result)
     {
-        SyncMetrics.IncrementDbCommands();
+        SyncMetrics.IncrementDbCommands(command.CommandText);
         return base.ScalarExecuted(command, eventData, result);
     }
 
@@ -42,14 +42,14 @@ public sealed class CommandCountingInterceptor : DbCommandInterceptor
         DbCommand command, CommandExecutedEventData eventData, object? result,
         CancellationToken cancellationToken = default)
     {
-        SyncMetrics.IncrementDbCommands();
+        SyncMetrics.IncrementDbCommands(command.CommandText);
         return base.ScalarExecutedAsync(command, eventData, result, cancellationToken);
     }
 
     public override int NonQueryExecuted(
         DbCommand command, CommandExecutedEventData eventData, int result)
     {
-        SyncMetrics.IncrementDbCommands();
+        SyncMetrics.IncrementDbCommands(command.CommandText);
         return base.NonQueryExecuted(command, eventData, result);
     }
 
@@ -57,7 +57,7 @@ public sealed class CommandCountingInterceptor : DbCommandInterceptor
         DbCommand command, CommandExecutedEventData eventData, int result,
         CancellationToken cancellationToken = default)
     {
-        SyncMetrics.IncrementDbCommands();
+        SyncMetrics.IncrementDbCommands(command.CommandText);
         return base.NonQueryExecutedAsync(command, eventData, result, cancellationToken);
     }
 }

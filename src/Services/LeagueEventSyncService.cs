@@ -650,6 +650,14 @@ public class LeagueEventSyncService
             league.Name, seasons?.Count ?? 0, eventsProcessed, result.RemovedCount,
             measure.DbCommands, measure.HttpCalls, measure.ElapsedMs);
 
+        // Per-shape breakdown of the dbCommands total. Names the exact
+        // queries (and how many times each ran) so the N+1 fix targets the
+        // real offenders instead of the ones visible from reading the code.
+        foreach (var shape in measure.CommandShapes.Take(10))
+        {
+            _logger.LogInformation("[Sync Metrics]   {Count}x {Sql}", shape.Value, shape.Key);
+        }
+
         return result;
     }
 
