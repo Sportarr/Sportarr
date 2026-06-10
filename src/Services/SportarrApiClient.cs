@@ -1153,6 +1153,15 @@ public class ChangeRecord
     [JsonPropertyName("league")]
     public string? League { get; set; }
 
+    /// <summary>
+    /// Season name the change belongs to (e.g. "2015-2016"). Lets the
+    /// poller sync exactly the changed seasons — including historical
+    /// ones the current/future-season walk would skip — instead of
+    /// re-walking the league. Null for league-level changes.
+    /// </summary>
+    [JsonPropertyName("season")]
+    public string? Season { get; set; }
+
     /// <summary>"created", "updated" or "deleted".</summary>
     [JsonPropertyName("change")]
     public string? Change { get; set; }

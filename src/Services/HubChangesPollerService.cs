@@ -11,10 +11,12 @@ namespace Sportarr.Api.Services;
 /// The hub cannot push to installs (self-hosted, behind NAT, unknown to
 /// the hub), so change propagation is pull: every cycle this service asks
 /// "what changed since my cursor", maps the returned change records to
-/// locally-monitored leagues, and runs the normal league event sync for
-/// just those. Reschedules, score updates, new events and dedup removals
-/// land within one poll interval instead of waiting for the daily
-/// auto-sync or a manual refresh click.
+/// locally-monitored leagues, and syncs exactly the changed seasons —
+/// historical ones included, since each change record names its season.
+/// Reschedules, score updates, new events and dedup removals land within
+/// one poll interval instead of waiting for the daily auto-sync or a
+/// manual refresh click, and a change in a ten-year-old season costs one
+/// targeted season fetch rather than a full league walk.
 ///
 /// The 24h <see cref="LeagueEventAutoSyncService"/> is designed as the
 /// correctness backstop for feed gaps (fresh installs, cursors older
@@ -87,7 +89,15 @@ public class HubChangesPollerService : BackgroundService
         }
 
         var cursor = settings.HubChangesCursor;
-        var changedLeagueIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Per-league work orders built from the change records. Seasons is
+        // the exact set of changed season strings (historical included) to
+        // sync directly; SmartWalk requests the seasons:null path (current/
+        // future walk + stale-season cleanup) for changes a targeted season
+        // sync can't resolve: league-level changes, season deletions (an
+        // emptied season is only cleaned up by comparing against the hub's
+        // full season list), and records missing a season.
+        var work = new Dictionary<string, (HashSet<string> Seasons, bool SmartWalk)>(StringComparer.OrdinalIgnoreCase);
         var totalChanges = 0;
 
         for (var page = 0; page < MaxPagesPerCycle; page++)
@@ -118,9 +128,27 @@ public class HubChangesPollerService : BackgroundService
 
             foreach (var change in feed.Changes)
             {
-                if (!string.IsNullOrEmpty(change.League))
+                if (string.IsNullOrEmpty(change.League))
                 {
-                    changedLeagueIds.Add(change.League!);
+                    continue;
+                }
+
+                if (!work.TryGetValue(change.League!, out var order))
+                {
+                    order = (new HashSet<string>(StringComparer.OrdinalIgnoreCase), false);
+                    work[change.League!] = order;
+                }
+
+                var isSeasonDeletion = change.Entity == "season" &&
+                                       string.Equals(change.Change, "deleted", StringComparison.OrdinalIgnoreCase);
+
+                if (!isSeasonDeletion && !string.IsNullOrEmpty(change.Season))
+                {
+                    order.Seasons.Add(change.Season!);
+                }
+                else
+                {
+                    work[change.League!] = (order.Seasons, true);
                 }
             }
 
@@ -133,37 +161,60 @@ public class HubChangesPollerService : BackgroundService
             }
         }
 
-        if (changedLeagueIds.Count > 0)
+        if (work.Count > 0)
         {
             // Only leagues this install actually has (and monitors) matter.
-            var idList = changedLeagueIds.ToList();
+            var idList = work.Keys.ToList();
             var affectedLeagues = await db.Leagues
                 .Where(l => l.Monitored && l.ExternalId != null && idList.Contains(l.ExternalId!))
                 .ToListAsync(cancellationToken);
 
             _logger.LogInformation(
                 "[Changes Poller] {Changes} change(s) across {Leagues} league(s) upstream; {Local} affect this library",
-                totalChanges, changedLeagueIds.Count, affectedLeagues.Count);
+                totalChanges, work.Count, affectedLeagues.Count);
 
             foreach (var league in affectedLeagues)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var order = work[league.ExternalId!];
                 try
                 {
-                    _logger.LogInformation("[Changes Poller] Refreshing {LeagueName} (hub reported changes)",
-                        league.Name);
-
-                    // forceRefresh so the hub serves the just-changed data
-                    // instead of a cached season response. Targeted at only
-                    // the changed leagues, so upstream cost stays small.
-                    var result = await syncService.SyncLeagueEventsAsync(
-                        league.Id, seasons: null, fullHistoricalSync: false, forceRefresh: true,
-                        cancellationToken: cancellationToken);
-
-                    if (!result.Success)
+                    // forceRefresh on both paths so the hub serves the
+                    // just-changed data instead of a cached season response.
+                    // Targeted at only the changed leagues/seasons, so the
+                    // upstream cost stays small.
+                    if (order.Seasons.Count > 0)
                     {
-                        _logger.LogWarning("[Changes Poller] Refresh of {LeagueName} failed: {Message}",
-                            league.Name, result.Message);
+                        _logger.LogInformation(
+                            "[Changes Poller] Refreshing {LeagueName} season(s) {Seasons} (hub reported changes)",
+                            league.Name, string.Join(", ", order.Seasons));
+
+                        var seasonResult = await syncService.SyncLeagueEventsAsync(
+                            league.Id, seasons: order.Seasons.ToList(), fullHistoricalSync: false,
+                            forceRefresh: true, cancellationToken: cancellationToken);
+
+                        if (!seasonResult.Success)
+                        {
+                            _logger.LogWarning("[Changes Poller] Season refresh of {LeagueName} failed: {Message}",
+                                league.Name, seasonResult.Message);
+                        }
+                    }
+
+                    if (order.SmartWalk)
+                    {
+                        _logger.LogInformation(
+                            "[Changes Poller] Refreshing {LeagueName} (league-level change reported)",
+                            league.Name);
+
+                        var walkResult = await syncService.SyncLeagueEventsAsync(
+                            league.Id, seasons: null, fullHistoricalSync: false, forceRefresh: true,
+                            cancellationToken: cancellationToken);
+
+                        if (!walkResult.Success)
+                        {
+                            _logger.LogWarning("[Changes Poller] Refresh of {LeagueName} failed: {Message}",
+                                league.Name, walkResult.Message);
+                        }
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
