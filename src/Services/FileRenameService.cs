@@ -104,27 +104,24 @@ public class FileRenameService
 
         if (apiEpisodeMap != null && apiEpisodeMap.Any())
         {
-            // API episode numbers available.
-            // Collect the API numbers for events we have locally, sort them,
-            // then assign them in chronological EventDate order.
-            // This preserves the same SET of episode numbers (for Plex compatibility)
-            // but ensures they're assigned in correct chronological order.
-            // Example: if API returns Sprint=E10, Q1=E11, Q2=E12 but chronologically
-            // Q1 < Q2 < Sprint, we reassign: Q1=E10, Q2=E11, Sprint=E12.
+            // API episode numbers available: the hub is authoritative, so
+            // assign each event the hub's number for it directly. The
+            // previous version kept the hub's numbers only as a pool and
+            // re-dealt them in local chronological EventDate order, which
+            // permanently fought the sync path — ProcessEvent writes the
+            // hub's per-event number, this pass flipped it, and the next
+            // refresh flipped it back (~800 churned UPDATEs per NBA refresh
+            // in the [Sync Metrics] baseline, plus file-rename thrash
+            // wherever the two orders disagreed). Hub numbering is already
+            // chronological on its side, including same-day events with
+            // real timestamps, so local reordering is obsolete.
             var eventsWithApiNumbers = events
                 .Where(e => !string.IsNullOrEmpty(e.ExternalId) && apiEpisodeMap.ContainsKey(e.ExternalId!))
                 .ToList();
 
-            var sortedApiNumbers = eventsWithApiNumbers
-                .Select(e => apiEpisodeMap[e.ExternalId!])
-                .OrderBy(n => n)
-                .ToList();
-
-            // Assign sorted API numbers to events in chronological order
-            for (int i = 0; i < eventsWithApiNumbers.Count; i++)
+            foreach (var evt in eventsWithApiNumbers)
             {
-                var evt = eventsWithApiNumbers[i];
-                var correctNumber = sortedApiNumbers[i];
+                var correctNumber = apiEpisodeMap[evt.ExternalId!];
 
                 if (evt.EpisodeNumber != correctNumber)
                 {
@@ -132,13 +129,15 @@ public class FileRenameService
                     evt.EpisodeNumber = correctNumber;
                     renumberedCount++;
 
-                    _logger.LogInformation("[File Rename] Renumbered event '{Title}': E{Old:00} -> E{New:00} (API number, chronological order)",
+                    _logger.LogInformation("[File Rename] Renumbered event '{Title}': E{Old:00} -> E{New:00} (hub episode number)",
                         evt.Title, oldEpisode ?? 0, correctNumber);
                 }
             }
 
             // Handle events not in the API (assign numbers after the API range)
-            var maxApiNumber = sortedApiNumbers.Any() ? sortedApiNumbers.Max() : 0;
+            var maxApiNumber = eventsWithApiNumbers.Count > 0
+                ? eventsWithApiNumbers.Max(e => apiEpisodeMap[e.ExternalId!])
+                : 0;
             var nextNumber = maxApiNumber + 1;
             foreach (var evt in events.Where(e => string.IsNullOrEmpty(e.ExternalId) || !apiEpisodeMap.ContainsKey(e.ExternalId!)))
             {
