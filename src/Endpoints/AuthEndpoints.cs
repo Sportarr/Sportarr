@@ -32,10 +32,17 @@ public static class AuthEndpoints
 
                 var sessionId = await sessionService.CreateSessionAsync(request.Username, ipAddress, userAgent, request.RememberMe);
 
+                // Mark the cookie Secure whenever the original request was HTTPS, including
+                // TLS terminated at a reverse proxy (X-Forwarded-Proto: https). We don't force
+                // Secure unconditionally because the app can be served over plain HTTP on the
+                // LAN, where a Secure cookie would never be sent back and login would break.
+                var isHttps = context.Request.IsHttps ||
+                    string.Equals(context.Request.Headers["X-Forwarded-Proto"], "https", StringComparison.OrdinalIgnoreCase);
+
                 var cookieOptions = new CookieOptions
                 {
                     HttpOnly = true,
-                    Secure = false,
+                    Secure = isHttps,
                     SameSite = SameSiteMode.Strict,
                     Expires = request.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddDays(7),
                     Path = "/"
@@ -44,12 +51,15 @@ public static class AuthEndpoints
 
                 logger.LogInformation("[AUTH LOGIN] Session created from IP: {IP}", ipAddress);
 
-                return Results.Ok(new LoginResponse { Success = true, Token = sessionId, Message = "Login successful" });
+                // Do not echo the session id in the body — it is delivered via the HttpOnly
+                // cookie above, and returning it in JSON needlessly exposes the session secret
+                // (and the frontend authenticates via the cookie, not this field).
+                return Results.Ok(new LoginResponse { Success = true, Message = "Login successful" });
             }
 
             logger.LogWarning("[AUTH LOGIN] Login failed for user: {Username}", request.Username);
             return Results.Unauthorized();
-        }).WithRequestValidation<LoginRequest>();
+        }).WithRequestValidation<LoginRequest>().RequireRateLimiting("login");
 
         app.MapPost("/api/logout", async (
             SessionService sessionService,

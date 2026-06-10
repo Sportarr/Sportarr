@@ -39,33 +39,52 @@ public class SimpleAuthService
         }
 
         var settings = await GetSecuritySettingsAsync();
-        if (settings == null)
-        {
-            return false;
-        }
 
-        // Check username (case insensitive)
-        if (!string.Equals(settings.Username, username, StringComparison.OrdinalIgnoreCase))
-        {
-            // Timing attack prevention
-            await Task.Delay(1000);
-            return false;
-        }
+        var usernameMatches = settings != null &&
+            string.Equals(settings.Username, username, StringComparison.OrdinalIgnoreCase);
 
-        // Verify password hash
-        if (string.IsNullOrWhiteSpace(settings.PasswordHash) || string.IsNullOrWhiteSpace(settings.PasswordSalt))
-        {
-            _logger.LogWarning("[AUTH] No password hash/salt found in settings");
-            return false;
-        }
+        // Always perform a PBKDF2 hash, even on a username miss or missing stored hash, so the
+        // response time does not reveal whether the username exists (no timing oracle). The
+        // result of the dummy hash is discarded.
+        var hasStoredHash = settings != null &&
+            !string.IsNullOrWhiteSpace(settings.PasswordHash) &&
+            !string.IsNullOrWhiteSpace(settings.PasswordSalt);
 
         try
         {
-            var salt = Convert.FromBase64String(settings.PasswordSalt);
-            var iterations = settings.PasswordIterations > 0 ? settings.PasswordIterations : DEFAULT_ITERATIONS;
-            var hashedPassword = HashPassword(password, salt, iterations);
+            byte[] salt;
+            int iterations;
+            if (usernameMatches && hasStoredHash)
+            {
+                salt = Convert.FromBase64String(settings!.PasswordSalt);
+                iterations = settings.PasswordIterations > 0 ? settings.PasswordIterations : DEFAULT_ITERATIONS;
+            }
+            else
+            {
+                // Dummy parameters to equalize work on the failure path.
+                salt = new byte[SALT_SIZE];
+                iterations = DEFAULT_ITERATIONS;
+            }
 
-            var isValid = hashedPassword == settings.PasswordHash;
+            var computed = HashPasswordBytes(password, salt, iterations);
+
+            if (!usernameMatches || !hasStoredHash)
+            {
+                return false;
+            }
+
+            byte[] stored;
+            try
+            {
+                stored = Convert.FromBase64String(settings!.PasswordHash);
+            }
+            catch
+            {
+                return false;
+            }
+
+            // Constant-time comparison to avoid leaking how much of the hash matched.
+            var isValid = CryptographicOperations.FixedTimeEquals(computed, stored);
             _logger.LogInformation("[AUTH] Password validation result: {Result}", isValid);
             return isValid;
         }
@@ -227,13 +246,16 @@ public class SimpleAuthService
 
     private string HashPassword(string password, byte[] salt, int iterations)
     {
-        var hashedBytes = KeyDerivation.Pbkdf2(
+        return Convert.ToBase64String(HashPasswordBytes(password, salt, iterations));
+    }
+
+    private byte[] HashPasswordBytes(string password, byte[] salt, int iterations)
+    {
+        return KeyDerivation.Pbkdf2(
             password: password,
             salt: salt,
             prf: KeyDerivationPrf.HMACSHA512,
             iterationCount: iterations,
             numBytesRequested: NUMBER_OF_BYTES);
-
-        return Convert.ToBase64String(hashedBytes);
     }
 }

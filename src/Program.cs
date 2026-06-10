@@ -482,6 +482,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 
+// Per-IP rate limiting (currently applied to the login endpoint to slow brute force).
+app.UseRateLimiter();
+
 // Global exception handling - must be early in pipeline
 app.UseExceptionHandling();
 app.UseRequestLogging();

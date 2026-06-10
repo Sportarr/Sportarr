@@ -12,6 +12,10 @@ namespace Sportarr.Api.Endpoints;
 
 public static class SettingsEndpoints
 {
+    // Returned in place of stored secrets on GET so the real value never leaves the server.
+    // On PUT, a field still equal to this sentinel means "leave the stored secret unchanged".
+    private const string MaskedSecret = "••••••••";
+
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder app)
     {
 app.MapGet("/api/config", async (ConfigService configService) =>
@@ -107,7 +111,8 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
             EnableSsl = config.EnableSsl,
             SslPort = config.SslPort,
             SslCertPath = config.SslCertPath,
-            SslCertPassword = config.SslCertPassword
+            // Never echo the stored SSL cert password; emit a sentinel if one is set.
+            SslCertPassword = string.IsNullOrEmpty(config.SslCertPassword) ? "" : MaskedSecret
         }, jsonOptions),
 
         SecuritySettings = System.Text.Json.JsonSerializer.Serialize(new SecuritySettings
@@ -135,7 +140,8 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
             ProxyHostname = config.ProxyHostname,
             ProxyPort = config.ProxyPort,
             ProxyUsername = config.ProxyUsername,
-            ProxyPassword = config.ProxyPassword,
+            // Never echo the stored proxy password; emit a sentinel if one is set.
+            ProxyPassword = string.IsNullOrEmpty(config.ProxyPassword) ? "" : MaskedSecret,
             ProxyBypassFilter = config.ProxyBypassFilter,
             ProxyBypassLocalAddresses = config.ProxyBypassLocalAddresses
         }, jsonOptions),
@@ -320,7 +326,12 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             config.EnableSsl = hostSettings.EnableSsl;
             config.SslPort = hostSettings.SslPort;
             config.SslCertPath = hostSettings.SslCertPath;
-            config.SslCertPassword = hostSettings.SslCertPassword;
+            // Only update the stored secret when the client sent a real new value; the
+            // sentinel means "unchanged" (the GET handler never returns the real value).
+            if (hostSettings.SslCertPassword != MaskedSecret)
+            {
+                config.SslCertPassword = hostSettings.SslCertPassword;
+            }
         }
 
         if (securitySettings != null)
@@ -351,7 +362,11 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             config.ProxyHostname = proxySettings.ProxyHostname;
             config.ProxyPort = proxySettings.ProxyPort;
             config.ProxyUsername = proxySettings.ProxyUsername;
-            config.ProxyPassword = proxySettings.ProxyPassword;
+            // Sentinel means "unchanged" — only overwrite with a real submitted value.
+            if (proxySettings.ProxyPassword != MaskedSecret)
+            {
+                config.ProxyPassword = proxySettings.ProxyPassword;
+            }
             config.ProxyBypassFilter = proxySettings.ProxyBypassFilter;
             config.ProxyBypassLocalAddresses = proxySettings.ProxyBypassLocalAddresses;
         }

@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -206,6 +207,22 @@ public static class ServiceCollectionExtensions
         services.AddMemoryCache();
         services.AddSingleton<IRateLimitService, RateLimitService>();
         services.AddTransient<RateLimitHandler>();
+
+        // Throttle login attempts per client IP to blunt online password guessing.
+        // The login endpoint opts in via .RequireRateLimiting("login").
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = 429;
+            options.AddPolicy("login", httpContext =>
+                System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromMinutes(5),
+                        QueueLimit = 0
+                    }));
+        });
 
         services.AddControllers();
         services.ConfigureHttpJsonOptions(options =>
