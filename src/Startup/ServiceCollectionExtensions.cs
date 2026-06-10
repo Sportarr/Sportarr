@@ -374,9 +374,14 @@ public static class ServiceCollectionExtensions
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)));
 
+        // No AddInterceptors here: EF merges every options configuration
+        // registered for the same context type, so the AddDbContext call
+        // above already attaches the counter to factory-created contexts
+        // too. Registering it in both lambdas made the interceptor fire
+        // twice per command — the first [Sync Metrics] baselines showed
+        // every per-shape count even, including queries that run once.
         services.AddDbContextFactory<SportarrDbContext>(options =>
             options.UseSqlite($"Data Source={dbPath}")
-                   .AddInterceptors(commandCounter)
                    .ConfigureWarnings(w => w
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
