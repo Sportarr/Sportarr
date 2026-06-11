@@ -1832,9 +1832,13 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
         // back to the id so the queued task still has a meaningful
         // label even when the row is mid-creation or deleted under us.
         var league = await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
-        var taskLabel = league?.Name != null
-            ? $"Refresh {league.Name}{(fullHistoricalSync ? " (full history)" : "")}"
-            : $"Refresh league #{id}";
+        // "current" scope runs an immediate hub changes poll (global, applies
+        // whatever the feed reports for any monitored league); "full" is the
+        // blind every-season walk for recovery. Label accordingly so the
+        // task list reflects what actually runs.
+        var taskLabel = fullHistoricalSync
+            ? (league?.Name != null ? $"Refresh {league.Name} (full history)" : $"Refresh league #{id} (full history)")
+            : "Check hub for changes";
 
         var taskBody = JsonSerializer.Serialize(new
         {

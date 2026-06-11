@@ -35,6 +35,11 @@ public class HubChangesPollerService : BackgroundService
     private readonly TimeSpan _maxJitter = TimeSpan.FromMinutes(2); // spread installs off the same slot
     private const int MaxPagesPerCycle = 10;
 
+    // One cycle at a time: the interval loop and a user-triggered
+    // "check now" (refresh button, scope=current) share this gate so an
+    // overlap can't double-sync leagues or race the cursor write.
+    private readonly SemaphoreSlim _pollGate = new(1, 1);
+
     public HubChangesPollerService(
         IServiceProvider serviceProvider,
         ILogger<HubChangesPollerService> logger)
@@ -56,7 +61,7 @@ public class HubChangesPollerService : BackgroundService
         {
             try
             {
-                await PollOnceAsync(stoppingToken);
+                await PollNowAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -74,7 +79,27 @@ public class HubChangesPollerService : BackgroundService
         _logger.LogInformation("[Changes Poller] Hub changes poller stopped");
     }
 
-    private async Task PollOnceAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Run one poll cycle immediately. Used by the interval loop and by
+    /// the refresh button's "current" scope, which is now "ask the hub
+    /// what changed right now" rather than a blind season walk. Serialized
+    /// through a gate so concurrent triggers queue instead of racing.
+    /// Returns a human-readable summary for task/progress display.
+    /// </summary>
+    public async Task<string> PollNowAsync(CancellationToken cancellationToken)
+    {
+        await _pollGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await PollOnceAsync(cancellationToken);
+        }
+        finally
+        {
+            _pollGate.Release();
+        }
+    }
+
+    private async Task<string> PollOnceAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
@@ -85,7 +110,7 @@ public class HubChangesPollerService : BackgroundService
         if (settings == null)
         {
             _logger.LogDebug("[Changes Poller] AppSettings row not present yet - skipping cycle");
-            return;
+            return "Settings not initialized yet - poll skipped";
         }
 
         var cursor = settings.HubChangesCursor;
@@ -106,18 +131,24 @@ public class HubChangesPollerService : BackgroundService
             if (feed == null)
             {
                 // Network/upstream hiccup: keep the cursor, retry next cycle.
-                return;
+                return "Hub unreachable - will retry on the next cycle";
             }
 
             if (feed.Resync)
             {
-                // Fresh install or cursor pruned past. The daily auto-sync
-                // owns full correctness; we just join the feed at its head.
+                // Fresh install or cursor pruned past: join the feed at its
+                // head. The gap (if any) needs a full sync - the scheduled
+                // walk where registered, or the refresh button's
+                // "all seasons" scope on poller-only builds.
                 _logger.LogInformation(
-                    "[Changes Poller] Feed requested resync (cursor {Cursor} -> {Next}); relying on scheduled full sync for the gap",
+                    "[Changes Poller] Feed requested resync (cursor {Cursor} -> {Next}); a full sync covers the gap",
                     cursor, feed.Next);
-                cursor = feed.Next;
-                break;
+                if (feed.Next != settings.HubChangesCursor)
+                {
+                    settings.HubChangesCursor = feed.Next;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                return "Feed cursor was reset (first poll or retention gap) - run an all-seasons refresh if data may have drifted";
             }
 
             if (feed.Changes == null || feed.Changes.Count == 0)
@@ -168,6 +199,7 @@ public class HubChangesPollerService : BackgroundService
             "[Changes Poller] Poll complete: {Changes} new change(s), cursor {From} -> {To}",
             totalChanges, settings.HubChangesCursor, cursor);
 
+        var refreshedNames = new List<string>();
         if (work.Count > 0)
         {
             // Only leagues this install actually has (and monitors) matter.
@@ -223,6 +255,8 @@ public class HubChangesPollerService : BackgroundService
                                 league.Name, walkResult.Message);
                         }
                     }
+
+                    refreshedNames.Add(league.Name);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -241,5 +275,13 @@ public class HubChangesPollerService : BackgroundService
             await db.SaveChangesAsync(cancellationToken);
             _logger.LogDebug("[Changes Poller] Cursor advanced to {Cursor}", cursor);
         }
+
+        if (totalChanges == 0)
+        {
+            return "Hub reports no changes since the last check - library is current";
+        }
+        return refreshedNames.Count > 0
+            ? $"{totalChanges} hub change(s); refreshed {string.Join(", ", refreshedNames)}"
+            : $"{totalChanges} hub change(s); none affect this library";
     }
 }

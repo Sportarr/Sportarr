@@ -993,7 +993,7 @@ export default function LeagueDetailPage() {
       const response = await apiClient.post(`/leagues/${id}/refresh-events`, { scope });
 
       if (response.data.queued) {
-        const scopeLabel = scope === 'full' ? 'all seasons' : 'current season';
+        const scopeLabel = scope === 'full' ? 'all seasons' : 'checking hub for changes';
         toast.info('Refresh queued', {
           description: `${league?.name}: ${scopeLabel}. Progress in the status bar (bottom-left).`,
         });

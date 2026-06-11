@@ -354,7 +354,12 @@ public static class ServiceCollectionExtensions
         // button remains as the escape hatch. Before this promotes to dev,
         // decide the final shape: re-register the auto-sync at a stretched
         // interval (e.g. weekly) as a self-heal pass, or keep poller-only.
-        services.AddHostedService<HubChangesPollerService>();
+        //
+        // Singleton + hosted wrapper (same pattern as DiskScanService) so
+        // TaskService can trigger an immediate poll cycle on demand — the
+        // refresh button's "current" scope is wired to PollNowAsync.
+        services.AddSingleton<HubChangesPollerService>();
+        services.AddHostedService(sp => sp.GetRequiredService<HubChangesPollerService>());
         services.AddHostedService<DvrSchedulerService>();
 
         services.AddSingleton<DvrAutoSchedulerService>();
