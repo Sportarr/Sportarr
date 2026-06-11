@@ -198,6 +198,7 @@ export default function LeagueSearchPage() {
       rootFolderId,
       monitorFinals,
       monitorPlayoffs,
+      monitorPreseason,
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -213,6 +214,7 @@ export default function LeagueSearchPage() {
       rootFolderId?: number | null;
       monitorFinals?: boolean;
       monitorPlayoffs?: boolean;
+      monitorPreseason?: boolean;
     }) => {
       // Teamless sports (motorsport, golf, darts, climbing, gambling, individual
       // tennis, badminton, table tennis, snooker) and fighting leagues that
@@ -241,6 +243,7 @@ export default function LeagueSearchPage() {
         rootFolderId: rootFolderId,
         monitorFinals: monitorFinals ?? false,
         monitorPlayoffs: monitorPlayoffs ?? false,
+        monitorPreseason: monitorPreseason ?? false,
         logoUrl: league.strBadge || league.strLogo,
         bannerUrl: league.strBanner,
         posterUrl: league.strPoster,
@@ -303,7 +306,8 @@ export default function LeagueSearchPage() {
       sport,
       leagueName,
       monitorFinals,
-      monitorPlayoffs
+      monitorPlayoffs,
+      monitorPreseason
     }: {
       leagueId: number;
       monitoredTeamIds: string[];
@@ -321,6 +325,7 @@ export default function LeagueSearchPage() {
       leagueName: string;
       monitorFinals?: boolean;
       monitorPlayoffs?: boolean;
+      monitorPreseason?: boolean;
     }) => {
       // Teamless sports auto-monitor; other sports require at least one selected team.
       const isMotorsportLeague = isMotorsport(sport);
@@ -345,6 +350,7 @@ export default function LeagueSearchPage() {
         tags: tags,
         monitorFinals: monitorFinals ?? false,
         monitorPlayoffs: monitorPlayoffs ?? false,
+        monitorPreseason: monitorPreseason ?? false,
       });
 
       if (!settingsResponse.ok) {
@@ -484,6 +490,7 @@ export default function LeagueSearchPage() {
     rootFolderId: number | null,
     monitorFinals: boolean,
     monitorPlayoffs: boolean,
+    monitorPreseason: boolean,
   ) => {
     const modalData = addModalDataRef.current;
     if (modalData?.editMode && modalData.leagueId) {
@@ -503,7 +510,8 @@ export default function LeagueSearchPage() {
         sport: league.strSport,
         leagueName: league.strLeague,
         monitorFinals,
-        monitorPlayoffs
+        monitorPlayoffs,
+        monitorPreseason
       });
     } else {
       addLeagueMutation.mutate({
@@ -520,7 +528,8 @@ export default function LeagueSearchPage() {
         tags,
         rootFolderId,
         monitorFinals,
-        monitorPlayoffs
+        monitorPlayoffs,
+        monitorPreseason
       });
     }
   };

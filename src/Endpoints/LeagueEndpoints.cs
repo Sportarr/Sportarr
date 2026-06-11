@@ -625,6 +625,17 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             eventTypesChanged = true;
         }
     }
+    if (body.TryGetProperty("monitorPreseason", out var monitorPreseasonProp) &&
+        (monitorPreseasonProp.ValueKind == JsonValueKind.True || monitorPreseasonProp.ValueKind == JsonValueKind.False))
+    {
+        var newMonitorPreseason = monitorPreseasonProp.GetBoolean();
+        if (league.MonitorPreseason != newMonitorPreseason)
+        {
+            logger.LogInformation("[LEAGUES] MonitorPreseason changing from {Old} to {New}", league.MonitorPreseason, newMonitorPreseason);
+            league.MonitorPreseason = newMonitorPreseason;
+            eventTypesChanged = true;
+        }
+    }
 
     // Handle custom search query template
     if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))

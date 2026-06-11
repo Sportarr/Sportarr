@@ -62,7 +62,8 @@ interface AddLeagueModalProps {
     tags: number[],
     rootFolderId: number | null,
     monitorFinals: boolean,
-    monitorPlayoffs: boolean
+    monitorPlayoffs: boolean,
+    monitorPreseason: boolean
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -163,6 +164,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitorType, setMonitorType] = useState('All');
   const [monitorFinals, setMonitorFinals] = useState(false);
   const [monitorPlayoffs, setMonitorPlayoffs] = useState(false);
+  const [monitorPreseason, setMonitorPreseason] = useState(false);
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [rootFolderId, setRootFolderId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
@@ -346,6 +348,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         searchForCutoffUnmetEvents: existingLeague.searchForCutoffUnmetEvents,
         monitorFinals: existingLeague.monitorFinals,
         monitorPlayoffs: existingLeague.monitorPlayoffs,
+        monitorPreseason: existingLeague.monitorPreseason,
         searchQueryTemplate: existingLeague.searchQueryTemplate,
         tags: existingLeague.tags,
         availableSessionTypesCount: availableSessionTypes.length, // Include to re-run when session types load
@@ -366,6 +369,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
       setMonitorFinals(existingLeague.monitorFinals || false);
       setMonitorPlayoffs(existingLeague.monitorPlayoffs || false);
+      setMonitorPreseason(existingLeague.monitorPreseason || false);
       setSearchQueryTemplate(existingLeague.searchQueryTemplate || '');
       setSearchTemplatePreview(null);
       setSelectedTags(existingLeague.tags || []);
@@ -665,7 +669,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       selectedTags,
       rootFolderId,
       monitorFinals,
-      monitorPlayoffs
+      monitorPlayoffs,
+      monitorPreseason
     );
   };
 
@@ -860,8 +865,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                             Only meaningful when a subset of teams is monitored —
                             with all teams selected every event is synced anyway. */}
                         <div className="mb-4 p-3 bg-black/50 rounded-lg border border-red-900/20 space-y-3">
-                          <div className="text-xs text-gray-400">
-                            Special events — monitored even when your selected teams aren't playing:
+                          <div>
+                            <div className="text-sm font-semibold text-white">Special events</div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              These are monitored <span className="text-gray-300 font-medium">regardless of the teams selected above</span>.
+                              Useful when you only follow certain teams but never want to miss the big games — leave unchecked to monitor only your teams' games.
+                            </div>
                           </div>
                           <label className="flex items-center gap-3 cursor-pointer">
                             <input
@@ -871,8 +880,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
                             />
                             <div>
-                              <div className="text-sm font-medium text-white">Always monitor finals</div>
-                              <div className="text-xs text-gray-400">Championship games — Super Bowl, NBA Finals, cup finals</div>
+                              <div className="text-sm font-medium text-white">Always monitor finals &amp; championships</div>
+                              <div className="text-xs text-gray-400">Title-deciding events — Super Bowl, NBA Finals, cup finals, Grand Finals, World Series</div>
                             </div>
                           </label>
                           <label className="flex items-center gap-3 cursor-pointer">
@@ -883,8 +892,20 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
                             />
                             <div>
-                              <div className="text-sm font-medium text-white">Always monitor playoffs</div>
-                              <div className="text-xs text-gray-400">Postseason rounds — wild card, divisional, conference, semi-finals</div>
+                              <div className="text-sm font-medium text-white">Always monitor postseason</div>
+                              <div className="text-xs text-gray-400">Elimination rounds before the title — playoffs, wild card, knockout stages, quarter/semi-finals</div>
+                            </div>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={monitorPreseason}
+                              onChange={(e) => setMonitorPreseason(e.target.checked)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white">Always monitor preseason</div>
+                              <div className="text-xs text-gray-400">Warm-up games before the regular season — preseason weeks, exhibition games</div>
                             </div>
                           </label>
                         </div>

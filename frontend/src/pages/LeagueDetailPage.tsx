@@ -563,6 +563,7 @@ export default function LeagueDetailPage() {
       searchQueryTemplate?: string | null;
       monitorFinals?: boolean;
       monitorPlayoffs?: boolean;
+      monitorPreseason?: boolean;
     }) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
@@ -707,6 +708,7 @@ export default function LeagueDetailPage() {
     _rootFolderId: number | null,
     monitorFinals: boolean,
     monitorPlayoffs: boolean,
+    monitorPreseason: boolean,
   ) => {
     void _rootFolderId;
     void league;
@@ -724,6 +726,7 @@ export default function LeagueDetailPage() {
       tags,
       monitorFinals,
       monitorPlayoffs,
+      monitorPreseason,
     });
   };
 

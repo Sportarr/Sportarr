@@ -31,6 +31,7 @@ public static class SpecialEventClassifier
     public enum SpecialTier
     {
         None,
+        Preseason,
         Playoff,
         Final
     }
@@ -45,7 +46,7 @@ public static class SpecialEventClassifier
     {
         "wild card", "wildcard", "divisional round", "play-in", "play in tournament",
         "conference semifinal", "conference final", "quarterfinal", "quarter-final",
-        "semifinal", "semi-final", "playoff"
+        "semifinal", "semi-final", "playoff", "knockout", "elimination round"
     };
 
     public static SpecialTier Classify(string? round, string? title)
@@ -57,6 +58,7 @@ public static class SpecialEventClassifier
             {
                 200 or 180 => SpecialTier.Final,
                 125 or 150 or 160 or 170 => SpecialTier.Playoff,
+                500 => SpecialTier.Preseason,
                 _ => SpecialTier.None
             };
         }
@@ -73,7 +75,9 @@ public static class SpecialEventClassifier
             if (isSemiOrQuarter || r.Contains("playoff") || r.Contains("play-off") ||
                 r.Contains("wild card") || r.Contains("wildcard") ||
                 r.Contains("divisional") || r.Contains("conference") ||
-                r.Contains("play-in"))
+                r.Contains("play-in") || r.Contains("knockout") ||
+                r.Contains("elimination") || r.Contains("postseason") ||
+                r.Contains("post-season"))
             {
                 return SpecialTier.Playoff;
             }
@@ -82,6 +86,11 @@ public static class SpecialEventClassifier
             if (r.Contains("championship"))
             {
                 return SpecialTier.Final;
+            }
+            if (r.Contains("preseason") || r.Contains("pre-season") || r.Contains("pre season") ||
+                r.Contains("exhibition"))
+            {
+                return SpecialTier.Preseason;
             }
         }
 
@@ -103,6 +112,10 @@ public static class SpecialEventClassifier
                     return SpecialTier.Playoff;
                 }
             }
+            if (t.Contains("preseason") || t.Contains("pre-season") || t.Contains("exhibition game"))
+            {
+                return SpecialTier.Preseason;
+            }
         }
 
         return SpecialTier.None;
@@ -112,14 +125,16 @@ public static class SpecialEventClassifier
     /// True when the event should bypass the monitored-team filter for a
     /// league with the given opt-ins.
     /// </summary>
-    public static bool BypassesTeamFilter(string? round, string? title, bool monitorFinals, bool monitorPlayoffs)
+    public static bool BypassesTeamFilter(string? round, string? title,
+        bool monitorFinals, bool monitorPlayoffs, bool monitorPreseason = false)
     {
-        if (!monitorFinals && !monitorPlayoffs)
+        if (!monitorFinals && !monitorPlayoffs && !monitorPreseason)
         {
             return false;
         }
         var tier = Classify(round, title);
         return (tier == SpecialTier.Final && monitorFinals)
-            || (tier == SpecialTier.Playoff && monitorPlayoffs);
+            || (tier == SpecialTier.Playoff && monitorPlayoffs)
+            || (tier == SpecialTier.Preseason && monitorPreseason);
     }
 }

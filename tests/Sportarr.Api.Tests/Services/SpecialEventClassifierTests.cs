@@ -22,7 +22,7 @@ public class SpecialEventClassifierTests
     [InlineData("1", SpecialTier.None)]      // Regular matchday
     [InlineData("18", SpecialTier.None)]     // NFL final regular-season week
     [InlineData("38", SpecialTier.None)]     // Soccer final matchday
-    [InlineData("500", SpecialTier.None)]    // Pre-season is not special
+    [InlineData("500", SpecialTier.Preseason)] // Pre-season round code
     public void Classifies_numeric_round_codes(string round, SpecialTier expected)
     {
         Classify(round, "Team A vs Team B").Should().Be(expected);
@@ -38,6 +38,10 @@ public class SpecialEventClassifierTests
     [InlineData("Conference Championship", SpecialTier.Playoff)]
     [InlineData("Championship", SpecialTier.Final)]
     [InlineData("Playoffs", SpecialTier.Playoff)]
+    [InlineData("Knockout Stage", SpecialTier.Playoff)]
+    [InlineData("Postseason", SpecialTier.Playoff)]
+    [InlineData("Preseason", SpecialTier.Preseason)]
+    [InlineData("Pre-Season", SpecialTier.Preseason)]
     public void Classifies_word_based_rounds(string round, SpecialTier expected)
     {
         Classify(round, "Team A vs Team B").Should().Be(expected);
@@ -70,7 +74,11 @@ public class SpecialEventClassifierTests
         // No opt-ins: nothing bypasses, classifier short-circuits.
         BypassesTeamFilter("200", "Super Bowl LX", monitorFinals: false, monitorPlayoffs: false).Should().BeFalse();
 
+        // Preseason opt-in admits preseason rounds only.
+        BypassesTeamFilter("500", null, monitorFinals: false, monitorPlayoffs: false, monitorPreseason: true).Should().BeTrue();
+        BypassesTeamFilter("500", null, monitorFinals: true, monitorPlayoffs: true, monitorPreseason: false).Should().BeFalse();
+
         // Regular game never bypasses regardless of opt-ins.
-        BypassesTeamFilter("7", "Team A vs Team B", monitorFinals: true, monitorPlayoffs: true).Should().BeFalse();
+        BypassesTeamFilter("7", "Team A vs Team B", monitorFinals: true, monitorPlayoffs: true, monitorPreseason: true).Should().BeFalse();
     }
 }
