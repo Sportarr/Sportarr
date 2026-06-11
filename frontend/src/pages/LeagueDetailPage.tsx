@@ -13,7 +13,7 @@ import LeagueFilesModal from '../components/LeagueFilesModal';
 import EventStatusBadge from '../components/EventStatusBadge';
 import ManualImportModal from '../components/ManualImportModal';
 import RefreshScopeModal, { type RefreshScope } from '../components/RefreshScopeModal';
-import { useSearchQueueStatus, useDownloadQueue } from '../api/hooks';
+import { useSearchQueueStatus, useDownloadQueue, useTasks } from '../api/hooks';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
 import { formatDateInTimezone, formatEventDate } from '../utils/timezone';
@@ -268,6 +268,17 @@ export default function LeagueDetailPage() {
     },
   });
 
+  // Shares the footer's 3-second task poll (same query key, no extra
+  // requests). While any league sync task is running — initial add
+  // population, Quick Sync, Deep Sync — the league/events queries below
+  // poll so new seasons and events stream onto the page as the sync
+  // writes them, instead of requiring a manual page reload to see data
+  // that already finished loading.
+  const { data: backgroundTasks } = useTasks(10);
+  const leagueSyncActive = (backgroundTasks ?? []).some(
+    (t) => t.commandName === 'RefreshLeague' && (t.status === 'Running' || t.status === 'Queued')
+  );
+
   // Fetch league details
   const { data: league, isLoading, error } = useQuery({
     queryKey: ['league', id],
@@ -275,6 +286,7 @@ export default function LeagueDetailPage() {
       const response = await apiClient.get<LeagueDetail>(`/leagues/${id}`);
       return response.data;
     },
+    refetchInterval: leagueSyncActive ? 5000 : false,
   });
 
   useEffect(() => {
@@ -293,8 +305,13 @@ export default function LeagueDetailPage() {
     },
     enabled: !!id,
     refetchInterval: (query) => {
-      // Auto-refresh every 3 seconds if no events yet (sync in progress)
-      // Stop polling once events appear
+      // Poll while a league sync task is active so seasons/events stream
+      // onto the page as they're written. The old gate only polled while
+      // the list was EMPTY, so the first season to land froze the page
+      // until a manual reload even though the sync kept writing.
+      if (leagueSyncActive) return 3000;
+      // Also poll while empty (covers the gap between page load and the
+      // initial-add task appearing in the task list).
       const data = query.state.data;
       return (!data || data.length === 0) ? 3000 : false;
     },
