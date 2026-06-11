@@ -1919,8 +1919,11 @@ public static class DatabaseInitializer
     ///   1. Most Events references (HomeTeamId + AwayTeamId).
     ///   2. Tie -> most LeagueTeams entries.
     ///   3. Tie -> lowest Id (oldest row, most likely the original).
-    /// The Monitored flag is OR'd into the keeper so a user who ticked
-    /// either copy ends up with the keeper still monitored.
+    /// Monitored is per-league (LeagueTeams.Monitored): victim links the
+    /// keeper doesn't already have are re-pointed and keep their flag;
+    /// where both copies link the same league, the victim's Monitored is
+    /// OR'd into the keeper's link before the duplicate row is dropped,
+    /// so a user who ticked either copy stays monitored.
     ///
     /// Idempotent: subsequent boots find zero candidate groups and exit
     /// without touching the DB.
@@ -1967,7 +1970,7 @@ public static class DatabaseInitializer
                         COALESCE(t.ExternalId, '')                                            AS external_id,
                         (SELECT count(*) FROM Events e WHERE e.HomeTeamId = t.Id OR e.AwayTeamId = t.Id) AS event_refs,
                         (SELECT count(*) FROM LeagueTeams lt WHERE lt.TeamId = t.Id)          AS league_links,
-                        t.Monitored                                                           AS monitored
+                        COALESCE((SELECT max(lt.Monitored) FROM LeagueTeams lt WHERE lt.TeamId = t.Id), 0) AS monitored
                     FROM Teams t
                     JOIN shared_league s
                       ON lower(trim(t.Name)) = s.name_norm
@@ -2025,14 +2028,6 @@ public static class DatabaseInitializer
                 var keeper = ordered[0];
                 var victims = ordered.Skip(1).ToList();
 
-                // OR Monitored into the keeper so picking either copy stays sticky.
-                var keeperShouldBeMonitored = ordered.Any(m => m.Monitored != 0);
-                if (keeperShouldBeMonitored && keeper.Monitored == 0)
-                {
-                    db.Database.ExecuteSqlInterpolated(
-                        $"UPDATE Teams SET Monitored = 1 WHERE Id = {keeper.Id}");
-                }
-
                 foreach (var v in victims)
                 {
                     // Rewire Events.HomeTeamId / AwayTeamId FKs to the keeper.
@@ -2040,6 +2035,19 @@ public static class DatabaseInitializer
                         $"UPDATE Events SET HomeTeamId = {keeper.Id} WHERE HomeTeamId = {v.Id}");
                     db.Database.ExecuteSqlInterpolated(
                         $"UPDATE Events SET AwayTeamId = {keeper.Id} WHERE AwayTeamId = {v.Id}");
+
+                    // Monitored lives on LeagueTeams (per-league), not Teams.
+                    // Where the keeper already covers a league, the victim's
+                    // row there is about to be dropped — OR its Monitored
+                    // flag into the keeper's row first so a user who ticked
+                    // either copy stays monitored in that league. Victim rows
+                    // for leagues the keeper doesn't cover are re-pointed
+                    // below and carry their own Monitored flag with them.
+                    db.Database.ExecuteSqlInterpolated($@"
+                        UPDATE LeagueTeams SET Monitored = 1
+                        WHERE TeamId = {keeper.Id}
+                          AND Monitored = 0
+                          AND LeagueId IN (SELECT LeagueId FROM LeagueTeams WHERE TeamId = {v.Id} AND Monitored = 1)");
 
                     // LeagueTeams has a UNIQUE INDEX on (LeagueId, TeamId), so
                     // we have to first drop victim rows for leagues the keeper
