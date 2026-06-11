@@ -561,6 +561,8 @@ export default function LeagueDetailPage() {
       monitoredTeamIds?: string[];
       tags?: number[];
       searchQueryTemplate?: string | null;
+      monitorFinals?: boolean;
+      monitorPlayoffs?: boolean;
     }) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
@@ -703,6 +705,8 @@ export default function LeagueDetailPage() {
     // phase). Param is accepted to keep the modal's onAdd signature
     // stable but ignored here.
     _rootFolderId: number | null,
+    monitorFinals: boolean,
+    monitorPlayoffs: boolean,
   ) => {
     void _rootFolderId;
     void league;
@@ -718,6 +722,8 @@ export default function LeagueDetailPage() {
       monitoredEventTypes,
       searchQueryTemplate,
       tags,
+      monitorFinals,
+      monitorPlayoffs,
     });
   };
 

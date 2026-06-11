@@ -60,7 +60,9 @@ interface AddLeagueModalProps {
     monitoredEventTypes: string | null,
     searchQueryTemplate: string | null,
     tags: number[],
-    rootFolderId: number | null
+    rootFolderId: number | null,
+    monitorFinals: boolean,
+    monitorPlayoffs: boolean
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -159,6 +161,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [monitorType, setMonitorType] = useState('All');
+  const [monitorFinals, setMonitorFinals] = useState(false);
+  const [monitorPlayoffs, setMonitorPlayoffs] = useState(false);
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [rootFolderId, setRootFolderId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
@@ -340,6 +344,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         monitoredEventTypes: existingLeague.monitoredEventTypes,
         searchForMissingEvents: existingLeague.searchForMissingEvents,
         searchForCutoffUnmetEvents: existingLeague.searchForCutoffUnmetEvents,
+        monitorFinals: existingLeague.monitorFinals,
+        monitorPlayoffs: existingLeague.monitorPlayoffs,
         searchQueryTemplate: existingLeague.searchQueryTemplate,
         tags: existingLeague.tags,
         availableSessionTypesCount: availableSessionTypes.length, // Include to re-run when session types load
@@ -358,6 +364,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setRootFolderId(existingLeague.rootFolderId ?? null);
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
+      setMonitorFinals(existingLeague.monitorFinals || false);
+      setMonitorPlayoffs(existingLeague.monitorPlayoffs || false);
       setSearchQueryTemplate(existingLeague.searchQueryTemplate || '');
       setSearchTemplatePreview(null);
       setSelectedTags(existingLeague.tags || []);
@@ -655,7 +663,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       eventTypesString,
       searchQueryTemplate.trim() || null,
       selectedTags,
-      rootFolderId
+      rootFolderId,
+      monitorFinals,
+      monitorPlayoffs
     );
   };
 
@@ -844,6 +854,39 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               {selectAll && <CheckIcon className="w-4 h-4 text-white" />}
                             </div>
                           </button>
+                        </div>
+
+                        {/* Special events: finals/playoffs bypass the team filter.
+                            Only meaningful when a subset of teams is monitored —
+                            with all teams selected every event is synced anyway. */}
+                        <div className="mb-4 p-3 bg-black/50 rounded-lg border border-red-900/20 space-y-3">
+                          <div className="text-xs text-gray-400">
+                            Special events — monitored even when your selected teams aren't playing:
+                          </div>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={monitorFinals}
+                              onChange={(e) => setMonitorFinals(e.target.checked)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white">Always monitor finals</div>
+                              <div className="text-xs text-gray-400">Championship games — Super Bowl, NBA Finals, cup finals</div>
+                            </div>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={monitorPlayoffs}
+                              onChange={(e) => setMonitorPlayoffs(e.target.checked)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white">Always monitor playoffs</div>
+                              <div className="text-xs text-gray-400">Postseason rounds — wild card, divisional, conference, semi-finals</div>
+                            </div>
+                          </label>
                         </div>
 
                         {teams.length >= 25 && (

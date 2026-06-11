@@ -599,6 +599,33 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Special-event monitoring opt-ins: finals/championships and playoff
+    // rounds bypassing the monitored-team filter. Changing either flag
+    // affects which events the next sync admits, so both count as an
+    // event-affecting change (rides the same resync trigger as event types).
+    if (body.TryGetProperty("monitorFinals", out var monitorFinalsProp) &&
+        (monitorFinalsProp.ValueKind == JsonValueKind.True || monitorFinalsProp.ValueKind == JsonValueKind.False))
+    {
+        var newMonitorFinals = monitorFinalsProp.GetBoolean();
+        if (league.MonitorFinals != newMonitorFinals)
+        {
+            logger.LogInformation("[LEAGUES] MonitorFinals changing from {Old} to {New}", league.MonitorFinals, newMonitorFinals);
+            league.MonitorFinals = newMonitorFinals;
+            eventTypesChanged = true;
+        }
+    }
+    if (body.TryGetProperty("monitorPlayoffs", out var monitorPlayoffsProp) &&
+        (monitorPlayoffsProp.ValueKind == JsonValueKind.True || monitorPlayoffsProp.ValueKind == JsonValueKind.False))
+    {
+        var newMonitorPlayoffs = monitorPlayoffsProp.GetBoolean();
+        if (league.MonitorPlayoffs != newMonitorPlayoffs)
+        {
+            logger.LogInformation("[LEAGUES] MonitorPlayoffs changing from {Old} to {New}", league.MonitorPlayoffs, newMonitorPlayoffs);
+            league.MonitorPlayoffs = newMonitorPlayoffs;
+            eventTypesChanged = true;
+        }
+    }
+
     // Handle custom search query template
     if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))
     {

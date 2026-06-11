@@ -196,6 +196,8 @@ export default function LeagueSearchPage() {
       searchQueryTemplate,
       tags,
       rootFolderId,
+      monitorFinals,
+      monitorPlayoffs,
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -209,6 +211,8 @@ export default function LeagueSearchPage() {
       searchQueryTemplate?: string | null;
       tags?: number[];
       rootFolderId?: number | null;
+      monitorFinals?: boolean;
+      monitorPlayoffs?: boolean;
     }) => {
       // Teamless sports (motorsport, golf, darts, climbing, gambling, individual
       // tennis, badminton, table tennis, snooker) and fighting leagues that
@@ -235,6 +239,8 @@ export default function LeagueSearchPage() {
         searchQueryTemplate: searchQueryTemplate,
         tags: tags,
         rootFolderId: rootFolderId,
+        monitorFinals: monitorFinals ?? false,
+        monitorPlayoffs: monitorPlayoffs ?? false,
         logoUrl: league.strBadge || league.strLogo,
         bannerUrl: league.strBanner,
         posterUrl: league.strPoster,
@@ -295,7 +301,9 @@ export default function LeagueSearchPage() {
       searchQueryTemplate,
       tags,
       sport,
-      leagueName
+      leagueName,
+      monitorFinals,
+      monitorPlayoffs
     }: {
       leagueId: number;
       monitoredTeamIds: string[];
@@ -311,6 +319,8 @@ export default function LeagueSearchPage() {
       tags?: number[];
       sport: string;
       leagueName: string;
+      monitorFinals?: boolean;
+      monitorPlayoffs?: boolean;
     }) => {
       // Teamless sports auto-monitor; other sports require at least one selected team.
       const isMotorsportLeague = isMotorsport(sport);
@@ -333,6 +343,8 @@ export default function LeagueSearchPage() {
         applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
         searchQueryTemplate: searchQueryTemplate,
         tags: tags,
+        monitorFinals: monitorFinals ?? false,
+        monitorPlayoffs: monitorPlayoffs ?? false,
       });
 
       if (!settingsResponse.ok) {
@@ -470,6 +482,8 @@ export default function LeagueSearchPage() {
     searchQueryTemplate: string | null,
     tags: number[],
     rootFolderId: number | null,
+    monitorFinals: boolean,
+    monitorPlayoffs: boolean,
   ) => {
     const modalData = addModalDataRef.current;
     if (modalData?.editMode && modalData.leagueId) {
@@ -487,7 +501,9 @@ export default function LeagueSearchPage() {
         searchQueryTemplate,
         tags,
         sport: league.strSport,
-        leagueName: league.strLeague
+        leagueName: league.strLeague,
+        monitorFinals,
+        monitorPlayoffs
       });
     } else {
       addLeagueMutation.mutate({
@@ -502,7 +518,9 @@ export default function LeagueSearchPage() {
         monitoredEventTypes,
         searchQueryTemplate,
         tags,
-        rootFolderId
+        rootFolderId,
+        monitorFinals,
+        monitorPlayoffs
       });
     }
   };

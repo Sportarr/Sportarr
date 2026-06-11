@@ -958,6 +958,28 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify AppSettings.IndexerMinimumAgeMinutes column: {ex.Message}");
         }
 
+        // Ensure MonitorFinals / MonitorPlayoffs columns exist in Leagues
+        // (special-event monitoring: finals and playoff rounds opt-in past
+        // the team filter).
+        foreach (var specialCol in new[] { "MonitorFinals", "MonitorPlayoffs" })
+        {
+            try
+            {
+                var checkSpecialSql = $"SELECT COUNT(*) FROM pragma_table_info('Leagues') WHERE name='{specialCol}'";
+                var specialExists = db.Database.SqlQueryRaw<int>(checkSpecialSql).AsEnumerable().FirstOrDefault();
+                if (specialExists == 0)
+                {
+                    Console.WriteLine($"[Sportarr] Leagues.{specialCol} column missing - adding it now...");
+                    db.Database.ExecuteSqlRaw($"ALTER TABLE \"Leagues\" ADD COLUMN \"{specialCol}\" INTEGER NOT NULL DEFAULT 0");
+                    Console.WriteLine($"[Sportarr] Leagues.{specialCol} column added successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Sportarr] Warning: Could not verify Leagues.{specialCol} column: {ex.Message}");
+            }
+        }
+
         // Ensure HubChangesCursor column exists in AppSettings (hub changes
         // feed poller). Stores the last consumed feed sequence so polling
         // resumes across restarts.

@@ -312,17 +312,25 @@ public class LeagueEventSyncService
                     season);
             }
 
-            // Filter events by monitored teams if team-based filtering is enabled
+            // Filter events by monitored teams if team-based filtering is enabled.
+            // Finals and playoff rounds can bypass the filter when the league
+            // opts in (MonitorFinals / MonitorPlayoffs) — users who follow one
+            // team usually still want the championship game and/or postseason
+            // regardless of who's playing.
             var originalEventCount = events.Count;
             if (monitoredTeamIds.Any())
             {
                 events = events.Where(e =>
                     (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
-                    (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId))
+                    (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
+                    SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs)
                 ).ToList();
 
-                _logger.LogInformation("[League Event Sync] Season {Season}: Filtered {Original} events to {Filtered} based on monitored teams",
-                    season, originalEventCount, events.Count);
+                _logger.LogInformation("[League Event Sync] Season {Season}: Filtered {Original} events to {Filtered} based on monitored teams{SpecialNote}",
+                    season, originalEventCount, events.Count,
+                    league.MonitorFinals || league.MonitorPlayoffs
+                        ? $" (+ {(league.MonitorFinals ? "finals" : "")}{(league.MonitorFinals && league.MonitorPlayoffs ? "/" : "")}{(league.MonitorPlayoffs ? "playoffs" : "")} bypass)"
+                        : "");
             }
 
             if (!events.Any())
@@ -450,20 +458,25 @@ public class LeagueEventSyncService
                 continue;
             }
 
-            var localEventsQuery = _db.Events
+            var allLocalSeasonEvents = await _db.Events
                 .Include(e => e.Files)
-                .Where(e => e.LeagueId == league.Id && e.Season == season && e.ExternalId != null);
+                .Where(e => e.LeagueId == league.Id && e.Season == season && e.ExternalId != null)
+                .ToListAsync();
 
-            // When team filtering is active, only clean up events belonging to monitored teams
-            // to avoid deleting events for non-monitored teams that weren't in the filtered API response
-            if (monitoredTeamIds.Any())
-            {
-                localEventsQuery = localEventsQuery.Where(e =>
-                    (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
-                    (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId)));
-            }
-
-            var localEventsForSeason = await localEventsQuery.ToListAsync();
+            // When team filtering is active, only clean up events the filter
+            // would have admitted — monitored-team games plus any special
+            // events the league's finals/playoffs opt-ins let through. The
+            // predicate must mirror the API-side filter above exactly, or
+            // cleanup would either delete events the filter keeps or never
+            // remove cancelled special events. Filtered in memory because the
+            // special-event classification isn't expressible in SQL.
+            var localEventsForSeason = monitoredTeamIds.Any()
+                ? allLocalSeasonEvents.Where(e =>
+                        (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
+                        (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
+                        SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs))
+                    .ToList()
+                : allLocalSeasonEvents;
 
             var orphanedEvents = localEventsForSeason
                 .Where(e => !apiExternalIds.Contains(e.ExternalId!))
