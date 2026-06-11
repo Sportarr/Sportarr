@@ -18,14 +18,14 @@ namespace Sportarr.Api.Services;
 /// manual refresh click, and a change in a ten-year-old season costs one
 /// targeted season fetch rather than a full league walk.
 ///
-/// The 24h <see cref="LeagueEventAutoSyncService"/> is designed as the
-/// correctness backstop for feed gaps (fresh installs, cursors older
-/// than the feed's retention window). During the poller-only soak test
-/// it is unregistered — see ServiceCollectionExtensions — so resync
-/// answers currently rely on the manual refresh button until the final
-/// shape is decided. Individual league sync failures advance the cursor
-/// either way: a permanently failing league must not dam the feed for
-/// the others.
+/// Feed gaps self-heal: when the hub answers "resync required" (first
+/// poll ever, or a cursor older than the feed's retention window) the
+/// poller walks every monitored league itself — current/future seasons
+/// on a first poll, full history after a retention gap — so an install
+/// realigns to hub truth without the user knowing cursor mechanics
+/// exist. Individual league sync failures advance the cursor either
+/// way: a permanently failing league must not dam the feed for the
+/// others.
 /// </summary>
 public class HubChangesPollerService : BackgroundService
 {
@@ -136,19 +136,76 @@ public class HubChangesPollerService : BackgroundService
 
             if (feed.Resync)
             {
-                // Fresh install or cursor pruned past: join the feed at its
-                // head. The gap (if any) needs a full sync - the scheduled
-                // walk where registered, or the refresh button's
-                // "all seasons" scope on poller-only builds.
+                // The feed cannot replay what this install missed, so heal
+                // the gap automatically instead of asking the user to know
+                // about cursor mechanics. Two cases:
+                //
+                //   cursor == 0 — first poll ever (fresh install, or an
+                //   existing install upgrading onto the poller build).
+                //   Data is at worst ~a day stale (league add ran the full
+                //   historical sync; pre-poller builds ran the daily walk),
+                //   so a current/future-season walk seals the gap. A full
+                //   historical walk here would also make every install
+                //   stampede the hub with decades of season fetches within
+                //   minutes of a release shipping.
+                //
+                //   cursor > 0 but below the feed's prune watermark — the
+                //   install was offline past the feed's retention window.
+                //   The missed changes are unknowable and could be in any
+                //   season, so reconcile every league against full history.
+                //   Rare and uncorrelated across installs, so the cost is
+                //   acceptable and proportionate.
+                //
+                // Head cursor is stored BEFORE the walk: changes landing
+                // while the walk runs sit above it, so the next poll
+                // applies them. Nothing is lost in the handoff.
+                var firstPoll = cursor == 0;
                 _logger.LogInformation(
-                    "[Changes Poller] Feed requested resync (cursor {Cursor} -> {Next}); a full sync covers the gap",
-                    cursor, feed.Next);
+                    "[Changes Poller] Feed requested resync (cursor {Cursor} -> {Next}); self-healing with a {Mode} of all monitored leagues",
+                    cursor, feed.Next, firstPoll ? "current-season walk" : "full historical walk");
+
                 if (feed.Next != settings.HubChangesCursor)
                 {
                     settings.HubChangesCursor = feed.Next;
                     await db.SaveChangesAsync(cancellationToken);
                 }
-                return "Feed cursor was reset (first poll or retention gap) - run an all-seasons refresh if data may have drifted";
+
+                var monitored = await db.Leagues
+                    .Where(l => l.Monitored && l.ExternalId != null)
+                    .ToListAsync(cancellationToken);
+
+                var healed = 0;
+                foreach (var league in monitored)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var healResult = await syncService.SyncLeagueEventsAsync(
+                            league.Id, seasons: null, fullHistoricalSync: !firstPoll,
+                            forceRefresh: false, cancellationToken: cancellationToken);
+                        if (healResult.Success)
+                        {
+                            healed++;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("[Changes Poller] Self-heal sync of {LeagueName} failed: {Message}",
+                                league.Name, healResult.Message);
+                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[Changes Poller] Self-heal sync of {LeagueName} failed", league.Name);
+                    }
+                }
+
+                return firstPoll
+                    ? $"Joined the hub change feed; verified {healed} league(s) against the current season window"
+                    : $"Change history gap detected (install offline past feed retention) - fully re-synced {healed} league(s) against the hub";
             }
 
             if (feed.Changes == null || feed.Changes.Count == 0)
