@@ -679,7 +679,30 @@ static async Task<bool> ShouldExposeApiKeyAsync(HttpContext context, SportarrDbC
     }
 
     var formsResult = await context.AuthenticateAsync("Forms");
-    return formsResult.Succeeded;
+    if (formsResult.Succeeded)
+    {
+        return true;
+    }
+
+    // The app's forms login stores a DB-backed session id in the
+    // SportarrAuth cookie rather than an ASP.NET cookie ticket, so the
+    // "Forms" scheme above never succeeds for real browser sessions.
+    // Validate the DB session the same way /api/auth/check does; without
+    // this, a logged-in forms user never receives the API key and the UI
+    // cannot make a single authenticated request.
+    var sessionCookie = context.Request.Cookies["SportarrAuth"];
+    if (!string.IsNullOrEmpty(sessionCookie))
+    {
+        var sessionService = context.RequestServices.GetRequiredService<Sportarr.Api.Services.SessionService>();
+        var sessionIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var sessionUserAgent = context.Request.Headers["User-Agent"].ToString();
+        var (sessionValid, _) = await sessionService.ValidateSessionAsync(
+            sessionCookie, sessionIp, sessionUserAgent,
+            strictIpCheck: true, strictUserAgentCheck: true);
+        return sessionValid;
+    }
+
+    return false;
 }
 
 // Health check

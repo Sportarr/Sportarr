@@ -163,6 +163,34 @@ public class DynamicAuthenticationMiddleware
             return;
         }
 
+        // 1b. The app's forms login does not issue an ASP.NET cookie ticket —
+        // /api/login stores a DB-backed session id in the SportarrAuth cookie,
+        // so the ticket scheme above can never decrypt it and always fails for
+        // real browser sessions. Validate the DB session exactly the way
+        // /api/auth/check does (same strict IP / user-agent binding). Without
+        // this, a logged-in forms user passes auth/check but every other
+        // /api request 401s — the UI loads with no data and settings refuse
+        // to save.
+        var sessionCookie = context.Request.Cookies["SportarrAuth"];
+        if (!string.IsNullOrEmpty(sessionCookie))
+        {
+            var sessionService = context.RequestServices.GetRequiredService<Sportarr.Api.Services.SessionService>();
+            var sessionIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var sessionUserAgent = context.Request.Headers["User-Agent"].ToString();
+            var (sessionValid, sessionUser) = await sessionService.ValidateSessionAsync(
+                sessionCookie, sessionIp, sessionUserAgent,
+                strictIpCheck: true, strictUserAgentCheck: true);
+            if (sessionValid)
+            {
+                var identity = new System.Security.Claims.ClaimsIdentity("Session");
+                identity.AddClaim(new System.Security.Claims.Claim(
+                    System.Security.Claims.ClaimTypes.Name, sessionUser ?? "user"));
+                context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+                await _next(context);
+                return;
+            }
+        }
+
         // 2. Try Basic authentication if Authorization header present
         if (context.Request.Headers.ContainsKey("Authorization"))
         {
