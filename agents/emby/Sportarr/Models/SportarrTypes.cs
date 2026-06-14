@@ -149,6 +149,31 @@ namespace Sportarr
 
         [JsonPropertyName("away_team")]
         public string? AwayTeam { get; set; }
+
+        [JsonPropertyName("cast")]
+        public List<SportarrCastMember>? Cast { get; set; }
+    }
+
+    /// <summary>
+    /// One player in an event's cast (the squad / athletes who featured),
+    /// served per episode by the hub via sportarr's match endpoint.
+    /// </summary>
+    public class SportarrCastMember
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("team")]
+        public string? Team { get; set; }
+
+        [JsonPropertyName("side")]
+        public string? Side { get; set; }
+
+        [JsonPropertyName("position")]
+        public string? Position { get; set; }
+
+        [JsonPropertyName("number")]
+        public string? Number { get; set; }
     }
 
     /// <summary>

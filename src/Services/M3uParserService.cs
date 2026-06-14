@@ -541,14 +541,30 @@ public class M3uParserService
         if (string.IsNullOrWhiteSpace(url))
             return false;
 
-        // Check for common stream URL patterns
-        return url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+        // Reject embedded quotes, whitespace and control characters. Stream URLs from a
+        // (possibly malicious) third-party M3U/Xtream provider are later passed to ffmpeg;
+        // a value like  http://x/a.m3u8" -i file:///config/sportarr.db ...  would otherwise
+        // be stored verbatim and could inject ffmpeg options/inputs once it reaches argv.
+        foreach (var c in url)
+        {
+            if (char.IsControl(c) || char.IsWhiteSpace(c) || c == '"' || c == '\'')
+                return false;
+        }
+
+        var validScheme =
+               url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
                url.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase) ||
                url.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) ||
                url.StartsWith("mms://", StringComparison.OrdinalIgnoreCase) ||
                url.StartsWith("udp://", StringComparison.OrdinalIgnoreCase) ||
                url.StartsWith("rtp://", StringComparison.OrdinalIgnoreCase);
+
+        if (!validScheme)
+            return false;
+
+        // Must parse as a well-formed absolute URI (rejects further malformed/injected forms).
+        return Uri.TryCreate(url, UriKind.Absolute, out _);
     }
 
     /// <summary>

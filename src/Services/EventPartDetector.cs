@@ -846,6 +846,56 @@ public class EventPartDetector
         return null;
     }
 
+    // -----------------------------------------------------------------------
+    // Non-English motorsport session vocabulary.
+    //
+    // The per-league tables above (MotorsportSessionsByLeague) are English-only,
+    // but release groups in other markets name sessions in their own language —
+    // e.g. French "Essais libres" = Free Practice, "Essais qualificatifs" =
+    // Qualifying, "La Course" = Race. Without these, a French release parses to
+    // an unknown session and the matcher falls back to permissive behaviour,
+    // letting it land on the wrong event.
+    //
+    // This single shared, ordered table is the one place languages are added.
+    // It is consulted by BOTH matchers: ReleaseMatchingService (via
+    // DetectMotorsportSessionFromFilename below) and ReleaseMatchScorer (via
+    // its DetectSessionType). Order is most-specific-first; the canonical name
+    // on the left maps onto the exact session names the English tables emit.
+    // To add a language, append its rows here — no other code changes needed.
+    // -----------------------------------------------------------------------
+    private static readonly (string Session, Regex Pattern)[] MultilingualSessionPatterns = new[]
+    {
+        // --- French (fr) ---
+        ("Practice 3",        new Regex(@"\bessais\s*libres?\s*(3|trois)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Practice 2",        new Regex(@"\bessais\s*libres?\s*(2|deux)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Practice 1",        new Regex(@"\bessais\s*libres?\s*(1|une?)?\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)), // bare "essais libres" -> Practice 1
+        ("Sprint Qualifying", new Regex(@"\b(?:essais\s*qualificatifs?|qualifications?)\s*sprint\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Sprint",            new Regex(@"\bcourse\s*sprint\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Qualifying",        new Regex(@"\b(?:essais\s*qualificatifs?|qualifications?|qualifs?)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Race",              new Regex(@"\b(?:la\s+)?course\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        // --- add other languages (de, it, es, ...) below ---
+    };
+
+    /// <summary>
+    /// Detect a motorsport session from non-English vocabulary (French, etc.).
+    /// Input should already be lower-cased with separators collapsed to spaces.
+    /// Returns a canonical session name matching the English tables, or null.
+    /// Shared by both matchers so a language is defined in exactly one place.
+    /// </summary>
+    public static string? DetectMultilingualSession(string cleanedTitle)
+    {
+        if (string.IsNullOrEmpty(cleanedTitle))
+            return null;
+
+        foreach (var (session, pattern) in MultilingualSessionPatterns)
+        {
+            if (pattern.IsMatch(cleanedTitle))
+                return session;
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// Detect the session type from a release filename for motorsports.
     /// Uses the same patterns as DetectMotorsportSessionType but works on filenames.
@@ -882,7 +932,8 @@ public class EventPartDetector
             }
         }
 
-        return null;
+        // Fall back to non-English vocabulary (French, etc.) before giving up.
+        return DetectMultilingualSession(cleanFilename);
     }
 
     /// <summary>

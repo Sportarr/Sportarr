@@ -216,7 +216,9 @@ public class SearchQueueService
             // For Fighting sports with multi-part episodes, queue each monitored part
             // IMPORTANT: Validate parts against what's valid for this specific event type
             // e.g., Fight Night events don't have "Early Prelims"
-            if (evt.Sport == "Fighting" && !string.IsNullOrEmpty(evt.MonitoredParts))
+            // IsFightingSport (not == "Fighting") so the hub's "Combat" label
+            // also queues per-part searches; an exact match skipped them.
+            if (EventPartDetector.IsFightingSport(evt.Sport ?? "") && !string.IsNullOrEmpty(evt.MonitoredParts))
             {
                 // Get valid segments for this event type (Fight Night vs PPV)
                 var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport, evt.Title, evt.League?.Name);

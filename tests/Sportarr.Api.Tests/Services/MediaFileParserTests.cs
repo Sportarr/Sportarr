@@ -306,14 +306,14 @@ public class MediaFileParserTests
     // ============================================================
 
     [Theory]
-    [InlineData("recording.ts", "1080P", "HDTV")]
-    [InlineData("game.m2ts", "1080P", "HDTV")]
+    [InlineData("recording.ts", "1080P", "RAWHD")]
+    [InlineData("game.m2ts", "1080P", "RAWHD")]
     public void Parse_ShouldFallBackToTsExtensionAsRawhd(string filename, string expectedRes, string expectedSource)
     {
         // QualityParser.ParseQualityFromExtension returns Quality.RAWHD for
-        // .ts/.m2ts. RAWHD maps to (TelevisionRaw, R1080p), and our verbose
-        // mapper bucket-aliases TelevisionRaw to "HDTV" so the resulting
-        // Quality string is "1080P HDTV".
+        // .ts/.m2ts. RAWHD maps to (TelevisionRaw, R1080p), and the verbose
+        // mapper emits TelevisionRaw as the "RAWHD" source string, so the
+        // resulting Quality string is "1080P RAWHD".
         var result = _parser.Parse(filename);
 
         result.Resolution.Should().Be(expectedRes);

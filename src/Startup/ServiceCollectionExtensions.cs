@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -113,7 +114,12 @@ public static class ServiceCollectionExtensions
                 AllowAutoRedirect = true,
                 MaxAutomaticRedirections = 10,
                 PooledConnectionLifetime = TimeSpan.FromMinutes(1),
-                PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30)
+                PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30),
+                // SSRF guard: the stream proxy is reachable anonymously and fetches
+                // caller-supplied URLs, so validate the actual IP on every connection
+                // (initial request + each redirect hop) and refuse internal targets.
+                ConnectCallback = async (ctx, ct) =>
+                    await Sportarr.Api.Helpers.SsrfGuard.ConnectValidatedAsync(ctx.DnsEndPoint, ct)
             })
             .ConfigureHttpClient(client =>
             {
@@ -150,6 +156,11 @@ public static class ServiceCollectionExtensions
         // policy below (2s+4s+8s+16s = 30s of backoff alone) to
         // actually fire its full sequence on transient 5xx, instead
         // of being clipped by the request timeout half-way through.
+        // Outermost handler that tallies one hub HTTP call per logical
+        // request into the ambient SyncMetrics counter (registered before
+        // the Polly policy below so retries aren't double-counted).
+        services.AddTransient<SyncHttpCountingHandler>();
+
         services.AddHttpClient<SportarrApiClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
@@ -161,6 +172,7 @@ public static class ServiceCollectionExtensions
                 client.Timeout = TimeSpan.FromSeconds(90);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
             })
+            .AddHttpMessageHandler<SyncHttpCountingHandler>()
             // Retry transient 5xx / network errors with a short exponential
             // backoff (2s, 4s, 8s). Retry 429 separately with a much longer
             // base (8s, 16s, 32s, 64s) and honor the server's Retry-After
@@ -201,6 +213,22 @@ public static class ServiceCollectionExtensions
         services.AddMemoryCache();
         services.AddSingleton<IRateLimitService, RateLimitService>();
         services.AddTransient<RateLimitHandler>();
+
+        // Throttle login attempts per client IP to blunt online password guessing.
+        // The login endpoint opts in via .RequireRateLimiting("login").
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = 429;
+            options.AddPolicy("login", httpContext =>
+                System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromMinutes(5),
+                        QueueLimit = 0
+                    }));
+        });
 
         services.AddControllers();
         services.ConfigureHttpJsonOptions(options =>
@@ -318,7 +346,20 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<TvScheduleSyncService>();
         services.AddHostedService<FileWatcherService>();
         services.AddHostedService<EventMappingSyncBackgroundService>();
-        services.AddHostedService<LeagueEventAutoSyncService>();
+        // LeagueEventAutoSyncService (24h full league walk) is deliberately
+        // NOT registered on this branch: the hub changes poller below is
+        // being soak-tested as the sole ongoing event ingest. Initial league
+        // add still runs its one-time full historical sync (the feed is
+        // delta-only and cannot backfill history), and the manual refresh
+        // button remains as the escape hatch. Before this promotes to dev,
+        // decide the final shape: re-register the auto-sync at a stretched
+        // interval (e.g. weekly) as a self-heal pass, or keep poller-only.
+        //
+        // Singleton + hosted wrapper (same pattern as DiskScanService) so
+        // TaskService can trigger an immediate poll cycle on demand — the
+        // refresh button's "current" scope is wired to PollNowAsync.
+        services.AddSingleton<HubChangesPollerService>();
+        services.AddHostedService(sp => sp.GetRequiredService<HubChangesPollerService>());
         services.AddHostedService<DvrSchedulerService>();
 
         services.AddSingleton<DvrAutoSchedulerService>();
@@ -328,18 +369,36 @@ public static class ServiceCollectionExtensions
         // catches crashes, app restarts, frozen upstream sources.
         services.AddHostedService<DvrWatchdogService>();
 
+        // Downloads finished events from the provider's catchup/timeshift
+        // archive (Method=Catchup rows) - the post-air counterpart to the
+        // live scheduler above. Method ported from timeshifter by
+        // scottrobertson (github.com/scottrobertson/timeshifter).
+        services.AddHostedService<CatchupDownloadService>();
+
         return services;
     }
 
     public static IServiceCollection AddSportarrDatabase(this IServiceCollection services, string dbPath)
     {
+        // Single shared interceptor instance. It only does work inside a
+        // SyncMetrics measured block (one AsyncLocal read otherwise), so it
+        // is safe to attach to every context including the request path.
+        var commandCounter = new Sportarr.Api.Data.CommandCountingInterceptor();
+
         services.AddDbContext<SportarrDbContext>(options =>
             options.UseSqlite($"Data Source={dbPath}")
+                   .AddInterceptors(commandCounter)
                    .ConfigureWarnings(w => w
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)));
 
+        // No AddInterceptors here: EF merges every options configuration
+        // registered for the same context type, so the AddDbContext call
+        // above already attaches the counter to factory-created contexts
+        // too. Registering it in both lambdas made the interceptor fire
+        // twice per command — the first [Sync Metrics] baselines showed
+        // every per-shape count even, including queries that run once.
         services.AddDbContextFactory<SportarrDbContext>(options =>
             options.UseSqlite($"Data Source={dbPath}")
                    .ConfigureWarnings(w => w

@@ -3,6 +3,7 @@ namespace Sportarr.Providers
     using MediaBrowser.Common;
     using MediaBrowser.Common.Net;
     using MediaBrowser.Controller.Base;
+    using MediaBrowser.Controller.Entities;
     using MediaBrowser.Controller.Entities.TV;
     using MediaBrowser.Controller.Net;
     using MediaBrowser.Controller.Providers;
@@ -160,6 +161,29 @@ namespace Sportarr.Providers
                     if (!string.IsNullOrEmpty(ep.Id))
                     {
                         episode.SetProviderId("Sportarr", ep.Id);
+                    }
+
+                    // Venue -> studio (shown on the episode in Emby)
+                    if (!string.IsNullOrEmpty(ep.Venue))
+                    {
+                        episode.AddStudio(ep.Venue);
+                    }
+
+                    // Cast -> people (the squad / athletes who featured), with
+                    // the position carried as the role.
+                    if (ep.Cast != null)
+                    {
+                        foreach (var c in ep.Cast)
+                        {
+                            if (string.IsNullOrEmpty(c.Name))
+                                continue;
+                            result.AddPerson(new PersonInfo
+                            {
+                                Name = c.Name,
+                                Type = PersonType.GuestStar,
+                                Role = c.Position
+                            });
+                        }
                     }
 
                     result.Item = episode;

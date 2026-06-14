@@ -317,6 +317,18 @@ public class PackImportService
         var monitoredEvents = await GetMonitoredEventsAsync(leagueId);
         var settings = await GetMediaManagementSettingsAsync();
 
+        // Containment guard: deletion of unmatched files is only allowed when the supplied
+        // path lives inside a configured root folder or download-client directory. Without
+        // this, a caller-controlled path (e.g. /data/media) would let pack-import recursively
+        // delete media anywhere the process can write. If the path is not contained, we keep
+        // importing matches but refuse to delete.
+        if (deleteUnmatched && !dryRun && !await IsPathWithinAllowedBaseAsync(downloadPath, settings))
+        {
+            _logger.LogWarning("[Pack Import] Refusing to delete unmatched files: {Path} is not inside a configured root folder or download directory", downloadPath);
+            result.Errors.Add("Unmatched files were not deleted: the path is not inside a configured root folder or download directory.");
+            deleteUnmatched = false;
+        }
+
         foreach (var file in videoFiles)
         {
             var fileName = Path.GetFileName(file);
@@ -1068,16 +1080,69 @@ public class PackImportService
                 catch { /* ignore */ }
             }
 
-            // Check root directory
-            if (Directory.Exists(rootPath) && !Directory.EnumerateFileSystemEntries(rootPath).Any())
-            {
-                Directory.Delete(rootPath);
-                _logger.LogDebug("[Pack Import] Deleted empty root directory: {Dir}", rootPath);
-            }
+            // Never delete the supplied root path itself — only directories created beneath it.
+            // Pruning the root would let a pack import remove (for example) a configured root
+            // folder once it had been emptied.
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Pack Import] Error cleaning up directories");
         }
+    }
+
+    /// <summary>
+    /// True when <paramref name="downloadPath"/> resolves to a location inside a configured
+    /// root folder or download-client directory. Used to gate destructive (delete) operations.
+    /// </summary>
+    private async Task<bool> IsPathWithinAllowedBaseAsync(string downloadPath, MediaManagementSettings settings)
+    {
+        string canonical;
+        try
+        {
+            canonical = Path.GetFullPath(downloadPath);
+        }
+        catch
+        {
+            return false;
+        }
+
+        var allowedBases = new List<string>();
+        if (settings.RootFolders != null)
+        {
+            allowedBases.AddRange(settings.RootFolders
+                .Where(rf => !string.IsNullOrWhiteSpace(rf.Path))
+                .Select(rf => rf.Path));
+        }
+
+        var downloadDirs = await _db.DownloadClients
+            .Where(c => c.Directory != null && c.Directory != "")
+            .Select(c => c.Directory!)
+            .ToListAsync();
+        allowedBases.AddRange(downloadDirs);
+
+        foreach (var baseDir in allowedBases)
+        {
+            string baseCanonical;
+            try
+            {
+                baseCanonical = Path.GetFullPath(baseDir);
+            }
+            catch
+            {
+                continue;
+            }
+
+            var withSeparator = baseCanonical.EndsWith(Path.DirectorySeparatorChar)
+                ? baseCanonical
+                : baseCanonical + Path.DirectorySeparatorChar;
+
+            if (string.Equals(canonical, baseCanonical, StringComparison.Ordinal) ||
+                canonical.StartsWith(withSeparator, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

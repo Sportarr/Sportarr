@@ -20,6 +20,7 @@ public class EventDvrService
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly EpgSchedulingService _epgSchedulingService;
     private readonly EventChannelResolverService _channelResolver;
+    private readonly ConfigService _configService;
 
     public EventDvrService(
         ILogger<EventDvrService> logger,
@@ -30,7 +31,8 @@ public class EventDvrService
         FFmpegRecorderService ffmpegService,
         ReleaseEvaluator releaseEvaluator,
         EpgSchedulingService epgSchedulingService,
-        EventChannelResolverService channelResolver)
+        EventChannelResolverService channelResolver,
+        ConfigService configService)
     {
         _logger = logger;
         _db = db;
@@ -41,14 +43,19 @@ public class EventDvrService
         _releaseEvaluator = releaseEvaluator;
         _epgSchedulingService = epgSchedulingService;
         _channelResolver = channelResolver;
+        _configService = configService;
     }
 
     /// <summary>
     /// Schedule DVR recording for an event when it becomes monitored.
     /// Only schedules if:
     /// - Event has a league with a mapped channel
-    /// - Event date is in the future
+    /// - Event date is in the future, OR the event already aired and the
+    ///   resolved channel keeps a catchup archive (catchup backfill)
     /// - No existing recording for this event
+    /// Channels with an Xtream catchup archive get Method=Catchup
+    /// (downloaded after airing by CatchupDownloadService); the rest
+    /// keep the live recording path.
     /// </summary>
     public async Task<DvrRecording?> ScheduleRecordingForEventAsync(int eventId)
     {
@@ -69,12 +76,11 @@ public class EventDvrService
             return null;
         }
 
-        // Only schedule for future events
-        if (evt.EventDate <= DateTime.UtcNow)
-        {
-            _logger.LogDebug("[EventDVR] Event {EventId} is in the past, skipping DVR scheduling", eventId);
-            return null;
-        }
+        // Past events can't be recorded live, but they CAN still be
+        // downloaded from a catchup archive if the resolved channel keeps
+        // one (checked after channel resolution below). Remember the
+        // distinction here instead of rejecting outright.
+        var isPastEvent = evt.EventDate <= DateTime.UtcNow;
 
         // Check if event has a league
         if (evt.LeagueId == null)
@@ -144,6 +150,34 @@ public class EventDvrService
             return existingRecording;
         }
 
+        // Catchup-first: when the resolved channel keeps a provider-side
+        // archive (Xtream tv_archive), defer to a catchup download after
+        // the event finishes instead of capturing live. No start/end
+        // guessing, immune to app downtime during the broadcast, and
+        // retryable while the archive retains the window. Channels
+        // without an archive keep the live path - catchup augments the
+        // recorder, it doesn't replace it. Method ported from timeshifter
+        // by scottrobertson (github.com/scottrobertson/timeshifter).
+        var config = await _configService.GetConfigAsync();
+        var sourceType = channel.Source?.Type
+            ?? await _db.IptvSources
+                .Where(s => s.Id == channel.SourceId)
+                .Select(s => s.Type)
+                .FirstOrDefaultAsync();
+        var useCatchup = config.DvrUseCatchupWhenAvailable
+            && channel.HasArchive
+            && sourceType == IptvSourceType.Xtream;
+
+        // A past event can only be acquired from an archive. Without a
+        // catchup-capable channel there is nothing to record from.
+        if (isPastEvent && !useCatchup)
+        {
+            _logger.LogDebug(
+                "[EventDVR] Event {EventId} already aired and channel '{Channel}' has no catchup archive, skipping",
+                eventId, channel.Name);
+            return null;
+        }
+
         // Resolve padding from the league override + sport defaults
         // before falling back to a generic 5/30. NFL games run long
         // and need ~30min post-roll; soccer matches usually need
@@ -177,7 +211,8 @@ public class EventDvrService
                 ScheduledStart = timeOptimization.OptimizedStartTime.AddMinutes(prePadding), // Remove double padding
                 ScheduledEnd = timeOptimization.OptimizedEndTime.AddMinutes(-postPadding), // Remove double padding
                 PrePadding = prePadding,
-                PostPadding = postPadding
+                PostPadding = postPadding,
+                Method = useCatchup ? DvrRecordingMethod.Catchup : DvrRecordingMethod.Live
             });
 
             // Persist fallback channel list so the DVR service can
@@ -198,8 +233,8 @@ public class EventDvrService
                 ? $"{timeOptimization.DurationMinutes}min from EPG"
                 : $"{timeOptimization.DurationMinutes}min (default)";
 
-            _logger.LogInformation("[EventDVR] Scheduled DVR recording for event {EventId}: {Title} on channel {Channel} ({Quality}) - {Duration} (fallbacks: {Fallbacks})",
-                eventId, evt.Title, channel.Name, channel.DetectedQuality ?? "HD", durationInfo, fallbackIds.Count);
+            _logger.LogInformation("[EventDVR] Scheduled {Method} recording for event {EventId}: {Title} on channel {Channel} ({Quality}) - {Duration} (fallbacks: {Fallbacks})",
+                useCatchup ? "catchup" : "live DVR", eventId, evt.Title, channel.Name, channel.DetectedQuality ?? "HD", durationInfo, fallbackIds.Count);
 
             return recording;
         }

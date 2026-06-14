@@ -75,6 +75,9 @@ interface DvrRecording {
   resolution?: string;
   videoCodec?: string;
   audioCodec?: string;
+  // "Live" records in real time; "Catchup" downloads the already-aired
+  // window from the provider's timeshift archive after the event ends.
+  method?: 'Live' | 'Catchup';
   // Expected scores (for scheduled recordings)
   expectedQualityScore?: number;
   expectedCustomFormatScore?: number;
@@ -131,6 +134,12 @@ interface DvrSettings {
   enableReconnect: boolean;
   maxReconnectAttempts: number;
   reconnectDelaySeconds: number;
+  // Catchup: download finished events from the provider's timeshift
+  // archive (channels with tv_archive) instead of recording live.
+  useCatchupWhenAvailable: boolean;
+  catchupReadyGraceMinutes: number;
+  catchupTimeshiftMode: string;
+  catchupBackfillHours: number;
   // Encoding settings (stored directly in config)
   videoCodec: string;
   audioCodec: string;
@@ -230,6 +239,11 @@ const defaultDvrSettings: DvrSettings = {
   enableReconnect: true,
   maxReconnectAttempts: 5,
   reconnectDelaySeconds: 5,
+  // Catchup
+  useCatchupWhenAvailable: true,
+  catchupReadyGraceMinutes: 15,
+  catchupTimeshiftMode: 'auto',
+  catchupBackfillHours: 48,
   // Encoding settings
   videoCodec: 'copy',
   audioCodec: 'copy',
@@ -1569,6 +1583,70 @@ export default function DvrRecordingsSettings() {
                 </div>
               </div>
 
+              {/* Catchup Settings */}
+              <div className="mb-6">
+                <h4 className="text-lg font-semibold text-white mb-1">Catchup Recording</h4>
+                <p className="text-xs text-gray-500 mb-4">
+                  When a channel's provider keeps a catchup archive, finished events are downloaded
+                  from the archive after they air instead of being recorded live — no start/end
+                  guesswork, and missed events can still be grabbed while the archive retains them.
+                  Channels without an archive always record live.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="flex items-center">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dvrSettings.useCatchupWhenAvailable}
+                        onChange={(e) => handleSettingsChange('useCatchupWhenAvailable', e.target.checked)}
+                        className="w-4 h-4 text-red-600 bg-gray-800 border-gray-700 rounded focus:ring-red-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-300">Use catchup when available</span>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Ready Grace (minutes)</label>
+                    <input
+                      type="number"
+                      value={dvrSettings.catchupReadyGraceMinutes}
+                      onChange={(e) => handleSettingsChange('catchupReadyGraceMinutes', parseInt(e.target.value) || 0)}
+                      min="0"
+                      max="180"
+                      disabled={!dvrSettings.useCatchupWhenAvailable}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 disabled:opacity-50"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Wait after the event ends before downloading</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Timeshift URL Style</label>
+                    <select
+                      value={dvrSettings.catchupTimeshiftMode}
+                      onChange={(e) => handleSettingsChange('catchupTimeshiftMode', e.target.value)}
+                      disabled={!dvrSettings.useCatchupWhenAvailable}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 disabled:opacity-50"
+                    >
+                      <option value="auto">Auto-detect (recommended)</option>
+                      <option value="path">Path (most panels)</option>
+                      <option value="php">PHP (older panels)</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Auto tries both and remembers what your provider supports</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Backfill Window (hours)</label>
+                    <input
+                      type="number"
+                      value={dvrSettings.catchupBackfillHours}
+                      onChange={(e) => handleSettingsChange('catchupBackfillHours', parseInt(e.target.value) || 0)}
+                      min="0"
+                      max="336"
+                      disabled={!dvrSettings.useCatchupWhenAvailable}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 disabled:opacity-50"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">How far back to grab missed events</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Save/Reset Buttons */}
               {settingsHasChanges && (
                 <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-800">
@@ -1703,6 +1781,16 @@ export default function DvrRecordingsSettings() {
                         <span className={`px-2 py-0.5 text-xs rounded ${getStatusColor(recording.status)}`}>
                           {recording.status}
                         </span>
+                        {/* Catchup recordings download from the provider
+                            archive after the event airs, not live */}
+                        {recording.method === 'Catchup' && (
+                          <span
+                            className="px-2 py-0.5 bg-indigo-900/30 text-indigo-400 text-xs rounded"
+                            title="Downloads from the provider's catchup archive after the event finishes"
+                          >
+                            Catchup
+                          </span>
+                        )}
                         {recording.leagueName && (
                           <span className="px-2 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">
                             {recording.leagueName}

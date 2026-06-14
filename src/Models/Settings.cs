@@ -34,6 +34,11 @@ public class AppSettings
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles
 
+    // Hub changes feed cursor. The HubChangesPollerService stores the last
+    // consumed feed sequence here so polling resumes where it left off
+    // across restarts. 0 = never polled (feed answers with resync + head).
+    public long HubChangesCursor { get; set; } = 0;
+
     // Indexer Options (advanced settings)
     public int IndexerRetention { get; set; } = 0; // days - releases older than this won't be grabbed (0 = disabled)
     public int RssSyncInterval { get; set; } = 60; // minutes between RSS sync cycles

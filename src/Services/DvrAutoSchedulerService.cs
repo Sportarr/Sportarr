@@ -76,21 +76,48 @@ public class DvrAutoSchedulerService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var eventDvrService = scope.ServiceProvider.GetRequiredService<EventDvrService>();
         var iptvService = scope.ServiceProvider.GetRequiredService<IptvSourceService>();
+        var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+        var config = await configService.GetConfigAsync();
 
         var now = DateTime.UtcNow;
         var schedulingCutoff = now.Add(_schedulingWindow);
 
-        _logger.LogDebug("[DVR Auto-Scheduler] Checking for events to schedule (now to {Cutoff})", schedulingCutoff);
+        // Catchup backfill: events that ALREADY aired can still be
+        // acquired from a provider archive, so look back a bounded window
+        // for monitored events that never got a recording (app downtime,
+        // event added after the fact). ScheduleRecordingForEventAsync
+        // rejects past events whose channel has no archive, so this only
+        // produces catchup rows. Events that already have a library file
+        // are excluded - no point re-downloading what an indexer or an
+        // earlier recording already delivered.
+        var backfillCutoff = config.DvrUseCatchupWhenAvailable
+            ? now.AddHours(-Math.Max(0, config.DvrCatchupBackfillHours))
+            : now;
 
-        // Get all monitored future events that:
+        _logger.LogDebug("[DVR Auto-Scheduler] Checking for events to schedule ({From} to {Cutoff})",
+            backfillCutoff, schedulingCutoff);
+
+        // Get all monitored events that:
         // 1. Are monitored
-        // 2. Have a start date in the future (but within scheduling window)
+        // 2. Start in the future (within the scheduling window), or
+        //    finished within the catchup backfill window and have no file
         // 3. Have a league assigned
         // 4. Don't already have an active/scheduled recording
         var eventsToSchedule = await db.Events
             .Include(e => e.League)
             .Where(e => e.Monitored)
-            .Where(e => e.EventDate > now && e.EventDate <= schedulingCutoff)
+            .Where(e => e.EventDate <= schedulingCutoff)
+            // Past events: only backfill ones we haven't already tried -
+            // a Failed catchup row means the archive path was exhausted
+            // (retention expired / every fallback failed); re-creating it
+            // every pass would loop the same failure forever.
+            .Where(e => e.EventDate > now ||
+                       (e.EventDate > backfillCutoff &&
+                        !db.EventFiles.Any(f => f.EventId == e.Id) &&
+                        !db.DvrRecordings.Any(r =>
+                            r.EventId == e.Id &&
+                            r.Method == DvrRecordingMethod.Catchup &&
+                            r.Status == DvrRecordingStatus.Failed)))
             .Where(e => e.LeagueId != null)
             .Where(e => !db.DvrRecordings.Any(r =>
                 r.EventId == e.Id &&
@@ -182,12 +209,17 @@ public class DvrAutoSchedulerService : BackgroundService
     {
         var now = DateTime.UtcNow;
 
-        // Find scheduled recordings for events that have passed or are no longer monitored
+        // Find scheduled recordings for events that have passed or are no longer monitored.
+        // The "event has passed" rule only applies to LIVE recordings - a
+        // closed window is precisely when a catchup row becomes ready to
+        // download, so catchup rows are only cancelled here when their
+        // event was deleted or unmonitored (retention expiry is handled
+        // by CatchupDownloadService itself).
         var recordingsToCancel = await db.DvrRecordings
             .Include(r => r.Event)
             .Where(r => r.Status == DvrRecordingStatus.Scheduled)
             .Where(r => r.Event == null || // Event was deleted
-                       r.Event.EventDate < now.AddHours(-6) || // Event is more than 6 hours in the past
+                       (r.Method == DvrRecordingMethod.Live && r.Event.EventDate < now.AddHours(-6)) || // Live window long gone
                        !r.Event.Monitored) // Event is no longer monitored
             .ToListAsync(cancellationToken);
 

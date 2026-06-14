@@ -19,7 +19,7 @@ public class DynamicAuthenticationMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context, SportarrDbContext db, ILogger<DynamicAuthenticationMiddleware> logger)
+    public async Task InvokeAsync(HttpContext context, SportarrDbContext db, IConfiguration configuration, ILogger<DynamicAuthenticationMiddleware> logger)
     {
         var path = context.Request.Path.Value?.ToLower() ?? string.Empty;
 
@@ -126,6 +126,21 @@ public class DynamicAuthenticationMiddleware
 
         if (!shouldEnforceAuth)
         {
+            // Sonarr/Radarr model: even when the browser-facing UI auth is disabled, the
+            // API key gates the API itself. Without this, a port-forwarded install left at
+            // the default AuthenticationMethod "none" exposes every /api/* endpoint to
+            // anonymous callers (settings, download-client credentials, self-update, the
+            // file editor) even though an API key is configured. The web UI and configured
+            // integrations send the key (X-Api-Key / ?apikey=), so only anonymous callers
+            // are rejected. We reach this branch only after the "API" scheme already failed.
+            var configuredApiKey = configuration[Sportarr.Api.Constants.ConfigurationKeys.ApiKey];
+            if (context.Request.Path.StartsWithSegments("/api") && !string.IsNullOrWhiteSpace(configuredApiKey))
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsJsonAsync(new { error = "Unauthorized", message = "API key required" });
+                return;
+            }
+
             // No authentication required - use None scheme
             var noneResult = await context.AuthenticateAsync("None");
             if (noneResult.Succeeded)
@@ -146,6 +161,34 @@ public class DynamicAuthenticationMiddleware
             context.User = formsResult.Principal;
             await _next(context);
             return;
+        }
+
+        // 1b. The app's forms login does not issue an ASP.NET cookie ticket —
+        // /api/login stores a DB-backed session id in the SportarrAuth cookie,
+        // so the ticket scheme above can never decrypt it and always fails for
+        // real browser sessions. Validate the DB session exactly the way
+        // /api/auth/check does (same strict IP / user-agent binding). Without
+        // this, a logged-in forms user passes auth/check but every other
+        // /api request 401s — the UI loads with no data and settings refuse
+        // to save.
+        var sessionCookie = context.Request.Cookies["SportarrAuth"];
+        if (!string.IsNullOrEmpty(sessionCookie))
+        {
+            var sessionService = context.RequestServices.GetRequiredService<Sportarr.Api.Services.SessionService>();
+            var sessionIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var sessionUserAgent = context.Request.Headers["User-Agent"].ToString();
+            var (sessionValid, sessionUser) = await sessionService.ValidateSessionAsync(
+                sessionCookie, sessionIp, sessionUserAgent,
+                strictIpCheck: true, strictUserAgentCheck: true);
+            if (sessionValid)
+            {
+                var identity = new System.Security.Claims.ClaimsIdentity("Session");
+                identity.AddClaim(new System.Security.Claims.Claim(
+                    System.Security.Claims.ClaimTypes.Name, sessionUser ?? "user"));
+                context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+                await _next(context);
+                return;
+            }
         }
 
         // 2. Try Basic authentication if Authorization header present
@@ -214,18 +257,42 @@ public class DynamicAuthenticationMiddleware
                path.StartsWith("/initialize") ||
                path.StartsWith("/ping") ||
                path.StartsWith("/health") ||
-               path.EndsWith(".js") ||
+               path == "/" ||
+               // Static-asset extensions are public ONLY for non-API paths. Matching the
+               // extension against the whole request path previously let any API route be
+               // reached anonymously just by ending the final segment in ".png"/".css"/etc
+               // (e.g. DELETE /api/system/backup/x.css), bypassing the auth gate entirely.
+               (!path.StartsWith("/api/") && IsStaticAssetPath(path));
+    }
+
+    private static bool IsStaticAssetPath(string path)
+    {
+        return path.EndsWith(".js") ||
                path.EndsWith(".css") ||
                path.EndsWith(".html") ||
                path.EndsWith(".svg") ||
                path.EndsWith(".png") ||
                path.EndsWith(".jpg") ||
-               path.EndsWith(".ico") ||
-               path == "/";
+               path.EndsWith(".ico");
     }
 
     private bool IsLocalAddress(HttpContext context)
     {
+        // Fail closed when the request arrived through a reverse proxy.
+        // The "disabledForLocalAddresses" decision is based on the raw TCP peer
+        // (context.Connection.RemoteIpAddress). Behind nginx/Traefik/Caddy/SWAG the
+        // peer is the proxy itself, whose address is loopback or a private/docker IP,
+        // so EVERY internet visitor would otherwise be classified as "local" and skip
+        // authentication. We do not have a trusted-proxy allowlist configured, and the
+        // forwarded client IP is attacker-spoofable, so any request carrying a
+        // forwarding header is treated as remote (auth enforced) rather than local.
+        // Direct LAN/loopback connections (no proxy, no forwarding header) keep the
+        // convenience of the "disabled for local addresses" mode.
+        if (HasForwardingHeaders(context))
+        {
+            return false;
+        }
+
         var remoteIp = context.Connection.RemoteIpAddress;
         if (remoteIp == null)
         {
@@ -243,6 +310,19 @@ public class DynamicAuthenticationMiddleware
         return ipString.StartsWith("192.168.") ||
                ipString.StartsWith("10.") ||
                (ipString.StartsWith("172.") && IsPrivateClass172(ipString));
+    }
+
+    /// <summary>
+    /// Returns true when the request carries reverse-proxy forwarding headers, meaning
+    /// the raw connection IP is a proxy and cannot be trusted for local-address decisions.
+    /// </summary>
+    private static bool HasForwardingHeaders(HttpContext context)
+    {
+        var headers = context.Request.Headers;
+        return headers.ContainsKey("X-Forwarded-For") ||
+               headers.ContainsKey("X-Real-IP") ||
+               headers.ContainsKey("Forwarded") ||
+               headers.ContainsKey("X-Forwarded-Host");
     }
 
     private bool IsPrivateClass172(string ipString)

@@ -780,6 +780,51 @@ public class ReleaseMatchingService
             result.IsHardRejection = true;
         }
 
+        // INSUFFICIENT-EVIDENCE GUARD (all sports)
+        // A release identified only by year / season-episode (and/or league
+        // name) does not reliably identify a SPECIFIC event. Indexers number
+        // releases off IMDB / TheTVDB, whose season+episode numbering does NOT
+        // match Sportarr's per-event numbering, so an SxxxxExx- or year-only
+        // match can land on the wrong event (e.g. a bare "Formula1 S2026E38"
+        // grabbed for the wrong Grand Prix). Require at least one event-level
+        // signal: a matched date, teams, round, session, location, event
+        // number, part, or a strong overlap with the event's own title words.
+        if (!result.IsHardRejection)
+        {
+            string[] seasonLevelReasons =
+            {
+                "Year matches",
+                "League/organization matches",
+                "Assumed Race session",
+                "Full event file",
+            };
+            bool hasEventLevelReason = result.MatchReasons.Any(r =>
+                !seasonLevelReasons.Any(w => r.StartsWith(w, StringComparison.OrdinalIgnoreCase)));
+
+            // Strong title overlap: the event's own distinctive (non-numeric)
+            // words appear in the release. Covers tournament/individual sports
+            // identified by title alone (e.g. "Wimbledon Final") that carry no
+            // date/round/team/session token. Numeric tokens (years, S/E digits)
+            // are excluded so they can't stand in as evidence.
+            var eventWords = ExtractSignificantWords(normalizedEvent)
+                .Where(w => !w.All(char.IsDigit)).ToHashSet();
+            var releaseWords = ExtractSignificantWords(normalizedRelease)
+                .Where(w => !w.All(char.IsDigit)).ToHashSet();
+            int sharedEventWords = eventWords.Count(w => releaseWords.Contains(w));
+            bool strongTitleMatch = eventWords.Count > 0 &&
+                (sharedEventWords >= 2 || (double)sharedEventWords / eventWords.Count >= 0.6);
+
+            if (!hasEventLevelReason && !strongTitleMatch)
+            {
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add(
+                    "Insufficient evidence: release identified only by year/season-episode, which does not map to Sportarr's event numbering");
+                _logger.LogDebug("[Release Matching] Hard rejection: insufficient event-level evidence (year/SxxxxExx only) for '{Release}' -> '{Event}'",
+                    release.Title, evt.Title);
+            }
+        }
+
         // Clamp confidence to 0-100
         result.Confidence = Math.Clamp(result.Confidence, 0, 100);
 
@@ -1284,6 +1329,13 @@ public class ReleaseMatchingService
         (new Regex(@"\bworld[\.\-\s]*rally\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WRC"),
         (new Regex(@"\bwec\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WEC"),
         (new Regex(@"\bworld[\.\-\s]*endurance\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WEC"),
+        // One-make / support series that share F1 race weekends, circuits and
+        // dates. CRITICAL: these are NOT Formula 1 — without them a release like
+        // "PorscheSupercup.La.Course.GP.Monaco" matches the F1 Monaco GP. \bporsche
+        // (no trailing boundary) catches the joined "PorscheSupercup" token.
+        (new Regex(@"\bporsche", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Porsche"),
+        (new Regex(@"\bcarrera[\.\-\s]*cup\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Carrera Cup"),
+        (new Regex(@"\bferrari[\.\-\s]*challenge\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Ferrari Challenge"),
 
         // Olympics
         (new Regex(@"\bolympic", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Olympics"),

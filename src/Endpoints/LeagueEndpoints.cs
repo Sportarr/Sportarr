@@ -599,6 +599,44 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Special-event monitoring opt-ins: finals/championships and playoff
+    // rounds bypassing the monitored-team filter. Changing either flag
+    // affects which events the next sync admits, so both count as an
+    // event-affecting change (rides the same resync trigger as event types).
+    if (body.TryGetProperty("monitorFinals", out var monitorFinalsProp) &&
+        (monitorFinalsProp.ValueKind == JsonValueKind.True || monitorFinalsProp.ValueKind == JsonValueKind.False))
+    {
+        var newMonitorFinals = monitorFinalsProp.GetBoolean();
+        if (league.MonitorFinals != newMonitorFinals)
+        {
+            logger.LogInformation("[LEAGUES] MonitorFinals changing from {Old} to {New}", league.MonitorFinals, newMonitorFinals);
+            league.MonitorFinals = newMonitorFinals;
+            eventTypesChanged = true;
+        }
+    }
+    if (body.TryGetProperty("monitorPlayoffs", out var monitorPlayoffsProp) &&
+        (monitorPlayoffsProp.ValueKind == JsonValueKind.True || monitorPlayoffsProp.ValueKind == JsonValueKind.False))
+    {
+        var newMonitorPlayoffs = monitorPlayoffsProp.GetBoolean();
+        if (league.MonitorPlayoffs != newMonitorPlayoffs)
+        {
+            logger.LogInformation("[LEAGUES] MonitorPlayoffs changing from {Old} to {New}", league.MonitorPlayoffs, newMonitorPlayoffs);
+            league.MonitorPlayoffs = newMonitorPlayoffs;
+            eventTypesChanged = true;
+        }
+    }
+    if (body.TryGetProperty("monitorPreseason", out var monitorPreseasonProp) &&
+        (monitorPreseasonProp.ValueKind == JsonValueKind.True || monitorPreseasonProp.ValueKind == JsonValueKind.False))
+    {
+        var newMonitorPreseason = monitorPreseasonProp.GetBoolean();
+        if (league.MonitorPreseason != newMonitorPreseason)
+        {
+            logger.LogInformation("[LEAGUES] MonitorPreseason changing from {Old} to {New}", league.MonitorPreseason, newMonitorPreseason);
+            league.MonitorPreseason = newMonitorPreseason;
+            eventTypesChanged = true;
+        }
+    }
+
     // Handle custom search query template
     if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))
     {
@@ -1087,7 +1125,7 @@ app.MapGet("/api/leagues/search/{query}", async (string query, SportarrApiClient
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IServiceScopeFactory scopeFactory, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
+app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, TaskService taskService, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
 
@@ -1336,56 +1374,25 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
             }
         }
 
-        // Automatically sync events for the newly added league
-        // This runs in the background to populate all events (past, present, future)
-        // Uses fullHistoricalSync=true to get ALL historical seasons on initial add
-        logger.LogInformation("[LEAGUES] Triggering full historical event sync for league: {Name}", league.Name);
-        var leagueId = league.Id;
-        var leagueName = league.Name;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                // Create a new scope for the background task to avoid using disposed DbContext
-                using var scope = scopeFactory.CreateScope();
-                var syncService = scope.ServiceProvider.GetRequiredService<LeagueEventSyncService>();
-
-                // fullHistoricalSync=true: the user just added the league,
-                // so we populate the full event history once so library
-                // scans against old files (NBA 2014-2015, etc.) can
-                // resolve. The refresh button also walks the full history
-                // (so users pick up seasons that appear upstream after
-                // the initial add), and the background auto-sync runs
-                // with fullHistoricalSync=false to avoid multiplying
-                // baseline upstream traffic by every league's history
-                // depth on every daily cycle.
-                //
-                // forceRefresh=false: re-pull from sportarr-api like every
-                // other Sportarr -> sportarr-api request, no
-                // Cache-Control: no-cache. sportarr-api owns freshness
-                // via its own TTLs (6h on current schedules, 1y on
-                // historical) and stale-while-revalidate, so there's no
-                // reason for the client to override that. Earlier
-                // versions of this handler force-refreshed the entire
-                // history on every add, which compounded with the
-                // refresh button and the auto-sync into the
-                // sustained-overload incidents on sportarr.net during
-                // May 2026. The new contract is: Sportarr never tells
-                // sportarr-api to bypass its cache. If a brand-new
-                // user adds a league sportarr-api hasn't cached yet,
-                // sportarr-api's own cache miss handler fetches fresh
-                // from TheSportsDB anyway -- the data lands in the
-                // local DB either way.
-                var syncResult = await syncService.SyncLeagueEventsAsync(leagueId, seasons: null, fullHistoricalSync: true, forceRefresh: false);
-                logger.LogInformation("[LEAGUES] Full historical sync completed for {Name}: {Message}",
-                    leagueName, syncResult.Message);
-            }
-            catch (Exception syncEx)
-            {
-                logger.LogError(syncEx, "[LEAGUES] Auto-sync failed for {Name}: {Message}",
-                    leagueName, syncEx.Message);
-            }
-        });
+        // Populate the newly added league's full event history (past,
+        // present, future) as a tracked TaskService task rather than a
+        // fire-and-forget Task.Run. The task row is what makes the initial
+        // population visible: the footer shows per-season progress and the
+        // league page polls its queries while a RefreshLeague task is
+        // active, so seasons/events stream in without a manual page
+        // reload. Scope "full" maps to fullHistoricalSync=true in
+        // RefreshLeagueAsync — the one-time history walk so library scans
+        // against old files (NBA 2014-2015, etc.) can resolve.
+        //
+        // forceRefresh stays false on this path (RefreshLeagueAsync never
+        // bypasses the upstream cache): sportarr-api owns freshness via
+        // its own TTLs and stale-while-revalidate. Earlier versions
+        // force-refreshed the entire history on every add, which
+        // compounded into the sustained-overload incidents on sportarr.net
+        // during May 2026.
+        logger.LogInformation("[LEAGUES] Queueing initial full historical sync for league: {Name}", league.Name);
+        var initialSyncBody = JsonSerializer.Serialize(new { leagueId = league.Id, scope = "full" });
+        await taskService.QueueTaskAsync($"Deep Sync {league.Name}", "RefreshLeague", priority: 0, body: initialSyncBody);
 
         // Convert to DTO for frontend response
         var response = LeagueResponse.FromLeague(league);
@@ -1832,9 +1839,13 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
         // back to the id so the queued task still has a meaningful
         // label even when the row is mid-creation or deleted under us.
         var league = await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
-        var taskLabel = league?.Name != null
-            ? $"Refresh {league.Name}{(fullHistoricalSync ? " (full history)" : "")}"
-            : $"Refresh league #{id}";
+        // "current" scope runs an immediate hub changes poll (global, applies
+        // whatever the feed reports for any monitored league); "full" is the
+        // blind every-season walk for recovery. Label accordingly so the
+        // task list reflects what actually runs.
+        var taskLabel = fullHistoricalSync
+            ? (league?.Name != null ? $"Deep Sync {league.Name}" : $"Deep Sync league #{id}")
+            : "Quick Sync";
 
         var taskBody = JsonSerializer.Serialize(new
         {

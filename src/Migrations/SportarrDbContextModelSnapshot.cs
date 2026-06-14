@@ -869,6 +869,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime?>("LastUpdated")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Method")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("OutputPath")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
@@ -918,6 +921,8 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("ChannelId");
 
                     b.HasIndex("EventId");
+
+                    b.HasIndex("Method");
 
                     b.HasIndex("ScheduledEnd");
 
@@ -1876,6 +1881,9 @@ namespace Sportarr.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("ArchiveDays")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("ChannelNumber")
                         .HasColumnType("INTEGER");
 
@@ -1895,6 +1903,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("Group")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("HasArchive")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("INTEGER");
@@ -1983,6 +1994,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DetectedCatchupMode")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsActive")

@@ -124,7 +124,16 @@ public class DvrRecordingService
         // global concurrent-recording cap during the new run's
         // window. Only counts recordings that overlap in time and
         // are still active (Scheduled or Recording).
-        await EnforceConflictPolicyAsync(request, channel);
+        //
+        // Catchup rows skip this: they consume no tuner during the event
+        // window (the archive download happens after airing, and
+        // CatchupDownloadService serializes downloads to a single
+        // connection), so overlapping live recordings are not in
+        // contention with them.
+        if (request.Method != DvrRecordingMethod.Catchup)
+        {
+            await EnforceConflictPolicyAsync(request, channel);
+        }
 
         Event? evt = null;
         if (request.EventId.HasValue)
@@ -170,13 +179,15 @@ public class DvrRecordingService
             PartName = request.PartName,
             Status = DvrRecordingStatus.Scheduled,
             Quality = qualityName, // Set quality based on channel's detected quality
+            Method = request.Method,
             Created = DateTime.UtcNow
         };
 
         _db.DvrRecordings.Add(recording);
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("[DVR] Scheduled recording: {Title} on {Channel} from {Start} to {End}",
+        _logger.LogInformation("[DVR] Scheduled {Method} recording: {Title} on {Channel} from {Start} to {End}",
+            recording.Method == DvrRecordingMethod.Catchup ? "catchup" : "live",
             recording.Title, channel.Name, recording.ScheduledStart, recording.ScheduledEnd);
 
         return recording;
@@ -586,6 +597,9 @@ public class DvrRecordingService
             .Include(r => r.Channel)
             .ThenInclude(c => c!.Source)
             .Where(r => r.Status == DvrRecordingStatus.Scheduled)
+            // Catchup rows never start a live capture - they wait for
+            // CatchupDownloadService to pull the archive after the event.
+            .Where(r => r.Method == DvrRecordingMethod.Live)
             .Where(r => r.ScheduledStart.AddMinutes(-r.PrePadding) <= cutoff)
             .Where(r => r.ScheduledEnd.AddMinutes(r.PostPadding) > now)
             .OrderBy(r => r.ScheduledStart)
@@ -601,6 +615,10 @@ public class DvrRecordingService
 
         return await _db.DvrRecordings
             .Where(r => r.Status == DvrRecordingStatus.Recording)
+            // Catchup downloads are in Recording state while pulling from
+            // the archive, with a window that's in the past by design -
+            // the wall-clock stop rule only applies to live captures.
+            .Where(r => r.Method == DvrRecordingMethod.Live)
             .Where(r => r.ScheduledEnd.AddMinutes(r.PostPadding) <= now)
             .ToListAsync();
     }
@@ -664,8 +682,9 @@ public class DvrRecordingService
     /// <summary>
     /// Generate output path for DVR recording using the same folder structure as regular imports.
     /// Uses MediaManagementSettings and FileNamingService for consistency with indexer downloads.
+    /// Public so CatchupDownloadService produces identical event-aware paths for archive downloads.
     /// </summary>
-    private async Task<string> GenerateOutputPathAsync(DvrRecording recording)
+    public async Task<string> GenerateOutputPathAsync(DvrRecording recording)
     {
         var config = await _configService.GetConfigAsync();
         var settings = await GetMediaManagementSettingsAsync();

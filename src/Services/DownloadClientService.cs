@@ -53,14 +53,56 @@ public class DownloadClientService : IDownloadClientService
         return $"{config.Type}:{config.Host}:{config.Port}";
     }
 
+    // Shared across all (scoped) instances so an invalidation triggered by a
+    // settings save also evicts entries created under other scopes (e.g. the
+    // background download monitor). Every cached client wrapper links to this
+    // token; swapping it evicts them all so a changed host/port/username/
+    // password/API key is picked up on the next operation instead of after
+    // the 30-minute cache window. _clientCache is the app-wide IMemoryCache,
+    // so we evict via this token rather than clearing the whole cache.
+    private static readonly object _cacheTokenLock = new();
+    private static CancellationTokenSource _clientCacheCts = new();
+
     /// <summary>
-    /// Get cache entry options with sliding and absolute expiration
+    /// Get cache entry options with sliding + absolute expiration plus the
+    /// shared reset token (see InvalidateClientCache).
     /// </summary>
     private static MemoryCacheEntryOptions GetCacheEntryOptions()
     {
+        CancellationToken resetToken;
+        lock (_cacheTokenLock)
+        {
+            resetToken = _clientCacheCts.Token;
+        }
+
         return new MemoryCacheEntryOptions()
             .SetSlidingExpiration(CacheSlidingExpiration)
-            .SetAbsoluteExpiration(CacheAbsoluteExpiration);
+            .SetAbsoluteExpiration(CacheAbsoluteExpiration)
+            .AddExpirationToken(new Microsoft.Extensions.Primitives.CancellationChangeToken(resetToken));
+    }
+
+    /// <summary>
+    /// Evict every cached download-client wrapper. Call after a download
+    /// client is created, updated, or deleted so a changed host, port,
+    /// username, password, or API key takes effect on the very next
+    /// operation instead of lingering on a stale cached instance for up to
+    /// the cache window. Cheap: the wrappers only hold an HttpClient and are
+    /// rebuilt lazily on next use.
+    /// </summary>
+    public void InvalidateClientCache()
+    {
+        CancellationTokenSource old;
+        lock (_cacheTokenLock)
+        {
+            old = _clientCacheCts;
+            _clientCacheCts = new CancellationTokenSource();
+        }
+
+        // Cancel before dispose so any entry created in the tiny swap window
+        // links to an already-cancelled token and is simply not cached
+        // (rebuilt on next use) rather than throwing.
+        old.Cancel();
+        old.Dispose();
     }
 
     /// <summary>

@@ -1274,6 +1274,16 @@ app.MapGet("/api/iptv/stream/url", async (
         return Results.BadRequest(new { error = "URL parameter required" });
     }
 
+    // SSRF guard: this endpoint is anonymous (HLS players send no API key), so a caller-
+    // supplied URL must never be allowed to target the server's own network. Only fetch
+    // http/https URLs that resolve to public addresses; reject loopback/private/link-local
+    // (incl. cloud metadata 169.254.169.254) targets.
+    if (!await Sportarr.Api.Helpers.SsrfGuard.IsPublicHttpUrlAsync(url, context.RequestAborted))
+    {
+        logger.LogWarning("[StreamProxy] Rejected non-public or invalid proxy URL");
+        return Results.BadRequest(new { error = "URL is not an allowed stream target" });
+    }
+
     logger.LogDebug("[StreamProxy] Proxying URL: {Url}", url);
 
     try

@@ -60,6 +60,60 @@ public class SportarrApiClient
         }
     }
 
+    /// <summary>
+    /// Fetch the player cast for one event from the hub's agent episode
+    /// endpoint. That endpoint lives at the hub root (/api/metadata/agents/...),
+    /// not under the v2/json base, and resolves either a hub short_id or a
+    /// TheSportsDB event id. Returns null on any failure - cast is best-effort
+    /// enrichment and must never break a metadata response.
+    /// </summary>
+    public async Task<List<HubCastMember>?> GetEventCastAsync(string externalId)
+    {
+        if (string.IsNullOrWhiteSpace(externalId))
+            return null;
+        try
+        {
+            // _apiBaseUrl is the v2/json shim base (".../api/v2/json"); the
+            // agent endpoints hang off the hub root, so strip the shim suffix.
+            var root = _apiBaseUrl.Replace("/api/v2/json", string.Empty).TrimEnd('/');
+            var url = $"{root}/api/metadata/agents/episode/{Uri.EscapeDataString(externalId)}";
+
+            using var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("players", out var players)
+                || players.ValueKind != JsonValueKind.Array)
+                return null;
+
+            var cast = new List<HubCastMember>();
+            foreach (var p in players.EnumerateArray())
+            {
+                var name = p.TryGetProperty("name", out var n) ? n.GetString() : null;
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+                cast.Add(new HubCastMember
+                {
+                    Name = name,
+                    Team = p.TryGetProperty("team", out var t) ? t.GetString() : null,
+                    Side = p.TryGetProperty("side", out var s) ? s.GetString() : null,
+                    Position = p.TryGetProperty("position", out var pos) ? pos.GetString() : null,
+                    Number = p.TryGetProperty("number", out var num) && num.ValueKind != JsonValueKind.Null
+                        ? (num.ValueKind == JsonValueKind.String ? num.GetString() : num.ToString())
+                        : null,
+                });
+            }
+            return cast;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[SportarrAPI] Failed to fetch cast for event {Id}", externalId);
+            return null;
+        }
+    }
+
     #region Search Endpoints
 
     /// <summary>
@@ -1015,6 +1069,105 @@ public class SportarrApiClient
     }
 
     #endregion
+
+    #region Changes Feed
+
+    /// <summary>
+    /// Poll the hub's entity changes feed. Returns ordered change records
+    /// newer than <paramref name="since"/> plus the cursor to store for the
+    /// next poll. A response with <c>Resync == true</c> means the cursor is
+    /// unusable (brand-new consumer, or it predates the feed's retention
+    /// window) — the caller should rely on its normal full-sync safety net
+    /// and start polling from <c>Next</c>.
+    /// </summary>
+    public async Task<ChangesFeedResponse?> GetChangesAsync(long since, int limit = 500)
+    {
+        try
+        {
+            var url = $"{_apiBaseUrl}/changes?since={since}&limit={limit}";
+            _logger.LogDebug("[SportarrAPI] Polling changes feed: {Url}", url);
+
+            using var response = await _httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[SportarrAPI] Changes feed poll failed: HTTP {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<ChangesFeedResponse>(json, _jsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SportarrAPI] Failed to poll changes feed (since={Since})", since);
+            return null;
+        }
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Response from the hub entity changes feed.
+/// </summary>
+public class ChangesFeedResponse
+{
+    [JsonPropertyName("changes")]
+    public List<ChangeRecord>? Changes { get; set; }
+
+    /// <summary>Cursor to store and send as `since` on the next poll.</summary>
+    [JsonPropertyName("next")]
+    public long Next { get; set; }
+
+    /// <summary>True when the page was truncated at `limit` — poll again immediately.</summary>
+    [JsonPropertyName("more")]
+    public bool More { get; set; }
+
+    /// <summary>
+    /// True when the supplied cursor is unusable (new consumer or pruned
+    /// past). Full correctness comes from the normal background sync; store
+    /// <see cref="Next"/> and resume polling from there.
+    /// </summary>
+    [JsonPropertyName("resync")]
+    public bool Resync { get; set; }
+}
+
+/// <summary>
+/// One change record from the hub feed.
+/// </summary>
+public class ChangeRecord
+{
+    [JsonPropertyName("seq")]
+    public long Seq { get; set; }
+
+    /// <summary>Entity kind: "event" or "league".</summary>
+    [JsonPropertyName("entity")]
+    public string? Entity { get; set; }
+
+    /// <summary>The changed entity's hub short_id (ev-XXXXXX / lg-XXXXXX).</summary>
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    /// <summary>Owning league short_id — what consumers key refreshes on.</summary>
+    [JsonPropertyName("league")]
+    public string? League { get; set; }
+
+    /// <summary>
+    /// Season name the change belongs to (e.g. "2015-2016"). Lets the
+    /// poller sync exactly the changed seasons — including historical
+    /// ones the current/future-season walk would skip — instead of
+    /// re-walking the league. Null for league-level changes.
+    /// </summary>
+    [JsonPropertyName("season")]
+    public string? Season { get; set; }
+
+    /// <summary>"created", "updated" or "deleted".</summary>
+    [JsonPropertyName("change")]
+    public string? Change { get; set; }
+
+    [JsonPropertyName("ts")]
+    public DateTime? Ts { get; set; }
 }
 
 /// <summary>

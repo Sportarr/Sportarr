@@ -238,7 +238,7 @@ public class EventQueryService
         if (IsWrestling(sport, leagueName))
             return false;
 
-        var fightingKeywords = new[] { "fighting", "ufc", "mma", "boxing", "bellator", "pfl", "one championship" };
+        var fightingKeywords = new[] { "fighting", "combat", "ufc", "mma", "boxing", "bellator", "pfl", "one championship" };
         var sportLower = sport.ToLowerInvariant();
         var leagueLower = leagueName?.ToLowerInvariant() ?? "";
 

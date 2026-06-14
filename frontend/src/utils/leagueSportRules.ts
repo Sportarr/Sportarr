@@ -48,8 +48,24 @@ export function isFightingSport(sport: string): boolean {
   // the same sport 'Fighting'. Both must classify so MMA leagues like
   // MVP MMA (hub sport=Combat) skip the team-based event filter that
   // would otherwise drop fight events (TSDB doesn't populate home/away).
-  const fightingSports = ['Fighting', 'Combat', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
+  // Keep aligned with the backend EventPartDetector.IsFightingSport list.
+  const fightingSports = ['Fighting', 'Combat', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Muay Thai', 'Wrestling'];
   return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+}
+
+/**
+ * Part options for a sport. Only fighting sports have multi-part episodes
+ * (Early Prelims / Prelims / Main Card / Post Show); motorsports and other
+ * sports have none. Order matches PartNumber on the backend
+ * (EventPartDetector.CardSegment). Post Show only exists on PPV-style
+ * events but is listed so it can be opted out at the league level (Fight
+ * Night events ignore it because their per-event partStatuses omit it).
+ */
+export function getPartOptions(sport: string): string[] {
+  if (isFightingSport(sport)) {
+    return ['Early Prelims', 'Prelims', 'Main Card', 'Post Show'];
+  }
+  return [];
 }
 
 /**

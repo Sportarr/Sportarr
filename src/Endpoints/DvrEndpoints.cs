@@ -466,6 +466,11 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         enableReconnect = config.DvrEnableReconnect,
         maxReconnectAttempts = config.DvrMaxReconnectAttempts,
         reconnectDelaySeconds = config.DvrReconnectDelaySeconds,
+        // Catchup settings
+        useCatchupWhenAvailable = config.DvrUseCatchupWhenAvailable,
+        catchupReadyGraceMinutes = config.DvrCatchupReadyGraceMinutes,
+        catchupTimeshiftMode = config.DvrCatchupTimeshiftMode,
+        catchupBackfillHours = config.DvrCatchupBackfillHours,
         // Encoding settings (direct config, not profile-based)
         videoCodec = config.DvrVideoCodec,
         audioCodec = config.DvrAudioCodec,
@@ -522,6 +527,24 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         config.DvrMaxReconnectAttempts = maxReconnect.GetInt32();
     if (settings.TryGetProperty("reconnectDelaySeconds", out var reconnectDelay))
         config.DvrReconnectDelaySeconds = reconnectDelay.GetInt32();
+
+    // Catchup settings
+    if (settings.TryGetProperty("useCatchupWhenAvailable", out var useCatchup))
+        config.DvrUseCatchupWhenAvailable = useCatchup.GetBoolean();
+    if (settings.TryGetProperty("catchupReadyGraceMinutes", out var catchupGrace))
+        config.DvrCatchupReadyGraceMinutes = catchupGrace.GetInt32();
+    if (settings.TryGetProperty("catchupTimeshiftMode", out var catchupModeJson))
+    {
+        var v = catchupModeJson.GetString();
+        // Whitelist - same determinism rationale as DvrConflictPolicy.
+        config.DvrCatchupTimeshiftMode = v switch
+        {
+            "auto" or "path" or "php" => v!,
+            _ => "auto"
+        };
+    }
+    if (settings.TryGetProperty("catchupBackfillHours", out var catchupBackfill))
+        config.DvrCatchupBackfillHours = catchupBackfill.GetInt32();
 
     // Encoding settings (direct config, not profile-based)
     if (settings.TryGetProperty("videoCodec", out var videoCodec))

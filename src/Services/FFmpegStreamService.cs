@@ -73,17 +73,23 @@ public class FFmpegStreamService : IDisposable
             var playlistPath = Path.Combine(sessionPath, "playlist.m3u8");
             var arguments = BuildHlsArguments(streamUrl, playlistPath, userAgent);
 
-            _logger.LogInformation("[Stream] Starting FFmpeg for channel {ChannelId}: {Args}", channelId, arguments);
+            _logger.LogInformation("[Stream] Starting FFmpeg for channel {ChannelId}: {Args}", channelId, string.Join(" ", arguments));
 
             var processInfo = new ProcessStartInfo
             {
                 FileName = ffmpegPath,
-                Arguments = arguments,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            // Pass each token as a discrete argv element. Building a single Arguments string
+            // and embedding the (attacker-influenceable) stream URL / user-agent in quotes
+            // allowed an embedded quote to break out and inject arbitrary ffmpeg options.
+            foreach (var arg in arguments)
+            {
+                processInfo.ArgumentList.Add(arg);
+            }
 
             var process = new Process { StartInfo = processInfo };
             process.Start();
@@ -240,50 +246,47 @@ public class FFmpegStreamService : IDisposable
             .ToList();
     }
 
-    private string BuildHlsArguments(string streamUrl, string playlistPath, string? userAgent)
+    // Returns ffmpeg arguments as discrete argv tokens (one element per token, values NOT
+    // quoted) for ProcessStartInfo.ArgumentList. .NET quotes/escapes each element, so the
+    // stream URL and user-agent cannot inject extra ffmpeg options.
+    private List<string> BuildHlsArguments(string streamUrl, string playlistPath, string? userAgent)
     {
         var args = new List<string>
         {
             "-hide_banner",
-            "-loglevel warning",
+            "-loglevel", "warning",
             "-y"  // Overwrite output
         };
 
         // User agent
-        if (!string.IsNullOrEmpty(userAgent))
-        {
-            args.Add($"-user_agent \"{userAgent}\"");
-        }
-        else
-        {
-            args.Add("-user_agent \"VLC/3.0.18 LibVLC/3.0.18\"");
-        }
+        args.Add("-user_agent");
+        args.Add(string.IsNullOrEmpty(userAgent) ? "VLC/3.0.18 LibVLC/3.0.18" : userAgent);
 
         // Connection options for live streams
-        args.Add("-reconnect 1");
-        args.Add("-reconnect_streamed 1");
-        args.Add("-reconnect_delay_max 5");
-        args.Add("-timeout 10000000"); // 10 second timeout in microseconds
+        args.Add("-reconnect"); args.Add("1");
+        args.Add("-reconnect_streamed"); args.Add("1");
+        args.Add("-reconnect_delay_max"); args.Add("5");
+        args.Add("-timeout"); args.Add("10000000"); // 10 second timeout in microseconds
 
         // Input
-        args.Add($"-i \"{streamUrl}\"");
+        args.Add("-i"); args.Add(streamUrl);
 
         // Copy streams without re-encoding for speed
-        args.Add("-c copy");
+        args.Add("-c"); args.Add("copy");
 
         // HLS output options
-        args.Add("-f hls");
-        args.Add("-hls_time 2");           // 2 second segments
-        args.Add("-hls_list_size 5");       // Keep 5 segments in playlist
-        args.Add("-hls_flags delete_segments+append_list+omit_endlist");
-        args.Add("-hls_segment_type mpegts");
+        args.Add("-f"); args.Add("hls");
+        args.Add("-hls_time"); args.Add("2");           // 2 second segments
+        args.Add("-hls_list_size"); args.Add("5");       // Keep 5 segments in playlist
+        args.Add("-hls_flags"); args.Add("delete_segments+append_list+omit_endlist");
+        args.Add("-hls_segment_type"); args.Add("mpegts");
         args.Add("-hls_segment_filename");
-        args.Add($"\"{Path.Combine(Path.GetDirectoryName(playlistPath)!, "segment%03d.ts")}\"");
+        args.Add(Path.Combine(Path.GetDirectoryName(playlistPath)!, "segment%03d.ts"));
 
         // Output playlist
-        args.Add($"\"{playlistPath}\"");
+        args.Add(playlistPath);
 
-        return string.Join(" ", args);
+        return args;
     }
 
     private async Task MonitorStreamAsync(StreamSession session)

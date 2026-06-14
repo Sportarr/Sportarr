@@ -48,6 +48,9 @@ interface DvrRecording {
   // segment it covers - "Early Prelims", "Prelims", "Main Card".
   // Surfaced inline next to the title.
   partName?: string;
+  // "Live" records in real time; "Catchup" downloads the already-aired
+  // window from the provider's timeshift archive after the event ends.
+  method?: 'Live' | 'Catchup';
 }
 
 interface SportEvent {
@@ -526,6 +529,13 @@ export default function DvrSchedulePage() {
                                 {getStatusIcon(recording.status)}
                                 {recording.status}
                               </span>
+                              {/* Catchup badge - the event downloads from the
+                                  provider archive after airing, not live */}
+                              {recording.method === 'Catchup' && (
+                                <span className="inline-flex items-center px-1 py-0.5 ml-0.5 bg-purple-600/80 text-white text-[10px] rounded mb-0.5">
+                                  Catchup
+                                </span>
+                              )}
 
                               {/* Title */}
                               <p className="text-[11px] font-semibold text-white line-clamp-2 group-hover:text-gray-200 transition-colors">

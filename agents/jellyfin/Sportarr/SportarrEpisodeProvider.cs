@@ -5,6 +5,8 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
@@ -121,6 +123,34 @@ namespace Jellyfin.Plugin.Sportarr
                         var idValue = eventId.GetString();
                         if (idValue != null)
                             episode.SetProviderId("Sportarr", idValue);
+                    }
+
+                    // Venue -> studio (shown on the episode in Jellyfin)
+                    if (ep.TryGetProperty("venue", out var venue) &&
+                        !string.IsNullOrEmpty(venue.GetString()))
+                    {
+                        episode.AddStudio(venue.GetString());
+                    }
+
+                    // Cast -> people (the squad / athletes who featured). The
+                    // position rides along as the role, so the cast strip reads
+                    // e.g. "Danny Welbeck as Centre-Forward".
+                    if (ep.TryGetProperty("cast", out var castArr) &&
+                        castArr.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var c in castArr.EnumerateArray())
+                        {
+                            var personName = c.TryGetProperty("name", out var cn) ? cn.GetString() : null;
+                            if (string.IsNullOrEmpty(personName))
+                                continue;
+                            var role = c.TryGetProperty("position", out var cp) ? cp.GetString() : null;
+                            result.AddPerson(new PersonInfo
+                            {
+                                Name = personName,
+                                Type = PersonKind.GuestStar,
+                                Role = role
+                            });
+                        }
                     }
 
                     result.Item = episode;

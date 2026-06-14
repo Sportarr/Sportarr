@@ -31,7 +31,7 @@ app.MapGet("/api/downloadclient/{id:int}", async (int id, SportarrDbContext db) 
     return client is null ? Results.NotFound() : Results.Ok(client);
 });
 
-app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbContext db, DownloadClientService downloadClientService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[Download Client] Creating new client {Name} - UrlBase: '{UrlBase}'", client.Name, client.UrlBase);
     // Sanitize host: strip protocol prefix and trailing slashes (users often paste full URLs)
@@ -45,11 +45,14 @@ app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbConte
     client.Created = DateTime.UtcNow;
     db.DownloadClients.Add(client);
     await db.SaveChangesAsync();
+    // Drop any cached client wrapper sharing this host:port so the new
+    // credentials are used immediately (e.g. recreating a deleted client).
+    downloadClientService.InvalidateClientCache();
     logger.LogInformation("[Download Client] Created client {Name} with ID {Id}", client.Name, client.Id);
     return Results.Created($"/api/downloadclient/{client.Id}", client);
 });
 
-app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, SportarrDbContext db, DownloadClientService downloadClientService, ILogger<Program> logger) =>
 {
     var client = await db.DownloadClients.FindAsync(id);
     if (client is null)
@@ -102,6 +105,10 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     try
     {
         await db.SaveChangesAsync();
+        // Evict the cached client wrapper so the new host/port/credentials
+        // (password, API key) take effect on the next operation instead of a
+        // stale cached instance lingering for up to the cache window.
+        downloadClientService.InvalidateClientCache();
         logger.LogInformation("[Download Client] Updated client {Name} (ID: {Id})", client.Name, id);
         return Results.Ok(client);
     }
@@ -112,13 +119,16 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     }
 });
 
-app.MapDelete("/api/downloadclient/{id:int}", async (int id, SportarrDbContext db) =>
+app.MapDelete("/api/downloadclient/{id:int}", async (int id, SportarrDbContext db, DownloadClientService downloadClientService) =>
 {
     var client = await db.DownloadClients.FindAsync(id);
     if (client is null) return Results.NotFound();
 
     db.DownloadClients.Remove(client);
     await db.SaveChangesAsync();
+    // Evict the cached wrapper so a deleted client can't keep serving from
+    // cache (and a recreated one with the same host:port starts fresh).
+    downloadClientService.InvalidateClientCache();
     return Results.NoContent();
 });
 

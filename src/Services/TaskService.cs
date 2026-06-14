@@ -932,6 +932,25 @@ public class TaskService : ITaskService
         await onProgress(1, $"Queued refresh for league {leagueId}, scope={scope}");
 
         var fullHistoricalSync = string.Equals(scope, "full", StringComparison.OrdinalIgnoreCase);
+
+        // "current" scope is now an immediate hub changes poll: the feed
+        // names exactly what changed (per league, per season, historical
+        // included), so asking the hub "what changed right now" replaces
+        // the blind current/future season walk. The poll is global - it
+        // applies pending changes for every monitored league, not just the
+        // one whose button was clicked, which is strictly more useful and
+        // costs less. "full" remains the blind walk of every season for
+        // recovery (restored DB, install offline past feed retention).
+        if (!fullHistoricalSync)
+        {
+            var poller = scope_.ServiceProvider.GetRequiredService<HubChangesPollerService>();
+            await onProgress(10, "Checking the hub for changes...");
+            var summary = await poller.PollNowAsync(cancellationToken);
+            await onProgress(100, summary);
+            _logger.LogInformation("[TASK] Hub change check complete for task {TaskId}: {Summary}", task.Id, summary);
+            return;
+        }
+
         var result = await syncService.SyncLeagueEventsAsync(
             leagueId,
             seasons: null,

@@ -4,6 +4,18 @@ import { MagnifyingGlassIcon, XMarkIcon, CheckIcon, InformationCircleIcon } from
 import { useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../utils/api';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../utils/designTokens';
+import {
+  isFightingSport,
+  isMotorsport,
+  isGolf,
+  isDarts,
+  isClimbing,
+  isGambling,
+  isIndividualRacketOrCueSport,
+  isIndividualTennis,
+  usesFightingEventTypes,
+  getPartOptions,
+} from '../utils/leagueSportRules';
 import TagSelector from './TagSelector';
 
 interface Team {
@@ -60,105 +72,26 @@ interface AddLeagueModalProps {
     monitoredEventTypes: string | null,
     searchQueryTemplate: string | null,
     tags: number[],
-    rootFolderId: number | null
+    rootFolderId: number | null,
+    monitorFinals: boolean,
+    monitorPlayoffs: boolean,
+    monitorPreseason: boolean
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
   leagueId?: number | null;
 }
 
-// Helper functions defined outside component to avoid hoisting issues
-const isFightingSport = (sport: string) => {
-  const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
-  return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
-};
-
-const isMotorsport = (sport: string) => {
-  const motorsports = [
-    'Motorsport', 'Racing', 'Formula 1', 'F1', 'NASCAR', 'IndyCar',
-    'MotoGP', 'WEC', 'Formula E', 'Rally', 'WRC', 'DTM', 'Super GT',
-    'IMSA', 'V8 Supercars', 'Supercars', 'Le Mans'
-  ];
-  return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
-};
-
-// Golf tournaments have all players competing together, not home/away teams
-const isGolf = (sport: string) => {
-  return sport.toLowerCase() === 'golf';
-};
-
-// Darts matches are between individual players, not teams
-const isDarts = (sport: string) => {
-  return sport.toLowerCase() === 'darts';
-};
-
-// Climbing competitions are individual climbers, not teams
-const isClimbing = (sport: string) => {
-  return sport.toLowerCase() === 'climbing';
-};
-
-// Gambling (Poker, WSOP) are individual players in tournaments, not teams
-const isGambling = (sport: string) => {
-  return sport.toLowerCase() === 'gambling';
-};
-
-// Badminton (BWF World Tour), Table Tennis, Snooker are individual-player racket/cue sports
-// Tournaments feature individual players, not teams, so team filtering doesn't apply
-const isIndividualRacketOrCueSport = (sport: string) => {
-  const s = sport.toLowerCase();
-  return s === 'badminton' || s === 'table tennis' || s === 'snooker';
-};
-
-// Check if tennis league is individual-based (ATP, WTA tours) vs team-based (Fed Cup, Davis Cup, Olympics)
-// Individual tennis leagues don't have meaningful team data - all events should sync
-const isIndividualTennis = (sport: string, leagueName: string) => {
-  if (sport.toLowerCase() !== 'tennis') return false;
-  const nameLower = leagueName.toLowerCase();
-  // Individual tours - no team selection needed
-  const individualTours = ['atp', 'wta'];
-  // Team-based competitions - team selection IS needed
-  const teamBased = ['fed cup', 'davis cup', 'olympic', 'billie jean king'];
-  // If it's a team-based league, it's NOT individual tennis
-  if (teamBased.some(t => nameLower.includes(t))) return false;
-  // If it contains ATP or WTA, it's individual tennis
-  return individualTours.some(t => nameLower.includes(t));
-};
-
-// Check if league uses event type filtering (UFC, WWE, ONE Championship)
-// These leagues filter by event type (PPV, Fight Night, Weekly, etc.)
-const usesFightingEventTypes = (sport: string, leagueName: string) => {
-  if (!isFightingSport(sport)) return false;
-  const name = leagueName.toLowerCase();
-  return name.includes('ufc') || name.includes('ultimate fighting') ||
-         name.includes('wwe') || name.includes('aew') || name.includes('wrestling') ||
-         name === 'one' || name.includes('one championship') || name.includes('one fc');
-};
-
-// Get the appropriate part options based on sport type
-// Only fighting sports use multi-part episodes
-// Motorsports do NOT use multi-part - each session is a separate event from Sportarr API
-const getPartOptions = (sport: string): string[] => {
-  if (isFightingSport(sport)) {
-    // Order matches PartNumber on the backend (EventPartDetector.CardSegment).
-    // Post Show only exists on PPV-style events; it's listed here so the
-    // user can opt out of it at the league level. Fight Night events
-    // ignore it because their per-event partStatuses don't include it.
-    return ['Early Prelims', 'Prelims', 'Main Card', 'Post Show'];
-  }
-  // Motorsports and other sports don't have parts
-  return [];
-};
-
-// Check if sport uses multi-part episodes
-// Only fighting sports use multi-part episodes
-const usesMultiPartEpisodes = (sport: string) => {
-  return isFightingSport(sport);
-};
+// Sport-classification helpers live in utils/leagueSportRules so the modal's
+// display logic and the league pages' save logic share one source of truth.
 
 export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAdding, editMode = false, leagueId }: AddLeagueModalProps) {
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [monitorType, setMonitorType] = useState('All');
+  const [monitorFinals, setMonitorFinals] = useState(false);
+  const [monitorPlayoffs, setMonitorPlayoffs] = useState(false);
+  const [monitorPreseason, setMonitorPreseason] = useState(false);
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [rootFolderId, setRootFolderId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
@@ -340,6 +273,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         monitoredEventTypes: existingLeague.monitoredEventTypes,
         searchForMissingEvents: existingLeague.searchForMissingEvents,
         searchForCutoffUnmetEvents: existingLeague.searchForCutoffUnmetEvents,
+        monitorFinals: existingLeague.monitorFinals,
+        monitorPlayoffs: existingLeague.monitorPlayoffs,
+        monitorPreseason: existingLeague.monitorPreseason,
         searchQueryTemplate: existingLeague.searchQueryTemplate,
         tags: existingLeague.tags,
         availableSessionTypesCount: availableSessionTypes.length, // Include to re-run when session types load
@@ -358,6 +294,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setRootFolderId(existingLeague.rootFolderId ?? null);
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
+      setMonitorFinals(existingLeague.monitorFinals || false);
+      setMonitorPlayoffs(existingLeague.monitorPlayoffs || false);
+      setMonitorPreseason(existingLeague.monitorPreseason || false);
       setSearchQueryTemplate(existingLeague.searchQueryTemplate || '');
       setSearchTemplatePreview(null);
       setSelectedTags(existingLeague.tags || []);
@@ -655,7 +594,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       eventTypesString,
       searchQueryTemplate.trim() || null,
       selectedTags,
-      rootFolderId
+      rootFolderId,
+      monitorFinals,
+      monitorPlayoffs,
+      monitorPreseason
     );
   };
 
@@ -896,6 +838,57 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               </button>
                             );
                           })}
+                        </div>
+
+                        {/* Special events: finals/playoffs bypass the team filter.
+                            Placed below the team grid so the team selection reads
+                            first. Only meaningful when a subset of teams is
+                            monitored - with all teams selected every event is
+                            synced anyway. */}
+                        <div className="mt-4 p-3 bg-black/50 rounded-lg border border-red-900/20 space-y-3">
+                          <div>
+                            <div className="text-sm font-semibold text-white">Special events</div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              These are monitored <span className="text-gray-300 font-medium">regardless of the teams selected above</span>.
+                              Useful when you only follow certain teams but never want to miss the big games - leave unchecked to monitor only your teams' games.
+                            </div>
+                          </div>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={monitorFinals}
+                              onChange={(e) => setMonitorFinals(e.target.checked)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white">Always monitor finals &amp; championships</div>
+                              <div className="text-xs text-gray-400">Title-deciding events - Super Bowl, NBA Finals, cup finals, Grand Finals, World Series</div>
+                            </div>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={monitorPlayoffs}
+                              onChange={(e) => setMonitorPlayoffs(e.target.checked)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white">Always monitor postseason</div>
+                              <div className="text-xs text-gray-400">Elimination rounds before the title - playoffs, wild card, knockout stages, quarter/semi-finals</div>
+                            </div>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={monitorPreseason}
+                              onChange={(e) => setMonitorPreseason(e.target.checked)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white">Always monitor preseason</div>
+                              <div className="text-xs text-gray-400">Warm-up games before the regular season - preseason weeks, exhibition games</div>
+                            </div>
+                          </label>
                         </div>
                       </>
                     )}

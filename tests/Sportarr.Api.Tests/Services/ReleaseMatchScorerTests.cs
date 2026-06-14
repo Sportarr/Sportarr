@@ -131,4 +131,30 @@ public class ReleaseMatchScorerTests
 
         score.Should().Be(0, because: "NBA release shouldn't match an NHL event");
     }
+
+    /// <summary>
+    /// User-reported case: a Porsche Supercup support-series release ("La Course"
+    /// = the race) shares the F1 race weekend, circuit and date with the Monaco
+    /// Grand Prix, so without a support-series guard it was grabbed as the F1
+    /// race. Porsche Supercup is NOT Formula 1 and must score zero against an F1
+    /// event.
+    /// </summary>
+    [Fact]
+    public void PorscheSupercupRelease_AgainstF1Event_ScoresZero()
+    {
+        var evt = new Event
+        {
+            Id = 1,
+            Title = "Monaco Grand Prix",
+            Sport = "Motorsport",
+            EventDate = new DateTime(2026, 6, 7, 13, 0, 0, DateTimeKind.Utc),
+            League = new League { Id = 1, Name = "Formula 1", Sport = "Motorsport" }
+        };
+
+        var releaseTitle = "PorscheSupercup.La.Course.GP.Monaco.07.06.2026.VFF.1080p.WEBRip.AAC.2.0.x264-DN55";
+
+        var score = _scorer.CalculateMatchScore(releaseTitle, evt);
+
+        score.Should().Be(0, because: "a Porsche Supercup support-series release must not match the F1 Monaco GP");
+    }
 }

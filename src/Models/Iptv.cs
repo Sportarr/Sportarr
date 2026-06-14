@@ -232,6 +232,33 @@ public enum DvrRecordingStatus
 }
 
 /// <summary>
+/// How a DVR recording acquires its content.
+///
+/// Catchup downloads pull the already-aired window from the provider's
+/// timeshift archive after the event finishes, so they never guess at
+/// start/end times, survive app downtime, and can be retried while the
+/// archive retains the window. Live recordings capture the stream in
+/// real time and remain the fallback for channels without an archive.
+///
+/// Catchup/timeshift download method ported from timeshifter by
+/// scottrobertson (github.com/scottrobertson/timeshifter).
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum DvrRecordingMethod
+{
+    /// <summary>
+    /// Real-time capture of the live stream during the scheduled window.
+    /// </summary>
+    Live = 0,
+
+    /// <summary>
+    /// Download from the provider's catchup/timeshift archive after the
+    /// event has finished airing.
+    /// </summary>
+    Catchup = 1
+}
+
+/// <summary>
 /// IPTV source configuration (M3U playlist or Xtream account)
 /// Similar to how Dispatcharr manages M3U accounts
 /// </summary>
@@ -298,6 +325,16 @@ public class IptvSource
     /// Last error message (if any)
     /// </summary>
     public string? LastError { get; set; }
+
+    /// <summary>
+    /// Which timeshift URL style this provider's catchup endpoint
+    /// actually serves ("path" or "php"), learned automatically from the
+    /// first successful catchup download. Null until detected. With the
+    /// catchup URL-style setting on "auto" (the default), downloads try
+    /// the detected style first and fall back to the other, so users
+    /// never need to know which kind of panel their provider runs.
+    /// </summary>
+    public string? DetectedCatchupMode { get; set; }
 
     /// <summary>
     /// Navigation property for channels
@@ -440,6 +477,23 @@ public class IptvChannel
     /// a high-confidence match before relying on the canonical id.
     /// </summary>
     public int? IptvOrgConfidence { get; set; }
+
+    /// <summary>
+    /// Whether the provider keeps a catchup/timeshift archive for this
+    /// channel (Xtream "tv_archive"). When true, finished events can be
+    /// downloaded from the provider's archive after they air instead of
+    /// being captured live, which removes the guesswork around start
+    /// and end times entirely.
+    /// </summary>
+    public bool HasArchive { get; set; }
+
+    /// <summary>
+    /// How many days back the provider's catchup archive reaches for
+    /// this channel (Xtream "tv_archive_duration"). 0 when HasArchive
+    /// is false. A catchup download is only possible while the
+    /// recording window is still inside this retention period.
+    /// </summary>
+    public int ArchiveDays { get; set; }
 
     /// <summary>
     /// Navigation property for league mappings
@@ -686,6 +740,16 @@ public class DvrRecording
     /// instead of yet another silent retry.
     /// </summary>
     public int AutoRetryCount { get; set; }
+
+    /// <summary>
+    /// How this recording acquires content: Live captures the stream in
+    /// real time during the scheduled window; Catchup downloads the
+    /// already-aired window from the provider's timeshift archive after
+    /// the event ends. Catchup rows are handled exclusively by
+    /// CatchupDownloadService — the live scheduler and watchdog ignore
+    /// them (their wall-clock rules assume a live window).
+    /// </summary>
+    public DvrRecordingMethod Method { get; set; } = DvrRecordingMethod.Live;
 }
 
 /// <summary>
@@ -1026,6 +1090,7 @@ public class DvrRecordingResponse
     public string? VideoCodec { get; set; }
     public string? AudioCodec { get; set; }
     public int? AudioChannels { get; set; }
+    public DvrRecordingMethod Method { get; set; }
     public DateTime Created { get; set; }
 
     // Expected scores for scheduled recordings (based on DVR profile settings)
@@ -1068,6 +1133,7 @@ public class DvrRecordingResponse
             VideoCodec = recording.VideoCodec,
             AudioCodec = recording.AudioCodec,
             AudioChannels = recording.AudioChannels,
+            Method = recording.Method,
             Created = recording.Created
         };
     }
@@ -1086,4 +1152,10 @@ public class ScheduleDvrRecordingRequest
     public int PrePadding { get; set; } = 5;
     public int PostPadding { get; set; } = 15;
     public string? PartName { get; set; }
+
+    /// <summary>
+    /// Live (default) records in real time; Catchup defers to the
+    /// provider's timeshift archive after the event ends.
+    /// </summary>
+    public DvrRecordingMethod Method { get; set; } = DvrRecordingMethod.Live;
 }

@@ -907,6 +907,24 @@ public class ReleaseMatchScorer
                 return MotorsportSessionType.Race;
         }
 
+        // Non-English session vocabulary (French, etc.) lives in EventPartDetector
+        // so both matchers share one table. Map its canonical session name onto
+        // this scorer's coarse enum.
+        var multilingual = EventPartDetector.DetectMultilingualSession(normalizedTitle);
+        if (multilingual != null)
+        {
+            if (multilingual.StartsWith("Practice", StringComparison.OrdinalIgnoreCase))
+                return MotorsportSessionType.Practice;
+            if (multilingual.Equals("Sprint Qualifying", StringComparison.OrdinalIgnoreCase))
+                return MotorsportSessionType.SprintQualifying;
+            if (multilingual.StartsWith("Sprint", StringComparison.OrdinalIgnoreCase))
+                return MotorsportSessionType.Sprint;
+            if (multilingual.Equals("Qualifying", StringComparison.OrdinalIgnoreCase))
+                return MotorsportSessionType.Qualifying;
+            if (multilingual.Equals("Race", StringComparison.OrdinalIgnoreCase))
+                return MotorsportSessionType.Race;
+        }
+
         return MotorsportSessionType.Unknown;
     }
 
@@ -1528,6 +1546,13 @@ public class ReleaseMatchScorer
         (new Regex(@"\bworld[\.\-\s]*rally\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WRC"),
         (new Regex(@"\bwec\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WEC"),
         (new Regex(@"\bworld[\.\-\s]*endurance\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WEC"),
+        // One-make / support series that share F1 race weekends, circuits and
+        // dates. CRITICAL: these are NOT Formula 1 — without them a release like
+        // "PorscheSupercup.La.Course.GP.Monaco" matches the F1 Monaco GP. \bporsche
+        // (no trailing boundary) catches the joined "PorscheSupercup" token.
+        (new Regex(@"\bporsche", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Porsche"),
+        (new Regex(@"\bcarrera[\.\-\s]*cup\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Carrera Cup"),
+        (new Regex(@"\bferrari[\.\-\s]*challenge\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Ferrari Challenge"),
 
         // Olympics
         (new Regex(@"\bolympic", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Olympics"),

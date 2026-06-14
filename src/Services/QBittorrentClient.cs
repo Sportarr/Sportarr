@@ -15,6 +15,8 @@ public class QBittorrentClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<QBittorrentClient> _logger;
     private string? _cookie;
+    private string? _apiKey; // qBittorrent 5.2+ Bearer API key (when configured)
+    private System.Version? _webApiVersion; // cached /api/v2/app/webapiVersion (instances are per-config); System.Version, not Sportarr.Api.Version
     private HttpClient? _customHttpClient; // For SSL bypass
 
     public QBittorrentClient(HttpClient httpClient, ILogger<QBittorrentClient> logger)
@@ -53,11 +55,89 @@ public class QBittorrentClient
                 {
                     _customHttpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
                 }
+                // Carry the Bearer API key (qBittorrent 5.2+) onto the
+                // lazily-created SSL-bypass client too — LoginAsync may have
+                // set it on _httpClient before this client existed.
+                if (_apiKey != null)
+                {
+                    SetBearerHeader(_customHttpClient, _apiKey);
+                }
             }
             return _customHttpClient;
         }
 
         return _httpClient;
+    }
+
+    /// <summary>
+    /// Set the Bearer Authorization header for qBittorrent 5.2+ API-key
+    /// auth. Uses the typed Authorization property so re-applying it across
+    /// per-operation calls (or after a key rotation) replaces rather than
+    /// throwing on a duplicate header.
+    /// </summary>
+    private static void SetBearerHeader(HttpClient client, string apiKey)
+    {
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+    }
+
+    /// <summary>
+    /// Fetch and cache the server's WebAPI version (e.g. "2.11.4") from
+    /// /api/v2/app/webapiVersion. Cached on the instance, and client
+    /// instances are themselves cached per download-client config, so this
+    /// costs one request per config rather than one per operation. Returns
+    /// null when the version can't be determined. Caller must have
+    /// authenticated first.
+    /// </summary>
+    private async Task<System.Version?> GetWebApiVersionAsync(DownloadClient config, string baseUrl)
+    {
+        if (_webApiVersion != null)
+        {
+            return _webApiVersion;
+        }
+
+        try
+        {
+            var client = GetHttpClient(config);
+            using var response = await client.GetAsync($"{baseUrl}/api/v2/app/webapiVersion");
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var raw = (await response.Content.ReadAsStringAsync()).Trim();
+            if (System.Version.TryParse(raw, out var version))
+            {
+                _webApiVersion = version;
+                _logger.LogDebug("[qBittorrent] WebAPI version {Version}", version);
+                return version;
+            }
+
+            _logger.LogDebug("[qBittorrent] Could not parse WebAPI version '{Raw}'", raw);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[qBittorrent] Failed to fetch WebAPI version");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// True when the server speaks the qBittorrent 5.0+ WebAPI (>= 2.11.0),
+    /// which renamed torrents/pause -> torrents/stop, torrents/resume ->
+    /// torrents/start, and the add 'paused' parameter -> 'stopped'. This is
+    /// the same version gate Sonarr/Radarr use. Compared on Major/Minor so a
+    /// two-component version string ("2.11") isn't mistaken for older than
+    /// "2.11.0". Defaults to true (modern) when the version is unknown -
+    /// qBittorrent 5.x is the current/supported line and 4.x is end-of-life.
+    /// </summary>
+    private async Task<bool> SupportsStartStopAsync(DownloadClient config, string baseUrl)
+    {
+        var version = await GetWebApiVersionAsync(config, baseUrl);
+        return version == null
+            || version.Major > 2
+            || (version.Major == 2 && version.Minor >= 11);
     }
 
     /// <summary>
@@ -83,6 +163,18 @@ public class QBittorrentClient
                 var version = await response.Content.ReadAsStringAsync();
                 _logger.LogInformation("[qBittorrent] Connected successfully. Version: {Version}", version);
                 return true;
+            }
+
+            // Bearer auth returns true from LoginAsync without validating the
+            // key (there's no login round-trip), so a bad/rotated key first
+            // surfaces here as a 401/403 on the actual request - call it out.
+            if (!string.IsNullOrEmpty(config.ApiKey) &&
+                (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                 response.StatusCode == System.Net.HttpStatusCode.Forbidden))
+            {
+                _logger.LogWarning(
+                    "[qBittorrent] API key rejected (HTTP {Status}). Re-generate the key under qBittorrent Web UI -> API Key and paste the current one (it changes on rotation).",
+                    (int)response.StatusCode);
             }
 
             return false;
@@ -225,11 +317,12 @@ public class QBittorrentClient
             }
 
             // Handle initial state (Started, ForceStarted, Stopped) — useful for testing automation.
-            // Note: qBittorrent 4.2+ uses 'stopped' parameter instead of deprecated 'paused'
+            // qBittorrent 5.0 (WebAPI 2.11) renamed the add parameter 'paused' to
+            // 'stopped'; pick the right name by the server's WebAPI version, same
+            // as Sonarr and the pause/resume endpoint selection.
             var shouldPause = config.InitialState == TorrentInitialState.Stopped;
-            content.Add(new StringContent(shouldPause ? "true" : "false"), "stopped");
-            // Also send deprecated 'paused' for compatibility with older qBittorrent versions
-            content.Add(new StringContent(shouldPause ? "true" : "false"), "paused");
+            var stoppedParam = await SupportsStartStopAsync(config, baseUrl) ? "stopped" : "paused";
+            content.Add(new StringContent(shouldPause ? "true" : "false"), stoppedParam);
             if (config.InitialState == TorrentInitialState.Stopped)
             {
                 _logger.LogInformation("[qBittorrent] Adding torrent in STOPPED state (InitialState=Stopped)");
@@ -673,8 +766,11 @@ public class QBittorrentClient
         return categoryTorrents.Select(t =>
         {
             var state = t.State.ToLowerInvariant();
+            // qBittorrent 4.x reports pausedUP, 5.x reports stoppedUP for a
+            // completed-then-stopped torrent; accept both.
             var isCompleted = state == "uploading" || state == "stalledup" ||
-                              state == "pausedup" || t.Progress >= 0.999;
+                              state == "pausedup" || state == "stoppedup" ||
+                              t.Progress >= 0.999;
 
             return new ExternalDownloadInfo
             {
@@ -913,19 +1009,22 @@ public class QBittorrentClient
     }
 
     /// <summary>
-    /// Resume torrent
+    /// Resume torrent. qBittorrent 5.0 (WebAPI 2.11) renamed torrents/resume
+    /// to torrents/start; the verb is chosen by the server's WebAPI version
+    /// (see ControlTorrentAsync / SupportsStartStopAsync).
     /// </summary>
     public async Task<bool> ResumeTorrentAsync(DownloadClient config, string hash)
     {
-        return await ControlTorrentAsync(config, hash, "resume");
+        return await ControlTorrentAsync(config, hash, modernAction: "start", legacyAction: "resume");
     }
 
     /// <summary>
-    /// Pause torrent
+    /// Pause torrent. qBittorrent 5.0 renamed torrents/pause to torrents/stop;
+    /// the verb is chosen by the server's WebAPI version.
     /// </summary>
     public async Task<bool> PauseTorrentAsync(DownloadClient config, string hash)
     {
-        return await ControlTorrentAsync(config, hash, "pause");
+        return await ControlTorrentAsync(config, hash, modernAction: "stop", legacyAction: "pause");
     }
 
     /// <summary>
@@ -1452,6 +1551,24 @@ public class QBittorrentClient
 
     private async Task<bool> LoginAsync(DownloadClient config, string baseUrl, string? username, string? password)
     {
+        // qBittorrent 5.2+ API key: stateless Bearer auth. When a key is
+        // configured we attach it to the client(s) and skip the cookie
+        // auth/login round-trip entirely (the login/logout endpoints reject
+        // API-key auth anyway). The key is generated in qBittorrent under
+        // Web UI -> API Key. Assigning DefaultRequestHeaders.Authorization
+        // is idempotent across the per-operation calls and survives a key
+        // rotation (it replaces, never duplicates).
+        if (!string.IsNullOrEmpty(config.ApiKey))
+        {
+            _apiKey = config.ApiKey;
+            SetBearerHeader(_httpClient, _apiKey);
+            if (_customHttpClient != null)
+            {
+                SetBearerHeader(_customHttpClient, _apiKey);
+            }
+            return true;
+        }
+
         if (_cookie != null)
         {
             return true;
@@ -1480,10 +1597,36 @@ public class QBittorrentClient
             _logger.LogDebug("[qBittorrent] Login response: Status={StatusCode}", response.StatusCode);
             _logger.LogTrace("[qBittorrent] Login response body: {Body}", responseBody);
 
-            if (response.IsSuccessStatusCode)
+            // qBittorrent returns HTTP 200 for BOTH a successful and a rejected
+            // login; the body is the real signal ("Ok." vs "Fails."). A 403
+            // means the Web UI temporarily banned this IP after repeated failed
+            // attempts. Branch on all three so the log says what actually
+            // happened instead of a misleading "appeared successful".
+            var trimmedBody = (responseBody ?? string.Empty).Trim();
+            var hasSessionCookie = response.Headers.TryGetValues("Set-Cookie", out var cookies);
+
+            // A valid session cookie is, on its own, definitive proof the login
+            // succeeded - accept it regardless of the body text. Only fall back to
+            // the body ("Ok.") for the auth-bypass case where qBittorrent issues no
+            // cookie. Gating success on the body alone regressed setups behind a
+            // reverse proxy or auth portal that return a good cookie but a body that
+            // isn't readable as "Ok." (empty, compressed, or HTML-wrapped).
+            //
+            // qBittorrent 5.2 returns HTTP 204 (No Content) with an empty body for
+            // a successful login instead of 200 + "Ok.". The credentialed flow
+            // still sets the SID cookie, so the cookie check above already covers
+            // it; this also treats a bare 204 as success for the auth-bypass case
+            // (whitelisted IP / localhost) where no cookie is issued and the body
+            // is now empty. A 204 is never returned for a rejected login - failures
+            // are 200 + "Fails." or a 403 ban - so it is a safe success signal.
+            var loginOk = response.IsSuccessStatusCode &&
+                          (hasSessionCookie ||
+                           trimmedBody.StartsWith("Ok.", StringComparison.OrdinalIgnoreCase) ||
+                           response.StatusCode == System.Net.HttpStatusCode.NoContent);
+
+            if (loginOk)
             {
-                // Store cookie for subsequent requests
-                if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+                if (hasSessionCookie)
                 {
                     _cookie = cookies.FirstOrDefault();
                     _httpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
@@ -1493,15 +1636,37 @@ public class QBittorrentClient
                         _customHttpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
                     }
                     _logger.LogDebug("[qBittorrent] Login successful, session cookie stored");
-                    return true;
                 }
                 else
                 {
-                    _logger.LogWarning("[qBittorrent] Login appeared successful but no session cookie received");
+                    // "Ok." with no cookie = qBittorrent bypassed authentication
+                    // (this client IP is whitelisted, or "Bypass authentication
+                    // for clients on localhost" is enabled). Subsequent requests
+                    // work without a SID, so treat it as a success.
+                    _logger.LogInformation(
+                        "[qBittorrent] Authentication bypassed for this client (whitelisted IP or localhost); proceeding without a session cookie");
                 }
+                return true;
             }
 
-            _logger.LogWarning("[qBittorrent] Login failed: Status={Status}, Response={Response}", response.StatusCode, responseBody);
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                _logger.LogWarning(
+                    "[qBittorrent] Login blocked (HTTP 403): this IP is temporarily banned after repeated failed logins. " +
+                    "Fix the credentials, then wait out the ban or restart qBittorrent.");
+            }
+            else if (trimmedBody.StartsWith("Fails.", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "[qBittorrent] Login rejected (\"Fails.\"): the Web UI username/password is wrong. " +
+                    "Check Tools -> Options -> Web UI -> Authentication in qBittorrent and re-enter it in Sportarr. " +
+                    "Fresh installs use a random temporary password printed in qBittorrent's own log.");
+            }
+            else
+            {
+                _logger.LogWarning("[qBittorrent] Login failed: Status={Status}, Response={Response}",
+                    response.StatusCode, trimmedBody);
+            }
             return false;
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
@@ -1522,7 +1687,14 @@ public class QBittorrentClient
         }
     }
 
-    private async Task<bool> ControlTorrentAsync(DownloadClient config, string hash, string action)
+    /// <summary>
+    /// POST a torrents control verb for one hash, choosing the verb by the
+    /// server's WebAPI version: qBittorrent 5.0 (>= 2.11.0) renamed
+    /// pause->stop and resume->start. We version-detect (same as Sonarr)
+    /// rather than calling one name and reacting to a 404.
+    /// </summary>
+    private async Task<bool> ControlTorrentAsync(
+        DownloadClient config, string hash, string modernAction, string legacyAction)
     {
         try
         {
@@ -1533,17 +1705,19 @@ public class QBittorrentClient
                 return false;
             }
 
+            var action = await SupportsStartStopAsync(config, baseUrl) ? modernAction : legacyAction;
+
             var content = new FormUrlEncodedContent(new[]
             {
                 new KeyValuePair<string, string>("hashes", hash)
             });
 
-            using var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/{action}", content);
+            using var response = await GetHttpClient(config).PostAsync($"{baseUrl}/api/v2/torrents/{action}", content);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[qBittorrent] Error controlling torrent: {Action}", action);
+            _logger.LogError(ex, "[qBittorrent] Error controlling torrent: {Modern}/{Legacy}", modernAction, legacyAction);
             return false;
         }
     }

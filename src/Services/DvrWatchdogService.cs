@@ -87,8 +87,15 @@ public class DvrWatchdogService : BackgroundService
         // down during its start time, or no IPTV slot was available
         // and the conflict policy was Refuse. Mark it Failed so the
         // user can see what happened and decide whether to reschedule.
+        //
+        // Catchup rows are exempt: a closed window is their NORMAL
+        // trigger condition (the archive download only starts after the
+        // event ends), so this rule would instantly fail every one of
+        // them. CatchupDownloadService owns their lifecycle, including
+        // failing rows whose window falls out of archive retention.
         var missed = await db.DvrRecordings
             .Where(r => r.Status == DvrRecordingStatus.Scheduled)
+            .Where(r => r.Method == DvrRecordingMethod.Live)
             .Where(r => r.ScheduledEnd.AddMinutes(r.PostPadding) < now)
             .ToListAsync(ct);
         foreach (var row in missed)
@@ -102,8 +109,14 @@ public class DvrWatchdogService : BackgroundService
                 "Watchdog: missed - the recording window closed before any recorder picked it up (app downtime, no available source slot, or scheduling conflict).";
         }
 
+        // Catchup downloads sit in Recording state with no recorder
+        // process handle (CatchupDownloadService runs its own ffmpeg and
+        // enforces its own timeout), a window that's always in the past
+        // (overrun rule), and a .part work file (stall rule can't see
+        // growth at OutputPath). All three modes would misfire on them.
         var inFlight = await db.DvrRecordings
             .Where(r => r.Status == DvrRecordingStatus.Recording)
+            .Where(r => r.Method == DvrRecordingMethod.Live)
             .ToListAsync(ct);
 
         if (inFlight.Count == 0)

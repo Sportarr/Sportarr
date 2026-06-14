@@ -225,6 +225,11 @@ public class XtreamCodesClient
                 DetectedQuality = qualityLabel,
                 QualityScore = qualityScore,
                 DetectedNetwork = detectedNetwork,
+                // Persist the provider's catchup archive flags so the DVR
+                // can download finished events from the archive instead of
+                // recording live (see CatchupDownloadService).
+                HasArchive = stream.TvArchive > 0,
+                ArchiveDays = stream.TvArchiveDuration,
                 Created = DateTime.UtcNow
             });
 
@@ -294,6 +299,79 @@ public class XtreamCodesClient
         serverUrl = serverUrl.TrimEnd('/');
         // Most Xtream servers use /live/username/password/streamId.ts format
         return $"{serverUrl}/live/{Uri.EscapeDataString(username)}/{Uri.EscapeDataString(password)}/{streamId}.ts";
+    }
+
+    /// <summary>
+    /// Build a catchup/timeshift URL that serves an already-aired window
+    /// of a channel from the provider's archive.
+    ///
+    /// The endpoint interprets the start time in the SERVER's own local
+    /// timezone (from server_info.timezone in the auth response), not
+    /// UTC — callers must convert before passing serverLocalStart.
+    /// Format of the start segment: "yyyy-MM-dd:HH-mm".
+    ///
+    /// Two URL styles exist in the wild. Most panels use the path style
+    /// (/timeshift/user/pass/duration/start/streamId.ts); a few older
+    /// ones only accept streaming/timeshift.php with query parameters.
+    ///
+    /// Catchup/timeshift download method ported from timeshifter by
+    /// scottrobertson (github.com/scottrobertson/timeshifter).
+    /// </summary>
+    public static string BuildTimeshiftUrl(
+        string serverUrl,
+        string username,
+        string password,
+        int streamId,
+        DateTime serverLocalStart,
+        int durationMinutes,
+        bool phpMode = false)
+    {
+        serverUrl = serverUrl.TrimEnd('/');
+        // Invariant culture: ':' in a custom format string is the
+        // culture-sensitive time-separator specifier, and a non-invariant
+        // host culture could swap it out and corrupt the URL.
+        var startSegment = serverLocalStart.ToString(
+            "yyyy-MM-dd:HH-mm", System.Globalization.CultureInfo.InvariantCulture);
+
+        if (phpMode)
+        {
+            return $"{serverUrl}/streaming/timeshift.php" +
+                   $"?username={Uri.EscapeDataString(username)}" +
+                   $"&password={Uri.EscapeDataString(password)}" +
+                   $"&stream={streamId}" +
+                   $"&start={Uri.EscapeDataString(startSegment)}" +
+                   $"&duration={durationMinutes}";
+        }
+
+        // Path style: /timeshift/user/pass/duration/start/streamId.ts
+        return $"{serverUrl}/timeshift/{Uri.EscapeDataString(username)}/{Uri.EscapeDataString(password)}" +
+               $"/{durationMinutes}/{startSegment}/{streamId}.ts";
+    }
+
+    /// <summary>
+    /// Recover the Xtream stream id from a /live/ URL produced by
+    /// BuildStreamUrl. IptvChannel stores only the final stream URL, so
+    /// the catchup downloader parses the id back out rather than carrying
+    /// a separate column. Returns false for non-Xtream-shaped URLs
+    /// (M3U sources, custom endpoints).
+    /// </summary>
+    public static bool TryParseStreamId(string? streamUrl, out int streamId)
+    {
+        streamId = 0;
+        if (string.IsNullOrEmpty(streamUrl))
+            return false;
+
+        // Last path segment without the extension: ".../live/u/p/12345.ts"
+        var lastSlash = streamUrl.LastIndexOf('/');
+        if (lastSlash < 0 || lastSlash == streamUrl.Length - 1)
+            return false;
+
+        var segment = streamUrl[(lastSlash + 1)..];
+        var dot = segment.IndexOf('.');
+        if (dot >= 0)
+            segment = segment[..dot];
+
+        return int.TryParse(segment, out streamId) && streamId > 0;
     }
 
     private static bool IsSportsCategory(string? categoryName)

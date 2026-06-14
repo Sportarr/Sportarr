@@ -190,6 +190,32 @@ public class League
     public string? MonitoredEventTypes { get; set; }
 
     /// <summary>
+    /// Also monitor finals/championship events (Super Bowl, NBA Finals,
+    /// cup finals) even when team-based filtering is active and the
+    /// monitored teams are not playing. Users who follow one team usually
+    /// still want the championship game regardless of who is in it.
+    /// Only changes behavior when monitored teams are set; without team
+    /// filtering every event is synced anyway.
+    /// </summary>
+    public bool MonitorFinals { get; set; } = false;
+
+    /// <summary>
+    /// Also monitor playoff / postseason rounds (wild card, divisional,
+    /// conference, quarter/semi-finals) even when team-based filtering is
+    /// active and the monitored teams are not playing. Separate from
+    /// MonitorFinals so users can opt into just the championship game
+    /// without the full postseason, or vice versa.
+    /// </summary>
+    public bool MonitorPlayoffs { get; set; } = false;
+
+    /// <summary>
+    /// Also monitor preseason / exhibition games even when team-based
+    /// filtering is active and the monitored teams are not playing.
+    /// TheSportsDB reserves round code 500 for pre-season.
+    /// </summary>
+    public bool MonitorPreseason { get; set; } = false;
+
+    /// <summary>
     /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
     /// {Round}, {Week}, {EventTitle}, {HomeTeam}, {AwayTeam}, {vs}, {Season}
     /// If null/empty, uses default query generation based on sport type.
@@ -365,6 +391,15 @@ public class AddLeagueRequest
     /// </summary>
     public string? MonitoredEventTypes { get; set; }
 
+    /// <summary>Monitor finals/championship events even when monitored teams aren't playing.</summary>
+    public bool MonitorFinals { get; set; } = false;
+
+    /// <summary>Monitor playoff/postseason rounds even when monitored teams aren't playing.</summary>
+    public bool MonitorPlayoffs { get; set; } = false;
+
+    /// <summary>Monitor preseason/exhibition games even when monitored teams are not playing.</summary>
+    public bool MonitorPreseason { get; set; } = false;
+
     /// <summary>
     /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
     /// {Round}, {Week}, {EventTitle}, {HomeTeam}, {AwayTeam}, {vs}, {Season}
@@ -393,6 +428,9 @@ public class AddLeagueRequest
             MonitoredParts = MonitoredParts,
             MonitoredSessionTypes = MonitoredSessionTypes,
             MonitoredEventTypes = MonitoredEventTypes,
+            MonitorFinals = MonitorFinals,
+            MonitorPlayoffs = MonitorPlayoffs,
+            MonitorPreseason = MonitorPreseason,
             SearchQueryTemplate = SearchQueryTemplate,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
@@ -426,6 +464,9 @@ public class LeagueResponse
     public string? MonitoredParts { get; set; }
     public string? MonitoredSessionTypes { get; set; }
     public string? MonitoredEventTypes { get; set; }
+    public bool MonitorFinals { get; set; }
+    public bool MonitorPlayoffs { get; set; }
+    public bool MonitorPreseason { get; set; }
     public string? SearchQueryTemplate { get; set; }
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
@@ -531,6 +572,9 @@ public class LeagueResponse
             MonitoredParts = league.MonitoredParts,
             MonitoredSessionTypes = league.MonitoredSessionTypes,
             MonitoredEventTypes = league.MonitoredEventTypes,
+            MonitorFinals = league.MonitorFinals,
+            MonitorPlayoffs = league.MonitorPlayoffs,
+            MonitorPreseason = league.MonitorPreseason,
             SearchQueryTemplate = league.SearchQueryTemplate,
             LogoUrl = league.LogoUrl,
             BannerUrl = league.BannerUrl,

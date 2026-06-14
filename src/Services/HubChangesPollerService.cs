@@ -1,0 +1,337 @@
+using Microsoft.EntityFrameworkCore;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
+
+namespace Sportarr.Api.Services;
+
+/// <summary>
+/// Background service that polls the hub's entity changes feed and
+/// refreshes only the leagues the hub says actually changed.
+///
+/// The hub cannot push to installs (self-hosted, behind NAT, unknown to
+/// the hub), so change propagation is pull: every cycle this service asks
+/// "what changed since my cursor", maps the returned change records to
+/// locally-monitored leagues, and syncs exactly the changed seasons —
+/// historical ones included, since each change record names its season.
+/// Reschedules, score updates, new events and dedup removals land within
+/// one poll interval instead of waiting for the daily auto-sync or a
+/// manual refresh click, and a change in a ten-year-old season costs one
+/// targeted season fetch rather than a full league walk.
+///
+/// Feed gaps self-heal: when the hub answers "resync required" (first
+/// poll ever, or a cursor older than the feed's retention window) the
+/// poller reconciles every monitored league against full hub history
+/// itself, so an install realigns to hub truth without the user knowing
+/// cursor mechanics exist. Individual league sync failures advance the
+/// cursor either way: a permanently failing league must not dam the
+/// feed for the others.
+/// </summary>
+public class HubChangesPollerService : BackgroundService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<HubChangesPollerService> _logger;
+    private readonly TimeSpan _pollInterval = TimeSpan.FromMinutes(15);
+    private readonly TimeSpan _maxJitter = TimeSpan.FromMinutes(2); // spread installs off the same slot
+    private const int MaxPagesPerCycle = 10;
+
+    // One cycle at a time: the interval loop and a user-triggered
+    // "check now" (refresh button, scope=current) share this gate so an
+    // overlap can't double-sync leagues or race the cursor write.
+    private readonly SemaphoreSlim _pollGate = new(1, 1);
+
+    public HubChangesPollerService(
+        IServiceProvider serviceProvider,
+        ILogger<HubChangesPollerService> logger)
+    {
+        _serviceProvider = serviceProvider;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("[Changes Poller] Hub changes poller started (interval: {Minutes} min)",
+            _pollInterval.TotalMinutes);
+
+        // Short startup grace so boot-time migrations and first-run setup
+        // settle before the first outbound poll.
+        await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await PollNowAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Changes Poller] Poll cycle failed: {Message}", ex.Message);
+            }
+
+            var jitterMs = Random.Shared.Next(-(int)_maxJitter.TotalMilliseconds, (int)_maxJitter.TotalMilliseconds);
+            await Task.Delay(_pollInterval + TimeSpan.FromMilliseconds(jitterMs), stoppingToken);
+        }
+
+        _logger.LogInformation("[Changes Poller] Hub changes poller stopped");
+    }
+
+    /// <summary>
+    /// Run one poll cycle immediately. Used by the interval loop and by
+    /// the refresh button's "current" scope, which is now "ask the hub
+    /// what changed right now" rather than a blind season walk. Serialized
+    /// through a gate so concurrent triggers queue instead of racing.
+    /// Returns a human-readable summary for task/progress display.
+    /// </summary>
+    public async Task<string> PollNowAsync(CancellationToken cancellationToken)
+    {
+        await _pollGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await PollOnceAsync(cancellationToken);
+        }
+        finally
+        {
+            _pollGate.Release();
+        }
+    }
+
+    private async Task<string> PollOnceAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var apiClient = scope.ServiceProvider.GetRequiredService<SportarrApiClient>();
+        var syncService = scope.ServiceProvider.GetRequiredService<LeagueEventSyncService>();
+
+        var settings = await db.AppSettings.FirstOrDefaultAsync(cancellationToken);
+        if (settings == null)
+        {
+            _logger.LogDebug("[Changes Poller] AppSettings row not present yet - skipping cycle");
+            return "Settings not initialized yet - poll skipped";
+        }
+
+        var cursor = settings.HubChangesCursor;
+
+        // Per-league work orders built from the change records. Seasons is
+        // the exact set of changed season strings (historical included) to
+        // sync directly; SmartWalk requests the seasons:null path (current/
+        // future walk + stale-season cleanup) for changes a targeted season
+        // sync can't resolve: league-level changes, season deletions (an
+        // emptied season is only cleaned up by comparing against the hub's
+        // full season list), and records missing a season.
+        var work = new Dictionary<string, (HashSet<string> Seasons, bool SmartWalk)>(StringComparer.OrdinalIgnoreCase);
+        var totalChanges = 0;
+
+        for (var page = 0; page < MaxPagesPerCycle; page++)
+        {
+            var feed = await apiClient.GetChangesAsync(cursor);
+            if (feed == null)
+            {
+                // Network/upstream hiccup: keep the cursor, retry next cycle.
+                return "Hub unreachable - will retry on the next cycle";
+            }
+
+            if (feed.Resync)
+            {
+                // The feed cannot replay what this install missed, so heal
+                // the gap automatically instead of asking the user to know
+                // about cursor mechanics. Both resync cases — first poll
+                // ever (cursor 0: fresh install or an existing install
+                // joining the feed) and a cursor below the feed's prune
+                // watermark (offline past retention) — get the same answer:
+                // reconcile every monitored league against FULL history.
+                // The first join especially needs it, because historical
+                // corrections the hub made before the feed existed (or
+                // before this install joined) are in no change log anywhere;
+                // a full walk is the only way to discover what the local DB
+                // actually holds vs hub truth. Owner accepted the
+                // upgrade-day load in exchange for the guarantee.
+                //
+                // Head cursor is stored BEFORE the walk: changes landing
+                // while the walk runs sit above it, so the next poll
+                // applies them. Nothing is lost in the handoff.
+                var firstPoll = cursor == 0;
+                _logger.LogInformation(
+                    "[Changes Poller] Feed requested resync (cursor {Cursor} -> {Next}); self-healing with a full historical walk of all monitored leagues",
+                    cursor, feed.Next);
+
+                if (feed.Next != settings.HubChangesCursor)
+                {
+                    settings.HubChangesCursor = feed.Next;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+
+                var monitored = await db.Leagues
+                    .Where(l => l.Monitored && l.ExternalId != null)
+                    .ToListAsync(cancellationToken);
+
+                var healed = 0;
+                foreach (var league in monitored)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var healResult = await syncService.SyncLeagueEventsAsync(
+                            league.Id, seasons: null, fullHistoricalSync: true,
+                            forceRefresh: false, cancellationToken: cancellationToken);
+                        if (healResult.Success)
+                        {
+                            healed++;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("[Changes Poller] Self-heal sync of {LeagueName} failed: {Message}",
+                                league.Name, healResult.Message);
+                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[Changes Poller] Self-heal sync of {LeagueName} failed", league.Name);
+                    }
+                }
+
+                return firstPoll
+                    ? $"Joined the hub change feed; fully reconciled {healed} league(s) against complete hub history"
+                    : $"Change history gap detected (install offline past feed retention) - fully re-synced {healed} league(s) against the hub";
+            }
+
+            if (feed.Changes == null || feed.Changes.Count == 0)
+            {
+                cursor = feed.Next;
+                break;
+            }
+
+            foreach (var change in feed.Changes)
+            {
+                if (string.IsNullOrEmpty(change.League))
+                {
+                    continue;
+                }
+
+                if (!work.TryGetValue(change.League!, out var order))
+                {
+                    order = (new HashSet<string>(StringComparer.OrdinalIgnoreCase), false);
+                    work[change.League!] = order;
+                }
+
+                var isSeasonDeletion = change.Entity == "season" &&
+                                       string.Equals(change.Change, "deleted", StringComparison.OrdinalIgnoreCase);
+
+                if (!isSeasonDeletion && !string.IsNullOrEmpty(change.Season))
+                {
+                    order.Seasons.Add(change.Season!);
+                }
+                else
+                {
+                    work[change.League!] = (order.Seasons, true);
+                }
+            }
+
+            totalChanges += feed.Changes.Count;
+            cursor = feed.Next;
+
+            if (!feed.More)
+            {
+                break;
+            }
+        }
+
+        // One line per cycle even when idle. A silent poll is
+        // indistinguishable from a dead poller in the logs, which makes
+        // soak-testing and support threads needlessly hard.
+        _logger.LogInformation(
+            "[Changes Poller] Poll complete: {Changes} new change(s), cursor {From} -> {To}",
+            totalChanges, settings.HubChangesCursor, cursor);
+
+        var refreshedNames = new List<string>();
+        if (work.Count > 0)
+        {
+            // Only leagues this install actually has (and monitors) matter.
+            var idList = work.Keys.ToList();
+            var affectedLeagues = await db.Leagues
+                .Where(l => l.Monitored && l.ExternalId != null && idList.Contains(l.ExternalId!))
+                .ToListAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "[Changes Poller] {Changes} change(s) across {Leagues} league(s) upstream; {Local} affect this library",
+                totalChanges, work.Count, affectedLeagues.Count);
+
+            foreach (var league in affectedLeagues)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var order = work[league.ExternalId!];
+                try
+                {
+                    // forceRefresh on both paths so the hub serves the
+                    // just-changed data instead of a cached season response.
+                    // Targeted at only the changed leagues/seasons, so the
+                    // upstream cost stays small.
+                    if (order.Seasons.Count > 0)
+                    {
+                        _logger.LogInformation(
+                            "[Changes Poller] Refreshing {LeagueName} season(s) {Seasons} (hub reported changes)",
+                            league.Name, string.Join(", ", order.Seasons));
+
+                        var seasonResult = await syncService.SyncLeagueEventsAsync(
+                            league.Id, seasons: order.Seasons.ToList(), fullHistoricalSync: false,
+                            forceRefresh: true, cancellationToken: cancellationToken);
+
+                        if (!seasonResult.Success)
+                        {
+                            _logger.LogWarning("[Changes Poller] Season refresh of {LeagueName} failed: {Message}",
+                                league.Name, seasonResult.Message);
+                        }
+                    }
+
+                    if (order.SmartWalk)
+                    {
+                        _logger.LogInformation(
+                            "[Changes Poller] Refreshing {LeagueName} (league-level change reported)",
+                            league.Name);
+
+                        var walkResult = await syncService.SyncLeagueEventsAsync(
+                            league.Id, seasons: null, fullHistoricalSync: false, forceRefresh: true,
+                            cancellationToken: cancellationToken);
+
+                        if (!walkResult.Success)
+                        {
+                            _logger.LogWarning("[Changes Poller] Refresh of {LeagueName} failed: {Message}",
+                                league.Name, walkResult.Message);
+                        }
+                    }
+
+                    refreshedNames.Add(league.Name);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[Changes Poller] Refresh of {LeagueName} failed", league.Name);
+                }
+            }
+        }
+
+        if (cursor != settings.HubChangesCursor)
+        {
+            settings.HubChangesCursor = cursor;
+            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogDebug("[Changes Poller] Cursor advanced to {Cursor}", cursor);
+        }
+
+        if (totalChanges == 0)
+        {
+            return "Hub reports no changes since the last check - library is current";
+        }
+        return refreshedNames.Count > 0
+            ? $"{totalChanges} hub change(s); refreshed {string.Join(", ", refreshedNames)}"
+            : $"{totalChanges} hub change(s); none affect this library";
+    }
+}

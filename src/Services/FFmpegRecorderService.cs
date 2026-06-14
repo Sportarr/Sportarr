@@ -422,9 +422,12 @@ public class FFmpegRecorderService
         }
     }
 
-    // Private helper methods
+    // Helper methods
 
-    private string? GetFFmpegPath()
+    // Public so CatchupDownloadService can reuse the same binary
+    // resolution for archive downloads instead of duplicating the
+    // candidate-path probing.
+    public string? GetFFmpegPath()
     {
         // Check common locations
         var possiblePaths = new[]

@@ -766,7 +766,10 @@ app.MapPost("/api/pack-import/import", async (
     var result = await packImportService.ImportPackAsync(
         request.Path,
         request.LeagueId,
-        request.DeleteUnmatched ?? true,
+        // Default to NOT deleting. Deletion recursively removes unmatched video files (and
+        // prunes emptied directories) under a caller-supplied path, so it must be an explicit
+        // opt-in rather than the default behavior.
+        request.DeleteUnmatched ?? false,
         request.DryRun ?? false);
 
     return Results.Ok(new {

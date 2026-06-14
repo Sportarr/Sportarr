@@ -14,20 +14,20 @@ interface RefreshScopeModalProps {
 /**
  * Two-option modal shown when the user clicks the league refresh button.
  *
- * Refresh-current is the fast common case ("anything new this season?")
- * and walks only current + future seasons -- usually 5-8 cached requests
- * that complete in well under a second.
+ * Check-for-changes is the fast common case ("anything new?") and runs
+ * an immediate hub changes poll: the server names exactly which seasons
+ * changed (historical included) and only those get re-synced. The same
+ * check runs automatically every 15 minutes in the background, so this
+ * is "don't wait for the next cycle" rather than a different mechanism.
  *
- * Refresh-all walks every historical season Sportarr API knows about.
- * Slow when sportarr.net's cache is cold on older seasons, but the
- * right tool when a user knows historical data was corrected on the
- * server and they want their local Sportarr DB re-synced against every
- * season's now-correct data.
+ * Refresh-all walks every historical season the Sportarr API knows
+ * about, blindly. It's the recovery tool: restored database, install
+ * offline past the change feed's retention window, or "I don't trust
+ * my local data, rebuild it from server truth".
  *
  * We split this into a modal rather than running both paths from the
  * single button so users don't inadvertently fire the heavy walk on
- * every click. Most clicks are "did this week's games update?" -- that
- * stays one click + one tap.
+ * every click.
  */
 export default function RefreshScopeModal({
   isOpen,
@@ -69,10 +69,10 @@ export default function RefreshScopeModal({
                     </div>
                     <div className="flex-1 min-w-0">
                       <Dialog.Title as="h3" className="text-base md:text-lg font-bold text-white mb-1">
-                        Refresh {leagueName ?? 'League'}
+                        Sync {leagueName ?? 'League'}
                       </Dialog.Title>
                       <p className="text-xs md:text-sm text-gray-400">
-                        Pick how much of the league to re-sync from the Sportarr API.
+                        Pick how to sync this league with the Sportarr API.
                       </p>
                     </div>
                   </div>
@@ -86,11 +86,11 @@ export default function RefreshScopeModal({
                         <ClockIcon className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm md:text-base font-semibold text-white mb-0.5">
-                            Current season only
+                            Quick Sync
                             <span className="ml-2 text-xs font-normal text-green-400">recommended</span>
                           </div>
                           <p className="text-xs text-gray-400">
-                            Updates the current season and any upcoming scheduled games. Fast — usually completes in under a second.
+                            Asks the server what changed and applies exactly that — any season, any league you monitor. This also runs automatically every 15 minutes; use this to skip the wait.
                           </p>
                         </div>
                       </div>
@@ -104,10 +104,10 @@ export default function RefreshScopeModal({
                         <ExclamationTriangleIcon className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm md:text-base font-semibold text-white mb-0.5">
-                            All seasons (full history)
+                            Deep Sync
                           </div>
                           <p className="text-xs text-gray-400">
-                            Walks every season this league has on the Sportarr API, including decades of historical events. Can take a few minutes the first time. Use this when you know the cached data was wrong and was updated on the server.
+                            Re-syncs every season this league has on the Sportarr API, including decades of historical events. Can take a few minutes. Use this for recovery — a restored backup, an install that was offline for weeks, or data you suspect has drifted.
                           </p>
                         </div>
                       </div>

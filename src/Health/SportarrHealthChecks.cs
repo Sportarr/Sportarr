@@ -242,6 +242,140 @@ public class MemoryHealthCheck : IHealthCheck
 }
 
 /// <summary>
+/// Health check that warns when hardlinks are enabled but a download path and a
+/// library root folder live on different mounts/volumes, so imports will silently
+/// fall back to a full copy. This is the most common cause of "imports are slow"
+/// in Docker, where separate bind mounts have different device ids even on one
+/// host filesystem. Read-only: it only compares device ids (no files created).
+/// </summary>
+public class HardlinkHealthCheck : IHealthCheck
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<HardlinkHealthCheck> _logger;
+
+    public HardlinkHealthCheck(IServiceScopeFactory scopeFactory, ILogger<HardlinkHealthCheck> logger)
+    {
+        _scopeFactory = scopeFactory;
+        _logger = logger;
+    }
+
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+
+            var settings = await dbContext.MediaManagementSettings.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+            if (settings == null || !settings.UseHardlinks)
+            {
+                // Copy mode is intended — nothing to warn about.
+                return HealthCheckResult.Healthy("Hardlinks not enabled");
+            }
+
+            var mappings = await dbContext.RemotePathMappings.ToListAsync(cancellationToken).ConfigureAwait(false);
+            var localDownloadPaths = mappings
+                .Select(m => m.LocalPath)
+                .Where(p => !string.IsNullOrWhiteSpace(p) && Directory.Exists(p))
+                .Distinct()
+                .ToList();
+
+            if (localDownloadPaths.Count == 0)
+            {
+                // Without a remote path mapping we can't identify the local download
+                // path, so we can't compare it against the library here.
+                return HealthCheckResult.Healthy("No local download paths to verify");
+            }
+
+            var rootFolders = (await dbContext.RootFolders.ToListAsync(cancellationToken).ConfigureAwait(false))
+                .Where(rf => Directory.Exists(rf.Path))
+                .ToList();
+            if (rootFolders.Count == 0)
+            {
+                return HealthCheckResult.Healthy("No accessible root folders to verify");
+            }
+
+            var conflicts = new List<string>();
+            foreach (var downloadPath in localDownloadPaths)
+            {
+                var downloadDevice = GetDeviceToken(downloadPath);
+                if (downloadDevice == null) continue; // couldn't determine — skip rather than false-alarm
+
+                foreach (var root in rootFolders)
+                {
+                    var rootDevice = GetDeviceToken(root.Path);
+                    if (rootDevice == null) continue;
+
+                    if (!string.Equals(downloadDevice, rootDevice, StringComparison.OrdinalIgnoreCase))
+                    {
+                        conflicts.Add($"'{downloadPath}' and '{root.Path}' are on different mounts");
+                    }
+                }
+            }
+
+            if (conflicts.Count > 0)
+            {
+                return HealthCheckResult.Degraded(
+                    "Hardlinks enabled but download and library paths are on different mounts, so imports " +
+                    "will fall back to slow full copies. Put both under a single shared volume/mount to enable " +
+                    "hardlinks. " + string.Join("; ", conflicts.Take(10)));
+            }
+
+            return HealthCheckResult.Healthy("Hardlink paths OK");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Hardlink health check failed");
+            // Don't fail readiness over a diagnostic check.
+            return HealthCheckResult.Healthy("Hardlink check skipped (error)");
+        }
+    }
+
+    /// <summary>
+    /// Return a token identifying the filesystem/volume a path lives on, so two
+    /// paths on the same mount compare equal. Unix: the device number from
+    /// `stat -c %d`. Windows: the path root (drive). Null if it can't be determined.
+    /// </summary>
+    private static string? GetDeviceToken(string path)
+    {
+        try
+        {
+            var full = Path.GetFullPath(path);
+
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+            {
+                return Path.GetPathRoot(full)?.ToLowerInvariant();
+            }
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "stat",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add("%d");
+            psi.ArgumentList.Add(full);
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null) return null;
+
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit(3000);
+
+            return string.IsNullOrEmpty(output) ? null : output;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}
+
+/// <summary>
 /// Extension methods to register Sportarr health checks.
 /// </summary>
 public static class HealthCheckExtensions
@@ -255,6 +389,7 @@ public static class HealthCheckExtensions
             .AddCheck<DatabaseHealthCheck>("database", tags: new[] { "db", "ready" })
             .AddCheck<DiskSpaceHealthCheck>("disk_space", tags: new[] { "resources" })
             .AddCheck<ConfigurationHealthCheck>("configuration", tags: new[] { "config", "ready" })
-            .AddCheck<MemoryHealthCheck>("memory", tags: new[] { "resources" });
+            .AddCheck<MemoryHealthCheck>("memory", tags: new[] { "resources" })
+            .AddCheck<HardlinkHealthCheck>("hardlinks", tags: new[] { "resources" });
     }
 }

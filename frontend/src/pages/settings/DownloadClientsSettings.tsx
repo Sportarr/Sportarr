@@ -111,7 +111,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Free and reliable torrent client',
     defaultPort: 8080,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'sequentialOrder', 'firstAndLast', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'sequentialOrder', 'firstAndLast', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Transmission',
@@ -1141,8 +1141,14 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
 
                     {selectedTemplate?.fields.includes('apiKey') && (
                       <div>
+                        {/* qBittorrent's API key (5.2+) is OPTIONAL - it
+                            replaces username/password Bearer-style. Every
+                            other client that shows this field (SABnzbd,
+                            NZBdav) requires it. */}
                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                          API Key {editingClient ? '' : '*'}
+                          API Key {selectedTemplate?.implementation === 'qBittorrent'
+                            ? '(optional)'
+                            : (editingClient ? '' : '*')}
                         </label>
                         <input
                           type="password"
@@ -1151,7 +1157,12 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                           placeholder={editingClient ? "Leave blank to keep existing API key" : "Enter API key"}
                         />
-                        {editingClient && (
+                        {selectedTemplate?.implementation === 'qBittorrent' ? (
+                          <p className="text-xs text-gray-500 mt-1">
+                            qBittorrent 5.2+ only. Generate it under qBittorrent's Web UI &rarr; API Key.
+                            Leave blank to use username/password instead.
+                          </p>
+                        ) : editingClient && (
                           <p className="text-xs text-gray-500 mt-1">
                             Leave blank to keep the existing API key, or enter a new one to update it
                           </p>

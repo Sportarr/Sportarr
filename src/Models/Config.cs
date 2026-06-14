@@ -187,6 +187,49 @@ public class Config
     /// </summary>
     public string DvrConflictPolicy { get; set; } = "Refuse";
 
+    // DVR Catchup Settings
+    //
+    // Catchup downloads pull the already-aired recording window from the
+    // provider's timeshift archive after the event finishes, instead of
+    // capturing the stream live. No start/end guessing, survives app
+    // downtime, retryable while the archive retains the window. Method
+    // ported from timeshifter by scottrobertson
+    // (github.com/scottrobertson/timeshifter).
+
+    /// <summary>
+    /// When true (default), events whose resolved channel has a catchup
+    /// archive (Xtream tv_archive) are downloaded from the archive after
+    /// they finish airing instead of being recorded live. Channels
+    /// without an archive always fall back to live recording.
+    /// </summary>
+    public bool DvrUseCatchupWhenAvailable { get; set; } = true;
+
+    /// <summary>
+    /// Extra minutes to wait after an event's window closes before
+    /// downloading it from the archive. Providers can lag in making the
+    /// most recent footage available; a grace period avoids pulling a
+    /// truncated tail and having to re-download.
+    /// </summary>
+    public int DvrCatchupReadyGraceMinutes { get; set; } = 15;
+
+    /// <summary>
+    /// Timeshift URL style for catchup downloads. "auto" (default) tries
+    /// the path style (/timeshift/user/pass/duration/start/streamId.ts,
+    /// which most Xtream panels expect), falls back to the "php" style
+    /// (streaming/timeshift.php query parameters) on failure, and
+    /// remembers per provider which one worked. "path" / "php" force a
+    /// single style for unusual panels.
+    /// </summary>
+    public string DvrCatchupTimeshiftMode { get; set; } = "auto";
+
+    /// <summary>
+    /// How many hours back the catchup auto-scheduler looks for finished
+    /// monitored events that never got a recording (missed because the
+    /// app was down, the event was added late, or it pre-dates catchup).
+    /// Bounded by each channel's own archive retention.
+    /// </summary>
+    public int DvrCatchupBackfillHours { get; set; } = 48;
+
     // Development Settings (hidden - only serialized to XML when set)
     public string CustomMetadataApiUrl { get; set; } = ""; // Custom metadata API URL for development/testing (empty = use default sportarr.net)
 

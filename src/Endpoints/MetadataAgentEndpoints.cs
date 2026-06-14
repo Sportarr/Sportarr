@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -138,13 +139,14 @@ public static class MetadataAgentEndpoints
 
         // Single episode (event) by external id. Lets an agent resolve one
         // game without pulling the whole season list.
-        app.MapGet("/api/metadata/agents/episode/{eventId}", async (string eventId, SportarrDbContext db) =>
+        app.MapGet("/api/metadata/agents/episode/{eventId}", async (string eventId, SportarrDbContext db, SportarrApiClient apiClient) =>
         {
             var evt = await db.Events.FirstOrDefaultAsync(e => e.ExternalId == eventId);
             if (evt == null)
                 return Results.Ok(new { error = "Episode not found" });
 
-            return Results.Ok(ToEpisode(evt));
+            var cast = await apiClient.GetEventCastAsync(evt.ExternalId);
+            return Results.Ok(ToEpisode(evt, cast));
         });
 
         // Resolve a single game by series + season + episode number, mirroring
@@ -152,7 +154,7 @@ public static class MetadataAgentEndpoints
         // instead of the whole season list (the expensive pattern against the
         // cloud). Same numbering source as /episodes, so the resolved event
         // matches the season list and the filename.
-        app.MapGet("/api/metadata/match", async (string? series, string? season, int? episode, SportarrDbContext db) =>
+        app.MapGet("/api/metadata/match", async (string? series, string? season, int? episode, SportarrDbContext db, SportarrApiClient apiClient) =>
         {
             if (string.IsNullOrWhiteSpace(series) || string.IsNullOrWhiteSpace(season) || episode == null)
                 return Results.Ok(new { error = "series, season and episode are required" });
@@ -177,6 +179,7 @@ public static class MetadataAgentEndpoints
                 return Results.Ok(new { error = "Episode not found" });
 
             var seasonLabel = events.Select(e => e.Season).FirstOrDefault(s => !string.IsNullOrEmpty(s));
+            var cast = await apiClient.GetEventCastAsync(evt.ExternalId);
 
             return Results.Ok(new
             {
@@ -208,7 +211,7 @@ public static class MetadataAgentEndpoints
                         episode_count = events.Count(e => !IsExcluded(e.Status)),
                         year = ParseYear(seasonLabel) ?? sn
                     },
-                    episode = ToEpisode(evt),
+                    episode = ToEpisode(evt, cast),
                     confidence = 1.0
                 },
                 confidence = 1.0,
@@ -264,7 +267,12 @@ public static class MetadataAgentEndpoints
         return digits.Length == 4 && int.TryParse(digits, out var y) ? y : (int?)null;
     }
 
-    private static object ToEpisode(Event e) => new
+    // Bulk/season-list callers use the cast-free overload so the whole-season
+    // response stays lean (no per-event hub call). The per-episode handlers
+    // pass the cast they fetched from the hub.
+    private static object ToEpisode(Event e) => ToEpisode(e, null);
+
+    private static object ToEpisode(Event e, IReadOnlyList<HubCastMember>? cast) => new
     {
         id = e.ExternalId,
         title = e.Title,
@@ -277,9 +285,20 @@ public static class MetadataAgentEndpoints
         part_number = (int?)null,
         part_name = (string?)null,
         duration_minutes = (int?)null,
+        round = e.Round,
         venue = e.Venue,
         home_team = e.HomeTeamName,
         away_team = e.AwayTeamName,
-        sport = e.Sport
+        sport = e.Sport,
+        cast = cast == null
+            ? Array.Empty<object>()
+            : cast.Select(c => new
+            {
+                name = c.Name,
+                team = c.Team,
+                side = c.Side,
+                position = c.Position,
+                number = c.Number
+            }).ToArray()
     };
 }
