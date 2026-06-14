@@ -113,6 +113,15 @@ public class ReleaseMatchingService
         new Regex(@"Round[\s\.\-]*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),   // Round 22, Round22
         new Regex(@"\bRd[\s\.\-]*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),    // Rd 22, Rd22
         new Regex(@"\bR(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase),        // R22 (not R2025)
+        // {Year}x{Round} marker (e.g. "2026x02" -> round 2): the round follows
+        // the season-year after an 'x'. Some feeds (Sky's F1 releases among
+        // them) carry no "Round" keyword, so without this the round-mismatch
+        // guard below never fires and a wrong-round release could ride the year
+        // bonus over threshold. Listed last so explicit Round/Rd/R forms win
+        // when both are present. The boundaries are [^0-9A-Za-z] lookarounds
+        // rather than \b so underscore-delimited titles (Formula_1_2026x02_...)
+        // match too -- '_' is a word char, so \b would not fire around it.
+        new Regex(@"(?<![0-9A-Za-z])20[12]\dx(\d{1,2})(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase), // 2026x02
     };
 
     private static readonly Regex _splitSeparatorsRegex = new(
