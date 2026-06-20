@@ -337,7 +337,7 @@ jobs:
             'versions': [{
               'version': '${VERSION}',
               'changelog': 'See https://github.com/${REPO}/releases/tag/${TAG}',
-              'targetAbi': '10.9.0.0',
+              'targetAbi': '10.10.0.0',
               'sourceUrl': 'https://github.com/${REPO}/releases/download/${TAG}/sportarr-jellyfin-plugin_${VERSION}.zip',
               'checksum': '${CHECKSUM}',
               'timestamp': '${TIMESTAMP}'

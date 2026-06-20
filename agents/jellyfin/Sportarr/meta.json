@@ -7,7 +7,7 @@
   "overview": "Automatically enriches your sports library with metadata from Sportarr including event descriptions, air dates, posters, banners, and thumbnails.",
   "owner": "Sportarr",
   "status": "Active",
-  "targetAbi": "10.9.0.0",
+  "targetAbi": "10.10.0.0",
   "timestamp": "",
   "version": "1.0.0"
 }
