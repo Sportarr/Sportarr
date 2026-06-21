@@ -30,11 +30,19 @@ RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
         sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources; \
     fi
 
+# Cache-bust this layer per build (CI passes a unique value) so the apt
+# security upgrade below always re-runs against the current Debian security
+# suite instead of being served from a stale cached layer. Without it, the
+# cached layer froze OS packages (libzvbi, sed, libc6, ...) at old versions,
+# which is exactly what the Trivy image scan kept reporting.
+ARG CACHEBUST=dev
+
 # Install runtime dependencies including hardware acceleration drivers
 # Architecture-aware installation:
 # - amd64: Full Intel QSV + VAAPI + OpenCL support
 # - arm64: VAAPI only (no Intel-specific packages)
-RUN apt-get update && \
+RUN echo "apt layer build: ${CACHEBUST}" && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         # Core dependencies (all architectures)
         sqlite3 \

@@ -267,8 +267,12 @@ jobs:
           tags: |
             sportarr/sportarr:dev
             sportarr/sportarr:${{ steps.version.outputs.version }}
+          # Pull the latest base + bust the apt layer so dev images get current
+          # Debian security patches instead of a stale cached base/apt layer.
+          pull: true
           build-args: |
             SPORTARR_BRANCH=dev
+            CACHEBUST=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false

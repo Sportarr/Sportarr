@@ -443,6 +443,14 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.docker_tags.outputs.tags }}
+          # Always pull the latest base image so a refreshed aspnet:8.0 (with
+          # current Debian security patches) is used instead of a stale cached
+          # base. Paired with the CACHEBUST build-arg below, which re-runs the
+          # in-image apt security upgrade every release so OS packages don't
+          # freeze at old versions across cached builds (what Trivy flagged).
+          pull: true
+          build-args: |
+            CACHEBUST=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
