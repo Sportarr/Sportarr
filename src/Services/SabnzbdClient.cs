@@ -213,6 +213,103 @@ public class SabnzbdClient
     }
 
     /// <summary>
+    /// Add NZB to DecypharrUsenet - which only supports addfile mode with a specific format.
+    /// Decypharr's SABnzbd API emulator requires:
+    ///   - POST to /sabnzbd/api?mode=addfile&output=json (mode in QUERY STRING, not form data)
+    ///   - File field name "name" (not "nzbfile")
+    ///   - No API key required (Decypharr ignores it)
+    /// See: https://docs.decypharr.com/guides/usenet/sabnzbd/
+    /// This method is intentionally separate from AddNzbAsync/AddNzbViaContentAsync so the
+    /// normal SABnzbd routing remains unchanged.
+    /// </summary>
+    public async Task<string?> AddNzbForDecypharrAsync(DownloadClient config, string nzbUrl, string category)
+    {
+        try
+        {
+            _logger.LogInformation("[DecypharrUsenet] Fetching NZB from: {Url}", nzbUrl);
+
+            // Fetch the NZB file as raw bytes to preserve encoding
+            using var response = await _httpClient.GetAsync(nzbUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("[DecypharrUsenet] Failed to fetch NZB: HTTP {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            var nzbBytes = await response.Content.ReadAsByteArrayAsync();
+            var filename = GetNzbFilename(response, nzbUrl);
+
+            _logger.LogInformation("[DecypharrUsenet] Downloaded NZB: {Filename} ({Size} bytes)", filename, nzbBytes.Length);
+
+            // Validate the NZB content before uploading
+            var validationResult = ValidateNzbContent(nzbBytes);
+            if (!validationResult.IsValid)
+            {
+                _logger.LogError("[DecypharrUsenet] Invalid NZB content: {Reason}. Content preview: {Preview}",
+                    validationResult.Reason, validationResult.ContentPreview);
+                return null;
+            }
+
+            // Build base URL (same path handling as standard SABnzbd)
+            var protocol = config.UseSsl ? "https" : "http";
+            var urlBase = config.UrlBase ?? "";
+            if (!string.IsNullOrEmpty(urlBase))
+            {
+                if (!urlBase.StartsWith("/")) urlBase = "/" + urlBase;
+                urlBase = urlBase.TrimEnd('/');
+            }
+            var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/api";
+
+            // Decypharr requires mode and output in the QUERY STRING (not form data).
+            // Sending them in form data causes Decypharr to return a default 404 page.
+            var uploadUrl = $"{baseUrl}?mode=addfile&output=json";
+
+            // Build multipart content. Decypharr requires the file field to be named "name"
+            // (the SABnzbd standard). Using "nzbfile" causes Decypharr to return
+            // {"status":false,"error":"No files uploaded"}.
+            using var content = new MultipartFormDataContent();
+
+            if (!string.IsNullOrWhiteSpace(category))
+            {
+                content.Add(new StringContent(category), "cat");
+            }
+
+            var fileContent = new ByteArrayContent(nzbBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
+            content.Add(fileContent, "name", filename);
+
+            _logger.LogInformation("[DecypharrUsenet] Uploading NZB to: {Url}", uploadUrl);
+
+            using var uploadResponse = await _httpClient.PostAsync(uploadUrl, content);
+            var responseContent = await uploadResponse.Content.ReadAsStringAsync();
+
+            _logger.LogDebug("[DecypharrUsenet] Upload response: {Status} {Body}",
+                uploadResponse.StatusCode, responseContent);
+
+            if (uploadResponse.IsSuccessStatusCode && !string.IsNullOrEmpty(responseContent))
+            {
+                var doc = JsonDocument.Parse(responseContent);
+                if (doc.RootElement.TryGetProperty("nzo_ids", out var ids) &&
+                    ids.GetArrayLength() > 0)
+                {
+                    var nzoId = ids[0].GetString();
+                    _logger.LogInformation("[DecypharrUsenet] NZB added successfully: {NzoId}", nzoId);
+                    return nzoId;
+                }
+            }
+
+            _logger.LogError("[DecypharrUsenet] Failed to add NZB: {Status} - {Response}",
+                uploadResponse.StatusCode, responseContent);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DecypharrUsenet] Error adding NZB");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Extract filename from response headers or URL
     /// </summary>
     private string GetNzbFilename(HttpResponseMessage response, string url)

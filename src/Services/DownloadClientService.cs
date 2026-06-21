@@ -284,7 +284,7 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Sabnzbd => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)),
                 DownloadClientType.NzbGet => WrapLegacyResult(await AddToNzbGetAsync(config, url, category)),
                 DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes),
-                DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // Decypharr usenet uses SABnzbd API emulation - must use URL mode so Decypharr can intercept
+                DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToDecypharrUsenetAsync(config, url, category)), // Decypharr usenet only supports addfile mode (not addurl) and requires a specific request format. See https://docs.decypharr.com/guides/usenet/sabnzbd/
                 DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // NZBdav uses SABnzbd API but only supports addurl mode (not addfile)
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
@@ -716,6 +716,19 @@ public class DownloadClientService : IDownloadClientService
         var client = GetSabnzbdClient(config);
         var nzoId = await client.AddNzbViaUrlOnlyAsync(config, url, category);
         return nzoId;
+    }
+
+    /// <summary>
+    /// Add NZB to DecypharrUsenet using its specific SABnzbd-compatible API format.
+    /// Decypharr only supports addfile mode (not addurl) and requires:
+    ///   - mode=addfile in the query string (not form data)
+    ///   - File field name "name" (not "nzbfile")
+    /// See: https://docs.decypharr.com/guides/usenet/sabnzbd/
+    /// </summary>
+    private async Task<string?> AddToDecypharrUsenetAsync(DownloadClient config, string url, string category)
+    {
+        var client = GetSabnzbdClient(config);
+        return await client.AddNzbForDecypharrAsync(config, url, category);
     }
 
     private async Task<string?> AddToNzbGetAsync(DownloadClient config, string url, string category)
