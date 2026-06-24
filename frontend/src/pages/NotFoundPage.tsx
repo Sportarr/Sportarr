@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { HomeIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { getImageUrl } from '../utils/request';
 
 export default function NotFoundPage() {
   const navigate = useNavigate();
@@ -10,7 +11,7 @@ export default function NotFoundPage() {
         {/* 404 Image */}
         <div className="mb-8">
           <img
-            src="/404.png"
+            src={getImageUrl('404.png')}
             alt="404 - Page Not Found"
             className="w-full max-w-md mx-auto"
           />

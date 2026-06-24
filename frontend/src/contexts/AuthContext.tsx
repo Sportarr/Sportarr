@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { createRequestUrl } from '../utils/request';
+import { primeApiKey, clearPrimedApiKey } from '../api/client';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -25,6 +27,19 @@ const initialAuthState: AuthState = {
   isLoading: true,
 };
 
+function normalizeAppPath(path: string): string {
+  const urlBase = window.Sportarr?.urlBase || '';
+  if (!path) {
+    return '/leagues';
+  }
+
+  if (urlBase && path.startsWith(urlBase + '/')) {
+    return path.slice(urlBase.length) || '/';
+  }
+
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Use a single state object to ensure atomic updates and prevent flash
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
@@ -41,13 +56,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const response = await fetch('/api/auth/check', {
+      const response = await fetch(createRequestUrl('/api/auth/check'), {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
-      // Use window.location.pathname to get the actual browser URL
-      const currentPath = window.location.pathname;
+      // Extract relative path by removing UrlBase prefix (window.location.pathname includes it)
+      // This ensures /login comparison works correctly when deployed at any subpath
+      const urlBase = window.Sportarr?.urlBase || '';
+      const currentPath = window.location.pathname.startsWith(urlBase)
+        ? window.location.pathname.slice(urlBase.length) || '/'
+        : window.location.pathname;
       console.log('[AUTH] Current path:', currentPath);
 
       if (response.ok) {
@@ -72,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // This is the ONLY navigation we do - ProtectedRoute handles redirects TO login
         if (authenticated && currentPath === '/login') {
           const searchParams = new URLSearchParams(window.location.search);
-          const returnUrl = searchParams.get('returnUrl') || '/leagues';
+          const returnUrl = normalizeAppPath(searchParams.get('returnUrl') || '/leagues');
           console.log('[AUTH] Already authenticated on login page, redirecting to:', returnUrl);
           navigate(returnUrl, { replace: true });
         }
@@ -125,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string, rememberMe: boolean): Promise<boolean> => {
     try {
-      const response = await fetch('/api/login', {
+      const response = await fetch(createRequestUrl('/api/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -136,6 +155,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
+          // Prime API key immediately after login to avoid first-page 401 race
+          // before a hard reload or auth re-check updates in-memory window.Sportarr.
+          await primeApiKey();
           setAuthState(prev => ({ ...prev, isAuthenticated: true }));
           return true;
         }
@@ -149,10 +171,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+      await fetch(createRequestUrl('/api/logout'), { method: 'POST', credentials: 'include' });
     } catch (error) {
       console.error('Logout failed:', error);
     } finally {
+      clearPrimedApiKey();
       setAuthState(prev => ({ ...prev, isAuthenticated: false }));
       navigate('/login');
     }

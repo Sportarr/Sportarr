@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus, useActivityCounts } from '../api/hooks';
+import { getImageUrl } from '../utils/request';
 import {
   FolderIcon,
   ClockIcon,
@@ -193,7 +194,7 @@ export default function Layout() {
         <div className="flex items-center justify-between p-3">
           <Link to="/leagues" onClick={() => { cleanupInertAttributes(); setMobileMenuOpen(false); }} className="flex items-center space-x-2">
             <img
-              src="/logo-64.png"
+              src={getImageUrl('logo-64.png')}
               alt="Sportarr Logo"
               className="w-8 h-8 rounded-lg"
             />
@@ -233,7 +234,7 @@ export default function Layout() {
         <div className="hidden md:block p-4 border-b border-red-900/30">
           <Link to="/leagues" onClick={cleanupInertAttributes} className="flex items-center space-x-3">
             <img
-              src="/logo-64.png"
+              src={getImageUrl('logo-64.png')}
               alt="Sportarr Logo"
               className="w-10 h-10 rounded-lg"
             />

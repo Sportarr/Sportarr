@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { TrashIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import PageHeader from '../components/PageHeader';
@@ -125,7 +126,7 @@ const SystemEventsPage: React.FC = () => {
           <InformationCircleIcon className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-gray-300">
             <strong className="text-white">System Events:</strong> This page shows an audit trail of system operations.
-            For detailed application logs, visit the <a href="/system/logs" className="text-blue-400 hover:underline">Log Files</a> page.
+            For detailed application logs, visit the <Link to="/system/logs" className="text-blue-400 hover:underline">Log Files</Link> page.
           </div>
         </div>
       </div>
