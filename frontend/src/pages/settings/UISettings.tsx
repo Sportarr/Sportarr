@@ -5,6 +5,7 @@ import { apiGet, apiPut } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { UI_SETTINGS_QUERY_KEY } from '../../hooks/useUISettings';
+import { setGlobalBackoffCap } from '../../utils/queryBackoff';
 
 interface TimezoneInfo {
   id: string;
@@ -35,11 +36,18 @@ interface UISettingsData {
   eventViewMode: string;
   showUnknownLeagueItems: boolean;
   showEventPath: boolean;
+  // Network
+  queryBackoffCapMs: number;
   // Timezone
   timeZone: string;
 }
 
-export default function UISettings({ showAdvanced = false }: UISettingsProps) {
+export default function UISettings({ showAdvanced: propShowAdvanced = false }: UISettingsProps) {
+  // Show Advanced toggle - persisted per page to localStorage
+  const [showAdvanced, setShowAdvanced] = useState(() => {
+    const saved = localStorage.getItem('sportarr-showAdvanced-ui');
+    return saved === 'true' || propShowAdvanced;
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -66,9 +74,16 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
     eventViewMode: 'auto',
     showUnknownLeagueItems: false,
     showEventPath: false,
+    // Network
+    queryBackoffCapMs: 120000,
     // Timezone
     timeZone: '',
   });
+
+  // Persist showAdvanced to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('sportarr-showAdvanced-ui', showAdvanced.toString());
+  }, [showAdvanced]);
 
   // Load settings from API on mount
   useEffect(() => {
@@ -139,9 +154,11 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
       if (saveResponse.ok) {
         initialSettings.current = settings;
         setHasUnsavedChanges(false);
+        setGlobalBackoffCap(settings.queryBackoffCapMs);
         queryClient.setQueryData(UI_SETTINGS_QUERY_KEY, {
           timeZone: settings.timeZone,
           eventViewMode: settings.eventViewMode,
+          queryBackoffCapMs: settings.queryBackoffCapMs,
         });
       } else {
         console.error('Failed to save UI settings');
@@ -180,7 +197,17 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
         isSaving={saving}
         hasUnsavedChanges={hasUnsavedChanges}
         saveButtonText="Save Changes"
-      />
+      >
+        <label className="flex items-center space-x-2 cursor-pointer text-sm text-gray-300">
+          <input
+            type="checkbox"
+            checked={showAdvanced}
+            onChange={(e) => setShowAdvanced(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+          />
+          <span>Show Advanced</span>
+        </label>
+      </SettingsHeader>
 
       <div className="max-w-4xl mx-auto px-6">
 
@@ -462,6 +489,39 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
                 </p>
               </div>
             </label>
+          </div>
+        </div>
+      )}
+
+      {/* Advanced Network */}
+      {showAdvanced && (
+        <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-yellow-900/30 rounded-lg p-6">
+          <h3 className="text-xl font-semibold text-white mb-4">
+            Network
+            <span className="ml-2 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
+              Advanced
+            </span>
+          </h3>
+
+          <div>
+            <label className="block text-white font-medium mb-2">Retry/Poll Backoff Cap (seconds)</label>
+            <input
+              type="number"
+              min={1}
+              max={600}
+              step={1}
+              value={Math.round(settings.queryBackoffCapMs / 1000)}
+              onChange={(e) => {
+                const parsedSeconds = Number.parseInt(e.target.value, 10);
+                const safeSeconds = Number.isFinite(parsedSeconds) ? parsedSeconds : 120;
+                const clampedSeconds = Math.min(Math.max(safeSeconds, 1), 600);
+                updateSetting('queryBackoffCapMs', clampedSeconds * 1000);
+              }}
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Maximum delay used by exponential backoff for API retries and auto-refresh polling when requests are failing.
+            </p>
           </div>
         </div>
       )}

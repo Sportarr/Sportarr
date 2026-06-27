@@ -4,6 +4,7 @@ import { apiGet } from '../utils/api';
 interface UISettings {
   eventViewMode?: string;
   timeZone?: string;
+  queryBackoffCapMs?: number;
 }
 
 export const UI_SETTINGS_QUERY_KEY = ['ui-settings'] as const;
@@ -29,6 +30,7 @@ async function fetchUISettings(): Promise<UISettings | null> {
 export function useUISettings(): {
   eventViewMode: string;
   timezone: string | null;
+  queryBackoffCapMs: number;
   loading: boolean;
 } {
   const { data, isLoading } = useQuery({
@@ -41,6 +43,7 @@ export function useUISettings(): {
   return {
     eventViewMode: data?.eventViewMode ?? 'auto',
     timezone: data?.timeZone ?? null,
+    queryBackoffCapMs: Math.min(Math.max(data?.queryBackoffCapMs ?? 120_000, 1_000), 600_000),
     loading: isLoading,
   };
 }

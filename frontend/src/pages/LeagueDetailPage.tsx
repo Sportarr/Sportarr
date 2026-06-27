@@ -17,6 +17,7 @@ import { useSearchQueueStatus, useDownloadQueue, useTasks } from '../api/hooks';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
 import { formatDateInTimezone, formatEventDate } from '../utils/timezone';
+import { getRefetchIntervalWithBackoff } from '../utils/queryBackoff';
 import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_INFO, BUTTON_DESTRUCTIVE } from '../utils/designTokens';
 import { isFightingSport, isTeamlessSport, usesFightingEventTypes } from '../utils/leagueSportRules';
 
@@ -286,7 +287,11 @@ export default function LeagueDetailPage() {
       const response = await apiClient.get<LeagueDetail>(`/leagues/${id}`);
       return response.data;
     },
-    refetchInterval: leagueSyncActive ? 5000 : false,
+    refetchInterval: (query) => (
+      leagueSyncActive
+        ? getRefetchIntervalWithBackoff(5000, query.state.fetchFailureCount)
+        : false
+    ),
   });
 
   useEffect(() => {
@@ -309,11 +314,15 @@ export default function LeagueDetailPage() {
       // onto the page as they're written. The old gate only polled while
       // the list was EMPTY, so the first season to land froze the page
       // until a manual reload even though the sync kept writing.
-      if (leagueSyncActive) return 3000;
+      if (leagueSyncActive) {
+        return getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount);
+      }
       // Also poll while empty (covers the gap between page load and the
       // initial-add task appearing in the task list).
       const data = query.state.data;
-      return (!data || data.length === 0) ? 3000 : false;
+      return (!data || data.length === 0)
+        ? getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount)
+        : false;
     },
   });
 
