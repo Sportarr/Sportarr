@@ -747,9 +747,12 @@ public class SportsFileNameParser
 
         // Order matters: check more specific patterns first
         // Practice (most specific first — bare "practice" falls through to Practice 1)
-        if (Regex.IsMatch(lower, @"\bpractice\s*3\b|\bfp3\b")) return "Practice 3";
-        if (Regex.IsMatch(lower, @"\bpractice\s*2\b|\bfp2\b")) return "Practice 2";
-        if (Regex.IsMatch(lower, @"\bpractice\s*1\b|\bfp1\b")) return "Practice 1";
+        // Accept word ordinals too ("Practice Three") so the import-side label matches the
+        // EventPartDetector match gate, which already handles (3|three). Without this a
+        // word-form release parses to "Practice 1" here and is mis-imported. (issue #136/#168)
+        if (Regex.IsMatch(lower, @"\bpractice\s*(3|three)\b|\bfp3\b")) return "Practice 3";
+        if (Regex.IsMatch(lower, @"\bpractice\s*(2|two)\b|\bfp2\b")) return "Practice 2";
+        if (Regex.IsMatch(lower, @"\bpractice\s*(1|one)\b|\bfp1\b")) return "Practice 1";
         if (Regex.IsMatch(lower, @"\bpractice\b|\bfree\s+practice\b")) return "Practice 1";
         // Sprint sessions
         if (Regex.IsMatch(lower, @"\bsprint\s+qualifying\b")) return "Sprint Qualifying";
