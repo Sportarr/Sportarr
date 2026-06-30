@@ -975,6 +975,35 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not remove legacy MediaManagementSettings.RootFolders column: {ex.Message}");
         }
 
+        // Drop the orphaned MediaManagementSettings.RemoveCompletedDownloads /
+        // RemoveFailedDownloads columns. These settings moved to per-download-client
+        // configuration (the MediaManagementSettings model no longer maps them), but
+        // no migration dropped the columns. On databases created before the move they
+        // linger as NOT NULL with no default, and because EF's INSERT no longer
+        // includes them, saving Media Management settings and the import pipeline's
+        // GetMediaManagementSettingsAsync get-or-create both fail with
+        // "SQLite Error 19: NOT NULL constraint failed: MediaManagementSettings.RemoveCompletedDownloads".
+        // Requires SQLite 3.35+ (DROP COLUMN); the bundled Microsoft.Data.Sqlite satisfies that.
+        foreach (var legacyCol in new[] { "RemoveCompletedDownloads", "RemoveFailedDownloads" })
+        {
+            try
+            {
+                var checkLegacyCol = $"SELECT COUNT(*) FROM pragma_table_info('MediaManagementSettings') WHERE name='{legacyCol}'";
+                var legacyColExists = db.Database.SqlQueryRaw<int>(checkLegacyCol).AsEnumerable().FirstOrDefault();
+
+                if (legacyColExists > 0)
+                {
+                    Console.WriteLine($"[Sportarr] Removing orphaned MediaManagementSettings.{legacyCol} column (now a per-download-client setting)...");
+                    db.Database.ExecuteSqlRaw($@"ALTER TABLE ""MediaManagementSettings"" DROP COLUMN ""{legacyCol}""");
+                    Console.WriteLine($"[Sportarr] MediaManagementSettings.{legacyCol} column removed");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Sportarr] Warning: Could not remove orphaned MediaManagementSettings.{legacyCol} column: {ex.Message}");
+            }
+        }
+
         // Ensure Events.BroadcastDate column exists.
         // The seeding code above marks every migration in the assembly as
         // applied for legacy EnsureCreated() databases - including newer
