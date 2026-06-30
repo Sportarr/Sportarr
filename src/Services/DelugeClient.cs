@@ -112,13 +112,49 @@ public class DelugeClient
     }
 
     /// <summary>
-    /// Add torrent from URL.
-    /// NOTE: Does NOT specify download_location - Deluge uses its own configured directory.
-    ///
-    /// Uses core.add_torrent_file instead of core.add_torrent_url to avoid SSL/HTTPS issues
-    /// with Prowlarr proxy URLs. Downloads the torrent file first, then sends as base64.
+    /// Add a torrent from already-downloaded .torrent file bytes via core.add_torrent_file.
+    /// The caller (DownloadClientService) resolves the indexer/proxy URL first through
+    /// TorrentFileResolver so magnet redirects and malformed URLs are handled before we
+    /// reach Deluge — Deluge's own add_torrent_url can't follow a cross-scheme magnet
+    /// redirect and fails with "Unsupported scheme".
+    /// NOTE: Does NOT specify download_location unless config.Directory is set - otherwise
+    /// Deluge uses its own configured directory.
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
+    public async Task<string?> AddTorrentFromBytesAsync(DownloadClient config, byte[] torrentBytes, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
+    {
+        _logger.LogDebug("[Deluge] Adding torrent file to Deluge via add_torrent_file ({Bytes} bytes)", torrentBytes.Length);
+        var base64Content = Convert.ToBase64String(torrentBytes);
+        return await AddTorrentInternalAsync(config, "core.add_torrent_file",
+            options => new object[] { "download.torrent", base64Content, options },
+            category, seedRatioLimit, seedTimeLimitMinutes);
+    }
+
+    /// <summary>
+    /// Add a torrent from a magnet link via core.add_torrent_magnet. Used for magnet-only
+    /// indexers (and HTTP links that redirect to a magnet), which Deluge's add_torrent_url
+    /// path cannot handle.
+    /// </summary>
+    public async Task<string?> AddTorrentMagnetAsync(DownloadClient config, string magnetUrl, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
+    {
+        _logger.LogInformation("[Deluge] Adding magnet to Deluge via add_torrent_magnet");
+        return await AddTorrentInternalAsync(config, "core.add_torrent_magnet",
+            options => new object[] { magnetUrl, options },
+            category, seedRatioLimit, seedTimeLimitMinutes);
+    }
+
+    /// <summary>
+    /// Shared add-torrent flow: logs in, builds the common Deluge options
+    /// (add_paused / download_location), issues the RPC built by
+    /// <paramref name="buildParams"/>, then applies label, seed limits and the
+    /// configured initial state to the returned hash.
+    /// </summary>
+    private async Task<string?> AddTorrentInternalAsync(
+        DownloadClient config,
+        string method,
+        Func<Dictionary<string, object>, object[]> buildParams,
+        string category,
+        double? seedRatioLimit,
+        int? seedTimeLimitMinutes)
     {
         try
         {
@@ -130,7 +166,7 @@ public class DelugeClient
                 return null;
             }
 
-            // Build Deluge options (shared between add_torrent_file and add_torrent_url)
+            // Build Deluge options (shared between add_torrent_file and add_torrent_magnet)
             var shouldPause = config.InitialState == TorrentInitialState.Stopped;
             if (shouldPause)
             {
@@ -147,40 +183,7 @@ public class DelugeClient
                 _logger.LogInformation("[Deluge] Using directory override: {Directory}", config.Directory);
             }
 
-            // Try to download the torrent file first and send as base64 (preferred - avoids
-            // Deluge's SSL/HTTPS issues with Prowlarr proxy URLs). If the download fails
-            // (e.g. redirect to a URL with an unparseable hostname from certain indexers),
-            // fall back to core.add_torrent_url and let Deluge handle the download itself.
-            _logger.LogDebug("[Deluge] Downloading torrent file from URL: {Url}", torrentUrl);
-
-            string? response;
-            byte[]? torrentBytes = null;
-            try
-            {
-                var httpClient = GetHttpClient(config);
-                torrentBytes = await httpClient.GetByteArrayAsync(torrentUrl);
-                _logger.LogDebug("[Deluge] Downloaded {Bytes} bytes", torrentBytes.Length);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Deluge] Failed to download torrent file from URL (will fall back to add_torrent_url): {Url}", torrentUrl);
-            }
-
-            if (torrentBytes != null && torrentBytes.Length > 0)
-            {
-                // Preferred path: send torrent file as base64 via core.add_torrent_file
-                var base64Content = Convert.ToBase64String(torrentBytes);
-                _logger.LogDebug("[Deluge] Adding torrent file to Deluge via add_torrent_file");
-                response = await SendRpcRequestAsync(config, "core.add_torrent_file",
-                    new object[] { "download.torrent", base64Content, options });
-            }
-            else
-            {
-                // Fallback: let Deluge download the torrent from the URL directly
-                _logger.LogInformation("[Deluge] Falling back to add_torrent_url: {Url}", torrentUrl);
-                response = await SendRpcRequestAsync(config, "core.add_torrent_url",
-                    new object[] { torrentUrl, options });
-            }
+            var response = await SendRpcRequestAsync(config, method, buildParams(options));
 
             if (response == null)
             {

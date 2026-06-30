@@ -637,7 +637,30 @@ public class DownloadClientService : IDownloadClientService
     private async Task<string?> AddToDelugeAsync(DownloadClient config, string url, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         var client = GetDelugeClient(config);
-        return await client.AddTorrentAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes);
+
+        // Magnet links go straight to Deluge via core.add_torrent_magnet.
+        if (TorrentHashHelper.IsMagnet(url))
+        {
+            return await client.AddTorrentMagnetAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes);
+        }
+
+        // Resolve the .torrent link here (following redirects manually) so a magnet
+        // redirect from a magnet-only indexer is caught and added via add_torrent_magnet.
+        // Deluge's own add_torrent_url can't follow a cross-scheme redirect to a magnet:
+        // URI and fails with "Unsupported scheme", so we never hand it the raw URL.
+        var resolved = await TorrentFileResolver.ResolveAsync(url, config.DisableSslCertificateValidation, _logger);
+        if (!resolved.IsSuccess)
+        {
+            _logger.LogError("[Download Client] Failed to resolve torrent for Deluge from {Url}: {Error}", url, resolved.ErrorMessage);
+            return null;
+        }
+
+        if (resolved.IsMagnetRedirect)
+        {
+            return await client.AddTorrentMagnetAsync(config, resolved.MagnetLink!, category, seedRatioLimit, seedTimeLimitMinutes);
+        }
+
+        return await client.AddTorrentFromBytesAsync(config, resolved.TorrentData!, category, seedRatioLimit, seedTimeLimitMinutes);
     }
 
     private async Task<string?> AddToRTorrentAsync(DownloadClient config, string url, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
