@@ -2,11 +2,12 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
+import { createRequestUrl } from './utils/request';
 
 // Initialize window.Sportarr from backend
 async function init() {
   try {
-    const initializeUrl = `${window.Sportarr?.urlBase || ''}/initialize.json?t=${Date.now()}`;
+    const initializeUrl = createRequestUrl('/initialize.json') + `?t=${Date.now()}`;
     const response = await fetch(initializeUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch initialize.json: ${response.status}`);

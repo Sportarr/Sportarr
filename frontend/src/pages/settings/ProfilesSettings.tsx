@@ -1631,8 +1631,16 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                     </label>
                     <input
                       type="number"
-                      value={formData.cutoffFormatScore || 10000}
-                      onChange={(e) => setFormData(prev => ({ ...prev, cutoffFormatScore: parseInt(e.target.value) || 10000 }))}
+                      min={0}
+                      value={formData.cutoffFormatScore ?? 10000}
+                      onChange={(e) => {
+                        // Use nullish handling, not `|| 10000`: the old code treated a
+                        // typed 0 as falsy and snapped the field back to 10000, so the
+                        // cutoff could never be set to 0. Only fall back to the default
+                        // when the field is empty/non-numeric.
+                        const n = parseInt(e.target.value, 10);
+                        setFormData(prev => ({ ...prev, cutoffFormatScore: Number.isNaN(n) ? 10000 : n }));
+                      }}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1 min-h-[2.5rem]">

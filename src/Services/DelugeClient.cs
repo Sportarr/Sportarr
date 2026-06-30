@@ -524,8 +524,18 @@ public class DelugeClient
                         }
                     }
 
-                    _logger.LogDebug("[Deluge] Found {Count} torrents with label '{Label}'", torrents.Count, label);
-                    return torrents;
+                    // Deluge's server-side `label` status filter is unreliable across
+                    // versions and the Label plugin (it can return torrents that do not
+                    // carry the requested label, including unlabelled ones), so enforce
+                    // the label client-side too. Without this, the Activity page listed
+                    // torrents that have no Sportarr label.
+                    var filtered = torrents
+                        .Where(t => string.Equals(t.Label ?? string.Empty, label ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    _logger.LogDebug("[Deluge] Found {Count} torrents with label '{Label}' (of {Total} returned)",
+                        filtered.Count, label, torrents.Count);
+                    return filtered;
                 }
             }
 

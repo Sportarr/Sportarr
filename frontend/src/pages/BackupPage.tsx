@@ -10,6 +10,7 @@ import {
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import { apiGet, apiPost, apiDelete } from '../utils/api';
+import { createRequestUrl, getImageUrl } from '../utils/request';
 import { parseAsUtc } from '../utils/timezone';
 
 interface BackupInfo {
@@ -259,7 +260,7 @@ const BackupPage: React.FC = () => {
     try {
       const form = new FormData();
       form.append('backup', file);
-      const response = await fetch('/api/system/backup/upload', {
+      const response = await fetch(createRequestUrl('/api/system/backup/upload'), {
         method: 'POST',
         body: form,
       });

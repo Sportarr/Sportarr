@@ -27,7 +27,32 @@ public class SabnzbdClient
         try
         {
             var response = await SendApiRequestAsync(config, "?mode=version&output=json");
-            return response != null;
+            if (response == null)
+                return false;
+
+            // A 200 response can still carry {"status": false} or {"error": "..."}
+            // when authentication failed (common on SAB-compatible servers). Treat
+            // that as a failed test instead of reporting success and letting the
+            // first real grab fail with "Authentication required".
+            try
+            {
+                using var doc = JsonDocument.Parse(response);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.False)
+                {
+                    var err = root.TryGetProperty("error", out var e1) ? e1.GetString() : null;
+                    _logger.LogWarning("[SABnzbd] Connection test rejected by server: {Error}", err ?? "authentication failed");
+                    return false;
+                }
+                if (root.TryGetProperty("error", out var e2) && !string.IsNullOrEmpty(e2.GetString()))
+                {
+                    _logger.LogWarning("[SABnzbd] Connection test rejected by server: {Error}", e2.GetString());
+                    return false;
+                }
+            }
+            catch (JsonException) { /* non-JSON but reachable: accept as success */ }
+
+            return true;
         }
         catch (Exception ex)
         {
@@ -41,7 +66,7 @@ public class SabnzbdClient
     /// Uses raw byte handling to preserve encoding (ISO-8859-1 NZB files)
     /// Falls back to addurl mode if fetch fails or content is invalid
     /// </summary>
-    public async Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
+    public async Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null)
     {
         try
         {
@@ -57,7 +82,7 @@ public class SabnzbdClient
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("[SABnzbd] Failed to fetch NZB: HTTP {StatusCode}. Falling back to addurl mode.", response.StatusCode);
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
             }
 
             // Read as raw bytes - do NOT convert to string to avoid encoding issues
@@ -72,17 +97,17 @@ public class SabnzbdClient
             {
                 _logger.LogWarning("[SABnzbd] Invalid NZB content: {Reason}. Content preview: {Preview}. Falling back to addurl mode.",
                     validationResult.Reason, validationResult.ContentPreview);
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
             }
 
             // Upload the raw bytes to SABnzbd
-            var result = await AddNzbViaContentAsync(config, nzbBytes, filename, category);
+            var result = await AddNzbViaContentAsync(config, nzbBytes, filename, category, nzbname);
 
             // If addfile fails, fall back to addurl mode
             if (result == null)
             {
                 _logger.LogWarning("[SABnzbd] addfile mode failed. Falling back to addurl mode.");
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
             }
 
             return result;
@@ -92,7 +117,7 @@ public class SabnzbdClient
             _logger.LogError(ex, "[SABnzbd] Error adding NZB via addfile. Falling back to addurl mode.");
             try
             {
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
             }
             catch (Exception fallbackEx)
             {
@@ -149,7 +174,7 @@ public class SabnzbdClient
     /// Add NZB via content - uploads raw bytes to SABnzbd
     /// Uses multipart form upload to preserve original file encoding (ISO-8859-1)
     /// </summary>
-    private async Task<string?> AddNzbViaContentAsync(DownloadClient config, byte[] nzbBytes, string filename, string category)
+    private async Task<string?> AddNzbViaContentAsync(DownloadClient config, byte[] nzbBytes, string filename, string category, string? nzbname = null)
     {
         var protocol = config.UseSsl ? "https" : "http";
         var urlBase = config.UrlBase ?? "";
@@ -173,6 +198,16 @@ public class SabnzbdClient
                 "[SABnzbd] No category set for this grab, so SABnzbd will use its Default category and won't place the download in a per-category subfolder. Set a category on the download client AND define that category in SABnzbd (Config > Categories) with a Folder/Path.");
         }
 
+        // Pass the canonical release name as `nzbname` so SABnzbd-compatible targets
+        // use it instead of falling back to the multipart filename (which is often
+        // an indexer-provided hash) or the per-file yenc names (commonly obfuscated).
+        // SABnzbd documents this as the public name override:
+        // https://sabnzbd.org/wiki/configuration/4.4/api#addfile
+        if (!string.IsNullOrWhiteSpace(nzbname))
+        {
+            content.Add(new StringContent(nzbname), "nzbname");
+        }
+
         if (!string.IsNullOrWhiteSpace(config.Directory))
         {
             content.Add(new StringContent(config.Directory), "dir");
@@ -189,9 +224,21 @@ public class SabnzbdClient
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
         content.Add(fileContent, "nzbfile", filename);
 
+        // Some SAB-compatible servers (e.g. usenet-mount emulators) only read the
+        // mode/auth parameters from the query string and reject a form-only upload
+        // with "Authentication required". Real SABnzbd accepts them in either place,
+        // so we send them in the query string in addition to the multipart form.
+        var addFileQuery = new System.Text.StringBuilder("?mode=addfile&output=json");
+        if (!string.IsNullOrWhiteSpace(category))
+            addFileQuery.Append($"&cat={Uri.EscapeDataString(category)}");
+        if (!string.IsNullOrWhiteSpace(apiKey))
+            addFileQuery.Append($"&apikey={Uri.EscapeDataString(apiKey)}");
+        else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
+            addFileQuery.Append($"&ma_username={Uri.EscapeDataString(config.Username)}&ma_password={Uri.EscapeDataString(config.Password)}");
+
         _logger.LogInformation("[SABnzbd] Uploading NZB to SABnzbd: {Filename}, Category: {Category}", filename, category);
 
-        using var response = await _httpClient.PostAsync($"{baseUrl}/api", content);
+        using var response = await _httpClient.PostAsync($"{baseUrl}/api{addFileQuery}", content);
         var responseContent = await response.Content.ReadAsStringAsync();
 
         _logger.LogDebug("[SABnzbd] Upload response: {Response}", responseContent);
@@ -210,6 +257,103 @@ public class SabnzbdClient
 
         _logger.LogError("[SABnzbd] Failed to add NZB: {Response}", responseContent);
         return null;
+    }
+
+    /// <summary>
+    /// Add NZB to DecypharrUsenet - which only supports addfile mode with a specific format.
+    /// Decypharr's SABnzbd API emulator requires:
+    ///   - POST to /sabnzbd/api?mode=addfile&output=json (mode in QUERY STRING, not form data)
+    ///   - File field name "name" (not "nzbfile")
+    ///   - No API key required (Decypharr ignores it)
+    /// See: https://docs.decypharr.com/guides/usenet/sabnzbd/
+    /// This method is intentionally separate from AddNzbAsync/AddNzbViaContentAsync so the
+    /// normal SABnzbd routing remains unchanged.
+    /// </summary>
+    public async Task<string?> AddNzbForDecypharrAsync(DownloadClient config, string nzbUrl, string category)
+    {
+        try
+        {
+            _logger.LogInformation("[DecypharrUsenet] Fetching NZB from: {Url}", nzbUrl);
+
+            // Fetch the NZB file as raw bytes to preserve encoding
+            using var response = await _httpClient.GetAsync(nzbUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("[DecypharrUsenet] Failed to fetch NZB: HTTP {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            var nzbBytes = await response.Content.ReadAsByteArrayAsync();
+            var filename = GetNzbFilename(response, nzbUrl);
+
+            _logger.LogInformation("[DecypharrUsenet] Downloaded NZB: {Filename} ({Size} bytes)", filename, nzbBytes.Length);
+
+            // Validate the NZB content before uploading
+            var validationResult = ValidateNzbContent(nzbBytes);
+            if (!validationResult.IsValid)
+            {
+                _logger.LogError("[DecypharrUsenet] Invalid NZB content: {Reason}. Content preview: {Preview}",
+                    validationResult.Reason, validationResult.ContentPreview);
+                return null;
+            }
+
+            // Build base URL (same path handling as standard SABnzbd)
+            var protocol = config.UseSsl ? "https" : "http";
+            var urlBase = config.UrlBase ?? "";
+            if (!string.IsNullOrEmpty(urlBase))
+            {
+                if (!urlBase.StartsWith("/")) urlBase = "/" + urlBase;
+                urlBase = urlBase.TrimEnd('/');
+            }
+            var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/api";
+
+            // Decypharr requires mode and output in the QUERY STRING (not form data).
+            // Sending them in form data causes Decypharr to return a default 404 page.
+            var uploadUrl = $"{baseUrl}?mode=addfile&output=json";
+
+            // Build multipart content. Decypharr requires the file field to be named "name"
+            // (the SABnzbd standard). Using "nzbfile" causes Decypharr to return
+            // {"status":false,"error":"No files uploaded"}.
+            using var content = new MultipartFormDataContent();
+
+            if (!string.IsNullOrWhiteSpace(category))
+            {
+                content.Add(new StringContent(category), "cat");
+            }
+
+            var fileContent = new ByteArrayContent(nzbBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
+            content.Add(fileContent, "name", filename);
+
+            _logger.LogInformation("[DecypharrUsenet] Uploading NZB to: {Url}", uploadUrl);
+
+            using var uploadResponse = await _httpClient.PostAsync(uploadUrl, content);
+            var responseContent = await uploadResponse.Content.ReadAsStringAsync();
+
+            _logger.LogDebug("[DecypharrUsenet] Upload response: {Status} {Body}",
+                uploadResponse.StatusCode, responseContent);
+
+            if (uploadResponse.IsSuccessStatusCode && !string.IsNullOrEmpty(responseContent))
+            {
+                var doc = JsonDocument.Parse(responseContent);
+                if (doc.RootElement.TryGetProperty("nzo_ids", out var ids) &&
+                    ids.GetArrayLength() > 0)
+                {
+                    var nzoId = ids[0].GetString();
+                    _logger.LogInformation("[DecypharrUsenet] NZB added successfully: {NzoId}", nzoId);
+                    return nzoId;
+                }
+            }
+
+            _logger.LogError("[DecypharrUsenet] Failed to add NZB: {Status} - {Response}",
+                uploadResponse.StatusCode, responseContent);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DecypharrUsenet] Error adding NZB");
+            return null;
+        }
     }
 
     /// <summary>
@@ -252,27 +396,27 @@ public class SabnzbdClient
     /// Add NZB via URL only - for use with Decypharr and other proxies that need to intercept the URL
     /// This skips the fetch-and-upload approach and directly passes the URL to the download client
     /// </summary>
-    public async Task<string?> AddNzbViaUrlOnlyAsync(DownloadClient config, string nzbUrl, string category)
+    public async Task<string?> AddNzbViaUrlOnlyAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null)
     {
         _logger.LogInformation("[SABnzbd] Adding NZB via URL (proxy mode) to {Name}", config.Name);
         _logger.LogInformation("[SABnzbd] Config check: Id={Id}, Host={Host}, Port={Port}, HasApiKey={HasApiKey}, ApiKeyLength={ApiKeyLength}",
             config.Id, config.Host, config.Port,
             !string.IsNullOrWhiteSpace(config.ApiKey),
             config.ApiKey?.Length ?? 0);
-        return await AddNzbViaUrlAsync(config, nzbUrl, category);
+        return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
     }
 
     /// <summary>
     /// Fallback method: Add NZB via URL (original behavior for when fetch fails)
     /// </summary>
-    private async Task<string?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category)
+    private async Task<string?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null)
     {
         _logger.LogDebug("[SABnzbd] Using addurl fallback mode");
-        var response = await SendAddUrlRequestAsync(config, nzbUrl, category);
+        var response = await SendAddUrlRequestAsync(config, nzbUrl, category, nzbname);
 
         if (response != null)
         {
-            var doc = JsonDocument.Parse(response);
+            using var doc = JsonDocument.Parse(response);
             if (doc.RootElement.TryGetProperty("nzo_ids", out var ids) &&
                 ids.GetArrayLength() > 0)
             {
@@ -280,6 +424,13 @@ public class SabnzbdClient
                 _logger.LogInformation("[SABnzbd] NZB added via addurl: {NzoId}", nzoId);
                 return nzoId;
             }
+
+            // 200 OK with no job id: the server took the request but refused the job
+            // (commonly an auth failure on SAB-compatible emulators). Surface the
+            // reason so the failure isn't just an unexplained "returned null".
+            var error = doc.RootElement.TryGetProperty("error", out var e) ? e.GetString() : null;
+            _logger.LogError("[SABnzbd] addurl returned no job id. Server response: {Response}",
+                string.IsNullOrEmpty(error) ? TruncateForLog(response) : error);
         }
 
         return null;
@@ -572,12 +723,10 @@ public class SabnzbdClient
                 var status = "completed";
                 string? errorMessage = null;
 
-                // Handle intermediate states - SABnzbd moves downloads to history during extraction/repair
-                // These states have empty storage paths, so we must NOT trigger import yet
-                // "Running" = post-processing script is executing
-                if (reportedStatus == "extracting" || reportedStatus == "repairing" ||
-                    reportedStatus == "verifying" || reportedStatus == "moving" ||
-                    reportedStatus == "running")
+                // Only two history states are terminal for Sportarr: completed and failed.
+                // Everything else, including any future SABnzbd states we do not know about yet,
+                // stays in the safe holding pattern until the storage path is ready.
+                if (reportedStatus != "completed" && reportedStatus != "failed")
                 {
                     _logger.LogDebug("[SABnzbd] Download {NzoId} is still processing: {Status}", nzoId, historyItem.status);
                     return new DownloadClientStatus
@@ -587,23 +736,6 @@ public class SabnzbdClient
                         Downloaded = historyItem.bytes,
                         Size = historyItem.bytes,
                         TimeRemaining = TimeSpan.FromSeconds(30), // Estimate
-                        SavePath = null // Not ready yet
-                    };
-                }
-
-                // CRITICAL: Even if status is "Completed", verify storage path is actually available
-                // SABnzbd may report "Completed" before the storage path is fully populated
-                // This prevents race conditions where we try to import before files are in final location
-                if (reportedStatus == "completed" && string.IsNullOrEmpty(historyItem.storage))
-                {
-                    _logger.LogDebug("[SABnzbd] Download {NzoId} completed but storage path not yet available, waiting...", nzoId);
-                    return new DownloadClientStatus
-                    {
-                        Status = "downloading", // Treat as still processing
-                        Progress = 99.5, // Almost done
-                        Downloaded = historyItem.bytes,
-                        Size = historyItem.bytes,
-                        TimeRemaining = TimeSpan.FromSeconds(10), // Estimate
                         SavePath = null // Not ready yet
                     };
                 }
@@ -700,6 +832,23 @@ public class SabnzbdClient
                         status = "failed";
                         errorMessage = historyItem.fail_message ?? "Download failed";
                     }
+                }
+
+                // CRITICAL: Even if status is "Completed", verify storage path is actually available
+                // SABnzbd may report "Completed" before the storage path is fully populated
+                // This prevents race conditions where we try to import before files are in final location
+                if (string.IsNullOrEmpty(historyItem.storage))
+                {
+                    _logger.LogDebug("[SABnzbd] Download {NzoId} completed but storage path not yet available, waiting...", nzoId);
+                    return new DownloadClientStatus
+                    {
+                        Status = "downloading", // Treat as still processing
+                        Progress = 99.5, // Almost done
+                        Downloaded = historyItem.bytes,
+                        Size = historyItem.bytes,
+                        TimeRemaining = TimeSpan.FromSeconds(10), // Estimate
+                        SavePath = null // Not ready yet
+                    };
                 }
 
                 return new DownloadClientStatus
@@ -880,7 +1029,7 @@ public class SabnzbdClient
     /// Returns: (response, shouldFallbackToUrl) - shouldFallbackToUrl is true when addfile mode isn't supported.
     /// </summary>
     private async Task<(string? Response, bool ShouldFallbackToUrl)> SendAddFileRequestAsync(
-        DownloadClient config, byte[] nzbData, string filename, string category, string originalUrl)
+        DownloadClient config, byte[] nzbData, string filename, string category, string originalUrl, string? nzbname = null)
     {
         try
         {
@@ -919,6 +1068,14 @@ public class SabnzbdClient
             {
                 content.Add(new StringContent(config.Username), "ma_username");
                 content.Add(new StringContent(config.Password), "ma_password");
+            }
+
+            // Pass nzbname so the receiver overrides the (often obscured) upload
+            // filename with the canonical release name. See AddNzbViaContentAsync
+            // for context.
+            if (!string.IsNullOrWhiteSpace(nzbname))
+            {
+                content.Add(new StringContent(nzbname), "nzbname");
             }
 
             // Add NZB file content
@@ -970,7 +1127,7 @@ public class SabnzbdClient
     /// <summary>
     /// Send POST request for addurl mode (required by Decypharr and some SABnzbd configurations)
     /// </summary>
-    private async Task<string?> SendAddUrlRequestAsync(DownloadClient config, string nzbUrl, string category)
+    private async Task<string?> SendAddUrlRequestAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null)
     {
         try
         {
@@ -1001,6 +1158,13 @@ public class SabnzbdClient
             {
                 _logger.LogWarning(
                     "[SABnzbd] No category set for this grab, so SABnzbd will use its Default category and won't place the download in a per-category subfolder. Set a category on the download client AND define that category in SABnzbd (Config > Categories) with a Folder/Path.");
+            }
+
+            // Pass the canonical release name so SABnzbd labels the download with
+            // it rather than parsing the (often hash-named) URL.
+            if (!string.IsNullOrWhiteSpace(nzbname))
+            {
+                formData["nzbname"] = nzbname;
             }
 
             if (!string.IsNullOrWhiteSpace(config.Directory))
@@ -1035,6 +1199,16 @@ public class SabnzbdClient
                 _logger.LogWarning("[SABnzbd] No API key or credentials configured for download client '{Name}'", config.Name);
             }
 
+            // Mirror mode/auth into the query string too. Some SAB-compatible servers
+            // only authenticate from the query string and reject form-only auth with
+            // "Authentication required"; real SABnzbd accepts either.
+            var addUrlQuery = new System.Text.StringBuilder("?mode=addurl&output=json");
+            if (hasApiKey)
+                addUrlQuery.Append($"&apikey={Uri.EscapeDataString(config.ApiKey!)}");
+            else if (hasCredentials)
+                addUrlQuery.Append($"&ma_username={Uri.EscapeDataString(config.Username!)}&ma_password={Uri.EscapeDataString(config.Password!)}");
+            var postUrl = $"{baseUrl}{addUrlQuery}";
+
             _logger.LogInformation("[SABnzbd] POST addurl request to: {Url}", baseUrl);
 
             HttpResponseMessage response;
@@ -1047,11 +1221,11 @@ public class SabnzbdClient
                     ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
                 };
                 using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
-                response = await client.PostAsync(baseUrl, content);
+                response = await client.PostAsync(postUrl, content);
             }
             else
             {
-                response = await _httpClient.PostAsync(baseUrl, content);
+                response = await _httpClient.PostAsync(postUrl, content);
             }
 
             if (response.IsSuccessStatusCode)

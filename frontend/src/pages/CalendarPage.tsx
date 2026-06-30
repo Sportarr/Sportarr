@@ -3,6 +3,7 @@ import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
 import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
+import LeagueLogoWatermark from '../components/LeagueLogoWatermark';
 import { useCalendarEvents } from '../api/hooks';
 import type { Event } from '../types';
 import { useSettings } from '../hooks/useSettings';
@@ -101,6 +102,8 @@ const getSportColors = (sport: string) => {
   return SPORT_COLORS[getSportCategory(sport)];
 };
 
+const getLeagueLogoUrl = (event: Event) => event.league?.logoUrl ?? event.leagueLogoUrl;
+
 // Check if an event is currently live based on time
 // Events are considered live if current time is within 4 hours after start time
 // (most sporting events last 2-4 hours)
@@ -145,6 +148,7 @@ function EventCard({
     minute: '2-digit',
   });
   const displaySport = getSportDisplayLabel(event.sport);
+  const leagueLogoUrl = getLeagueLogoUrl(event);
 
   return (
     <button
@@ -154,8 +158,12 @@ function EventCard({
       className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all hover:opacity-95`}
       title={`${event.title}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
     >
+      {leagueLogoUrl && (
+        <LeagueLogoWatermark logoUrl={leagueLogoUrl} variant="compact" />
+      )}
+
       {/* Top row */}
-      <div className="absolute left-0 right-0 top-0 flex items-center justify-between overflow-hidden">
+      <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between overflow-hidden">
         <div className="flex min-w-0 items-start gap-0.5">
           {displaySport && (
             <span
@@ -189,7 +197,7 @@ function EventCard({
       </div>
 
       {/* Title */}
-      <p className="whitespace-normal break-words text-[11px] font-normal leading-tight text-white transition-colors md:text-[12px]">
+      <p className="relative z-10 whitespace-normal break-words text-[11px] font-normal leading-tight text-white transition-colors md:text-[12px]">
         {event.title}
       </p>
     </button>
@@ -211,14 +219,18 @@ function SpaciousAgendaEventCard({
     weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
+  const leagueLogoUrl = getLeagueLogoUrl(event);
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left rounded-lg p-4 border transition-all hover:opacity-90 ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border}`}
+      className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all hover:opacity-90 ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border}`}
     >
-      <div className="flex items-start justify-between gap-3">
+      {leagueLogoUrl && (
+        <LeagueLogoWatermark logoUrl={leagueLogoUrl} variant="agenda" />
+      )}
+      <div className="relative z-10 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className={`${sportColors.accent} px-2 py-0.5 text-xs font-semibold text-white rounded`}>
@@ -267,34 +279,70 @@ function AgendaSection({
   const navigate = useNavigate();
 
   return (
-    <div className="border-b border-gray-800/80 py-3 last:border-b-0">
-      <div className="mb-2 text-sm font-semibold text-white">
-        {date.toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric',
-          year: 'numeric',
-        })}
-      </div>
-      <div className="space-y-2">
-        {events.map(event => (
-          compact ? (
-            <EventCard
-              key={event.id}
-              event={event}
-              timezone={timezone}
-              onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
-            />
-          ) : (
-            <SpaciousAgendaEventCard
-              key={event.id}
-              event={event}
-              timezone={timezone}
-              onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
-            />
-          )
-        ))}
-      </div>
+    <div className={`border-b border-gray-800/80 last:border-b-0 ${isToday ? 'ring-1 ring-inset ring-amber-500' : 'py-3'}`}>
+      {isToday ? (
+        <>
+          <div className="mb-2">
+            <span className="inline-block bg-amber-500 px-2 py-1 text-sm font-semibold text-black">
+              {date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </span>
+          </div>
+          <div className="space-y-2 px-2 pb-2">
+            {events.map(event => (
+              compact ? (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  timezone={timezone}
+                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+                />
+              ) : (
+                <SpaciousAgendaEventCard
+                  key={event.id}
+                  event={event}
+                  timezone={timezone}
+                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+                />
+              )
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-2 text-sm font-semibold text-white">
+            {date.toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </div>
+          <div className="space-y-2">
+            {events.map(event => (
+              compact ? (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  timezone={timezone}
+                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+                />
+              ) : (
+                <SpaciousAgendaEventCard
+                  key={event.id}
+                  event={event}
+                  timezone={timezone}
+                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+                />
+              )
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -674,12 +722,17 @@ export default function CalendarPage() {
                         <td
                           key={day.date.toISOString()}
                           data-testid={`calendar-day-${formatDateInputValue(day.date)}`}
-                          className={`h-[132px] align-top border-b border-r border-gray-700/35 ${currentView === 'week' ? 'md:h-[200px]' : 'md:h-[152px]'}`}
+                          className={`relative h-[132px] align-top border-b border-r border-gray-700/35 ${currentDayIsToday ? 'bg-amber-500/5 ring-1 ring-inset ring-amber-500' : ''} ${currentView === 'week' ? 'md:h-[200px]' : 'md:h-[152px]'}`}
                         >
+                          {currentDayIsToday && (
+                            <div className="absolute left-0 top-0 bg-amber-500 px-1.5 py-0.5 text-xs font-bold leading-tight text-black">
+                              {day.date.getDate()}
+                            </div>
+                          )}
                           <div className="flex h-full flex-col px-1 py-0.5">
                             {/* Day Header */}
-                            <div className="mb-0.5 flex items-center justify-between">
-                              <div className={`text-xs ${currentDayIsToday ? 'rounded-full bg-amber-500 px-2 py-0.5 font-bold text-black' : 'font-semibold text-gray-300'}`}>
+                            <div className={`flex items-center justify-between ${currentDayIsToday ? 'mb-1' : 'mb-0.5'}`}>
+                              <div className={`text-xs ${currentDayIsToday ? 'invisible font-bold' : 'font-semibold text-gray-300'}`}>
                                 {day.date.getDate()}
                               </div>
                               {currentView === 'month' && !day.isCurrentMonth ? (

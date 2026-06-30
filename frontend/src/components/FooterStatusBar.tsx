@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, memo } from 'react';
 import { useTasks } from '../api/hooks';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
+import { getRefetchIntervalWithBackoff } from '../utils/queryBackoff';
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -81,7 +82,7 @@ const useActiveSearchStatus = () => {
       const { data } = await apiClient.get<ActiveSearchStatus | null>('/search/active');
       return data;
     },
-    refetchInterval: 3000, // Poll every 3 seconds
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount), // Poll every 3 seconds
     notifyOnChangeProps: ['data'], // Only re-render when data changes, not on every refetch
   });
 };
@@ -94,7 +95,7 @@ const useSearchQueueStatus = () => {
       const { data } = await apiClient.get<SearchQueueStatus>('/search/queue');
       return data;
     },
-    refetchInterval: 3000, // Poll every 3 seconds
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount), // Poll every 3 seconds
     notifyOnChangeProps: ['data'], // Only re-render when data changes
   });
 };
@@ -108,7 +109,7 @@ const useFooterDownloadQueue = () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 5000, // Poll every 5 seconds - only need to detect status changes, not progress
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(5000, query.state.fetchFailureCount), // Poll every 5 seconds - only need to detect status changes, not progress
     notifyOnChangeProps: ['data'], // Only re-render when data changes
     // Use same structuralSharing as LeagueDetailPage to ignore progress-only changes
     structuralSharing: (oldData, newData) => {

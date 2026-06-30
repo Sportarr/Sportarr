@@ -241,19 +241,23 @@ public class RssSyncService : BackgroundService
                     // Skip if evaluation rejected the release
                     if (release.Rejections.Any())
                     {
-                        _logger.LogDebug("[RSS Sync] Skipping {Release}: {Rejections}",
-                            release.Title, string.Join(", ", release.Rejections));
+                        // Info, not Debug: this fires only for releases that already
+                        // matched a monitored event, so it is low volume and it is the
+                        // line operators need to see why a matched release was not taken.
+                        _logger.LogInformation("[RSS Sync] Skipping matched release '{Release}' for '{Event}': {Rejections}",
+                            release.Title, matchedEvent.Title, string.Join(", ", release.Rejections));
                         continue;
                     }
                 }
 
                 // Check if we should grab this release (now returns part info too)
                 var shouldGrab = await ShouldGrabReleaseAsync(
-                    db, matchedEvent, release, config, partDetector, delayProfileService, downloadClientService, cancellationToken);
+                    db, matchedEvent, release, config, qualityProfile, partDetector, delayProfileService, downloadClientService, cancellationToken);
 
                 if (!shouldGrab.Grab)
                 {
-                    _logger.LogDebug("[RSS Sync] Skipping {Release}: {Reason}", release.Title, shouldGrab.Reason);
+                    _logger.LogInformation("[RSS Sync] Not grabbing matched release '{Release}' for '{Event}': {Reason}",
+                        release.Title, matchedEvent.Title, shouldGrab.Reason);
                     continue;
                 }
 
@@ -415,6 +419,7 @@ public class RssSyncService : BackgroundService
         Event evt,
         ReleaseSearchResult release,
         Config config,
+        QualityProfile? profile,
         EventPartDetector partDetector,
         DelayProfileService delayProfileService,
         DownloadClientService downloadClientService,
@@ -443,11 +448,20 @@ public class RssSyncService : BackgroundService
 
             if (config.EnableMultiPartEpisodes)
             {
-                // Multi-part ENABLED: Skip full event files, only download parts
-                if (partInfo == null)
-                    return (false, "Full event file (multi-part enabled)", null);
+                // Multi-part ENABLED. A labelled part (Prelims, Early Prelims, ...)
+                // is taken as-is. An UNLABELLED fighting release is the main card,
+                // not a "full event" dump: prelims are essentially always labelled,
+                // while the main card ships under the bare event title (e.g. "UFC
+                // Fight Night 280 Fiziev vs Torres 720p WEB-DL"). Map it to the main
+                // segment so it auto-grabs, matching what manual/automatic search
+                // already does via ReleaseEvaluator. Previously this returned "Full
+                // event file" and dropped the main card, so the prelims grabbed but
+                // the main card never did.
+                releasePart = partInfo?.SegmentName
+                    ?? EventPartDetector.GetMainPartName(evt.Sport ?? "", evt.Title, evt.League?.Name);
 
-                releasePart = partInfo.SegmentName;
+                if (string.IsNullOrEmpty(releasePart))
+                    return (false, "Full event file (multi-part enabled)", null);
 
                 // Check if this part is monitored
                 var monitoredParts = evt.MonitoredParts ?? evt.League?.MonitoredParts;
@@ -525,27 +539,75 @@ public class RssSyncService : BackgroundService
         if (isBlocklisted)
             return (false, "Blocklisted", releasePart);
 
-        // 3b. Check GrabHistory - prevent re-grabbing the same release.
-        bool alreadyGrabbed = false;
-
+        // 3b. Anti-churn guard (issue #175): never re-fetch the SAME release from an
+        // indexer in a tight loop. Match the most recent prior grab by InfoHash/Guid
+        // REGARDLESS of Superseded. RecordGrab() marks every prior same-event+part grab
+        // Superseded whenever a competing release is grabbed, so the old `&& !g.Superseded`
+        // filter let two releases for one missing event ping-pong and re-grab on every RSS
+        // cycle (the duplicate-download loop indexers flag). "Superseded" means the file
+        // was replaced — it must NOT erase the memory that we already fetched this URL.
+        GrabHistory? priorGrab = null;
         if (!string.IsNullOrEmpty(release.TorrentInfoHash))
         {
-            alreadyGrabbed = await db.GrabHistory
-                .AnyAsync(g => g.EventId == evt.Id
-                            && g.TorrentInfoHash == release.TorrentInfoHash
-                            && !g.Superseded, cancellationToken);
+            priorGrab = await db.GrabHistory
+                .Where(g => g.EventId == evt.Id && g.TorrentInfoHash == release.TorrentInfoHash)
+                .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
+                .FirstOrDefaultAsync(cancellationToken);
         }
-
-        if (!alreadyGrabbed && !string.IsNullOrEmpty(release.Guid))
+        if (priorGrab == null && !string.IsNullOrEmpty(release.Guid))
         {
-            alreadyGrabbed = await db.GrabHistory
-                .AnyAsync(g => g.EventId == evt.Id
-                            && g.Guid == release.Guid
-                            && !g.Superseded, cancellationToken);
+            priorGrab = await db.GrabHistory
+                .Where(g => g.EventId == evt.Id && g.Guid == release.Guid)
+                .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        // Usenet newznab feeds sometimes omit <guid> (NewznabClient leaves Guid=""), and
+        // Usenet releases carry no InfoHash — so neither key above can dedup them. Fall back
+        // to the actual fetch URL, which is always present and uniquely identifies the exact
+        // .nzb we would otherwise re-download from the indexer.
+        if (priorGrab == null && !string.IsNullOrEmpty(release.DownloadUrl))
+        {
+            priorGrab = await db.GrabHistory
+                .Where(g => g.EventId == evt.Id && g.DownloadUrl == release.DownloadUrl)
+                .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
-        if (alreadyGrabbed)
-            return (false, "Already grabbed (in grab history)", releasePart);
+        // Decide whether re-fetching this exact release is churn. The decision is a pure
+        // function of the prior grab's state (imported?, attempt count, last-attempt age),
+        // extracted to GrabHistoryChurnGuard so it can be unit-tested without a DbContext.
+        // A successful prior import (Decision.Allow) defers to the existing-file score gate
+        // below; a genuine quality upgrade arrives as a DIFFERENT release so never lands here.
+        if (priorGrab != null)
+        {
+            var now = DateTime.UtcNow;
+            switch (GrabHistoryChurnGuard.Evaluate(priorGrab, now))
+            {
+                case GrabHistoryChurnGuard.Decision.BlockCapReached:
+                    return (false,
+                        $"Anti-churn: already grabbed this release {priorGrab.RegrabCount}x without a successful import — not re-fetching (blocklist it or fix the event match)",
+                        releasePart);
+
+                case GrabHistoryChurnGuard.Decision.BlockCooldown:
+                    var sinceLast = now - (priorGrab.LastRegrabAttempt ?? priorGrab.GrabbedAt);
+                    return (false,
+                        $"Anti-churn: grabbed this exact release {sinceLast.TotalMinutes:F0}m ago, within the {GrabHistoryChurnGuard.RegrabCooldownHours}h cooldown",
+                        releasePart);
+
+                case GrabHistoryChurnGuard.Decision.AllowControlledRetry:
+                    // Cooldown elapsed and under the cap: allow ONE controlled retry,
+                    // recording it so the cooldown and cap advance for next time.
+                    priorGrab.RegrabCount += 1;
+                    priorGrab.LastRegrabAttempt = now;
+                    await db.SaveChangesAsync(cancellationToken);
+                    _logger.LogInformation(
+                        "[RSS Sync] Controlled re-grab {Count}/{Max} of '{Title}' for event {EventId} after {Cooldown}h cooldown",
+                        priorGrab.RegrabCount, GrabHistoryChurnGuard.MaxAutomaticRegrabs, release.Title, evt.Id, GrabHistoryChurnGuard.RegrabCooldownHours);
+                    break;
+
+                // Decision.Allow: prior grab imported (or none) — fall through to normal flow.
+            }
+        }
 
         // 4. Check for recent failed downloads with backoff (part-aware)
         var recentFailedDownload = await db.DownloadQueue
@@ -591,10 +653,37 @@ public class RssSyncService : BackgroundService
                 return (false, $"Existing file quality is unrecognized ('{existingFile.Quality ?? "null"}'), refusing auto re-download", releasePart);
             }
 
+            // Upgrades disabled for this profile: never replace an existing file,
+            // regardless of score. RSS previously skipped this check and re-grabbed
+            // the same event from another client, leaving two copies.
+            if (profile != null && !profile.UpgradesAllowed)
+            {
+                return (false, "Upgrades are disabled for this quality profile", releasePart);
+            }
+
             if (newTotalScore <= existingTotalScore)
             {
                 return (false, $"Existing file has same or better score ({existingTotalScore})", releasePart);
             }
+
+            // A custom-format-only gain must clear the profile's minimum score
+            // increment. A genuine quality-tier upgrade (higher quality score) is
+            // always allowed, but when the quality is unchanged and only the custom
+            // format score improved, a trivial bump (e.g. +10 under a 50-point
+            // increment) must not trigger a needless second download.
+            if (profile != null)
+            {
+                var newQualityScoreOnly = ReleaseEvaluator.CalculateQualityScoreFromName(release.Quality);
+                bool isQualityUpgrade = newQualityScoreOnly > existingQualityScoreOnly;
+                var formatGain = release.CustomFormatScore - existingFile.CustomFormatScore;
+                if (!isQualityUpgrade && formatGain < profile.FormatScoreIncrement)
+                {
+                    return (false,
+                        $"Custom-format gain {formatGain} below minimum score increment {profile.FormatScoreIncrement}",
+                        releasePart);
+                }
+            }
+
             _logger.LogInformation("[RSS Sync] File upgrade detected: {OldScore} -> {NewScore} for {Part}",
                 existingTotalScore, newTotalScore, releasePart ?? "full event");
         }

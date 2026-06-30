@@ -3,6 +3,19 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LockClosedIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 
+function normalizeAppPath(path: string): string {
+  const urlBase = window.Sportarr?.urlBase || '';
+  if (!path) {
+    return '/leagues';
+  }
+
+  if (urlBase && path.startsWith(urlBase + '/')) {
+    return path.slice(urlBase.length) || '/';
+  }
+
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -22,8 +35,8 @@ export default function LoginPage() {
     try {
       const success = await login(username, password, rememberMe);
       if (success) {
-        // Login successful, redirect to return URL or events
-        window.location.href = returnUrl;
+        // Login successful, redirect with router-aware path so basename/urlBase is preserved.
+        navigate(normalizeAppPath(returnUrl), { replace: true });
       } else {
         setError('Invalid username or password');
       }

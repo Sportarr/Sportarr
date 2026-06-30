@@ -48,8 +48,8 @@ public class ReleaseEvaluatorTests
 
     [Theory]
     [InlineData("UFC.300.BluRay.x264", "Bluray-1080p", 540)]
-    [InlineData("Fight.WEB-DL.H264", "WEBDL-1080p", 530)]
-    [InlineData("Event.WEBRip.x265", "WEBRip-1080p", 525)]
+    [InlineData("Fight.WEB-DL.H264", "WEBDL-480p", 230)]
+    [InlineData("Event.WEBRip.x265", "WEBRip-480p", 225)]
     [InlineData("Card.HDTV.x264", "SDTV", 220)]
     [InlineData("Fight.DVDRip.XviD", "DVD", 210)]
     public void EvaluateRelease_ShouldDetectSourceQuality(string title, string expectedQuality, int expectedScore)

@@ -520,7 +520,13 @@ public static class QualityParser
                 Resolution.R1080p => Quality.WEBDL1080p,
                 Resolution.R720p => Quality.WEBDL720p,
                 Resolution.R480p or Resolution.R576p or Resolution.R540p or Resolution.R360p => Quality.WEBDL480p,
-                _ => Quality.WEBDL1080p // Default WEB-DL to 1080p
+                // No resolution token in the name: treat as SD, not 1080p. Releases
+                // that omit the resolution are almost always SD; guessing 1080p
+                // mislabels them and parks them at the profile cutoff so upgrades
+                // never get searched. SD keeps them below cutoff until a real HD
+                // release can replace them. The actual file resolution still wins
+                // at import via ffprobe inspection when the name leaves it unknown.
+                _ => Quality.WEBDL480p
             },
 
             QualitySource.WebRip => resolution switch
@@ -529,7 +535,8 @@ public static class QualityParser
                 Resolution.R1080p => Quality.WEBRip1080p,
                 Resolution.R720p => Quality.WEBRip720p,
                 Resolution.R480p or Resolution.R576p or Resolution.R540p or Resolution.R360p => Quality.WEBRip480p,
-                _ => Quality.WEBRip1080p // Default WEBRip to 1080p
+                // See the WEB-DL note above: a resolution-less name is treated as SD.
+                _ => Quality.WEBRip480p
             },
 
             QualitySource.Television or QualitySource.TelevisionRaw => resolution switch

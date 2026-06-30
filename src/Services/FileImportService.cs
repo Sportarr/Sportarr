@@ -265,7 +265,19 @@ public class FileImportService : IFileImportService
 
                 if (packedFiles.Any())
                 {
-                    throw new Exception($"No video files found in: {downloadPath}. Found {packedFiles.Count} packed archive(s) that were not extracted. Check SABnzbd's post-processing settings (unpacking must be enabled).");
+                    // A release delivered as un-extracted archives (.rar/.zip/.7z/.r00...)
+                    // can never be imported as-is, so retrying it on every poll is futile
+                    // and just spams the log and pins a queue row forever. Throw the typed
+                    // terminal failure instead: the monitor marks the download Failed on the
+                    // first attempt (no retry budget burned) and the existing failed-download
+                    // path blocklists it so a non-packed release can be grabbed. The hint is
+                    // protocol-aware because only usenet clients unpack during post-processing;
+                    // torrent clients do not, and Sportarr has no torrent-side extraction yet.
+                    var unpackHint = string.Equals(download.Protocol, "Torrent", StringComparison.OrdinalIgnoreCase)
+                        ? "The torrent delivered packed archives and the torrent client does not extract them (Sportarr has no torrent-side unpacking yet). Grab a non-packed release, or extract the files manually."
+                        : "Enable unpacking in your usenet client's post-processing (e.g. SABnzbd or NZBGet) so the archives are extracted before import.";
+                    throw new DownloadFailedException(
+                        $"No video files found in {downloadPath}: {packedFiles.Count} packed archive(s) were not extracted. {unpackHint}");
                 }
 
                 // Check for SABnzbd incomplete/temporary files

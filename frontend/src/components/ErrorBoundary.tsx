@@ -2,6 +2,7 @@ import { Component } from 'react';
 import type { ReactNode } from 'react';
 import { HomeIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { getImageUrl } from '../utils/request';
 
 interface Props {
   children: ReactNode;
@@ -58,7 +59,7 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   handleGoHome = () => {
-    window.location.href = '/leagues';
+    window.location.assign(window.Sportarr?.urlBase ? `${window.Sportarr.urlBase}/leagues` : '/leagues');
   };
 
   render() {
@@ -69,7 +70,7 @@ export class ErrorBoundary extends Component<Props, State> {
             {/* Error Image */}
             <div className="mb-8">
               <img
-                src="/error.png"
+                src={getImageUrl('error.png')}
                 alt="Error"
                 className="w-full max-w-md mx-auto"
               />

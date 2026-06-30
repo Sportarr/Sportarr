@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { Toaster } from 'sonner';
+import { useState, useEffect, useRef } from 'react';
+import { Toaster, toast } from 'sonner';
 import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
@@ -47,6 +47,9 @@ import DvrSchedulePage from './pages/iptv/DvrSchedulePage';
 import TvGuidePage from './pages/iptv/TvGuidePage';
 import WatchChannelPage from './pages/iptv/WatchChannelPage';
 import IptvCoveragePage from './pages/iptv/IptvCoveragePage';
+import { API_CONTRACT_FAILURE_EVENT, type ApiContractFailureDetail } from './utils/apiContract';
+import { apiGet } from './utils/api';
+import { getRetryDelayWithBackoff, setGlobalBackoffCap } from './utils/queryBackoff';
 
 // Hook to cleanup orphaned inert attributes from Headless UI modals
 // This is a failsafe - the primary cleanup happens in modal afterLeave callbacks
@@ -107,6 +110,7 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
       retry: 1,
+      retryDelay: (attemptIndex) => getRetryDelayWithBackoff(attemptIndex),
     },
   },
 });
@@ -114,6 +118,57 @@ const queryClient = new QueryClient({
 function App() {
   // Global cleanup for orphaned inert attributes from Headless UI modals
   useInertCleanup();
+  const lastApiContractToastRef = useRef<{ key: string; timestamp: number } | null>(null);
+
+  useEffect(() => {
+    const onApiContractFailure = (event: Event) => {
+      const customEvent = event as CustomEvent<ApiContractFailureDetail>;
+      const detail = customEvent.detail;
+      const toastKey = `${detail.method}:${detail.url}:${detail.status}`;
+      const now = Date.now();
+      const lastToast = lastApiContractToastRef.current;
+
+      if (lastToast && lastToast.key === toastKey && now - lastToast.timestamp < 5000) {
+        return;
+      }
+
+      lastApiContractToastRef.current = { key: toastKey, timestamp: now };
+
+      toast.error('API routing/configuration error', {
+        description: `${detail.message} (${detail.method} ${detail.url})`,
+      });
+    };
+
+    window.addEventListener(API_CONTRACT_FAILURE_EVENT, onApiContractFailure as EventListener);
+    return () => {
+      window.removeEventListener(API_CONTRACT_FAILURE_EVENT, onApiContractFailure as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadBackoffCapFromSettings = async () => {
+      try {
+        const response = await apiGet('/api/settings');
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        if (!data.uiSettings) {
+          return;
+        }
+
+        const uiSettings = JSON.parse(data.uiSettings) as { queryBackoffCapMs?: number };
+        if (typeof uiSettings.queryBackoffCapMs === 'number') {
+          setGlobalBackoffCap(uiSettings.queryBackoffCapMs);
+        }
+      } catch {
+        // Keep default backoff cap when settings cannot be loaded.
+      }
+    };
+
+    loadBackoffCapFromSettings();
+  }, []);
 
   return (
     <ErrorBoundary>

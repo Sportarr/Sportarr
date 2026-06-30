@@ -1260,90 +1260,24 @@ public static class DatabaseInitializer
             {
                 Console.WriteLine("[Sportarr] Removing deprecated RemoveCompletedDownloads/RemoveFailedDownloads columns from MediaManagementSettings...");
 
-                var createTableSql = @"
-                    CREATE TABLE IF NOT EXISTS MediaManagementSettings_new (
-                        Id INTEGER PRIMARY KEY,
-                        RenameFiles INTEGER NOT NULL DEFAULT 1,
-                        StandardFileFormat TEXT NOT NULL DEFAULT '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
-                        EventFolderFormat TEXT NOT NULL DEFAULT '{Event Title}',
-                        LeagueFolderFormat TEXT NOT NULL DEFAULT '{Series}',
-                        SeasonFolderFormat TEXT NOT NULL DEFAULT 'Season {Season}',
-                        CreateEventFolder INTEGER NOT NULL DEFAULT 1,
-                        RenameEvents INTEGER NOT NULL DEFAULT 0,
-                        ReplaceIllegalCharacters INTEGER NOT NULL DEFAULT 1,
-                        CreateLeagueFolders INTEGER NOT NULL DEFAULT 1,
-                        CreateSeasonFolders INTEGER NOT NULL DEFAULT 1,
-                        CreateEventFolders INTEGER NOT NULL DEFAULT 1,
-                        ReorganizeFolders INTEGER NOT NULL DEFAULT 0,
-                        DeleteEmptyFolders INTEGER NOT NULL DEFAULT 0,
-                        SkipFreeSpaceCheck INTEGER NOT NULL DEFAULT 0,
-                        MinimumFreeSpace INTEGER NOT NULL DEFAULT 100,
-                        UseHardlinks INTEGER NOT NULL DEFAULT 1,
-                        ImportExtraFiles INTEGER NOT NULL DEFAULT 0,
-                        ExtraFileExtensions TEXT NOT NULL DEFAULT 'srt,nfo',
-                        ChangeFileDate TEXT NOT NULL DEFAULT 'None',
-                        RecycleBin TEXT NOT NULL DEFAULT '',
-                        RecycleBinCleanup INTEGER NOT NULL DEFAULT 7,
-                        SetPermissions INTEGER NOT NULL DEFAULT 0,
-                        FileChmod TEXT NOT NULL DEFAULT '644',
-                        ChmodFolder TEXT NOT NULL DEFAULT '755',
-                        ChownUser TEXT NOT NULL DEFAULT '',
-                        ChownGroup TEXT NOT NULL DEFAULT '',
-                        CopyFiles INTEGER NOT NULL DEFAULT 0,
-                        Created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        LastModified TEXT,
-                        EnableMultiPartEpisodes INTEGER NOT NULL DEFAULT 1,
-                        RootFolders TEXT NOT NULL DEFAULT '[]'
-                    )";
+                // SQLite 3.35+ (bundled with Microsoft.Data.Sqlite) supports DROP
+                // COLUMN, so drop the two deprecated columns directly by name. The
+                // previous approach rebuilt the whole table from a hardcoded schema
+                // and a fixed SELECT column list; that threw "no such column" on any
+                // database whose MediaManagementSettings columns differed from the
+                // list, the rebuild was abandoned, and the deprecated columns stayed.
+                // Because they were created NOT NULL without a default and the model
+                // no longer maps them, the very first settings save then failed with
+                // "NOT NULL constraint failed: MediaManagementSettings.RemoveCompletedDownloads".
+                // Dropping by name references nothing else, so it works regardless of
+                // the rest of the table's shape.
+                db.Database.ExecuteSqlRaw("ALTER TABLE MediaManagementSettings DROP COLUMN RemoveCompletedDownloads");
 
-                using var connection2 = db.Database.GetDbConnection();
-                if (connection2.State != System.Data.ConnectionState.Open)
-                    await connection2.OpenAsync();
-
-                using (var cmd = connection2.CreateCommand())
+                var checkFailedCol = "SELECT COUNT(*) FROM pragma_table_info('MediaManagementSettings') WHERE name='RemoveFailedDownloads'";
+                var failedColExists = db.Database.SqlQueryRaw<int>(checkFailedCol).AsEnumerable().FirstOrDefault();
+                if (failedColExists > 0)
                 {
-                    cmd.CommandText = createTableSql;
-                    await cmd.ExecuteNonQueryAsync();
-                }
-
-                using (var cmd = connection2.CreateCommand())
-                {
-                    cmd.CommandText = @"
-                        INSERT OR REPLACE INTO MediaManagementSettings_new (
-                            Id, RenameFiles, StandardFileFormat, EventFolderFormat,
-                            LeagueFolderFormat, SeasonFolderFormat,
-                            CreateEventFolder, RenameEvents, ReplaceIllegalCharacters,
-                            CreateLeagueFolders, CreateSeasonFolders, CreateEventFolders, ReorganizeFolders,
-                            DeleteEmptyFolders, SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks,
-                            ImportExtraFiles, ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
-                            SetPermissions, FileChmod, ChmodFolder, ChownUser, ChownGroup,
-                            CopyFiles, Created, LastModified,
-                            EnableMultiPartEpisodes, RootFolders
-                        )
-                        SELECT
-                            Id, RenameFiles, StandardFileFormat, EventFolderFormat,
-                            COALESCE(LeagueFolderFormat, '{Series}'), COALESCE(SeasonFolderFormat, 'Season {Season}'),
-                            CreateEventFolder, RenameEvents, ReplaceIllegalCharacters,
-                            COALESCE(CreateLeagueFolders, 1), COALESCE(CreateSeasonFolders, 1), CreateEventFolders, COALESCE(ReorganizeFolders, 0),
-                            DeleteEmptyFolders, SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks,
-                            ImportExtraFiles, ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
-                            SetPermissions, FileChmod, ChmodFolder, ChownUser, ChownGroup,
-                            CopyFiles, Created, LastModified,
-                            COALESCE(EnableMultiPartEpisodes, 1), COALESCE(RootFolders, '[]')
-                        FROM MediaManagementSettings";
-                    await cmd.ExecuteNonQueryAsync();
-                }
-
-                using (var cmd = connection2.CreateCommand())
-                {
-                    cmd.CommandText = "DROP TABLE MediaManagementSettings";
-                    await cmd.ExecuteNonQueryAsync();
-                }
-
-                using (var cmd = connection2.CreateCommand())
-                {
-                    cmd.CommandText = "ALTER TABLE MediaManagementSettings_new RENAME TO MediaManagementSettings";
-                    await cmd.ExecuteNonQueryAsync();
+                    db.Database.ExecuteSqlRaw("ALTER TABLE MediaManagementSettings DROP COLUMN RemoveFailedDownloads");
                 }
 
                 Console.WriteLine("[Sportarr] Deprecated download columns removed successfully");

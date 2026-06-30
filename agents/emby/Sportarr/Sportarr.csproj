@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- Target net6.0, not net8.0: Emby on macOS still runs on the .NET 6
+         runtime, which cannot load a net8.0 assembly. A net6.0 plugin rolls
+         forward onto .NET 8, so this single build loads on every Emby platform
+         (macOS on .NET 6 and Windows/Linux on .NET 8). Do not bump to net8.0
+         or the macOS Emby server can no longer load the plugin. -->
+    <TargetFramework>net6.0</TargetFramework>
     <Description>Emby Plugin For SportArr</Description>
     <PackageTags>emby;plugin;pms;media;server;</PackageTags>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -22,7 +27,7 @@
   <ItemGroup>
     <PackageReference Include="MediaBrowser.Common" Version="4.9.1.90" />
     <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.90" />
-    <PackageReference Include="System.Net.Http.Json" Version="8.0.1" />
+    <PackageReference Include="System.Net.Http.Json" Version="6.0.*" />
   </ItemGroup>
 
   <Target Name="PackagePlugin" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">

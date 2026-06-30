@@ -11,6 +11,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+      # Required so the Trivy SARIF upload below can publish to the Security tab.
+      security-events: write
     outputs:
       version: ${{ steps.version.outputs.version }}
 
@@ -278,6 +280,30 @@ jobs:
           provenance: false
         env:
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
+
+      # Scan the freshly built dev image so dev's OS-package security posture is
+      # visible BEFORE promoting to main. Same scan as release.yml (HIGH/CRITICAL,
+      # fixable only) but published under a separate Security-tab category so it
+      # doesn't collide with the released-image results.
+      - name: Scan dev image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        if: success()
+        with:
+          image-ref: sportarr/sportarr:${{ steps.version.outputs.version }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Upload dev Trivy results to GitHub Security tab
+        # Best-effort: a Security-tab outage shouldn't fail the dev build.
+        if: success()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image-dev
 
       - name: Send Discord notification
         if: success()

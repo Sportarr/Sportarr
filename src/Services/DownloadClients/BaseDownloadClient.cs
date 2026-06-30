@@ -175,7 +175,7 @@ public interface ITorrentClient
 public interface IUsenetClient
 {
     Task<bool> TestConnectionAsync(DownloadClient config);
-    Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category);
+    Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null);
     Task<bool> DeleteDownloadAsync(DownloadClient config, string nzoId, bool deleteFiles);
     Task<bool> PauseDownloadAsync(DownloadClient config, string nzoId);
     Task<bool> ResumeDownloadAsync(DownloadClient config, string nzoId);

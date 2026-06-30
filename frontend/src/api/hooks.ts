@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
 import type { Event, SystemStatus, Tag, QualityProfile, Indexer } from '../types';
+import { getRefetchIntervalWithBackoff } from '../utils/queryBackoff';
 
 // Events (all - used by EventsPage)
 export const useEvents = () => {
@@ -69,7 +70,7 @@ export const useIndexers = () => {
       const { data } = await apiClient.get<Indexer[]>('/indexer');
       return data;
     },
-    refetchInterval: 30000, // Auto-refresh every 30 seconds to show Prowlarr-synced indexers
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(30000, query.state.fetchFailureCount), // Auto-refresh every 30 seconds to show Prowlarr-synced indexers
   });
 };
 
@@ -148,7 +149,7 @@ export const useLogFiles = () => {
       const { data } = await apiClient.get<LogFile[]>('/log/file');
       return data;
     },
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(5000, query.state.fetchFailureCount), // Auto-refresh every 5 seconds
   });
 };
 
@@ -164,7 +165,7 @@ export const useLogFileContent = (filename: string | null) => {
       return data;
     },
     enabled: !!filename,
-    refetchInterval: 3000, // Auto-refresh every 3 seconds for real-time updates
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount), // Auto-refresh every 3 seconds for real-time updates
   });
 };
 
@@ -193,7 +194,7 @@ export const useTasks = (pageSize?: number) => {
       const { data } = await apiClient.get<AppTask[]>(`/task${params}`);
       return data;
     },
-    refetchInterval: 3000, // Auto-refresh every 3 seconds
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount), // Auto-refresh every 3 seconds
     notifyOnChangeProps: ['data'], // Only re-render when data changes
   });
 };
@@ -207,7 +208,7 @@ export const useTask = (id: number | null) => {
       return data;
     },
     enabled: !!id,
-    refetchInterval: 1000, // Auto-refresh every 1 second for progress updates
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(1000, query.state.fetchFailureCount), // Auto-refresh every 1 second for progress updates
     notifyOnChangeProps: ['data'], // Only re-render when data changes
   });
 };
@@ -270,7 +271,7 @@ export const useSearchQueueStatus = () => {
       const { data } = await apiClient.get<SearchQueueStatus>('/search/queue');
       return data;
     },
-    refetchInterval: 3000, // Poll every 3s
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount), // Poll every 3s
     notifyOnChangeProps: ['data'], // Only re-render when data changes, not on every refetch
   });
 };
@@ -289,7 +290,7 @@ export const useActivityCounts = () => {
       const { data } = await apiClient.get<ActivityCounts>('/activity/counts');
       return data;
     },
-    refetchInterval: 30000, // Poll every 30s for badge updates
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(30000, query.state.fetchFailureCount), // Poll every 30s for badge updates
     notifyOnChangeProps: ['data'],
   });
 };
@@ -315,7 +316,7 @@ export const useDownloadQueue = () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 3000, // Poll every 3s
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount), // Poll every 3s
     notifyOnChangeProps: ['data'], // Only re-render when data changes, not on every refetch
     // Use structuralSharing to minimize unnecessary re-renders when only progress changes
     // This helps with navigation blocking issues during active downloads

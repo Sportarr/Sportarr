@@ -418,6 +418,20 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Resolve the UI (wwwroot) next to the executable instead of relative to the
+// current working directory. A tar.gz / self-contained install launched from
+// an arbitrary directory left the web root at "<cwd>/wwwroot", which does not
+// exist, so app.Environment.WebRootPath came back null and every request 500'd
+// with "Value cannot be null. (Parameter 'path1')" from the SPA fallback's
+// Path.Combine. The published UI always ships beside the binary, so point the
+// web root there when it exists (Docker already runs from that directory, so
+// this is a no-op there).
+var bundledWebRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+if (Directory.Exists(bundledWebRoot))
+{
+    builder.WebHost.UseWebRoot(bundledWebRoot);
+}
+
 // Configure Kestrel to listen on configured port and bind address from config.xml
 builder.WebHost.UseUrls($"http://{bindAddress}:{port}");
 
@@ -539,28 +553,47 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
     }
 });
 
+// Explicit routing endpoint selection before SPA middleware.
+// This ensures API endpoints are matched to handlers before the SPA fallback
+// middleware runs, preventing API routes from being served index.html.
+app.UseRouting();
+
 // Configure static files (UI from wwwroot)
 // For URL base support, we need to inject the urlBase into index.html
 // and rewrite asset paths to include the base
 app.Use(async (context, next) =>
 {
-    // Serve index.html with urlBase injection for SPA routes
     var path = context.Request.Path.Value ?? "";
+    var normalizedPath = NormalizePathForUrlBase(path, configuredUrlBase);
+    var endpoint = context.GetEndpoint();
+
+    // Debug: log SPA middleware path classification
+    if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/sportarr", StringComparison.OrdinalIgnoreCase))
+    {
+        Log.Debug("[SPA MIDDLEWARE] Path={Path}, Normalized={Normalized}, PathBase={PathBase}, UrlBase={UrlBase}, EndpointMatched={HasEndpoint}, Endpoint={Endpoint}",
+            path, normalizedPath, context.Request.PathBase.Value, configuredUrlBase, endpoint != null, endpoint?.DisplayName);
+    }
 
     // Check if this is a request that should serve index.html (SPA fallback)
     // Skip API routes, static assets, and other special endpoints
-    var isApiOrAsset = path.StartsWith("/api", StringComparison.OrdinalIgnoreCase) ||
-                       path.StartsWith("/assets", StringComparison.OrdinalIgnoreCase) ||
-                       path.StartsWith("/initialize.json", StringComparison.OrdinalIgnoreCase) ||
-                       path.StartsWith("/ping", StringComparison.OrdinalIgnoreCase) ||
-                       path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
-                       path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase) ||
-                       path.Contains(".");  // Has file extension (e.g., .js, .css, .svg)
+    var isApiOrAsset = normalizedPath.StartsWith("/api", StringComparison.OrdinalIgnoreCase) ||
+                       normalizedPath.StartsWith("/assets", StringComparison.OrdinalIgnoreCase) ||
+                       normalizedPath.StartsWith("/initialize.json", StringComparison.OrdinalIgnoreCase) ||
+                       normalizedPath.StartsWith("/ping", StringComparison.OrdinalIgnoreCase) ||
+                       normalizedPath.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
+                       normalizedPath.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase) ||
+                       normalizedPath.Contains(".");  // Has file extension (e.g., .js, .css, .svg)
 
     if (!isApiOrAsset)
     {
         // Serve index.html with urlBase injected
+        // Fall back to the wwwroot beside the binary if the host did not resolve
+        // a web root, so a null path can never crash the SPA fallback (see the
+        // UseWebRoot note at startup).
         var webRootPath = app.Environment.WebRootPath;
+        if (string.IsNullOrEmpty(webRootPath))
+            webRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
         var indexPath = Path.Combine(webRootPath, "index.html");
 
         if (File.Exists(indexPath))
@@ -624,6 +657,45 @@ app.Use(async (context, next) =>
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+// Defensive API contract: ensure unmatched API requests return JSON payloads
+// rather than HTML fallback pages.
+app.UseStatusCodePages(async statusCodeContext =>
+{
+    var context = statusCodeContext.HttpContext;
+    if (context.Response.StatusCode != StatusCodes.Status404NotFound)
+    {
+        return;
+    }
+
+    var path = context.Request.Path.Value ?? "";
+    var normalizedPath = NormalizePathForUrlBase(path, configuredUrlBase);
+    if (!normalizedPath.StartsWith("/api", StringComparison.OrdinalIgnoreCase))
+    {
+        return;
+    }
+
+    context.Response.ContentType = "application/problem+json";
+    var problem = new
+    {
+        type = "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+        title = "API endpoint not found",
+        status = StatusCodes.Status404NotFound,
+        detail = "The requested API endpoint was not found. Verify UrlBase/reverse-proxy path rewriting and request URL construction.",
+        instance = path,
+        traceId = context.TraceIdentifier,
+        pathBase = context.Request.PathBase.Value,
+        method = context.Request.Method
+    };
+
+    Log.Warning("[API ROUTING] Unmatched API request. Method={Method}, Path={Path}, PathBase={PathBase}, TraceId={TraceId}",
+        context.Request.Method,
+        context.Request.Path.Value,
+        context.Request.PathBase.Value,
+        context.TraceIdentifier);
+
+    await context.Response.WriteAsJsonAsync(problem);
+});
 
 // Initialize endpoint (for frontend) - keep for SPA compatibility
 app.MapGet("/initialize.json", async (HttpContext httpContext, Sportarr.Api.Services.ConfigService configService, SportarrDbContext db) =>
@@ -710,6 +782,26 @@ static async Task<bool> ShouldExposeApiKeyAsync(HttpContext context, SportarrDbC
     }
 
     return false;
+}
+
+static string NormalizePathForUrlBase(string path, string configuredUrlBase)
+{
+    if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(configuredUrlBase))
+    {
+        return path;
+    }
+
+    if (path.StartsWith(configuredUrlBase + "/", StringComparison.OrdinalIgnoreCase))
+    {
+        return path.Substring(configuredUrlBase.Length);
+    }
+
+    if (string.Equals(path, configuredUrlBase, StringComparison.OrdinalIgnoreCase))
+    {
+        return "/";
+    }
+
+    return path;
 }
 
 // Health check

@@ -216,17 +216,21 @@ namespace Sportarr
     /// </summary>
     public class SportarrHealthResponse
     {
+        // Plain (non-required) members so the plugin compiles on net6.0, whose
+        // C# 10 default predates the `required` keyword (and its net7+ runtime
+        // attribute). This is only a deserialization DTO, so the compile-time
+        // required enforcement was not load-bearing.
         [JsonPropertyName("status")]
-        public required string Status { get; set; }
+        public string Status { get; set; } = string.Empty;
 
         [JsonPropertyName("timestamp")]
-        public required DateTime Timestamp { get; set; }
+        public DateTime Timestamp { get; set; }
 
         [JsonPropertyName("version")]
-        public required string Version { get; set; }
+        public string Version { get; set; } = string.Empty;
 
         [JsonPropertyName("build")]
-        public required string Build { get; set; }
+        public string Build { get; set; } = string.Empty;
 
     }
 

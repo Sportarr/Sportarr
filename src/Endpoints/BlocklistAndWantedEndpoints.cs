@@ -146,14 +146,42 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
             .Take(pageSize)
             .ToListAsync();
 
-        // Filter events where quality is below cutoff
-        // This is a simplified check - full implementation would compare quality scores
+        // Items is a navigation property, so it must be eagerly loaded or the
+        // cutoff comparison below sees an empty quality list and matches nothing.
+        var profiles = await db.QualityProfiles
+            .Include(p => p.Items)
+            .ToDictionaryAsync(p => p.Id);
+
         var cutoffUnmetEvents = events.Where(e =>
         {
-            // Simple heuristic: if quality contains "WEB" or "HDTV", it's below cutoff
-            // A proper implementation would use the quality profile system
-            var quality = e.Quality?.ToLower() ?? "";
-            return quality.Contains("web") || quality.Contains("hdtv") || quality.Contains("720p");
+            if (!e.QualityProfileId.HasValue || !profiles.TryGetValue(e.QualityProfileId.Value, out var profile))
+                return false;
+            if (!profile.UpgradesAllowed)
+                return false;
+
+            var qualities = profile.Items
+
+            .SelectMany(parent =>
+            {
+                if (parent.Items != null && parent.Items.Count > 0)
+                    return parent.Items;
+                return new List<QualityItem> { parent };
+            }).ToList();
+
+            // Profile "quality" field is not reliable - SDTV might have quality=1 and WEB-480p has quality=0
+            // The order of the profiles appears to follow the displayed order
+            var currentIndex = qualities.FindIndex(q =>
+                string.Equals( q.Name, e.Quality, StringComparison.OrdinalIgnoreCase));
+
+            var cutoffIndex = qualities.FindIndex(q =>
+                q.Quality == profile.CutoffQuality);
+
+            if (currentIndex < 0 || cutoffIndex < 0)
+            {
+                return false;
+            }
+            // profiles are ordered from highest quality to lowest
+            return currentIndex > cutoffIndex;
         }).ToList();
 
         logger.LogInformation("[Wanted] Filtered to {Count} events below cutoff", cutoffUnmetEvents.Count);

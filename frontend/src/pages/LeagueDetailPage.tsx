@@ -17,6 +17,7 @@ import { useSearchQueueStatus, useDownloadQueue, useTasks } from '../api/hooks';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
 import { formatDateInTimezone, formatEventDate } from '../utils/timezone';
+import { getRefetchIntervalWithBackoff } from '../utils/queryBackoff';
 import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_INFO, BUTTON_DESTRUCTIVE } from '../utils/designTokens';
 import { isFightingSport, isTeamlessSport, usesFightingEventTypes } from '../utils/leagueSportRules';
 
@@ -286,7 +287,11 @@ export default function LeagueDetailPage() {
       const response = await apiClient.get<LeagueDetail>(`/leagues/${id}`);
       return response.data;
     },
-    refetchInterval: leagueSyncActive ? 5000 : false,
+    refetchInterval: (query) => (
+      leagueSyncActive
+        ? getRefetchIntervalWithBackoff(5000, query.state.fetchFailureCount)
+        : false
+    ),
   });
 
   useEffect(() => {
@@ -309,11 +314,15 @@ export default function LeagueDetailPage() {
       // onto the page as they're written. The old gate only polled while
       // the list was EMPTY, so the first season to land froze the page
       // until a manual reload even though the sync kept writing.
-      if (leagueSyncActive) return 3000;
+      if (leagueSyncActive) {
+        return getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount);
+      }
       // Also poll while empty (covers the gap between page load and the
       // initial-add task appearing in the task list).
       const data = query.state.data;
-      return (!data || data.length === 0) ? 3000 : false;
+      return (!data || data.length === 0)
+        ? getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount)
+        : false;
     },
   });
 
@@ -487,11 +496,27 @@ export default function LeagueDetailPage() {
       });
       return response.data;
     },
-    onSuccess: async () => {
-      // Use refetchQueries for immediate UI update
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
-      await queryClient.refetchQueries({ queryKey: ['league', id] });
-      await queryClient.refetchQueries({ queryKey: ['leagues'] }); // Update league stats
+    onSuccess: (updated, { eventId, monitored }) => {
+      // Patch only the toggled event in the cache instead of refetching the
+      // whole league-events list. On leagues with tens of thousands of events
+      // a full refetch + re-render took 15-20s per click (#148); a targeted
+      // cache update is instant.
+      queryClient.setQueryData<EventDetail[]>(['league-events', id], (prev) =>
+        prev?.map((e) =>
+          e.id === eventId
+            ? { ...e, monitored, monitoredParts: monitored ? (updated?.monitoredParts ?? e.monitoredParts) : undefined }
+            : e
+        )
+      );
+      // Keep the league header's monitored count in sync without refetching
+      // every event for the league.
+      queryClient.setQueryData<LeagueDetail>(['league', id], (prev) =>
+        prev
+          ? { ...prev, monitoredEventCount: Math.max(0, (prev.monitoredEventCount ?? 0) + (monitored ? 1 : -1)) }
+          : prev
+      );
+      // Refresh the leagues-list stats in the background; don't block the click.
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
       toast.success('Event updated');
     },
     onError: () => {
@@ -505,8 +530,14 @@ export default function LeagueDetailPage() {
       const response = await apiClient.put(`/events/${eventId}`, { qualityProfileId });
       return response.data;
     },
-    onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+    onSuccess: (_updated, { eventId, qualityProfileId }) => {
+      // Same as the monitor toggle: patch the single event rather than
+      // refetching every event in the league (#148).
+      queryClient.setQueryData<EventDetail[]>(['league-events', id], (prev) =>
+        prev?.map((e) =>
+          e.id === eventId ? { ...e, qualityProfileId: qualityProfileId ?? undefined } : e
+        )
+      );
       toast.success('Quality profile updated');
     },
     onError: () => {

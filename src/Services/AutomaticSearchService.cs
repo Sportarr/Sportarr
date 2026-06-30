@@ -289,23 +289,31 @@ public class AutomaticSearchService : IAutomaticSearchService
                     // Cached releases have Approved=true and empty Rejections by default
                     // We must run ReleaseEvaluator to apply CF minimum score and other profile requirements
                     await ReEvaluateCachedReleasesAsync(allReleases, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags);
+
+                    // Pre-populate seenGuids so supplementary queries below don't re-add cached releases
+                    foreach (var r in allReleases)
+                        if (!string.IsNullOrEmpty(r.Guid))
+                            seenGuids.Add(r.Guid);
                 }
             }
 
-            // If no cache hit, perform live search
-            if (!usedCache)
+            // Run all queries: live queries when no cache hit; supplementary queries always.
+            // Supplementary queries (Skip(1)) target alternative naming conventions (e.g. BILLIE-style
+            // F1 location releases) that the primary query may not reach. They must run even when the
+            // primary query hit the cache or returned enough results.
+            var queriesToRun = usedCache ? queries.Skip(1).ToList() : queries.ToList();
+
+            if (queriesToRun.Any())
             {
-                // Intelligent fallback search - try primary query first, exit early if no results
                 int queriesAttempted = 0;
                 int consecutiveEmptyResults = 0;
-                const int MinimumResults = 3;
                 const int MaxConsecutiveEmpty = 2;
 
-                foreach (var query in queries)
+                foreach (var query in queriesToRun)
                 {
                     queriesAttempted++;
                     _logger.LogInformation("[Automatic Search] Trying query {Attempt}/{Total}: '{Query}'",
-                        queriesAttempted, queries.Count, query);
+                        queriesAttempted, queriesToRun.Count, query);
 
                     // Pass part to indexer for proper filtering (with league tag-based indexer selection)
                     var leagueTags = evt.League?.Tags ?? new List<int>();
@@ -335,15 +343,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                             }
                         }
 
-                        if (allReleases.Count >= MinimumResults)
-                        {
-                            _logger.LogInformation("[Automatic Search] Found {Count} results - skipping remaining {Remaining} fallback queries",
-                                allReleases.Count, queries.Count - queriesAttempted);
-                            break;
-                        }
-
-                        _logger.LogInformation("[Automatic Search] Found {Count} results so far (need {Min} minimum)",
-                            allReleases.Count, MinimumResults);
+                        _logger.LogInformation("[Automatic Search] Found {Count} results so far",
+                            allReleases.Count);
                     }
                 }
 
@@ -351,7 +352,9 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // Negative caching: store even when allReleases is empty, so a season-wide click storm
                 // doesn't re-query the same 20 indexers once per event for identical empty responses.
                 // The cache-hit path correctly handles empty results (short-circuits to "No releases found").
-                if (!string.IsNullOrEmpty(primaryQuery))
+                // Skip re-storing on a cache hit so the supplementary-query results don't overwrite the
+                // primary-query cache entry.
+                if (!usedCache && !string.IsNullOrEmpty(primaryQuery))
                 {
                     _searchResultCache.Store(primaryQuery, allReleases, config.SearchCacheDuration);
                     _logger.LogDebug("[Automatic Search] Cached {Count} results for query '{Query}'",

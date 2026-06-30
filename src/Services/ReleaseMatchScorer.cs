@@ -1131,6 +1131,19 @@ public class ReleaseMatchScorer
             }
         }
 
+        // If the release names the event's own location it is for this event;
+        // skip the wrong-location check so a scene language tag that doubles as a
+        // demonym ("GERMAN" -> Germany, "FRENCH" -> France) cannot flag a false
+        // conflict on a release that clearly names the correct circuit/country.
+        foreach (var eventLoc in eventLocations)
+        {
+            if (ContainsLocationWord(normalizedRelease, eventLoc))
+                return null;
+            if (motorsportLocations.TryGetValue(eventLoc, out var eventLocAliases)
+                && eventLocAliases.Any(a => ContainsLocationWord(normalizedRelease, a)))
+                return null;
+        }
+
         // Now check if release contains a DIFFERENT location
         foreach (var (location, aliases) in motorsportLocations)
         {

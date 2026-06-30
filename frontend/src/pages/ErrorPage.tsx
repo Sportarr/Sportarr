@@ -1,5 +1,6 @@
 import { useNavigate, useRouteError, isRouteErrorResponse } from 'react-router-dom';
 import { HomeIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { getImageUrl } from '../utils/request';
 
 export default function ErrorPage() {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ export default function ErrorPage() {
         {/* Error Image */}
         <div className="mb-8">
           <img
-            src="/error.png"
+            src={getImageUrl('error.png')}
             alt="Error"
             className="w-full max-w-md mx-auto"
           />

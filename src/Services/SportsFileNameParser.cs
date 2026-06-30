@@ -225,6 +225,7 @@ public class SportsFileNameParser
                 ? $"F1 {match.Groups["year"].Value} Round {match.Groups["round"].Value}: {match.Groups["name"].Value.Replace(".", " ")} GP"
                 : $"F1 {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")} GP",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
+            LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value),
             SessionExtractor = (match) => DetectMotorsportSession(match.Groups["name"].Value)
         },
 
@@ -470,6 +471,17 @@ public class SportsFileNameParser
     // and without pulling the year out, match confidence caps below the
     // threshold and RSS sync silently drops the release.
     private static readonly Regex SeasonEpisodeYearPattern = new(@"[Ss](?<year>20[12]\d)[Ee]\d+", RegexOptions.Compiled);
+    // {Year}x{Round} season marker where the season is the year and a round
+    // follows immediately after an 'x' (e.g. "2026x02" = 2026 season, round 2).
+    // Scene releases use it for round-based sports -- Sky's Formula 1 feed is
+    // one example (Formula.1.2026x02.China.Race.SkyF1HD.1080p). YearOnlyPattern
+    // misses it because the 'x' joining the year and round is a word character,
+    // so the \b after the year never fires -- the year stays unextracted, the
+    // year-match bonus is lost, and the release scores below the confidence
+    // threshold and gets dropped. Only the year is captured; the round digits
+    // are matched (to anchor the format) but intentionally not surfaced -- see
+    // the extraction site below.
+    private static readonly Regex SeasonRoundYearPattern = new(@"\b(?<year>20[12]\d)x\d{1,2}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public SportsFileNameParser(ILogger<SportsFileNameParser> logger)
     {
@@ -609,8 +621,33 @@ public class SportsFileNameParser
                     }
                     else
                     {
-                        _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
-                            filename, cleanName);
+                        // Fallback: {Year}x{Round} season marker (e.g.
+                        // "2026x02"). The 'x' joining the year and round is a
+                        // word character, so neither YearOnlyPattern nor the
+                        // SxxxxExx marker above can pull the year out. Surface
+                        // only the year -- that earns the year-match bonus and
+                        // lifts the release over the confidence threshold.
+                        //
+                        // The round is deliberately NOT written to RoundNumber
+                        // here. ReleaseMatchingService reads it straight off the
+                        // title for its round-mismatch guard, compared against
+                        // Event.Round. Surfacing it via SportsParseResult would
+                        // also feed LibraryImportService, which compares the
+                        // round against the cumulative Event.EpisodeNumber
+                        // (round 2 spans E10-E16 for motorsport) and would
+                        // wrongly penalise the correct event.
+                        var xYearMatch = SeasonRoundYearPattern.Match(cleanName);
+                        if (xYearMatch.Success && int.TryParse(xYearMatch.Groups["year"].Value, out var xYear))
+                        {
+                            result.EventYear = xYear;
+                            _logger.LogDebug("[SportsFileNameParser] Extracted year {Year} from YYYYxNN marker in '{Filename}'",
+                                xYear, filename);
+                        }
+                        else
+                        {
+                            _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
+                                filename, cleanName);
+                        }
                     }
                 }
             }
@@ -747,9 +784,12 @@ public class SportsFileNameParser
 
         // Order matters: check more specific patterns first
         // Practice (most specific first — bare "practice" falls through to Practice 1)
-        if (Regex.IsMatch(lower, @"\bpractice\s*3\b|\bfp3\b")) return "Practice 3";
-        if (Regex.IsMatch(lower, @"\bpractice\s*2\b|\bfp2\b")) return "Practice 2";
-        if (Regex.IsMatch(lower, @"\bpractice\s*1\b|\bfp1\b")) return "Practice 1";
+        // Accept word ordinals too ("Practice Three") so the import-side label matches the
+        // EventPartDetector match gate, which already handles (3|three). Without this a
+        // word-form release parses to "Practice 1" here and is mis-imported. (issue #136/#168)
+        if (Regex.IsMatch(lower, @"\bpractice\s*(3|three)\b|\bfp3\b")) return "Practice 3";
+        if (Regex.IsMatch(lower, @"\bpractice\s*(2|two)\b|\bfp2\b")) return "Practice 2";
+        if (Regex.IsMatch(lower, @"\bpractice\s*(1|one)\b|\bfp1\b")) return "Practice 1";
         if (Regex.IsMatch(lower, @"\bpractice\b|\bfree\s+practice\b")) return "Practice 1";
         // Sprint sessions
         if (Regex.IsMatch(lower, @"\bsprint\s+qualifying\b")) return "Sprint Qualifying";
@@ -760,6 +800,8 @@ public class SportsFileNameParser
         if (Regex.IsMatch(lower, @"\bshootout\b")) return "Sprint Qualifying";
         if (Regex.IsMatch(lower, @"\bqualifying\b|\bquali\b")) return "Qualifying";
         if (Regex.IsMatch(lower, @"\bwarm\s*up\b")) return "Warm Up";
+        // Pre-show programmes that are not race sessions (e.g. MotoGP "Gear Up" show)
+        if (Regex.IsMatch(lower, @"\bgear[\s\-_.]*up\b")) return "Pre-Show";
         // Race — grand prix/gp safe here because practice/qualifying/sprint already matched above
         if (Regex.IsMatch(lower, @"\brace\b|\bgrand\s*prix\b|\bgp\b(?!\s*of)")) return "Race";
         if (Regex.IsMatch(lower, @"\bpre\s*season\s+test")) return "Pre-Season Testing";

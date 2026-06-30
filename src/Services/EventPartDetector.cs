@@ -692,6 +692,23 @@ public class EventPartDetector
     }
 
     /// <summary>
+    /// The "main" segment name for an event (e.g. "Main Card" for fighting,
+    /// "Main Show" for wrestling) -- the highest-ordered segment. A release for
+    /// the main segment normally ships under the bare event title with no part
+    /// label, so an unlabelled fighting release maps to this part. Returns null
+    /// for sports without multi-part episodes.
+    /// </summary>
+    public static string? GetMainPartName(string sport, string? eventTitle = null, string? leagueName = null)
+    {
+        if (!IsFightingSport(sport))
+            return null;
+
+        return GetSegmentsForEventType(eventTitle, leagueName)
+            .OrderByDescending(s => s.PartNumber)
+            .FirstOrDefault()?.Name;
+    }
+
+    /// <summary>
     /// Get segment definitions for a sport type (for API responses)
     /// Only fighting sports have segment definitions - motorsports are individual events
     /// Includes "Full Event" with PartNumber=0 as the first option
