@@ -186,31 +186,14 @@ public class SabnzbdClient
         var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}";
         var apiKey = config.ApiKey ?? "";
 
-        using var content = new MultipartFormDataContent();
-        content.Add(new StringContent("addfile"), "mode");
-        content.Add(new StringContent(apiKey), "apikey");
-        content.Add(new StringContent("json"), "output");
-        content.Add(new StringContent(category), "cat");
-
         if (string.IsNullOrWhiteSpace(category))
         {
             _logger.LogWarning(
                 "[SABnzbd] No category set for this grab, so SABnzbd will use its Default category and won't place the download in a per-category subfolder. Set a category on the download client AND define that category in SABnzbd (Config > Categories) with a Folder/Path.");
         }
 
-        // Pass the canonical release name as `nzbname` so SABnzbd-compatible targets
-        // use it instead of falling back to the multipart filename (which is often
-        // an indexer-provided hash) or the per-file yenc names (commonly obfuscated).
-        // SABnzbd documents this as the public name override:
-        // https://sabnzbd.org/wiki/configuration/4.4/api#addfile
-        if (!string.IsNullOrWhiteSpace(nzbname))
-        {
-            content.Add(new StringContent(nzbname), "nzbname");
-        }
-
         if (!string.IsNullOrWhiteSpace(config.Directory))
         {
-            content.Add(new StringContent(config.Directory), "dir");
             // Standard SABnzbd ignores a per-job directory: the output folder is
             // determined by the category's configured Folder/Path, not by a 'dir'
             // sent on the add request. Some SAB-compatible clients honor it, so we
@@ -219,43 +202,111 @@ public class SabnzbdClient
                 "[SABnzbd] Directory override '{Directory}' was sent, but standard SABnzbd ignores a per-job directory and routes downloads by category (Config > Categories > Folder/Path). Configure the category folder in SABnzbd to control the destination.", config.Directory);
         }
 
-        // Add the NZB file as raw bytes - this preserves the original encoding
-        var fileContent = new ByteArrayContent(nzbBytes);
-        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
-        content.Add(fileContent, "nzbfile", filename);
-
-        // Some SAB-compatible servers (e.g. usenet-mount emulators) only read the
-        // mode/auth parameters from the query string and reject a form-only upload
-        // with "Authentication required". Real SABnzbd accepts them in either place,
-        // so we send them in the query string in addition to the multipart form.
-        var addFileQuery = new System.Text.StringBuilder("?mode=addfile&output=json");
-        if (!string.IsNullOrWhiteSpace(category))
-            addFileQuery.Append($"&cat={Uri.EscapeDataString(category)}");
-        if (!string.IsNullOrWhiteSpace(apiKey))
-            addFileQuery.Append($"&apikey={Uri.EscapeDataString(apiKey)}");
-        else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
-            addFileQuery.Append($"&ma_username={Uri.EscapeDataString(config.Username)}&ma_password={Uri.EscapeDataString(config.Password)}");
-
         _logger.LogInformation("[SABnzbd] Uploading NZB to SABnzbd: {Filename}, Category: {Category}", filename, category);
 
-        using var response = await _httpClient.PostAsync($"{baseUrl}/api{addFileQuery}", content);
-        var responseContent = await response.Content.ReadAsStringAsync();
-
-        _logger.LogDebug("[SABnzbd] Upload response: {Response}", responseContent);
-
-        if (response.IsSuccessStatusCode && !string.IsNullOrEmpty(responseContent))
+        async Task<(string? NzoId, string? Error)> TryUploadAsync(bool useQueryControlParams)
         {
-            var doc = JsonDocument.Parse(responseContent);
-            if (doc.RootElement.TryGetProperty("nzo_ids", out var ids) &&
-                ids.GetArrayLength() > 0)
+            using var content = new MultipartFormDataContent();
+
+            if (!useQueryControlParams)
             {
-                var nzoId = ids[0].GetString();
-                _logger.LogInformation("[SABnzbd] NZB added successfully: {NzoId}", nzoId);
-                return nzoId;
+                // SABnzbd API spec: control fields are sent in multipart form.
+                content.Add(new StringContent("addfile"), "mode");
+                content.Add(new StringContent("json"), "output");
+                content.Add(new StringContent(category), "cat");
+
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                    content.Add(new StringContent(apiKey), "apikey");
+                else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
+                {
+                    content.Add(new StringContent(config.Username), "ma_username");
+                    content.Add(new StringContent(config.Password), "ma_password");
+                }
             }
+
+            // Pass the canonical release name as `nzbname` so SABnzbd-compatible
+            // targets use it instead of the often-obfuscated NZB filename.
+            if (!string.IsNullOrWhiteSpace(nzbname))
+            {
+                content.Add(new StringContent(nzbname), "nzbname");
+            }
+
+            if (!string.IsNullOrWhiteSpace(config.Directory))
+            {
+                content.Add(new StringContent(config.Directory), "dir");
+            }
+
+            var fileContent = new ByteArrayContent(nzbBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
+            content.Add(fileContent, "nzbfile", filename);
+
+            var requestUrl = $"{baseUrl}/api";
+            if (useQueryControlParams)
+            {
+                var addFileQuery = new System.Text.StringBuilder("?mode=addfile&output=json");
+                if (!string.IsNullOrWhiteSpace(category))
+                    addFileQuery.Append($"&cat={Uri.EscapeDataString(category)}");
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                    addFileQuery.Append($"&apikey={Uri.EscapeDataString(apiKey)}");
+                else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
+                    addFileQuery.Append($"&ma_username={Uri.EscapeDataString(config.Username)}&ma_password={Uri.EscapeDataString(config.Password)}");
+
+                requestUrl += addFileQuery.ToString();
+            }
+
+            using var response = await _httpClient.PostAsync(requestUrl, content);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            _logger.LogDebug("[SABnzbd] Upload response ({Strategy}): {Response}",
+                useQueryControlParams ? "query" : "form", responseContent);
+
+            if (response.IsSuccessStatusCode && !string.IsNullOrEmpty(responseContent))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(responseContent);
+                    if (doc.RootElement.TryGetProperty("nzo_ids", out var ids) &&
+                        ids.ValueKind == JsonValueKind.Array && ids.GetArrayLength() > 0)
+                    {
+                        return (ids[0].GetString(), null);
+                    }
+
+                    var error = doc.RootElement.TryGetProperty("error", out var err)
+                        ? err.GetString()
+                        : null;
+
+                    return (null, string.IsNullOrWhiteSpace(error) ? responseContent : error);
+                }
+                catch (JsonException)
+                {
+                    return (null, responseContent);
+                }
+            }
+
+            return (null, responseContent);
         }
 
-        _logger.LogError("[SABnzbd] Failed to add NZB: {Response}", responseContent);
+        // Spec-first path: SABnzbd docs require addfile control fields in multipart form.
+        var formAttempt = await TryUploadAsync(useQueryControlParams: false);
+        if (!string.IsNullOrWhiteSpace(formAttempt.NzoId))
+        {
+            _logger.LogInformation("[SABnzbd] NZB added successfully: {NzoId}", formAttempt.NzoId);
+            return formAttempt.NzoId;
+        }
+
+        // Defensive fallback: some SAB-compatible servers require query-string controls.
+        _logger.LogWarning("[SABnzbd] addfile form-mode failed; retrying with query-string control parameters. First response: {Response}",
+            formAttempt.Error ?? "(empty response)");
+
+        var queryAttempt = await TryUploadAsync(useQueryControlParams: true);
+        if (!string.IsNullOrWhiteSpace(queryAttempt.NzoId))
+        {
+            _logger.LogInformation("[SABnzbd] NZB added successfully via query-mode fallback: {NzoId}", queryAttempt.NzoId);
+            return queryAttempt.NzoId;
+        }
+
+        _logger.LogError("[SABnzbd] Failed to add NZB after form and query attempts. Last response: {Response}",
+            queryAttempt.Error ?? "(empty response)");
         return null;
     }
 
