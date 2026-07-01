@@ -405,6 +405,12 @@ public class TransmissionClient
     {
         var results = new List<ExternalDownloadInfo>();
 
+        // Transmission has no labels, so the download directory is the only way to
+        // tell Sportarr's downloads apart. Without one it would include every torrent,
+        // so match nothing instead.
+        if (string.IsNullOrWhiteSpace(config.Directory))
+            return results;
+
         try
         {
             var torrents = await GetTorrentsAsync(config);

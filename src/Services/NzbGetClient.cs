@@ -373,6 +373,11 @@ public class NzbGetClient
         var results = new List<ExternalDownloadInfo>();
         var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Without a category Sportarr cannot tell its own downloads apart from the
+        // rest of this client's items, so match nothing rather than every empty-category item.
+        if (string.IsNullOrWhiteSpace(category))
+            return results;
+
         // Active queue (downloading, paused, post-processing)
         var queue = await GetListAsync(config);
         if (queue != null)

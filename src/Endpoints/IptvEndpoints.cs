@@ -72,6 +72,13 @@ app.MapDelete("/api/iptv/sources/{id:int}", async (int id, IptvSourceService ipt
     return Results.NoContent();
 });
 
+// Bulk-delete IPTV sources in one request (e.g. clearing accidental duplicates)
+app.MapPost("/api/iptv/sources/bulk-delete", async (BulkDeleteSourcesRequest request, IptvSourceService iptvService) =>
+{
+    var count = await iptvService.DeleteSourcesAsync(request.Ids ?? new List<int>());
+    return Results.Ok(new { deleted = count });
+});
+
 // Toggle IPTV source active status
 app.MapPost("/api/iptv/sources/{id:int}/toggle", async (int id, IptvSourceService iptvService) =>
 {

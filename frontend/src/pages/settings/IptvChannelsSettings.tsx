@@ -390,7 +390,7 @@ export default function IptvChannelsSettings() {
         });
       } else {
         toast.info('No new channels to map', {
-          description: 'All channels are already mapped or no matching EPG channels found. Make sure you have synced an EPG source first.',
+          description: 'All channels are already mapped, or no matching EPG channels were found. If you have not yet, sync an EPG source first from the TV Guide page.',
         });
       }
     } catch (err: any) {
@@ -668,7 +668,7 @@ export default function IptvChannelsSettings() {
                 </li>
                 <li>
                   <span className="mr-2 text-red-400">*</span>
-                  <strong>EPG mapping</strong> links channels to guide data for TV Guide. Sync EPG first in Settings &gt; EPG Sources
+                  <strong>EPG mapping</strong> links channels to guide data for TV Guide. Sync an EPG source first from the TV Guide page (EPG Sources).
                 </li>
                 <li>
                   <span className="mr-2 text-red-400">*</span>

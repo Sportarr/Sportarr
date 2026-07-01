@@ -285,6 +285,12 @@ public class RTorrentClient
     {
         var results = new List<ExternalDownloadInfo>();
 
+        // rTorrent matches by label (category) first, falling back to directory. With
+        // neither configured it would include every unlabelled torrent, so require at
+        // least one identifier and otherwise match nothing.
+        if (string.IsNullOrWhiteSpace(category) && string.IsNullOrWhiteSpace(config.Directory))
+            return results;
+
         try
         {
             var torrents = await GetTorrentsAsync(config);

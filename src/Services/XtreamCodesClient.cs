@@ -44,29 +44,82 @@ public class XtreamCodesClient
     /// </summary>
     public async Task<XtreamAuthResponse?> AuthenticateAsync(string serverUrl, string username, string password)
     {
-        try
+        var (_, auth, error) = await ResolveAsync(serverUrl, username, password);
+        if (auth == null)
+            _logger.LogError("[Xtream] Authentication failed for {Url}: {Error}", serverUrl, error);
+        return auth;
+    }
+
+    /// <summary>
+    /// Resolve the working Xtream base URL by probing candidate schemes and
+    /// authenticating. Xtream providers commonly serve the player API over http
+    /// even when the user enters https (or the reverse), so a single fixed scheme
+    /// fails with a 404 or a connection error that the old code surfaced only as a
+    /// generic "authentication failed". Returns the first base URL whose
+    /// player_api.php returns a valid user_info, or a message listing what failed.
+    /// </summary>
+    public async Task<(string? BaseUrl, XtreamAuthResponse? Auth, string? Error)> ResolveAsync(
+        string serverUrl, string username, string password)
+    {
+        var attempts = new List<string>();
+        foreach (var baseUrl in CandidateBaseUrls(serverUrl))
         {
-            var url = BuildApiUrl(serverUrl, username, password);
-            _logger.LogDebug("[Xtream] Authenticating with server: {Url}", serverUrl);
-
-            var response = await GetHttpClient().GetAsync(url);
-            response.EnsureSuccessStatusCode();
-
-            var content = await response.Content.ReadAsStringAsync();
-            var authResponse = JsonSerializer.Deserialize<XtreamAuthResponse>(content, JsonOptions);
-
-            if (authResponse?.UserInfo != null)
+            try
             {
-                _logger.LogInformation("[Xtream] Authentication successful. Status: {Status}, Max Connections: {MaxConn}",
-                    authResponse.UserInfo.Status, authResponse.UserInfo.MaxConnections);
-            }
+                _logger.LogDebug("[Xtream] Probing {BaseUrl}", baseUrl);
+                var response = await GetHttpClient().GetAsync(BuildApiUrl(baseUrl, username, password));
+                if (!response.IsSuccessStatusCode)
+                {
+                    attempts.Add($"{baseUrl} returned HTTP {(int)response.StatusCode}");
+                    continue;
+                }
 
-            return authResponse;
+                var content = await response.Content.ReadAsStringAsync();
+                var auth = JsonSerializer.Deserialize<XtreamAuthResponse>(content, JsonOptions);
+                if (auth?.UserInfo != null)
+                {
+                    _logger.LogInformation("[Xtream] Authenticated at {BaseUrl} (status {Status}, max connections {Max})",
+                        baseUrl, auth.UserInfo.Status, auth.UserInfo.MaxConnections);
+                    return (baseUrl, auth, null);
+                }
+                attempts.Add($"{baseUrl} returned a response without user_info");
+            }
+            catch (Exception ex)
+            {
+                attempts.Add($"{baseUrl} failed: {ex.Message}");
+            }
         }
-        catch (Exception ex)
+
+        return (null, null,
+            $"Could not reach the Xtream API (player_api.php). Tried {string.Join("; ", attempts)}. " +
+            "Check the server URL, scheme (many providers serve the API over http, not https), and port.");
+    }
+
+    /// <summary>
+    /// Candidate base URLs to probe, most-likely first. If the user gave a scheme
+    /// we try it then the alternate; with no scheme we try http then https (most
+    /// Xtream providers are http). Any explicit port is preserved.
+    /// </summary>
+    private static IEnumerable<string> CandidateBaseUrls(string serverUrl)
+    {
+        serverUrl = (serverUrl ?? string.Empty).Trim().TrimEnd('/');
+        if (serverUrl.Length == 0)
+            yield break;
+
+        if (serverUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogError(ex, "[Xtream] Authentication failed for server: {Url}", serverUrl);
-            return null;
+            yield return serverUrl;
+            yield return "http://" + serverUrl.Substring("https://".Length);
+        }
+        else if (serverUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return serverUrl;
+            yield return "https://" + serverUrl.Substring("http://".Length);
+        }
+        else
+        {
+            yield return "http://" + serverUrl;
+            yield return "https://" + serverUrl;
         }
     }
 
@@ -171,12 +224,15 @@ public class XtreamCodesClient
     {
         _logger.LogInformation("[Xtream] Fetching channels from server: {Url}", serverUrl);
 
-        // First authenticate to verify credentials
-        var auth = await AuthenticateAsync(serverUrl, username, password);
-        if (auth?.UserInfo == null)
+        // Resolve the working base URL once (handles http/https scheme mismatch),
+        // then use that scheme for every follow-up call (categories, streams,
+        // stream URLs) so the sync doesn't fail on the wrong scheme.
+        var (baseUrl, auth, error) = await ResolveAsync(serverUrl, username, password);
+        if (baseUrl == null || auth?.UserInfo == null)
         {
-            throw new InvalidOperationException("Xtream authentication failed");
+            throw new InvalidOperationException($"Xtream authentication failed: {error}");
         }
+        serverUrl = baseUrl;
 
         // Get categories to help with sports detection
         var categories = await GetLiveCategoriesAsync(serverUrl, username, password);
@@ -252,11 +308,13 @@ public class XtreamCodesClient
     {
         try
         {
-            var auth = await AuthenticateAsync(serverUrl, username, password);
+            var (_, auth, error) = await ResolveAsync(serverUrl, username, password);
 
             if (auth?.UserInfo == null)
             {
-                return (false, "Authentication failed - invalid credentials or server not responding", null);
+                // Surface the real reason (e.g. "returned HTTP 404", "connection refused")
+                // and which schemes were tried, instead of a generic failure.
+                return (false, error ?? "Authentication failed - invalid credentials or server not responding", null);
             }
 
             if (auth.UserInfo.Status != "Active")
@@ -265,10 +323,6 @@ public class XtreamCodesClient
             }
 
             return (true, null, int.TryParse(auth.UserInfo.MaxConnections, out var max) ? max : null);
-        }
-        catch (HttpRequestException ex)
-        {
-            return (false, $"Connection failed: {ex.Message}", null);
         }
         catch (Exception ex)
         {

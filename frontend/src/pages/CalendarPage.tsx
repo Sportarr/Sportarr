@@ -3,7 +3,6 @@ import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
 import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
-import LeagueLogoWatermark from '../components/LeagueLogoWatermark';
 import { useCalendarEvents } from '../api/hooks';
 import type { Event } from '../types';
 import { useSettings } from '../hooks/useSettings';
@@ -158,13 +157,9 @@ function EventCard({
       className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all hover:opacity-95`}
       title={`${event.title}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
     >
-      {leagueLogoUrl && (
-        <LeagueLogoWatermark logoUrl={leagueLogoUrl} variant="compact" />
-      )}
-
       {/* Top row */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between overflow-hidden">
-        <div className="flex min-w-0 items-start gap-0.5">
+        <div className="flex min-w-0 items-center gap-0.5">
           {displaySport && (
             <span
               data-testid={`calendar-event-sport-${event.id}`}
@@ -173,7 +168,16 @@ function EventCard({
               {displaySport}
             </span>
           )}
-          <div className="flex items-center gap-0.5 pt-0.5">
+          {leagueLogoUrl && (
+            <img
+              src={leagueLogoUrl}
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+              className="h-4 w-4 shrink-0 object-contain"
+            />
+          )}
+          <div className="flex items-center gap-0.5">
             {event.broadcast && (
               <TvIcon className="h-3.5 w-3.5 shrink-0 text-green-300" />
             )}
@@ -185,13 +189,12 @@ function EventCard({
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center">
-          {isLive ? (
-            <span className="rounded-bl-sm bg-red-500 px-1 py-0.5 text-[9px] font-bold text-white animate-pulse">
+        <div className="flex shrink-0 items-center gap-1 pr-1">
+          <span className="text-[9px] font-medium text-gray-300">{timeLabel}</span>
+          {isLive && (
+            <span className="-mr-1 rounded-bl-sm bg-red-500 px-1 py-0.5 text-[9px] font-bold text-white animate-pulse">
               LIVE
             </span>
-          ) : (
-            <span className="pr-1 text-[9px] font-medium text-gray-300">{timeLabel}</span>
           )}
         </div>
       </div>
@@ -227,15 +230,21 @@ function SpaciousAgendaEventCard({
       onClick={onClick}
       className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all hover:opacity-90 ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border}`}
     >
-      {leagueLogoUrl && (
-        <LeagueLogoWatermark logoUrl={leagueLogoUrl} variant="agenda" />
-      )}
       <div className="relative z-10 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className={`${sportColors.accent} px-2 py-0.5 text-xs font-semibold text-white rounded`}>
               {getSportDisplayLabel(event.sport)}
             </span>
+            {leagueLogoUrl && (
+              <img
+                src={leagueLogoUrl}
+                alt=""
+                aria-hidden="true"
+                loading="lazy"
+                className="h-5 w-5 shrink-0 object-contain"
+              />
+            )}
             {isLive && (
               <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded animate-pulse">LIVE</span>
             )}

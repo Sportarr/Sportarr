@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 
@@ -15,19 +16,22 @@ public class IptvSourceService
     private readonly M3uParserService _m3uParser;
     private readonly XtreamCodesClient _xtreamClient;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public IptvSourceService(
         ILogger<IptvSourceService> logger,
         SportarrDbContext db,
         M3uParserService m3uParser,
         XtreamCodesClient xtreamClient,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IServiceScopeFactory scopeFactory)
     {
         _logger = logger;
         _db = db;
         _m3uParser = m3uParser;
         _xtreamClient = xtreamClient;
         _httpClientFactory = httpClientFactory;
+        _scopeFactory = scopeFactory;
     }
 
     // ============================================================================
@@ -63,22 +67,52 @@ public class IptvSourceService
 
         var source = request.ToEntity();
 
+        // Guard against duplicate sources. The initial channel sync below runs
+        // inline and can take a long time for large providers, so a user who
+        // clicks Add again during that wait would otherwise stack identical
+        // copies (reported: 12 duplicates from repeated clicks). Reject a source
+        // whose URL + username + type already exists.
+        var existing = await _db.IptvSources.FirstOrDefaultAsync(s =>
+            s.Url == source.Url && s.Username == source.Username && s.Type == source.Type);
+        if (existing != null)
+        {
+            throw new InvalidOperationException(
+                $"An IPTV source with this URL already exists (\"{existing.Name}\"). Edit or delete the existing one instead of adding it again.");
+        }
+
         _db.IptvSources.Add(source);
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("[IPTV] Source added with ID: {Id}", source.Id);
 
-        // Optionally sync channels immediately
-        try
+        // Kick off the initial channel sync in the background so the Add request
+        // returns immediately. A large provider's first sync can take minutes;
+        // running it inline made the POST hang for tens of seconds and invited
+        // repeated Add clicks. Uses a fresh DI scope because this request's
+        // DbContext is disposed as soon as the response is sent.
+        var sourceId = source.Id;
+        _ = Task.Run(async () =>
         {
-            await SyncChannelsAsync(source.Id);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[IPTV] Failed to sync channels for new source {Id}", source.Id);
-            source.LastError = $"Initial sync failed: {ex.Message}";
-            await _db.SaveChangesAsync();
-        }
+            using var scope = _scopeFactory.CreateScope();
+            var provider = scope.ServiceProvider;
+            var svc = provider.GetRequiredService<IptvSourceService>();
+            var log = provider.GetRequiredService<ILogger<IptvSourceService>>();
+            try
+            {
+                await svc.SyncChannelsAsync(sourceId);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "[IPTV] Background initial sync failed for source {Id}", sourceId);
+                var db = provider.GetRequiredService<SportarrDbContext>();
+                var s = await db.IptvSources.FirstOrDefaultAsync(x => x.Id == sourceId);
+                if (s != null)
+                {
+                    s.LastError = $"Initial sync failed: {ex.Message}";
+                    await db.SaveChangesAsync();
+                }
+            }
+        });
 
         return source;
     }
@@ -126,6 +160,28 @@ public class IptvSourceService
         await _db.SaveChangesAsync();
 
         return true;
+    }
+
+    /// <summary>
+    /// Delete several sources in one transaction. Lets the user clear out a batch
+    /// of sources (e.g. accidental duplicates) with a single action instead of a
+    /// separate request per source.
+    /// </summary>
+    public async Task<int> DeleteSourcesAsync(IEnumerable<int> ids)
+    {
+        var idList = ids.Distinct().ToList();
+        if (idList.Count == 0)
+            return 0;
+
+        var sources = await _db.IptvSources.Where(s => idList.Contains(s.Id)).ToListAsync();
+        if (sources.Count == 0)
+            return 0;
+
+        _logger.LogInformation("[IPTV] Bulk-deleting {Count} source(s)", sources.Count);
+        _db.IptvSources.RemoveRange(sources);
+        await _db.SaveChangesAsync();
+
+        return sources.Count;
     }
 
     /// <summary>

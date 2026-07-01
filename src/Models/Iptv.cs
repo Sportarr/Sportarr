@@ -902,6 +902,12 @@ public class EpgProgram
 /// <summary>
 /// Request to add a new IPTV source
 /// </summary>
+/// <summary>Request body for deleting several IPTV sources at once.</summary>
+public class BulkDeleteSourcesRequest
+{
+    public List<int>? Ids { get; set; }
+}
+
 public class AddIptvSourceRequest
 {
     public required string Name { get; set; }

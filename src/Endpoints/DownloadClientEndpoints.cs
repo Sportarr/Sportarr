@@ -139,6 +139,21 @@ app.MapPost("/api/downloadclient/test", async (DownloadClient client, DownloadCl
 
     if (success)
     {
+        // A torrent client with no category/label means Sportarr can't tell which
+        // torrents in the client are its own, so external-download detection is
+        // disabled for it (an empty category would otherwise match every unlabelled
+        // torrent). Nudge the user to set one at test/save time.
+        var needsCategory = string.IsNullOrWhiteSpace(client.Category) && client.Type is
+            DownloadClientType.QBittorrent or DownloadClientType.Transmission or
+            DownloadClientType.Deluge or DownloadClientType.RTorrent or
+            DownloadClientType.UTorrent or DownloadClientType.Decypharr;
+
+        if (needsCategory)
+        {
+            const string note = "A category is recommended. Without one, Sportarr can't identify its own downloads in this client, so manually-added downloads won't be detected for import.";
+            message = string.IsNullOrWhiteSpace(message) ? note : $"{message} {note}";
+        }
+
         return Results.Ok(new { success = true, message });
     }
 

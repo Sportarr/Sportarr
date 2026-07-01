@@ -913,6 +913,45 @@ public class EnhancedDownloadMonitorService : BackgroundService
             {
                 var allDownloads = await downloadClientService.GetAllDownloadsByCategoryAsync(client, client.Category);
 
+                // Reconcile stale detections: an auto-detected external PendingImport
+                // should disappear once its download is no longer present in the
+                // client's category-filtered list (the item was deleted, or its
+                // label/category was removed). Only reconcile on a clearly successful
+                // poll — an empty list can also mean the client was unreachable, so a
+                // non-empty response is required before purging, to avoid wiping the
+                // Activity list on a transient outage.
+                if (allDownloads.Count > 0)
+                {
+                    var currentIds = new HashSet<string>(
+                        allDownloads.Select(d => d.DownloadId),
+                        StringComparer.OrdinalIgnoreCase);
+                    var currentHashes = new HashSet<string>(
+                        allDownloads.Where(d => !string.IsNullOrEmpty(d.TorrentInfoHash))
+                            .Select(d => d.TorrentInfoHash!.ToLowerInvariant()),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    var clientPending = await db.PendingImports
+                        .Where(pi => pi.DownloadClientId == client.Id && pi.Status == PendingImportStatus.Pending)
+                        .ToListAsync(cancellationToken);
+
+                    var stale = clientPending
+                        .Where(pi => !currentIds.Contains(pi.DownloadId)
+                                     && (string.IsNullOrEmpty(pi.TorrentInfoHash)
+                                         || !currentHashes.Contains(pi.TorrentInfoHash.ToLowerInvariant())))
+                        .ToList();
+
+                    if (stale.Count > 0)
+                    {
+                        db.PendingImports.RemoveRange(stale);
+                        await db.SaveChangesAsync(cancellationToken);
+                        foreach (var pi in stale)
+                            pendingDownloadIds.Remove(pi.DownloadId);
+                        _logger.LogInformation(
+                            "[Enhanced Download Monitor] Removed {Count} stale pending import(s) for '{Client}' no longer present with its category",
+                            stale.Count, client.Name);
+                    }
+                }
+
                 foreach (var download in allDownloads)
                 {
                     // Skip downloads we already know about (queue, pending imports,

@@ -252,6 +252,9 @@ export default function IptvSettings() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSource, setEditingSource] = useState<IptvSource | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  // Multi-select for bulk source deletion (e.g. clearing accidental duplicates).
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [formData, setFormData] = useState<SourceFormData>(defaultFormData);
 
   // Channel viewer state
@@ -269,6 +272,9 @@ export default function IptvSettings() {
 
   // Testing state
   const [isTesting, setIsTesting] = useState(false);
+  // Guards the Add/Save submit so a slow request can't be clicked repeatedly
+  // (which previously created duplicate sources).
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; channelCount?: number } | null>(null);
 
   // Syncing state
@@ -347,21 +353,29 @@ export default function IptvSettings() {
   };
 
   const handleAddSource = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       setError(null);
       const response = await apiClient.post<IptvSource>('/iptv/sources', formData);
       setSources(prev => [...prev, response.data]);
       setShowAddModal(false);
       setFormData(defaultFormData);
-      toast.success('Source Added', { description: `${formData.name} has been added and channels synced` });
+      toast.success('Source Added', { description: `${formData.name} was added; channels are syncing in the background` });
     } catch (err: any) {
-      setError(err.message || 'Failed to add source');
-      toast.error('Failed to add source', { description: err.message });
+      // Surface the server's actual error (e.g. the real Xtream failure reason,
+      // or a duplicate-source message) instead of axios's generic status text.
+      const msg = err?.response?.data?.error || err.message || 'Failed to add source';
+      setError(msg);
+      toast.error('Failed to add source', { description: msg });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleUpdateSource = async () => {
-    if (!editingSource) return;
+    if (!editingSource || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       setError(null);
       // If password is still the placeholder, send empty string to preserve existing password
@@ -375,8 +389,11 @@ export default function IptvSettings() {
       setFormData(defaultFormData);
       toast.success('Source Updated', { description: `${formData.name} has been updated` });
     } catch (err: any) {
-      setError(err.message || 'Failed to update source');
-      toast.error('Failed to update source', { description: err.message });
+      const msg = err?.response?.data?.error || err.message || 'Failed to update source';
+      setError(msg);
+      toast.error('Failed to update source', { description: msg });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -390,6 +407,33 @@ export default function IptvSettings() {
     } catch (err: any) {
       setError(err.message || 'Failed to delete source');
       toast.error('Failed to delete source', { description: err.message });
+    }
+  };
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || isBulkDeleting) return;
+    setIsBulkDeleting(true);
+    try {
+      setError(null);
+      await apiClient.post('/iptv/sources/bulk-delete', { ids });
+      setSources(prev => prev.filter(s => !selectedIds.has(s.id)));
+      setSelectedIds(new Set());
+      toast.success(`Deleted ${ids.length} source${ids.length === 1 ? '' : 's'}`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err.message || 'Failed to delete sources';
+      setError(msg);
+      toast.error('Failed to delete sources', { description: msg });
+    } finally {
+      setIsBulkDeleting(false);
     }
   };
 
@@ -739,6 +783,27 @@ export default function IptvSettings() {
             </button>
           </div>
 
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between mb-4 px-4 py-2 bg-red-950/40 border border-red-900/40 rounded-lg">
+              <span className="text-sm text-gray-300">{selectedIds.size} selected</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="px-3 py-1.5 text-sm text-gray-300 hover:text-white transition-colors"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isBulkDeleting}
+                  className="px-3 py-1.5 text-sm rounded bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isBulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size} selected`}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-3">
             {sources.map((source) => (
               <div
@@ -747,6 +812,13 @@ export default function IptvSettings() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(source.id)}
+                      onChange={() => toggleSelected(source.id)}
+                      className="mt-1.5 h-4 w-4 flex-shrink-0 accent-red-600 cursor-pointer"
+                      title="Select for bulk delete"
+                    />
                     {/* Status Icon */}
                     <div className="mt-1">
                       {source.isActive ? (
@@ -902,14 +974,14 @@ export default function IptvSettings() {
                 </button>
                 <button
                   onClick={editingSource ? handleUpdateSource : handleAddSource}
-                  disabled={!isFormValid()}
+                  disabled={!isFormValid() || isSubmitting}
                   className={`px-4 py-2 rounded-lg transition-colors ${
-                    isFormValid()
+                    isFormValid() && !isSubmitting
                       ? 'bg-red-600 hover:bg-red-700 text-white'
                       : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                   }`}
                 >
-                  {editingSource ? 'Save' : 'Add'}
+                  {isSubmitting ? (editingSource ? 'Saving...' : 'Adding...') : (editingSource ? 'Save' : 'Add')}
                 </button>
               </div>
             </div>

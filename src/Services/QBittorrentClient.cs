@@ -755,6 +755,12 @@ public class QBittorrentClient
     /// </summary>
     public async Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient config, string category)
     {
+        // An empty category would match every UNCATEGORISED torrent below, pulling
+        // unrelated downloads into external-download detection and the Activity page.
+        // Without a category Sportarr cannot identify its own downloads, so match nothing.
+        if (string.IsNullOrWhiteSpace(category))
+            return new List<ExternalDownloadInfo>();
+
         var torrents = await GetTorrentsAsync(config);
         if (torrents == null)
             return new List<ExternalDownloadInfo>();
