@@ -614,6 +614,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     { token: '{HomeTeam}', description: 'Home team' },
     { token: '{AwayTeam}', description: 'Away team' },
     { token: '{Season}', description: 'Season' },
+    { token: '{Part}', description: 'Part being searched (Prelims, Main Card); empty for whole-event searches' },
+    { token: '{EventType}', description: 'Detected event type (PPV, Fight Night, Contender Series, Weekly)' },
   ];
 
   const insertToken = (token: string) => {
