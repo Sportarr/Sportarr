@@ -134,14 +134,9 @@ public class LibraryRescanService
         return result;
     }
 
-    /// <summary>
-    /// Minimum match confidence (0-100) at which a scanned file gets
-    /// auto-imported without admin review. The score comes from
-    /// LibraryImportService.CalculateMatchConfidence and is stored as an
-    /// integer on ImportableFile.MatchConfidence; 85 corresponds to the
-    /// "high confidence" tier already used by the manual import UI.
-    /// </summary>
-    private const int AutoImportConfidenceFloor = 85;
+    // Shared with the real-time file watcher so both auto-import paths
+    // use one definition of "safe to import".
+    private const int AutoImportConfidenceFloor = LibraryImportService.AutoImportConfidenceFloor;
 }
 
 /// <summary>

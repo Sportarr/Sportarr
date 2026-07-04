@@ -12,6 +12,16 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class LibraryImportService
 {
+    /// <summary>
+    /// Minimum match confidence (0-100) at which a scanned file is
+    /// auto-imported without admin review. The score comes from this
+    /// service's match engine; 85 corresponds to the "high confidence"
+    /// tier the manual import UI already displays. Shared by the periodic
+    /// library rescan and the real-time file watcher so the two paths can
+    /// never disagree on what "safe to import" means.
+    /// </summary>
+    public const int AutoImportConfidenceFloor = 85;
+
     private readonly SportarrDbContext _db;
     private readonly ILogger<LibraryImportService> _logger;
     private readonly MediaFileParser _fileParser;

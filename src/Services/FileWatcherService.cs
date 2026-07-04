@@ -279,8 +279,18 @@ public class FileWatcherService : BackgroundService
         _debounceTimers[filePath] = timer;
     }
 
+    // Paths currently mid-analysis. FileSystemWatcher fires multiple events
+    // for one file (create + several changes while it's written); without
+    // this, each event races through the stability wait and the file gets
+    // analyzed / pended more than once.
+    private readonly ConcurrentDictionary<string, byte> _inFlightNewFiles = new(StringComparer.Ordinal);
+
     private async Task HandleNewFileAsync(string filePath)
     {
+        if (!_inFlightNewFiles.TryAdd(filePath, 0))
+        {
+            return;
+        }
         try
         {
             if (!File.Exists(filePath)) return;
@@ -298,43 +308,84 @@ public class FileWatcherService : BackgroundService
                 .AnyAsync(pi => pi.FilePath == filePath && pi.Status == PendingImportStatus.Pending);
             if (isPending) return;
 
+            // Wait for the file to stop growing before analyzing it.
+            // Transcode tools (the Tdarr replace-in-place flow this path
+            // exists for) write the new file over minutes; matching or
+            // importing a half-written file would move it out from under
+            // the writer. We're on a fire-and-forget task, so waiting here
+            // blocks nothing. A file that never stabilizes within the cap
+            // still gets a pending record below, just never an auto-import.
+            var stable = await WaitForStableFileAsync(filePath, TimeSpan.FromMinutes(10));
+            if (!File.Exists(filePath)) return;
+
             var fileInfo = new FileInfo(filePath);
-            var filename = Path.GetFileNameWithoutExtension(filePath);
 
-            // Simple event matching
-            int? suggestedEventId = null;
-            int confidence = 0;
-
-            var cleanTitle = System.Text.RegularExpressions.Regex.Replace(filename,
-                @"[\.\-_](1080p|720p|2160p|4K|WEB-DL|WEBRip|BluRay|HDTV|x264|x265|HEVC|AAC|DDP?\d?\.\d).*$",
-                "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            cleanTitle = cleanTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Trim();
-
-            if (!string.IsNullOrEmpty(cleanTitle) && cleanTitle.Length > 3)
+            // Run the same match engine the library rescan uses, scoped to
+            // the file's own folder. The old inline LIKE-pattern matcher
+            // pinned every match at confidence 50, which guaranteed a
+            // manual-review PendingImport no matter how obvious the match;
+            // the real engine produces a genuine 0-100 score, so the
+            // watcher can auto-import at the same floor the periodic
+            // rescan already trusts.
+            var libraryImport = scope.ServiceProvider.GetRequiredService<LibraryImportService>();
+            var parentFolder = Path.GetDirectoryName(filePath);
+            ImportableFile? analysis = null;
+            if (!string.IsNullOrEmpty(parentFolder))
             {
-                var pattern = $"%{cleanTitle}%";
-                var matchedEvent = await db.Events
-                    .AsNoTracking()
-                    .Where(e => !e.HasFile)
-                    .Where(e => EF.Functions.Like(e.Title, pattern) ||
-                               e.Title != null && cleanTitle.Contains(e.Title))
-                    .FirstOrDefaultAsync();
+                var scan = await libraryImport.ScanFolderAsync(parentFolder, includeSubfolders: false);
+                analysis = scan.MatchedFiles.FirstOrDefault(f => f.FilePath == filePath)
+                        ?? scan.AlreadyInLibrary.FirstOrDefault(f => f.FilePath == filePath)
+                        ?? scan.UnmatchedFiles.FirstOrDefault(f => f.FilePath == filePath);
 
-                if (matchedEvent != null)
+                if (scan.AlreadyInLibrary.Any(f => f.FilePath == filePath))
                 {
-                    suggestedEventId = matchedEvent.Id;
-                    confidence = 50;
+                    _logger.LogDebug("[File Watcher] File already linked in library, nothing to do: {Path}", filePath);
+                    return;
                 }
             }
 
-            // Detect quality
-            string? quality = null;
-            if (filename.Contains("2160p", StringComparison.OrdinalIgnoreCase) || filename.Contains("4K", StringComparison.OrdinalIgnoreCase))
-                quality = "2160p";
-            else if (filename.Contains("1080p", StringComparison.OrdinalIgnoreCase))
-                quality = "1080p";
-            else if (filename.Contains("720p", StringComparison.OrdinalIgnoreCase))
-                quality = "720p";
+            var suggestedEventId = analysis?.MatchedEventId;
+            var confidence = analysis?.MatchConfidence ?? 0;
+            var quality = analysis?.Quality;
+
+            // Auto-import when the match clears the same confidence floor
+            // the library rescan auto-imports at, the target event isn't
+            // already satisfied, and the file proved stable. The
+            // highest-confidence case is exactly the transcode flow: the
+            // replacement lands in the folder of a just-deleted tracked
+            // file for the same event.
+            if (stable &&
+                suggestedEventId.HasValue &&
+                confidence >= LibraryImportService.AutoImportConfidenceFloor &&
+                analysis?.ExistingEventId == null)
+            {
+                try
+                {
+                    var importResult = await libraryImport.ImportFilesAsync(new List<FileImportRequest>
+                    {
+                        new()
+                        {
+                            FilePath = filePath,
+                            EventId = suggestedEventId,
+                            Quality = quality,
+                        }
+                    });
+                    if (importResult.Imported.Count + importResult.Created.Count > 0)
+                    {
+                        _logger.LogInformation(
+                            "[File Watcher] Auto-imported {Path} (confidence {Confidence}%, event {EventId})",
+                            filePath, confidence, suggestedEventId);
+                        return;
+                    }
+                    _logger.LogWarning(
+                        "[File Watcher] Auto-import of {Path} did not import (skipped: {Skipped}, failed: {Failed}); leaving it for manual review",
+                        filePath, importResult.Skipped.Count, importResult.Failed.Count + importResult.Errors.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[File Watcher] Auto-import of {Path} failed; leaving it for manual review", filePath);
+                }
+            }
 
             var pendingImport = new PendingImport
             {
@@ -360,6 +411,48 @@ public class FileWatcherService : BackgroundService
         {
             _logger.LogError(ex, "[File Watcher] Error handling new file: {Path}", filePath);
         }
+        finally
+        {
+            _inFlightNewFiles.TryRemove(filePath, out _);
+        }
+    }
+
+    /// <summary>
+    /// True once the file's size has stayed unchanged across two
+    /// consecutive probes; false if the cap elapses first (or the file
+    /// vanishes). Probes every 10 seconds.
+    /// </summary>
+    private static async Task<bool> WaitForStableFileAsync(string filePath, TimeSpan maxWait)
+    {
+        var deadline = DateTime.UtcNow + maxWait;
+        long lastSize = -1;
+        var stableProbes = 0;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!File.Exists(filePath)) return false;
+            long size;
+            try
+            {
+                size = new FileInfo(filePath).Length;
+            }
+            catch (IOException)
+            {
+                size = -1; // still locked by the writer
+            }
+
+            if (size >= 0 && size == lastSize)
+            {
+                stableProbes++;
+                if (stableProbes >= 2) return true;
+            }
+            else
+            {
+                stableProbes = 0;
+            }
+            lastSize = size;
+            await Task.Delay(TimeSpan.FromSeconds(10));
+        }
+        return false;
     }
 
     private async Task HandleRenamedFileAsync(string oldPath, string newPath)
