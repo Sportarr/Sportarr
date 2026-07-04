@@ -429,6 +429,34 @@ public class FFmpegRecorderService
     // candidate-path probing.
     public string? GetFFmpegPath()
     {
+        // The user-configured path wins over all auto-detection - the
+        // setting exists precisely for installs where detection fails.
+        // Accept either the executable itself or its folder. Sync
+        // cached-config read, same pattern as FileImportService and
+        // SportarrApiClient.
+        var configuredPath = _configService.GetConfigAsync().GetAwaiter().GetResult().DvrFfmpegPath?.Trim();
+        if (!string.IsNullOrEmpty(configuredPath))
+        {
+            if (File.Exists(configuredPath))
+            {
+                return configuredPath;
+            }
+            if (Directory.Exists(configuredPath))
+            {
+                foreach (var candidate in new[] { "ffmpeg.exe", "ffmpeg" })
+                {
+                    var inFolder = Path.Combine(configuredPath, candidate);
+                    if (File.Exists(inFolder))
+                    {
+                        return inFolder;
+                    }
+                }
+            }
+            _logger.LogWarning(
+                "[DVR] Configured FFmpeg path '{Path}' not found on disk; falling back to auto-detection",
+                configuredPath);
+        }
+
         // Check common locations
         var possiblePaths = new[]
         {

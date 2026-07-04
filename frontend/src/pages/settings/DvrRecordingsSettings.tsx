@@ -395,7 +395,11 @@ export default function DvrRecordingsSettings() {
 
   const checkFfmpeg = async () => {
     try {
-      const { data } = await apiClient.get<{ available: boolean; path?: string; error?: string }>('/dvr/ffmpeg/check');
+      // The backend route is /api/dvr/ffmpeg/status. This used to call a
+      // nonexistent /dvr/ffmpeg/check, which the SPA fallback answered
+      // with HTML, so the UI reported FFmpeg missing on every install
+      // regardless of reality.
+      const { data } = await apiClient.get<{ available: boolean; version?: string; path?: string }>('/dvr/ffmpeg/status');
       setFfmpegAvailable(data.available);
     } catch (err: any) {
       setFfmpegAvailable(false);
