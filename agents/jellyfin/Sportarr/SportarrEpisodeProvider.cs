@@ -119,6 +119,17 @@ namespace Jellyfin.Plugin.Sportarr
                         episode.Name = $"{episode.Name} - {partName.GetString()}";
                     }
 
+                    // Event date in the title (on by default). Playoff series
+                    // produce several games between the same two teams in
+                    // quick succession; the date in the title is what tells
+                    // them apart on clients that don't show the aired-on
+                    // field next to the name.
+                    if ((SportarrPlugin.Instance?.Configuration.IncludeDateInEpisodeTitles ?? true) &&
+                        episode.PremiereDate.HasValue)
+                    {
+                        episode.Name = $"{episode.Name} ({episode.PremiereDate.Value:yyyy-MM-dd})";
+                    }
+
                     // Provider ID
                     if (ep.TryGetProperty("id", out var eventId))
                     {
