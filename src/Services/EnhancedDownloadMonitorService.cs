@@ -890,6 +890,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+        var libraryImport = scope.ServiceProvider.GetRequiredService<LibraryImportService>();
 
         // Get all enabled download clients
         var clients = await db.DownloadClients
@@ -1060,29 +1061,92 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         continue;
                     }
 
-                    // Try to match to an event by title
+                    // Match with the real import engine when the completed
+                    // files are reachable on disk - same engine and
+                    // auto-import floor as the library rescan and the file
+                    // watcher, so an externally-added finished job imports
+                    // itself instead of requiring a manual library scan.
                     int? suggestedEventId = null;
                     int confidence = 0;
+                    var imported = false;
 
-                    // Simple title matching: search for events whose title contains key words from download title
-                    var cleanTitle = CleanDownloadTitle(download.Title);
-                    if (!string.IsNullOrEmpty(cleanTitle))
+                    // Only completed downloads get engine analysis: a
+                    // still-downloading torrent's folder holds partial
+                    // files that must never be imported.
+                    string? scanFolder = null;
+                    if (download.IsCompleted && !string.IsNullOrEmpty(download.FilePath))
                     {
-                        var pattern = $"%{cleanTitle}%";
-                        var matchedEvent = await db.Events
-                            .Where(e => !e.HasFile)
-                            .Where(e => EF.Functions.Like(e.Title, pattern) ||
-                                       e.Title != null && cleanTitle.Contains(e.Title))
-                            .FirstOrDefaultAsync(cancellationToken);
+                        if (Directory.Exists(download.FilePath))
+                            scanFolder = download.FilePath;
+                        else if (File.Exists(download.FilePath))
+                            scanFolder = Path.GetDirectoryName(download.FilePath);
+                    }
 
-                        if (matchedEvent != null)
+                    if (scanFolder != null)
+                    {
+                        try
                         {
-                            suggestedEventId = matchedEvent.Id;
-                            confidence = 50; // Basic title match
+                            var scan = await libraryImport.ScanFolderAsync(scanFolder, includeSubfolders: true);
+                            var best = scan.MatchedFiles
+                                .OrderByDescending(f => f.MatchConfidence ?? 0)
+                                .FirstOrDefault();
+                            if (best != null)
+                            {
+                                suggestedEventId = best.MatchedEventId;
+                                confidence = best.MatchConfidence ?? 0;
+
+                                if (best.MatchedEventId.HasValue &&
+                                    confidence >= LibraryImportService.AutoImportConfidenceFloor &&
+                                    best.ExistingEventId == null)
+                                {
+                                    var importResult = await libraryImport.ImportFilesAsync(new List<FileImportRequest>
+                                    {
+                                        new()
+                                        {
+                                            FilePath = best.FilePath,
+                                            EventId = best.MatchedEventId,
+                                            Quality = best.Quality
+                                        }
+                                    });
+                                    imported = importResult.Imported.Count + importResult.Created.Count > 0;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug(ex,
+                                "[Enhanced Download Monitor] Match-engine analysis failed for '{Title}', falling back to title suggestion",
+                                download.Title);
                         }
                     }
 
-                    // Create pending import
+                    // Fallback suggestion when the files aren't reachable
+                    // from this process (remote download client, unmapped
+                    // path): a coarse title search so the pending row at
+                    // least carries a candidate.
+                    if (!imported && suggestedEventId == null)
+                    {
+                        var cleanTitle = CleanDownloadTitle(download.Title);
+                        if (!string.IsNullOrEmpty(cleanTitle))
+                        {
+                            var pattern = $"%{cleanTitle}%";
+                            var matchedEvent = await db.Events
+                                .Where(e => !e.HasFile)
+                                .Where(e => EF.Functions.Like(e.Title, pattern) ||
+                                           e.Title != null && cleanTitle.Contains(e.Title))
+                                .FirstOrDefaultAsync(cancellationToken);
+
+                            if (matchedEvent != null)
+                            {
+                                suggestedEventId = matchedEvent.Id;
+                                confidence = 50; // Basic title match
+                            }
+                        }
+                    }
+
+                    // Record the detection either way: a Completed row is the
+                    // audit trail for the auto-import AND what suppresses
+                    // re-detection of this download id on the next poll.
                     var pendingImport = new PendingImport
                     {
                         DownloadClientId = client.Id,
@@ -1095,7 +1159,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         SuggestedEventId = suggestedEventId,
                         SuggestionConfidence = confidence,
                         Detected = DateTime.UtcNow,
-                        Status = PendingImportStatus.Pending
+                        Status = imported ? PendingImportStatus.Completed : PendingImportStatus.Pending
                     };
 
                     db.PendingImports.Add(pendingImport);
@@ -1103,10 +1167,19 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     if (!string.IsNullOrEmpty(download.TorrentInfoHash))
                         knownHashes.Add(download.TorrentInfoHash);
 
-                    _logger.LogInformation(
-                        "[Enhanced Download Monitor] Detected external download: {Title} (Client: {Client}, Id: {Id}, Hash: {Hash}, Confidence: {Confidence}%) — no match in DownloadQueue, PendingImports, GrabHistory, knownHashes, or Blocklist",
-                        download.Title, client.Name, download.DownloadId,
-                        download.TorrentInfoHash ?? "(none)", confidence);
+                    if (imported)
+                    {
+                        _logger.LogInformation(
+                            "[Enhanced Download Monitor] Auto-imported external completed download: {Title} (Client: {Client}, Confidence: {Confidence}%, Event: {EventId})",
+                            download.Title, client.Name, confidence, suggestedEventId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation(
+                            "[Enhanced Download Monitor] Detected external download: {Title} (Client: {Client}, Id: {Id}, Hash: {Hash}, Confidence: {Confidence}%) — no match in DownloadQueue, PendingImports, GrabHistory, knownHashes, or Blocklist",
+                            download.Title, client.Name, download.DownloadId,
+                            download.TorrentInfoHash ?? "(none)", confidence);
+                    }
                 }
             }
             catch (Exception ex)
