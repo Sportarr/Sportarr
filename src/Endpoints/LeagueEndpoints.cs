@@ -1422,7 +1422,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, Ta
 // Removed duplicate PUT endpoint - now using JsonElement-based endpoint above for partial updates
 
 // API: Update monitored teams for a league
-app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, SportarrApiClient sportsDbClient, TaskService taskService, ILogger<Program> logger) =>
 {
     // Use a transaction to ensure all changes succeed or fail together
     using var transaction = await db.Database.BeginTransactionAsync();
@@ -1440,6 +1440,14 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
         {
             return Results.NotFound(new { error = "League not found" });
         }
+
+        // Snapshot the current monitored set so we can tell whether this
+        // request actually changed anything (the frontend re-sends the
+        // full list on every save).
+        var previousTeamIds = league.MonitoredTeams
+            .Where(lt => lt.Monitored && lt.Team?.ExternalId != null)
+            .Select(lt => lt.Team!.ExternalId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // Remove existing monitored teams
         var existingTeams = await db.LeagueTeams.Where(lt => lt.LeagueId == id).ToListAsync();
@@ -1467,6 +1475,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
         // Add new monitored teams
         logger.LogInformation("[LEAGUES] Adding {Count} monitored teams", request.MonitoredTeamIds.Count);
 
+        var appliedTeamIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var teamExternalId in request.MonitoredTeamIds)
         {
             // Find or create team in database
@@ -1505,6 +1514,10 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
             };
 
             db.LeagueTeams.Add(leagueTeam);
+            if (!string.IsNullOrEmpty(team.ExternalId))
+            {
+                appliedTeamIds.Add(team.ExternalId);
+            }
             logger.LogInformation("[LEAGUES] Marked team as monitored: {TeamName} for league: {LeagueName}",
                 team.Name, league.Name);
         }
@@ -1515,6 +1528,35 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
         // Save all changes and commit transaction
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
+
+        // A changed team set means the last event sync's monitored-team
+        // filter no longer matches the user's selection: events for newly
+        // monitored teams were filtered out at sync time, and nothing else
+        // ever re-fetches them. A Quick Sync doesn't help because the hub
+        // has no new changes (the gap is local), so it truthfully reports
+        // "library is current" while the new team's events stay missing.
+        // Queue the same deep sync a league add runs so the selection takes
+        // effect on events without manual intervention. Skip only when a
+        // refresh for this league is still QUEUED (it will read the new
+        // team set when it starts); a RUNNING one may already be past the
+        // affected seasons with the old filter, so queue behind it.
+        if (!appliedTeamIds.SetEquals(previousTeamIds))
+        {
+            var refreshAlreadyQueued = await db.Tasks.AnyAsync(t =>
+                t.CommandName == "RefreshLeague" &&
+                t.Status == Sportarr.Api.Models.TaskStatus.Queued &&
+                t.Body != null && t.Body.Contains($"\"leagueId\":{league.Id},"));
+            if (refreshAlreadyQueued)
+            {
+                logger.LogInformation("[LEAGUES] Monitored team set changed for {Name}; a league refresh is already queued and will apply it", league.Name);
+            }
+            else
+            {
+                logger.LogInformation("[LEAGUES] Monitored team set changed for {Name} - queueing deep sync to apply the new selection to events", league.Name);
+                var teamChangeSyncBody = JsonSerializer.Serialize(new { leagueId = league.Id, scope = "full" });
+                await taskService.QueueTaskAsync($"Deep Sync {league.Name}", "RefreshLeague", priority: 0, body: teamChangeSyncBody);
+            }
+        }
 
         logger.LogInformation("[LEAGUES] Successfully updated {Count} monitored teams", request.MonitoredTeamIds.Count);
         return Results.Ok(new { message = "Monitored teams updated successfully", leagueId = league.Id, teamCount = request.MonitoredTeamIds.Count });
