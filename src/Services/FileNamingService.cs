@@ -91,13 +91,20 @@ public class FileNamingService
             }
         }
 
-        // Event folder (e.g., "UFC 310 (2024-12-14) E45") - only if season folders are enabled
-        // HARDCODED format to ensure episode numbers are always included for proper file organization
-        // This prevents conflicts with same-day events and ensures structural consistency
+        // Event folder (e.g., "UFC 310 (2024-12-14) E45") - only if season folders are enabled.
+        // The format is configurable (EventFolderFormat) with the historical
+        // hardcoded value as the default. The default keeps E{Episode} so
+        // same-day events stay in distinct folders; a user who sets
+        // "{Event Weekend Title}" instead is deliberately collapsing every
+        // session of a motorsport weekend into one shared folder, and
+        // filenames (which keep {Event Title} and episode) stay unique
+        // inside it.
         if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && settings.CreateEventFolders)
         {
-            const string EventFolderFormat = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}";
-            var eventFolder = ReplaceTokens(EventFolderFormat, tokens);
+            var eventFolderFormat = string.IsNullOrWhiteSpace(settings.EventFolderFormat)
+                ? "{Event Title} ({Year}-{Month}-{Day}) E{Episode}"
+                : settings.EventFolderFormat;
+            var eventFolder = ReplaceTokens(eventFolderFormat, tokens);
             eventFolder = CleanFileName(eventFolder);
             if (!string.IsNullOrWhiteSpace(eventFolder))
             {
@@ -143,6 +150,11 @@ public class FileNamingService
             { "{Event Title}", effectiveTitle ?? "Unknown Event" },
             { "{Event Title The}", MoveArticleToEnd(effectiveTitle ?? "Unknown Event") },
             { "{Event CleanTitle}", CleanTitle(effectiveTitle ?? "Unknown Event") },
+            // Folder-only token: the weekend (parent) portion of a motorsport
+            // session title, so Practice/Qualifying/Race can share one
+            // "Monaco Grand Prix" folder. Non-motorsport titles pass through
+            // unchanged.
+            { "{Event Weekend Title}", EventPartDetector.GetMotorsportWeekendTitle(effectiveTitle ?? "Unknown Event") },
             { "{Event Id}", eventInfo.Id.ToString() },
             { "{League}", eventInfo.League?.Name ?? "Unknown League" },
             { "{Sport}", eventInfo.Sport ?? "Unknown Sport" },

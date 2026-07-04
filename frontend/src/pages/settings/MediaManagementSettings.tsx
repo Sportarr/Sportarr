@@ -886,6 +886,28 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
             </label>
           )}
 
+          {/* Event Folder Format - only visible when event folders are enabled */}
+          {settings.createLeagueFolders && settings.createSeasonFolders && settings.createEventFolders && (
+            <div className="ml-16 border-l-2 border-gray-700 pl-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Event Folder Format</label>
+              <input
+                type="text"
+                value={settings.eventFolderFormat}
+                onChange={(e) => updateSetting('eventFolderFormat', e.target.value)}
+                placeholder="{Event Title} ({Year}-{Month}-{Day}) E{Episode}"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Tokens: <code className="text-purple-400">{'{Event Title}'}</code>, <code className="text-purple-400">{'{Event Weekend Title}'}</code>,{' '}
+                <code className="text-purple-400">{'{Year}'}</code>, <code className="text-purple-400">{'{Month}'}</code>,{' '}
+                <code className="text-purple-400">{'{Day}'}</code>, <code className="text-purple-400">{'{Episode}'}</code>.
+                Use <code className="text-purple-400">{'{Event Weekend Title}'}</code> to group every session of a motorsport
+                weekend (Practice, Qualifying, Sprint, Race) into one folder like <code className="text-purple-400">Monaco Grand Prix/</code>.
+                The default includes E{'{Episode}'} so same-day events keep separate folders.
+              </p>
+            </div>
+          )}
+
           {/* Path Preview */}
           <div className="mt-4 p-4 bg-gradient-to-r from-blue-950/30 to-purple-950/30 border border-blue-900/50 rounded-lg">
             <p className="text-sm font-medium text-blue-300 mb-2">Folder Structure Preview:</p>
