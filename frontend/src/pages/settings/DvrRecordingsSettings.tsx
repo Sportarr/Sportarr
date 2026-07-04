@@ -131,6 +131,7 @@ interface DvrSettings {
   recordingRetentionDays: number;
   hardwareAcceleration: number;
   ffmpegPath: string;
+  postRecordingCommand: string;
   enableReconnect: boolean;
   maxReconnectAttempts: number;
   reconnectDelaySeconds: number;
@@ -236,6 +237,7 @@ const defaultDvrSettings: DvrSettings = {
   recordingRetentionDays: 0,
   hardwareAcceleration: 99,
   ffmpegPath: '',
+  postRecordingCommand: '',
   enableReconnect: true,
   maxReconnectAttempts: 5,
   reconnectDelaySeconds: 5,
@@ -1319,6 +1321,21 @@ export default function DvrRecordingsSettings() {
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1">Custom path to FFmpeg binary</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Post-Recording Command (Optional)</label>
+                    <input
+                      type="text"
+                      value={dvrSettings.postRecordingCommand}
+                      onChange={(e) => handleSettingsChange('postRecordingCommand', e.target.value)}
+                      placeholder="/scripts/comskip.sh"
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Script or executable run after each completed recording (comskip, transcode, notify).
+                      Details are passed as environment variables: SPORTARR_RECORDING_PATH, SPORTARR_RECORDING_TITLE,
+                      SPORTARR_RECORDING_ID, SPORTARR_EVENT_ID, SPORTARR_DURATION_SECONDS, SPORTARR_FILE_SIZE.
+                    </p>
                   </div>
                 </div>
                 {/* Available Hardware Info */}

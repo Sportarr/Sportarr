@@ -463,6 +463,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         recordingRetentionDays = config.DvrRecordingRetentionDays,
         hardwareAcceleration = config.DvrHardwareAcceleration,
         ffmpegPath = config.DvrFfmpegPath,
+        postRecordingCommand = config.DvrPostRecordingCommand,
         enableReconnect = config.DvrEnableReconnect,
         maxReconnectAttempts = config.DvrMaxReconnectAttempts,
         reconnectDelaySeconds = config.DvrReconnectDelaySeconds,
@@ -521,6 +522,8 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         config.DvrHardwareAcceleration = hwAccel.GetInt32();
     if (settings.TryGetProperty("ffmpegPath", out var ffmpegPath))
         config.DvrFfmpegPath = ffmpegPath.GetString() ?? "";
+    if (settings.TryGetProperty("postRecordingCommand", out var postRecordingCommand))
+        config.DvrPostRecordingCommand = postRecordingCommand.GetString() ?? "";
     if (settings.TryGetProperty("enableReconnect", out var enableReconnect))
         config.DvrEnableReconnect = enableReconnect.GetBoolean();
     if (settings.TryGetProperty("maxReconnectAttempts", out var maxReconnect))

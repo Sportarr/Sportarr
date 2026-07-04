@@ -179,6 +179,7 @@ public class Config
     public int DvrRecordingRetentionDays { get; set; } = 0; // Days to keep recordings (0 = never delete)
     public int DvrHardwareAcceleration { get; set; } = 99; // HardwareAcceleration enum (99 = Auto)
     public string DvrFfmpegPath { get; set; } = ""; // Custom FFmpeg path (empty = use system PATH)
+    public string DvrPostRecordingCommand { get; set; } = ""; // Executable/script run after each completed recording (empty = disabled); recording details passed via SPORTARR_* env vars
     public bool DvrEnableReconnect { get; set; } = true; // Enable stream reconnection on failures
     public int DvrMaxReconnectAttempts { get; set; } = 5; // Maximum reconnection attempts
     public int DvrReconnectDelaySeconds { get; set; } = 5; // Delay between reconnection attempts

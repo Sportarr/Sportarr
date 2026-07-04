@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
@@ -552,8 +553,103 @@ public class DvrRecordingService
         {
             await TryRescheduleOnFallbackAsync(recording, "stop failed: " + result.Error);
         }
+        else if (recording.Status == DvrRecordingStatus.Completed)
+        {
+            FirePostRecordingCommand(recording);
+        }
 
         return result;
+    }
+
+    /// <summary>
+    /// Run the user's post-recording command for a completed recording.
+    /// Custom-script hook in the arr tradition: the configured executable
+    /// runs once per completed recording with the details passed as
+    /// SPORTARR_* environment variables, never on the command line, so a
+    /// recording path with spaces or quotes can't inject arguments. Fire
+    /// and forget: commercial detection on a multi-hour recording can run
+    /// a long time and must never block the recorder or the API.
+    /// </summary>
+    private void FirePostRecordingCommand(DvrRecording recording)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var config = await _configService.GetConfigAsync();
+                var command = config.DvrPostRecordingCommand?.Trim();
+                if (string.IsNullOrEmpty(command) || string.IsNullOrEmpty(recording.OutputPath))
+                {
+                    return;
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = command,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                psi.Environment["SPORTARR_RECORDING_PATH"] = recording.OutputPath;
+                psi.Environment["SPORTARR_RECORDING_TITLE"] = recording.Title;
+                psi.Environment["SPORTARR_RECORDING_ID"] = recording.Id.ToString();
+                psi.Environment["SPORTARR_EVENT_ID"] = recording.EventId?.ToString() ?? "";
+                psi.Environment["SPORTARR_DURATION_SECONDS"] = recording.DurationSeconds?.ToString() ?? "";
+                psi.Environment["SPORTARR_FILE_SIZE"] = recording.FileSize?.ToString() ?? "";
+
+                _logger.LogInformation("[DVR] Running post-recording command for recording {Id}: {Command}",
+                    recording.Id, command);
+
+                using var process = Process.Start(psi);
+                if (process == null)
+                {
+                    _logger.LogWarning("[DVR] Post-recording command failed to start: {Command}", command);
+                    return;
+                }
+
+                // Read both streams concurrently so neither pipe buffer can
+                // fill up and deadlock a chatty script.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+
+                // Generous ceiling: comskip on a four-hour recording is slow,
+                // but a hung script must not leak a process forever.
+                using var cts = new CancellationTokenSource(TimeSpan.FromHours(6));
+                try
+                {
+                    await process.WaitForExitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("[DVR] Post-recording command timed out after 6h for recording {Id}; killing it", recording.Id);
+                    try { process.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                    return;
+                }
+
+                var stdout = await stdoutTask;
+                var stderr = await stderrTask;
+
+                if (process.ExitCode == 0)
+                {
+                    _logger.LogInformation("[DVR] Post-recording command finished for recording {Id} (exit 0)", recording.Id);
+                    if (!string.IsNullOrWhiteSpace(stdout))
+                    {
+                        _logger.LogDebug("[DVR] Post-recording command output: {Output}", stdout.Trim());
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("[DVR] Post-recording command exited {Code} for recording {Id}: {Error}",
+                        process.ExitCode, recording.Id,
+                        string.IsNullOrWhiteSpace(stderr) ? stdout.Trim() : stderr.Trim());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[DVR] Post-recording command failed for recording {Id}", recording.Id);
+            }
+        });
     }
 
     /// <summary>
