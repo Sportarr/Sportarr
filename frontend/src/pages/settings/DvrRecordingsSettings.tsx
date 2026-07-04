@@ -120,6 +120,7 @@ interface DvrSettings {
   prePaddingMinutes: number;
   postPaddingMinutes: number;
   maxConcurrentRecordings: number;
+  simultaneousChannels: number;
   // What to do when a new recording would push an IPTV source past
   // its MaxStreams cap or push past maxConcurrentRecordings.
   // "Refuse" rejects with 409. "Queue" lets the row sit Scheduled
@@ -232,6 +233,7 @@ const defaultDvrSettings: DvrSettings = {
   prePaddingMinutes: 5,
   postPaddingMinutes: 30,
   maxConcurrentRecordings: 0,
+  simultaneousChannels: 1,
   conflictPolicy: 'Refuse',
   deleteAfterImport: false,
   recordingRetentionDays: 0,
@@ -1526,6 +1528,21 @@ export default function DvrRecordingsSettings() {
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1">0 = unlimited</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Channels per Event</label>
+                    <input
+                      type="number"
+                      value={dvrSettings.simultaneousChannels}
+                      onChange={(e) => handleSettingsChange('simultaneousChannels', Math.min(5, Math.max(1, parseInt(e.target.value) || 1)))}
+                      min="1"
+                      max="5"
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Record each event from this many channels at once, preferring different providers.
+                      Redundancy against one stream dropping mid-event; costs extra tuner slots. 1 = preferred channel only.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">When at Recording Limit</label>

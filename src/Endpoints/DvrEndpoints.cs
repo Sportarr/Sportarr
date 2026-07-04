@@ -458,6 +458,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         prePaddingMinutes = config.DvrPrePaddingMinutes,
         postPaddingMinutes = config.DvrPostPaddingMinutes,
         maxConcurrentRecordings = config.DvrMaxConcurrentRecordings,
+        simultaneousChannels = config.DvrSimultaneousChannels,
         conflictPolicy = config.DvrConflictPolicy,
         deleteAfterImport = config.DvrDeleteAfterImport,
         recordingRetentionDays = config.DvrRecordingRetentionDays,
@@ -503,6 +504,10 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         config.DvrPostPaddingMinutes = postPadding.GetInt32();
     if (settings.TryGetProperty("maxConcurrentRecordings", out var maxConcurrent))
         config.DvrMaxConcurrentRecordings = maxConcurrent.GetInt32();
+    if (settings.TryGetProperty("simultaneousChannels", out var simultaneousChannels))
+        // Clamp: 1 = preferred channel only (default); a runaway value
+        // would burn every tuner slot on one event.
+        config.DvrSimultaneousChannels = Math.Clamp(simultaneousChannels.GetInt32(), 1, 5);
     if (settings.TryGetProperty("conflictPolicy", out var conflictPolicyJson))
     {
         var v = conflictPolicyJson.GetString();

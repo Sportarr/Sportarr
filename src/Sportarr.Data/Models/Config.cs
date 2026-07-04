@@ -175,6 +175,7 @@ public class Config
     public int DvrPrePaddingMinutes { get; set; } = 5; // Minutes to start recording before scheduled event
     public int DvrPostPaddingMinutes { get; set; } = 30; // Minutes to continue recording after scheduled end
     public int DvrMaxConcurrentRecordings { get; set; } = 0; // Maximum concurrent recordings (0 = unlimited)
+    public int DvrSimultaneousChannels { get; set; } = 1; // Channels to record each event from at once (1 = preferred only; more = redundancy against a provider dropping mid-event)
     public bool DvrDeleteAfterImport { get; set; } = false; // Delete recordings after successful import
     public int DvrRecordingRetentionDays { get; set; } = 0; // Days to keep recordings (0 = never delete)
     public int DvrHardwareAcceleration { get; set; } = 99; // HardwareAcceleration enum (99 = Auto)
