@@ -506,6 +506,39 @@ public class IptvSourceService
     }
 
     /// <summary>
+    /// Get the preferred channel for an event: the home team's mapped
+    /// channel wins, then the away team's, then the league preference.
+    /// Team mappings exist for lineups that carry the same league from
+    /// several regional providers ("Lakers home games on the LA regional
+    /// channel"); home-before-away because regional channels follow the
+    /// hosting market's broadcast.
+    /// </summary>
+    public async Task<IptvChannel?> GetPreferredChannelForEventAsync(int? homeTeamId, int? awayTeamId, int? leagueId)
+    {
+        foreach (var teamId in new[] { homeTeamId, awayTeamId })
+        {
+            if (!teamId.HasValue)
+            {
+                continue;
+            }
+            var teamMapping = await _db.ChannelTeamMappings
+                .Where(m => m.TeamId == teamId.Value)
+                .Include(m => m.Channel)
+                .OrderByDescending(m => m.IsPreferred)
+                .ThenBy(m => m.Priority)
+                .FirstOrDefaultAsync();
+            if (teamMapping?.Channel != null)
+            {
+                return teamMapping.Channel;
+            }
+        }
+
+        return leagueId.HasValue
+            ? await GetPreferredChannelForLeagueAsync(leagueId.Value)
+            : null;
+    }
+
+    /// <summary>
     /// Get a single channel by ID
     /// </summary>
     public async Task<IptvChannel?> GetChannelByIdAsync(int channelId)

@@ -89,6 +89,19 @@ public class EventDvrService
             return null;
         }
 
+        // An explicit per-team channel preference beats every scored
+        // resolver: a user who mapped "Lakers -> LA regional channel" did
+        // so precisely because the automatic pick records the wrong feed
+        // for that team. Home team first (regional channels follow the
+        // hosting market), then away, then the scored resolution below.
+        var teamPreferred = await _iptvService.GetPreferredChannelForEventAsync(
+            evt.HomeTeamId, evt.AwayTeamId, leagueId: null);
+        if (teamPreferred != null)
+        {
+            _logger.LogDebug("[EventDVR] Using team-preferred channel '{Channel}' for event {EventId}",
+                teamPreferred.Name, eventId);
+        }
+
         // Pull the full ranked candidate list from the event-channel
         // resolver. The head of the list is the primary channel; the
         // rest become FallbackChannelIds on the recording so the DVR
@@ -97,9 +110,19 @@ public class EventDvrService
         // tuner saturated, etc.). Phase 3 added this for resilience.
         var candidates = await _channelResolver.ResolveAsync(evt.Id);
 
-        IptvChannel? channel = null;
+        IptvChannel? channel = teamPreferred;
         var fallbackIds = new List<int>();
-        if (candidates.Count > 0)
+        if (channel != null && candidates.Count > 0)
+        {
+            // Team preference is primary; the resolver's picks become the
+            // fallback rotation (excluding the primary itself).
+            fallbackIds = candidates
+                .Where(c => c.ChannelId != channel.Id)
+                .Take(4)
+                .Select(c => c.ChannelId)
+                .ToList();
+        }
+        else if (candidates.Count > 0)
         {
             // Use the resolver's recommendation as primary.
             channel = await _db.IptvChannels
@@ -302,7 +325,8 @@ public class EventDvrService
 
         if (evt.LeagueId.HasValue)
         {
-            var channel = await _iptvService.GetPreferredChannelForLeagueAsync(evt.LeagueId.Value);
+            var channel = await _iptvService.GetPreferredChannelForEventAsync(
+                evt.HomeTeamId, evt.AwayTeamId, evt.LeagueId.Value);
             hasChannelMapping = channel != null;
             mappedChannelName = channel?.Name;
         }

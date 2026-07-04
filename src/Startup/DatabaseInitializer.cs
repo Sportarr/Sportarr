@@ -1181,6 +1181,40 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify SeasonPosters table: {ex.Message}");
         }
 
+        // Ensure ChannelTeamMappings table exists (per-team DVR channel
+        // preference, checked by the resolver before the league mapping).
+        try
+        {
+            var checkTeamMappingsSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ChannelTeamMappings'";
+            var teamMappingsExists = db.Database.SqlQueryRaw<int>(checkTeamMappingsSql).AsEnumerable().FirstOrDefault();
+
+            if (teamMappingsExists == 0)
+            {
+                Console.WriteLine("[Sportarr] ChannelTeamMappings table missing - creating it now...");
+
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""ChannelTeamMappings"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""ChannelId"" INTEGER NOT NULL,
+                        ""TeamId"" INTEGER NOT NULL,
+                        ""IsPreferred"" INTEGER NOT NULL DEFAULT 1,
+                        ""Priority"" INTEGER NOT NULL DEFAULT 1,
+                        ""Created"" TEXT NOT NULL,
+                        CONSTRAINT ""FK_ChannelTeamMappings_IptvChannels_ChannelId"" FOREIGN KEY (""ChannelId"") REFERENCES ""IptvChannels"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_ChannelTeamMappings_Teams_TeamId"" FOREIGN KEY (""TeamId"") REFERENCES ""Teams"" (""Id"") ON DELETE CASCADE
+                    )");
+
+                db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX ""IX_ChannelTeamMappings_ChannelId_TeamId"" ON ""ChannelTeamMappings"" (""ChannelId"", ""TeamId"")");
+                db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX ""UX_ChannelTeamMappings_PreferredPerTeam"" ON ""ChannelTeamMappings"" (""TeamId"") WHERE ""IsPreferred"" = 1");
+
+                Console.WriteLine("[Sportarr] ChannelTeamMappings table created successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify ChannelTeamMappings table: {ex.Message}");
+        }
+
         // Ensure granular folder format/creation columns exist in MediaManagementSettings
         // These were added after some installs and may be missing from older databases
         try

@@ -331,6 +331,42 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.ToTable("ChannelLeagueMappings");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.ChannelTeamMapping", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChannelId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("Created")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsPreferred")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TeamId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ChannelTeamMappings_PreferredPerTeam")
+                        .HasFilter("\"IsPreferred\" = true");
+
+                    b.HasIndex("ChannelId", "TeamId")
+                        .IsUnique();
+
+                    b.ToTable("ChannelTeamMappings");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.CustomFormat", b =>
                 {
                     b.Property<int>("Id")
@@ -3804,6 +3840,25 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Navigation("Channel");
 
                     b.Navigation("League");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.ChannelTeamMapping", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.IptvChannel", "Channel")
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Sportarr.Api.Models.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.DownloadQueueItem", b =>

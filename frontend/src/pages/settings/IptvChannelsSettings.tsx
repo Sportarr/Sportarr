@@ -450,6 +450,72 @@ export default function IptvChannelsSettings() {
     return () => clearTimeout(handle);
   }, [epgPickerChannel, epgPickerSearch]);
 
+  // Per-team DVR channel preference, shown inside the league mapping
+  // modal: the resolver records a mapped team's events from this channel
+  // even when the league prefers a different one.
+  const [channelTeamMappings, setChannelTeamMappings] = useState<Array<{
+    id: number; teamId: number; teamName?: string;
+  }>>([]);
+  const [teamPickerLeagueId, setTeamPickerLeagueId] = useState<number | ''>('');
+  const [teamPickerTeams, setTeamPickerTeams] = useState<Array<{ id: number; name: string }>>([]);
+  const [teamPickerTeamId, setTeamPickerTeamId] = useState<number | ''>('');
+
+  useEffect(() => {
+    if (!mappingChannel) {
+      setChannelTeamMappings([]);
+      setTeamPickerLeagueId('');
+      setTeamPickerTeamId('');
+      setTeamPickerTeams([]);
+      return;
+    }
+    apiClient
+      .get<Array<{ id: number; teamId: number; teamName?: string }>>(`/iptv/channels/${mappingChannel.id}/team-mappings`)
+      .then(({ data }) => setChannelTeamMappings(Array.isArray(data) ? data : []))
+      .catch(() => setChannelTeamMappings([]));
+  }, [mappingChannel]);
+
+  useEffect(() => {
+    if (teamPickerLeagueId === '') {
+      setTeamPickerTeams([]);
+      setTeamPickerTeamId('');
+      return;
+    }
+    apiClient
+      .get<Array<{ id: number; name: string }>>('/teams', { params: { leagueId: teamPickerLeagueId } })
+      .then(({ data }) => setTeamPickerTeams(Array.isArray(data) ? data : []))
+      .catch(() => setTeamPickerTeams([]));
+  }, [teamPickerLeagueId]);
+
+  const handleAddTeamMapping = async () => {
+    if (!mappingChannel || teamPickerTeamId === '') {
+      return;
+    }
+    try {
+      await apiClient.post(`/iptv/channels/${mappingChannel.id}/team-mappings/${teamPickerTeamId}`);
+      const { data } = await apiClient.get<Array<{ id: number; teamId: number; teamName?: string }>>(
+        `/iptv/channels/${mappingChannel.id}/team-mappings`);
+      setChannelTeamMappings(Array.isArray(data) ? data : []);
+      setTeamPickerTeamId('');
+      toast.success('Team preference saved', {
+        description: `This channel is now preferred for that team's recordings`,
+      });
+    } catch (err: any) {
+      toast.error('Failed to save team preference', { description: err.message });
+    }
+  };
+
+  const handleRemoveTeamMapping = async (teamId: number) => {
+    if (!mappingChannel) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/iptv/channels/${mappingChannel.id}/team-mappings/${teamId}`);
+      setChannelTeamMappings((prev) => prev.filter((m) => m.teamId !== teamId));
+    } catch (err: any) {
+      toast.error('Failed to remove team preference', { description: err.message });
+    }
+  };
+
   const handleMapEpg = async (epgChannelId: string, epgDisplayName: string) => {
     if (!epgPickerChannel) {
       return;
@@ -1494,6 +1560,61 @@ export default function IptvChannelsSettings() {
                     <p className="text-sm mt-1">Add leagues to your library first</p>
                   </div>
                 )}
+              </div>
+
+              {/* Per-team preference */}
+              <div className="mb-6 pt-4 border-t border-gray-800">
+                <p className="text-sm font-medium text-white mb-1">Preferred for Teams</p>
+                <p className="text-xs text-gray-500 mb-3">
+                  A team mapped here records from this channel even when its league prefers a different one,
+                  e.g. a regional channel for one team's games. Applied immediately; each team can prefer one channel.
+                </p>
+                {channelTeamMappings.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {channelTeamMappings.map((m) => (
+                      <span key={m.id} className="flex items-center gap-1 px-2 py-1 rounded bg-yellow-900/30 text-yellow-300 text-xs">
+                        {m.teamName || `Team #${m.teamId}`}
+                        <button
+                          onClick={() => handleRemoveTeamMapping(m.teamId)}
+                          className="hover:text-red-400"
+                          title="Remove team preference"
+                        >
+                          <XMarkIcon className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={teamPickerLeagueId}
+                    onChange={(e) => setTeamPickerLeagueId(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                  >
+                    <option value="">Select league...</option>
+                    {leagues.map((l) => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={teamPickerTeamId}
+                    onChange={(e) => setTeamPickerTeamId(e.target.value === '' ? '' : Number(e.target.value))}
+                    disabled={teamPickerLeagueId === ''}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600 disabled:opacity-50"
+                  >
+                    <option value="">Select team...</option>
+                    {teamPickerTeams.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleAddTeamMapping}
+                    disabled={teamPickerTeamId === ''}
+                    className="px-3 py-2 bg-yellow-700 hover:bg-yellow-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
 
               <div className="pt-6 border-t border-gray-800 flex items-center justify-between">

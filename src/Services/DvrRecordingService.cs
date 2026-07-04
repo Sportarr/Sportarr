@@ -733,8 +733,10 @@ public class DvrRecordingService
             throw new ArgumentException($"Event {eventId} not found or has no league");
         }
 
-        // Find channels mapped to this event's league
-        var channel = await _iptvService.GetPreferredChannelForLeagueAsync(evt.League.Id);
+        // Find the mapped channel: the event's team preference first,
+        // then the league preference.
+        var channel = await _iptvService.GetPreferredChannelForEventAsync(
+            evt.HomeTeamId, evt.AwayTeamId, evt.League.Id);
 
         if (channel == null)
         {

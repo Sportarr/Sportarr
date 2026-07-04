@@ -62,6 +62,7 @@ public class SportarrDbContext : DbContext
     public DbSet<IptvSource> IptvSources => Set<IptvSource>();
     public DbSet<IptvChannel> IptvChannels => Set<IptvChannel>();
     public DbSet<ChannelLeagueMapping> ChannelLeagueMappings => Set<ChannelLeagueMapping>();
+    public DbSet<ChannelTeamMapping> ChannelTeamMappings => Set<ChannelTeamMapping>();
     public DbSet<DvrRecording> DvrRecordings => Set<DvrRecording>();
     public DbSet<DvrQualityProfile> DvrQualityProfiles => Set<DvrQualityProfile>();
     public DbSet<EpgSource> EpgSources => Set<EpgSource>();
@@ -1158,6 +1159,32 @@ public class SportarrDbContext : DbContext
                   .IsUnique()
                   .HasFilter(preferredFilter)
                   .HasDatabaseName("UX_ChannelLeagueMappings_PreferredPerLeague");
+        });
+
+        // ChannelTeamMapping configuration - the team-level preference layer
+        // the DVR channel resolver checks before the league mapping.
+        modelBuilder.Entity<ChannelTeamMapping>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.HasOne(m => m.Channel)
+                  .WithMany()
+                  .HasForeignKey(m => m.ChannelId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(m => m.Team)
+                  .WithMany()
+                  .HasForeignKey(m => m.TeamId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(m => new { m.ChannelId, m.TeamId }).IsUnique();
+
+            // At most one preferred channel per team, same rationale and
+            // provider-neutral bool literal as the league index above.
+            var teamPreferredFilter = Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL"
+                ? "\"IsPreferred\" = true"
+                : "\"IsPreferred\" = 1";
+            entity.HasIndex(m => m.TeamId)
+                  .IsUnique()
+                  .HasFilter(teamPreferredFilter)
+                  .HasDatabaseName("UX_ChannelTeamMappings_PreferredPerTeam");
         });
 
         // DvrRecording configuration

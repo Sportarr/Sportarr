@@ -502,6 +502,43 @@ public class IptvChannel
 }
 
 /// <summary>
+/// Maps an IPTV channel to a specific team, layered ABOVE the league
+/// mapping: the DVR channel resolver checks the event's teams before the
+/// league preference, so "Lakers games record from the LA regional
+/// channel" can override "NBA records from the national channel" without
+/// disturbing the rest of the league.
+/// </summary>
+public class ChannelTeamMapping
+{
+    public int Id { get; set; }
+
+    /// <summary>
+    /// The IPTV channel
+    /// </summary>
+    public int ChannelId { get; set; }
+    public IptvChannel? Channel { get; set; }
+
+    /// <summary>
+    /// The team whose events prefer this channel
+    /// </summary>
+    public int TeamId { get; set; }
+    public Team? Team { get; set; }
+
+    /// <summary>
+    /// Whether this is the preferred channel for this team
+    /// (at most one preferred mapping per team)
+    /// </summary>
+    public bool IsPreferred { get; set; } = true;
+
+    /// <summary>
+    /// Priority among this team's mapped channels (lower = tried first)
+    /// </summary>
+    public int Priority { get; set; } = 1;
+
+    public DateTime Created { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
 /// Mapping between IPTV channels and leagues
 /// Allows users to specify which channels broadcast which leagues
 /// </summary>
