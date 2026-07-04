@@ -46,6 +46,8 @@ RUN echo "apt layer build: ${CACHEBUST}" && \
     apt-get install -y --no-install-recommends \
         # Core dependencies (all architectures)
         sqlite3 \
+        # pg_dump/pg_restore for the optional Postgres database provider's backup/restore
+        postgresql-client \
         curl \
         ca-certificates \
         # FFmpeg with hardware acceleration

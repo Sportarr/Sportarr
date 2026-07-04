@@ -16,6 +16,12 @@ public static class DatabaseInitializer
             using (var scope = services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        // Everything in this if-block detects and repairs schema drift specific to
+        // legacy SQLite installs that predate EF migrations (bootstrapped via
+        // EnsureCreated() on an old version). A fresh Postgres install never went
+        // through that history, so none of it applies - skip straight to Migrate().
+        if (!db.Database.IsNpgsql())
+        {
         // Check if database exists and has tables but no migration history
         // This happens when database was created with EnsureCreated() instead of Migrate()
         var canConnect = await db.Database.CanConnectAsync();
@@ -68,10 +74,17 @@ public static class DatabaseInitializer
 
             Console.WriteLine("[Sportarr] Migration history seeded successfully");
         }
+        } // end: if (!db.Database.IsNpgsql()) - legacy EnsureCreated() detection/seeding
 
         // Now apply any new migrations
         db.Database.Migrate();
 
+        // Everything below repairs/backfills schema drift accumulated across the SQLite
+        // migration history (added columns, dedup passes, renamed enum values, etc.). A
+        // fresh Postgres install starts from the InitialPostgres baseline with none of
+        // that drift, so none of it applies there.
+        if (!db.Database.IsNpgsql())
+        {
         // -----------------------------------------------------------------
         // Critical schema repairs — run BEFORE any safety net that reads
         // rows from these tables. The migration-history seeder above can
@@ -1055,6 +1068,31 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify AppSettings.HubChangesCursor column: {ex.Message}");
         }
 
+        // Ensure EnableEventRetention / EventRetentionDays columns exist in
+        // MediaManagementSettings (auto-unmonitor + delete old events).
+        foreach (var (retentionCol, retentionType, retentionDefault) in new[]
+        {
+            ("EnableEventRetention", "INTEGER", "0"),
+            ("EventRetentionDays", "INTEGER", "30"),
+        })
+        {
+            try
+            {
+                var checkRetentionSql = $"SELECT COUNT(*) FROM pragma_table_info('MediaManagementSettings') WHERE name='{retentionCol}'";
+                var retentionColExists = db.Database.SqlQueryRaw<int>(checkRetentionSql).AsEnumerable().FirstOrDefault();
+                if (retentionColExists == 0)
+                {
+                    Console.WriteLine($"[Sportarr] MediaManagementSettings.{retentionCol} column missing - adding it now...");
+                    db.Database.ExecuteSqlRaw($"ALTER TABLE \"MediaManagementSettings\" ADD COLUMN \"{retentionCol}\" {retentionType} NOT NULL DEFAULT {retentionDefault}");
+                    Console.WriteLine($"[Sportarr] MediaManagementSettings.{retentionCol} column added successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Sportarr] Warning: Could not verify MediaManagementSettings.{retentionCol} column: {ex.Message}");
+            }
+        }
+
         // Ensure PendingReleases table exists (delay-profile feature).
         // Required by RssSyncService and PendingReleaseReaperService - without
         // this table both services would crash on first run for legacy DBs.
@@ -1109,6 +1147,38 @@ public static class DatabaseInitializer
         catch (Exception ex)
         {
             Console.WriteLine($"[Sportarr] Warning: Could not verify PendingReleases table: {ex.Message}");
+        }
+
+        // Ensure SeasonPosters table exists (per-season poster artwork).
+        // Populated by LeagueEventSyncService from TheSportsDB's season art
+        // archive and read by the metadata agent endpoints.
+        try
+        {
+            var checkSeasonPostersSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='SeasonPosters'";
+            var seasonPostersExists = db.Database.SqlQueryRaw<int>(checkSeasonPostersSql).AsEnumerable().FirstOrDefault();
+
+            if (seasonPostersExists == 0)
+            {
+                Console.WriteLine("[Sportarr] SeasonPosters table missing - creating it now...");
+
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""SeasonPosters"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""LeagueId"" INTEGER NOT NULL,
+                        ""Season"" TEXT NOT NULL,
+                        ""PosterUrl"" TEXT NOT NULL,
+                        ""LastSyncedAt"" TEXT NOT NULL,
+                        CONSTRAINT ""FK_SeasonPosters_Leagues_LeagueId"" FOREIGN KEY (""LeagueId"") REFERENCES ""Leagues"" (""Id"") ON DELETE CASCADE
+                    )");
+
+                db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX ""IX_SeasonPosters_LeagueId_Season"" ON ""SeasonPosters"" (""LeagueId"", ""Season"")");
+
+                Console.WriteLine("[Sportarr] SeasonPosters table created successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify SeasonPosters table: {ex.Message}");
         }
 
         // Ensure granular folder format/creation columns exist in MediaManagementSettings
@@ -1664,6 +1734,7 @@ public static class DatabaseInitializer
         {
             Console.WriteLine($"[Sportarr] Warning: Could not drop retired Event Mapping tables: {ex.Message}");
         }
+        } // end: if (!db.Database.IsNpgsql()) - SQLite schema drift repairs/backfills
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
 

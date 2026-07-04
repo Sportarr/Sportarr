@@ -25,6 +25,8 @@ public class QualityParserTests
     [InlineData("Some.Show.S01E06.480pEN60fps.BluRay.X264-iNGOT", "Bluray-480p")]
     [InlineData("Some.Show.S01E06.480p50fps.BluRay.X264-iNGOT", "Bluray-480p")]
     [InlineData("Some.Show.S01E06.4K50fps.BluRay.X264-iNGOT", "Bluray-2160p")]
+    [InlineData("Some.Show.S01E06.1080p60.BluRay.X264-iNGOT", "Bluray-1080p")]
+    [InlineData("Some.Show.S01E06.1080pEN60fps.BluRay.X264-iNGOT", "Bluray-1080p")]
     [InlineData("Guinness.Men s.Six.Nations.Rugby.14-03-2026.Ireland.vs.Scotland.1080p50.HDTV.x264.24-bit.WAV-CREATiVE24", "HDTV-1080p")]
     //release names with WEB only in the name (NOT WEBDL OR WEBRip)
     [InlineData("Some.Show.S01E06.480p.WEB.X264-iNGOT", "WEBDL-480p")]

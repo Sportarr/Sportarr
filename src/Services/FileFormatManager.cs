@@ -51,8 +51,13 @@ public class FileFormatManager
         }
         else
         {
-            // User has a custom format - intelligently add/remove {Part} token
-            if (enableMultiPart && !currentFormat.Contains("{Part}", StringComparison.OrdinalIgnoreCase))
+            // User has a custom format - intelligently add/remove the part token.
+            // {Part Name} (the human-label variant) counts as having a part token:
+            // a user who swapped {Part} for {Part Name} must not get {Part}
+            // re-inserted alongside it when toggling multi-part off and on.
+            var hasAnyPartToken = currentFormat.Contains("{Part}", StringComparison.OrdinalIgnoreCase)
+                || currentFormat.Contains("{Part Name}", StringComparison.OrdinalIgnoreCase);
+            if (enableMultiPart && !hasAnyPartToken)
             {
                 // Add {Part} after {Episode} if it exists
                 if (currentFormat.Contains("{Episode}", StringComparison.OrdinalIgnoreCase))
@@ -66,12 +71,15 @@ public class FileFormatManager
                     _logger.LogWarning("Custom format doesn't contain {{Episode}} - cannot auto-add {{Part}} token. User must add manually.");
                 }
             }
-            else if (!enableMultiPart && currentFormat.Contains("{Part}", StringComparison.OrdinalIgnoreCase))
+            else if (!enableMultiPart && hasAnyPartToken)
             {
-                // Remove {Part} token
-                settings.StandardFileFormat = currentFormat.Replace("{Part}", "", StringComparison.OrdinalIgnoreCase);
+                // Remove part tokens ({Part Name} first - {Part} is not a
+                // substring of it, but the order makes the intent explicit)
+                settings.StandardFileFormat = currentFormat
+                    .Replace("{Part Name}", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("{Part}", "", StringComparison.OrdinalIgnoreCase);
                 await _db.SaveChangesAsync();
-                _logger.LogInformation("Removed {{Part}} token from custom format: {Format}", settings.StandardFileFormat);
+                _logger.LogInformation("Removed part token(s) from custom format: {Format}", settings.StandardFileFormat);
             }
         }
     }
@@ -122,7 +130,8 @@ public class FileFormatManager
 
         var currentFormat = settings.StandardFileFormat;
         var shouldHavePart = enableMultiPart;
-        var hasPart = currentFormat?.Contains("{Part}", StringComparison.OrdinalIgnoreCase) ?? false;
+        var hasPart = (currentFormat?.Contains("{Part}", StringComparison.OrdinalIgnoreCase) ?? false)
+            || (currentFormat?.Contains("{Part Name}", StringComparison.OrdinalIgnoreCase) ?? false);
 
         if (shouldHavePart != hasPart)
         {

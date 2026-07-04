@@ -438,11 +438,15 @@ public class FileRenameService
     /// </summary>
     private FileNamingTokens BuildFileNamingTokens(Event evt, EventFile file)
     {
-        // Determine part suffix for multi-part events
+        // Determine part suffixes for multi-part events: the opaque pt{N}
+        // form ({Part}) and the human label form ({Part Name}), both with the
+        // separator embedded so single-part files render cleanly as empty.
         var partSuffix = "";
+        var partNameSuffix = "";
         if (!string.IsNullOrEmpty(file.PartName) && file.PartNumber.HasValue)
         {
             partSuffix = $" - pt{file.PartNumber}";
+            partNameSuffix = $" - {file.PartName}";
         }
 
         // BroadcastDate is the broadcaster-branding date (e.g. "Monday's
@@ -458,6 +462,7 @@ public class FileRenameService
             Season = evt.SeasonNumber?.ToString() ?? evt.Season ?? brandingDate.Year.ToString(),
             Episode = evt.EpisodeNumber?.ToString() ?? "01",
             Part = partSuffix,
+            PartName = partNameSuffix,
             Quality = file.Quality ?? "Unknown",
             QualityFull = file.Quality ?? "Unknown",
             ReleaseGroup = file.ReleaseGroup ?? ExtractReleaseGroupFromTitle(file.OriginalTitle),

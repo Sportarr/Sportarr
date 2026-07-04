@@ -451,6 +451,37 @@ public class SportarrApiClient
     }
 
     /// <summary>
+    /// Get per-season poster artwork for a league from TheSportsDB's season art
+    /// archive (via the sportarr.net proxy). Each entry carries StrSeason +
+    /// StrPoster. Returns null on any failure, including the proxy not having
+    /// this endpoint deployed yet - callers treat that as "no season art" and
+    /// fall back to the league poster, never as an error.
+    /// </summary>
+    public async Task<List<Season>?> GetSeasonPostersAsync(string leagueId)
+    {
+        try
+        {
+            var url = $"{_apiBaseUrl}/list/seasonposters/{Uri.EscapeDataString(leagueId)}";
+            using var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("[SportarrAPI] Season posters unavailable for league {LeagueId} (HTTP {Status})",
+                    leagueId, (int)response.StatusCode);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<SportarrApiSeasonsResponse>(json, _jsonOptions);
+            return result?.Seasons;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[SportarrAPI] Failed to get season posters for league: {LeagueId}", leagueId);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Get all teams in a league
     /// Returns list of teams for team-based monitoring selection
     /// Used when adding a league to let users choose specific teams to monitor
@@ -1378,6 +1409,14 @@ public class Season
 {
     [JsonPropertyName("strSeason")]
     public string? StrSeason { get; set; }
+
+    /// <summary>
+    /// Per-season poster from TheSportsDB's season art archive. Only populated
+    /// by the /list/seasonposters endpoint; the plain /list/seasons endpoint
+    /// returns season strings only.
+    /// </summary>
+    [JsonPropertyName("strPoster")]
+    public string? StrPoster { get; set; }
 }
 
 /// <summary>

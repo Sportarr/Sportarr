@@ -64,6 +64,8 @@ interface MediaManagementSettingsData {
   setPermissions: boolean;
   chmodFolder: string;
   chownGroup: string;
+  enableEventRetention: boolean;
+  eventRetentionDays: number;
 }
 
 export default function MediaManagementSettings({ showAdvanced: propShowAdvanced = false }: MediaManagementSettingsProps) {
@@ -132,6 +134,8 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     setPermissions: false,
     chmodFolder: '755',
     chownGroup: '',
+    enableEventRetention: false,
+    eventRetentionDays: 30,
   });
 
   // Load settings and root folders from API on mount
@@ -393,7 +397,11 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     if (previousValue !== currentValue) {
       const currentFormat = settings.standardFileFormat || '';
 
-      if (currentValue && !currentFormat.includes('{Part}')) {
+      // {Part Name} (human-label variant) counts as having a part token, so
+      // users who swapped {Part} for {Part Name} don't get {Part} re-inserted.
+      const hasAnyPartToken = currentFormat.includes('{Part}') || currentFormat.includes('{Part Name}');
+
+      if (currentValue && !hasAnyPartToken) {
         // ENABLING: Add {Part} token
         let newFormat: string;
         if (currentFormat.includes('{Episode}')) {
@@ -404,9 +412,9 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
           newFormat = currentFormat.trim() + '{Part}';
         }
         setSettings(prev => ({ ...prev, standardFileFormat: newFormat }));
-      } else if (!currentValue && currentFormat.includes('{Part}')) {
-        // DISABLING: Remove {Part} token
-        const newFormat = currentFormat.replace('{Part}', '');
+      } else if (!currentValue && hasAnyPartToken) {
+        // DISABLING: Remove part token(s)
+        const newFormat = currentFormat.replace('{Part Name}', '').replace('{Part}', '');
         setSettings(prev => ({ ...prev, standardFileFormat: newFormat }));
       }
 
@@ -746,6 +754,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                       { token: '{Season}', desc: 's2024', category: 'Plex' },
                       { token: '{Episode}', desc: 'e12', category: 'Plex' },
                       { token: '{Part}', desc: 'pt1/pt2/pt3', category: 'Plex' },
+                      { token: '{Part Name}', desc: 'Prelims/Main Card', category: 'Plex' },
                       { token: '{Event Title}', desc: 'Event 100', category: 'Event' },
                       { token: '{Event Date}', desc: '2024-04-13', category: 'Event' },
                       { token: '{Quality Full}', desc: 'Bluray-1080p', category: 'Quality' },
@@ -1074,6 +1083,49 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                 </div>
               )}
             </>
+          )}
+        </div>
+      </div>
+
+      {/* Event Retention */}
+      <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
+        <h3 className="text-xl font-semibold text-white mb-4">Event Retention</h3>
+
+        <div className="space-y-4">
+          <label className="flex items-start space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.enableEventRetention}
+              onChange={(e) => updateSetting('enableEventRetention', e.target.checked)}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <div>
+              <span className="text-white font-medium">Auto-Unmonitor and Delete Old Events</span>
+              <p className="text-sm text-gray-400 mt-1">
+                Once an event's air date is older than the threshold below, unmonitor it and delete its file
+                so it stops taking up disk space and being searched for.
+              </p>
+            </div>
+          </label>
+
+          {settings.enableEventRetention && (
+            <div>
+              <label className="block text-white font-medium mb-2">Delete After</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={settings.eventRetentionDays}
+                  onChange={(e) => updateSetting('eventRetentionDays', Math.max(1, Number(e.target.value)))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                />
+                <span className="text-gray-400">days after the event airs</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                Checked once a day. Files are moved to the recycle bin if one is configured below, otherwise
+                deleted outright.
+              </p>
+            </div>
           )}
         </div>
       </div>

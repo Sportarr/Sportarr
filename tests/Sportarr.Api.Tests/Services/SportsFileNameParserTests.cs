@@ -64,4 +64,44 @@ public class SportsFileNameParserTests
     {
         _parser.Parse(filename).EventYear.Should().BeNull();
     }
+
+    [Theory]
+    // Issue #92: a cross-year season written dot-separated - "NBA.2025.2026...",
+    // the dominant scene-release convention - was never recognized as a season
+    // span at all (the old regex only accepted a hyphen or slash separator), so
+    // the release fell back to year-only extraction and grabbed just 2025,
+    // hard-rejecting a genuine 2025-2026 season game dated in 2026.
+    [InlineData("NBA.2025.2026.San.Antonio.Spurs.Vs.Philadelphia.76ers.03.03.2026.VFF.1080p.WEBRip.AAC.2.0.AVC-GROUP", 2025, 2026)]
+    [InlineData("NBA.2025.2026.Washington.Wizards.vs.Boston.Celtics.14.03.2026.VFF.1080p.WEBRip.AAC.2.0.x264-GROUP", 2025, 2026)]
+    // Existing hyphen/slash-separated formats must keep working unchanged.
+    [InlineData("NFL.2025-2026.Season.Chiefs.vs.Bills.1080p.WEB-GROUP", 2025, 2026)]
+    [InlineData("NHL.2025/2026.Rangers.vs.Bruins.1080p.WEB-GROUP", 2025, 2026)]
+    [InlineData("NHL.2025-26.Rangers.vs.Bruins.1080p.WEB-GROUP", 2025, 2026)]
+    public void Parse_SeasonSpan_ExtractsStartAndEndYear(string filename, int expectedStart, int expectedEnd)
+    {
+        // These titles also carry an explicit day.month.year date, which DatePattern
+        // only recognizes in year-first order - so a release using day-first order
+        // (VFF/French releases) falls through to season-span extraction exactly like
+        // the reported case, which is what this test needs to exercise.
+        var result = _parser.Parse(filename);
+
+        result.EventYear.Should().Be(expectedStart);
+        result.SeasonYearEnd.Should().Be(expectedEnd);
+    }
+
+    [Theory]
+    // A dot-separated 2-digit "short" end year must NOT be accepted: unlike the
+    // hyphen/slash form, a dot before a 2-digit number is indistinguishable from
+    // a month/day token in a plain date (e.g. "2026.12.25"), which DatePattern
+    // above already claims first as a real date - this guards against
+    // SeasonSpanPattern misreading a date's month as a short season-end year.
+    [InlineData("NBA.2026.12.25.Lakers.vs.Celtics.1080p.WEB-GROUP")]
+    public void Parse_DotSeparatedDate_IsNotMisreadAsSeasonSpan(string filename)
+    {
+        var result = _parser.Parse(filename);
+
+        result.EventDate.Should().Be(new DateTime(2026, 12, 25),
+            because: "DatePattern claims year-first dot-separated dates before season-span extraction ever runs");
+        result.SeasonYearEnd.Should().BeNull();
+    }
 }

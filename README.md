@@ -126,6 +126,55 @@ $env:Sportarr__DataPath = "C:\ProgramData\Sportarr"
 
 **Priority order:** Command-line `-data` argument > Environment variable > Default `./data`
 
+## Database
+
+Sportarr uses SQLite by default - no configuration needed. If you already run a
+PostgreSQL cluster elsewhere in your setup, Sportarr can use it instead.
+
+**PostgreSQL support is for fresh installs only.** There is no SQLite → PostgreSQL
+migration path. Pick your provider before your first run.
+
+`docker-compose.yml` has the PostgreSQL environment variables included as commented-out
+lines you can uncomment to switch, and `docker-compose.example.yml` has a full working
+example using Docker secrets for the password instead of plaintext.
+
+To use Postgres, set:
+
+| Variable | Purpose |
+|---|---|
+| `Sportarr__Database__Provider` | `postgres` (omit or `sqlite` for the default) |
+| `Sportarr__Database__Host` | Postgres server hostname |
+| `Sportarr__Database__Port` | Postgres port (default `5432`) |
+| `Sportarr__Database__Name` | Database name |
+| `Sportarr__Database__Username` | Database user |
+| `Sportarr__Database__Password` | Database password |
+| `Sportarr__Database__ConnectionString` | Full connection string, overrides the individual fields above if set |
+
+```yaml
+environment:
+  - Sportarr__Database__Provider=postgres
+  - Sportarr__Database__Host=postgres
+  - Sportarr__Database__Port=5432
+  - Sportarr__Database__Name=sportarr
+  - Sportarr__Database__Username=sportarr
+  - Sportarr__Database__Password=change-me
+```
+
+Any `Sportarr__*` environment variable can instead be supplied from a file (Docker
+secrets) by prefixing it with `FILE__` and pointing the value at the file's path:
+
+```yaml
+environment:
+  - FILE__Sportarr__Database__Password=/run/secrets/sportarr_db_password
+secrets:
+  sportarr_db_password:
+    file: ./secrets/sportarr_db_password.txt
+```
+
+Backup and restore work the same way on both providers (`pg_dump`/`pg_restore` for
+Postgres), but a backup can only be restored onto an install running the same provider
+it was created on.
+
 ## Initial Setup
 
 1. **Root Folder** - Go to Settings > Media Management and add a root folder. This is where Sportarr will store your sports library.

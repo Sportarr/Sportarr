@@ -56,16 +56,8 @@ public class XmltvParserService
             using var response = await _httpClient.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            // Handle gzipped content
-            if (url.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
-            {
-                using var compressedStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-                using var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionMode.Decompress);
-                using var reader = new StreamReader(gzipStream);
-                content = await reader.ReadToEndAsync(cancellationToken);
-            }
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            var content = DecodeEpgContent(bytes, url, response.Content.Headers.ContentType?.CharSet);
 
             return ParseContent(content, epgSourceId);
         }
@@ -87,6 +79,35 @@ public class XmltvParserService
                 Error = $"Error parsing EPG: {ex.Message}"
             };
         }
+    }
+
+    /// <summary>
+    /// Decode fetched EPG bytes to text, decompressing gzip content. Gzip is
+    /// detected by the magic bytes (0x1F 0x8B) as well as a .gz URL suffix, so
+    /// providers that serve gzip without a .gz extension are decompressed instead
+    /// of parsed as raw bytes (which failed with "0x1F is an invalid character").
+    /// Non-gzip content is decoded with the response charset, falling back to UTF-8.
+    /// </summary>
+    public static string DecodeEpgContent(byte[] bytes, string url, string? charSet)
+    {
+        var isGzip = (bytes.Length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B)
+            || url.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
+
+        if (isGzip)
+        {
+            using var compressedStream = new System.IO.MemoryStream(bytes);
+            using var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionMode.Decompress);
+            using var reader = new System.IO.StreamReader(gzipStream);
+            return reader.ReadToEnd();
+        }
+
+        var encoding = System.Text.Encoding.UTF8;
+        if (!string.IsNullOrWhiteSpace(charSet))
+        {
+            try { encoding = System.Text.Encoding.GetEncoding(charSet.Trim('"', ' ')); }
+            catch { /* unknown charset - fall back to UTF-8 */ }
+        }
+        return encoding.GetString(bytes);
     }
 
     /// <summary>

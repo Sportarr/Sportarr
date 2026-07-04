@@ -33,7 +33,7 @@ import type { QualityProfile } from '../../types';
 import PageHeader from '../../components/PageHeader';
 import PageShell from '../../components/PageShell';
 import { useUISettings } from '../../hooks/useUISettings';
-import { formatDateInTimezone, formatTimeInTimezone } from '../../utils/timezone';
+import { formatDateInTimezone, formatTimeInTimezone, localInputToUtcIso } from '../../utils/timezone';
 
 // Naming preset types (same as MediaManagementSettings)
 interface NamingPreset {
@@ -585,7 +585,17 @@ export default function DvrRecordingsSettings() {
   const handleScheduleRecording = async () => {
     try {
       setError(null);
-      const response = await apiClient.post<DvrRecording>('/dvr/recordings', formData);
+      // The datetime-local inputs hold wall-clock digits in the app's configured
+      // timezone with no offset info - convert to real UTC instants before
+      // sending, otherwise the backend stores the raw digits as if they were
+      // already UTC (off by the timezone's offset, rolling to the previous day
+      // for negative offsets on early times).
+      const payload = {
+        ...formData,
+        scheduledStart: localInputToUtcIso(formData.scheduledStart, timezone),
+        scheduledEnd: localInputToUtcIso(formData.scheduledEnd, timezone),
+      };
+      const response = await apiClient.post<DvrRecording>('/dvr/recordings', payload);
       setRecordings(prev => [response.data, ...prev]);
       setShowScheduleModal(false);
       setFormData(defaultFormData);

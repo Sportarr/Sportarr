@@ -88,6 +88,8 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         SetPermissions = config.SetPermissions,
         ChmodFolder = config.ChmodFolder,
         ChownGroup = config.ChownGroup,
+        EnableEventRetention = config.EnableEventRetention,
+        EventRetentionDays = config.EventRetentionDays,
         // Preserve timestamps from database
         Created = dbMediaSettings?.Created ?? DateTime.UtcNow,
         LastModified = dbMediaSettings?.LastModified
@@ -431,6 +433,8 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             config.SetPermissions = mediaManagementSettings.SetPermissions;
             config.ChmodFolder = mediaManagementSettings.ChmodFolder;
             config.ChownGroup = mediaManagementSettings.ChownGroup;
+            config.EnableEventRetention = mediaManagementSettings.EnableEventRetention;
+            config.EventRetentionDays = Math.Max(1, mediaManagementSettings.EventRetentionDays); // Clamp at 1 day minimum
         }
 
         // Download handling settings (flat properties from frontend)

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
+using Sportarr.Api.Constants;
 using Sportarr.Api.Data;
 using Sportarr.Api.Endpoints;
 using Sportarr.Api.Models;
@@ -31,6 +32,32 @@ Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT",
     Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production");
 Environment.SetEnvironmentVariable("DOTNET_CLI_TELEMETRY_OPTOUT",
     Environment.GetEnvironmentVariable("DOTNET_CLI_TELEMETRY_OPTOUT") ?? "1");
+
+// Docker-secrets convention: a FILE__<VarName> env var points at a file whose contents
+// become the value of <VarName> (e.g. FILE__Sportarr__Database__Password=/run/secrets/pg_pw).
+// Generic - works for any Sportarr__* secret. Must run before either WebApplication builder
+// below is constructed, since each independently snapshots env vars at construction time.
+// Serilog isn't wired up yet at this point, so failures go to Console rather than the logger.
+foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+{
+    var key = entry.Key as string;
+    if (key == null || !key.StartsWith(EnvironmentVariableNames.SecretFilePrefix, StringComparison.Ordinal))
+        continue;
+
+    var targetKey = key.Substring(EnvironmentVariableNames.SecretFilePrefix.Length);
+    var secretPath = entry.Value as string;
+    if (string.IsNullOrWhiteSpace(secretPath))
+        continue;
+
+    try
+    {
+        Environment.SetEnvironmentVariable(targetKey, File.ReadAllText(secretPath).Trim());
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Sportarr] Failed to read secret file for {targetKey} from '{secretPath}': {ex.Message}");
+    }
+}
 
 // Parse command-line arguments
 var runInTray = args.Contains("--tray") || args.Contains("-t");
@@ -457,7 +484,7 @@ builder.Services
     .AddSportarrIptv()
     .AddSportarrBackgroundServices()
     .AddSportarrValidation()
-    .AddSportarrDatabase(System.IO.Path.Combine(dataPath, "sportarr.db"))
+    .AddSportarrDatabase(builder.Configuration, System.IO.Path.Combine(dataPath, "sportarr.db"))
     .AddSportarrCors(builder.Environment);
 
 Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
@@ -810,9 +837,34 @@ app.MapGet("/ping", () => Results.Ok("pong"));
 app.MapAuthEndpoints();
 
 // API: System Status
-app.MapGet("/api/system/status", async (Sportarr.Api.Services.ConfigService configService) =>
+app.MapGet("/api/system/status", async (Sportarr.Api.Services.ConfigService configService, SportarrDbContext db) =>
 {
     var config = await configService.GetConfigAsync();
+    var isPostgres = db.Database.IsNpgsql();
+
+    // SQLite's own version is fixed at build time (Microsoft.Data.Sqlite bundles it),
+    // so "3.x" needs no live check. Postgres varies by what the user is actually
+    // running against, so read it from the connection - best-effort, since a status
+    // page shouldn't fail just because the version string couldn't be read.
+    var databaseVersion = "3.x";
+    if (isPostgres)
+    {
+        databaseVersion = "";
+        try
+        {
+            await db.Database.OpenConnectionAsync();
+            databaseVersion = db.Database.GetDbConnection().ServerVersion;
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "[System Status] Could not read Postgres server version");
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
+
     var status = new SystemStatus
     {
         AppName = "Sportarr",
@@ -821,7 +873,8 @@ app.MapGet("/api/system/status", async (Sportarr.Api.Services.ConfigService conf
         IsDebug = app.Environment.IsDevelopment(),
         IsProduction = app.Environment.IsProduction(),
         IsDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
-        DatabaseType = "SQLite",
+        DatabaseType = isPostgres ? "PostgreSQL" : "SQLite",
+        DatabaseVersion = databaseVersion,
         Authentication = "apikey",
         AppData = dataPath,
         StartTime = DateTime.UtcNow,
@@ -880,7 +933,7 @@ app.MapSearchAndCalendarEndpoints();
 // /api/v1/* — Prowlarr expects this contract
 app.MapV1ProwlarrEndpoints(dataPath);
 
-// /api/v3/* — Decypharr/Maintainerr/ArrControl expect this contract
+// /api/v3/* — Decypharr/Maintainerr/ArrControl/Unpackerr expect this contract
 app.MapSonarrSystemEndpoints(dataPath);
 app.MapSonarrCommandEndpoints();
 app.MapSonarrSeriesEndpoints();
@@ -889,6 +942,7 @@ app.MapSonarrEpisodeFileEndpoints();
 app.MapSonarrConfigEndpoints();
 app.MapSonarrIndexerEndpoints();
 app.MapSonarrDownloadClientEndpoint();
+app.MapSonarrQueueEndpoints();
 
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");

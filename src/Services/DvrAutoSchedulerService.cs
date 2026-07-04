@@ -215,10 +215,16 @@ public class DvrAutoSchedulerService : BackgroundService
         // download, so catchup rows are only cancelled here when their
         // event was deleted or unmonitored (retention expiry is handled
         // by CatchupDownloadService itself).
+        //
+        // EventId == null is not itself a cancellation reason: a manually-scheduled
+        // recording (created straight from the TV Guide, not matched to a monitored
+        // event) never has an EventId to begin with. Only cancel when EventId WAS set
+        // and the referenced Event has since disappeared (a genuine orphan) - otherwise
+        // every manual recording got swept up and cancelled on the next 15-minute tick.
         var recordingsToCancel = await db.DvrRecordings
             .Include(r => r.Event)
             .Where(r => r.Status == DvrRecordingStatus.Scheduled)
-            .Where(r => r.Event == null || // Event was deleted
+            .Where(r => (r.EventId != null && r.Event == null) || // Had an event association that's now gone (orphaned)
                        (r.Method == DvrRecordingMethod.Live && r.Event.EventDate < now.AddHours(-6)) || // Live window long gone
                        !r.Event.Monitored) // Event is no longer monitored
             .ToListAsync(cancellationToken);
@@ -504,6 +510,17 @@ public class DvrAutoSchedulerService : BackgroundService
                 continue;
             }
 
+            // Pre/post-game wrapper shows ("Cubs Postgame Live!") share every team
+            // name with the real broadcast and often air close enough in time to
+            // land inside the matching window, but they are never the live event
+            // itself - skip them regardless of how well the team names score.
+            if (IsWrapperShow(normalizedProgramTitle))
+            {
+                _logger.LogDebug("[DVR Auto-Scheduler] Skipping EPG program '{Program}' - looks like pre/post-game wrapper content, not the live event '{Event}'",
+                    program.Title, evt.Title);
+                continue;
+            }
+
             var score = 0;
 
             // Score based on matching search terms (team names or title keywords)
@@ -672,6 +689,30 @@ public class DvrAutoSchedulerService : BackgroundService
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Keywords (matched against text already lowercased/punctuation-stripped by
+    /// NormalizeForSearch) that mark a program title as pre/post-game wrapper or
+    /// highlights content rather than the live broadcast - e.g. "Cubs Postgame Live!"
+    /// for a Cubs game. These commonly reuse every team name from the real event and
+    /// can land inside the time-proximity window too, so they need an explicit
+    /// title-level exclusion rather than relying on scoring alone.
+    /// </summary>
+    private static readonly string[] WrapperShowKeywords = new[]
+    {
+        "postgame", "post game", "pregame", "pre game",
+        "post show", "pre show", "postshow", "preshow",
+        "highlights", "recap", "press conference",
+    };
+
+    /// <summary>
+    /// Check if an EPG program's title identifies it as pre/post-game wrapper or
+    /// highlights content rather than the live event broadcast itself.
+    /// </summary>
+    private static bool IsWrapperShow(string normalizedProgramTitle)
+    {
+        return WrapperShowKeywords.Any(kw => normalizedProgramTitle.Contains(kw));
     }
 
     /// <summary>

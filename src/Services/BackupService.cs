@@ -1,6 +1,9 @@
 using Sportarr.Api.Data;
+using Sportarr.Api.Exceptions;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 
@@ -16,6 +19,9 @@ public class BackupService
     private readonly string _dataDirectory;
     private readonly string _databasePath;
     private readonly ConfigService _configService;
+    private readonly DatabaseSettings _dbSettings;
+
+    private static readonly TimeSpan PgToolTimeout = TimeSpan.FromMinutes(30);
 
     public BackupService(SportarrDbContext db, ILogger<BackupService> logger, IConfiguration configuration, ConfigService configService)
     {
@@ -24,6 +30,7 @@ public class BackupService
         _configService = configService;
         _dataDirectory = configuration["Sportarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
         _databasePath = Path.Combine(_dataDirectory, "sportarr.db");
+        _dbSettings = DatabaseSettings.FromConfiguration(configuration);
     }
 
     /// <summary>
@@ -76,6 +83,70 @@ public class BackupService
     }
 
     /// <summary>
+    /// Run pg_dump or pg_restore. Arguments are passed via ArgumentList (never a single
+    /// interpolated command string) so a value like the database name can't break out and
+    /// inject extra flags - see FFmpegStreamService's ArgumentList usage for the same
+    /// reasoning. The password goes through the PGPASSWORD environment variable rather
+    /// than an argument so it never appears in a process listing.
+    /// </summary>
+    private async Task RunPgToolAsync(string toolName, IEnumerable<string> arguments, CancellationToken cancellationToken = default)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = toolName,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var arg in arguments)
+        {
+            psi.ArgumentList.Add(arg);
+        }
+        if (!string.IsNullOrEmpty(_dbSettings.Password))
+        {
+            psi.Environment["PGPASSWORD"] = _dbSettings.Password;
+        }
+
+        Process process;
+        try
+        {
+            process = Process.Start(psi)
+                ?? throw new InvalidOperationException($"{toolName} did not start");
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"{toolName} is not installed or not on PATH. Postgres backup/restore requires the postgresql-client tools.", ex);
+        }
+
+        using (process)
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(PgToolTimeout);
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+                throw new InvalidOperationException($"{toolName} timed out after {PgToolTimeout.TotalMinutes} minutes");
+            }
+
+            if (process.ExitCode != 0)
+            {
+                var stderr = await stderrTask;
+                throw new InvalidOperationException($"{toolName} failed (exit {process.ExitCode}): {stderr}");
+            }
+        }
+    }
+
+    /// <summary>
     /// Create a new backup of the database
     /// </summary>
     public async Task<BackupInfo> CreateBackupAsync(string? note = null)
@@ -87,32 +158,51 @@ public class BackupService
 
         _logger.LogInformation("Creating backup: {BackupPath}", backupPath);
 
+        string? pgDumpTempFile = null;
         try
         {
-            // Ensure WAL mode checkpoint to get a consistent backup
-            await _db.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(FULL)");
+            if (_db.Database.IsNpgsql())
+            {
+                // pg_dump needs a real file path to write to (it can't write into the
+                // zip archive stream directly like the SQLite file-copy path below).
+                pgDumpTempFile = Path.Combine(Path.GetTempPath(), $"sportarr_pg_dump_{Guid.NewGuid():N}.dump");
+                await RunPgToolAsync("pg_dump", BuildPgDumpArguments(pgDumpTempFile));
+            }
+            else
+            {
+                // Ensure WAL mode checkpoint to get a consistent backup
+                await _db.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(FULL)");
+            }
 
             // Create backup zip file
             using (var zipArchive = ZipFile.Open(backupPath, ZipArchiveMode.Create))
             {
-                // Add main database file
-                if (File.Exists(_databasePath))
+                if (pgDumpTempFile != null)
                 {
-                    zipArchive.CreateEntryFromFile(_databasePath, "sportarr.db");
+                    // Custom-format pg_dump archive; restored via pg_restore, not a file copy.
+                    zipArchive.CreateEntryFromFile(pgDumpTempFile, "postgres.dump");
                 }
-
-                // Add WAL file if it exists
-                var walPath = _databasePath + "-wal";
-                if (File.Exists(walPath))
+                else
                 {
-                    zipArchive.CreateEntryFromFile(walPath, "sportarr.db-wal");
-                }
+                    // Add main database file
+                    if (File.Exists(_databasePath))
+                    {
+                        zipArchive.CreateEntryFromFile(_databasePath, "sportarr.db");
+                    }
 
-                // Add SHM file if it exists
-                var shmPath = _databasePath + "-shm";
-                if (File.Exists(shmPath))
-                {
-                    zipArchive.CreateEntryFromFile(shmPath, "sportarr.db-shm");
+                    // Add WAL file if it exists
+                    var walPath = _databasePath + "-wal";
+                    if (File.Exists(walPath))
+                    {
+                        zipArchive.CreateEntryFromFile(walPath, "sportarr.db-wal");
+                    }
+
+                    // Add SHM file if it exists
+                    var shmPath = _databasePath + "-shm";
+                    if (File.Exists(shmPath))
+                    {
+                        zipArchive.CreateEntryFromFile(shmPath, "sportarr.db-shm");
+                    }
                 }
 
                 // Add config.xml (API key, auth, bind URL)
@@ -158,6 +248,50 @@ public class BackupService
             _logger.LogError(ex, "Failed to create backup: {BackupPath}", backupPath);
             throw new InvalidOperationException($"Failed to create backup: {ex.Message}", ex);
         }
+        finally
+        {
+            if (pgDumpTempFile != null && File.Exists(pgDumpTempFile))
+            {
+                try { File.Delete(pgDumpTempFile); } catch { /* best effort */ }
+            }
+        }
+    }
+
+    private List<string> BuildPgDumpArguments(string outputPath)
+    {
+        var args = new List<string>
+        {
+            "--host", _dbSettings.Host ?? "localhost",
+            "--port", _dbSettings.Port.ToString(),
+            "--username", _dbSettings.Username ?? "",
+            "--dbname", _dbSettings.Name ?? "",
+            "--format", "custom",
+            // Portable across differently-provisioned Postgres instances: a restore
+            // target may use a different role name/permission set than the source.
+            "--no-owner",
+            "--no-privileges",
+            "--file", outputPath,
+        };
+        return args;
+    }
+
+    private List<string> BuildPgRestoreArguments(string dumpPath)
+    {
+        var args = new List<string>
+        {
+            "--host", _dbSettings.Host ?? "localhost",
+            "--port", _dbSettings.Port.ToString(),
+            "--username", _dbSettings.Username ?? "",
+            "--dbname", _dbSettings.Name ?? "",
+            // Drop existing objects before recreating them, so the restore fully
+            // replaces the current schema/data rather than merging into it.
+            "--clean",
+            "--if-exists",
+            "--no-owner",
+            "--no-privileges",
+            dumpPath,
+        };
+        return args;
     }
 
     /// <summary>
@@ -230,7 +364,30 @@ public class BackupService
                 }
             }
 
-            if (effectiveScope.Contains("db"))
+            // A raw SQLite file copy and a pg_dump archive are not interchangeable -
+            // fail fast with a clear error rather than silently corrupting the target.
+            // Null Provider means the backup predates Postgres support and is implicitly sqlite.
+            var currentProvider = _db.Database.IsNpgsql() ? "postgres" : "sqlite";
+            var backupProvider = manifest?.Provider ?? "sqlite";
+            if (effectiveScope.Contains("db") && !string.Equals(backupProvider, currentProvider, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BackupRestoreException(
+                    $"This backup was created on a {backupProvider} database but this install is running {currentProvider}. Cross-provider restore is not supported.");
+            }
+
+            if (effectiveScope.Contains("db") && currentProvider == "postgres")
+            {
+                var dumpPath = Path.Combine(restoreDir, "postgres.dump");
+                if (File.Exists(dumpPath))
+                {
+                    // Release pooled connections before --clean drops/recreates objects;
+                    // a stale pooled connection can otherwise cause "database is being
+                    // accessed by other users" mid-restore.
+                    NpgsqlConnection.ClearAllPools();
+                    await RunPgToolAsync("pg_restore", BuildPgRestoreArguments(dumpPath));
+                }
+            }
+            else if (effectiveScope.Contains("db"))
             {
                 // Backup current database before replacing (safety measure)
                 var currentBackupPath = _databasePath + ".before_restore";
@@ -371,6 +528,7 @@ public class BackupService
                 CreatedAt = DateTime.UtcNow,
                 SportarrVersion = Version.AppVersion,
                 SourceHost = Environment.MachineName,
+                Provider = _db.Database.IsNpgsql() ? "postgres" : "sqlite",
                 Note = note,
                 TotalEvents = await _db.Events.CountAsync(),
                 TotalEventFiles = await _db.EventFiles.CountAsync(),

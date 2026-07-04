@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Data;
@@ -10,9 +11,18 @@ public class SportarrDbContext : DbContext
     {
     }
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        // Applies to both DateTime and DateTime? properties - EF Core passes null through
+        // value converters untouched, so one registration covers both. See
+        // UtcDateTimeConverter for why this exists.
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+    }
+
     public DbSet<Event> Events => Set<Event>();
     public DbSet<EventFile> EventFiles => Set<EventFile>();
     public DbSet<League> Leagues => Set<League>();
+    public DbSet<SeasonPoster> SeasonPosters => Set<SeasonPoster>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<LeagueTeam> LeagueTeams => Set<LeagueTeam>();
     public DbSet<Player> Players => Set<Player>();
@@ -220,6 +230,19 @@ public class SportarrDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(lt => new { lt.LeagueId, lt.TeamId }).IsUnique();
             entity.HasIndex(lt => lt.Monitored);
+        });
+
+        // SeasonPoster configuration - one poster per (league, season label)
+        modelBuilder.Entity<SeasonPoster>(entity =>
+        {
+            entity.HasKey(sp => sp.Id);
+            entity.Property(sp => sp.Season).IsRequired().HasMaxLength(20);
+            entity.Property(sp => sp.PosterUrl).IsRequired().HasMaxLength(500);
+            entity.HasOne(sp => sp.League)
+                  .WithMany()
+                  .HasForeignKey(sp => sp.LeagueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(sp => new { sp.LeagueId, sp.Season }).IsUnique();
         });
 
         // Player configuration
@@ -1124,10 +1147,16 @@ public class SportarrDbContext : DbContext
             // concurrent writes to /preferred-channel can leave the
             // DB with two preferred rows for the same league and the
             // event-DVR scheduler will pick whichever EF returns first.
-            // Filtered unique index on SQLite via HasFilter.
+            // Filtered unique index. SQLite stores bool as 0/1, Postgres as boolean.
+            // Plain provider-name check (not the Npgsql-specific IsNpgsql() extension) so
+            // this project stays provider-neutral - it has no package reference to any
+            // specific EF Core provider.
+            var preferredFilter = Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL"
+                ? "\"IsPreferred\" = true"
+                : "\"IsPreferred\" = 1";
             entity.HasIndex(m => m.LeagueId)
                   .IsUnique()
-                  .HasFilter("\"IsPreferred\" = 1")
+                  .HasFilter(preferredFilter)
                   .HasDatabaseName("UX_ChannelLeagueMappings_PreferredPerLeague");
         });
 

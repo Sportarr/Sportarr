@@ -235,6 +235,56 @@ export function formatEventDate(
 }
 
 /**
+ * Compute the offset (in minutes) to ADD to a UTC instant expressed using
+ * `timezone`'s wall-clock digits to recover the true UTC instant - i.e. how
+ * far ahead of that timezone's local time UTC actually is at `date`.
+ */
+function getTimezoneOffsetMinutes(timezone: string, date: Date): number {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false, timeZone: timezone,
+  });
+  const parts = formatter.formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parseInt(parts.find(p => p.type === type)?.value || '0', 10);
+  const hour = getPart('hour') % 24; // midnight can format as "24" with hour12:false in some locales
+
+  // Treat the timezone's own wall-clock digits at `date` as if they were UTC
+  // digits; the gap between that and the real UTC instant is the offset.
+  const asIfUtc = Date.UTC(getPart('year'), getPart('month') - 1, getPart('day'), hour, getPart('minute'), getPart('second'));
+  return (date.getTime() - asIfUtc) / 60000;
+}
+
+/**
+ * Convert a `<input type="datetime-local">` value ("YYYY-MM-DDTHH:mm"),
+ * entered as wall-clock time in the app's configured timezone, to a UTC ISO
+ * string for the API. Without this, the raw local digits get sent as-is and
+ * stored/interpreted as if they were already UTC - correct only for UTC
+ * users, off by the timezone offset (and rolling to the previous day for
+ * negative offsets on early times) for everyone else. Falls back to native
+ * browser-local interpretation when no timezone is configured.
+ */
+export function localInputToUtcIso(localDateTimeValue: string, timezone: string | null | undefined): string {
+  if (!localDateTimeValue) return '';
+
+  if (!timezone) {
+    return new Date(localDateTimeValue).toISOString();
+  }
+
+  const [datePart, timePart] = localDateTimeValue.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = (timePart || '00:00').split(':').map(Number);
+
+  // First pass: treat the entered digits as UTC to get a reference instant
+  // close enough to look up the target timezone's offset at that moment.
+  const naiveUtcMs = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const offsetMinutes = getTimezoneOffsetMinutes(timezone, new Date(naiveUtcMs));
+
+  return new Date(naiveUtcMs + offsetMinutes * 60000).toISOString();
+}
+
+/**
  * Format a UTC date string as a human-readable relative time ("Just now", "5m ago", "2h ago", "3d ago")
  * or an absolute date for older timestamps. Correctly handles backend UTC dates that may lack
  * the Z suffix, preventing phantom timezone offsets in the displayed time.

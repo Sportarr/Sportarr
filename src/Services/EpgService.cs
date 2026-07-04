@@ -105,6 +105,38 @@ public class EpgService
             .Where(p => p.EpgSourceId == id)
             .ExecuteDeleteAsync();
 
+        // Clear the stale mapping on any IPTV channel pointed at a channel from this
+        // source before deleting the source's EpgChannels rows. Without this, TvgId
+        // stays set to an XMLTV id that no longer resolves to anything, so the
+        // channel still shows "Mapped" in the UI and AutoMapChannelsAsync (which only
+        // maps channels with a null TvgId) silently skips it forever - removing and
+        // re-adding the source looked like it "did nothing" because of this leftover.
+        var epgChannelsForSource = await _db.EpgChannels
+            .Where(c => c.EpgSourceId == id)
+            .ToListAsync();
+        var channelIds = epgChannelsForSource.Select(c => c.ChannelId).ToHashSet();
+        if (channelIds.Count > 0)
+        {
+            var affected = await _db.IptvChannels
+                .Where(c => c.TvgId != null && channelIds.Contains(c.TvgId))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(c => c.TvgId, (string?)null));
+            if (affected > 0)
+            {
+                _logger.LogInformation("[EPG] Cleared stale EPG mapping on {Count} IPTV channel(s) referencing deleted source {Id}", affected, id);
+            }
+        }
+
+        // Tracked RemoveRange, not a bulk ExecuteDeleteAsync: EpgChannel -> EpgSource is
+        // configured OnDelete(Cascade), and a bulk delete here bypasses the change
+        // tracker entirely. If anything in this scope had already loaded one of these
+        // EpgChannel rows, EF's own cascade handling would try to delete it again when
+        // removing the parent EpgSource below and throw a concurrency exception when it
+        // finds zero rows left to delete. Letting EF track and delete these itself keeps
+        // that cascade consistent. Volume here is bounded (a source's channel count, not
+        // its potentially huge program count), so this isn't the perf-sensitive path
+        // EpgPrograms' bulk delete above is.
+        _db.EpgChannels.RemoveRange(epgChannelsForSource);
+
         _db.EpgSources.Remove(source);
         await _db.SaveChangesAsync();
 

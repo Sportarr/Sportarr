@@ -400,6 +400,18 @@ export default function IptvChannelsSettings() {
     }
   };
 
+  const handleUnmapEpg = async (channel: IptvChannel) => {
+    try {
+      await apiClient.delete(`/iptv/channels/${channel.id}/map-epg`);
+      await loadChannels(0, true);
+      toast.success('EPG mapping cleared', {
+        description: `${channel.name} can now be auto-mapped again`,
+      });
+    } catch (err: any) {
+      toast.error('Failed to clear EPG mapping', { description: err.message });
+    }
+  };
+
   const handleUpdatePreferred = async () => {
     try {
       const { data } = await apiClient.post<{
@@ -1103,12 +1115,17 @@ export default function IptvChannelsSettings() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {channel.tvgId ? (
-                        <span
-                          className="px-2 py-0.5 text-xs rounded bg-green-900/30 text-green-400 cursor-help"
-                          title={`EPG ID: ${channel.tvgId}`}
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Clear the EPG mapping for "${channel.name}"? You can re-run auto-map or wait for it to pick a new match afterward.`)) {
+                              handleUnmapEpg(channel);
+                            }
+                          }}
+                          className="px-2 py-0.5 text-xs rounded bg-green-900/30 text-green-400 hover:bg-red-900/40 hover:text-red-400 transition-colors"
+                          title={`EPG ID: ${channel.tvgId} - click to unmap`}
                         >
                           Mapped
-                        </span>
+                        </button>
                       ) : (
                         <span className="px-2 py-0.5 text-xs rounded bg-gray-800 text-gray-500">
                           -

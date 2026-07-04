@@ -1215,6 +1215,22 @@ export default function ManualSearchModal({
                                       >
                                         {result.title}
                                       </span>
+                                      {/* The Actions column sits off-screen to the right on phone-width
+                                          viewports and horizontal scroll inside a modal is unreliable on
+                                          touch devices, so mobile gets its own always-visible download
+                                          button right next to the title instead of depending on it. */}
+                                      <button
+                                        onClick={() => handleDownloadClick(result, index, false)}
+                                        disabled={downloadingIndex !== null}
+                                        className="sm:hidden ml-auto flex-shrink-0 p-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                        title="Download"
+                                      >
+                                        {downloadingIndex === index ? (
+                                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                                        ) : (
+                                          <ArrowDownTrayIcon className="w-3.5 h-3.5" />
+                                        )}
+                                      </button>
                                     </div>
                                   </td>
                                   <td className="py-1 px-2 overflow-hidden">

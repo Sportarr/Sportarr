@@ -184,10 +184,17 @@ public class NzbGetClient
     {
         _logger.LogInformation("[NZBGet] Adding NZB via URL (appendurl mode): {Url}", nzbUrl);
 
+        // An empty NZBFilename here left NZBGet deriving its own name from the URL,
+        // which for indexer API URLs with no visible filename segment (query-string
+        // only, e.g. "...?apikey=X&id=Y") produced a blank or "_.nzb" filename that
+        // NZBGet then failed to process (issue #139). Derive a real filename the
+        // same way the primary append-with-content path does.
+        var filename = DeriveFilenameFromUrl(nzbUrl);
+
         // appendurl parameters: NZBFilename, URL, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode, PPParameters
         var parameters = new object[]
         {
-            "", // NZBFilename - empty to use server default
+            filename,
             nzbUrl,
             category,
             0, // Priority (0 = normal)
@@ -235,7 +242,18 @@ public class NzbGetClient
             }
         }
 
-        // Try to extract from URL (look for 'file=' parameter common in Prowlarr URLs)
+        return DeriveFilenameFromUrl(url);
+    }
+
+    /// <summary>
+    /// Derive a filename from a URL's 'file=' query parameter (common in Prowlarr/indexer
+    /// URLs), falling back to a generated name. Used both when we have no HTTP response to
+    /// check for a Content-Disposition header (appendurl fallback mode) and as the tail of
+    /// GetNzbFilename's own fallback chain - must never return an empty string, since NZBGet
+    /// derives its own (often blank or "_.nzb") name from the raw URL when given one.
+    /// </summary>
+    private static string DeriveFilenameFromUrl(string url)
+    {
         try
         {
             var uri = new Uri(url);

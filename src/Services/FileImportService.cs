@@ -46,6 +46,20 @@ public class DownloadFailedException : Exception
 }
 
 /// <summary>
+/// Thrown when a completed download contains only packed archives (.rar/.zip/...)
+/// and no video files yet. Unlike <see cref="DownloadFailedException"/> this is NOT
+/// terminal: an external extractor (e.g. unpackerr) may still be running, so the
+/// monitor holds the item as ImportPending and retries within a grace window instead
+/// of blocklisting it and, worse, deleting a healthy still-seeding torrent.
+/// </summary>
+public class ExtractionPendingException : Exception
+{
+    public ExtractionPendingException(string message) : base(message)
+    {
+    }
+}
+
+/// <summary>
 /// Handles importing downloaded media files into the library
 /// </summary>
 public class FileImportService : IFileImportService
@@ -266,17 +280,20 @@ public class FileImportService : IFileImportService
                 if (packedFiles.Any())
                 {
                     // A release delivered as un-extracted archives (.rar/.zip/.7z/.r00...)
-                    // can never be imported as-is, so retrying it on every poll is futile
-                    // and just spams the log and pins a queue row forever. Throw the typed
-                    // terminal failure instead: the monitor marks the download Failed on the
-                    // first attempt (no retry budget burned) and the existing failed-download
-                    // path blocklists it so a non-packed release can be grabbed. The hint is
+                    // may just be mid-extraction: an external tool (unpackerr, or the
+                    // usenet client's own post-processing) can still be unpacking a
+                    // multi-GB release when this first fires. Throw the RETRYABLE
+                    // ExtractionPendingException, not the terminal DownloadFailedException,
+                    // so the monitor holds the item as ImportPending and retries within a
+                    // grace window. Only after that window does it give up - and even then
+                    // it must never delete a healthy, still-seeding torrent. The hint is
                     // protocol-aware because only usenet clients unpack during post-processing;
-                    // torrent clients do not, and Sportarr has no torrent-side extraction yet.
+                    // torrent clients rely on an external extractor and Sportarr has no
+                    // torrent-side extraction yet.
                     var unpackHint = string.Equals(download.Protocol, "Torrent", StringComparison.OrdinalIgnoreCase)
-                        ? "The torrent delivered packed archives and the torrent client does not extract them (Sportarr has no torrent-side unpacking yet). Grab a non-packed release, or extract the files manually."
+                        ? "If you use an external extractor (e.g. unpackerr) it may still be running; otherwise the torrent client does not extract archives (Sportarr has no torrent-side unpacking yet) - grab a non-packed release or extract the files manually."
                         : "Enable unpacking in your usenet client's post-processing (e.g. SABnzbd or NZBGet) so the archives are extracted before import.";
-                    throw new DownloadFailedException(
+                    throw new ExtractionPendingException(
                         $"No video files found in {downloadPath}: {packedFiles.Count} packed archive(s) were not extracted. {unpackHint}");
                 }
 
@@ -557,11 +574,10 @@ public class FileImportService : IFileImportService
 
             _db.EventFiles.Add(eventFile);
 
-            // Update event - mark as having file (backward compatibility)
-            // For multi-part events, HasFile is true if ANY part is downloaded
-            // FilePath points to the first/most recent file
+            // Update event's "latest file" pointers. HasFile itself is recomputed
+            // below after the new EventFile is persisted, because for multi-part
+            // events one imported part must NOT mark the whole event complete.
             // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
-            eventInfo.HasFile = true;
             eventInfo.FilePath = destinationPath;
             eventInfo.FileSize = actualFileSize;
             eventInfo.Quality = qualityString;
@@ -580,6 +596,30 @@ public class FileImportService : IFileImportService
             }
 
             await _db.SaveChangesAsync();
+
+            // Recompute whether the event is fully satisfied now that the new file is
+            // persisted. For a multi-part fighting event this is only true once every
+            // MONITORED part has a file; a single imported part must leave HasFile=false
+            // so the remaining parts stay in Wanted / backlog / RSS search. For every
+            // other case (multi-part disabled, non-fighting sport, no defined segments)
+            // this collapses to "has a file" - identical to the old behaviour.
+            var presentPartNumbers = await _db.EventFiles
+                .Where(f => f.EventId == eventInfo.Id && f.Exists)
+                .Select(f => f.PartNumber)
+                .ToListAsync();
+            var fullySatisfied = EventPartDetector.AreAllMonitoredPartsPresent(
+                eventInfo.Sport,
+                eventInfo.Title,
+                eventInfo.League?.Name,
+                eventInfo.MonitoredParts,
+                eventInfo.League?.MonitoredParts,
+                presentPartNumbers,
+                config.EnableMultiPartEpisodes);
+            if (eventInfo.HasFile != fullySatisfied)
+            {
+                eventInfo.HasFile = fullySatisfied;
+                await _db.SaveChangesAsync();
+            }
 
             _logger.LogInformation("Successfully imported: {Title} -> {Path}",
                 download.Title, destinationPath);
@@ -955,6 +995,7 @@ public class FileImportService : IFileImportService
 
             // Detect multi-part episode segment (Early Prelims, Prelims, Main Card) for Fighting sports
             string partSuffix = string.Empty;
+            string partNameSuffix = string.Empty;
             if (config.EnableMultiPartEpisodes)
             {
                 // First try to detect from release title
@@ -985,6 +1026,7 @@ public class FileImportService : IFileImportService
                 if (partInfo != null)
                 {
                     partSuffix = $" - {partInfo.PartSuffix}";
+                    partNameSuffix = $" - {partInfo.SegmentName}";
                     _logger.LogInformation("[Import] Detected multi-part episode: {Segment} ({PartSuffix})",
                         partInfo.SegmentName, partInfo.PartSuffix);
                 }
@@ -1014,7 +1056,8 @@ public class FileImportService : IFileImportService
                 Series = eventInfo.League?.Name ?? eventInfo.Sport ?? string.Empty,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString(),
                 Episode = episodeNumber.ToString("00"),
-                Part = partSuffix
+                Part = partSuffix,
+                PartName = partNameSuffix
             };
 
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);

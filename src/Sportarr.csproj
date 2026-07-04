@@ -60,6 +60,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
     <!-- Use system SQLite instead of bundled e_sqlite3 to avoid "invalid opcode" crashes on older CPUs -->
     <PackageReference Include="SQLitePCLRaw.bundle_sqlite3" Version="2.1.10" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="9.0.10" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
@@ -109,9 +110,34 @@
     <None Remove="Data/agents/**" />
   </ItemGroup>
 
+  <!-- Sportarr.Data and Sportarr.Migrations.Postgres are separate projects nested under
+       this one's directory. Without these excludes, the default SDK-style **/*.cs glob
+       would compile their source files into THIS assembly too, in addition to their own
+       - producing "type X exists in both Sportarr and Sportarr.Data" ambiguity errors for
+       any downstream project (e.g. the test project) that references both assemblies. -->
+  <ItemGroup>
+    <Compile Remove="Sportarr.Data/**/*.cs" />
+    <Content Remove="Sportarr.Data/**" />
+    <EmbeddedResource Remove="Sportarr.Data/**" />
+    <None Remove="Sportarr.Data/**" />
+    <Compile Remove="Sportarr.Migrations.Postgres/**/*.cs" />
+    <Content Remove="Sportarr.Migrations.Postgres/**" />
+    <EmbeddedResource Remove="Sportarr.Migrations.Postgres/**" />
+    <None Remove="Sportarr.Migrations.Postgres/**" />
+  </ItemGroup>
+
   <!-- Include media server agents in build output -->
   <ItemGroup>
     <None Include="..\agents\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="agents" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SportarrDbContext, Models, and the SQLite migration history. -->
+    <ProjectReference Include="Sportarr.Data\Sportarr.Data.csproj" />
+    <!-- Referenced so its assembly ships in the publish output and is loadable at
+         runtime when Sportarr__Database__Provider=postgres. Not used directly from
+         app code - only by name via UseNpgsql's MigrationsAssembly(...) call. -->
+    <ProjectReference Include="Sportarr.Migrations.Postgres\Sportarr.Migrations.Postgres.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,7 @@
 using FluentValidation;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Polly;
@@ -380,23 +381,51 @@ public static class ServiceCollectionExtensions
         // scottrobertson (github.com/scottrobertson/timeshifter).
         services.AddHostedService<CatchupDownloadService>();
 
+        // Auto-unmonitor + delete files for events past Config.EventRetentionDays.
+        // Off by default (Config.EnableEventRetention).
+        services.AddSingleton<EventRetentionService>();
+        services.AddHostedService(sp => sp.GetRequiredService<EventRetentionService>());
+
         return services;
     }
 
-    public static IServiceCollection AddSportarrDatabase(this IServiceCollection services, string dbPath)
+    public static IServiceCollection AddSportarrDatabase(this IServiceCollection services, IConfiguration configuration, string dbPath)
     {
         // Single shared interceptor instance. It only does work inside a
         // SyncMetrics measured block (one AsyncLocal read otherwise), so it
         // is safe to attach to every context including the request path.
         var commandCounter = new Sportarr.Api.Data.CommandCountingInterceptor();
+        var dbSettings = DatabaseSettings.FromConfiguration(configuration);
+
+        void ConfigureProvider(DbContextOptionsBuilder options)
+        {
+            if (dbSettings.Provider == DatabaseProviderKind.Postgres)
+            {
+                // Postgres migrations live in the separate Sportarr.Migrations.Postgres
+                // project/assembly - not alongside the SQLite ones in Sportarr.Data - so
+                // Migrate() only ever sees the Postgres-only migration history. See that
+                // project's csproj comment for why it's a separate assembly rather than a
+                // subfolder of Sportarr.Data.
+                options.UseNpgsql(dbSettings.ResolvePostgresConnectionString(),
+                    npgsql => npgsql.MigrationsAssembly("Sportarr.Migrations.Postgres"));
+            }
+            else
+            {
+                // Default migrations assembly (Sportarr.Data, where SportarrDbContext and
+                // the SQLite migration history both live) - no override needed.
+                options.UseSqlite($"Data Source={dbPath}");
+            }
+        }
 
         services.AddDbContext<SportarrDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}")
-                   .AddInterceptors(commandCounter)
+        {
+            ConfigureProvider(options);
+            options.AddInterceptors(commandCounter)
                    .ConfigureWarnings(w => w
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
-                       .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)));
+                       .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning));
+        });
 
         // No AddInterceptors here: EF merges every options configuration
         // registered for the same context type, so the AddDbContext call
@@ -405,11 +434,13 @@ public static class ServiceCollectionExtensions
         // twice per command — the first [Sync Metrics] baselines showed
         // every per-shape count even, including queries that run once.
         services.AddDbContextFactory<SportarrDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}")
-                   .ConfigureWarnings(w => w
+        {
+            ConfigureProvider(options);
+            options.ConfigureWarnings(w => w
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
-                       .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)), ServiceLifetime.Scoped);
+                       .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning));
+        }, ServiceLifetime.Scoped);
 
         return services;
     }

@@ -214,6 +214,16 @@ public class AuthenticationException : SportarrException
 }
 
 /// <summary>
+/// Exception thrown when a backup cannot be restored onto the current install -
+/// currently just the "backup was made on a different database provider" case
+/// (a raw SQLite file copy and a pg_dump archive are not interchangeable).
+/// </summary>
+public class BackupRestoreException : SportarrException
+{
+    public BackupRestoreException(string message) : base(message) { }
+}
+
+/// <summary>
 /// Exception thrown when external API calls fail (Sportarr API, TMDB, etc.)
 /// </summary>
 public class ExternalApiException : SportarrException

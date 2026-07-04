@@ -16,6 +16,7 @@ public class DownloadClientService : IDownloadClientService
     private readonly ILoggerFactory _loggerFactory;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _clientCache;
+    private readonly ConfigService _configService;
 
     // Cache expiration settings for download client instances
     private static readonly TimeSpan CacheSlidingExpiration = TimeSpan.FromMinutes(30);
@@ -29,12 +30,14 @@ public class DownloadClientService : IDownloadClientService
         IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory,
         ILogger<DownloadClientService> logger,
-        IMemoryCache clientCache)
+        IMemoryCache clientCache,
+        ConfigService configService)
     {
         _httpClientFactory = httpClientFactory;
         _loggerFactory = loggerFactory;
         _logger = logger;
         _clientCache = clientCache;
+        _configService = configService;
     }
 
     /// <summary>
@@ -256,7 +259,32 @@ public class DownloadClientService : IDownloadClientService
             }
 
             _logger.LogWarning("[Download Client] Connection test failed for {Name}", config.Name);
-            return (false, "Connection failed");
+
+            // Decypharr repurposes Username/Password as the Sportarr callback URL and
+            // API key rather than real Decypharr login credentials - Decypharr calls
+            // back into Sportarr's /api/v3/health with that key to validate them, and
+            // only falls back to checking them against its OWN separate dashboard
+            // login (which can never match what's typed here) if that call fails. A
+            // stale/mistyped Sportarr API key or an unreachable callback URL both look
+            // like a bare "Connection failed" with no indication of which, so check
+            // the key server-side and point at the two real causes directly.
+            if (config.Type is DownloadClientType.Decypharr or DownloadClientType.DecypharrUsenet)
+            {
+                var apiKeyValid = await _configService.ValidateApiKeyAsync(config.Password);
+                var decypharrMessage = !apiKeyValid
+                    ? "Connection failed. The \"Sportarr API Key\" field doesn't match Sportarr's current API key (Settings > General) - double-check for typos or extra whitespace."
+                    : "Connection failed. Decypharr calls back into the \"Sportarr URL\" field to verify these credentials - make sure that address is reachable from Decypharr's own network/container, not just from your browser.";
+                return (false, decypharrMessage);
+            }
+
+            // A very common cause is SSL enabled here while the client is actually
+            // served over plain HTTP, which fails as a TLS handshake error (e.g.
+            // rTorrent/ruTorrent on a LAN). Surface that hint in the UI instead of
+            // leaving it only in the logs.
+            var failureMessage = config.UseSsl
+                ? "Connection failed. If this client is served over HTTP rather than HTTPS, turn off \"Use SSL\" (or enter an http:// URL) and test again."
+                : "Connection failed";
+            return (false, failureMessage);
         }
         catch (Exception ex)
         {

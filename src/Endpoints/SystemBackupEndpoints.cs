@@ -162,6 +162,14 @@ public static class SystemBackupEndpoints
                     restoreReportId = reportId,
                 });
             }
+            catch (Sportarr.Api.Exceptions.BackupRestoreException ex)
+            {
+                logger.LogWarning(ex, "[Backup] Refused cross-provider restore for {Name}", backupName);
+                return Results.Problem(
+                    title: "Backup provider mismatch",
+                    detail: ex.Message,
+                    statusCode: 400);
+            }
             catch (Exception ex)
             {
                 logger.LogError(ex, "[Backup] Restore failed for {Name}", backupName);

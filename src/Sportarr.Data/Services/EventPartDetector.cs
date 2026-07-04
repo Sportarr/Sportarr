@@ -214,6 +214,15 @@ public class EventPartDetector
     public const string FullEventSegmentName = "Full Event";
 
     /// <summary>
+    /// Segment name for the optional post-event show (part 4 on UFC PPV cards).
+    /// It is a bonus segment that is rarely released, so it must never block an
+    /// event from being considered fully downloaded - otherwise a card whose actual
+    /// fights (Early Prelims/Prelims/Main Card) are all present would sit in Wanted
+    /// forever waiting on a Post Show that never appears.
+    /// </summary>
+    public const string PostShowSegmentName = "Post Show";
+
+    /// <summary>
     /// Check if a part name represents a full event (no part)
     /// "Full Event" should be treated as null/no part in the database
     /// </summary>
@@ -738,6 +747,75 @@ public class EventPartDetector
     }
 
     /// <summary>
+    /// Determine whether every monitored part of an event now has a file, i.e. the
+    /// event is fully satisfied and can safely leave the Wanted / backlog / RSS search
+    /// lists. This is what the event-level <c>HasFile</c> flag should reflect.
+    ///
+    /// When multi-part episodes are disabled, the sport is not a fighting sport, or the
+    /// event type defines no segments, this collapses to the historical "has any file"
+    /// behaviour - so turning the optional multi-part setting off changes nothing.
+    /// For fighting events with the setting on it requires every monitored segment
+    /// (Early Prelims / Prelims / Main Card, ...) to have a file, so importing a single
+    /// part no longer marks the whole event complete. A whole-event file (no part
+    /// number) satisfies everything, and the optional "Post Show" never blocks
+    /// completion.
+    /// </summary>
+    /// <param name="sport">Event sport.</param>
+    /// <param name="eventTitle">Event title (drives PPV vs Fight Night part sets).</param>
+    /// <param name="leagueName">Owning league name.</param>
+    /// <param name="eventMonitoredParts">Event-level MonitoredParts (null = inherit league).</param>
+    /// <param name="leagueMonitoredParts">League-level MonitoredParts fallback.</param>
+    /// <param name="presentPartNumbers">PartNumber of every EventFile that exists on disk (null for a full-event file).</param>
+    /// <param name="enableMultiPartEpisodes">The EnableMultiPartEpisodes config flag.</param>
+    public static bool AreAllMonitoredPartsPresent(
+        string? sport,
+        string? eventTitle,
+        string? leagueName,
+        string? eventMonitoredParts,
+        string? leagueMonitoredParts,
+        IReadOnlyCollection<int?> presentPartNumbers,
+        bool enableMultiPartEpisodes)
+    {
+        bool HasAnyFile() => presentPartNumbers.Count > 0;
+
+        // Optional feature off, or a sport that never splits into parts: one file is enough.
+        if (!enableMultiPartEpisodes || !IsFightingSport(sport ?? string.Empty))
+            return HasAnyFile();
+
+        var parts = GetSegmentDefinitions(sport ?? "Fighting", eventTitle, leagueName)
+            .Where(s => s.PartNumber > 0)
+            .ToList();
+
+        // Event type defines no segments (e.g. Contender Series, weekly wrestling): single file.
+        if (parts.Count == 0)
+            return HasAnyFile();
+
+        // A whole-event file (grabbed as one complete card, no part number) satisfies everything.
+        if (presentPartNumbers.Any(n => n is null or 0))
+            return true;
+
+        // Resolve monitored parts: event overrides league; null = all parts monitored.
+        var effectiveMonitoredParts = eventMonitoredParts ?? leagueMonitoredParts;
+        var monitoredPartNames = effectiveMonitoredParts == null
+            ? null
+            : effectiveMonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Required = monitored parts, minus the optional Post Show (see PostShowSegmentName).
+        var required = parts
+            .Where(p => monitoredPartNames == null || monitoredPartNames.Contains(p.Name))
+            .Where(p => !p.Name.Equals(PostShowSegmentName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        // Nothing required (no parts monitored, or only Post Show): any file satisfies.
+        if (required.Count == 0)
+            return HasAnyFile();
+
+        return required.All(p => presentPartNumbers.Any(n => n == p.PartNumber));
+    }
+
+    /// <summary>
     /// Check if this is a fighting sport that uses multi-part episodes
     /// </summary>
     public static bool IsFightingSport(string sport)
@@ -757,6 +835,73 @@ public class EventPartDetector
         };
 
         return fightingSports.Any(s => sport.Equals(s, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Generational suffixes that trail a fighter's name; the token before
+    // them is the actual surname ("Roy Jones Jr" -> "Jones").
+    private static readonly HashSet<string> NameSuffixTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"
+    };
+
+    /// <summary>
+    /// Extract each fighter's surname from a matchup-style event title.
+    /// Boxing/MMA events are titled with full names ("Fabio Wardley vs Daniel
+    /// Dubois") but releases almost never carry first names
+    /// ("Boxing.2026.05.09.Wardley.vs.Dubois...") - the surnames are the only
+    /// stable identifiers between the two, used both to build search queries
+    /// and to score releases against the event. Handles card prefixes ("UFC
+    /// 300: Alex Pereira vs Jamahal Hill" -> Pereira/Hill), "vs." spellings,
+    /// and generational suffixes ("Roy Jones Jr" -> Jones). Returns false for
+    /// titles that aren't a two-sided matchup.
+    /// </summary>
+    public static bool TryExtractFighterSurnames(string? eventTitle, out string surnameA, out string surnameB)
+    {
+        surnameA = string.Empty;
+        surnameB = string.Empty;
+        if (string.IsNullOrWhiteSpace(eventTitle))
+            return false;
+
+        var sides = Regex.Split(eventTitle, @"\s+vs\.?\s+", RegexOptions.IgnoreCase);
+        if (sides.Length != 2)
+            return false;
+
+        // Side B may trail card decorations ("... vs Dubois - Main Card",
+        // "... vs Hill (PPV)"); cut at the first separator.
+        var sideB = Regex.Split(sides[1], @"\s+-\s+|\s*\(")[0];
+
+        var a = LastNameToken(sides[0]);
+        var b = LastNameToken(sideB);
+        if (a == null || b == null)
+            return false;
+
+        surnameA = a;
+        surnameB = b;
+        return true;
+    }
+
+    /// <summary>
+    /// Last name-like token of a fighter string, skipping generational
+    /// suffixes. Null when nothing usable remains (e.g. the side is only
+    /// digits or punctuation).
+    /// </summary>
+    private static string? LastNameToken(string side)
+    {
+        var tokens = Regex.Matches(side, @"[\p{L}][\p{L}'\-]*")
+            .Select(m => m.Value)
+            .ToList();
+
+        for (var i = tokens.Count - 1; i >= 0; i--)
+        {
+            if (NameSuffixTokens.Contains(tokens[i]))
+                continue;
+            // Two letters is a legitimate surname minimum ("Ng", "Oh"); a
+            // single letter is initials/noise.
+            if (tokens[i].Length >= 2)
+                return tokens[i];
+        }
+
+        return null;
     }
 
     /// <summary>

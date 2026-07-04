@@ -417,6 +417,33 @@ public class ReleaseMatchingService
             }
         }
 
+        // VALIDATION 2b: Fighter surnames match (boxing/MMA matchup-titled events).
+        // Fight releases almost never carry first names - the event is titled
+        // "Fabio Wardley vs Daniel Dubois" but the release is
+        // "Boxing.2026.05.09.Wardley.vs.Dubois..." - so without surname-level
+        // matching a correct release earns nothing from the fighters and stalls
+        // below the confidence threshold on generic signals alone. Mirrors the
+        // team-sport both-names bonus, but a single-surname hit is NOT treated
+        // as a wrong-matchup rejection: unlike team sports, many legitimate
+        // fight releases name only the card ("UFC 299"), which the event-number
+        // validation already covers.
+        if (isFighting && !isTeamSport
+            && EventPartDetector.TryExtractFighterSurnames(evt.Title, out var fighterA, out var fighterB))
+        {
+            var foundA = ContainsWholeWord(normalizedRelease, NormalizeTitle(fighterA));
+            var foundB = ContainsWholeWord(normalizedRelease, NormalizeTitle(fighterB));
+            if (foundA && foundB)
+            {
+                result.Confidence += 35;
+                result.MatchReasons.Add("Both fighter surnames found");
+            }
+            else if (foundA || foundB)
+            {
+                result.Confidence += 10;
+                result.MatchReasons.Add("One fighter surname found");
+            }
+        }
+
         // VALIDATION 3: Date/Year proximity
         // First check full date if available, then fall back to year-only check
         _logger.LogDebug("[Release Matching] Date validation for '{Release}': EventDate={EventDate}, EventYear={EventYear}",
@@ -1023,6 +1050,21 @@ public class ReleaseMatchingService
                 return true;
         }
 
+        // National-team sport-suffix strip. TheSportsDB disambiguates non-football
+        // national teams by appending the sport ("Italy Rugby", "Scotland Rugby",
+        // "Italy Basketball") while release titles use the bare country ("Italy -
+        // Scotland"). Strip that suffix - the team's own sport when known, else any
+        // recognized sport - and check the remainder. Fallback only: the full name was
+        // already checked above, and ValidateTeamNames still requires BOTH teams to
+        // appear, so a lone country match cannot pass on its own.
+        var sportStripped = LeagueNameSuffixStripper.StripNationalTeamSportSuffix(teamName, team?.Sport);
+        if (sportStripped != null && sportStripped.Length >= 3 &&
+            !sportStripped.Equals(teamName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (normalizedRelease.Contains(NormalizeTitle(sportStripped), StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
         // Check team name variations (abbreviations, nicknames, alternate forms)
         // e.g., "LA Clippers" for "Los Angeles Clippers", "OKC" for "Oklahoma City Thunder"
         foreach (var (canonicalName, variations) in TeamNameVariationData.Variations)
@@ -1173,6 +1215,17 @@ public class ReleaseMatchingService
         normalized = _whitespaceRegex.Replace(normalized, " ").Trim();
 
         return normalized;
+    }
+
+    /// <summary>
+    /// Case-insensitive whole-word containment on normalized (separator-collapsed)
+    /// text. Word boundaries keep a surname like "Ng" from matching inside
+    /// "boxing" - a plain Contains would.
+    /// </summary>
+    private static bool ContainsWholeWord(string normalizedText, string word)
+    {
+        if (string.IsNullOrWhiteSpace(word)) return false;
+        return Regex.IsMatch(normalizedText, $@"\b{Regex.Escape(word)}\b", RegexOptions.IgnoreCase);
     }
 
     private static readonly Regex _releaseGroupSuffixRegex = new(
@@ -1418,6 +1471,17 @@ public class ReleaseMatchingService
                     continue;
                 }
 
+                // Separator-insensitive fallback: fused labels like "Formula1"/"Formula2"/
+                // "Formula3" (kept distinct internally) never literally appear in a real
+                // league name like "Formula 1" (with a space), so a bare "F1" release
+                // abbreviation had no escape hatch above and was hard rejected against its
+                // own league.
+                var sportCompact = RemoveSeparators(sportLower);
+                if (RemoveSeparators(eventSport).Contains(sportCompact) || RemoveSeparators(eventLeague).Contains(sportCompact) || RemoveSeparators(eventTitle).Contains(sportCompact))
+                {
+                    continue;
+                }
+
                 // Found a different sport in the release - this is a mismatch
                 return sport;
             }
@@ -1425,6 +1489,8 @@ public class ReleaseMatchingService
 
         return null;
     }
+
+    private static string RemoveSeparators(string s) => Regex.Replace(s, @"[\s\.\-]", "");
 
     /// <summary>
     /// Known motorsport locations — used to detect when a release contains a different
@@ -1436,24 +1502,24 @@ public class ReleaseMatchingService
         { "Australia", new(StringComparer.OrdinalIgnoreCase) { "Australian", "Melbourne", "Albert Park" } },
         { "Bahrain", new(StringComparer.OrdinalIgnoreCase) { "Bahraini", "Sakhir" } },
         { "Saudi Arabia", new(StringComparer.OrdinalIgnoreCase) { "Saudi", "Jeddah" } },
-        { "Japan", new(StringComparer.OrdinalIgnoreCase) { "Japanese", "Suzuka" } },
+        { "Japan", new(StringComparer.OrdinalIgnoreCase) { "Japanese", "Suzuka", "Japon" } },
         { "China", new(StringComparer.OrdinalIgnoreCase) { "Chinese", "Shanghai" } },
         { "Miami", new(StringComparer.OrdinalIgnoreCase) { "Miami Gardens" } },
         { "Emilia Romagna", new(StringComparer.OrdinalIgnoreCase) { "Imola", "San Marino" } },
         { "Monaco", new(StringComparer.OrdinalIgnoreCase) { "Monte Carlo", "Monegasque" } },
-        { "Spain", new(StringComparer.OrdinalIgnoreCase) { "Spanish", "Barcelona", "Catalunya" } },
+        { "Spain", new(StringComparer.OrdinalIgnoreCase) { "Spanish", "Barcelona", "Catalunya", "Catalonia", "Catalan", "Espagne", "Catalogne" } },
         { "Canada", new(StringComparer.OrdinalIgnoreCase) { "Canadian", "Montreal" } },
-        { "Austria", new(StringComparer.OrdinalIgnoreCase) { "Austrian", "Spielberg", "Red Bull Ring" } },
-        { "Britain", new(StringComparer.OrdinalIgnoreCase) { "British", "Silverstone", "UK", "Great Britain" } },
-        { "Hungary", new(StringComparer.OrdinalIgnoreCase) { "Hungarian", "Budapest", "Hungaroring" } },
-        { "Belgium", new(StringComparer.OrdinalIgnoreCase) { "Belgian", "Spa", "Spa-Francorchamps" } },
-        { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Dutch", "Zandvoort", "Assen" } },
-        { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Italian", "Monza", "Mugello" } },
+        { "Austria", new(StringComparer.OrdinalIgnoreCase) { "Austrian", "Spielberg", "Red Bull Ring", "Autriche" } },
+        { "Britain", new(StringComparer.OrdinalIgnoreCase) { "British", "Silverstone", "UK", "Great Britain", "Grande Bretagne", "Angleterre" } },
+        { "Hungary", new(StringComparer.OrdinalIgnoreCase) { "Hungarian", "Budapest", "Hungaroring", "Hongrie", "Balaton Park" } },
+        { "Belgium", new(StringComparer.OrdinalIgnoreCase) { "Belgian", "Spa", "Spa-Francorchamps", "Belgique" } },
+        { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Dutch", "Zandvoort", "Assen", "Pays Bas" } },
+        { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Italian", "Monza", "Mugello", "Italie" } },
         { "Azerbaijan", new(StringComparer.OrdinalIgnoreCase) { "Azerbaijani", "Baku" } },
         { "Singapore", new(StringComparer.OrdinalIgnoreCase) { "Singaporean", "Marina Bay" } },
-        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "COTA", "Austin", "Texas" } },
-        { "Mexico", new(StringComparer.OrdinalIgnoreCase) { "Mexican", "Mexico City" } },
-        { "Brazil", new(StringComparer.OrdinalIgnoreCase) { "Brazilian", "Sao Paulo", "Interlagos" } },
+        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "COTA", "Austin", "Texas", "Etats Unis" } },
+        { "Mexico", new(StringComparer.OrdinalIgnoreCase) { "Mexican", "Mexico City", "Mexique" } },
+        { "Brazil", new(StringComparer.OrdinalIgnoreCase) { "Brazilian", "Sao Paulo", "Interlagos", "Bresil" } },
         { "Las Vegas", new(StringComparer.OrdinalIgnoreCase) { "Vegas" } },
         { "Qatar", new(StringComparer.OrdinalIgnoreCase) { "Qatari", "Lusail" } },
         { "Abu Dhabi", new(StringComparer.OrdinalIgnoreCase) { "AbuDhabi", "Yas Marina" } },
@@ -1462,7 +1528,7 @@ public class ReleaseMatchingService
         { "Argentina", new(StringComparer.OrdinalIgnoreCase) { "Argentine", "Argentinian", "Termas" } },
         { "Portugal", new(StringComparer.OrdinalIgnoreCase) { "Portuguese", "Portimao", "Algarve" } },
         { "France", new(StringComparer.OrdinalIgnoreCase) { "French", "Le Mans", "Paul Ricard" } },
-        { "Germany", new(StringComparer.OrdinalIgnoreCase) { "German", "Sachsenring", "Hockenheim", "Nurburgring" } },
+        { "Germany", new(StringComparer.OrdinalIgnoreCase) { "German", "Sachsenring", "Hockenheim", "Nurburgring", "Allemagne" } },
         { "India", new(StringComparer.OrdinalIgnoreCase) { "Indian" } },
         { "South Africa", new(StringComparer.OrdinalIgnoreCase) { "South African", "Kyalami" } },
         { "Korea", new(StringComparer.OrdinalIgnoreCase) { "Korean", "Yeongam" } },
@@ -1557,9 +1623,19 @@ public class ReleaseMatchingService
         // even though it clearly says "Monaco". A genuinely wrong-race release
         // (e.g. "German GP" for a Monaco event) does NOT contain the event
         // location, so it still falls through to the conflict check below.
-        bool releaseNamesEventLocation = expandedLocations.Any(loc =>
-            loc.Length > 2 && GetWordBoundaryRegex(loc).IsMatch(normalizedRelease));
-        if (releaseNamesEventLocation)
+        //
+        // Evidence built ONLY from a demonym that doubles as a scene language
+        // tag is weak: for a France event, "[FRENCH] ... Grand Prix De Hongrie"
+        // matches "French" purely as the audio language. Weak evidence still
+        // protects the release from rejection, but only while no competing
+        // location is named - when the release also names a DIFFERENT known
+        // location (Hongrie -> Hungary), the concrete location outranks the
+        // language tag and the conflict check below runs (issue #156).
+        bool releaseNamesEventLocationStrongly = expandedLocations.Any(loc =>
+            loc.Length > 2
+            && !SearchNormalizationService.SceneLanguageTags.Contains(loc)
+            && GetWordBoundaryRegex(loc).IsMatch(normalizedRelease));
+        if (releaseNamesEventLocationStrongly)
             return null;
 
         // Check if release contains a DIFFERENT location

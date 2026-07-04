@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Sportarr.Api.Helpers;
 
@@ -32,6 +33,53 @@ public static class LeagueNameSuffixStripper
         "Rugby League",
         "Rugby Union",
     };
+
+    // Bare sport names that TheSportsDB appends to non-football national teams for
+    // uniqueness ("Italy Rugby", "Italy Basketball", "France Handball") while release
+    // titles use the bare country ("Italy - Scotland"). Distinct from _knownSuffixes,
+    // which are league brands. Multi-word entries first so "Rugby League" is preferred
+    // over bare "Rugby", "Ice Hockey" over "Hockey", etc.
+    private static readonly string[] _nationalTeamSportSuffixes = new[]
+    {
+        "Rugby League", "Rugby Union", "Rugby Sevens",
+        "Beach Volleyball", "Ice Hockey", "Field Hockey", "Water Polo",
+        "Rugby", "Basketball", "Handball", "Volleyball", "Cricket",
+        "Hockey", "Baseball", "Softball", "Netball", "Futsal",
+    };
+
+    /// <summary>
+    /// Strip the sport suffix TheSportsDB appends to a non-football national team's
+    /// name ("Italy Rugby" -> "Italy") so it can be matched against release titles that
+    /// use the bare country. Prefers the team's own sport when supplied, then falls back
+    /// to the known national-team sport list. Returns null when nothing was stripped.
+    /// The suffix must be a whole trailing word, so "Bath" is never stripped from a name
+    /// that merely ends in those letters.
+    /// </summary>
+    public static string? StripNationalTeamSportSuffix(string? teamName, string? teamSport = null)
+    {
+        if (string.IsNullOrWhiteSpace(teamName)) return null;
+        var source = teamName.TrimEnd();
+
+        IEnumerable<string> candidates = _nationalTeamSportSuffixes;
+        if (!string.IsNullOrWhiteSpace(teamSport))
+            candidates = new[] { teamSport.Trim() }.Concat(_nationalTeamSportSuffixes);
+
+        foreach (var suffix in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(suffix)) continue;
+
+            // Require a leading space so only a trailing sport WORD is removed.
+            if (source.Length > suffix.Length + 1 &&
+                source.EndsWith(" " + suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                var stripped = source.Substring(0, source.Length - suffix.Length)
+                    .TrimEnd(' ', '-', '.', ',');
+                if (stripped.Length >= 2)
+                    return stripped;
+            }
+        }
+        return null;
+    }
 
     /// <summary>
     /// Try to strip a known league suffix from a team name. Returns

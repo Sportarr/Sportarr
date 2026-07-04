@@ -1750,12 +1750,23 @@ public class ReleaseMatchScorer
                 if (pattern.IsMatch(eventSport) || pattern.IsMatch(eventLeague))
                     continue;
 
+                // Separator-insensitive fallback: fused labels like "Formula1"/"Formula2"/
+                // "Formula3" (kept distinct internally) never literally appear in a real
+                // league name like "Formula 1" (with a space), so a bare "F1" release
+                // abbreviation had no escape hatch above and was hard rejected against its
+                // own league.
+                var sportCompact = RemoveSeparators(sportLower);
+                if (RemoveSeparators(eventSport).Contains(sportCompact) || RemoveSeparators(eventLeague).Contains(sportCompact) || RemoveSeparators(eventTitle).Contains(sportCompact))
+                    continue;
+
                 return true;
             }
         }
 
         return false;
     }
+
+    private static string RemoveSeparators(string s) => Regex.Replace(s, @"[\s\.\-]", "");
 
     #endregion
 

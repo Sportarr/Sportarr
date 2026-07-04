@@ -266,10 +266,11 @@ public class EventQueryService
     /// </summary>
     private void BuildMotorsportQueries(Event evt, string? leagueName, List<string> queries)
     {
-        var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
+        var seriesKey = GetMotorsportSeriesPrefix(leagueName);
+        var searchPrefixes = GetMotorsportSearchPrefixes(seriesKey);
         var brandingDate = evt.BroadcastDate ?? evt.EventDate;
         int year;
-        if (seriesPrefix == "FormulaE" && !string.IsNullOrEmpty(evt.Season))
+        if (seriesKey == "FormulaE" && !string.IsNullOrEmpty(evt.Season))
         {
             year = ExtractFormulaESeasonYear(evt.Season, brandingDate.Year);
         }
@@ -278,36 +279,55 @@ public class EventQueryService
             year = brandingDate.Year;
         }
 
-        // Primary: series + year + round (specific)
+        // Compute round and title-derived location once; they're independent of the
+        // search-name form below.
+        int? round = null;
         if (!string.IsNullOrEmpty(evt.Round) && int.TryParse(evt.Round, out var roundNum) && roundNum > 0 && roundNum < 100)
         {
-            queries.Add($"{seriesPrefix} {year} Round{roundNum:D2}");
+            round = roundNum;
         }
 
-        // For Formula 1, add location-based supplementary queries to catch BILLIE-style releases
-        // (Formula1.2026.China.Grand.Prix) that don't use round numbers.
-        if (seriesPrefix == "Formula1")
+        // Derive a location word from the event title (e.g. "Chinese" from "Chinese Grand Prix")
+        string? titleWord = null;
+        var titleLocationMatch = Regex.Match(evt.Title ?? "", @"^([\w\s]+?)\s+Grand Prix", RegexOptions.IgnoreCase);
+        if (titleLocationMatch.Success)
         {
-            if (!string.IsNullOrEmpty(evt.Location))
+            var word = titleLocationMatch.Groups[1].Value.Trim();
+            if (!string.IsNullOrEmpty(word) &&
+                !string.Equals(word, evt.Location, StringComparison.OrdinalIgnoreCase))
             {
-                queries.Add($"{seriesPrefix} {year} {evt.Location}");
+                titleWord = word;
+            }
+        }
+
+        // Emit the full query set for each search-name form (e.g. "Formula 1" then
+        // "Formula1"). Spaced form first so its results win the "found enough, stop"
+        // optimization, since the dotted/spaced release convention is the common one.
+        foreach (var prefix in searchPrefixes)
+        {
+            // Primary: series + year + round (specific)
+            if (round.HasValue)
+            {
+                queries.Add($"{prefix} {year} Round{round.Value:D2}");
             }
 
-            // Also derive a location word from the event title (e.g. "Chinese" from "Chinese Grand Prix")
-            var titleLocationMatch = Regex.Match(evt.Title ?? "", @"^([\w\s]+?)\s+Grand Prix", RegexOptions.IgnoreCase);
-            if (titleLocationMatch.Success)
+            // For Formula 1, add location-based supplementary queries to catch BILLIE-style
+            // releases (Formula.1.2026.China.Grand.Prix) that don't use round numbers.
+            if (seriesKey == "Formula1")
             {
-                var titleWord = titleLocationMatch.Groups[1].Value.Trim();
-                if (!string.IsNullOrEmpty(titleWord) &&
-                    !string.Equals(titleWord, evt.Location, StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrEmpty(evt.Location))
                 {
-                    queries.Add($"{seriesPrefix} {year} {titleWord}");
+                    queries.Add($"{prefix} {year} {evt.Location}");
+                }
+                if (!string.IsNullOrEmpty(titleWord))
+                {
+                    queries.Add($"{prefix} {year} {titleWord}");
                 }
             }
-        }
 
-        // Broad fallback: series + year catches any remaining naming variants
-        queries.Add($"{seriesPrefix} {year}");
+            // Broad fallback: series + year catches any remaining naming variants
+            queries.Add($"{prefix} {year}");
+        }
     }
 
     /// <summary>
@@ -436,17 +456,36 @@ public class EventQueryService
         }
 
         var brandingYear = (evt.BroadcastDate ?? evt.EventDate).Year;
+        // Surname matchup query ("Wardley vs Dubois"). Fight releases almost
+        // never carry first names - "Boxing.2026.05.09.Wardley.vs.Dubois..."
+        // is the dominant convention - so a full-name title query returns
+        // nothing for matchup-titled events (boxing especially, where the
+        // matchup IS the whole title and there's no card number to fall
+        // back on).
+        string? surnameQuery = null;
+        if (EventPartDetector.TryExtractFighterSurnames(title, out var surnameA, out var surnameB))
+        {
+            surnameQuery = $"{surnameA} vs {surnameB}";
+        }
+
         if (primaryQuery != null)
         {
             // Primary: "UFC 299" or "ONE Friday Fights 150"
             queries.Add(primaryQuery);
+            // Supplementary: the headline matchup by surname
+            if (surnameQuery != null)
+                queries.Add(surnameQuery);
             // Fallback: "UFC 2026"
             if (!string.IsNullOrEmpty(org))
                 queries.Add($"{org} {brandingYear}");
         }
         else
         {
-            // Couldn't identify the card. Use normalized title + year fallback.
+            // Couldn't identify the card. For a pure matchup title the surname
+            // query is the most specific form that matches release naming, so
+            // it leads; the normalized full title stays as a fallback.
+            if (surnameQuery != null)
+                queries.Add(surnameQuery);
             queries.Add(NormalizeEventTitle(title));
             var orgMatch = Regex.Match(title, @"^(UFC|Bellator|PFL|ONE|Boxing)", RegexOptions.IgnoreCase);
             if (orgMatch.Success)
@@ -721,6 +760,25 @@ public class EventQueryService
             return "WRC";
 
         return leagueName.Replace(" ", "");
+    }
+
+    /// <summary>
+    /// The series-name forms to actually search for, given the canonical series key.
+    /// Formula 1 / Formula E releases appear on trackers both spaced/dotted
+    /// ("Formula.1.2026x11.Austria.Race", which tokenizes to "Formula 1") and
+    /// concatenated ("formula1 2026 ..."). Searching only "Formula1" misses every
+    /// dotted release - including the actual Race - so both forms are returned, spaced
+    /// first because the dotted convention is the more common one. Series that are a
+    /// single token in release names (MotoGP, NASCAR, IndyCar, WRC) need only one form.
+    /// </summary>
+    private static List<string> GetMotorsportSearchPrefixes(string seriesKey)
+    {
+        return seriesKey switch
+        {
+            "Formula1" => new List<string> { "Formula 1", "Formula1" },
+            "FormulaE" => new List<string> { "Formula E", "FormulaE" },
+            _ => new List<string> { seriesKey }
+        };
     }
 
     /// <summary>

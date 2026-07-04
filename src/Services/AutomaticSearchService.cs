@@ -1257,10 +1257,17 @@ public class AutomaticSearchService : IAutomaticSearchService
         // their scheduled date. Excluding them here keeps the background search
         // from endlessly querying for media that cannot exist. (DB stores both
         // Title-case and lowercase status; guard both.)
+        // Events that haven't started yet (+1h buffer) are excluded too: there is no
+        // release for a future event yet, so searching it either returns nothing or
+        // pulls in an unrelated release (e.g. a different city's race for the same
+        // league), wasting indexer hits. Mirrors the same filter/reasoning already
+        // applied to the per-league search endpoint.
+        var searchableCutoff = DateTime.UtcNow - TimeSpan.FromHours(1);
         var events = await _db.Events
             .Include(e => e.League)
             .Include(e => e.Files)
             .Where(e => e.Monitored && e.League != null && e.League.Monitored
+                && e.EventDate <= searchableCutoff
                 && e.Status != "Postponed" && e.Status != "postponed"
                 && e.Status != "Cancelled" && e.Status != "cancelled"
                 && e.Status != "Canceled" && e.Status != "canceled")

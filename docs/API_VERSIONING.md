@@ -6,7 +6,7 @@ Sportarr exposes three families of HTTP routes. They look like API versions but 
 |---|---|---|---|
 | `/api/*` | **Sportarr's native API** | Internal contract; current = v1 semantics. Breaking changes only with a coordinated frontend release. | Sportarr web frontend |
 | `/api/v1/*` | **Sonarr v1 compatibility shim** | Frozen — must match Sonarr's v1 API contract byte-for-byte. | Prowlarr |
-| `/api/v3/*` | **Sonarr v3 compatibility shim** | Frozen — must match Sonarr's v3 API contract byte-for-byte. | Decypharr, Maintainerr, ArrControl, dashboards configured with the Sonarr template |
+| `/api/v3/*` | **Sonarr v3 compatibility shim** | Frozen — must match Sonarr's v3 API contract byte-for-byte. | Decypharr, Maintainerr, ArrControl, Unpackerr, dashboards configured with the Sonarr template |
 
 ## Why both v1 and v3?
 
@@ -27,7 +27,7 @@ Because it has a single consumer (the Sportarr frontend) and we ship the fronten
 |---|---|
 | `/api/*` | All non-prefixed extension methods in `src/Endpoints/` (e.g. `EventEndpoints.cs`, `LeagueEndpoints.cs`, `IptvEndpoints.cs`) |
 | `/api/v1/*` | `src/Endpoints/V1ProwlarrEndpoints.cs` |
-| `/api/v3/*` | `src/Endpoints/Sonarr*.cs` (`SonarrSeriesEndpoints.cs`, `SonarrCalendarEndpoint.cs`, `SonarrEpisodeFileEndpoints.cs`, `SonarrIndexerEndpoints.cs`, `SonarrCommandEndpoints.cs`, `SonarrConfigEndpoints.cs`, `SonarrSystemEndpoints.cs`, `SonarrDownloadClientEndpoint.cs`) |
+| `/api/v3/*` | `src/Endpoints/Sonarr*.cs` (`SonarrSeriesEndpoints.cs`, `SonarrCalendarEndpoint.cs`, `SonarrEpisodeFileEndpoints.cs`, `SonarrIndexerEndpoints.cs`, `SonarrCommandEndpoints.cs`, `SonarrConfigEndpoints.cs`, `SonarrSystemEndpoints.cs`, `SonarrDownloadClientEndpoint.cs`, `SonarrQueueEndpoints.cs`) |
 
 ## Note on Prowlarr first-class support
 

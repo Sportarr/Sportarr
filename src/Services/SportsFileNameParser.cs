@@ -461,8 +461,16 @@ public class SportsFileNameParser
     // Date extraction patterns
     private static readonly Regex DatePattern = new(@"(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})", RegexOptions.Compiled);
     private static readonly Regex YearOnlyPattern = new(@"\b(?<year>20[12]\d)\b", RegexOptions.Compiled);
-    // Season span pattern for multi-year seasons like "2025-2026" or "2025-26"
-    private static readonly Regex SeasonSpanPattern = new(@"\b(?<startYear>20[12]\d)[\-/](?<endYear>20[12]\d|[12]\d)\b", RegexOptions.Compiled);
+    // Season span pattern for multi-year seasons: "2025-2026", "2025/2026", "2025-26"
+    // (hyphen/slash separator, full or short end year), or "2025.2026" (dot separator,
+    // the dominant scene-release convention - e.g. "NBA.2025.2026.Team.Vs.Team...").
+    // The dot branch requires a FULL 4-digit end year (never the 2-digit short form):
+    // a 2-digit "12"/"25" after a dot is indistinguishable from a month/day token in a
+    // plain "2026.12.25" date, and DatePattern above already claims genuine dates first,
+    // so this only needs to disambiguate true season-span titles from that risk.
+    private static readonly Regex SeasonSpanPattern = new(
+        @"\b(?<startYear>20[12]\d)(?:[\-/](?<endYear>20[12]\d|[12]\d)|\.(?<endYear>20[12]\d))\b",
+        RegexOptions.Compiled);
     // Sonarr-style season-episode marker where the year is encoded as the
     // season number (e.g. "S2026E34"). YearOnlyPattern misses this because
     // the surrounding 'S' and 'E' are word characters, so the \b boundary

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Sportarr.Migrations.Postgres</AssemblyName>
+    <RootNamespace>Sportarr.Api.Migrations.Postgres</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Postgres-only EF Core migration history for SportarrDbContext. Kept in its own
+    project/assembly (rather than a subfolder of the main app or of Sportarr.Data) so
+    UseNpgsql's MigrationsAssembly("Sportarr.Migrations.Postgres") points at an assembly
+    that contains ONLY Postgres migrations - no ambiguity with the SQLite migration
+    history in Sportarr.Data, no risk of "dotnet ef migrations add" finding/overwriting
+    the wrong provider's snapshot. See CLAUDE.md's Database section for the workflow.
+
+    Postgres support is fresh-install-only: this history starts from a single baseline
+    migration reflecting the current model, not a replay of the SQLite migration history.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sportarr.Data\Sportarr.Data.csproj" />
+  </ItemGroup>
+
+</Project>

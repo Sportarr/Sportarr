@@ -236,6 +236,11 @@ public class MediaManagementSettings
     public string RecycleBin { get; set; } = "";
     public int RecycleBinCleanup { get; set; } = 7;
 
+    // Event Retention - auto-unmonitor and delete files for events once
+    // they've aged past EventRetentionDays. Off by default.
+    public bool EnableEventRetention { get; set; } = false;
+    public int EventRetentionDays { get; set; } = 30;
+
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
 }
@@ -355,6 +360,7 @@ public class FileNamingTokens
     public string Season { get; set; } = string.Empty;  // Season year (2024)
     public string Episode { get; set; } = string.Empty; // Episode number (01, 02, etc.)
     public string Part { get; set; } = string.Empty;    // Multi-part suffix (pt1, pt2, pt3) for fight card segments
+    public string PartName { get; set; } = string.Empty; // Human part label suffix (" - Prelims", " - Main Card"); empty for single-part files. Separator embedded, same convention as Part.
 }
 
 // Notification Model (stored separately with Tags)

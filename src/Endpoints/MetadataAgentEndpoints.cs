@@ -92,6 +92,10 @@ public static class MetadataAgentEndpoints
                 .Where(e => e.LeagueId == league.Id && e.SeasonNumber != null)
                 .ToListAsync();
 
+            var seasonPosters = await db.SeasonPosters
+                .Where(sp => sp.LeagueId == league.Id)
+                .ToListAsync();
+
             var seasons = events
                 .GroupBy(e => e.SeasonNumber!.Value)
                 .OrderBy(g => g.Key)
@@ -103,7 +107,7 @@ public static class MetadataAgentEndpoints
                         season_number = g.Key,
                         title = seasonLabel ?? $"Season {g.Key}",
                         summary = "",
-                        poster_url = (string?)null,
+                        poster_url = ResolveSeasonPoster(seasonPosters, seasonLabel, league.PosterUrl),
                         episode_count = g.Count(e => !IsExcluded(e.Status)),
                         year = ParseYear(seasonLabel) ?? g.Key
                     };
@@ -180,6 +184,9 @@ public static class MetadataAgentEndpoints
                 return Results.Ok(new { error = "Episode not found" });
 
             var seasonLabel = events.Select(e => e.Season).FirstOrDefault(s => !string.IsNullOrEmpty(s));
+            var matchSeasonPosters = await db.SeasonPosters
+                .Where(sp => sp.LeagueId == league.Id)
+                .ToListAsync();
             var cast = await apiClient.GetEventCastAsync(evt.ExternalId);
 
             return Results.Ok(new
@@ -208,7 +215,7 @@ public static class MetadataAgentEndpoints
                         season_number = sn,
                         title = seasonLabel ?? $"Season {sn}",
                         summary = "",
-                        poster_url = (string?)null,
+                        poster_url = ResolveSeasonPoster(matchSeasonPosters, seasonLabel, league.PosterUrl),
                         episode_count = events.Count(e => !IsExcluded(e.Status)),
                         year = ParseYear(seasonLabel) ?? sn
                     },
@@ -268,6 +275,31 @@ public static class MetadataAgentEndpoints
         if (string.IsNullOrWhiteSpace(value)) return null;
         var digits = new string(value.Where(char.IsDigit).Take(4).ToArray());
         return digits.Length == 4 && int.TryParse(digits, out var y) ? y : (int?)null;
+    }
+
+    // Pick the poster for a season: the season's own archived art when synced,
+    // otherwise the league poster. Season labels don't always agree between
+    // the events table and TheSportsDB's poster archive ("2023" vs "2023-2024"
+    // - the season-list normalizer merges single-year labels into dual-year
+    // ones), so an exact label match is tried first and a start-year match
+    // second. Public so tests can pin the matching rules.
+    public static string? ResolveSeasonPoster(IReadOnlyList<SeasonPoster> posters, string? seasonLabel, string? leaguePosterUrl)
+    {
+        if (posters.Count > 0 && !string.IsNullOrWhiteSpace(seasonLabel))
+        {
+            var wanted = seasonLabel.Trim();
+            var exact = posters.FirstOrDefault(p => string.Equals(p.Season, wanted, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact.PosterUrl;
+
+            var wantedStart = wanted.Split('-')[0];
+            if (wantedStart.Length == 4 && wantedStart.All(char.IsDigit))
+            {
+                var byStartYear = posters.FirstOrDefault(p => p.Season.Split('-')[0] == wantedStart);
+                if (byStartYear != null) return byStartYear.PosterUrl;
+            }
+        }
+
+        return leaguePosterUrl;
     }
 
     // Bulk/season-list callers use the cast-free overload so the whole-season

@@ -6,6 +6,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sportarr", "src\Sportarr.cs
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sportarr.Api.Tests", "tests\Sportarr.Api.Tests\Sportarr.Api.Tests.csproj", "{F439B43F-FA91-5B4A-A14B-9DB56910A759}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{602A01D6-CF91-4139-A4F5-D727A210840E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sportarr.Data", "src\Sportarr.Data\Sportarr.Data.csproj", "{C3F9572B-A925-4131-8AA2-FEC00D524687}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sportarr.Migrations.Postgres", "src\Sportarr.Migrations.Postgres\Sportarr.Migrations.Postgres.csproj", "{304D21CE-E0FF-4533-A3BE-B2CE535A7A93}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,11 +26,23 @@ Global
 		{F439B43F-FA91-5B4A-A14B-9DB56910A759}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F439B43F-FA91-5B4A-A14B-9DB56910A759}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F439B43F-FA91-5B4A-A14B-9DB56910A759}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C3F9572B-A925-4131-8AA2-FEC00D524687}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C3F9572B-A925-4131-8AA2-FEC00D524687}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C3F9572B-A925-4131-8AA2-FEC00D524687}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C3F9572B-A925-4131-8AA2-FEC00D524687}.Release|Any CPU.Build.0 = Release|Any CPU
+		{304D21CE-E0FF-4533-A3BE-B2CE535A7A93}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{304D21CE-E0FF-4533-A3BE-B2CE535A7A93}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{304D21CE-E0FF-4533-A3BE-B2CE535A7A93}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{304D21CE-E0FF-4533-A3BE-B2CE535A7A93}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {3071AB9A-31CF-4A0E-A29F-80B6B98B8B73}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{C3F9572B-A925-4131-8AA2-FEC00D524687} = {602A01D6-CF91-4139-A4F5-D727A210840E}
+		{304D21CE-E0FF-4533-A3BE-B2CE535A7A93} = {602A01D6-CF91-4139-A4F5-D727A210840E}
 	EndGlobalSection
 EndGlobal

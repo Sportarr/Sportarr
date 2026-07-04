@@ -121,6 +121,15 @@ public class Config
     public int EventFileMissingDeleteAfterDays { get; set; } = 30;
     public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags (Freeleech, Scene, etc.)
 
+    /// <summary>
+    /// When enabled, a daily background pass unmonitors events (and deletes
+    /// their files, respecting the recycle bin) once EventRetentionDays have
+    /// passed since EventDate. Off by default - every existing install is
+    /// unaffected unless a user opts in.
+    /// </summary>
+    public bool EnableEventRetention { get; set; } = false;
+    public int EventRetentionDays { get; set; } = 30;
+
     // Queue Threshold Settings (Huntarr-style)
     // Pause searching when download queue exceeds threshold to prevent overloading
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit, otherwise pause when queue exceeds this

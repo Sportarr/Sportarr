@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Sportarr.Data</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    SportarrDbContext, the domain models, and the existing SQLite migration history.
+    Split out of the main Sportarr project so a second, Postgres-only migrations
+    project (Sportarr.Migrations.Postgres) can reference this DbContext without a
+    circular project reference back to the app. See CLAUDE.md's Database section.
+
+    A few files here declare namespaces that don't match this project's folder
+    layout (Sportarr.Api.Services, Sportarr.Api.Helpers, Sportarr.Api.Converters,
+    not Sportarr.Api.Data/Models) - those are the small dependency closure that
+    SportarrDbContext/the Models transitively need (EventPartDetector,
+    DvrPaddingDefaults, ImageUrlNormalizer, the two date JSON converters). They
+    still live in the main Sportarr project's namespaces; only their physical
+    file location moved.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.9" />
+    <!-- Needed here (not just the app/migrations projects) because this is the
+         project target for "dotnet ef migrations add" when scaffolding the
+         SQLite migration history that lives in this project's Migrations/ folder. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

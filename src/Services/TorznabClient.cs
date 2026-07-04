@@ -84,32 +84,101 @@ public class TorznabClient
     /// </summary>
     public async Task<bool> TestConnectionAsync(Indexer config)
     {
+        // Preferred path: the caps endpoint returns a <caps> document.
         try
         {
-            // Test with caps endpoint
             var url = BuildUrl(config, "caps");
             _logger.LogInformation("[Torznab] Testing connection to {Indexer} at {Url}", config.Name, url);
             using var response = await _httpClient.GetAsync(url);
 
             if (response.IsSuccessStatusCode)
             {
-                var xml = await response.Content.ReadAsStringAsync();
-                var doc = XDocument.Parse(xml);
-
-                // Verify it's a valid Torznab response
-                if (doc.Root?.Name.LocalName == "caps")
+                var body = await response.Content.ReadAsStringAsync();
+                // Parse tolerantly: some Prowlarr-managed indexers answer t=caps with
+                // an HTML error page instead of XML, which used to throw an XmlException
+                // and fail the whole test even though RSS/search work fine.
+                if (TryGetXmlRoot(body, out var rootName))
                 {
-                    _logger.LogInformation("[Torznab] Connection successful to {Indexer}", config.Name);
-                    return true;
+                    if (rootName == "caps")
+                    {
+                        _logger.LogInformation("[Torznab] Connection successful to {Indexer}", config.Name);
+                        return true;
+                    }
+                    _logger.LogWarning("[Torznab] {Indexer} caps returned <{Root}> instead of <caps>; trying RSS/search fallback",
+                        config.Name, rootName);
+                }
+                else
+                {
+                    _logger.LogWarning("[Torznab] {Indexer} caps did not return XML; trying RSS/search fallback", config.Name);
                 }
             }
+            else
+            {
+                _logger.LogWarning("[Torznab] {Indexer} caps request failed ({Status}); trying RSS/search fallback",
+                    config.Name, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Torznab] {Indexer} caps check errored; trying RSS/search fallback", config.Name);
+        }
 
-            _logger.LogWarning("[Torznab] Connection failed to {Indexer}: {Status}", config.Name, response.StatusCode);
-            return false;
+        // Lenient fallback: accept the indexer when it can't serve caps but does serve
+        // a valid RSS/search feed. Mirrors the RSS mode used elsewhere (t=search, no q).
+        try
+        {
+            var parameters = new Dictionary<string, string> { { "limit", "1" }, { "extended", "1" } };
+            var categories = GetRssCategories(config);
+            if (categories.Any())
+            {
+                parameters["cat"] = string.Join(",", categories);
+            }
+            var url = BuildUrl(config, "search", parameters);
+            using var response = await _httpClient.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                // A Torznab search/RSS response is an RSS 2.0 document (root <rss>).
+                // An <error> root (bad apikey, etc.) or non-XML must still fail.
+                if (TryGetXmlRoot(body, out var rootName) && (rootName == "rss" || rootName == "feed"))
+                {
+                    _logger.LogInformation("[Torznab] Connection to {Indexer} verified via RSS/search (caps unavailable)", config.Name);
+                    return true;
+                }
+                _logger.LogWarning("[Torznab] {Indexer} RSS/search did not return a valid feed", config.Name);
+            }
+            else
+            {
+                _logger.LogWarning("[Torznab] {Indexer} RSS/search request failed ({Status})", config.Name, response.StatusCode);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Torznab] Connection test failed for {Indexer}", config.Name);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Try to parse a response body as XML and return its root element's local name.
+    /// Returns false when the body is not XML (e.g. an HTML error page) so callers can
+    /// degrade gracefully instead of letting an <see cref="System.Xml.XmlException"/> escape.
+    /// </summary>
+    private static bool TryGetXmlRoot(string body, out string rootLocalName)
+    {
+        rootLocalName = string.Empty;
+        if (string.IsNullOrWhiteSpace(body))
+            return false;
+        try
+        {
+            var doc = XDocument.Parse(body);
+            rootLocalName = doc.Root?.Name.LocalName ?? string.Empty;
+            return !string.IsNullOrEmpty(rootLocalName);
+        }
+        catch (System.Xml.XmlException)
+        {
             return false;
         }
     }

@@ -440,4 +440,68 @@ public class FileNamingServiceTests
         // Assert
         result.Should().Be("original_file_name.mkv");
     }
+
+    // Issue #170: {Part Name} renders the human part label ("Prelims",
+    // "Main Card") instead of the opaque pt1/pt2, with the separator embedded
+    // (same convention as {Part}) so single-part files render cleanly.
+    [Fact]
+    public void BuildFileName_PartNameToken_RendersHumanLabel()
+    {
+        var format = "{Series} - {Season}{Episode} - {Event Title}{Part Name} - {Quality Full}";
+        var tokens = new FileNamingTokens
+        {
+            Series = "UFC",
+            Season = "2026",
+            Episode = "24",
+            EventTitle = "UFC Fight Night 279 Kape vs Horiguchi",
+            PartName = " - Prelims",
+            QualityFull = "WEBDL-1080p"
+        };
+
+        var result = _service.BuildFileName(format, tokens, ".mkv");
+
+        result.Should().Be("UFC - S2026E24 - UFC Fight Night 279 Kape vs Horiguchi - Prelims - WEBDL-1080p.mkv");
+    }
+
+    [Fact]
+    public void BuildFileName_PartNameToken_EmptyForSinglePartFiles()
+    {
+        var format = "{Series} - {Season}{Episode} - {Event Title}{Part Name} - {Quality Full}";
+        var tokens = new FileNamingTokens
+        {
+            Series = "UFC",
+            Season = "2026",
+            Episode = "24",
+            EventTitle = "UFC Fight Night 279 Kape vs Horiguchi",
+            PartName = string.Empty,
+            QualityFull = "WEBDL-1080p"
+        };
+
+        var result = _service.BuildFileName(format, tokens, ".mkv");
+
+        result.Should().Be("UFC - S2026E24 - UFC Fight Night 279 Kape vs Horiguchi - WEBDL-1080p.mkv");
+    }
+
+    [Fact]
+    public void BuildFileName_PartAndPartName_CanCoexist()
+    {
+        // Users can keep pt{N} for plugin compatibility AND add the label.
+        var format = "{Event Title}{Part}{Part Name}";
+        var tokens = new FileNamingTokens
+        {
+            EventTitle = "UFC 300",
+            Part = " - pt2",
+            PartName = " - Main Card"
+        };
+
+        var result = _service.BuildFileName(format, tokens, ".mkv");
+
+        result.Should().Be("UFC 300 - pt2 - Main Card.mkv");
+    }
+
+    [Fact]
+    public void GetAvailableFileTokens_IncludesPartName()
+    {
+        _service.GetAvailableFileTokens().Should().Contain("{Part Name}");
+    }
 }

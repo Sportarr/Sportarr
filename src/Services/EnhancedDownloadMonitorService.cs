@@ -1,4 +1,5 @@
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,6 +29,12 @@ public class EnhancedDownloadMonitorService : BackgroundService
     // same broken import forever. Without this cap we've seen ImportRetryCount
     // climb past 1000 in production.
     private const int MaxImportRetries = 3;
+
+    // How long to keep retrying a completed download whose files are still packed
+    // archives before giving up. An external extractor (unpackerr) or the usenet
+    // client's own post-processing can take many minutes on a large release, so the
+    // monitor holds the item as ImportPending for this long instead of failing it.
+    private static readonly TimeSpan ExtractionGracePeriod = TimeSpan.FromMinutes(30);
 
     public EnhancedDownloadMonitorService(
         IServiceProvider serviceProvider,
@@ -573,7 +580,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
         FileImportService fileImportService,
         SportarrDbContext? db = null)
     {
-        download.CompletedAt = DateTime.UtcNow;
+        // Set-once: CompletedAt is the moment the download first finished, not the
+        // last poll. Re-imports (ImportPending retries) re-enter this method every
+        // poll; resetting CompletedAt here would keep the extraction grace window
+        // (below) from ever elapsing.
+        download.CompletedAt ??= DateTime.UtcNow;
 
         // Defensive guard: even though MonitorDownloadsAsync filters out rows
         // with ImportRetryCount >= MaxImportRetries, the status flip from
@@ -682,6 +693,40 @@ public class EnhancedDownloadMonitorService : BackgroundService
             download.Status = DownloadStatus.Failed;
             download.ErrorMessage = ex.Message;
         }
+        catch (ExtractionPendingException ex)
+        {
+            // Completed download still contains packed archives. An external extractor
+            // (unpackerr) or the client's post-processing may still be running, so retry
+            // within a grace window rather than failing. Crucially this burns no terminal
+            // retry budget and never blocklists or removes the download, so a healthy,
+            // still-seeding torrent is left completely intact while extraction finishes.
+            var now = DateTime.UtcNow;
+            var waited = now - (download.CompletedAt ?? download.Added);
+
+            if (DownloadFailurePolicy.IsWithinExtractionGrace(download.CompletedAt, download.Added, now, ExtractionGracePeriod))
+            {
+                var waitedMin = (int)waited.TotalMinutes;
+                var graceMin = (int)ExtractionGracePeriod.TotalMinutes;
+                _logger.LogInformation(
+                    "[Enhanced Download Monitor] Waiting for extraction (attempt after {Waited}m/{Grace}m): {Title}",
+                    waitedMin, graceMin, download.Title);
+
+                download.Status = DownloadStatus.ImportPending;
+                download.ErrorMessage = $"Waiting for archive extraction to finish ({waitedMin}m/{graceMin}m): {ex.Message}";
+            }
+            else
+            {
+                // Extraction never happened (no extractor, or it failed). Give up on the
+                // import, but leave the download in place: HandleFailedDownload will
+                // blocklist the packed release so a non-packed one can be grabbed, and the
+                // CompletedAt guard there keeps the still-seeding torrent and its data.
+                _logger.LogWarning(
+                    "[Enhanced Download Monitor] ✗ Archives never extracted within {Grace}m for {Title}: {Message}",
+                    (int)ExtractionGracePeriod.TotalMinutes, download.Title, ex.Message);
+                download.Status = DownloadStatus.Failed;
+                download.ErrorMessage = ex.Message;
+            }
+        }
         catch (DownloadFailedException ex)
         {
             // The download client itself flagged this as failed (e.g.
@@ -788,15 +833,28 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 download.Title, blocklistItem.Protocol);
         }
 
-        // Remove from download client if configured in the client's settings
-        if (download.DownloadClient?.RemoveFailedDownloads == true)
+        // Remove from download client only for a genuine DOWNLOAD failure - never for an
+        // IMPORT failure. If CompletedAt is set the data downloaded fine and the failure is
+        // purely on Sportarr's import side (e.g. archives that never extracted). Removing
+        // it here with deleteFiles:true would destroy a healthy, still-seeding torrent and,
+        // on a private tracker, cause a hit-and-run. Leave it fully intact so it keeps
+        // seeding and can be re-imported after manual extraction. The blocklist entry above
+        // still steers RSS/search toward a non-packed release.
+        var wasDownloaded = download.CompletedAt != null;
+        if (wasDownloaded)
+        {
+            _logger.LogInformation(
+                "[Enhanced Download Monitor] Import failed but download succeeded - leaving '{Title}' in the client intact (not removing, not deleting data)",
+                download.Title);
+        }
+        else if (DownloadFailurePolicy.ShouldRemoveDataOnFailure(wasDownloaded, download.DownloadClient?.RemoveFailedDownloads == true))
         {
             try
             {
                 await downloadClientService.RemoveDownloadAsync(
                     download.DownloadClient,
                     download.DownloadId,
-                    deleteFiles: true); // Clean up failed download files
+                    deleteFiles: true); // Clean up files from a download that never completed
 
                 _logger.LogDebug("[Enhanced Download Monitor] Removed failed download from client: {Title}", download.Title);
             }

@@ -41,6 +41,16 @@ public class BackupManifest
     public string? SourceHost { get; set; }
 
     /// <summary>
+    /// Database provider that produced this backup: "sqlite" or "postgres". Null on
+    /// backups made before Postgres support existed - those are implicitly sqlite.
+    /// Restoring a backup onto a differently-provisioned install is not supported (the
+    /// data formats are incompatible - a raw SQLite file copy vs a pg_dump archive), so
+    /// the restore flow fails fast on a mismatch rather than corrupting anything.
+    /// </summary>
+    [JsonPropertyName("provider")]
+    public string? Provider { get; set; }
+
+    /// <summary>
     /// Optional free-text note provided by the admin when creating the
     /// backup (already exists in BackupInfo + the create-backup endpoint).
     /// </summary>

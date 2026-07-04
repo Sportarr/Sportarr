@@ -376,6 +376,65 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 
         // Discover new untracked files in root folders
         await DiscoverNewFilesAsync(db, cancellationToken);
+
+        // Remove stale disk-discovered PendingImport rows whose source file is gone
+        await CleanupStalePendingImportsAsync(db, config, cancellationToken);
+    }
+
+    /// <summary>
+    /// Remove disk-discovered PendingImport rows (DownloadClientId == null - found by
+    /// this service, FileWatcherService, or a manual league scan, not reported by a
+    /// tracked download client) whose source file no longer exists. Without this,
+    /// a download client configured to remove completed/failed downloads after
+    /// processing (e.g. SABnzbd) deletes the file out from under an unmatched
+    /// "No match found" row, which then has nothing left to import and piles up in
+    /// the Activity page forever (issue #129) - clicking Refresh re-fetches the same
+    /// stale rows since nothing re-checks the file's existence.
+    ///
+    /// Client-tracked rows (DownloadClientId set) are already reconciled against the
+    /// client's live queue/history by EnhancedDownloadMonitorService and are excluded
+    /// here. Uses the same grace-period + parent-directory-reachability guard as the
+    /// EventFile missing-file handling above: a download directory that's temporarily
+    /// unmounted must not be mistaken for "the file was deleted".
+    /// </summary>
+    private async Task CleanupStalePendingImportsAsync(SportarrDbContext db, Config config, CancellationToken cancellationToken)
+    {
+        if (config.EventFileMissingDeleteAfterDays <= 0)
+            return; // 0 = never auto-delete, same convention as the EventFile grace period
+
+        var graceCutoff = DateTime.UtcNow.AddDays(-config.EventFileMissingDeleteAfterDays);
+
+        var candidates = await db.PendingImports
+            .Where(p => p.DownloadClientId == null
+                && p.Status == PendingImportStatus.Pending
+                && p.Detected < graceCutoff)
+            .ToListAsync(cancellationToken);
+
+        if (candidates.Count == 0)
+            return;
+
+        var removed = 0;
+        foreach (var pending in candidates)
+        {
+            if (File.Exists(pending.FilePath))
+                continue;
+
+            var parentDir = Path.GetDirectoryName(pending.FilePath);
+            if (string.IsNullOrEmpty(parentDir) || !Directory.Exists(parentDir))
+                continue; // Containing directory is gone too - the mount may just be down, not the file itself
+
+            _logger.LogInformation(
+                "[Disk Scan] Removing stale PendingImport {Id} ({Title}) - source file has been missing for over {Days} days: {Path}",
+                pending.Id, pending.Title, config.EventFileMissingDeleteAfterDays, pending.FilePath);
+            db.PendingImports.Remove(pending);
+            removed++;
+        }
+
+        if (removed > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("[Disk Scan] Removed {Count} stale pending import(s)", removed);
+        }
     }
 
     /// <summary>

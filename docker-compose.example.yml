@@ -1,0 +1,53 @@
+# Example docker-compose showing Sportarr wired up against an external PostgreSQL
+# database, plus the Docker-secrets (FILE__) convention for the database password.
+#
+# PostgreSQL support is for FRESH installs only - there is no SQLite -> PostgreSQL
+# migration path. Pick a provider before the first run.
+#
+# For the default, zero-config SQLite setup, see docker-compose.yml instead.
+
+version: '3.8'
+
+services:
+  sportarr:
+    image: ${DOCKER_USERNAME:-sportarr}/sportarr:${TAG:-latest}
+    container_name: sportarr
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    ports:
+      - "1867:1867"
+    volumes:
+      - ./config:/config
+      - /path/to/your/sports:/data
+    environment:
+      - PUID=99
+      - PGID=100
+      - UMASK=022
+      - TZ=America/New_York
+      - Sportarr__Database__Provider=postgres
+      - Sportarr__Database__Host=postgres
+      - Sportarr__Database__Port=5432
+      - Sportarr__Database__Name=sportarr
+      - Sportarr__Database__Username=sportarr
+      # Read from the mounted secret file below rather than a plaintext env var.
+      - FILE__Sportarr__Database__Password=/run/secrets/sportarr_db_password
+    secrets:
+      - sportarr_db_password
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sportarr-postgres
+    restart: unless-stopped
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=sportarr
+      - POSTGRES_USER=sportarr
+      - POSTGRES_PASSWORD_FILE=/run/secrets/sportarr_db_password
+    secrets:
+      - sportarr_db_password
+
+secrets:
+  sportarr_db_password:
+    file: ./secrets/sportarr_db_password.txt

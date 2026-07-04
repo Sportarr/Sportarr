@@ -15,3 +15,32 @@ services:
       - PGID=100
       - UMASK=022
       - TZ=America/New_York
+      # --- Database (optional) ---
+      # Sportarr uses SQLite by default; nothing below is required. To use an
+      # external PostgreSQL database instead, uncomment these lines (and the
+      # postgres service below, or point Host at your own existing server).
+      # PostgreSQL support is for FRESH installs only - there is no SQLite ->
+      # PostgreSQL migration path. See the README's "Database" section for the
+      # full list of variables, the FILE__ secrets convention, and backup notes.
+      # - Sportarr__Database__Provider=postgres
+      # - Sportarr__Database__Host=postgres
+      # - Sportarr__Database__Port=5432
+      # - Sportarr__Database__Name=sportarr
+      # - Sportarr__Database__Username=sportarr
+      # - Sportarr__Database__Password=change-me
+    # depends_on:
+    #   - postgres
+
+  # Uncomment this service (and the environment lines above) to run Sportarr
+  # against PostgreSQL instead of the default SQLite. See docker-compose.example.yml
+  # for the same setup using Docker secrets instead of a plaintext password.
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: sportarr-postgres
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./postgres-data:/var/lib/postgresql/data
+  #   environment:
+  #     - POSTGRES_DB=sportarr
+  #     - POSTGRES_USER=sportarr
+  #     - POSTGRES_PASSWORD=change-me

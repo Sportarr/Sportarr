@@ -177,7 +177,31 @@ public static class SearchNormalizationService
     /// Generate alternate search queries by expanding location aliases, demonyms, and word substitutions.
     /// Returns the original query plus any relevant alternates.
     /// </summary>
+    // Memoized variation lists. IsReleaseMatch calls GenerateSearchVariations
+    // for BOTH sides of every (release, event) pair, but the result depends
+    // only on the single input title - during an RSS matching pass the same
+    // ~1,600 event titles were being re-expanded once per release (1,000+
+    // times each). Bounded: cleared wholesale when it grows past the cap so
+    // churning release titles can't grow it without limit. Entries are
+    // returned by reference; callers treat variation lists as read-only.
+    private const int VariationsCacheCap = 5000;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<string>> VariationsCache =
+        new(StringComparer.Ordinal);
+
     public static List<string> GenerateSearchVariations(string query)
+    {
+        if (VariationsCache.TryGetValue(query, out var cached))
+            return cached;
+
+        var computed = GenerateSearchVariationsUncached(query);
+
+        if (VariationsCache.Count >= VariationsCacheCap)
+            VariationsCache.Clear();
+        VariationsCache[query] = computed;
+        return computed;
+    }
+
+    private static List<string> GenerateSearchVariationsUncached(string query)
     {
         var variations = new List<string> { query };
 
@@ -240,13 +264,32 @@ public static class SearchNormalizationService
         return variations;
     }
 
+    // Compiled per-word regex cache for ContainsWord/ReplaceWord. These run
+    // inside the RSS-sync matching loop via IsReleaseMatch - every (release,
+    // event) pair does hundreds of word checks against the fixed
+    // location/alias/demonym vocabulary. Interpolating the pattern into the
+    // static Regex.IsMatch/Replace overloads pushed every call through .NET's
+    // global 15-entry regex cache: with far more than 15 distinct words
+    // cycling, each call re-parsed and rebuilt the automaton from scratch. On
+    // a large pass (observed: 1,093 releases x 1,616 candidate events) that
+    // added up to hundreds of millions of regex re-parses - a managed-memory
+    // dump of a wedged instance caught the RSS matching thread pinned in
+    // GenerateSearchVariations for 9+ hours. Same disease previously fixed in
+    // ReleaseMatchingService.NormalizeTitle; the vocabulary here is fixed, so
+    // the cache stays small and each word compiles exactly once.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> WordRegexCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static Regex GetWordRegex(string word) =>
+        WordRegexCache.GetOrAdd(word, static w =>
+            new Regex($@"\b{Regex.Escape(w)}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase));
+
     /// <summary>
     /// Check if a string contains a word (case-insensitive, whole word match).
     /// </summary>
     private static bool ContainsWord(string text, string word)
     {
-        var pattern = $@"\b{Regex.Escape(word)}\b";
-        return Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase);
+        return GetWordRegex(word).IsMatch(text);
     }
 
     /// <summary>
@@ -254,8 +297,7 @@ public static class SearchNormalizationService
     /// </summary>
     private static string ReplaceWord(string text, string oldWord, string newWord)
     {
-        var pattern = $@"\b{Regex.Escape(oldWord)}\b";
-        return Regex.Replace(text, pattern, newWord, RegexOptions.IgnoreCase);
+        return GetWordRegex(oldWord).Replace(text, newWord);
     }
 
     /// <summary>
@@ -335,7 +377,13 @@ public static class SearchNormalizationService
             if (ContainsWord(normalizedRelease, term))
                 return true;
 
-            // Also check location aliases for this term
+            // Also check location aliases for this term. A bare demonym token
+            // in the release only counts when it isn't a scene language tag:
+            // "[FRENCH] MotoGP Grand Prix De Hongrie..." carries "FRENCH" as
+            // the audio language, and counting it as France evidence matched
+            // Hungarian GP releases to France events (issue #156). The
+            // contiguous variation checks above still credit a real
+            // "French.GP" release, which contains "french gp" as a phrase.
             foreach (var (location, aliases) in LocationAliases)
             {
                 if (location.Equals(term, StringComparison.OrdinalIgnoreCase) ||
@@ -344,6 +392,8 @@ public static class SearchNormalizationService
                     // Check if any alias appears in release
                     foreach (var alias in aliases)
                     {
+                        if (SceneLanguageTags.Contains(alias))
+                            continue;
                         if (ContainsWord(normalizedRelease, alias.ToLowerInvariant()))
                             return true;
                     }
@@ -369,6 +419,8 @@ public static class SearchNormalizationService
                 }
                 if (locations.Any(l => l.Equals(term, StringComparison.OrdinalIgnoreCase)))
                 {
+                    if (SceneLanguageTags.Contains(demonym))
+                        continue;
                     if (ContainsWord(normalizedRelease, demonym.ToLowerInvariant()))
                         return true;
                 }
@@ -382,6 +434,21 @@ public static class SearchNormalizationService
     /// Extract key terms from an event title for fuzzy matching.
     /// Returns normalized terms that should appear in a matching release.
     /// </summary>
+    /// <summary>
+    /// Demonyms that double as scene release language tags. When one of these
+    /// appears as a bare token in a release title it far more often marks the
+    /// audio language ("...FRENCH.1080p.WEB...", "[GERMAN] ...") than the race
+    /// location, so bare-token location evidence built from them is unreliable.
+    /// Contiguous phrases ("French GP") are unaffected - only the single-token
+    /// paths consult this set.
+    /// </summary>
+    public static readonly HashSet<string> SceneLanguageTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "French", "German", "Spanish", "Italian", "English", "Dutch",
+        "Portuguese", "Polish", "Russian", "Swedish", "Finnish", "Danish",
+        "Norwegian", "Czech", "Hungarian", "Turkish", "Japanese", "Korean"
+    };
+
     public static List<string> ExtractKeyTerms(string eventTitle)
     {
         if (string.IsNullOrEmpty(eventTitle))
@@ -389,11 +456,19 @@ public static class SearchNormalizationService
 
         var normalized = NormalizeForSearch(eventTitle);
 
-        // Split into words and filter out common words
+        // Split into words and filter out common words. Session/format words
+        // (sprint, qualifying, practice, gp, round, day...) are NOT identity:
+        // treating "sprint" as a key term made ANY sprint release earn the
+        // location-variation bonus against ANY sprint event - a
+        // "MotoGP.2026.Hungary.Sprint.Race" release scored it against
+        // "Catalonia Sprint Race" purely on the word "sprint" (issue #156).
         var commonWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "the", "a", "an", "of", "at", "in", "on", "for", "to", "and", "or",
-            "grand", "prix", "race", "event", "championship", "cup", "series"
+            "grand", "prix", "race", "event", "championship", "cup", "series",
+            "sprint", "qualifying", "quali", "practice", "free", "session",
+            "shootout", "testing", "warmup", "fp1", "fp2", "fp3", "gp",
+            "round", "day"
         };
 
         var terms = normalized

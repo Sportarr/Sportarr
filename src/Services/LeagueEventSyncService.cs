@@ -787,6 +787,11 @@ public class LeagueEventSyncService
             _seasonsNeedingRenumber.Clear();
         }
 
+        // Refresh per-season poster art from TheSportsDB's season archive so
+        // each season can carry its own poster in media servers. One hub call
+        // per league sync; best-effort - season art must never fail the sync.
+        await SyncSeasonPostersAsync(league, cancellationToken);
+
         result.Success = true;
         result.Message = $"Synced {result.NewCount} new events, updated {result.UpdatedCount} events, skipped {result.SkippedCount} duplicates";
         _logger.LogInformation("[League Event Sync] Completed: {Message}", result.Message);
@@ -809,6 +814,75 @@ public class LeagueEventSyncService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Upsert per-season poster art for a league from TheSportsDB's season
+    /// archive. Best-effort: failures (including the proxy endpoint not being
+    /// deployed yet) log a warning and leave existing rows untouched, so the
+    /// metadata endpoints simply keep serving whatever art they already have.
+    /// </summary>
+    private async Task SyncSeasonPostersAsync(League league, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(league.ExternalId)) return;
+
+        try
+        {
+            var posters = await _sportarrApiClient.GetSeasonPostersAsync(league.ExternalId);
+            if (posters == null || posters.Count == 0) return;
+
+            var incoming = posters
+                .Where(p => !string.IsNullOrWhiteSpace(p.StrSeason) && !string.IsNullOrWhiteSpace(p.StrPoster))
+                .GroupBy(p => p.StrSeason!.Trim())
+                .ToDictionary(g => g.Key, g => g.First().StrPoster!);
+
+            if (incoming.Count == 0) return;
+
+            var existing = await _db.SeasonPosters
+                .Where(sp => sp.LeagueId == league.Id)
+                .ToListAsync(cancellationToken);
+            var existingBySeason = existing
+                .GroupBy(sp => sp.Season, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            var added = 0;
+            var updated = 0;
+            foreach (var (season, posterUrl) in incoming)
+            {
+                if (existingBySeason.TryGetValue(season, out var row))
+                {
+                    if (row.PosterUrl != posterUrl)
+                    {
+                        row.PosterUrl = posterUrl;
+                        updated++;
+                    }
+                    row.LastSyncedAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    _db.SeasonPosters.Add(new SeasonPoster
+                    {
+                        LeagueId = league.Id,
+                        Season = season,
+                        PosterUrl = posterUrl,
+                    });
+                    added++;
+                }
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            if (added > 0 || updated > 0)
+            {
+                _logger.LogInformation(
+                    "[League Event Sync] Season posters synced for {LeagueName}: {Added} added, {Updated} updated ({Total} seasons with art)",
+                    league.Name, added, updated, incoming.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[League Event Sync] Season poster sync failed for {LeagueName} - continuing without season art", league.Name);
+        }
     }
 
     /// <summary>

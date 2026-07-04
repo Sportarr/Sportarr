@@ -183,7 +183,11 @@ public class FileNamingService
             { "{Series}", tokens.Series },
             { "{Season}", FormatSeasonNumber(tokens.Season) },  // S01, S02, S2025, etc
             { "{Episode}", FormatEpisodeNumber(tokens.Episode) },  // E01, E02, etc
-            { "{Part}", tokens.Part }
+            { "{Part}", tokens.Part },
+            // Human part label with embedded separator (" - Prelims"), empty
+            // for single-part files - lets fight cards name Prelims/Main Card
+            // in the filename instead of the opaque pt1/pt2.
+            { "{Part Name}", tokens.PartName }
         };
 
         if (tokens.AirDate.HasValue)
@@ -364,7 +368,8 @@ public class FileNamingService
             "{Series}",
             "{Season}",
             "{Episode}",
-            "{Part}"
+            "{Part}",
+            "{Part Name}"
         };
     }
 

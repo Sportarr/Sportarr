@@ -800,7 +800,7 @@ export default function SeasonSearchModal({
                                         {result.isBlocklisted && (
                                           <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
                                         )}
-                                        <div className="min-w-0">
+                                        <div className="min-w-0 flex-1">
                                           <span
                                             className={`truncate block ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
                                             title={result.title}
@@ -811,6 +811,22 @@ export default function SeasonSearchModal({
                                             <span className="text-yellow-500 text-[10px]">Season Pack</span>
                                           )}
                                         </div>
+                                        {/* The Actions column sits off-screen to the right on phone-width
+                                            viewports and horizontal scroll inside a modal is unreliable on
+                                            touch devices, so mobile gets its own always-visible download
+                                            button right next to the title instead of depending on it. */}
+                                        <button
+                                          onClick={() => handleDownloadClick(result, index)}
+                                          disabled={downloadingIndex !== null}
+                                          className="sm:hidden flex-shrink-0 p-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                          title={result.isSeasonPack ? `Download season pack (${result.matchedEventCount} events)` : 'Download'}
+                                        >
+                                          {downloadingIndex === index ? (
+                                            <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                                          ) : (
+                                            <ArrowDownTrayIcon className="w-3.5 h-3.5" />
+                                          )}
+                                        </button>
                                       </div>
                                     </td>
 
