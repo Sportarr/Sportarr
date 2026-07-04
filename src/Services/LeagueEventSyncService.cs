@@ -500,6 +500,41 @@ public class LeagueEventSyncService
                 .Where(e => e.LeagueId == league.Id && e.Season == season && e.ExternalId != null)
                 .ToListAsync();
 
+            // The TsdbId entries in the do-not-delete set exist so a legacy
+            // row (ExternalId still holding the TheSportsDB id from before
+            // the hub flip) survives until ProcessEvent's migration step
+            // adopts it. But when the MIGRATED twin already exists locally,
+            // Step 1 matches the twin first and the legacy row can never be
+            // adopted again - without the check below, the TsdbId protection
+            // makes such fossils immortal duplicates that survive every deep
+            // sync (observed in the field as pairs like 'Mexico City Grand
+            // Prix Qualifying' + 'Mexico City Grand Prix - Qualifying'
+            // sharing one episode number). Detect them: a local row whose
+            // ExternalId equals some API event's TsdbId while a DIFFERENT
+            // local row already carries that API event's short id.
+            var apiShortIdByTsdbId = new Dictionary<string, string>();
+            foreach (var ev in events)
+            {
+                if (!string.IsNullOrEmpty(ev.TsdbId) && !string.IsNullOrEmpty(ev.ExternalId))
+                {
+                    apiShortIdByTsdbId.TryAdd(ev.TsdbId!, ev.ExternalId!);
+                }
+            }
+            var localRowsByExternalId = allLocalSeasonEvents
+                .GroupBy(e => e.ExternalId!)
+                .ToDictionary(g => g.Key, g => g.First());
+            var fossilTwinByEventId = new Dictionary<int, Event>();
+            foreach (var localEvent in allLocalSeasonEvents)
+            {
+                if (apiShortIdByTsdbId.TryGetValue(localEvent.ExternalId!, out var twinShortId) &&
+                    twinShortId != localEvent.ExternalId &&
+                    localRowsByExternalId.TryGetValue(twinShortId, out var twin) &&
+                    twin.Id != localEvent.Id)
+                {
+                    fossilTwinByEventId[localEvent.Id] = twin;
+                }
+            }
+
             // When team filtering is active, only clean up events the filter
             // would have admitted — monitored-team games plus any special
             // events the league's finals/playoffs opt-ins let through. The
@@ -516,7 +551,7 @@ public class LeagueEventSyncService
                 : allLocalSeasonEvents;
 
             var orphanedEvents = localEventsForSeason
-                .Where(e => !apiExternalIds.Contains(e.ExternalId!))
+                .Where(e => !apiExternalIds.Contains(e.ExternalId!) || fossilTwinByEventId.ContainsKey(e.Id))
                 .ToList();
 
             // Second safety guard: if more than half the local season
@@ -606,6 +641,27 @@ public class LeagueEventSyncService
                                 "[League Event Sync] Re-linked {Count} scheduled recording(s) from re-identified event '{Title}' (S{Season}) to its replacement instead of orphaning them",
                                 orphanRecordings.Count, orphan.Title, season);
                         }
+                    }
+
+                    // A duplicate-of-a-migrated-twin fossil may hold the
+                    // user's imported file; hand it to the twin instead of
+                    // dropping the import record, so the library keeps
+                    // tracking the file under the surviving event.
+                    if (fossilTwinByEventId.TryGetValue(orphan.Id, out var fossilTwin) &&
+                        orphan.Files.Any() && !fossilTwin.HasFile && !fossilTwin.Files.Any())
+                    {
+                        var transferred = orphan.Files.ToList();
+                        foreach (var file in transferred)
+                        {
+                            orphan.Files.Remove(file);
+                            fossilTwin.Files.Add(file);
+                            file.EventId = fossilTwin.Id;
+                        }
+                        fossilTwin.HasFile = true;
+                        orphan.HasFile = false;
+                        _logger.LogInformation(
+                            "[League Event Sync] Transferred {Count} file(s) from duplicate legacy event '{Title}' (S{Season}) to its migrated twin '{TwinTitle}' before removing the duplicate",
+                            transferred.Count, orphan.Title, season, fossilTwin.Title);
                     }
 
                     if (orphan.HasFile || orphan.Files.Any())
