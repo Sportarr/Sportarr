@@ -81,4 +81,48 @@ public class SpecialEventClassifierTests
         // Regular game never bypasses regardless of opt-ins.
         BypassesTeamFilter("7", "Team A vs Team B", monitorFinals: true, monitorPlayoffs: true, monitorPreseason: true).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("64", SpecialTier.Playoff)]
+    [InlineData("32", SpecialTier.Playoff)] // World Cup 2026 Round of 32
+    [InlineData("16", SpecialTier.Playoff)] // Round of 16
+    [InlineData("8", SpecialTier.Playoff)]  // Quarter-finals
+    [InlineData("4", SpecialTier.Playoff)]  // Semi-finals
+    [InlineData("2", SpecialTier.Final)]    // Two teams left: the final
+    [InlineData("3", SpecialTier.None)]     // Not a stage size
+    [InlineData("38", SpecialTier.None)]    // Not a stage size either
+    public void Classifies_stage_size_rounds_in_cup_shaped_seasons(string round, SpecialTier expected)
+    {
+        // Cup shape: the season also contains unrounded (group stage) events.
+        Classify(round, "Australia vs Egypt", seasonHasUnroundedEvents: true).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("32")]
+    [InlineData("16")]
+    [InlineData("2")]
+    public void Stage_size_rounds_stay_regular_matchdays_in_fully_rounded_seasons(string round)
+    {
+        // Domestic league shape: every event carries a numeric matchday, so
+        // round 32 is a regular week (EPL has 38), not a knockout stage.
+        Classify(round, "Arsenal vs Chelsea", seasonHasUnroundedEvents: false).Should().Be(SpecialTier.None);
+    }
+
+    [Fact]
+    public void Bypass_admits_cup_knockouts_only_with_the_cup_shape_signal()
+    {
+        // The World Cup E86 case: Round-of-32 game, playoffs opt-in on.
+        BypassesTeamFilter("32", "Australia vs Egypt", monitorFinals: false, monitorPlayoffs: true,
+            monitorPreseason: false, seasonHasUnroundedEvents: true).Should().BeTrue();
+
+        // Same round value without the cup shape (domestic matchday): no bypass.
+        BypassesTeamFilter("32", "Arsenal vs Chelsea", monitorFinals: false, monitorPlayoffs: true,
+            monitorPreseason: false, seasonHasUnroundedEvents: false).Should().BeFalse();
+
+        // Stage-size final honors the finals opt-in, not the playoffs one.
+        BypassesTeamFilter("2", null, monitorFinals: true, monitorPlayoffs: false,
+            monitorPreseason: false, seasonHasUnroundedEvents: true).Should().BeTrue();
+        BypassesTeamFilter("2", null, monitorFinals: false, monitorPlayoffs: true,
+            monitorPreseason: false, seasonHasUnroundedEvents: true).Should().BeFalse();
+    }
 }

@@ -49,18 +49,42 @@ public static class SpecialEventClassifier
         "semifinal", "semi-final", "playoff", "knockout", "elimination round"
     };
 
-    public static SpecialTier Classify(string? round, string? title)
+    public static SpecialTier Classify(string? round, string? title, bool seasonHasUnroundedEvents = false)
     {
         // 1. Numeric TheSportsDB round codes.
         if (!string.IsNullOrWhiteSpace(round) && int.TryParse(round.Trim(), out var code))
         {
-            return code switch
+            var codeTier = code switch
             {
                 200 or 180 => SpecialTier.Final,
                 125 or 150 or 160 or 170 => SpecialTier.Playoff,
                 500 => SpecialTier.Preseason,
                 _ => SpecialTier.None
             };
+            if (codeTier != SpecialTier.None)
+            {
+                return codeTier;
+            }
+
+            // Cup knockouts arrive as bare stage sizes ("32" = Round of 32,
+            // "16" = Round of 16, "2" = the two-team final). A domestic
+            // league's numeric matchdays look identical (EPL round 32 is a
+            // regular week of a 38-round season), so stage sizes only
+            // classify when the season also contains UNROUNDED events - the
+            // cup shape of a round-less group stage followed by stage-size
+            // knockouts. League seasons number every round, so they never
+            // present that mix and never match here.
+            if (seasonHasUnroundedEvents)
+            {
+                return code switch
+                {
+                    2 => SpecialTier.Final,
+                    4 or 8 or 16 or 32 or 64 => SpecialTier.Playoff,
+                    _ => SpecialTier.None
+                };
+            }
+
+            return SpecialTier.None;
         }
 
         // 2. Word-based round values.
@@ -126,13 +150,14 @@ public static class SpecialEventClassifier
     /// league with the given opt-ins.
     /// </summary>
     public static bool BypassesTeamFilter(string? round, string? title,
-        bool monitorFinals, bool monitorPlayoffs, bool monitorPreseason = false)
+        bool monitorFinals, bool monitorPlayoffs, bool monitorPreseason = false,
+        bool seasonHasUnroundedEvents = false)
     {
         if (!monitorFinals && !monitorPlayoffs && !monitorPreseason)
         {
             return false;
         }
-        var tier = Classify(round, title);
+        var tier = Classify(round, title, seasonHasUnroundedEvents);
         return (tier == SpecialTier.Final && monitorFinals)
             || (tier == SpecialTier.Playoff && monitorPlayoffs)
             || (tier == SpecialTier.Preseason && monitorPreseason);

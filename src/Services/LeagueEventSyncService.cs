@@ -318,12 +318,20 @@ public class LeagueEventSyncService
             // team usually still want the championship game and/or postseason
             // regardless of who's playing.
             var originalEventCount = events.Count;
+            // Cup competitions mark knockout rounds as bare stage sizes
+            // ("32" = Round of 32) while their group games carry no round at
+            // all. That mixed shape is the signal that lets the classifier
+            // treat stage-size rounds as playoffs without misfiring on
+            // domestic leagues, where every matchday is numbered. Computed
+            // from the season's full pre-filter list and reused by the
+            // cleanup predicate below so both sides classify identically.
+            var seasonHasUnroundedEvents = events.Any(e => string.IsNullOrWhiteSpace(e.Round));
             if (monitoredTeamIds.Any())
             {
                 events = events.Where(e =>
                     (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
                     (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
-                    SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason)
+                    SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, seasonHasUnroundedEvents)
                 ).ToList();
 
                 _logger.LogInformation("[League Event Sync] Season {Season}: Filtered {Original} events to {Filtered} based on monitored teams{SpecialNote}",
@@ -503,7 +511,7 @@ public class LeagueEventSyncService
                 ? allLocalSeasonEvents.Where(e =>
                         (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
                         (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
-                        SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason))
+                        SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, seasonHasUnroundedEvents))
                     .ToList()
                 : allLocalSeasonEvents;
 
