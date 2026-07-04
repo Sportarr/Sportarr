@@ -78,6 +78,16 @@ namespace Jellyfin.Plugin.Sportarr
                 // maps to, for the cost of one small response per file.
                 var url = $"{ApiUrl}/api/metadata/match?series={seriesId}&season={info.ParentIndexNumber}&episode={info.IndexNumber}";
 
+                // Multi-part events (Prelims / Main Card) share one episode
+                // number, so the filename is what identifies which part this
+                // file is. The server recognizes both renamer conventions
+                // (readable label and pt{N}) and returns part_name for the
+                // title below.
+                if (!string.IsNullOrEmpty(info.Path))
+                {
+                    url += $"&filename={Uri.EscapeDataString(System.IO.Path.GetFileName(info.Path))}";
+                }
+
                 _logger.LogDebug("[Sportarr] Matching episode: {Url}", url);
 
                 var response = await FetchNoCacheStringAsync(client, url, cancellationToken);
