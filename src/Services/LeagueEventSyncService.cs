@@ -1041,6 +1041,41 @@ public class LeagueEventSyncService
         }
         if (apiTeams == null || apiTeams.Count == 0) return;
 
+        // Refresh upstream alias metadata on every sync. The hub grows
+        // alternate names over time (localized national-team spellings,
+        // bare scene names) and the release matcher reads them from the
+        // local Team row, which was otherwise frozen at creation time:
+        // without this, aliases added upstream never reach matching on
+        // existing installs.
+        var apiTeamsById = new Dictionary<string, Team>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in apiTeams)
+        {
+            if (!string.IsNullOrEmpty(t.ExternalId)) apiTeamsById[t.ExternalId!] = t;
+            if (!string.IsNullOrEmpty(t.TsdbId)) apiTeamsById.TryAdd(t.TsdbId!, t);
+        }
+        var apiTeamIdList = apiTeamsById.Keys.ToList();
+        var localTeamsForAliasRefresh = await _db.Teams
+            .Where(t => t.ExternalId != null && apiTeamIdList.Contains(t.ExternalId))
+            .ToListAsync();
+        var aliasRefreshCount = 0;
+        foreach (var localTeam in localTeamsForAliasRefresh)
+        {
+            if (!apiTeamsById.TryGetValue(localTeam.ExternalId!, out var apiTeam)) continue;
+            if (!string.IsNullOrEmpty(apiTeam.AlternateName) &&
+                !string.Equals(apiTeam.AlternateName, localTeam.AlternateName, StringComparison.Ordinal))
+            {
+                localTeam.AlternateName = apiTeam.AlternateName;
+                aliasRefreshCount++;
+            }
+        }
+        if (aliasRefreshCount > 0)
+        {
+            await _db.SaveChangesAsync();
+            _logger.LogInformation(
+                "[League Event Sync] Refreshed alternate names for {Count} team(s) in {LeagueName}",
+                aliasRefreshCount, league.Name);
+        }
+
         var tsdbToShort = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var t in apiTeams)
         {

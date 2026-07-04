@@ -3677,8 +3677,8 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("AlternateName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
                         .HasAnnotation("Relational:JsonPropertyName", "strAlternate");
 
                     b.Property<string>("BadgeUrl")

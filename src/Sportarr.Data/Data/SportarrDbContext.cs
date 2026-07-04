@@ -197,7 +197,10 @@ public class SportarrDbContext : DbContext
             entity.Property(t => t.Sport).IsRequired().HasMaxLength(100);
             entity.Property(t => t.ExternalId).HasMaxLength(50);
             entity.Property(t => t.ShortName).HasMaxLength(50);
-            entity.Property(t => t.AlternateName).HasMaxLength(200);
+            // 1000, not 200: national teams carry localized country-name
+            // aliases in up to 18 languages, comma-joined by the hub
+            // ("Bosnia and Herzegovina" spelled 18 ways exceeds 200).
+            entity.Property(t => t.AlternateName).HasMaxLength(1000);
             entity.Property(t => t.Country).HasMaxLength(100);
             entity.Property(t => t.Stadium).HasMaxLength(200);
             entity.Property(t => t.StadiumLocation).HasMaxLength(200);
