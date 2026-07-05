@@ -72,6 +72,7 @@ interface ReleaseSearchResult {
 }
 
 interface QueueItem {
+  id: number;
   eventId: number;
   title: string;
   status: string;
@@ -391,7 +392,7 @@ export default function ManualSearchModal({
       if (isOverride && queueItems.length > 0) {
         for (const item of queueItems) {
           try {
-            await apiPost(`/api/queue/${item.eventId}/remove`, {});
+            await apiDelete(`/api/queue/${item.id}?removalMethod=removeFromClient&blocklistAction=none`);
           } catch (e) {
             console.warn('Failed to remove queue item:', e);
           }
