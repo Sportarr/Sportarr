@@ -94,6 +94,7 @@ public class RssSyncService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var indexerSearchService = scope.ServiceProvider.GetRequiredService<IndexerSearchService>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+        var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
         var delayProfileService = scope.ServiceProvider.GetRequiredService<DelayProfileService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
@@ -263,7 +264,7 @@ public class RssSyncService : BackgroundService
 
                 // GRAB IT! (pass the detected part)
                 var grabbed = await GrabReleaseAsync(
-                    db, matchedEvent, release, downloadClientService, shouldGrab.ReleasePart, cancellationToken);
+                    db, matchedEvent, release, downloadClientService, notificationService, shouldGrab.ReleasePart, cancellationToken);
 
                 if (grabbed)
                 {
@@ -909,6 +910,7 @@ public class RssSyncService : BackgroundService
         Event evt,
         ReleaseSearchResult release,
         DownloadClientService downloadClientService,
+        NotificationService notificationService,
         string? releasePart,
         CancellationToken cancellationToken)
     {
@@ -991,6 +993,27 @@ public class RssSyncService : BackgroundService
         };
 
         db.DownloadQueue.Add(queueItem);
+
+        try
+        {
+            await notificationService.SendNotificationAsync(
+                NotificationTrigger.OnGrab,
+                $"Grabbed: {release.Title}",
+                $"Event: {evt.Title}\nQuality: {release.Quality ?? "Unknown"}\nIndexer: {release.Indexer}\nSize: {release.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
+                new Dictionary<string, object>
+                {
+                    { "eventId", evt.Id },
+                    { "eventTitle", evt.Title ?? "" },
+                    { "indexer", release.Indexer },
+                    { "quality", release.Quality ?? "" },
+                    { "downloadId", downloadId },
+                },
+                evt.League?.Tags);
+        }
+        catch (Exception notifyEx)
+        {
+            _logger.LogWarning(notifyEx, "[RSS Sync] Failed to send grab notification");
+        }
 
         // Use the releasePart passed from ShouldGrabReleaseAsync (no need to re-detect)
         var partName = releasePart;

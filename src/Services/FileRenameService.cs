@@ -17,6 +17,7 @@ public class FileRenameService
     private readonly ILogger<FileRenameService> _logger;
     private readonly DiskSpaceService _diskSpaceService;
     private readonly CustomFormatService _customFormatService;
+    private readonly NotificationService _notificationService;
 
     // Formats loaded once per scoped instance so per-file token building
     // doesn't re-query on every file of a bulk rename.
@@ -28,7 +29,8 @@ public class FileRenameService
         SportarrApiClient sportarrApiClient,
         ILogger<FileRenameService> logger,
         DiskSpaceService diskSpaceService,
-        CustomFormatService customFormatService)
+        CustomFormatService customFormatService,
+        NotificationService notificationService)
     {
         _db = db;
         _fileNamingService = fileNamingService;
@@ -36,6 +38,7 @@ public class FileRenameService
         _logger = logger;
         _diskSpaceService = diskSpaceService;
         _customFormatService = customFormatService;
+        _notificationService = notificationService;
     }
 
     /// <summary>
@@ -214,6 +217,12 @@ public class FileRenameService
     /// <returns>Number of files renamed</returns>
     public async Task<int> RenameEventFilesAsync(int eventId, MediaManagementSettings? settings = null)
     {
+        // A null settings param marks a top-level invocation (endpoints pass
+        // null; the league-wide rename passes settings to its per-event
+        // children) - only top-level operations fire the OnRename
+        // notification, so a league rename notifies once, not per event.
+        var isTopLevel = settings == null;
+
         var evt = await _db.Events
             .Include(e => e.League)
             .Include(e => e.Files)
@@ -274,9 +283,35 @@ public class FileRenameService
         if (renamedCount > 0)
         {
             await _db.SaveChangesAsync();
+
+            if (isTopLevel)
+            {
+                await NotifyRenamedAsync(renamedCount, evt.Title ?? $"event {eventId}", evt.League?.Tags);
+            }
         }
 
         return renamedCount;
+    }
+
+    /// <summary>
+    /// Fire the OnRename notification for a completed rename operation.
+    /// Failures are logged and swallowed.
+    /// </summary>
+    private async Task NotifyRenamedAsync(int count, string scopeDescription, List<int>? leagueTags = null)
+    {
+        try
+        {
+            await _notificationService.SendNotificationAsync(
+                NotificationTrigger.OnRename,
+                $"Renamed {count} file(s)",
+                $"Scope: {scopeDescription}",
+                new Dictionary<string, object> { { "renamedCount", count } },
+                leagueTags);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[File Rename] Failed to send rename notification");
+        }
     }
 
     /// <summary>
@@ -593,6 +628,9 @@ public class FileRenameService
             await _db.SaveChangesAsync();
             _logger.LogInformation("[File Rename] Renamed {Count} files in league {LeagueId}, season {Season}",
                 totalRenamed, leagueId, season);
+
+            var seasonLeague = await _db.Leagues.FindAsync(leagueId);
+            await NotifyRenamedAsync(totalRenamed, $"{seasonLeague?.Name ?? $"league {leagueId}"} season {season}", seasonLeague?.Tags);
         }
 
         return totalRenamed;
@@ -784,6 +822,7 @@ public class FileRenameService
             var league = await _db.Leagues.FindAsync(leagueId);
             _logger.LogInformation("[File Rename] Renamed {Count} files in league: {LeagueName}",
                 totalRenamed, league?.Name ?? $"ID:{leagueId}");
+            await NotifyRenamedAsync(totalRenamed, league?.Name ?? $"league {leagueId}", league?.Tags);
         }
 
         return totalRenamed;

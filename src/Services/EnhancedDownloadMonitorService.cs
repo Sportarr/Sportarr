@@ -1179,6 +1179,26 @@ public class EnhancedDownloadMonitorService : BackgroundService
                             "[Enhanced Download Monitor] Detected external download: {Title} (Client: {Client}, Id: {Id}, Hash: {Hash}, Confidence: {Confidence}%) — no match in DownloadQueue, PendingImports, GrabHistory, knownHashes, or Blocklist",
                             download.Title, client.Name, download.DownloadId,
                             download.TorrentInfoHash ?? "(none)", confidence);
+
+                        try
+                        {
+                            using var notifyScope = _serviceProvider.CreateScope();
+                            var notificationService = notifyScope.ServiceProvider.GetRequiredService<NotificationService>();
+                            await notificationService.SendNotificationAsync(
+                                NotificationTrigger.OnManualInteractionRequired,
+                                $"Manual import required: {download.Title}",
+                                $"An external download finished in {client.Name} and could not be matched automatically (confidence {confidence}%). Review it under Activity.",
+                                new Dictionary<string, object>
+                                {
+                                    { "downloadTitle", download.Title },
+                                    { "client", client.Name },
+                                    { "confidence", confidence },
+                                });
+                        }
+                        catch (Exception notifyEx)
+                        {
+                            _logger.LogWarning(notifyEx, "[Enhanced Download Monitor] Failed to send pending-import notification");
+                        }
                     }
                 }
             }

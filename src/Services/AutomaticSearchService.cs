@@ -25,6 +25,7 @@ public class AutomaticSearchService : IAutomaticSearchService
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly ReleaseProfileService _releaseProfileService;
     private readonly EventPartDetector _partDetector;
+    private readonly NotificationService _notificationService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Max 3 concurrent event searches to prevent overwhelming indexers
@@ -47,6 +48,7 @@ public class AutomaticSearchService : IAutomaticSearchService
         ReleaseEvaluator releaseEvaluator,
         ReleaseProfileService releaseProfileService,
         EventPartDetector partDetector,
+        NotificationService notificationService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
@@ -62,6 +64,7 @@ public class AutomaticSearchService : IAutomaticSearchService
         _releaseEvaluator = releaseEvaluator;
         _releaseProfileService = releaseProfileService;
         _partDetector = partDetector;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -1137,6 +1140,27 @@ public class AutomaticSearchService : IAutomaticSearchService
             };
 
             _db.DownloadQueue.Add(queueItem);
+
+            try
+            {
+                await _notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnGrab,
+                    $"Grabbed: {bestRelease.Title}",
+                    $"Event: {evt.Title}\nQuality: {bestRelease.Quality ?? "Unknown"}\nIndexer: {bestRelease.Indexer}\nSize: {bestRelease.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
+                    new Dictionary<string, object>
+                    {
+                        { "eventId", eventId },
+                        { "eventTitle", evt.Title ?? "" },
+                        { "indexer", bestRelease.Indexer },
+                        { "quality", bestRelease.Quality ?? "" },
+                        { "downloadId", downloadId },
+                    },
+                    evt.League?.Tags);
+            }
+            catch (Exception notifyEx)
+            {
+                _logger.LogWarning(notifyEx, "[Automatic Search] Failed to send grab notification");
+            }
 
             // Save grab history for potential re-grabbing (Sportarr-exclusive feature)
             // This allows users to re-download the exact same release if they lose their media files

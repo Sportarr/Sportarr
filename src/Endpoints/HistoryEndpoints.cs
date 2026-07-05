@@ -507,6 +507,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
     int id,
     SportarrDbContext db,
     DownloadClientService downloadClientService,
+    NotificationService notificationService,
     ILogger<Program> logger) =>
 {
     var grabHistory = await db.GrabHistory
@@ -578,6 +579,24 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             indexerRecord?.SeedRatio,
             indexerRecord?.SeedTime
         );
+
+        if (downloadId != null)
+        {
+            try
+            {
+                await notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnGrab,
+                    $"Grabbed: {grabHistory.Title}",
+                    $"Re-grab from history\nIndexer: {grabHistory.Indexer ?? "Unknown"}",
+                    new Dictionary<string, object>
+                    {
+                        { "eventId", grabHistory.EventId },
+                        { "indexer", grabHistory.Indexer ?? "" },
+                        { "downloadId", downloadId },
+                    });
+            }
+            catch { /* notification failure never fails the regrab */ }
+        }
 
         if (downloadId == null)
         {

@@ -53,10 +53,63 @@ public class HousekeepingService : BackgroundService
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var config = await configService.GetConfigAsync();
 
+        await NotifyVersionChangeAsync(scope.ServiceProvider);
         await RunScheduledBackupAsync(scope.ServiceProvider, config, ct);
         CleanRecycleBin(config);
         await PruneDvrRecordingsAsync(db, config, ct);
         await PruneSystemEventsAsync(db, ct);
+    }
+
+    private bool _versionChecked;
+
+    /// <summary>
+    /// Fire OnApplicationUpdate once per process when the running version
+    /// differs from the one recorded on the previous run. Sportarr can't
+    /// self-update (Docker/manual installs), so "after update" means
+    /// "first boot on a new version" - tracked via a marker file in the
+    /// data directory so no schema change is needed.
+    /// </summary>
+    private async Task NotifyVersionChangeAsync(IServiceProvider services)
+    {
+        if (_versionChecked) return;
+        _versionChecked = true;
+
+        try
+        {
+            var configuration = services.GetRequiredService<IConfiguration>();
+            var dataPath = configuration[Sportarr.Api.Constants.ConfigurationKeys.DataPath];
+            if (string.IsNullOrEmpty(dataPath) || !Directory.Exists(dataPath))
+                return;
+
+            var markerPath = Path.Combine(dataPath, "last_version.txt");
+            var current = Sportarr.Api.Version.GetFullVersion();
+            var previous = File.Exists(markerPath)
+                ? (await File.ReadAllTextAsync(markerPath)).Trim()
+                : null;
+
+            if (!string.IsNullOrEmpty(previous) && previous != current)
+            {
+                var notificationService = services.GetRequiredService<NotificationService>();
+                await notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnApplicationUpdate,
+                    $"Sportarr updated to {current}",
+                    $"Previous version: {previous}",
+                    new Dictionary<string, object>
+                    {
+                        { "previousVersion", previous },
+                        { "newVersion", current },
+                    });
+            }
+
+            if (previous != current)
+            {
+                await File.WriteAllTextAsync(markerPath, current);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Housekeeping] Version-change check failed");
+        }
     }
 
     /// <summary>

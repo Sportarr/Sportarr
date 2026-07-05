@@ -653,11 +653,14 @@ public class FileImportService : IFileImportService
 
             // NOTIFICATIONS: Send notifications (Discord, Telegram, Plex, Jellyfin, Emby, etc.) for the import.
             // Media server refresh (Plex/Jellyfin/Emby) is handled through the notification system.
+            // An import that replaced an existing file fires OnUpgrade instead of
+            // OnDownload so the two toggles mean what they say.
             try
             {
+                var isUpgradeImport = !string.IsNullOrEmpty(upgradedOldFilePath);
                 await _notificationService.SendNotificationAsync(
-                    NotificationTrigger.OnDownload,
-                    $"Imported: {eventInfo.Title}",
+                    isUpgradeImport ? NotificationTrigger.OnUpgrade : NotificationTrigger.OnDownload,
+                    $"{(isUpgradeImport ? "Upgraded" : "Imported")}: {eventInfo.Title}",
                     $"File: {Path.GetFileName(destinationPath)}\nQuality: {qualityString}",
                     new Dictionary<string, object>
                     {
