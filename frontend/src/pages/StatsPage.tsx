@@ -65,19 +65,11 @@ export default function StatsPage() {
   }, []);
 
   if (loading) {
-    return (
-      <PageShell>
-        <PageLoadingState message="Loading statistics..." />
-      </PageShell>
-    );
+    return <PageLoadingState label="Loading statistics..." />;
   }
 
   if (error || !stats) {
-    return (
-      <PageShell>
-        <PageErrorState message="Failed to load statistics" />
-      </PageShell>
-    );
+    return <PageErrorState message="Failed to load statistics" />;
   }
 
   const coverageByLeague = new Map(stats.coverage.map((c) => [c.league, c]));
