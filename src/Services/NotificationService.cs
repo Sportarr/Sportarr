@@ -419,7 +419,9 @@ public class NotificationService : INotificationService
                     foreach (var header in headers)
                     {
                         requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                        _logger.LogDebug("[Webhook] Added header: {Key}={Value}", header.Key, header.Value);
+                        // Value intentionally not logged: custom headers routinely
+                        // carry auth secrets the log sanitizer can't recognize.
+                        _logger.LogDebug("[Webhook] Added header: {Key}", header.Key);
                     }
                 }
             }
