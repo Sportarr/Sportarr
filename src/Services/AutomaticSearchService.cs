@@ -475,13 +475,24 @@ public class AutomaticSearchService : IAutomaticSearchService
                 .Select(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+            // Indexers that opted out of hash-based blocklist rejection
+            // (RejectBlocklistedTorrentHashes = false). Title-based Usenet
+            // blocking always applies.
+            var hashRejectionDisabled = (await _db.Indexers
+                .Where(i => !i.RejectBlocklistedTorrentHashes)
+                .Select(i => i.Name)
+                .ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var blocklistedCount = 0;
             foreach (var release in allReleases)
             {
                 bool isBlocked = false;
 
                 // Check torrent hash blocklist
-                if (!string.IsNullOrEmpty(release.TorrentInfoHash) && blocklistHashSet.Contains(release.TorrentInfoHash))
+                if (!string.IsNullOrEmpty(release.TorrentInfoHash) &&
+                    blocklistHashSet.Contains(release.TorrentInfoHash) &&
+                    !hashRejectionDisabled.Contains(release.Indexer ?? ""))
                 {
                     isBlocked = true;
                 }
@@ -1069,14 +1080,19 @@ public class AutomaticSearchService : IAutomaticSearchService
                 ? evt.League.RootFolder.DefaultDownloadClientCategory!
                 : downloadClient.Category;
 
-            // Send to download client with seed config from indexer
+            // Send to download client with seed config from indexer.
+            // Season/multi-event packs use the pack-specific seed time when
+            // the indexer defines one (packs are typically expected to seed
+            // longer than single events).
             var downloadId = await _downloadClientService.AddDownloadAsync(
                 downloadClient,
                 bestRelease.DownloadUrl,
                 grabCategory,
                 bestRelease.Title,
                 indexerRecord?.SeedRatio,
-                indexerRecord?.SeedTime
+                bestRelease.IsPack
+                    ? (indexerRecord?.SeasonPackSeedTime ?? indexerRecord?.SeedTime)
+                    : indexerRecord?.SeedTime
             );
 
             if (downloadId == null)

@@ -523,9 +523,18 @@ public class RssSyncService : BackgroundService
 
         if (!string.IsNullOrEmpty(release.TorrentInfoHash))
         {
-            // Torrent: check by info hash
-            isBlocklisted = await db.Blocklist
-                .AnyAsync(b => b.TorrentInfoHash == release.TorrentInfoHash, cancellationToken);
+            // Torrent: check by info hash, unless the indexer opted out of
+            // hash-based rejection (RejectBlocklistedTorrentHashes = false).
+            var rejectByHash = await db.Indexers
+                .Where(i => i.Name == release.Indexer)
+                .Select(i => (bool?)i.RejectBlocklistedTorrentHashes)
+                .FirstOrDefaultAsync(cancellationToken) ?? true;
+
+            if (rejectByHash)
+            {
+                isBlocklisted = await db.Blocklist
+                    .AnyAsync(b => b.TorrentInfoHash == release.TorrentInfoHash, cancellationToken);
+            }
         }
         else if (release.Protocol == "Usenet")
         {
@@ -936,14 +945,17 @@ public class RssSyncService : BackgroundService
             ? evt.League.RootFolder.DefaultDownloadClientCategory!
             : downloadClient.Category;
 
-        // Send to download client with seed config from indexer
+        // Send to download client with seed config from indexer. Packs use
+        // the pack-specific seed time when the indexer defines one.
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             release.DownloadUrl,
             rssGrabCategory,
             release.Title,
             indexerRecord?.SeedRatio,
-            indexerRecord?.SeedTime
+            release.IsPack
+                ? (indexerRecord?.SeasonPackSeedTime ?? indexerRecord?.SeedTime)
+                : indexerRecord?.SeedTime
         );
 
         if (downloadId == null)

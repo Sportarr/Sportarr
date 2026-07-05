@@ -259,7 +259,18 @@ public class NewznabClient
         }
 
         var queryString = string.Join("&", parameters.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
-        return $"{baseUrl}/{apiPath}?{queryString}";
+        var url = $"{baseUrl}/{apiPath}?{queryString}";
+
+        // Per-indexer Additional Parameters: a raw query-string fragment
+        // (e.g. "&uid=123&passkey=abc") appended verbatim to every request,
+        // for indexers that need non-standard parameters.
+        if (!string.IsNullOrWhiteSpace(config.AdditionalParameters))
+        {
+            var extra = config.AdditionalParameters.Trim();
+            url += extra.StartsWith('&') ? extra : "&" + extra;
+        }
+
+        return url;
     }
 
     private List<ReleaseSearchResult> ParseSearchResults(string xml, string indexerName)
