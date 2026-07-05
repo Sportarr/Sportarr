@@ -1044,6 +1044,22 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
             </div>
           )}
 
+          <div>
+            <label className="block text-white font-medium mb-2">Change File Date</label>
+            <select
+              value={settings.changeFileDate}
+              onChange={(e) => updateSetting('changeFileDate', e.target.value)}
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            >
+              <option value="None">None</option>
+              <option value="LocalAirDate">Local Air Date</option>
+              <option value="UtcAirDate">UTC Air Date</option>
+            </select>
+            <p className="text-sm text-gray-400 mt-1">
+              Change the file date on import to the event's air date
+            </p>
+          </div>
+
           {/* Pairs with the FailDownloads "User-Defined Extensions"
               category set per indexer. Listed here in Importing because
               that's where it lives in the upstream UX — and because

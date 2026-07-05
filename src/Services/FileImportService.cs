@@ -508,6 +508,11 @@ public class FileImportService : IFileImportService
                 SetFilePermissions(destinationPath, settings);
             }
 
+            // Bring matching sidecar files (subtitles, nfo, ...) along and
+            // stamp the file date per the Change File Date setting.
+            ImportExtraFiles(settings, sourceFile, destinationPath);
+            ApplyChangeFileDate(settings, destinationPath, eventInfo.EventDate);
+
             // Create import history record
             // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
             // Set the FK ids ONLY — do not also assign the Event /
@@ -1074,7 +1079,7 @@ public class FileImportService : IFileImportService
                 PartName = partNameSuffix
             };
 
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {
@@ -1137,6 +1142,89 @@ public class FileImportService : IFileImportService
     /// <summary>
     /// Transfer file (move, copy, or hardlink)
     /// </summary>
+    /// <summary>
+    /// Copy sidecar files (subtitles, nfo, ...) that share the imported
+    /// file's base name into the destination folder, renamed to the
+    /// destination base name with any language/suffix tags preserved
+    /// ("event.en.srt" follows as "New Name.en.srt"). Gated on the
+    /// Import Extra Files setting; failures never fail the import.
+    /// </summary>
+    private void ImportExtraFiles(MediaManagementSettings settings, string sourceFilePath, string destinationFilePath)
+    {
+        if (!settings.ImportExtraFiles || string.IsNullOrWhiteSpace(settings.ExtraFileExtensions))
+            return;
+
+        try
+        {
+            var sourceDir = Path.GetDirectoryName(sourceFilePath);
+            var destDir = Path.GetDirectoryName(destinationFilePath);
+            if (string.IsNullOrEmpty(sourceDir) || string.IsNullOrEmpty(destDir) || !Directory.Exists(sourceDir))
+                return;
+
+            var sourceBase = Path.GetFileNameWithoutExtension(sourceFilePath);
+            var destBase = Path.GetFileNameWithoutExtension(destinationFilePath);
+
+            var wantedExtensions = settings.ExtraFileExtensions
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(e => e.TrimStart('.').ToLowerInvariant())
+                .ToHashSet();
+
+            foreach (var candidate in Directory.GetFiles(sourceDir))
+            {
+                var candidateName = Path.GetFileName(candidate);
+                if (!candidateName.StartsWith(sourceBase, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (string.Equals(candidate, sourceFilePath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var extension = Path.GetExtension(candidate).TrimStart('.').ToLowerInvariant();
+                if (!wantedExtensions.Contains(extension))
+                    continue;
+
+                // Preserve whatever sits between the base name and the
+                // extension (".en", ".forced", ...).
+                var suffix = candidateName.Substring(sourceBase.Length);
+                var destFile = Path.Combine(destDir, destBase + suffix);
+
+                File.Copy(candidate, destFile, overwrite: true);
+                _logger.LogInformation("[Import] Imported extra file: {Source} -> {Dest}", candidateName, Path.GetFileName(destFile));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Import] Failed to import extra files for {Path}", destinationFilePath);
+        }
+    }
+
+    /// <summary>
+    /// Stamp the imported file's modification time with the event's air
+    /// date per the Change File Date setting (None / LocalAirDate /
+    /// UtcAirDate), so date-sorted library views follow the event date.
+    /// </summary>
+    private void ApplyChangeFileDate(MediaManagementSettings settings, string destinationPath, DateTime eventDateUtc)
+    {
+        if (string.IsNullOrWhiteSpace(settings.ChangeFileDate) ||
+            settings.ChangeFileDate.Equals("None", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            var utc = DateTime.SpecifyKind(eventDateUtc, DateTimeKind.Utc);
+            if (settings.ChangeFileDate.Equals("LocalAirDate", StringComparison.OrdinalIgnoreCase))
+            {
+                File.SetLastWriteTime(destinationPath, utc.ToLocalTime());
+            }
+            else if (settings.ChangeFileDate.Equals("UtcAirDate", StringComparison.OrdinalIgnoreCase))
+            {
+                File.SetLastWriteTimeUtc(destinationPath, utc);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Import] Failed to set file date on {Path}", destinationPath);
+        }
+    }
+
     private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
     {
         // Log at Info level for visibility - helps debug copy vs move issues

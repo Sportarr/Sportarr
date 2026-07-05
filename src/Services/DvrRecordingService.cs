@@ -1059,7 +1059,7 @@ public class DvrRecordingService
                     Part = partSuffix
                 };
 
-                var filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, $".{container}");
+                var filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, $".{container}", settings.ReplaceIllegalCharacters);
                 destinationPath = Path.Combine(destinationPath, filename);
             }
             else

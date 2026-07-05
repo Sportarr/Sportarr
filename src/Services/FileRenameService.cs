@@ -349,7 +349,8 @@ public class FileRenameService
         var expectedFileName = _fileNamingService.BuildFileName(
             settings.StandardFileFormat,
             tokens,
-            currentExtension);
+            currentExtension,
+            settings.ReplaceIllegalCharacters);
 
         // Only reorganize folders if the setting is enabled; otherwise rename in place.
         if (settings.ReorganizeFolders)
@@ -609,7 +610,8 @@ public class FileRenameService
             var expectedFileName = _fileNamingService.BuildFileName(
                 settings.StandardFileFormat,
                 tokens,
-                currentExtension);
+                currentExtension,
+                settings.ReplaceIllegalCharacters);
 
             string expectedPath;
 
@@ -688,7 +690,8 @@ public class FileRenameService
                 var expectedFileName = _fileNamingService.BuildFileName(
                     settings.StandardFileFormat,
                     tokens,
-                    currentExtension);
+                    currentExtension,
+                    settings.ReplaceIllegalCharacters);
 
                 string expectedPath;
 
@@ -807,7 +810,7 @@ public class FileRenameService
 
         // Compute the destination path under the new event's folder structure.
         var tokens = BuildFileNamingTokens(newEvent, file);
-        var newFileName = _fileNamingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+        var newFileName = _fileNamingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
 
         var rootFolder = FindRootFolder(currentPath, rootFolders);
         string newPath;

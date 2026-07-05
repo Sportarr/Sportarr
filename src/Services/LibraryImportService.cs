@@ -671,7 +671,7 @@ public class LibraryImportService
                 Part = partSuffix
             };
 
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {
@@ -1386,7 +1386,7 @@ public class LibraryImportService
                 Episode = episodeNumber.ToString("00"),
                 Part = string.Empty
             };
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {
