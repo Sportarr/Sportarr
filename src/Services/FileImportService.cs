@@ -416,16 +416,30 @@ public class FileImportService : IFileImportService
                 _logger.LogInformation("[Import] Upgrade detected - replacing existing file: {OldPath} ({OldQuality}) with {NewQuality}",
                     upgradedFile.FilePath, upgradedFile.Quality, qualityString);
 
-                // Delete the old file from disk BEFORE transferring the new one.
+                // Remove the old file from disk BEFORE transferring the new one.
                 // The new file often resolves to the same destination path as the old one
                 // (same quality string = same filename). Deleting after transfer would kill
                 // the just-imported file. Deleting before transfer avoids this entirely.
+                // Honors the recycle bin like manual delete and retention do - an upgrade
+                // that replaces a good file with a broken release must be recoverable.
                 if (!string.IsNullOrEmpty(upgradedFile.FilePath) && File.Exists(upgradedFile.FilePath))
                 {
                     try
                     {
-                        File.Delete(upgradedFile.FilePath);
-                        _logger.LogInformation("[Import] Deleted old file during upgrade: {Path}", upgradedFile.FilePath);
+                        var upgradeConfig = await _configService.GetConfigAsync();
+                        var recycleBin = upgradeConfig.RecycleBin;
+                        if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
+                        {
+                            var recyclePath = Path.Combine(recycleBin, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(upgradedFile.FilePath)}");
+                            File.Move(upgradedFile.FilePath, recyclePath);
+                            _logger.LogInformation("[Import] Moved old file to recycle bin during upgrade: {Path} -> {RecyclePath}",
+                                upgradedFile.FilePath, recyclePath);
+                        }
+                        else
+                        {
+                            File.Delete(upgradedFile.FilePath);
+                            _logger.LogInformation("[Import] Deleted old file during upgrade: {Path}", upgradedFile.FilePath);
+                        }
 
                         // Try to clean up empty parent folder
                         var oldFileParentDir = Path.GetDirectoryName(upgradedFile.FilePath);
