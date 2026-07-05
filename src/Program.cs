@@ -26,6 +26,25 @@ using System.Windows.Forms;
 // Use system SQLite library instead of bundled e_sqlite3 (avoids "invalid opcode" on older CPUs)
 SQLitePCL.Batteries_V2.Init();
 
+// Windows single-instance guard. A leftover Windows service (or a tray
+// instance) still running while the user launches from the Start Menu
+// makes the second copy silently fight the first over the SQLite database
+// - the classic symptom is hanging at "Applying database migrations" with
+// empty logs. Windows-only: on Linux, multiple intentional instances
+// (separate containers/data dirs) are a supported setup.
+System.Threading.Mutex? singleInstanceMutex = null;
+if (OperatingSystem.IsWindows())
+{
+    singleInstanceMutex = new System.Threading.Mutex(true, @"Global\Sportarr.SingleInstance", out var isFirstInstance);
+    if (!isFirstInstance)
+    {
+        Console.WriteLine("[Sportarr] ERROR: Another Sportarr instance is already running on this machine.");
+        Console.WriteLine("[Sportarr] Check for a Sportarr Windows service (services.msc), a system-tray icon, or a second console window, stop it, then launch again.");
+        Environment.Exit(1);
+    }
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => singleInstanceMutex.Dispose();
+}
+
 // Set default environment variables (same as Docker sets, for consistency outside Docker)
 // These can still be overridden by the user if needed
 Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT",
