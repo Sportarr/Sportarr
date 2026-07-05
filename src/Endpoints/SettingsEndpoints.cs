@@ -198,6 +198,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         CheckForFinishedDownloadInterval = config.CheckForFinishedDownloadInterval,
         RedownloadFailedDownloads = config.RedownloadFailedDownloads,
         RedownloadFailedFromInteractiveSearch = config.RedownloadFailedFromInteractiveSearch,
+        StalledDownloadTimeoutMinutes = config.StalledDownloadTimeoutMinutes,
 
         // Search Queue Management (Huntarr-style)
         MaxDownloadQueueSize = config.MaxDownloadQueueSize,
@@ -443,6 +444,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         config.CheckForFinishedDownloadInterval = updatedSettings.CheckForFinishedDownloadInterval;
         config.RedownloadFailedDownloads = updatedSettings.RedownloadFailedDownloads;
         config.RedownloadFailedFromInteractiveSearch = updatedSettings.RedownloadFailedFromInteractiveSearch;
+        config.StalledDownloadTimeoutMinutes = Math.Clamp(updatedSettings.StalledDownloadTimeoutMinutes, 0, 1440);
 
         // Search Queue Management (Huntarr-style)
         config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;

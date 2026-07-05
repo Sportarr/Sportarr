@@ -225,6 +225,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
           checkForFinishedDownloads: data.checkForFinishedDownloadInterval ?? 1,
           redownloadFailedEvents: data.redownloadFailedDownloads ?? true,
           redownloadFailedFromInteractiveSearch: data.redownloadFailedFromInteractiveSearch ?? true,
+          stalledDownloadTimeoutMinutes: data.stalledDownloadTimeoutMinutes ?? 60,
           removeFailedDownloadsGlobal: data.removeFailedDownloads ?? true,
           maxDownloadQueueSize: data.maxDownloadQueueSize ?? -1,
           searchSleepDuration: data.searchSleepDuration ?? 900
@@ -235,6 +236,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         setCheckForFinishedDownloads(loadedSettings.checkForFinishedDownloads);
         setRedownloadFailedEvents(loadedSettings.redownloadFailedEvents);
         setRedownloadFailedFromInteractiveSearch(loadedSettings.redownloadFailedFromInteractiveSearch);
+        setStalledDownloadTimeoutMinutes(loadedSettings.stalledDownloadTimeoutMinutes);
         setRemoveFailedDownloadsGlobal(loadedSettings.removeFailedDownloadsGlobal);
         setMaxDownloadQueueSize(loadedSettings.maxDownloadQueueSize);
         setSearchSleepDuration(loadedSettings.searchSleepDuration);
@@ -264,6 +266,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         checkForFinishedDownloadInterval: checkForFinishedDownloads,
         redownloadFailedDownloads: redownloadFailedEvents,
         redownloadFailedFromInteractiveSearch,
+        stalledDownloadTimeoutMinutes,
         removeFailedDownloads: removeFailedDownloadsGlobal,
         maxDownloadQueueSize,
         searchSleepDuration,
@@ -280,6 +283,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         removeFailedDownloadsGlobal,
         redownloadFailedEvents,
         redownloadFailedFromInteractiveSearch,
+        stalledDownloadTimeoutMinutes,
         maxDownloadQueueSize,
         searchSleepDuration
       };
@@ -303,6 +307,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const [removeFailedDownloadsGlobal, setRemoveFailedDownloadsGlobal] = useState(true);
   const [redownloadFailedEvents, setRedownloadFailedEvents] = useState(true);
   const [redownloadFailedFromInteractiveSearch, setRedownloadFailedFromInteractiveSearch] = useState(true);
+  const [stalledDownloadTimeoutMinutes, setStalledDownloadTimeoutMinutes] = useState(60);
 
   // Search Queue Management (Huntarr-style queue threshold pause)
   const [maxDownloadQueueSize, setMaxDownloadQueueSize] = useState(-1); // -1 = no limit
@@ -318,6 +323,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     removeFailedDownloadsGlobal: boolean;
     redownloadFailedEvents: boolean;
     redownloadFailedFromInteractiveSearch: boolean;
+    stalledDownloadTimeoutMinutes: number;
     maxDownloadQueueSize: number;
     searchSleepDuration: number;
   } | null>(null);
@@ -860,6 +866,21 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
               </p>
             </div>
           </label>
+
+          <div>
+            <label className="block text-white font-medium mb-2">Stalled Download Timeout (Minutes)</label>
+            <input
+              type="number"
+              min={0}
+              max={1440}
+              value={stalledDownloadTimeoutMinutes}
+              onChange={(e) => setStalledDownloadTimeoutMinutes(parseInt(e.target.value) || 0)}
+              className="w-full max-w-xs px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            />
+            <p className="text-sm text-gray-400 mt-1">
+              Torrents with no download progress for this long are failed, blocklisted, and re-searched. 0 disables.
+            </p>
+          </div>
 
           <div className="p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
             <p className="text-sm text-blue-300">

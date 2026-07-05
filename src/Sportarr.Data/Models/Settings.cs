@@ -30,6 +30,12 @@ public class AppSettings
     public bool RedownloadFailedDownloads { get; set; } = true;
     public bool RedownloadFailedFromInteractiveSearch { get; set; } = true;
 
+    // Stored in config.xml (Config.StalledDownloadTimeoutMinutes), not in
+    // this table - NotMapped keeps it on the JSON wire contract without a
+    // schema change.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int StalledDownloadTimeoutMinutes { get; set; } = 60;
+
     // Search Queue Management (Huntarr-style queue threshold pause)
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles
