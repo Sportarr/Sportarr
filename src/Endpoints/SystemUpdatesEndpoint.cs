@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
+using Sportarr.Api.Services;
 using System.Net.Http;
 using System.Text.Json;
 
@@ -12,13 +13,18 @@ public static class SystemUpdatesEndpoint
     public static IEndpointRouteBuilder MapSystemUpdatesEndpoint(this IEndpointRouteBuilder app)
     {
         // API: System Updates - Check for new versions from GitHub
-        app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
+        app.MapGet("/api/system/updates", async (ConfigService configService, ILogger<Program> logger) =>
         {
             try
             {
                 logger.LogInformation("[UPDATES] Checking for updates from GitHub");
 
                 var currentVersion = Sportarr.Api.Version.GetFullVersion();
+
+                // Update channel: "main" sees stable releases only;
+                // "develop" also surfaces prereleases.
+                var updateBranch = (await configService.GetConfigAsync()).Branch;
+                var includePrereleases = string.Equals(updateBranch, "develop", StringComparison.OrdinalIgnoreCase);
 
                 logger.LogInformation("[UPDATES] Current version: {Version}", currentVersion);
 
@@ -104,7 +110,7 @@ public static class SystemUpdatesEndpoint
                     var isDraft = release.TryGetProperty("draft", out var draftProp) && draftProp.GetBoolean();
                     var isPrerelease = release.TryGetProperty("prerelease", out var prereleaseProp) && prereleaseProp.GetBoolean();
 
-                    if (isDraft || isPrerelease)
+                    if (isDraft || (isPrerelease && !includePrereleases))
                     {
                         continue;
                     }
@@ -144,7 +150,7 @@ public static class SystemUpdatesEndpoint
                     {
                         version,
                         releaseDate = publishedAt,
-                        branch = "main",
+                        branch = isPrerelease ? "develop" : "main",
                         changes = changes.Take(10).ToList(),
                         downloadUrl = htmlUrl,
                         isInstalled,

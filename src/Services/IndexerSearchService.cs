@@ -412,12 +412,15 @@ public class IndexerSearchService : IIndexerSearchService
         // 1. Approved status (approved first)
         // 2. Quality score (profile position)
         // 3. Custom format score
-        // 4. Seeders (for torrents)
-        // 5. Size score (proximity to preferred size, or larger if no preferred)
+        // 4. Indexer flags (freeleech etc.) when Prefer Indexer Flags is on
+        // 5. Seeders (for torrents)
+        // 6. Size score (proximity to preferred size, or larger if no preferred)
+        var preferIndexerFlags = (await _configService.GetConfigAsync()).PreferIndexerFlags;
         allResults = allResults
             .OrderByDescending(r => r.Approved)
             .ThenByDescending(r => r.QualityScore)
             .ThenByDescending(r => r.CustomFormatScore)
+            .ThenByDescending(r => preferIndexerFlags && !string.IsNullOrEmpty(r.IndexerFlags) ? 1 : 0)
             .ThenByDescending(r => r.Seeders ?? 0)
             .ThenByDescending(r => r.SizeScore)
             .ToList();
