@@ -68,8 +68,17 @@ public class DvrSchedulerService : BackgroundService
 
                     if (!result.Success)
                     {
-                        _logger.LogError("[DVR Scheduler] Failed to start recording {Id}: {Error}",
-                            recording.Id, result.Error);
+                        if (result.Error == DvrRecordingService.StartAlreadyInProgressError)
+                        {
+                            // Benign: this tick raced a manual start (or a
+                            // fallback rotation) still spawning its ffmpeg.
+                            _logger.LogDebug("[DVR Scheduler] Recording {Id} is already being started elsewhere; skipping", recording.Id);
+                        }
+                        else
+                        {
+                            _logger.LogError("[DVR Scheduler] Failed to start recording {Id}: {Error}",
+                                recording.Id, result.Error);
+                        }
                     }
                 }
                 catch (Exception ex)

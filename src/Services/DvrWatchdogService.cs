@@ -78,6 +78,9 @@ public class DvrWatchdogService : BackgroundService
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var recorder = scope.ServiceProvider.GetRequiredService<FFmpegRecorderService>();
+        // Shares this scope's DbContext with `db`, so rows loaded below
+        // are tracked by the same context its fallback rotation saves.
+        var dvrService = scope.ServiceProvider.GetRequiredService<DvrRecordingService>();
 
         var now = DateTime.UtcNow;
 
@@ -141,6 +144,16 @@ public class DvrWatchdogService : BackgroundService
             // handle. Either way: mark Failed so the user can retry.
             if (!processAlive)
             {
+                // The recorder's exit callback may have finalized (or
+                // rotated) this row between our snapshot query and now;
+                // re-read before overwriting a terminal state.
+                await db.Entry(row).ReloadAsync(ct);
+                if (row.Status != DvrRecordingStatus.Recording)
+                {
+                    _lastSize.Remove(row.Id);
+                    continue;
+                }
+
                 _logger.LogWarning(
                     "[DVR Watchdog] Recording {Id} is in Recording state but no live FFmpeg process is tracked; marking Failed",
                     row.Id);
@@ -149,6 +162,15 @@ public class DvrWatchdogService : BackgroundService
                 row.ErrorMessage = (row.ErrorMessage ?? "") +
                     "Watchdog: FFmpeg process was not running while DB indicated active recording.";
                 _lastSize.Remove(row.Id);
+
+                // While the window is still open a different channel can
+                // pick up the rest of the event - rotate instead of just
+                // burying the failure.
+                if (now < row.ScheduledEnd.AddMinutes(row.PostPadding))
+                {
+                    try { await dvrService.TryRescheduleOnFallbackAsync(row, "watchdog: recorder process not running"); }
+                    catch (Exception ex) { _logger.LogError(ex, "[DVR Watchdog] Fallback rotation failed for recording {Id}", row.Id); }
+                }
                 continue;
             }
 
@@ -194,6 +216,15 @@ public class DvrWatchdogService : BackgroundService
                         row.ErrorMessage = (row.ErrorMessage ?? "") +
                             $"Watchdog: output stalled (only {grew} bytes written in {(int)elapsed.TotalSeconds}s).";
                         _lastSize.Remove(row.Id);
+
+                        // A frozen upstream is channel-specific; try the
+                        // event's fallback channels while there is still
+                        // window left to record.
+                        if (now < row.ScheduledEnd.AddMinutes(row.PostPadding))
+                        {
+                            try { await dvrService.TryRescheduleOnFallbackAsync(row, "watchdog: output stalled"); }
+                            catch (Exception ex) { _logger.LogError(ex, "[DVR Watchdog] Fallback rotation failed for recording {Id}", row.Id); }
+                        }
                         continue;
                     }
                     // Still growing - refresh the sample so the next

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,22 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class DvrRecordingService
 {
+    /// <summary>
+    /// Error returned when a start is refused because another start for
+    /// the same recording is still in flight. The scheduler treats this
+    /// as benign (its tick raced a manual start), so it must stay a
+    /// stable, comparable value.
+    /// </summary>
+    public const string StartAlreadyInProgressError = "Recording start already in progress";
+
+    // The service is scoped, so the in-flight set must be static to be
+    // shared across the manual-start endpoint's scope and the
+    // scheduler's scope. FFmpeg takes several seconds to spawn and
+    // probe before the row flips to Recording; without this gate both
+    // callers pass the status check and spawn duplicate processes
+    // writing the same output file.
+    private static readonly ConcurrentDictionary<int, byte> _startsInFlight = new();
+
     private readonly ILogger<DvrRecordingService> _logger;
     private readonly SportarrDbContext _db;
     private readonly FFmpegRecorderService _ffmpegRecorder;
@@ -111,6 +128,30 @@ public class DvrRecordingService
     /// </summary>
     public async Task<DvrRecording> ScheduleRecordingAsync(ScheduleDvrRecordingRequest request)
     {
+        // All scheduling math compares against DateTime.UtcNow, so pin
+        // the incoming times to UTC. JSON datetimes without an offset
+        // deserialize as Kind=Unspecified (meant as UTC by the frontend);
+        // offset-carrying values arrive Kind=Local and need converting.
+        request.ScheduledStart = NormalizeToUtc(request.ScheduledStart);
+        request.ScheduledEnd = NormalizeToUtc(request.ScheduledEnd);
+
+        if (request.ScheduledEnd <= request.ScheduledStart)
+        {
+            throw new ArgumentException("Scheduled end must be after scheduled start.");
+        }
+
+        // A live recording whose whole window already passed can never
+        // capture anything - without this check the row is accepted,
+        // sits in Scheduled, and the watchdog flags it "missed" minutes
+        // later with a misleading downtime/slot explanation. Catchup is
+        // exempt: a closed window is its normal trigger condition.
+        if (request.Method != DvrRecordingMethod.Catchup &&
+            request.ScheduledEnd.AddMinutes(request.PostPadding) <= DateTime.UtcNow)
+        {
+            throw new ArgumentException(
+                $"The scheduled window is already in the past (ends {request.ScheduledEnd:yyyy-MM-dd HH:mm} UTC). Nothing would be recorded - check the start and end times.");
+        }
+
         var channel = await _db.IptvChannels
             .Include(c => c.Source)
             .FirstOrDefaultAsync(c => c.Id == request.ChannelId);
@@ -193,6 +234,13 @@ public class DvrRecordingService
 
         return recording;
     }
+
+    private static DateTime NormalizeToUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+    };
 
     /// <summary>
     /// Update a scheduled recording
@@ -304,6 +352,24 @@ public class DvrRecordingService
     /// Start a recording immediately
     /// </summary>
     public async Task<RecordingResult> StartRecordingAsync(int recordingId)
+    {
+        if (!_startsInFlight.TryAdd(recordingId, 0))
+        {
+            _logger.LogDebug("[DVR] Start of recording {Id} skipped: another start is already in flight", recordingId);
+            return new RecordingResult { Success = false, Error = StartAlreadyInProgressError };
+        }
+
+        try
+        {
+            return await StartRecordingCoreAsync(recordingId);
+        }
+        finally
+        {
+            _startsInFlight.TryRemove(recordingId, out _);
+        }
+    }
+
+    private async Task<RecordingResult> StartRecordingCoreAsync(int recordingId)
     {
         var recording = await _db.DvrRecordings
             .Include(r => r.Channel)
@@ -478,6 +544,72 @@ public class DvrRecordingService
         }
 
         return rotated.Id;
+    }
+
+    /// <summary>
+    /// Called by the recorder's monitor task when an ffmpeg process
+    /// exited without a stop request (stream death, provider drop,
+    /// crash). Fails the row and rotates to a fallback channel while
+    /// the scheduled window is still open; when the exit landed at the
+    /// natural end of the window with data on disk, finalizes it as
+    /// Completed instead so a stream that ends exactly on time isn't
+    /// reported as a failure.
+    /// </summary>
+    public async Task HandleRecorderExitAsync(int recordingId, int exitCode, string? errorSummary)
+    {
+        var recording = await _db.DvrRecordings
+            .Include(r => r.Channel)
+            .ThenInclude(c => c!.Source)
+            .FirstOrDefaultAsync(r => r.Id == recordingId);
+
+        // The stop path or the watchdog may have finalized the row
+        // between process exit and this callback; never overwrite a
+        // terminal state.
+        if (recording == null || recording.Status != DvrRecordingStatus.Recording)
+            return;
+
+        var now = DateTime.UtcNow;
+        var windowEnd = recording.ScheduledEnd.AddMinutes(recording.PostPadding);
+
+        long fileSize = 0;
+        if (!string.IsNullOrEmpty(recording.OutputPath) && File.Exists(recording.OutputPath))
+        {
+            try { fileSize = new FileInfo(recording.OutputPath).Length; }
+            catch (IOException) { /* transient - treated as no data */ }
+        }
+
+        recording.ActualEnd = now;
+        recording.LastUpdated = now;
+
+        // Exited within 30s of the natural end with data on disk:
+        // the stream simply ended on time, so this is a completed run.
+        if (fileSize > 0 && now >= windowEnd.AddSeconds(-30))
+        {
+            recording.Status = DvrRecordingStatus.Completed;
+            recording.FileSize = fileSize;
+            var started = recording.ActualStart ?? recording.ScheduledStart;
+            var duration = (int)Math.Max(1, (now - started).TotalSeconds);
+            recording.DurationSeconds = duration;
+            recording.AverageBitrate = (fileSize * 8) / duration;
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation("[DVR] Recording {Id}: recorder exited at the end of its window; finalized as completed ({Size} bytes)",
+                recordingId, fileSize);
+            FirePostRecordingCommand(recording);
+            return;
+        }
+
+        recording.Status = DvrRecordingStatus.Failed;
+        recording.ErrorMessage = $"Recorder exited unexpectedly (code {exitCode})" +
+            (string.IsNullOrEmpty(errorSummary) ? "" : $": {errorSummary}");
+        await _db.SaveChangesAsync();
+
+        _logger.LogWarning("[DVR] Recording {Id}: recorder exited mid-window (code {Code}); marked Failed", recordingId, exitCode);
+
+        if (now < windowEnd)
+        {
+            await TryRescheduleOnFallbackAsync(recording, "recorder exited mid-window");
+        }
     }
 
     /// <summary>
@@ -796,6 +928,12 @@ public class DvrRecordingService
             .FirstOrDefault();
 
         var basePath = rootFolder?.Path ?? Path.Combine(AppContext.BaseDirectory, "recordings");
+        if (rootFolder == null)
+        {
+            _logger.LogWarning(
+                "[DVR] No accessible root folder configured; recording to the application directory ({Path}). In Docker this lives INSIDE the container and is invisible on the host - add a root folder under Settings > Media Management to record somewhere durable.",
+                basePath);
+        }
 
         // Get container format
         var container = config.DvrContainer ?? "mp4";
