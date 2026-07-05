@@ -536,8 +536,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseCors();
-
 // Per-IP rate limiting (currently applied to the login endpoint to slow brute force).
 app.UseRateLimiter();
 
@@ -584,6 +582,14 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 // This ensures API endpoints are matched to handlers before the SPA fallback
 // middleware runs, preventing API routes from being served index.html.
 app.UseRouting();
+
+// CORS must run AFTER UseRouting so the matched endpoint's RequireCors metadata is
+// visible, and before the endpoint executes. Because the app calls UseRouting()
+// explicitly (which suppresses WebApplication's auto-injected routing), a UseCors()
+// placed before it never applied to endpoint-scoped policies (e.g. /api/health's
+// PublicProbe) — ASP.NET then rejected those requests with HTTP 400 "endpoint contains
+// CORS metadata, but a middleware was not found that supports CORS".
+app.UseCors();
 
 // Configure static files (UI from wwwroot)
 // For URL base support, we need to inject the urlBase into index.html
