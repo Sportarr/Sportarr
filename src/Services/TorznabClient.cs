@@ -391,7 +391,7 @@ public class TorznabClient
     private string BuildUrl(Indexer config, string function, Dictionary<string, string>? extraParams = null)
     {
         var baseUrl = config.Url.TrimEnd('/');
-        var apiPath = config.ApiPath?.TrimStart('/') ?? "api";
+        var apiPath = config.ApiPath?.Trim('/');
         var parameters = new Dictionary<string, string>
         {
             { "t", function }
@@ -411,7 +411,8 @@ public class TorznabClient
         }
 
         var queryString = string.Join("&", parameters.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
-        return $"{baseUrl}/{apiPath}?{queryString}";
+        var prefix = string.IsNullOrEmpty(apiPath) ? baseUrl : $"{baseUrl}/{apiPath}";
+        return $"{prefix}?{queryString}";
     }
 
     private List<ReleaseSearchResult> ParseSearchResults(string xml, string indexerName)

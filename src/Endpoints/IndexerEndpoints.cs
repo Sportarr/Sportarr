@@ -115,8 +115,8 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
                         indexer.Url = fieldValue?.TrimEnd('/') ?? "";
                         break;
                     case "apiPath":
-                        var apiPath = fieldValue ?? "/api";
-                        indexer.ApiPath = apiPath.StartsWith('/') ? apiPath : $"/{apiPath}";
+                        var apiPath = fieldValue ?? "";
+                        indexer.ApiPath = string.IsNullOrEmpty(apiPath) ? "" : (apiPath.StartsWith('/') ? apiPath : $"/{apiPath}");
                         break;
                     case "apiKey":
                         indexer.ApiKey = fieldValue;
@@ -270,11 +270,8 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                         }
                         break;
                     case "apiPath":
-                        if (!string.IsNullOrEmpty(fieldValue))
-                        {
-                            var apiPath = fieldValue;
-                            indexer.ApiPath = apiPath.StartsWith('/') ? apiPath : $"/{apiPath}";
-                        }
+                        var updatedApiPath = fieldValue ?? "";
+                        indexer.ApiPath = string.IsNullOrEmpty(updatedApiPath) ? "" : (updatedApiPath.StartsWith('/') ? updatedApiPath : $"/{updatedApiPath}");
                         break;
                     case "apiKey":
                         // Only update API key if a new value is provided (not empty)
@@ -687,6 +684,7 @@ app.MapPost("/api/indexer/test", async (
         {
             "newznab" => IndexerType.Newznab,
             "rss" or "torrentrss" or "torrent rss feed" => IndexerType.Rss,
+            "broadcasthenet" or "btn" => IndexerType.BroadcasTheNet, // "btn" kept for legacy/import compat
             _ => IndexerType.Torznab,
         };
     }

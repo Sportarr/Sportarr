@@ -115,6 +115,19 @@ public static class ServiceCollectionExtensions
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
             });
 
+        // BTN requires a dedicated client: no auto-redirect (so Cloudflare/site redirects surface as
+        // 3xx rather than silently resolving to an HTML page), and a recognised User-Agent.
+        services.AddHttpClient("BtnClient")
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Sonarr/4.0.14.3025");
+            });
+
         // IPTV stream proxying (avoids CORS issues in browser)
         services.AddHttpClient("StreamProxy")
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
