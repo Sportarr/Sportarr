@@ -30,6 +30,12 @@ public class AppSettings
     public bool RedownloadFailedDownloads { get; set; } = true;
     public bool RedownloadFailedFromInteractiveSearch { get; set; } = true;
 
+    // Stored in config.xml (Config.StalledDownloadTimeoutMinutes), not in
+    // this table - NotMapped keeps it on the JSON wire contract without a
+    // schema change.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int StalledDownloadTimeoutMinutes { get; set; } = 60;
+
     // Search Queue Management (Huntarr-style queue threshold pause)
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles
@@ -172,6 +178,12 @@ public class MediaManagementSettings
     // File Management
     public bool RenameEvents { get; set; } = false;
     public bool RenameFiles { get; set; } = true;
+
+    // Stored in config.xml (Config.DownloadPropersAndRepacks); NotMapped
+    // keeps it on the media-management JSON contract without a schema change.
+    // Values: preferAndUpgrade | doNotUpgrade | doNotPrefer.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string DownloadPropersAndRepacks { get; set; } = "preferAndUpgrade";
     public bool ReplaceIllegalCharacters { get; set; } = true;
     public bool EnableMultiPartEpisodes { get; set; } = true; // Detect and name multi-part episodes for Fighting sports
     public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
@@ -361,6 +373,7 @@ public class FileNamingTokens
     public string Episode { get; set; } = string.Empty; // Episode number (01, 02, etc.)
     public string Part { get; set; } = string.Empty;    // Multi-part suffix (pt1, pt2, pt3) for fight card segments
     public string PartName { get; set; } = string.Empty; // Human part label suffix (" - Prelims", " - Main Card"); empty for single-part files. Separator embedded, same convention as Part.
+    public string CustomFormats { get; set; } = string.Empty; // Space-joined names of matched formats flagged IncludeCustomFormatWhenRenaming
 }
 
 // Notification Model (stored separately with Tags)

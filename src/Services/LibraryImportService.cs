@@ -24,6 +24,7 @@ public class LibraryImportService
 
     private readonly SportarrDbContext _db;
     private readonly ILogger<LibraryImportService> _logger;
+    private readonly CustomFormatService _customFormatService;
     private readonly MediaFileParser _fileParser;
     private readonly SportsFileNameParser _sportsParser;
     private readonly FileNamingService _namingService;
@@ -43,7 +44,8 @@ public class LibraryImportService
         EventPartDetector partDetector,
         ConfigService configService,
         SportarrApiClient sportarrApiClient,
-        DiskSpaceService diskSpaceService)
+        DiskSpaceService diskSpaceService,
+        CustomFormatService customFormatService)
     {
         _db = db;
         _logger = logger;
@@ -54,6 +56,7 @@ public class LibraryImportService
         _configService = configService;
         _sportarrApiClient = sportarrApiClient;
         _diskSpaceService = diskSpaceService;
+        _customFormatService = customFormatService;
     }
 
     /// <summary>
@@ -213,7 +216,7 @@ public class LibraryImportService
                     string? destinationPreview = null;
                     if (matchedEvent != null)
                     {
-                        destinationPreview = BuildDestinationPreview(matchedEvent, fileInfo.Name, settings);
+                        destinationPreview = await BuildDestinationPreviewAsync(matchedEvent, fileInfo.Name, settings);
                     }
 
                     var importable = new ImportableFile
@@ -671,7 +674,10 @@ public class LibraryImportService
                 Part = partSuffix
             };
 
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            tokens.CustomFormats = _customFormatService.BuildRenameToken(
+                Path.GetFileName(sourcePath), await _db.CustomFormats.ToListAsync());
+
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {
@@ -1353,10 +1359,10 @@ public class LibraryImportService
         var evt = await _db.Events.Include(e => e.League).FirstOrDefaultAsync(e => e.Id == eventId);
         if (evt == null) return null;
         var settings = await GetMediaManagementSettingsAsync();
-        return BuildDestinationPreview(evt, originalFileName, settings);
+        return await BuildDestinationPreviewAsync(evt, originalFileName, settings);
     }
 
-    private string BuildDestinationPreview(Event matchedEvent, string originalFileName, MediaManagementSettings settings)
+    private async Task<string> BuildDestinationPreviewAsync(Event matchedEvent, string originalFileName, MediaManagementSettings settings)
     {
         var extension = Path.GetExtension(originalFileName);
 
@@ -1386,7 +1392,9 @@ public class LibraryImportService
                 Episode = episodeNumber.ToString("00"),
                 Part = string.Empty
             };
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            tokens.CustomFormats = _customFormatService.BuildRenameToken(
+                originalFileName, await _db.CustomFormats.ToListAsync());
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {

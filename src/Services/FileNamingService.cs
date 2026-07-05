@@ -26,10 +26,10 @@ public class FileNamingService
     /// <summary>
     /// Build filename from format template and tokens
     /// </summary>
-    public string BuildFileName(string format, FileNamingTokens tokens, string extension)
+    public string BuildFileName(string format, FileNamingTokens tokens, string extension, bool replaceIllegalCharacters = true)
     {
         var filename = ReplaceTokens(format, tokens);
-        filename = CleanFileName(filename);
+        filename = CleanFileName(filename, replaceIllegalCharacters);
 
         // Ensure extension starts with dot
         if (!extension.StartsWith('.'))
@@ -73,7 +73,7 @@ public class FileNamingService
         if (settings.CreateLeagueFolders && !string.IsNullOrWhiteSpace(settings.LeagueFolderFormat))
         {
             var leagueFolder = ReplaceTokens(settings.LeagueFolderFormat, tokens);
-            leagueFolder = CleanFileName(leagueFolder);
+            leagueFolder = CleanFileName(leagueFolder, settings.ReplaceIllegalCharacters);
             if (!string.IsNullOrWhiteSpace(leagueFolder))
             {
                 pathParts.Add(leagueFolder);
@@ -84,7 +84,7 @@ public class FileNamingService
         if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && !string.IsNullOrWhiteSpace(settings.SeasonFolderFormat))
         {
             var seasonFolder = ReplaceTokens(settings.SeasonFolderFormat, tokens);
-            seasonFolder = CleanFileName(seasonFolder);
+            seasonFolder = CleanFileName(seasonFolder, settings.ReplaceIllegalCharacters);
             if (!string.IsNullOrWhiteSpace(seasonFolder))
             {
                 pathParts.Add(seasonFolder);
@@ -105,7 +105,7 @@ public class FileNamingService
                 ? "{Event Title} ({Year}-{Month}-{Day}) E{Episode}"
                 : settings.EventFolderFormat;
             var eventFolder = ReplaceTokens(eventFolderFormat, tokens);
-            eventFolder = CleanFileName(eventFolder);
+            eventFolder = CleanFileName(eventFolder, settings.ReplaceIllegalCharacters);
             if (!string.IsNullOrWhiteSpace(eventFolder))
             {
                 pathParts.Add(eventFolder);
@@ -199,7 +199,9 @@ public class FileNamingService
             // Human part label with embedded separator (" - Prelims"), empty
             // for single-part files - lets fight cards name Prelims/Main Card
             // in the filename instead of the opaque pt1/pt2.
-            { "{Part Name}", tokens.PartName }
+            { "{Part Name}", tokens.PartName },
+            // Matched custom formats flagged "include when renaming".
+            { "{Custom Formats}", tokens.CustomFormats }
         };
 
         if (tokens.AirDate.HasValue)
@@ -286,17 +288,20 @@ public class FileNamingService
     }
 
     /// <summary>
-    /// Remove invalid characters from filename
+    /// Remove invalid characters from filename. When replaceIllegalCharacters
+    /// is true (the Replace Illegal Characters setting, default) each invalid
+    /// character becomes a space; when false they are removed outright.
     /// </summary>
-    public string CleanFileName(string filename)
+    public string CleanFileName(string filename, bool replaceIllegalCharacters = true)
     {
         if (string.IsNullOrEmpty(filename))
             return filename;
 
-        // Replace invalid characters with space
         foreach (var c in InvalidFileChars)
         {
-            filename = filename.Replace(c, ' ');
+            filename = replaceIllegalCharacters
+                ? filename.Replace(c, ' ')
+                : filename.Replace(c.ToString(), string.Empty);
         }
 
         // Clean up multiple spaces
@@ -381,7 +386,8 @@ public class FileNamingService
             "{Season}",
             "{Episode}",
             "{Part}",
-            "{Part Name}"
+            "{Part Name}",
+            "{Custom Formats}"
         };
     }
 

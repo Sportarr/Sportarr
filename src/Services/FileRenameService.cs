@@ -16,19 +16,40 @@ public class FileRenameService
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly ILogger<FileRenameService> _logger;
     private readonly DiskSpaceService _diskSpaceService;
+    private readonly CustomFormatService _customFormatService;
+    private readonly NotificationService _notificationService;
+
+    // Formats loaded once per scoped instance so per-file token building
+    // doesn't re-query on every file of a bulk rename.
+    private List<CustomFormat>? _formatsCache;
 
     public FileRenameService(
         SportarrDbContext db,
         FileNamingService fileNamingService,
         SportarrApiClient sportarrApiClient,
         ILogger<FileRenameService> logger,
-        DiskSpaceService diskSpaceService)
+        DiskSpaceService diskSpaceService,
+        CustomFormatService customFormatService,
+        NotificationService notificationService)
     {
         _db = db;
         _fileNamingService = fileNamingService;
         _sportarrApiClient = sportarrApiClient;
         _logger = logger;
         _diskSpaceService = diskSpaceService;
+        _customFormatService = customFormatService;
+        _notificationService = notificationService;
+    }
+
+    /// <summary>
+    /// {Custom Formats} token value for a file, matched against its
+    /// original release title.
+    /// </summary>
+    private async Task<string> BuildCustomFormatsTokenAsync(EventFile file)
+    {
+        _formatsCache ??= await _db.CustomFormats.ToListAsync();
+        var matchTitle = file.OriginalTitle ?? Path.GetFileName(file.FilePath) ?? string.Empty;
+        return _customFormatService.BuildRenameToken(matchTitle, _formatsCache);
     }
 
     /// <summary>
@@ -196,6 +217,12 @@ public class FileRenameService
     /// <returns>Number of files renamed</returns>
     public async Task<int> RenameEventFilesAsync(int eventId, MediaManagementSettings? settings = null)
     {
+        // A null settings param marks a top-level invocation (endpoints pass
+        // null; the league-wide rename passes settings to its per-event
+        // children) - only top-level operations fire the OnRename
+        // notification, so a league rename notifies once, not per event.
+        var isTopLevel = settings == null;
+
         var evt = await _db.Events
             .Include(e => e.League)
             .Include(e => e.Files)
@@ -256,31 +283,57 @@ public class FileRenameService
         if (renamedCount > 0)
         {
             await _db.SaveChangesAsync();
+
+            if (isTopLevel)
+            {
+                await NotifyRenamedAsync(renamedCount, evt.Title ?? $"event {eventId}", evt.League?.Tags);
+            }
         }
 
         return renamedCount;
     }
 
     /// <summary>
+    /// Fire the OnRename notification for a completed rename operation.
+    /// Failures are logged and swallowed.
+    /// </summary>
+    private async Task NotifyRenamedAsync(int count, string scopeDescription, List<int>? leagueTags = null)
+    {
+        try
+        {
+            await _notificationService.SendNotificationAsync(
+                NotificationTrigger.OnRename,
+                $"Renamed {count} file(s)",
+                $"Scope: {scopeDescription}",
+                new Dictionary<string, object> { { "renamedCount", count } },
+                leagueTags);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[File Rename] Failed to send rename notification");
+        }
+    }
+
+    /// <summary>
     /// Rename and/or move a single file based on current event metadata and naming settings.
     /// Folder reorganization only happens if ReorganizeFolders setting is enabled.
     /// </summary>
-    private Task<bool> RenameFileAsync(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
+    private async Task<bool> RenameFileAsync(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
     {
         var currentPath = file.FilePath;
-        var expectedPath = BuildExpectedPath(evt, file, settings, rootFolders);
+        var expectedPath = await BuildExpectedPathAsync(evt, file, settings, rootFolders);
 
         if (string.IsNullOrEmpty(expectedPath))
         {
             _logger.LogWarning("[File Rename] Could not determine target path for: {FilePath}", currentPath);
-            return Task.FromResult(false);
+            return false;
         }
 
         // Check if rename/move is needed
         if (string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogDebug("[File Rename] File already has correct name and location: {FilePath}", currentPath);
-            return Task.FromResult(false);
+            return false;
         }
 
         // Single-file rename refuses to clobber an existing destination. Season-wide
@@ -289,7 +342,7 @@ public class FileRenameService
         if (File.Exists(expectedPath))
         {
             _logger.LogWarning("[File Rename] Destination file already exists: {ExpectedPath}. Skipping rename.", expectedPath);
-            return Task.FromResult(false);
+            return false;
         }
 
         // Create destination directory if it doesn't exist
@@ -319,7 +372,7 @@ public class FileRenameService
             }
 
             _logger.LogInformation("[File Rename] Successfully moved file for event '{Title}'", evt.Title);
-            return Task.FromResult(true);
+            return true;
         }
         catch (Exception ex)
         {
@@ -333,7 +386,7 @@ public class FileRenameService
     /// Compute the path a file should have given the current event metadata and naming
     /// settings. Returns null if the target can't be determined. Does not touch disk.
     /// </summary>
-    private string? BuildExpectedPath(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
+    private async Task<string?> BuildExpectedPathAsync(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
     {
         var currentPath = file.FilePath;
         var currentDir = Path.GetDirectoryName(currentPath);
@@ -346,10 +399,12 @@ public class FileRenameService
         }
 
         var tokens = BuildFileNamingTokens(evt, file);
+        tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
         var expectedFileName = _fileNamingService.BuildFileName(
             settings.StandardFileFormat,
             tokens,
-            currentExtension);
+            currentExtension,
+            settings.ReplaceIllegalCharacters);
 
         // Only reorganize folders if the setting is enabled; otherwise rename in place.
         if (settings.ReorganizeFolders)
@@ -512,7 +567,7 @@ public class FileRenameService
                 if (!file.Exists || string.IsNullOrEmpty(file.FilePath) || !File.Exists(file.FilePath))
                     continue;
 
-                var expectedPath = BuildExpectedPath(evt, file, settings, rootFolders);
+                var expectedPath = await BuildExpectedPathAsync(evt, file, settings, rootFolders);
                 if (string.IsNullOrEmpty(expectedPath) ||
                     string.Equals(file.FilePath, expectedPath, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -573,6 +628,9 @@ public class FileRenameService
             await _db.SaveChangesAsync();
             _logger.LogInformation("[File Rename] Renamed {Count} files in league {LeagueId}, season {Season}",
                 totalRenamed, leagueId, season);
+
+            var seasonLeague = await _db.Leagues.FindAsync(leagueId);
+            await NotifyRenamedAsync(totalRenamed, $"{seasonLeague?.Name ?? $"league {leagueId}"} season {season}", seasonLeague?.Tags);
         }
 
         return totalRenamed;
@@ -606,10 +664,12 @@ public class FileRenameService
                 continue;
 
             var tokens = BuildFileNamingTokens(evt, file);
+            tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
             var expectedFileName = _fileNamingService.BuildFileName(
                 settings.StandardFileFormat,
                 tokens,
-                currentExtension);
+                currentExtension,
+                settings.ReplaceIllegalCharacters);
 
             string expectedPath;
 
@@ -685,10 +745,12 @@ public class FileRenameService
                     continue;
 
                 var tokens = BuildFileNamingTokens(evt, file);
+                tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
                 var expectedFileName = _fileNamingService.BuildFileName(
                     settings.StandardFileFormat,
                     tokens,
-                    currentExtension);
+                    currentExtension,
+                    settings.ReplaceIllegalCharacters);
 
                 string expectedPath;
 
@@ -760,6 +822,7 @@ public class FileRenameService
             var league = await _db.Leagues.FindAsync(leagueId);
             _logger.LogInformation("[File Rename] Renamed {Count} files in league: {LeagueName}",
                 totalRenamed, league?.Name ?? $"ID:{leagueId}");
+            await NotifyRenamedAsync(totalRenamed, league?.Name ?? $"league {leagueId}", league?.Tags);
         }
 
         return totalRenamed;
@@ -807,7 +870,8 @@ public class FileRenameService
 
         // Compute the destination path under the new event's folder structure.
         var tokens = BuildFileNamingTokens(newEvent, file);
-        var newFileName = _fileNamingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+        tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
+        var newFileName = _fileNamingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
 
         var rootFolder = FindRootFolder(currentPath, rootFolders);
         string newPath;

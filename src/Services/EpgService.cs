@@ -318,22 +318,31 @@ public class EpgService
             }
 
             // Try partial/fuzzy match - look for EPG channels that contain the IPTV channel name or vice versa
-            var fuzzyMatch = epgChannels.FirstOrDefault(e =>
-            {
-                var epgNormalized = e.NormalizedName ?? XmltvParserService.NormalizeName(e.DisplayName);
-                if (string.IsNullOrEmpty(epgNormalized) || string.IsNullOrEmpty(normalizedIptvName))
-                    return false;
+            // Containment is only trusted when the leftover text after
+            // removing the shorter name is pure decoration (HD/FHD/4K and
+            // similar), so "ESPN HD" still matches "ESPN" but "ESPN2" no
+            // longer does. The old bidirectional bare Contains cross-mapped
+            // sibling channels, and its first-match-wins pick made the
+            // result depend on EPG file order. Ambiguity (more than one
+            // surviving candidate) skips the channel entirely - the manual
+            // EPG picker exists for those.
+            var fuzzyCandidates = epgChannels
+                .Where(e => IsDecorationOnlyContainment(
+                    normalizedIptvName,
+                    e.NormalizedName ?? XmltvParserService.NormalizeName(e.DisplayName)))
+                .ToList();
 
-                // Check if one contains the other (for cases like "ESPN" vs "ESPN HD")
-                return epgNormalized.Contains(normalizedIptvName) || normalizedIptvName.Contains(epgNormalized);
-            });
-
-            if (fuzzyMatch != null)
+            if (fuzzyCandidates.Count == 1)
             {
-                iptvChannel.TvgId = fuzzyMatch.ChannelId;
+                iptvChannel.TvgId = fuzzyCandidates[0].ChannelId;
                 mappedCount++;
-                _logger.LogDebug("[EPG] Mapped '{IptvChannel}' -> '{EpgChannel}' (fuzzy match)",
-                    iptvChannel.Name, fuzzyMatch.DisplayName);
+                _logger.LogDebug("[EPG] Mapped '{IptvChannel}' -> '{EpgChannel}' (decoration-only fuzzy match)",
+                    iptvChannel.Name, fuzzyCandidates[0].DisplayName);
+            }
+            else if (fuzzyCandidates.Count > 1)
+            {
+                _logger.LogDebug("[EPG] Skipping ambiguous auto-map for '{IptvChannel}' ({Count} candidates); use the manual picker",
+                    iptvChannel.Name, fuzzyCandidates.Count);
             }
         }
 
@@ -343,6 +352,45 @@ public class EpgService
         }
 
         return mappedCount;
+    }
+
+    /// <summary>
+    /// True when one normalized channel name contains the other AND the
+    /// leftover characters are only quality/feed decorations, so "espnhd"
+    /// matches "espn" while "espn2" does not.
+    /// </summary>
+    public static bool IsDecorationOnlyContainment(string? a, string? b)
+    {
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))
+            return false;
+
+        var longer = a.Length >= b.Length ? a : b;
+        var shorter = a.Length >= b.Length ? b : a;
+
+        if (longer == shorter)
+            return true;
+
+        var idx = longer.IndexOf(shorter, StringComparison.Ordinal);
+        if (idx < 0)
+            return false;
+
+        var leftover = longer.Remove(idx, shorter.Length);
+        return IsDecoration(leftover);
+    }
+
+    // Quality/feed suffixes that never change which channel a name refers
+    // to. Longest first so compound leftovers ("fhdhevc") strip cleanly.
+    private static readonly string[] DecorationTokens =
+        { "hevc", "h265", "x265", "fhd", "uhd", "plus", "raw", "hd", "sd", "hq", "4k", "8k" };
+
+    private static bool IsDecoration(string leftover)
+    {
+        var s = leftover.ToLowerInvariant();
+        foreach (var token in DecorationTokens)
+        {
+            s = s.Replace(token, " ");
+        }
+        return s.Trim(' ', '-', '_', '.', ':', '|', '(', ')', '[', ']', '+').Length == 0;
     }
 
     /// <summary>

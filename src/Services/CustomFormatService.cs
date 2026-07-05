@@ -43,6 +43,21 @@ public class CustomFormatService
     }
 
     /// <summary>
+    /// Value for the {Custom Formats} naming token: space-joined names of
+    /// the formats that match the release title AND are flagged
+    /// IncludeCustomFormatWhenRenaming.
+    /// </summary>
+    public string BuildRenameToken(string releaseTitle, List<CustomFormat> customFormats)
+    {
+        if (string.IsNullOrWhiteSpace(releaseTitle) || customFormats.Count == 0)
+            return string.Empty;
+
+        return string.Join(" ", customFormats
+            .Where(f => f.IncludeCustomFormatWhenRenaming && MatchesFormat(releaseTitle, f))
+            .Select(f => f.Name));
+    }
+
+    /// <summary>
     /// Checks if a release matches all specifications in a custom format
     /// All specifications must match (AND logic)
     /// </summary>

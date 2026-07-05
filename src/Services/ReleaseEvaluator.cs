@@ -233,9 +233,12 @@ public class ReleaseEvaluator
         // This combined score is for UI display/reference only
         evaluation.TotalScore = evaluation.QualityScore + evaluation.CustomFormatScore;
 
-        // All releases are approved for manual search
-        // Rejections are shown as warnings, but users can still download
-        evaluation.Approved = true;
+        // Approved must reflect the rejection list: a caller that gates on
+        // it alone (rather than re-checking Rejections) must never auto-grab
+        // a rejected release. Manual search still SHOWS rejected releases -
+        // the UI lists them with their rejection reasons and lets the user
+        // download anyway; that display choice doesn't belong in this flag.
+        evaluation.Approved = !evaluation.Rejections.Any();
 
         _logger.LogDebug(
             "[Release Evaluator] {Title} - Quality: {Quality} ({QScore}), CF Score: {CScore}, Total: {Total}",
@@ -918,6 +921,16 @@ public class ReleaseEvaluator
                 return true;
             }
 
+            // Per-indexer Multi Languages: when the indexer declares which
+            // languages its MULTI releases carry, the spec matches any of
+            // those declared languages.
+            if (isMultiLanguage && release.MultiLanguageNames is { Count: > 0 } &&
+                release.MultiLanguageNames.Any(l => string.Equals(l, targetLanguage, StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.LogDebug("[Language Spec] Multi-language release carries '{Target}' per indexer Multi Languages", targetLanguage);
+                return true;
+            }
+
             // Compare detected language with target
             return string.Equals(detectedLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase);
         }
@@ -927,6 +940,13 @@ public class ReleaseEvaluator
         if (isMultiLanguage && value.Equals("English", StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogDebug("[Language Spec] Multi-language release satisfies 'English' requirement");
+            return true;
+        }
+
+        // Per-indexer Multi Languages, name-valued specs.
+        if (isMultiLanguage && release.MultiLanguageNames is { Count: > 0 } &&
+            release.MultiLanguageNames.Any(l => string.Equals(l, value, StringComparison.OrdinalIgnoreCase)))
+        {
             return true;
         }
 

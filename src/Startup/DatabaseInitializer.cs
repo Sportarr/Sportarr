@@ -24,19 +24,47 @@ public static class DatabaseInitializer
         {
         // Check if database exists and has tables but no migration history
         // This happens when database was created with EnsureCreated() instead of Migrate()
+
+        // Write-lock preflight: take (and immediately release) a write lock
+        // so a database held by another process fails FAST with an
+        // actionable message instead of every later step fighting busy
+        // timeouts. The classic Windows case: a leftover Sportarr service
+        // still running while a second copy launches from the Start Menu.
+        for (var lockAttempt = 1; ; lockAttempt++)
+        {
+            try
+            {
+                db.Database.ExecuteSqlRaw("BEGIN IMMEDIATE; ROLLBACK;");
+                break;
+            }
+            catch (Exception ex) when (ex.Message.Contains("locked", StringComparison.OrdinalIgnoreCase) ||
+                                       ex.Message.Contains("busy", StringComparison.OrdinalIgnoreCase))
+            {
+                if (lockAttempt >= 3)
+                {
+                    Console.WriteLine("[Sportarr] ERROR: The database is locked by another process after 3 attempts.");
+                    Console.WriteLine("[Sportarr] Another Sportarr instance (Windows service, tray icon, or second console) is most likely running against the same data directory. Stop it and launch again.");
+                    throw;
+                }
+                Console.WriteLine($"[Sportarr] Database is locked by another process; retrying in 10s (attempt {lockAttempt}/3)...");
+                await Task.Delay(TimeSpan.FromSeconds(10));
+            }
+        }
+        Console.WriteLine("[Sportarr] Database lock check passed");
+
         var canConnect = await db.Database.CanConnectAsync();
         var hasMigrationHistory = canConnect && (await db.Database.GetAppliedMigrationsAsync()).Any();
 
-        // Check if AppSettings table exists (core table that should always be present)
+        // Check if AppSettings table exists (core table that should always
+        // be present). Queried via EF rather than GetDbConnection() -
+        // wrapping the context's OWN connection in a using block disposed
+        // it out from under the context.
         bool hasTables = false;
         if (canConnect)
         {
-            using var connection = db.Database.GetDbConnection();
-            await connection.OpenAsync();
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AppSettings'";
-            var result = await command.ExecuteScalarAsync();
-            hasTables = Convert.ToInt32(result) > 0;
+            hasTables = db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS \"Value\" FROM sqlite_master WHERE type='table' AND name='AppSettings'")
+                .AsEnumerable().FirstOrDefault() > 0;
         }
 
         if (canConnect && hasTables && !hasMigrationHistory)
@@ -76,8 +104,18 @@ public static class DatabaseInitializer
         }
         } // end: if (!db.Database.IsNpgsql()) - legacy EnsureCreated() detection/seeding
 
-        // Now apply any new migrations
+        // Now apply any new migrations. Breadcrumbs before and after so a
+        // report of "stuck at Applying database migrations" pinpoints the
+        // phase - this whole initializer speaks through the console, not
+        // the (buffered, later-started) log files.
+        var pendingMigrations = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        Console.WriteLine(pendingMigrations.Count > 0
+            ? $"[Sportarr] Applying {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}"
+            : "[Sportarr] No pending migrations");
+
         db.Database.Migrate();
+
+        Console.WriteLine("[Sportarr] Core migrations applied; running schema safety nets...");
 
         // Everything below repairs/backfills schema drift accumulated across the SQLite
         // migration history (added columns, dedup passes, renamed enum values, etc.). A

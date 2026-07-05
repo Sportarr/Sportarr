@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -70,6 +71,8 @@ public class NotificationService : INotificationService
                     "Slack" => await SendSlackAsync(config, title, message),
                     "Webhook" => await SendWebhookAsync(config, title, message, trigger, metadata),
                     "Email" => await SendEmailAsync(config, title, message),
+                    "Apprise" => await SendAppriseAsync(config, title, message),
+                    "CustomScript" => RunCustomScript(config, title, message, trigger, metadata),
                     // Media server library refresh notifications
                     "Plex" => await RefreshPlexLibraryAsync(config, filePath),
                     "Jellyfin" => await RefreshJellyfinLibraryAsync(config, filePath),
@@ -116,6 +119,8 @@ public class NotificationService : INotificationService
                 "Slack" => await SendSlackAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Webhook" => await SendWebhookAsync(config, "Test Notification", "This is a test notification from Sportarr.", NotificationTrigger.Test, null),
                 "Email" => await SendEmailAsync(config, "Test Notification", "This is a test notification from Sportarr."),
+                "Apprise" => await SendAppriseAsync(config, "Test Notification", "This is a test notification from Sportarr."),
+                "CustomScript" => RunCustomScript(config, "Test Notification", "This is a test notification from Sportarr.", NotificationTrigger.Test, null),
                 _ => false
             };
 
@@ -142,8 +147,129 @@ public class NotificationService : INotificationService
         }
     }
 
+    /// <summary>
+    /// Send via an Apprise API server (apprise-api). POSTs to
+    /// {serverUrl}/notify, or /notify/{configKey} when a stored config key
+    /// is set; explicit target URLs from the config ride along when given.
+    /// </summary>
+    private async Task<bool> SendAppriseAsync(Dictionary<string, JsonElement> config, string title, string message)
+    {
+        var serverUrl = GetConfigString(config, "serverUrl").TrimEnd('/');
+        if (string.IsNullOrEmpty(serverUrl))
+        {
+            _logger.LogWarning("[Apprise] No server URL configured");
+            return false;
+        }
+
+        var configKey = GetConfigString(config, "configKey");
+        var endpoint = string.IsNullOrEmpty(configKey) ? $"{serverUrl}/notify" : $"{serverUrl}/notify/{configKey}";
+
+        var payload = new Dictionary<string, object>
+        {
+            ["title"] = title,
+            ["body"] = message,
+        };
+        var urls = GetConfigString(config, "appriseUrls");
+        if (!string.IsNullOrEmpty(urls))
+        {
+            payload["urls"] = urls;
+        }
+
+        var client = _httpClientFactory.CreateClient();
+        using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        using var response = await client.PostAsync(endpoint, content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("[Apprise] Notify failed: {Status}", response.StatusCode);
+        }
+        return response.IsSuccessStatusCode;
+    }
+
+    /// <summary>
+    /// Custom script hook in the arr tradition: runs the configured
+    /// executable with the event details passed as SPORTARR_* environment
+    /// variables, never on the command line, so a title containing quotes
+    /// can't inject arguments. Fire-and-forget with a 10-minute ceiling so
+    /// a hung script never blocks the notification loop.
+    /// </summary>
+    private bool RunCustomScript(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, Dictionary<string, object>? metadata)
+    {
+        var scriptPath = GetConfigString(config, "scriptPath");
+        if (string.IsNullOrEmpty(scriptPath))
+        {
+            _logger.LogWarning("[CustomScript] No script path configured");
+            return false;
+        }
+        if (!File.Exists(scriptPath))
+        {
+            _logger.LogWarning("[CustomScript] Script not found: {Path}", scriptPath);
+            return false;
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = scriptPath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+
+        var arguments = GetConfigString(config, "arguments");
+        if (!string.IsNullOrEmpty(arguments))
+        {
+            foreach (var arg in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                psi.ArgumentList.Add(arg);
+            }
+        }
+
+        psi.Environment["SPORTARR_EVENT_TYPE"] = trigger.ToString();
+        psi.Environment["SPORTARR_TITLE"] = title;
+        psi.Environment["SPORTARR_MESSAGE"] = message;
+        if (metadata != null)
+        {
+            foreach (var (key, value) in metadata)
+            {
+                psi.Environment[$"SPORTARR_{key.ToUpperInvariant()}"] = value?.ToString() ?? "";
+            }
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var process = Process.Start(psi);
+                if (process == null) return;
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+                await process.WaitForExitAsync(cts.Token);
+                _logger.LogInformation("[CustomScript] {Path} exited with code {Code} for {Trigger}",
+                    scriptPath, process.ExitCode, trigger);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("[CustomScript] {Path} exceeded the 10-minute ceiling; abandoned", scriptPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[CustomScript] {Path} failed", scriptPath);
+            }
+        });
+
+        return true;
+    }
+
     private bool ShouldSendForTrigger(Dictionary<string, JsonElement> config, NotificationTrigger trigger)
     {
+        // An upgrade IS an import, so consumers subscribed to imports (the
+        // media-server refreshers especially) must see upgrades too;
+        // enabling only onUpgrade narrows to upgrade imports specifically.
+        if (trigger == NotificationTrigger.OnUpgrade)
+        {
+            return IsTriggerEnabled(config, "onUpgrade") || IsTriggerEnabled(config, "onDownload");
+        }
+
         var fieldName = trigger switch
         {
             NotificationTrigger.OnGrab => "onGrab",
@@ -158,14 +284,20 @@ public class NotificationService : INotificationService
             NotificationTrigger.OnHealthRestored => "onHealthRestored",
             NotificationTrigger.OnApplicationUpdate => "onApplicationUpdate",
             NotificationTrigger.OnManualInteractionRequired => "onManualInteractionRequired",
+            NotificationTrigger.OnRecordingStarted => "onRecordingStarted",
+            NotificationTrigger.OnRecordingCompleted => "onRecordingCompleted",
+            NotificationTrigger.OnRecordingFailed => "onRecordingFailed",
             NotificationTrigger.Test => null, // Always send test notifications
             _ => null
         };
 
         if (fieldName == null) return true;
 
-        return config.TryGetValue(fieldName, out var value) && value.ValueKind == JsonValueKind.True;
+        return IsTriggerEnabled(config, fieldName);
     }
+
+    private static bool IsTriggerEnabled(Dictionary<string, JsonElement> config, string fieldName)
+        => config.TryGetValue(fieldName, out var value) && value.ValueKind == JsonValueKind.True;
 
     private string GetConfigString(Dictionary<string, JsonElement> config, string key, string defaultValue = "")
     {
@@ -416,7 +548,9 @@ public class NotificationService : INotificationService
                     foreach (var header in headers)
                     {
                         requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                        _logger.LogDebug("[Webhook] Added header: {Key}={Value}", header.Key, header.Value);
+                        // Value intentionally not logged: custom headers routinely
+                        // carry auth secrets the log sanitizer can't recognize.
+                        _logger.LogDebug("[Webhook] Added header: {Key}", header.Key);
                     }
                 }
             }
@@ -471,6 +605,9 @@ public class NotificationService : INotificationService
         [NotificationTrigger.OnHealthRestored] = "Health",
         [NotificationTrigger.OnApplicationUpdate] = "ApplicationUpdate",
         [NotificationTrigger.OnManualInteractionRequired] = "ManualInteractionRequired",
+        [NotificationTrigger.OnRecordingStarted] = "RecordingStarted",
+        [NotificationTrigger.OnRecordingCompleted] = "RecordingCompleted",
+        [NotificationTrigger.OnRecordingFailed] = "RecordingFailed",
         [NotificationTrigger.Test] = "Test"
     };
 
@@ -1002,5 +1139,8 @@ public enum NotificationTrigger
     OnHealthRestored,
     OnApplicationUpdate,
     OnManualInteractionRequired,
+    OnRecordingStarted,
+    OnRecordingCompleted,
+    OnRecordingFailed,
     Test
 }

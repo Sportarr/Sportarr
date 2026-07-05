@@ -691,6 +691,23 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             await db.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("[Disk Scan] Discovered {Count} new untracked files (available as pending imports in Activity)",
                 discoveredCount);
+
+            // One aggregate notification per scan, not one per file - a
+            // first scan of a large library can queue hundreds at once.
+            try
+            {
+                using var notifyScope = _serviceProvider.CreateScope();
+                var notificationService = notifyScope.ServiceProvider.GetRequiredService<NotificationService>();
+                await notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnManualInteractionRequired,
+                    $"{discoveredCount} file(s) awaiting manual import",
+                    "Untracked files were discovered on disk and queued for review under Activity.",
+                    new Dictionary<string, object> { { "pendingCount", discoveredCount } });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Disk Scan] Failed to send pending-import notification");
+            }
         }
     }
 }

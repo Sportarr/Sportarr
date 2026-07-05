@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus, useActivityCounts } from '../api/hooks';
 import { getImageUrl } from '../utils/request';
+import { apiGet } from '../utils/api';
 import {
   FolderIcon,
   ClockIcon,
@@ -111,6 +112,7 @@ export default function Layout() {
         { label: 'Status', path: '/system/status' },
         { label: 'Health', path: '/system/health' },
         { label: 'Tasks', path: '/system/tasks' },
+        { label: 'Stats', path: '/system/stats' },
         { label: 'Backup', path: '/system/backup' },
         { label: 'Updates', path: '/system/updates' },
         { label: 'Events', path: '/system/events' },
@@ -371,8 +373,66 @@ export default function Layout() {
         className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pt-14 md:pt-0"
         style={{ scrollbarGutter: 'stable' }}
       >
+        <HealthBanner />
         <Outlet />
       </main>
     </div>
+  );
+}
+
+/**
+ * Persistent warning strip shown on every page while any health check is
+ * at Warning (2) or Error (3). Notices stay off the banner - they live on
+ * the health page. Polls alongside the page so a failing indexer or
+ * download client is visible without opening System > Health.
+ */
+function HealthBanner() {
+  const [issues, setIssues] = useState<{ level: number; message: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const response = await apiGet('/api/system/health');
+        if (!response.ok) return;
+        const results: { level: number; message: string }[] = await response.json();
+        if (!cancelled) {
+          setIssues(results.filter((r) => r.level >= 2));
+        }
+      } catch {
+        // Network errors are not health issues; leave the banner as-is.
+      }
+    };
+
+    check();
+    const interval = setInterval(check, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  if (issues.length === 0) return null;
+
+  const hasError = issues.some((i) => i.level >= 3);
+
+  return (
+    <Link
+      to="/system/health"
+      className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b transition-colors ${
+        hasError
+          ? 'bg-red-900/40 border-red-700/50 text-red-200 hover:bg-red-900/60'
+          : 'bg-yellow-900/30 border-yellow-700/50 text-yellow-200 hover:bg-yellow-900/50'
+      }`}
+    >
+      <ExclamationCircleIcon className="h-5 w-5 shrink-0" />
+      <span>
+        {issues.length === 1
+          ? issues[0].message
+          : `${issues.length} health issues detected`}
+      </span>
+      <span className="ml-auto shrink-0 underline underline-offset-2">Details</span>
+    </Link>
   );
 }

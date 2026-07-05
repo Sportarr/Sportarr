@@ -86,7 +86,7 @@ app.MapGet("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Create event (universal for all sports)
-app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext db) =>
+app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext db, NotificationService notificationService) =>
 {
     var evt = new Event
     {
@@ -125,6 +125,18 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
 
     db.Events.Add(evt);
     await db.SaveChangesAsync();
+
+    // Manual event additions notify; league syncs adding events in bulk
+    // deliberately do not (thousands of events per initial sync).
+    try
+    {
+        await notificationService.SendNotificationAsync(
+            NotificationTrigger.OnEventAdded,
+            $"Event added: {evt.Title}",
+            $"Date: {evt.EventDate:yyyy-MM-dd HH:mm} UTC\nSport: {evt.Sport ?? "Unknown"}",
+            new Dictionary<string, object> { { "eventId", evt.Id }, { "eventTitle", evt.Title ?? "" } });
+    }
+    catch { /* notification failure never fails the add */ }
 
     // Reload event with related entities
     var createdEvent = await db.Events
@@ -214,13 +226,25 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
 });
 
 // API: Delete event
-app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
+app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db, NotificationService notificationService) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
 
+    var deletedTitle = evt.Title;
     db.Events.Remove(evt);
     await db.SaveChangesAsync();
+
+    try
+    {
+        await notificationService.SendNotificationAsync(
+            NotificationTrigger.OnEventDelete,
+            $"Event deleted: {deletedTitle}",
+            $"The event was removed from the library.",
+            new Dictionary<string, object> { { "eventId", id }, { "eventTitle", deletedTitle ?? "" } });
+    }
+    catch { /* notification failure never fails the delete */ }
+
     return Results.NoContent();
 });
 

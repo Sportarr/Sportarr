@@ -465,6 +465,8 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         hardwareAcceleration = config.DvrHardwareAcceleration,
         ffmpegPath = config.DvrFfmpegPath,
         postRecordingCommand = config.DvrPostRecordingCommand,
+        overtimeGuardEnabled = config.DvrOvertimeGuardEnabled,
+        overtimeMaxExtensionMinutes = config.DvrOvertimeMaxExtensionMinutes,
         enableReconnect = config.DvrEnableReconnect,
         maxReconnectAttempts = config.DvrMaxReconnectAttempts,
         reconnectDelaySeconds = config.DvrReconnectDelaySeconds,
@@ -529,6 +531,12 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         config.DvrFfmpegPath = ffmpegPath.GetString() ?? "";
     if (settings.TryGetProperty("postRecordingCommand", out var postRecordingCommand))
         config.DvrPostRecordingCommand = postRecordingCommand.GetString() ?? "";
+
+    if (settings.TryGetProperty("overtimeGuardEnabled", out var overtimeGuardEnabled))
+        config.DvrOvertimeGuardEnabled = overtimeGuardEnabled.GetBoolean();
+
+    if (settings.TryGetProperty("overtimeMaxExtensionMinutes", out var overtimeMaxExtensionMinutes))
+        config.DvrOvertimeMaxExtensionMinutes = Math.Clamp(overtimeMaxExtensionMinutes.GetInt32(), 0, 360);
     if (settings.TryGetProperty("enableReconnect", out var enableReconnect))
         config.DvrEnableReconnect = enableReconnect.GetBoolean();
     if (settings.TryGetProperty("maxReconnectAttempts", out var maxReconnect))

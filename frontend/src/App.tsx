@@ -7,8 +7,6 @@ import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import PlaceholderPage from './components/PlaceholderPage';
-import EventsPage from './pages/EventsPage';
 import LeaguesPage from './pages/LeaguesPage';
 import LeagueDetailPage from './pages/LeagueDetailPage';
 import TeamsPage from './pages/TeamsPage';
@@ -20,6 +18,7 @@ import WantedPage from './pages/WantedPage';
 import LibraryImportPage from './pages/LibraryImportPage';
 import SystemPage from './pages/SystemPage';
 import SystemHealthPage from './pages/SystemHealthPage';
+import StatsPage from './pages/StatsPage';
 import BackupPage from './pages/BackupPage';
 import SystemEventsPage from './pages/SystemEventsPage';
 import SystemUpdatesPage from './pages/SystemUpdatesPage';
@@ -43,7 +42,6 @@ import DevelopmentSettings from './pages/settings/DevelopmentSettings';
 import IptvSettings from './pages/settings/IptvSettings';
 import IptvChannelsSettings from './pages/settings/IptvChannelsSettings';
 import DvrRecordingsSettings from './pages/settings/DvrRecordingsSettings';
-import DvrSchedulePage from './pages/iptv/DvrSchedulePage';
 import TvGuidePage from './pages/iptv/TvGuidePage';
 import WatchChannelPage from './pages/iptv/WatchChannelPage';
 import IptvCoveragePage from './pages/iptv/IptvCoveragePage';
@@ -228,6 +226,7 @@ function App() {
             <Route path="system/status" element={<SystemPage />} />
             <Route path="system/health" element={<SystemHealthPage />} />
             <Route path="system/tasks" element={<TasksPage />} />
+            <Route path="system/stats" element={<StatsPage />} />
             <Route path="system/backup" element={<BackupPage />} />
             <Route path="system/updates" element={<SystemUpdatesPage />} />
             <Route path="system/events" element={<SystemEventsPage />} />

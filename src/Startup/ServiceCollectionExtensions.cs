@@ -335,6 +335,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ChannelAutoMappingService>();
         services.AddSingleton<FFmpegRecorderService>();
         services.AddSingleton<FFmpegStreamService>();
+        // Viewer-stream counting for per-source MaxStreams enforcement on
+        // the proxy/HDHomeRun path.
+        services.AddSingleton<StreamSessionTracker>();
         services.AddScoped<DvrRecordingService>();
         services.AddScoped<EventDvrService>();
         services.AddScoped<DvrQualityScoreCalculator>();
@@ -398,6 +401,17 @@ public static class ServiceCollectionExtensions
         // Off by default (Config.EnableEventRetention).
         services.AddSingleton<EventRetentionService>();
         services.AddHostedService(sp => sp.GetRequiredService<EventRetentionService>());
+
+        // Daily maintenance: scheduled backups (BackupInterval), recycle-bin
+        // cleanup, DVR recording retention, system-event pruning.
+        services.AddHostedService<HousekeepingService>();
+
+        // Periodic health evaluation + OnHealthIssue/OnHealthRestored
+        // notifications; previously checks only ran when the UI asked.
+        services.AddHostedService<HealthCheckMonitorService>();
+
+        // Periodic sync of enabled import lists (previously manual-only).
+        services.AddHostedService<ImportListSyncService>();
 
         return services;
     }

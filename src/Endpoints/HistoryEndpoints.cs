@@ -202,6 +202,122 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
     return Results.Ok(allHistory);
 });
 
+// Season-scoped variant of the event history timeline above: the same four
+// sources (imports, blocklist, grabs, file removals) across every event in
+// the league + season. Backs the season search modal's history panel, which
+// previously called this route while it did not exist and always rendered
+// empty. Each source is capped so a large season cannot return an unbounded
+// payload.
+app.MapGet("/api/leagues/{leagueId:int}/seasons/{season}/history", async (int leagueId, string season, SportarrDbContext db) =>
+{
+    const int PerSourceCap = 100;
+
+    var eventIds = await db.Events
+        .Where(e => e.LeagueId == leagueId && e.Season == season)
+        .Select(e => e.Id)
+        .ToListAsync();
+
+    if (eventIds.Count == 0)
+        return Results.Ok(new List<object>());
+
+    var importHistory = await db.ImportHistories
+        .Where(h => h.EventId != null && eventIds.Contains(h.EventId.Value))
+        .OrderByDescending(h => h.ImportedAt)
+        .Take(PerSourceCap)
+        .Select(h => new {
+            h.Id,
+            Type = "import",
+            h.SourcePath,
+            h.DestinationPath,
+            h.Quality,
+            h.Size,
+            Decision = h.Decision.ToString(),
+            h.Warnings,
+            h.Errors,
+            Date = h.ImportedAt,
+            Indexer = h.DownloadQueueItem != null ? h.DownloadQueueItem.Indexer : null,
+            TorrentHash = h.DownloadQueueItem != null ? h.DownloadQueueItem.TorrentInfoHash : null,
+            h.Part
+        })
+        .ToListAsync();
+
+    var blocklistHistory = await db.Blocklist
+        .Where(b => b.EventId != null && eventIds.Contains(b.EventId.Value))
+        .OrderByDescending(b => b.BlockedAt)
+        .Take(PerSourceCap)
+        .Select(b => new {
+            b.Id,
+            Type = "blocklist",
+            SourcePath = b.Title,
+            DestinationPath = (string?)null,
+            Quality = (string?)null,
+            Size = (long?)null,
+            Decision = "Blocklisted",
+            Warnings = new List<string>(),
+            Errors = new List<string> { b.Message ?? "Blocklisted" },
+            Date = b.BlockedAt,
+            Indexer = b.Indexer,
+            TorrentHash = b.TorrentInfoHash,
+            Part = b.Part
+        })
+        .ToListAsync();
+
+    var queueHistory = await db.DownloadQueue
+        .Where(q => eventIds.Contains(q.EventId))
+        .OrderByDescending(q => q.Added)
+        .Take(PerSourceCap)
+        .Select(q => new {
+            q.Id,
+            Type = q.Status == DownloadStatus.Completed ? "completed" :
+                   q.Status == DownloadStatus.Failed ? "failed" :
+                   q.Status == DownloadStatus.Warning ? "warning" : "grabbed",
+            SourcePath = q.Title,
+            DestinationPath = (string?)null,
+            Quality = q.Quality,
+            Size = (long?)q.Size,
+            Decision = q.Status.ToString(),
+            Warnings = new List<string>(),
+            Errors = !string.IsNullOrEmpty(q.ErrorMessage) ? new List<string> { q.ErrorMessage } : new List<string>(),
+            Date = q.Added,
+            Indexer = q.Indexer,
+            TorrentHash = q.TorrentInfoHash,
+            Part = q.Part
+        })
+        .ToListAsync();
+
+    var fileHistory = await db.EventFileHistory
+        .Where(h => h.EventId != null && eventIds.Contains(h.EventId.Value))
+        .OrderByDescending(h => h.Date)
+        .Take(PerSourceCap)
+        .Select(h => new {
+            h.Id,
+            Type = "deleted",
+            SourcePath = h.SourceTitle,
+            DestinationPath = (string?)null,
+            h.Quality,
+            Size = (long?)null,
+            Decision = h.Type == EventFileHistoryType.DeletedForUpgrade ? "Deleted for upgrade" : "Deleted",
+            Warnings = new List<string>(),
+            Errors = !string.IsNullOrEmpty(h.Reason) ? new List<string> { h.Reason! } : new List<string>(),
+            Date = h.Date,
+            Indexer = (string?)null,
+            TorrentHash = (string?)null,
+            h.Part
+        })
+        .ToListAsync();
+
+    var seasonHistory = importHistory
+        .Cast<object>()
+        .Concat(blocklistHistory.Cast<object>())
+        .Concat(queueHistory.Cast<object>())
+        .Concat(fileHistory.Cast<object>())
+        .OrderByDescending(h => ((dynamic)h).Date)
+        .Take(200)
+        .ToList();
+
+    return Results.Ok(seasonHistory);
+});
+
 app.MapGet("/api/history/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.ImportHistories
@@ -391,6 +507,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
     int id,
     SportarrDbContext db,
     DownloadClientService downloadClientService,
+    NotificationService notificationService,
     ILogger<Program> logger) =>
 {
     var grabHistory = await db.GrabHistory
@@ -462,6 +579,24 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             indexerRecord?.SeedRatio,
             indexerRecord?.SeedTime
         );
+
+        if (downloadId != null)
+        {
+            try
+            {
+                await notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnGrab,
+                    $"Grabbed: {grabHistory.Title}",
+                    $"Re-grab from history\nIndexer: {grabHistory.Indexer ?? "Unknown"}",
+                    new Dictionary<string, object>
+                    {
+                        { "eventId", grabHistory.EventId },
+                        { "indexer", grabHistory.Indexer ?? "" },
+                        { "downloadId", downloadId },
+                    });
+            }
+            catch { /* notification failure never fails the regrab */ }
+        }
 
         if (downloadId == null)
         {

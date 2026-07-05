@@ -59,6 +59,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
     {
         RenameEvents = config.RenameEvents,
         ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
+        DownloadPropersAndRepacks = config.DownloadPropersAndRepacks,
         EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
         StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
         // Granular folder format settings
@@ -198,6 +199,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         CheckForFinishedDownloadInterval = config.CheckForFinishedDownloadInterval,
         RedownloadFailedDownloads = config.RedownloadFailedDownloads,
         RedownloadFailedFromInteractiveSearch = config.RedownloadFailedFromInteractiveSearch,
+        StalledDownloadTimeoutMinutes = config.StalledDownloadTimeoutMinutes,
 
         // Search Queue Management (Huntarr-style)
         MaxDownloadQueueSize = config.MaxDownloadQueueSize,
@@ -419,6 +421,12 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         {
             config.RenameEvents = mediaManagementSettings.RenameEvents;
             config.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
+            config.DownloadPropersAndRepacks = mediaManagementSettings.DownloadPropersAndRepacks switch
+            {
+                "doNotUpgrade" => "doNotUpgrade",
+                "doNotPrefer" => "doNotPrefer",
+                _ => "preferAndUpgrade",
+            };
             config.EnableMultiPartEpisodes = mediaManagementSettings.EnableMultiPartEpisodes;
             config.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             config.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
@@ -443,6 +451,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         config.CheckForFinishedDownloadInterval = updatedSettings.CheckForFinishedDownloadInterval;
         config.RedownloadFailedDownloads = updatedSettings.RedownloadFailedDownloads;
         config.RedownloadFailedFromInteractiveSearch = updatedSettings.RedownloadFailedFromInteractiveSearch;
+        config.StalledDownloadTimeoutMinutes = Math.Clamp(updatedSettings.StalledDownloadTimeoutMinutes, 0, 1440);
 
         // Search Queue Management (Huntarr-style)
         config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;

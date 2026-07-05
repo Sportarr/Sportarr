@@ -121,6 +121,7 @@ public class NewznabClient
 
         var xml = await response.Content.ReadAsStringAsync();
         var results = ParseSearchResults(xml, config.Name);
+        ApplyMultiLanguages(results, config);
 
         _logger.LogInformation("[Newznab] Found {Count} results from {Indexer}", results.Count, config.Name);
 
@@ -194,6 +195,7 @@ public class NewznabClient
 
         var xml = await response.Content.ReadAsStringAsync();
         var results = ParseSearchResults(xml, config.Name);
+        ApplyMultiLanguages(results, config);
 
         _logger.LogDebug("[Newznab] Fetched {Count} releases from {Indexer} RSS feed", results.Count, config.Name);
 
@@ -259,8 +261,39 @@ public class NewznabClient
         }
 
         var queryString = string.Join("&", parameters.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
+        // Empty apiPath -> use baseUrl as-is (avoids a "baseUrl/?..." double).
         var prefix = string.IsNullOrEmpty(apiPath) ? baseUrl : $"{baseUrl}/{apiPath}";
-        return $"{prefix}?{queryString}";
+        var url = $"{prefix}?{queryString}";
+
+        // Per-indexer Additional Parameters: a raw query-string fragment
+        // (e.g. "&uid=123&passkey=abc") appended verbatim to every request,
+        // for indexers that need non-standard parameters.
+        if (!string.IsNullOrWhiteSpace(config.AdditionalParameters))
+        {
+            var extra = config.AdditionalParameters.Trim();
+            url += extra.StartsWith('&') ? extra : "&" + extra;
+        }
+
+        return url;
+    }
+
+    /// <summary>
+    /// For MULTI releases, attach the indexer's configured Multi Languages
+    /// so language custom formats can match the languages the release
+    /// actually carries.
+    /// </summary>
+    private static void ApplyMultiLanguages(List<ReleaseSearchResult> results, Indexer config)
+    {
+        if (config.MultiLanguages == null || config.MultiLanguages.Count == 0)
+            return;
+
+        foreach (var result in results)
+        {
+            if (string.Equals(result.Language, "Multi", StringComparison.OrdinalIgnoreCase))
+            {
+                result.MultiLanguageNames = config.MultiLanguages;
+            }
+        }
     }
 
     private List<ReleaseSearchResult> ParseSearchResults(string xml, string indexerName)

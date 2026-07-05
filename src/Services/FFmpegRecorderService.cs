@@ -11,15 +11,18 @@ public class FFmpegRecorderService
 {
     private readonly ILogger<FFmpegRecorderService> _logger;
     private readonly ConfigService _configService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly Dictionary<int, RecordingProcess> _activeRecordings = new();
     private readonly object _lock = new();
 
     public FFmpegRecorderService(
         ILogger<FFmpegRecorderService> logger,
-        ConfigService configService)
+        ConfigService configService,
+        IServiceScopeFactory scopeFactory)
     {
         _logger = logger;
         _configService = configService;
+        _scopeFactory = scopeFactory;
     }
 
     /// <summary>
@@ -45,6 +48,25 @@ public class FFmpegRecorderService
                     Success = false,
                     Error = "Stream URL is empty or null"
                 };
+            }
+
+            // Refuse a second concurrent recorder for the same recording.
+            // Without this, a manual start racing the scheduler tick spawns
+            // two ffmpeg processes writing the SAME output file: the second
+            // truncates the first's data on open and the interleaved writes
+            // corrupt the container.
+            lock (_lock)
+            {
+                if (_activeRecordings.TryGetValue(recordingId, out var existing) &&
+                    !existing.Process.HasExited)
+                {
+                    _logger.LogWarning("[DVR] Recording {RecordingId} already has a live recorder process; refusing duplicate start", recordingId);
+                    return new RecordingResult
+                    {
+                        Success = false,
+                        Error = "A recorder process is already active for this recording"
+                    };
+                }
             }
 
             // Ensure output directory exists
@@ -151,40 +173,54 @@ public class FFmpegRecorderService
                 }
             }
 
-            // Check if output file is being written to (should have some data after 2 seconds)
-            await Task.Delay(3000, cancellationToken);  // Wait a bit more for data
+            // Poll up to ~15s total for the first output bytes. A process
+            // that dies in this window is a FAILED START (typical dead-
+            // provider connection timeout surfaces at 5-10s), which lets
+            // the caller rotate to a fallback channel immediately instead
+            // of the watchdog discovering the corpse a tick later. A
+            // process that stays alive without output is tolerated (some
+            // providers are slow to deliver the first packets).
+            var probeStart = DateTime.UtcNow;
+            var probeDeadline = probeStart.AddSeconds(13); // + the 2s waited above
+            long observedBytes = 0;
 
-            if (File.Exists(outputPath))
+            while (DateTime.UtcNow < probeDeadline)
             {
-                var fileInfo = new FileInfo(outputPath);
-                if (fileInfo.Length == 0)
+                if (process.HasExited)
                 {
-                    _logger.LogWarning("[DVR] Recording {RecordingId}: Output file exists but is 0 bytes after 5 seconds", recordingId);
-                    // Don't fail yet - some streams are slow to start
+                    var stderr = await process.StandardError.ReadToEndAsync();
+                    _logger.LogError("[DVR] FFmpeg exited during startup with code {ExitCode}. Error: {Error}",
+                        process.ExitCode, stderr);
+
+                    return new RecordingResult
+                    {
+                        Success = false,
+                        Error = $"FFmpeg stopped unexpectedly: {stderr}"
+                    };
                 }
-                else
+
+                if (File.Exists(outputPath))
                 {
-                    _logger.LogInformation("[DVR] Recording {RecordingId}: Output file size after 5 seconds: {Size} bytes",
-                        recordingId, fileInfo.Length);
+                    try { observedBytes = new FileInfo(outputPath).Length; }
+                    catch (IOException) { /* transient - retry next poll */ }
+
+                    if (observedBytes > 0)
+                        break;
                 }
+
+                await Task.Delay(1000, cancellationToken);
+            }
+
+            var probedFor = (int)(DateTime.UtcNow - probeStart).TotalSeconds + 2;
+            if (observedBytes > 0)
+            {
+                _logger.LogInformation("[DVR] Recording {RecordingId}: Output file size after {Seconds} seconds: {Size} bytes",
+                    recordingId, probedFor, observedBytes);
             }
             else
             {
-                _logger.LogWarning("[DVR] Recording {RecordingId}: Output file not created after 5 seconds", recordingId);
-            }
-
-            // Check again if FFmpeg has exited during our delay
-            if (process.HasExited)
-            {
-                var stderr = await process.StandardError.ReadToEndAsync();
-                _logger.LogError("[DVR] FFmpeg exited during startup with code {ExitCode}. Error: {Error}",
-                    process.ExitCode, stderr);
-
-                return new RecordingResult
-                {
-                    Success = false,
-                    Error = $"FFmpeg stopped unexpectedly: {stderr}"
-                };
+                _logger.LogWarning("[DVR] Recording {RecordingId}: No output data after {Seconds} seconds; continuing (stream may be slow to start)",
+                    recordingId, probedFor);
             }
 
             // Store active recording
@@ -246,6 +282,7 @@ public class FFmpegRecorderService
         {
             _logger.LogInformation("[DVR] Stopping recording {RecordingId}", recordingId);
 
+            recordingProcess.StopRequested = true;
             var process = recordingProcess.Process;
 
             if (!process.HasExited)
@@ -1333,6 +1370,25 @@ public class FFmpegRecorderService
                 _logger.LogWarning("[DVR] Recording {RecordingId}: No stream data was received. The stream URL may be invalid or inaccessible.",
                     recording.RecordingId);
             }
+
+            // Drop the tracker entry so a self-exited process doesn't
+            // linger as a phantom "active" recording, then escalate
+            // unrequested exits so the recording row is failed (and
+            // rotated to a fallback channel) immediately instead of
+            // waiting for the next watchdog tick.
+            lock (_lock)
+            {
+                if (_activeRecordings.TryGetValue(recording.RecordingId, out var current) &&
+                    ReferenceEquals(current, recording))
+                {
+                    _activeRecordings.Remove(recording.RecordingId);
+                }
+            }
+
+            if (!recording.StopRequested && !cancellationToken.IsCancellationRequested)
+            {
+                await NotifyRecorderExitedAsync(recording, process.ExitCode, errorMessages);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -1341,6 +1397,32 @@ public class FFmpegRecorderService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[DVR] Error monitoring recording {RecordingId}", recording.RecordingId);
+        }
+    }
+
+    /// <summary>
+    /// A recorder process exited without anyone asking it to stop. Hand
+    /// the recording row to DvrRecordingService so it is marked Failed
+    /// (with fallback-channel rotation while the window is still open)
+    /// or finalized as Completed when the exit landed at the natural end
+    /// of the window. Runs on the monitor's background task, so it needs
+    /// its own DI scope for database access.
+    /// </summary>
+    private async Task NotifyRecorderExitedAsync(RecordingProcess recording, int exitCode, List<string> errorMessages)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dvrService = scope.ServiceProvider.GetRequiredService<DvrRecordingService>();
+            var errorSummary = errorMessages.Count > 0
+                ? string.Join("; ", errorMessages.TakeLast(3))
+                : null;
+            await dvrService.HandleRecorderExitAsync(recording.RecordingId, exitCode, errorSummary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DVR] Failed to escalate recorder exit for recording {RecordingId}; the watchdog will reconcile it",
+                recording.RecordingId);
         }
     }
 
@@ -1643,6 +1725,11 @@ internal class RecordingProcess
     public required Process Process { get; set; }
     public required string OutputPath { get; set; }
     public DateTime StartTime { get; set; }
+
+    // Set by StopRecordingAsync before the process is asked to exit, so
+    // the monitor can tell an intentional stop from a self-exit (stream
+    // death) and only escalate the latter.
+    public volatile bool StopRequested;
 }
 
 /// <summary>

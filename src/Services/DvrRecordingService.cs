@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,32 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class DvrRecordingService
 {
+    /// <summary>
+    /// Error returned when a start is refused because another start for
+    /// the same recording is still in flight. The scheduler treats this
+    /// as benign (its tick raced a manual start), so it must stay a
+    /// stable, comparable value.
+    /// </summary>
+    public const string StartAlreadyInProgressError = "Recording start already in progress";
+
+    // The service is scoped, so the in-flight set must be static to be
+    // shared across the manual-start endpoint's scope and the
+    // scheduler's scope. FFmpeg takes several seconds to spawn and
+    // probe before the row flips to Recording; without this gate both
+    // callers pass the status check and spawn duplicate processes
+    // writing the same output file.
+    private static readonly ConcurrentDictionary<int, byte> _startsInFlight = new();
+
+    // Overtime guard state. Total minutes each recording has been extended
+    // past its original end (caps runaway extension), and a short-lived
+    // per-league livescore cache so a scheduler tick with several
+    // recordings ending doesn't hammer the hub. Static: the service is
+    // scoped, the scheduler ticks in fresh scopes. Reset on app restart -
+    // worst case a restart mid-overtime grants a fresh extension budget.
+    private static readonly ConcurrentDictionary<int, int> _overtimeExtensions = new();
+    private static readonly ConcurrentDictionary<string, (DateTime FetchedAt, List<Event> Events)> _livescoreCache = new();
+    private const int OvertimeStepMinutes = 10;
+
     private readonly ILogger<DvrRecordingService> _logger;
     private readonly SportarrDbContext _db;
     private readonly FFmpegRecorderService _ffmpegRecorder;
@@ -19,6 +46,8 @@ public class DvrRecordingService
     private readonly ConfigService _configService;
     private readonly FileNamingService _namingService;
     private readonly DiskSpaceService _diskSpaceService;
+    private readonly NotificationService _notificationService;
+    private readonly SportarrApiClient _sportarrApiClient;
 
     public DvrRecordingService(
         ILogger<DvrRecordingService> logger,
@@ -27,7 +56,9 @@ public class DvrRecordingService
         IptvSourceService iptvService,
         ConfigService configService,
         FileNamingService namingService,
-        DiskSpaceService diskSpaceService)
+        DiskSpaceService diskSpaceService,
+        NotificationService notificationService,
+        SportarrApiClient sportarrApiClient)
     {
         _logger = logger;
         _db = db;
@@ -36,7 +67,45 @@ public class DvrRecordingService
         _configService = configService;
         _namingService = namingService;
         _diskSpaceService = diskSpaceService;
+        _notificationService = notificationService;
+        _sportarrApiClient = sportarrApiClient;
     }
+
+    /// <summary>
+    /// Send a recording lifecycle notification. Failures are logged and
+    /// swallowed - a broken Discord webhook must never break a recording.
+    /// </summary>
+    private async Task NotifyRecordingAsync(NotificationTrigger trigger, string title, string message, DvrRecording recording)
+    {
+        try
+        {
+            await _notificationService.SendNotificationAsync(trigger, title, message,
+                new Dictionary<string, object>
+                {
+                    { "recordingId", recording.Id },
+                    { "recordingTitle", recording.Title },
+                    { "channelId", recording.ChannelId },
+                    { "eventId", recording.EventId ?? 0 },
+                });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[DVR] Failed to send {Trigger} notification for recording {Id}", trigger, recording.Id);
+        }
+    }
+
+    /// <summary>
+    /// Failure notification shared with the watchdog, which detects dead
+    /// and stalled recorders on its own tick.
+    /// </summary>
+    public Task NotifyRecordingFailedAsync(DvrRecording recording, string reason, int? rotatedToRecordingId = null)
+        => NotifyRecordingAsync(
+            NotificationTrigger.OnRecordingFailed,
+            $"Recording failed: {recording.Title}",
+            reason + (rotatedToRecordingId.HasValue
+                ? " Retrying on a fallback channel."
+                : ""),
+            recording);
 
     // ============================================================================
     // Recording CRUD
@@ -111,6 +180,30 @@ public class DvrRecordingService
     /// </summary>
     public async Task<DvrRecording> ScheduleRecordingAsync(ScheduleDvrRecordingRequest request)
     {
+        // All scheduling math compares against DateTime.UtcNow, so pin
+        // the incoming times to UTC. JSON datetimes without an offset
+        // deserialize as Kind=Unspecified (meant as UTC by the frontend);
+        // offset-carrying values arrive Kind=Local and need converting.
+        request.ScheduledStart = NormalizeToUtc(request.ScheduledStart);
+        request.ScheduledEnd = NormalizeToUtc(request.ScheduledEnd);
+
+        if (request.ScheduledEnd <= request.ScheduledStart)
+        {
+            throw new ArgumentException("Scheduled end must be after scheduled start.");
+        }
+
+        // A live recording whose whole window already passed can never
+        // capture anything - without this check the row is accepted,
+        // sits in Scheduled, and the watchdog flags it "missed" minutes
+        // later with a misleading downtime/slot explanation. Catchup is
+        // exempt: a closed window is its normal trigger condition.
+        if (request.Method != DvrRecordingMethod.Catchup &&
+            request.ScheduledEnd.AddMinutes(request.PostPadding) <= DateTime.UtcNow)
+        {
+            throw new ArgumentException(
+                $"The scheduled window is already in the past (ends {request.ScheduledEnd:yyyy-MM-dd HH:mm} UTC). Nothing would be recorded - check the start and end times.");
+        }
+
         var channel = await _db.IptvChannels
             .Include(c => c.Source)
             .FirstOrDefaultAsync(c => c.Id == request.ChannelId);
@@ -193,6 +286,13 @@ public class DvrRecordingService
 
         return recording;
     }
+
+    private static DateTime NormalizeToUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+    };
 
     /// <summary>
     /// Update a scheduled recording
@@ -305,6 +405,24 @@ public class DvrRecordingService
     /// </summary>
     public async Task<RecordingResult> StartRecordingAsync(int recordingId)
     {
+        if (!_startsInFlight.TryAdd(recordingId, 0))
+        {
+            _logger.LogDebug("[DVR] Start of recording {Id} skipped: another start is already in flight", recordingId);
+            return new RecordingResult { Success = false, Error = StartAlreadyInProgressError };
+        }
+
+        try
+        {
+            return await StartRecordingCoreAsync(recordingId);
+        }
+        finally
+        {
+            _startsInFlight.TryRemove(recordingId, out _);
+        }
+    }
+
+    private async Task<RecordingResult> StartRecordingCoreAsync(int recordingId)
+    {
         var recording = await _db.DvrRecordings
             .Include(r => r.Channel)
             .ThenInclude(c => c!.Source)
@@ -350,6 +468,11 @@ public class DvrRecordingService
 
             _logger.LogInformation("[DVR] Started recording {Id}: {Title} -> {Path}",
                 recordingId, recording.Title, outputPath);
+
+            await NotifyRecordingAsync(NotificationTrigger.OnRecordingStarted,
+                $"Recording started: {recording.Title}",
+                $"Channel: {recording.Channel.Name}\nWindow: {recording.ScheduledStart:yyyy-MM-dd HH:mm} - {recording.ScheduledEnd:HH:mm} UTC",
+                recording);
         }
         else
         {
@@ -365,7 +488,11 @@ public class DvrRecordingService
             // (offline source, ffmpeg can't open the stream, source
             // tuner saturated) and a different channel airing the same
             // event will succeed.
-            await TryRescheduleOnFallbackAsync(recording, "start failed: " + result.Error);
+            var rotatedId = await TryRescheduleOnFallbackAsync(recording, "start failed: " + result.Error);
+
+            await NotifyRecordingFailedAsync(recording,
+                $"Could not start on channel {recording.Channel.Name}: {result.Error}",
+                rotatedId);
         }
 
         return result;
@@ -481,6 +608,83 @@ public class DvrRecordingService
     }
 
     /// <summary>
+    /// Called by the recorder's monitor task when an ffmpeg process
+    /// exited without a stop request (stream death, provider drop,
+    /// crash). Fails the row and rotates to a fallback channel while
+    /// the scheduled window is still open; when the exit landed at the
+    /// natural end of the window with data on disk, finalizes it as
+    /// Completed instead so a stream that ends exactly on time isn't
+    /// reported as a failure.
+    /// </summary>
+    public async Task HandleRecorderExitAsync(int recordingId, int exitCode, string? errorSummary)
+    {
+        var recording = await _db.DvrRecordings
+            .Include(r => r.Channel)
+            .ThenInclude(c => c!.Source)
+            .FirstOrDefaultAsync(r => r.Id == recordingId);
+
+        // The stop path or the watchdog may have finalized the row
+        // between process exit and this callback; never overwrite a
+        // terminal state.
+        if (recording == null || recording.Status != DvrRecordingStatus.Recording)
+            return;
+
+        var now = DateTime.UtcNow;
+        var windowEnd = recording.ScheduledEnd.AddMinutes(recording.PostPadding);
+        _overtimeExtensions.TryRemove(recordingId, out _);
+
+        long fileSize = 0;
+        if (!string.IsNullOrEmpty(recording.OutputPath) && File.Exists(recording.OutputPath))
+        {
+            try { fileSize = new FileInfo(recording.OutputPath).Length; }
+            catch (IOException) { /* transient - treated as no data */ }
+        }
+
+        recording.ActualEnd = now;
+        recording.LastUpdated = now;
+
+        // Exited within 30s of the natural end with data on disk:
+        // the stream simply ended on time, so this is a completed run.
+        if (fileSize > 0 && now >= windowEnd.AddSeconds(-30))
+        {
+            recording.Status = DvrRecordingStatus.Completed;
+            recording.FileSize = fileSize;
+            var started = recording.ActualStart ?? recording.ScheduledStart;
+            var duration = (int)Math.Max(1, (now - started).TotalSeconds);
+            recording.DurationSeconds = duration;
+            recording.AverageBitrate = (fileSize * 8) / duration;
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation("[DVR] Recording {Id}: recorder exited at the end of its window; finalized as completed ({Size} bytes)",
+                recordingId, fileSize);
+            FirePostRecordingCommand(recording);
+
+            await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
+                $"Recording completed: {recording.Title}",
+                $"Duration: {duration / 60}m\nSize: {fileSize / 1024.0 / 1024.0:F0} MB",
+                recording);
+            return;
+        }
+
+        recording.Status = DvrRecordingStatus.Failed;
+        recording.ErrorMessage = $"Recorder exited unexpectedly (code {exitCode})" +
+            (string.IsNullOrEmpty(errorSummary) ? "" : $": {errorSummary}");
+        await _db.SaveChangesAsync();
+
+        _logger.LogWarning("[DVR] Recording {Id}: recorder exited mid-window (code {Code}); marked Failed", recordingId, exitCode);
+
+        int? rotatedId = null;
+        if (now < windowEnd)
+        {
+            rotatedId = await TryRescheduleOnFallbackAsync(recording, "recorder exited mid-window");
+        }
+
+        await NotifyRecordingFailedAsync(recording,
+            $"The stream died mid-recording ({recording.ErrorMessage}).",
+            rotatedId);
+    }
+
+    /// <summary>
     /// Return the set of IPTV source ids that already have at least
     /// MaxStreams active recordings — picking another channel from
     /// these sources would deadlock at the tuner level. Phase 3
@@ -519,6 +723,7 @@ public class DvrRecordingService
 
         recording.ActualEnd = DateTime.UtcNow;
         recording.LastUpdated = DateTime.UtcNow;
+        _overtimeExtensions.TryRemove(recordingId, out _);
 
         if (result.Success)
         {
@@ -551,11 +756,18 @@ public class DvrRecordingService
         // recording completed cleanly (the common case).
         if (recording.Status == DvrRecordingStatus.Failed)
         {
-            await TryRescheduleOnFallbackAsync(recording, "stop failed: " + result.Error);
+            var rotatedId = await TryRescheduleOnFallbackAsync(recording, "stop failed: " + result.Error);
+            await NotifyRecordingFailedAsync(recording, $"Recording did not stop cleanly: {result.Error}", rotatedId);
         }
         else if (recording.Status == DvrRecordingStatus.Completed)
         {
             FirePostRecordingCommand(recording);
+
+            var sizeMb = (result.FileSize ?? 0) / 1024.0 / 1024.0;
+            await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
+                $"Recording completed: {recording.Title}",
+                $"Duration: {(result.DurationSeconds ?? 0) / 60}m\nSize: {sizeMb:F0} MB",
+                recording);
         }
 
         return result;
@@ -720,6 +932,111 @@ public class DvrRecordingService
     }
 
     /// <summary>
+    /// Overtime guard: before an event-linked live recording is stopped at
+    /// its scheduled end, ask the league's livescore feed whether the event
+    /// is still in progress. If it is, push ScheduledEnd out another
+    /// increment (which the scheduler and watchdog both respect) instead of
+    /// cutting off the finish - the padding-based cutoff losing overtime,
+    /// extra innings, and stoppage time is the classic sports DVR failure.
+    /// Extension only happens on POSITIVE evidence: the event must appear
+    /// in the feed with a non-terminal status. No feed, no match, an error,
+    /// or the cap reached all mean "stop as scheduled", so the guard can
+    /// never keep a recording alive on ambiguity.
+    /// </summary>
+    public async Task<bool> ShouldExtendForOvertimeAsync(DvrRecording recording)
+    {
+        if (recording.EventId == null || recording.Method != DvrRecordingMethod.Live)
+            return false;
+
+        try
+        {
+            var config = await _configService.GetConfigAsync();
+            if (!config.DvrOvertimeGuardEnabled || config.DvrOvertimeMaxExtensionMinutes <= 0)
+                return false;
+
+            var extendedSoFar = _overtimeExtensions.GetValueOrDefault(recording.Id);
+            if (extendedSoFar >= config.DvrOvertimeMaxExtensionMinutes)
+            {
+                _logger.LogWarning(
+                    "[DVR] Recording {Id} hit the overtime extension ceiling ({Max}m); stopping at current end",
+                    recording.Id, config.DvrOvertimeMaxExtensionMinutes);
+                return false;
+            }
+
+            var evt = await _db.Events
+                .Include(e => e.League)
+                .FirstOrDefaultAsync(e => e.Id == recording.EventId.Value);
+            if (evt?.ExternalId == null || evt.League?.ExternalId == null)
+                return false;
+
+            var livescore = await GetLivescoreCachedAsync(evt.League.ExternalId);
+            var liveEntry = livescore?.FirstOrDefault(l => l.ExternalId == evt.ExternalId);
+            if (liveEntry == null || !IndicatesInProgress(liveEntry.Status))
+                return false;
+
+            recording.ScheduledEnd = recording.ScheduledEnd.AddMinutes(OvertimeStepMinutes);
+            recording.LastUpdated = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            _overtimeExtensions[recording.Id] = extendedSoFar + OvertimeStepMinutes;
+
+            _logger.LogInformation(
+                "[DVR] Overtime guard: '{Title}' is still in progress ({Status}); extended recording {Id} by {Step}m ({Total}m/{Max}m used)",
+                evt.Title, liveEntry.Status, recording.Id, OvertimeStepMinutes,
+                extendedSoFar + OvertimeStepMinutes, config.DvrOvertimeMaxExtensionMinutes);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[DVR] Overtime check failed for recording {Id}; stopping as scheduled", recording.Id);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// A status counts as in-progress when the event appears in the
+    /// livescore feed and its status is not one of the known terminal or
+    /// pre-game labels. Being listed in the feed at all is already strong
+    /// evidence of liveness; the label check filters the edges.
+    /// </summary>
+    public static bool IndicatesInProgress(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
+
+        var s = status.Trim().ToLowerInvariant();
+
+        // Pre-game labels
+        if (s is "scheduled" or "not started" or "ns" or "time to be defined" or "tbd")
+            return false;
+
+        // Terminal labels
+        if (s.Contains("finish") || s.Contains("final") || s.Contains("ended") ||
+            s.Contains("completed") || s.Contains("after") ||
+            s is "ft" or "aet" or "aot" or "pen" or "postponed" or "cancelled" or "canceled" or "abandoned" or "suspended")
+            return false;
+
+        // Everything else on a live feed ("live", "1st half", "q3", "ht",
+        // period/lap/round descriptors...) counts as in progress.
+        return true;
+    }
+
+    private async Task<List<Event>?> GetLivescoreCachedAsync(string leagueExternalId)
+    {
+        if (_livescoreCache.TryGetValue(leagueExternalId, out var cached) &&
+            DateTime.UtcNow - cached.FetchedAt < TimeSpan.FromSeconds(60))
+        {
+            return cached.Events;
+        }
+
+        var events = await _sportarrApiClient.GetLivescoreByLeagueAsync(leagueExternalId);
+        if (events != null)
+        {
+            _livescoreCache[leagueExternalId] = (DateTime.UtcNow, events);
+        }
+        return events;
+    }
+
+    /// <summary>
     /// Schedule recordings for an event based on channel-league mappings
     /// </summary>
     public async Task<List<DvrRecording>> ScheduleRecordingsForEventAsync(int eventId)
@@ -796,6 +1113,12 @@ public class DvrRecordingService
             .FirstOrDefault();
 
         var basePath = rootFolder?.Path ?? Path.Combine(AppContext.BaseDirectory, "recordings");
+        if (rootFolder == null)
+        {
+            _logger.LogWarning(
+                "[DVR] No accessible root folder configured; recording to the application directory ({Path}). In Docker this lives INSIDE the container and is invisible on the host - add a root folder under Settings > Media Management to record somewhere durable.",
+                basePath);
+        }
 
         // Get container format
         var container = config.DvrContainer ?? "mp4";
@@ -856,7 +1179,7 @@ public class DvrRecordingService
                     Part = partSuffix
                 };
 
-                var filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, $".{container}");
+                var filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, $".{container}", settings.ReplaceIllegalCharacters);
                 destinationPath = Path.Combine(destinationPath, filename);
             }
             else

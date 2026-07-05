@@ -94,6 +94,7 @@ public class RssSyncService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var indexerSearchService = scope.ServiceProvider.GetRequiredService<IndexerSearchService>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+        var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
         var delayProfileService = scope.ServiceProvider.GetRequiredService<DelayProfileService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
@@ -263,7 +264,7 @@ public class RssSyncService : BackgroundService
 
                 // GRAB IT! (pass the detected part)
                 var grabbed = await GrabReleaseAsync(
-                    db, matchedEvent, release, downloadClientService, shouldGrab.ReleasePart, cancellationToken);
+                    db, matchedEvent, release, downloadClientService, notificationService, shouldGrab.ReleasePart, cancellationToken);
 
                 if (grabbed)
                 {
@@ -523,9 +524,18 @@ public class RssSyncService : BackgroundService
 
         if (!string.IsNullOrEmpty(release.TorrentInfoHash))
         {
-            // Torrent: check by info hash
-            isBlocklisted = await db.Blocklist
-                .AnyAsync(b => b.TorrentInfoHash == release.TorrentInfoHash, cancellationToken);
+            // Torrent: check by info hash, unless the indexer opted out of
+            // hash-based rejection (RejectBlocklistedTorrentHashes = false).
+            var rejectByHash = await db.Indexers
+                .Where(i => i.Name == release.Indexer)
+                .Select(i => (bool?)i.RejectBlocklistedTorrentHashes)
+                .FirstOrDefaultAsync(cancellationToken) ?? true;
+
+            if (rejectByHash)
+            {
+                isBlocklisted = await db.Blocklist
+                    .AnyAsync(b => b.TorrentInfoHash == release.TorrentInfoHash, cancellationToken);
+            }
         }
         else if (release.Protocol == "Usenet")
         {
@@ -661,7 +671,15 @@ public class RssSyncService : BackgroundService
                 return (false, "Upgrades are disabled for this quality profile", releasePart);
             }
 
-            if (newTotalScore <= existingTotalScore)
+            // A proper/repack of the SAME quality is a legitimate upgrade:
+            // the original was broken and re-released fixed. Gated on the
+            // Download Propers and Repacks setting.
+            var revisionUpgrade = config.DownloadPropersAndRepacks == "preferAndUpgrade" &&
+                newTotalScore == existingTotalScore &&
+                Helpers.ReleaseRevision.Parse(release.Title) >
+                Helpers.ReleaseRevision.Parse(existingFile.OriginalTitle ?? existingFile.Quality);
+
+            if (newTotalScore <= existingTotalScore && !revisionUpgrade)
             {
                 return (false, $"Existing file has same or better score ({existingTotalScore})", releasePart);
             }
@@ -900,6 +918,7 @@ public class RssSyncService : BackgroundService
         Event evt,
         ReleaseSearchResult release,
         DownloadClientService downloadClientService,
+        NotificationService notificationService,
         string? releasePart,
         CancellationToken cancellationToken)
     {
@@ -936,14 +955,17 @@ public class RssSyncService : BackgroundService
             ? evt.League.RootFolder.DefaultDownloadClientCategory!
             : downloadClient.Category;
 
-        // Send to download client with seed config from indexer
+        // Send to download client with seed config from indexer. Packs use
+        // the pack-specific seed time when the indexer defines one.
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             release.DownloadUrl,
             rssGrabCategory,
             release.Title,
             indexerRecord?.SeedRatio,
-            indexerRecord?.SeedTime
+            release.IsPack
+                ? (indexerRecord?.SeasonPackSeedTime ?? indexerRecord?.SeedTime)
+                : indexerRecord?.SeedTime
         );
 
         if (downloadId == null)
@@ -979,6 +1001,27 @@ public class RssSyncService : BackgroundService
         };
 
         db.DownloadQueue.Add(queueItem);
+
+        try
+        {
+            await notificationService.SendNotificationAsync(
+                NotificationTrigger.OnGrab,
+                $"Grabbed: {release.Title}",
+                $"Event: {evt.Title}\nQuality: {release.Quality ?? "Unknown"}\nIndexer: {release.Indexer}\nSize: {release.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
+                new Dictionary<string, object>
+                {
+                    { "eventId", evt.Id },
+                    { "eventTitle", evt.Title ?? "" },
+                    { "indexer", release.Indexer },
+                    { "quality", release.Quality ?? "" },
+                    { "downloadId", downloadId },
+                },
+                evt.League?.Tags);
+        }
+        catch (Exception notifyEx)
+        {
+            _logger.LogWarning(notifyEx, "[RSS Sync] Failed to send grab notification");
+        }
 
         // Use the releasePart passed from ShouldGrabReleaseAsync (no need to re-detect)
         var partName = releasePart;

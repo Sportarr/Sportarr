@@ -406,6 +406,24 @@ public class FileWatcherService : BackgroundService
 
             _logger.LogInformation("[File Watcher] New file detected: {Path} (Confidence: {Confidence}%)",
                 filePath, confidence);
+
+            try
+            {
+                var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
+                await notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnManualInteractionRequired,
+                    $"Manual import required: {fileInfo.Name}",
+                    $"A new file appeared in the library folders and could not be matched automatically (confidence {confidence}%). Review it under Activity.",
+                    new Dictionary<string, object>
+                    {
+                        { "filePath", filePath },
+                        { "confidence", confidence },
+                    });
+            }
+            catch (Exception notifyEx)
+            {
+                _logger.LogWarning(notifyEx, "[File Watcher] Failed to send pending-import notification");
+            }
         }
         catch (Exception ex)
         {

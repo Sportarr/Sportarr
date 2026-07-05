@@ -365,6 +365,14 @@ public class ReleaseSearchResult
     public string? Source { get; set; } // WEB-DL, BluRay, HDTV, etc.
     public string? Codec { get; set; } // H.264, HEVC, AV1, etc.
     public string? Language { get; set; } // Detected language from title (English, German, French, etc.)
+
+    /// <summary>
+    /// For MULTI releases: the languages this indexer's MULTI releases
+    /// carry, copied from the indexer's Multi Languages setting at fetch
+    /// time so language custom formats can match against them.
+    /// </summary>
+    public List<string>? MultiLanguageNames { get; set; }
+
     public string? ReleaseGroup { get; set; } // Release group extracted from title (e.g., "MWR", "FLUX")
     public int? Seeders { get; set; }
     public int? Leechers { get; set; }
