@@ -386,6 +386,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<EventRetentionService>();
         services.AddHostedService(sp => sp.GetRequiredService<EventRetentionService>());
 
+        // Daily maintenance: scheduled backups (BackupInterval), recycle-bin
+        // cleanup, DVR recording retention, system-event pruning.
+        services.AddHostedService<HousekeepingService>();
+
+        // Periodic health evaluation + OnHealthIssue/OnHealthRestored
+        // notifications; previously checks only ran when the UI asked.
+        services.AddHostedService<HealthCheckMonitorService>();
+
+        // Periodic sync of enabled import lists (previously manual-only).
+        services.AddHostedService<ImportListSyncService>();
+
         return services;
     }
 
