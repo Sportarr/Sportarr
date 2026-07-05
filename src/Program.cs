@@ -465,6 +465,19 @@ builder.WebHost.UseUrls($"http://{bindAddress}:{port}");
 // Use Serilog for all logging
 builder.Host.UseSerilog();
 
+#if WINDOWS
+// Register with the Windows Service Control Manager so the SCM receives
+// lifecycle signals (started / stopping). This is a no-op when the process
+// is not running as a service (interactive / tray mode), so it is safe to
+// call unconditionally. Without this call the SCM waits 30 seconds for a
+// "running" notification that never comes, then kills the process with
+// error 1053 "did not respond to the start request in a timely fashion".
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    builder.Host.UseWindowsService();
+}
+#endif
+
 builder.Configuration["Sportarr:ApiKey"] = apiKey;
 // Propagate the resolved data path into the DI configuration so that services
 // like ConfigService (which loads/saves config.xml) use the same directory as
@@ -961,73 +974,85 @@ try
     Log.Information("[Sportarr] Starting web host");
 
 #if WINDOWS
-    // Windows: Support system tray mode
+    // Windows: Support system tray mode (interactive sessions only)
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     {
-        // Create shutdown token that tray icon can use to signal exit
-        using var appShutdown = new CancellationTokenSource();
-
-        // If --tray flag is set, hide console and show tray icon
-        if (runInTray)
+        // When running as a Windows service there is no interactive desktop:
+        // Environment.UserInteractive is false, and Windows Forms will fail to
+        // create windows. Skip the tray entirely and just run the web host.
+        // UseWindowsService() above handles the SCM lifecycle signals.
+        if (!Environment.UserInteractive)
         {
-            WindowsTrayIcon.HideConsole();
-            Log.Information("[Sportarr] Running in tray mode - console hidden");
+            Log.Information("[Sportarr] Running as Windows service - skipping system tray");
+            await app.RunAsync();
         }
-
-        // Always show tray icon on Windows
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.SetHighDpiMode(HighDpiMode.SystemAware);
-
-        using var trayIcon = new WindowsTrayIcon(1867, appShutdown);
-
-        // Run web host in background, tray icon on UI thread.
-        // If the host fails to start (e.g. port already in use), capture the
-        // exception, trigger app shutdown so the tray loop exits, and rethrow
-        // it to the outer catch so the user sees a clean error instead of a
-        // zombie tray icon with no web UI behind it.
-        Exception? webHostFailure = null;
-        var webHostTask = Task.Run(async () =>
+        else
         {
-            try
+            // Create shutdown token that tray icon can use to signal exit
+            using var appShutdown = new CancellationTokenSource();
+
+            // If --tray flag is set, hide console and show tray icon
+            if (runInTray)
             {
-                await app.RunAsync(appShutdown.Token);
+                WindowsTrayIcon.HideConsole();
+                Log.Information("[Sportarr] Running in tray mode - console hidden");
             }
-            catch (OperationCanceledException)
+
+            // Always show tray icon on Windows interactive sessions
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.SetHighDpiMode(HighDpiMode.SystemAware);
+
+            using var trayIcon = new WindowsTrayIcon(1867, appShutdown);
+
+            // Run web host in background, tray icon on UI thread.
+            // If the host fails to start (e.g. port already in use), capture the
+            // exception, trigger app shutdown so the tray loop exits, and rethrow
+            // it to the outer catch so the user sees a clean error instead of a
+            // zombie tray icon with no web UI behind it.
+            Exception? webHostFailure = null;
+            var webHostTask = Task.Run(async () =>
             {
-                // Expected when shutting down
-            }
-            catch (Exception ex)
+                try
+                {
+                    await app.RunAsync(appShutdown.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when shutting down
+                }
+                catch (Exception ex)
+                {
+                    webHostFailure = ex;
+                    appShutdown.Cancel();
+                }
+            });
+
+            // Show startup notification
+            trayIcon.ShowBalloon("Sportarr", "Sportarr is running on port 1867", System.Windows.Forms.ToolTipIcon.Info);
+
+            // Run Windows Forms message loop until shutdown requested
+            while (!appShutdown.Token.IsCancellationRequested)
             {
-                webHostFailure = ex;
-                appShutdown.Cancel();
+                Application.DoEvents();
+                Thread.Sleep(100);
             }
-        });
 
-        // Show startup notification
-        trayIcon.ShowBalloon("Sportarr", "Sportarr is running on port 1867", System.Windows.Forms.ToolTipIcon.Info);
+            // Wait for web host to finish
+            webHostTask.Wait(TimeSpan.FromSeconds(5));
 
-        // Run Windows Forms message loop until shutdown requested
-        while (!appShutdown.Token.IsCancellationRequested)
-        {
-            Application.DoEvents();
-            Thread.Sleep(100);
-        }
-
-        // Wait for web host to finish
-        webHostTask.Wait(TimeSpan.FromSeconds(5));
-
-        // If the web host died on startup, rethrow so the outer catch can
-        // translate it into a user-friendly error (e.g. port in use).
-        if (webHostFailure != null)
-        {
-            throw webHostFailure;
+            // If the web host died on startup, rethrow so the outer catch can
+            // translate it into a user-friendly error (e.g. port in use).
+            if (webHostFailure != null)
+            {
+                throw webHostFailure;
+            }
         }
     }
     else
     {
         // Non-Windows: just run normally
-        app.Run();
+        await app.RunAsync();
     }
 #else
     // Non-Windows build: just run normally
