@@ -1277,6 +1277,8 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
     int channelId,
     IptvSourceService iptvService,
     IHttpClientFactory httpClientFactory,
+    SportarrDbContext db,
+    StreamSessionTracker sessionTracker,
     ILogger<Program> logger,
     HttpContext context) =>
 {
@@ -1285,6 +1287,30 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
     {
         logger.LogWarning("[StreamProxy] Channel {ChannelId} not found", channelId);
         return Results.NotFound(new { error = "Channel not found" });
+    }
+
+    // Enforce the source's MaxStreams across viewers AND active recordings
+    // so a player can't take the provider's last connection out from under
+    // the DVR. Viewers are refused at capacity; recordings always have
+    // first claim on the budget. The lease is released when the response
+    // completes, including client disconnects.
+    var streamSource = await db.IptvSources.FindAsync(channel.SourceId);
+    if (streamSource is { MaxStreams: > 0 })
+    {
+        var activeRecordings = await db.DvrRecordings
+            .CountAsync(r => r.Status == DvrRecordingStatus.Recording &&
+                             r.Channel != null && r.Channel.SourceId == channel.SourceId);
+        var viewerSlots = Math.Max(0, streamSource.MaxStreams - activeRecordings);
+        var lease = sessionTracker.TryAcquire(channel.SourceId, viewerSlots);
+        if (lease == null)
+        {
+            logger.LogWarning(
+                "[StreamProxy] Source '{Source}' is at its {Max}-stream cap ({Recordings} recording, {Viewers} viewing); refusing viewer for channel {ChannelId}",
+                streamSource.Name, streamSource.MaxStreams, activeRecordings,
+                sessionTracker.GetActiveCount(channel.SourceId), channelId);
+            return Results.StatusCode(503);
+        }
+        context.Response.RegisterForDispose(lease);
     }
 
     logger.LogInformation("[StreamProxy] Starting stream proxy for channel {ChannelId}: {Name} -> {Url}",

@@ -322,6 +322,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ChannelAutoMappingService>();
         services.AddSingleton<FFmpegRecorderService>();
         services.AddSingleton<FFmpegStreamService>();
+        // Viewer-stream counting for per-source MaxStreams enforcement on
+        // the proxy/HDHomeRun path.
+        services.AddSingleton<StreamSessionTracker>();
         services.AddScoped<DvrRecordingService>();
         services.AddScoped<EventDvrService>();
         services.AddScoped<DvrQualityScoreCalculator>();
