@@ -128,23 +128,20 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
     {
         logger.LogDebug("[Wanted] GET /api/wanted/cutoff-unmet - page: {Page}, pageSize: {PageSize}", page, pageSize);
 
-        // For now, return events that have files but could be upgraded
-        // TODO: In a full implementation, this would check against quality profile cutoffs
-        var query = db.Events
+        // Load every monitored event with a file, apply the profile-cutoff
+        // filter, THEN paginate. Paginating before the in-memory cutoff
+        // filter produced partial pages and a totalRecords that only
+        // counted the current page.
+        var events = await db.Events
             .Include(e => e.League)
             .Include(e => e.HomeTeam)
             .Include(e => e.AwayTeam)
             .Include(e => e.Files)
             .Where(e => e.Monitored && e.HasFile && e.Quality != null)
-            .OrderBy(e => e.EventDate);
-
-        var totalRecords = await query.CountAsync();
-        logger.LogDebug("[Wanted] Found {Count} total events with files and quality", totalRecords);
-
-        var events = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .OrderBy(e => e.EventDate)
             .ToListAsync();
+
+        logger.LogDebug("[Wanted] Found {Count} total events with files and quality", events.Count);
 
         // Items is a navigation property, so it must be eagerly loaded or the
         // cutoff comparison below sees an empty quality list and matches nothing.
@@ -186,14 +183,19 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
 
         logger.LogInformation("[Wanted] Filtered to {Count} events below cutoff", cutoffUnmetEvents.Count);
 
-        var eventResponses = cutoffUnmetEvents.Select(EventResponse.FromEvent).ToList();
+        var totalRecords = cutoffUnmetEvents.Count;
+        var eventResponses = cutoffUnmetEvents
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(EventResponse.FromEvent)
+            .ToList();
 
         return Results.Ok(new
         {
             events = eventResponses,
             page,
             pageSize,
-            totalRecords = eventResponses.Count
+            totalRecords
         });
     }
     catch (Exception ex)
