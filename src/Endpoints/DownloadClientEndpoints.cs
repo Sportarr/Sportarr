@@ -146,7 +146,7 @@ app.MapPost("/api/downloadclient/test", async (DownloadClient client, DownloadCl
         var needsCategory = string.IsNullOrWhiteSpace(client.Category) && client.Type is
             DownloadClientType.QBittorrent or DownloadClientType.Transmission or
             DownloadClientType.Deluge or DownloadClientType.RTorrent or
-            DownloadClientType.UTorrent or DownloadClientType.Decypharr;
+            DownloadClientType.Decypharr;
 
         if (needsCategory)
         {

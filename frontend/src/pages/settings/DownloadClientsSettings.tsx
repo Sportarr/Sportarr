@@ -630,7 +630,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
               <li className="flex items-start">
                 <span className="text-red-400 mr-2">•</span>
                 <span>
-                  <strong>Torrent Clients:</strong> qBittorrent, Transmission, Deluge, rTorrent, uTorrent
+                  <strong>Torrent Clients:</strong> qBittorrent, Transmission, Deluge, rTorrent
                 </span>
               </li>
               <li className="flex items-start">
