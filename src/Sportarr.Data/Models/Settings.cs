@@ -178,6 +178,12 @@ public class MediaManagementSettings
     // File Management
     public bool RenameEvents { get; set; } = false;
     public bool RenameFiles { get; set; } = true;
+
+    // Stored in config.xml (Config.DownloadPropersAndRepacks); NotMapped
+    // keeps it on the media-management JSON contract without a schema change.
+    // Values: preferAndUpgrade | doNotUpgrade | doNotPrefer.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string DownloadPropersAndRepacks { get; set; } = "preferAndUpgrade";
     public bool ReplaceIllegalCharacters { get; set; } = true;
     public bool EnableMultiPartEpisodes { get; set; } = true; // Detect and name multi-part episodes for Fighting sports
     public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";

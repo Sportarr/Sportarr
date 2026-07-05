@@ -40,6 +40,7 @@ interface QualityProfileOption {
 interface MediaManagementSettingsData {
   renameEvents: boolean;
   replaceIllegalCharacters: boolean;
+  downloadPropersAndRepacks: string;
   enableMultiPartEpisodes: boolean;
   standardFileFormat: string;
   // Granular folder options - cascading hierarchy
@@ -110,6 +111,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
   const [settings, setSettings] = useState<MediaManagementSettingsData>({
     renameEvents: false,
     replaceIllegalCharacters: true,
+    downloadPropersAndRepacks: 'preferAndUpgrade',
     enableMultiPartEpisodes: true,
     standardFileFormat: '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
     // Granular folder options - default: league/season enabled, event disabled
@@ -686,6 +688,22 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
               </p>
             </div>
           </label>
+
+          <div>
+            <label className="block text-white font-medium mb-2">Propers and Repacks</label>
+            <select
+              value={settings.downloadPropersAndRepacks}
+              onChange={(e) => updateSetting('downloadPropersAndRepacks', e.target.value)}
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            >
+              <option value="preferAndUpgrade">Prefer and Upgrade</option>
+              <option value="doNotUpgrade">Do Not Upgrade Automatically</option>
+              <option value="doNotPrefer">Do Not Prefer</option>
+            </select>
+            <p className="text-sm text-gray-400 mt-1">
+              Whether a PROPER/REPACK of the same quality replaces the existing file automatically, is only preferred when choosing between new releases, or is ignored entirely
+            </p>
+          </div>
 
           <label className="flex items-start space-x-3 cursor-pointer">
             <input

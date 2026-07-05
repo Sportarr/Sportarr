@@ -59,6 +59,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
     {
         RenameEvents = config.RenameEvents,
         ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
+        DownloadPropersAndRepacks = config.DownloadPropersAndRepacks,
         EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
         StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
         // Granular folder format settings
@@ -420,6 +421,12 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         {
             config.RenameEvents = mediaManagementSettings.RenameEvents;
             config.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
+            config.DownloadPropersAndRepacks = mediaManagementSettings.DownloadPropersAndRepacks switch
+            {
+                "doNotUpgrade" => "doNotUpgrade",
+                "doNotPrefer" => "doNotPrefer",
+                _ => "preferAndUpgrade",
+            };
             config.EnableMultiPartEpisodes = mediaManagementSettings.EnableMultiPartEpisodes;
             config.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             config.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;

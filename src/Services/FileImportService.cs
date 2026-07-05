@@ -401,7 +401,15 @@ public class FileImportService : IFileImportService
                 var existingTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(upgradedFile.Quality) + upgradedFile.CustomFormatScore;
                 var newTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(download.Quality) + download.CustomFormatScore;
 
-                if (newTotalScore <= existingTotalScore)
+                // A proper/repack at the SAME score is a legitimate upgrade
+                // (broken original, fixed re-release) when the Download
+                // Propers and Repacks setting allows it.
+                var revisionUpgrade = config.DownloadPropersAndRepacks == "preferAndUpgrade" &&
+                    newTotalScore == existingTotalScore &&
+                    ReleaseRevision.Parse(download.Title) >
+                    ReleaseRevision.Parse(upgradedFile.OriginalTitle ?? upgradedFile.Quality);
+
+                if (newTotalScore <= existingTotalScore && !revisionUpgrade)
                 {
                     _logger.LogWarning(
                         "[Import] Not an upgrade - existing file has same or better quality: " +

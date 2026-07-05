@@ -671,7 +671,15 @@ public class RssSyncService : BackgroundService
                 return (false, "Upgrades are disabled for this quality profile", releasePart);
             }
 
-            if (newTotalScore <= existingTotalScore)
+            // A proper/repack of the SAME quality is a legitimate upgrade:
+            // the original was broken and re-released fixed. Gated on the
+            // Download Propers and Repacks setting.
+            var revisionUpgrade = config.DownloadPropersAndRepacks == "preferAndUpgrade" &&
+                newTotalScore == existingTotalScore &&
+                Helpers.ReleaseRevision.Parse(release.Title) >
+                Helpers.ReleaseRevision.Parse(existingFile.OriginalTitle ?? existingFile.Quality);
+
+            if (newTotalScore <= existingTotalScore && !revisionUpgrade)
             {
                 return (false, $"Existing file has same or better score ({existingTotalScore})", releasePart);
             }

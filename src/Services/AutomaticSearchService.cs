@@ -1013,6 +1013,17 @@ public class AutomaticSearchService : IAutomaticSearchService
                         shouldUpgrade = true;
                         upgradeReason = $"format score upgrade at same quality ({existingFormatScore} -> {newReleaseFormatScore})";
                     }
+                    else if ((await _configService.GetConfigAsync()).DownloadPropersAndRepacks == "preferAndUpgrade" &&
+                             newReleaseQualityScore == existingQualityScore &&
+                             newReleaseFormatScore == existingFormatScore &&
+                             Helpers.ReleaseRevision.Parse(bestRelease.Title) >
+                             Helpers.ReleaseRevision.Parse(relevantFile.OriginalTitle ?? relevantFile.Quality))
+                    {
+                        // Proper/repack of the same quality: the original
+                        // was broken and re-released fixed.
+                        shouldUpgrade = true;
+                        upgradeReason = "proper/repack revision of the same quality";
+                    }
                     else
                     {
                         shouldUpgrade = false;
@@ -1028,7 +1039,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                     // so Sportarr would grab and download it only for the importer to throw it
                     // away as "not an upgrade." Mirror the import's total-score rule here so we
                     // never waste a download. Manual searches keep the user's explicit choice.
-                    if (shouldUpgrade && !isManualSearch)
+                    if (shouldUpgrade && !isManualSearch &&
+                        upgradeReason != "proper/repack revision of the same quality")
                     {
                         var existingTotalScore = existingQualityScore + existingFormatScore;
                         var newReleaseTotalScore = newReleaseQualityScore + newReleaseFormatScore;

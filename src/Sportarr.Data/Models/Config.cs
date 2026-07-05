@@ -185,6 +185,7 @@ public class Config
     public int DvrMaxReconnectAttempts { get; set; } = 5; // Maximum reconnection attempts
     public int DvrReconnectDelaySeconds { get; set; } = 5; // Delay between reconnection attempts
     public int StalledDownloadTimeoutMinutes { get; set; } = 60; // Fail, blocklist, and re-search torrents with no progress for this long (0 = never)
+    public string DownloadPropersAndRepacks { get; set; } = "preferAndUpgrade"; // preferAndUpgrade | doNotUpgrade | doNotPrefer
     public bool DvrOvertimeGuardEnabled { get; set; } = true; // Keep recording past the scheduled end while livescore says the event is still in progress
     public int DvrOvertimeMaxExtensionMinutes { get; set; } = 120; // Ceiling on total overtime extension per recording (0 = disabled)
 
