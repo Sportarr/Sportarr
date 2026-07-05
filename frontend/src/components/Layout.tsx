@@ -112,6 +112,7 @@ export default function Layout() {
         { label: 'Status', path: '/system/status' },
         { label: 'Health', path: '/system/health' },
         { label: 'Tasks', path: '/system/tasks' },
+        { label: 'Stats', path: '/system/stats' },
         { label: 'Backup', path: '/system/backup' },
         { label: 'Updates', path: '/system/updates' },
         { label: 'Events', path: '/system/events' },
