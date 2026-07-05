@@ -921,6 +921,16 @@ public class ReleaseEvaluator
                 return true;
             }
 
+            // Per-indexer Multi Languages: when the indexer declares which
+            // languages its MULTI releases carry, the spec matches any of
+            // those declared languages.
+            if (isMultiLanguage && release.MultiLanguageNames is { Count: > 0 } &&
+                release.MultiLanguageNames.Any(l => string.Equals(l, targetLanguage, StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.LogDebug("[Language Spec] Multi-language release carries '{Target}' per indexer Multi Languages", targetLanguage);
+                return true;
+            }
+
             // Compare detected language with target
             return string.Equals(detectedLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase);
         }
@@ -930,6 +940,13 @@ public class ReleaseEvaluator
         if (isMultiLanguage && value.Equals("English", StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogDebug("[Language Spec] Multi-language release satisfies 'English' requirement");
+            return true;
+        }
+
+        // Per-indexer Multi Languages, name-valued specs.
+        if (isMultiLanguage && release.MultiLanguageNames is { Count: > 0 } &&
+            release.MultiLanguageNames.Any(l => string.Equals(l, value, StringComparison.OrdinalIgnoreCase)))
+        {
             return true;
         }
 

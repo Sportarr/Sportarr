@@ -16,19 +16,37 @@ public class FileRenameService
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly ILogger<FileRenameService> _logger;
     private readonly DiskSpaceService _diskSpaceService;
+    private readonly CustomFormatService _customFormatService;
+
+    // Formats loaded once per scoped instance so per-file token building
+    // doesn't re-query on every file of a bulk rename.
+    private List<CustomFormat>? _formatsCache;
 
     public FileRenameService(
         SportarrDbContext db,
         FileNamingService fileNamingService,
         SportarrApiClient sportarrApiClient,
         ILogger<FileRenameService> logger,
-        DiskSpaceService diskSpaceService)
+        DiskSpaceService diskSpaceService,
+        CustomFormatService customFormatService)
     {
         _db = db;
         _fileNamingService = fileNamingService;
         _sportarrApiClient = sportarrApiClient;
         _logger = logger;
         _diskSpaceService = diskSpaceService;
+        _customFormatService = customFormatService;
+    }
+
+    /// <summary>
+    /// {Custom Formats} token value for a file, matched against its
+    /// original release title.
+    /// </summary>
+    private async Task<string> BuildCustomFormatsTokenAsync(EventFile file)
+    {
+        _formatsCache ??= await _db.CustomFormats.ToListAsync();
+        var matchTitle = file.OriginalTitle ?? Path.GetFileName(file.FilePath) ?? string.Empty;
+        return _customFormatService.BuildRenameToken(matchTitle, _formatsCache);
     }
 
     /// <summary>
@@ -265,22 +283,22 @@ public class FileRenameService
     /// Rename and/or move a single file based on current event metadata and naming settings.
     /// Folder reorganization only happens if ReorganizeFolders setting is enabled.
     /// </summary>
-    private Task<bool> RenameFileAsync(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
+    private async Task<bool> RenameFileAsync(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
     {
         var currentPath = file.FilePath;
-        var expectedPath = BuildExpectedPath(evt, file, settings, rootFolders);
+        var expectedPath = await BuildExpectedPathAsync(evt, file, settings, rootFolders);
 
         if (string.IsNullOrEmpty(expectedPath))
         {
             _logger.LogWarning("[File Rename] Could not determine target path for: {FilePath}", currentPath);
-            return Task.FromResult(false);
+            return false;
         }
 
         // Check if rename/move is needed
         if (string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogDebug("[File Rename] File already has correct name and location: {FilePath}", currentPath);
-            return Task.FromResult(false);
+            return false;
         }
 
         // Single-file rename refuses to clobber an existing destination. Season-wide
@@ -289,7 +307,7 @@ public class FileRenameService
         if (File.Exists(expectedPath))
         {
             _logger.LogWarning("[File Rename] Destination file already exists: {ExpectedPath}. Skipping rename.", expectedPath);
-            return Task.FromResult(false);
+            return false;
         }
 
         // Create destination directory if it doesn't exist
@@ -319,7 +337,7 @@ public class FileRenameService
             }
 
             _logger.LogInformation("[File Rename] Successfully moved file for event '{Title}'", evt.Title);
-            return Task.FromResult(true);
+            return true;
         }
         catch (Exception ex)
         {
@@ -333,7 +351,7 @@ public class FileRenameService
     /// Compute the path a file should have given the current event metadata and naming
     /// settings. Returns null if the target can't be determined. Does not touch disk.
     /// </summary>
-    private string? BuildExpectedPath(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
+    private async Task<string?> BuildExpectedPathAsync(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
     {
         var currentPath = file.FilePath;
         var currentDir = Path.GetDirectoryName(currentPath);
@@ -346,6 +364,7 @@ public class FileRenameService
         }
 
         var tokens = BuildFileNamingTokens(evt, file);
+        tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
         var expectedFileName = _fileNamingService.BuildFileName(
             settings.StandardFileFormat,
             tokens,
@@ -513,7 +532,7 @@ public class FileRenameService
                 if (!file.Exists || string.IsNullOrEmpty(file.FilePath) || !File.Exists(file.FilePath))
                     continue;
 
-                var expectedPath = BuildExpectedPath(evt, file, settings, rootFolders);
+                var expectedPath = await BuildExpectedPathAsync(evt, file, settings, rootFolders);
                 if (string.IsNullOrEmpty(expectedPath) ||
                     string.Equals(file.FilePath, expectedPath, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -607,6 +626,7 @@ public class FileRenameService
                 continue;
 
             var tokens = BuildFileNamingTokens(evt, file);
+            tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
             var expectedFileName = _fileNamingService.BuildFileName(
                 settings.StandardFileFormat,
                 tokens,
@@ -687,6 +707,7 @@ public class FileRenameService
                     continue;
 
                 var tokens = BuildFileNamingTokens(evt, file);
+                tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
                 var expectedFileName = _fileNamingService.BuildFileName(
                     settings.StandardFileFormat,
                     tokens,
@@ -810,6 +831,7 @@ public class FileRenameService
 
         // Compute the destination path under the new event's folder structure.
         var tokens = BuildFileNamingTokens(newEvent, file);
+        tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
         var newFileName = _fileNamingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
 
         var rootFolder = FindRootFolder(currentPath, rootFolders);

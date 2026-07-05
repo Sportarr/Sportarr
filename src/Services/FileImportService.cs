@@ -73,6 +73,7 @@ public class FileImportService : IFileImportService
     private readonly DiskSpaceService _diskSpaceService;
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly NotificationService _notificationService;
+    private readonly CustomFormatService _customFormatService;
     private readonly ILogger<FileImportService> _logger;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
@@ -87,6 +88,7 @@ public class FileImportService : IFileImportService
         DiskSpaceService diskSpaceService,
         SportarrApiClient sportarrApiClient,
         NotificationService notificationService,
+        CustomFormatService customFormatService,
         ILogger<FileImportService> logger)
     {
         _db = db;
@@ -98,6 +100,7 @@ public class FileImportService : IFileImportService
         _diskSpaceService = diskSpaceService;
         _sportarrApiClient = sportarrApiClient;
         _notificationService = notificationService;
+        _customFormatService = customFormatService;
         _logger = logger;
     }
 
@@ -1078,6 +1081,11 @@ public class FileImportService : IFileImportService
                 Part = partSuffix,
                 PartName = partNameSuffix
             };
+
+            // {Custom Formats} token: match against the real source
+            // filename, which carries the release's quality/format tags.
+            tokens.CustomFormats = _customFormatService.BuildRenameToken(
+                Path.GetFileName(sourceFile), await _db.CustomFormats.ToListAsync());
 
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }

@@ -199,7 +199,9 @@ public class FileNamingService
             // Human part label with embedded separator (" - Prelims"), empty
             // for single-part files - lets fight cards name Prelims/Main Card
             // in the filename instead of the opaque pt1/pt2.
-            { "{Part Name}", tokens.PartName }
+            { "{Part Name}", tokens.PartName },
+            // Matched custom formats flagged "include when renaming".
+            { "{Custom Formats}", tokens.CustomFormats }
         };
 
         if (tokens.AirDate.HasValue)
@@ -384,7 +386,8 @@ public class FileNamingService
             "{Season}",
             "{Episode}",
             "{Part}",
-            "{Part Name}"
+            "{Part Name}",
+            "{Custom Formats}"
         };
     }
 

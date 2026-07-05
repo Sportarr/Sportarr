@@ -361,6 +361,7 @@ public class FileNamingTokens
     public string Episode { get; set; } = string.Empty; // Episode number (01, 02, etc.)
     public string Part { get; set; } = string.Empty;    // Multi-part suffix (pt1, pt2, pt3) for fight card segments
     public string PartName { get; set; } = string.Empty; // Human part label suffix (" - Prelims", " - Main Card"); empty for single-part files. Separator embedded, same convention as Part.
+    public string CustomFormats { get; set; } = string.Empty; // Space-joined names of matched formats flagged IncludeCustomFormatWhenRenaming
 }
 
 // Notification Model (stored separately with Tags)
