@@ -233,9 +233,12 @@ public class ReleaseEvaluator
         // This combined score is for UI display/reference only
         evaluation.TotalScore = evaluation.QualityScore + evaluation.CustomFormatScore;
 
-        // All releases are approved for manual search
-        // Rejections are shown as warnings, but users can still download
-        evaluation.Approved = true;
+        // Approved must reflect the rejection list: a caller that gates on
+        // it alone (rather than re-checking Rejections) must never auto-grab
+        // a rejected release. Manual search still SHOWS rejected releases -
+        // the UI lists them with their rejection reasons and lets the user
+        // download anyway; that display choice doesn't belong in this flag.
+        evaluation.Approved = !evaluation.Rejections.Any();
 
         _logger.LogDebug(
             "[Release Evaluator] {Title} - Quality: {Quality} ({QScore}), CF Score: {CScore}, Total: {Total}",

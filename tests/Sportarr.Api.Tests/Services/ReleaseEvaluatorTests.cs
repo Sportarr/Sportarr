@@ -100,7 +100,10 @@ public class ReleaseEvaluatorTests
 
         // Assert
         evaluation.Rejections.Should().Contain(r => r.Contains("not wanted in quality profile"));
-        evaluation.Approved.Should().BeTrue(); // Still approved for manual search
+        // Approved reflects the rejection list so no caller gating on it
+        // alone can auto-grab a rejected release. Manual search shows
+        // rejected releases regardless of this flag.
+        evaluation.Approved.Should().BeFalse();
     }
 
     [Fact]
