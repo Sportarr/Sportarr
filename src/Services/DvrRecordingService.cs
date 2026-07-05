@@ -29,6 +29,16 @@ public class DvrRecordingService
     // writing the same output file.
     private static readonly ConcurrentDictionary<int, byte> _startsInFlight = new();
 
+    // Overtime guard state. Total minutes each recording has been extended
+    // past its original end (caps runaway extension), and a short-lived
+    // per-league livescore cache so a scheduler tick with several
+    // recordings ending doesn't hammer the hub. Static: the service is
+    // scoped, the scheduler ticks in fresh scopes. Reset on app restart -
+    // worst case a restart mid-overtime grants a fresh extension budget.
+    private static readonly ConcurrentDictionary<int, int> _overtimeExtensions = new();
+    private static readonly ConcurrentDictionary<string, (DateTime FetchedAt, List<Event> Events)> _livescoreCache = new();
+    private const int OvertimeStepMinutes = 10;
+
     private readonly ILogger<DvrRecordingService> _logger;
     private readonly SportarrDbContext _db;
     private readonly FFmpegRecorderService _ffmpegRecorder;
@@ -37,6 +47,7 @@ public class DvrRecordingService
     private readonly FileNamingService _namingService;
     private readonly DiskSpaceService _diskSpaceService;
     private readonly NotificationService _notificationService;
+    private readonly SportarrApiClient _sportarrApiClient;
 
     public DvrRecordingService(
         ILogger<DvrRecordingService> logger,
@@ -46,7 +57,8 @@ public class DvrRecordingService
         ConfigService configService,
         FileNamingService namingService,
         DiskSpaceService diskSpaceService,
-        NotificationService notificationService)
+        NotificationService notificationService,
+        SportarrApiClient sportarrApiClient)
     {
         _logger = logger;
         _db = db;
@@ -56,6 +68,7 @@ public class DvrRecordingService
         _namingService = namingService;
         _diskSpaceService = diskSpaceService;
         _notificationService = notificationService;
+        _sportarrApiClient = sportarrApiClient;
     }
 
     /// <summary>
@@ -618,6 +631,7 @@ public class DvrRecordingService
 
         var now = DateTime.UtcNow;
         var windowEnd = recording.ScheduledEnd.AddMinutes(recording.PostPadding);
+        _overtimeExtensions.TryRemove(recordingId, out _);
 
         long fileSize = 0;
         if (!string.IsNullOrEmpty(recording.OutputPath) && File.Exists(recording.OutputPath))
@@ -709,6 +723,7 @@ public class DvrRecordingService
 
         recording.ActualEnd = DateTime.UtcNow;
         recording.LastUpdated = DateTime.UtcNow;
+        _overtimeExtensions.TryRemove(recordingId, out _);
 
         if (result.Success)
         {
@@ -914,6 +929,111 @@ public class DvrRecordingService
             .Where(r => r.Method == DvrRecordingMethod.Live)
             .Where(r => r.ScheduledEnd.AddMinutes(r.PostPadding) <= now)
             .ToListAsync();
+    }
+
+    /// <summary>
+    /// Overtime guard: before an event-linked live recording is stopped at
+    /// its scheduled end, ask the league's livescore feed whether the event
+    /// is still in progress. If it is, push ScheduledEnd out another
+    /// increment (which the scheduler and watchdog both respect) instead of
+    /// cutting off the finish - the padding-based cutoff losing overtime,
+    /// extra innings, and stoppage time is the classic sports DVR failure.
+    /// Extension only happens on POSITIVE evidence: the event must appear
+    /// in the feed with a non-terminal status. No feed, no match, an error,
+    /// or the cap reached all mean "stop as scheduled", so the guard can
+    /// never keep a recording alive on ambiguity.
+    /// </summary>
+    public async Task<bool> ShouldExtendForOvertimeAsync(DvrRecording recording)
+    {
+        if (recording.EventId == null || recording.Method != DvrRecordingMethod.Live)
+            return false;
+
+        try
+        {
+            var config = await _configService.GetConfigAsync();
+            if (!config.DvrOvertimeGuardEnabled || config.DvrOvertimeMaxExtensionMinutes <= 0)
+                return false;
+
+            var extendedSoFar = _overtimeExtensions.GetValueOrDefault(recording.Id);
+            if (extendedSoFar >= config.DvrOvertimeMaxExtensionMinutes)
+            {
+                _logger.LogWarning(
+                    "[DVR] Recording {Id} hit the overtime extension ceiling ({Max}m); stopping at current end",
+                    recording.Id, config.DvrOvertimeMaxExtensionMinutes);
+                return false;
+            }
+
+            var evt = await _db.Events
+                .Include(e => e.League)
+                .FirstOrDefaultAsync(e => e.Id == recording.EventId.Value);
+            if (evt?.ExternalId == null || evt.League?.ExternalId == null)
+                return false;
+
+            var livescore = await GetLivescoreCachedAsync(evt.League.ExternalId);
+            var liveEntry = livescore?.FirstOrDefault(l => l.ExternalId == evt.ExternalId);
+            if (liveEntry == null || !IndicatesInProgress(liveEntry.Status))
+                return false;
+
+            recording.ScheduledEnd = recording.ScheduledEnd.AddMinutes(OvertimeStepMinutes);
+            recording.LastUpdated = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            _overtimeExtensions[recording.Id] = extendedSoFar + OvertimeStepMinutes;
+
+            _logger.LogInformation(
+                "[DVR] Overtime guard: '{Title}' is still in progress ({Status}); extended recording {Id} by {Step}m ({Total}m/{Max}m used)",
+                evt.Title, liveEntry.Status, recording.Id, OvertimeStepMinutes,
+                extendedSoFar + OvertimeStepMinutes, config.DvrOvertimeMaxExtensionMinutes);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[DVR] Overtime check failed for recording {Id}; stopping as scheduled", recording.Id);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// A status counts as in-progress when the event appears in the
+    /// livescore feed and its status is not one of the known terminal or
+    /// pre-game labels. Being listed in the feed at all is already strong
+    /// evidence of liveness; the label check filters the edges.
+    /// </summary>
+    public static bool IndicatesInProgress(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
+
+        var s = status.Trim().ToLowerInvariant();
+
+        // Pre-game labels
+        if (s is "scheduled" or "not started" or "ns" or "time to be defined" or "tbd")
+            return false;
+
+        // Terminal labels
+        if (s.Contains("finish") || s.Contains("final") || s.Contains("ended") ||
+            s.Contains("completed") || s.Contains("after") ||
+            s is "ft" or "aet" or "aot" or "pen" or "postponed" or "cancelled" or "canceled" or "abandoned" or "suspended")
+            return false;
+
+        // Everything else on a live feed ("live", "1st half", "q3", "ht",
+        // period/lap/round descriptors...) counts as in progress.
+        return true;
+    }
+
+    private async Task<List<Event>?> GetLivescoreCachedAsync(string leagueExternalId)
+    {
+        if (_livescoreCache.TryGetValue(leagueExternalId, out var cached) &&
+            DateTime.UtcNow - cached.FetchedAt < TimeSpan.FromSeconds(60))
+        {
+            return cached.Events;
+        }
+
+        var events = await _sportarrApiClient.GetLivescoreByLeagueAsync(leagueExternalId);
+        if (events != null)
+        {
+            _livescoreCache[leagueExternalId] = (DateTime.UtcNow, events);
+        }
+        return events;
     }
 
     /// <summary>

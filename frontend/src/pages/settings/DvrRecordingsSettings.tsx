@@ -133,6 +133,8 @@ interface DvrSettings {
   hardwareAcceleration: number;
   ffmpegPath: string;
   postRecordingCommand: string;
+  overtimeGuardEnabled: boolean;
+  overtimeMaxExtensionMinutes: number;
   enableReconnect: boolean;
   maxReconnectAttempts: number;
   reconnectDelaySeconds: number;
@@ -240,6 +242,8 @@ const defaultDvrSettings: DvrSettings = {
   hardwareAcceleration: 99,
   ffmpegPath: '',
   postRecordingCommand: '',
+  overtimeGuardEnabled: true,
+  overtimeMaxExtensionMinutes: 120,
   enableReconnect: true,
   maxReconnectAttempts: 5,
   reconnectDelaySeconds: 5,
@@ -1343,6 +1347,37 @@ export default function DvrRecordingsSettings() {
                       SPORTARR_RECORDING_ID, SPORTARR_EVENT_ID, SPORTARR_DURATION_SECONDS, SPORTARR_FILE_SIZE.
                     </p>
                   </div>
+                  <div className="md:col-span-2">
+                    <label className="flex items-start space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dvrSettings.overtimeGuardEnabled}
+                        onChange={(e) => handleSettingsChange('overtimeGuardEnabled', e.target.checked)}
+                        className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                      />
+                      <div>
+                        <span className="text-white font-medium">Overtime Guard</span>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Keep recording past the scheduled end while live scores say the event is still in progress,
+                          so overtime, extra innings, and stoppage time aren't cut off. Extends in 10-minute steps.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                  {dvrSettings.overtimeGuardEnabled && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Max Overtime Extension (Minutes)</label>
+                      <input
+                        type="number"
+                        min={10}
+                        max={360}
+                        value={dvrSettings.overtimeMaxExtensionMinutes}
+                        onChange={(e) => handleSettingsChange('overtimeMaxExtensionMinutes', parseInt(e.target.value) || 120)}
+                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Ceiling on total extension per recording</p>
+                    </div>
+                  )}
                 </div>
                 {/* Available Hardware Info */}
                 {availableHwAccel.length > 0 && (

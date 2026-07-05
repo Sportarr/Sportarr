@@ -96,6 +96,12 @@ public class DvrSchedulerService : BackgroundService
             if (stoppingToken.IsCancellationRequested)
                 break;
 
+            // Overtime guard: if the linked event is still in progress per
+            // the livescore feed, the recording's end has been pushed out -
+            // don't stop it this tick.
+            if (await dvrService.ShouldExtendForOvertimeAsync(recording))
+                continue;
+
             _logger.LogInformation("[DVR Scheduler] Stopping completed recording {Id}: {Title}",
                 recording.Id, recording.Title);
 
