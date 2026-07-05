@@ -36,6 +36,7 @@ public class DvrRecordingService
     private readonly ConfigService _configService;
     private readonly FileNamingService _namingService;
     private readonly DiskSpaceService _diskSpaceService;
+    private readonly NotificationService _notificationService;
 
     public DvrRecordingService(
         ILogger<DvrRecordingService> logger,
@@ -44,7 +45,8 @@ public class DvrRecordingService
         IptvSourceService iptvService,
         ConfigService configService,
         FileNamingService namingService,
-        DiskSpaceService diskSpaceService)
+        DiskSpaceService diskSpaceService,
+        NotificationService notificationService)
     {
         _logger = logger;
         _db = db;
@@ -53,7 +55,44 @@ public class DvrRecordingService
         _configService = configService;
         _namingService = namingService;
         _diskSpaceService = diskSpaceService;
+        _notificationService = notificationService;
     }
+
+    /// <summary>
+    /// Send a recording lifecycle notification. Failures are logged and
+    /// swallowed - a broken Discord webhook must never break a recording.
+    /// </summary>
+    private async Task NotifyRecordingAsync(NotificationTrigger trigger, string title, string message, DvrRecording recording)
+    {
+        try
+        {
+            await _notificationService.SendNotificationAsync(trigger, title, message,
+                new Dictionary<string, object>
+                {
+                    { "recordingId", recording.Id },
+                    { "recordingTitle", recording.Title },
+                    { "channelId", recording.ChannelId },
+                    { "eventId", recording.EventId ?? 0 },
+                });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[DVR] Failed to send {Trigger} notification for recording {Id}", trigger, recording.Id);
+        }
+    }
+
+    /// <summary>
+    /// Failure notification shared with the watchdog, which detects dead
+    /// and stalled recorders on its own tick.
+    /// </summary>
+    public Task NotifyRecordingFailedAsync(DvrRecording recording, string reason, int? rotatedToRecordingId = null)
+        => NotifyRecordingAsync(
+            NotificationTrigger.OnRecordingFailed,
+            $"Recording failed: {recording.Title}",
+            reason + (rotatedToRecordingId.HasValue
+                ? " Retrying on a fallback channel."
+                : ""),
+            recording);
 
     // ============================================================================
     // Recording CRUD
@@ -416,6 +455,11 @@ public class DvrRecordingService
 
             _logger.LogInformation("[DVR] Started recording {Id}: {Title} -> {Path}",
                 recordingId, recording.Title, outputPath);
+
+            await NotifyRecordingAsync(NotificationTrigger.OnRecordingStarted,
+                $"Recording started: {recording.Title}",
+                $"Channel: {recording.Channel.Name}\nWindow: {recording.ScheduledStart:yyyy-MM-dd HH:mm} - {recording.ScheduledEnd:HH:mm} UTC",
+                recording);
         }
         else
         {
@@ -431,7 +475,11 @@ public class DvrRecordingService
             // (offline source, ffmpeg can't open the stream, source
             // tuner saturated) and a different channel airing the same
             // event will succeed.
-            await TryRescheduleOnFallbackAsync(recording, "start failed: " + result.Error);
+            var rotatedId = await TryRescheduleOnFallbackAsync(recording, "start failed: " + result.Error);
+
+            await NotifyRecordingFailedAsync(recording,
+                $"Could not start on channel {recording.Channel.Name}: {result.Error}",
+                rotatedId);
         }
 
         return result;
@@ -596,6 +644,11 @@ public class DvrRecordingService
             _logger.LogInformation("[DVR] Recording {Id}: recorder exited at the end of its window; finalized as completed ({Size} bytes)",
                 recordingId, fileSize);
             FirePostRecordingCommand(recording);
+
+            await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
+                $"Recording completed: {recording.Title}",
+                $"Duration: {duration / 60}m\nSize: {fileSize / 1024.0 / 1024.0:F0} MB",
+                recording);
             return;
         }
 
@@ -606,10 +659,15 @@ public class DvrRecordingService
 
         _logger.LogWarning("[DVR] Recording {Id}: recorder exited mid-window (code {Code}); marked Failed", recordingId, exitCode);
 
+        int? rotatedId = null;
         if (now < windowEnd)
         {
-            await TryRescheduleOnFallbackAsync(recording, "recorder exited mid-window");
+            rotatedId = await TryRescheduleOnFallbackAsync(recording, "recorder exited mid-window");
         }
+
+        await NotifyRecordingFailedAsync(recording,
+            $"The stream died mid-recording ({recording.ErrorMessage}).",
+            rotatedId);
     }
 
     /// <summary>
@@ -683,11 +741,18 @@ public class DvrRecordingService
         // recording completed cleanly (the common case).
         if (recording.Status == DvrRecordingStatus.Failed)
         {
-            await TryRescheduleOnFallbackAsync(recording, "stop failed: " + result.Error);
+            var rotatedId = await TryRescheduleOnFallbackAsync(recording, "stop failed: " + result.Error);
+            await NotifyRecordingFailedAsync(recording, $"Recording did not stop cleanly: {result.Error}", rotatedId);
         }
         else if (recording.Status == DvrRecordingStatus.Completed)
         {
             FirePostRecordingCommand(recording);
+
+            var sizeMb = (result.FileSize ?? 0) / 1024.0 / 1024.0;
+            await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
+                $"Recording completed: {recording.Title}",
+                $"Duration: {(result.DurationSeconds ?? 0) / 60}m\nSize: {sizeMb:F0} MB",
+                recording);
         }
 
         return result;

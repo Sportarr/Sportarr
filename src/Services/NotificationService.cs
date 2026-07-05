@@ -158,6 +158,9 @@ public class NotificationService : INotificationService
             NotificationTrigger.OnHealthRestored => "onHealthRestored",
             NotificationTrigger.OnApplicationUpdate => "onApplicationUpdate",
             NotificationTrigger.OnManualInteractionRequired => "onManualInteractionRequired",
+            NotificationTrigger.OnRecordingStarted => "onRecordingStarted",
+            NotificationTrigger.OnRecordingCompleted => "onRecordingCompleted",
+            NotificationTrigger.OnRecordingFailed => "onRecordingFailed",
             NotificationTrigger.Test => null, // Always send test notifications
             _ => null
         };
@@ -471,6 +474,9 @@ public class NotificationService : INotificationService
         [NotificationTrigger.OnHealthRestored] = "Health",
         [NotificationTrigger.OnApplicationUpdate] = "ApplicationUpdate",
         [NotificationTrigger.OnManualInteractionRequired] = "ManualInteractionRequired",
+        [NotificationTrigger.OnRecordingStarted] = "RecordingStarted",
+        [NotificationTrigger.OnRecordingCompleted] = "RecordingCompleted",
+        [NotificationTrigger.OnRecordingFailed] = "RecordingFailed",
         [NotificationTrigger.Test] = "Test"
     };
 
@@ -1002,5 +1008,8 @@ public enum NotificationTrigger
     OnHealthRestored,
     OnApplicationUpdate,
     OnManualInteractionRequired,
+    OnRecordingStarted,
+    OnRecordingCompleted,
+    OnRecordingFailed,
     Test
 }

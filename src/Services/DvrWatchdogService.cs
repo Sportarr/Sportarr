@@ -110,6 +110,8 @@ public class DvrWatchdogService : BackgroundService
             row.ActualEnd = now;
             row.ErrorMessage = (row.ErrorMessage ?? "") +
                 "Watchdog: missed - the recording window closed before any recorder picked it up (app downtime, no available source slot, or scheduling conflict).";
+            await dvrService.NotifyRecordingFailedAsync(row,
+                "The recording window closed before any recorder picked it up (app downtime, no available source slot, or scheduling conflict).");
         }
 
         // Catchup downloads sit in Recording state with no recorder
@@ -166,11 +168,14 @@ public class DvrWatchdogService : BackgroundService
                 // While the window is still open a different channel can
                 // pick up the rest of the event - rotate instead of just
                 // burying the failure.
+                int? rotatedId = null;
                 if (now < row.ScheduledEnd.AddMinutes(row.PostPadding))
                 {
-                    try { await dvrService.TryRescheduleOnFallbackAsync(row, "watchdog: recorder process not running"); }
+                    try { rotatedId = await dvrService.TryRescheduleOnFallbackAsync(row, "watchdog: recorder process not running"); }
                     catch (Exception ex) { _logger.LogError(ex, "[DVR Watchdog] Fallback rotation failed for recording {Id}", row.Id); }
                 }
+                await dvrService.NotifyRecordingFailedAsync(row,
+                    "The recorder process was not running while the recording was marked active.", rotatedId);
                 continue;
             }
 
@@ -220,11 +225,14 @@ public class DvrWatchdogService : BackgroundService
                         // A frozen upstream is channel-specific; try the
                         // event's fallback channels while there is still
                         // window left to record.
+                        int? rotatedId = null;
                         if (now < row.ScheduledEnd.AddMinutes(row.PostPadding))
                         {
-                            try { await dvrService.TryRescheduleOnFallbackAsync(row, "watchdog: output stalled"); }
+                            try { rotatedId = await dvrService.TryRescheduleOnFallbackAsync(row, "watchdog: output stalled"); }
                             catch (Exception ex) { _logger.LogError(ex, "[DVR Watchdog] Fallback rotation failed for recording {Id}", row.Id); }
                         }
+                        await dvrService.NotifyRecordingFailedAsync(row,
+                            $"The stream stalled (only {grew} bytes written in {(int)elapsed.TotalSeconds}s).", rotatedId);
                         continue;
                     }
                     // Still growing - refresh the sample so the next
