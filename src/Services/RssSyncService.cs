@@ -94,6 +94,7 @@ public class RssSyncService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var indexerSearchService = scope.ServiceProvider.GetRequiredService<IndexerSearchService>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+        var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
         var delayProfileService = scope.ServiceProvider.GetRequiredService<DelayProfileService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
@@ -199,44 +200,9 @@ public class RssSyncService : BackgroundService
 
                 if (qualityProfile != null)
                 {
-                    var evaluation = releaseEvaluator.EvaluateRelease(
-                        release,
-                        qualityProfile,
-                        customFormats,
-                        requestedPart: null, // RSS sync doesn't request specific parts
-                        sport: matchedEvent.Sport,
-                        enableMultiPartEpisodes: config.EnableMultiPartEpisodes);
-
-                    // Apply evaluation results to release (same as IndexerSearchService does)
-                    release.Quality = evaluation.Quality;
-                    release.QualityScore = evaluation.QualityScore;
-                    release.CustomFormatScore = evaluation.CustomFormatScore;
-                    release.Score = evaluation.TotalScore;
-                    release.Approved = evaluation.Approved && !evaluation.Rejections.Any();
-                    release.Rejections = evaluation.Rejections;
-
-                    // Apply release profile filtering (Required/Ignored keywords, Preferred score)
-                    if (releaseProfiles.Any())
-                    {
-                        var profileEval = releaseProfileService.EvaluateRelease(release, releaseProfiles, matchedEvent.League?.Tags);
-
-                        // Add rejections from release profiles
-                        if (profileEval.IsRejected)
-                        {
-                            release.Approved = false;
-                            release.Rejections.AddRange(profileEval.Rejections);
-                        }
-
-                        // Add preferred score to custom format score (affects ranking)
-                        if (profileEval.PreferredScore != 0)
-                        {
-                            release.CustomFormatScore += profileEval.PreferredScore;
-                            release.Score += profileEval.PreferredScore;
-                        }
-                    }
-
-                    _logger.LogDebug("[RSS Sync] Evaluated '{Release}': Quality={Quality} ({QScore}), CF={CScore}, Approved={Approved}",
-                        release.Title, release.Quality, release.QualityScore, release.CustomFormatScore, release.Approved);
+                    EvaluateMatchedRelease(
+                        release, matchedEvent, qualityProfile, customFormats, releaseProfiles,
+                        releaseEvaluator, releaseProfileService, config.EnableMultiPartEpisodes);
 
                     // Skip if evaluation rejected the release
                     if (release.Rejections.Any())
@@ -263,7 +229,7 @@ public class RssSyncService : BackgroundService
 
                 // GRAB IT! (pass the detected part)
                 var grabbed = await GrabReleaseAsync(
-                    db, matchedEvent, release, downloadClientService, shouldGrab.ReleasePart, cancellationToken);
+                    db, matchedEvent, release, downloadClientService, notificationService, shouldGrab.ReleasePart, cancellationToken);
 
                 if (grabbed)
                 {
@@ -292,6 +258,167 @@ public class RssSyncService : BackgroundService
 
         _logger.LogInformation("[RSS Sync] Completed - {New} new downloads, {Upgrades} quality upgrades",
             newDownloadsAdded, upgradesFound);
+    }
+
+    /// <summary>
+    /// Evaluate a release that already matched a monitored event: quality
+    /// profile, custom formats, then release profiles. Mutates the release's
+    /// evaluation fields (Quality, scores, Approved, Rejections). Shared by
+    /// the RSS loop and pushed releases so both run the identical decision
+    /// engine.
+    /// </summary>
+    private void EvaluateMatchedRelease(
+        ReleaseSearchResult release,
+        Event matchedEvent,
+        QualityProfile qualityProfile,
+        List<CustomFormat> customFormats,
+        List<ReleaseProfile> releaseProfiles,
+        ReleaseEvaluator releaseEvaluator,
+        ReleaseProfileService releaseProfileService,
+        bool enableMultiPartEpisodes)
+    {
+        var evaluation = releaseEvaluator.EvaluateRelease(
+            release,
+            qualityProfile,
+            customFormats,
+            requestedPart: null, // Passive discovery doesn't request specific parts
+            sport: matchedEvent.Sport,
+            enableMultiPartEpisodes: enableMultiPartEpisodes,
+            allowHighlights: matchedEvent.League?.AllowHighlights ?? false);
+
+        // Apply evaluation results to release (same as IndexerSearchService does)
+        release.Quality = evaluation.Quality;
+        release.QualityScore = evaluation.QualityScore;
+        release.CustomFormatScore = evaluation.CustomFormatScore;
+        release.Score = evaluation.TotalScore;
+        release.Approved = evaluation.Approved && !evaluation.Rejections.Any();
+        release.Rejections = evaluation.Rejections;
+
+        // Apply release profile filtering (Required/Ignored keywords, Preferred score)
+        if (releaseProfiles.Any())
+        {
+            var profileEval = releaseProfileService.EvaluateRelease(release, releaseProfiles, matchedEvent.League?.Tags);
+
+            // Add rejections from release profiles
+            if (profileEval.IsRejected)
+            {
+                release.Approved = false;
+                release.Rejections.AddRange(profileEval.Rejections);
+            }
+
+            // Add preferred score to custom format score (affects ranking)
+            if (profileEval.PreferredScore != 0)
+            {
+                release.CustomFormatScore += profileEval.PreferredScore;
+                release.Score += profileEval.PreferredScore;
+            }
+        }
+
+        _logger.LogDebug("[RSS Sync] Evaluated '{Release}': Quality={Quality} ({QScore}), CF={CScore}, Approved={Approved}",
+            release.Title, release.Quality, release.QualityScore, release.CustomFormatScore, release.Approved);
+    }
+
+    /// <summary>
+    /// Run a single externally pushed release (autobrr and similar IRC
+    /// announce / RSS watchers posting to the Sonarr-compatible
+    /// /api/v3/release/push endpoint) through the exact same
+    /// match → evaluate → grab pipeline as the RSS sync loop, and report the
+    /// decision back so the pusher can log approved/rejected with reasons.
+    /// </summary>
+    public async Task<PushedReleaseOutcome> ProcessPushedReleaseAsync(
+        ReleaseSearchResult release,
+        CancellationToken cancellationToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+        var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
+        var delayProfileService = scope.ServiceProvider.GetRequiredService<DelayProfileService>();
+        var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+        var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
+        var releaseMatchingService = scope.ServiceProvider.GetRequiredService<ReleaseMatchingService>();
+        var releaseEvaluator = scope.ServiceProvider.GetRequiredService<ReleaseEvaluator>();
+        var releaseProfileService = scope.ServiceProvider.GetRequiredService<ReleaseProfileService>();
+
+        var config = await configService.GetConfigAsync();
+
+        // Same candidate set as the RSS loop: monitored, aired, not
+        // postponed/cancelled. A pushed release for an event that hasn't
+        // started yet is a pre-air fake by definition, so the gate applies
+        // to pushes too.
+        var nowUtc = DateTime.UtcNow;
+        var monitoredEvents = await db.Events
+            .Include(e => e.League)
+            .ThenInclude(l => l!.RootFolder)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Where(e => e.Monitored && e.League != null && e.EventDate <= nowUtc
+                && e.Status != "Postponed" && e.Status != "postponed"
+                && e.Status != "Cancelled" && e.Status != "cancelled"
+                && e.Status != "Canceled" && e.Status != "canceled")
+            .ToListAsync(cancellationToken);
+
+        if (!monitoredEvents.Any())
+        {
+            return new PushedReleaseOutcome(false, false, null,
+                new List<string> { "No monitored events have aired yet" });
+        }
+
+        var earlyReleaseLimits = await db.Indexers
+            .Where(i => i.EarlyReleaseLimit.HasValue)
+            .Select(i => new { i.Id, i.EarlyReleaseLimit })
+            .ToDictionaryAsync(i => i.Id, i => i.EarlyReleaseLimit, cancellationToken);
+
+        var matchedEvent = FindMatchingEvent(
+            release, monitoredEvents, releaseMatchingService, config.EnableMultiPartEpisodes, earlyReleaseLimits);
+
+        if (matchedEvent == null)
+        {
+            return new PushedReleaseOutcome(false, false, null,
+                new List<string> { "No monitored event matched this release title" });
+        }
+
+        var qualityProfiles = await db.QualityProfiles.ToListAsync(cancellationToken);
+        var customFormats = await db.CustomFormats.ToListAsync(cancellationToken);
+        var releaseProfiles = await releaseProfileService.LoadReleaseProfilesAsync();
+
+        var qualityProfile = matchedEvent.QualityProfileId.HasValue
+            ? qualityProfiles.FirstOrDefault(p => p.Id == matchedEvent.QualityProfileId.Value)
+            : qualityProfiles.OrderBy(q => q.Id).FirstOrDefault();
+
+        if (qualityProfile != null)
+        {
+            EvaluateMatchedRelease(
+                release, matchedEvent, qualityProfile, customFormats, releaseProfiles,
+                releaseEvaluator, releaseProfileService, config.EnableMultiPartEpisodes);
+
+            if (release.Rejections.Any())
+                return new PushedReleaseOutcome(false, false, matchedEvent.Title, release.Rejections.ToList());
+        }
+
+        var shouldGrab = await ShouldGrabReleaseAsync(
+            db, matchedEvent, release, config, qualityProfile, partDetector, delayProfileService, downloadClientService, cancellationToken);
+
+        if (!shouldGrab.Grab)
+        {
+            // A delay-profile hold isn't a rejection: the release sits in
+            // PendingReleases and the reaper grabs the best-of-window when the
+            // timer expires, so report it as temporarily rejected.
+            var pending = shouldGrab.Reason.StartsWith("Held by delay profile", StringComparison.OrdinalIgnoreCase);
+            return new PushedReleaseOutcome(false, pending, matchedEvent.Title,
+                new List<string> { shouldGrab.Reason });
+        }
+
+        var grabbed = await GrabReleaseAsync(
+            db, matchedEvent, release, downloadClientService, notificationService, shouldGrab.ReleasePart, cancellationToken);
+
+        if (!grabbed)
+        {
+            return new PushedReleaseOutcome(false, false, matchedEvent.Title,
+                new List<string> { "Failed to send release to a download client" });
+        }
+
+        return new PushedReleaseOutcome(true, false, matchedEvent.Title, new List<string>());
     }
 
     /// <summary>
@@ -523,9 +650,18 @@ public class RssSyncService : BackgroundService
 
         if (!string.IsNullOrEmpty(release.TorrentInfoHash))
         {
-            // Torrent: check by info hash
-            isBlocklisted = await db.Blocklist
-                .AnyAsync(b => b.TorrentInfoHash == release.TorrentInfoHash, cancellationToken);
+            // Torrent: check by info hash, unless the indexer opted out of
+            // hash-based rejection (RejectBlocklistedTorrentHashes = false).
+            var rejectByHash = await db.Indexers
+                .Where(i => i.Name == release.Indexer)
+                .Select(i => (bool?)i.RejectBlocklistedTorrentHashes)
+                .FirstOrDefaultAsync(cancellationToken) ?? true;
+
+            if (rejectByHash)
+            {
+                isBlocklisted = await db.Blocklist
+                    .AnyAsync(b => b.TorrentInfoHash == release.TorrentInfoHash, cancellationToken);
+            }
         }
         else if (release.Protocol == "Usenet")
         {
@@ -661,7 +797,15 @@ public class RssSyncService : BackgroundService
                 return (false, "Upgrades are disabled for this quality profile", releasePart);
             }
 
-            if (newTotalScore <= existingTotalScore)
+            // A proper/repack of the SAME quality is a legitimate upgrade:
+            // the original was broken and re-released fixed. Gated on the
+            // Download Propers and Repacks setting.
+            var revisionUpgrade = config.DownloadPropersAndRepacks == "preferAndUpgrade" &&
+                newTotalScore == existingTotalScore &&
+                Helpers.ReleaseRevision.Parse(release.Title) >
+                Helpers.ReleaseRevision.Parse(existingFile.OriginalTitle ?? existingFile.Quality);
+
+            if (newTotalScore <= existingTotalScore && !revisionUpgrade)
             {
                 return (false, $"Existing file has same or better score ({existingTotalScore})", releasePart);
             }
@@ -900,6 +1044,7 @@ public class RssSyncService : BackgroundService
         Event evt,
         ReleaseSearchResult release,
         DownloadClientService downloadClientService,
+        NotificationService notificationService,
         string? releasePart,
         CancellationToken cancellationToken)
     {
@@ -936,14 +1081,17 @@ public class RssSyncService : BackgroundService
             ? evt.League.RootFolder.DefaultDownloadClientCategory!
             : downloadClient.Category;
 
-        // Send to download client with seed config from indexer
+        // Send to download client with seed config from indexer. Packs use
+        // the pack-specific seed time when the indexer defines one.
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             release.DownloadUrl,
             rssGrabCategory,
             release.Title,
             indexerRecord?.SeedRatio,
-            indexerRecord?.SeedTime
+            release.IsPack
+                ? (indexerRecord?.SeasonPackSeedTime ?? indexerRecord?.SeedTime)
+                : indexerRecord?.SeedTime
         );
 
         if (downloadId == null)
@@ -979,6 +1127,27 @@ public class RssSyncService : BackgroundService
         };
 
         db.DownloadQueue.Add(queueItem);
+
+        try
+        {
+            await notificationService.SendNotificationAsync(
+                NotificationTrigger.OnGrab,
+                $"Grabbed: {release.Title}",
+                $"Event: {evt.Title}\nQuality: {release.Quality ?? "Unknown"}\nIndexer: {release.Indexer}\nSize: {release.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
+                new Dictionary<string, object>
+                {
+                    { "eventId", evt.Id },
+                    { "eventTitle", evt.Title ?? "" },
+                    { "indexer", release.Indexer },
+                    { "quality", release.Quality ?? "" },
+                    { "downloadId", downloadId },
+                },
+                evt.League?.Tags);
+        }
+        catch (Exception notifyEx)
+        {
+            _logger.LogWarning(notifyEx, "[RSS Sync] Failed to send grab notification");
+        }
 
         // Use the releasePart passed from ShouldGrabReleaseAsync (no need to re-detect)
         var partName = releasePart;
@@ -1140,3 +1309,14 @@ public class RssSyncService : BackgroundService
 
     #endregion
 }
+
+/// <summary>
+/// Decision for a single pushed release. Grabbed = sent to a download client;
+/// Pending = held by a delay profile (Sportarr owns it via PendingReleases,
+/// not a rejection); otherwise rejected with the reasons listed.
+/// </summary>
+public sealed record PushedReleaseOutcome(
+    bool Grabbed,
+    bool Pending,
+    string? MatchedEventTitle,
+    List<string> Rejections);

@@ -68,8 +68,17 @@ public class DvrSchedulerService : BackgroundService
 
                     if (!result.Success)
                     {
-                        _logger.LogError("[DVR Scheduler] Failed to start recording {Id}: {Error}",
-                            recording.Id, result.Error);
+                        if (result.Error == DvrRecordingService.StartAlreadyInProgressError)
+                        {
+                            // Benign: this tick raced a manual start (or a
+                            // fallback rotation) still spawning its ffmpeg.
+                            _logger.LogDebug("[DVR Scheduler] Recording {Id} is already being started elsewhere; skipping", recording.Id);
+                        }
+                        else
+                        {
+                            _logger.LogError("[DVR Scheduler] Failed to start recording {Id}: {Error}",
+                                recording.Id, result.Error);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -86,6 +95,12 @@ public class DvrSchedulerService : BackgroundService
         {
             if (stoppingToken.IsCancellationRequested)
                 break;
+
+            // Overtime guard: if the linked event is still in progress per
+            // the livescore feed, the recording's end has been pushed out -
+            // don't stop it this tick.
+            if (await dvrService.ShouldExtendForOvertimeAsync(recording))
+                continue;
 
             _logger.LogInformation("[DVR Scheduler] Stopping completed recording {Id}: {Title}",
                 recording.Id, recording.Title);

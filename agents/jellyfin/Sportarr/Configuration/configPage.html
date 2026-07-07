@@ -37,6 +37,17 @@
                         </div>
                     </div>
 
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="chkDateInTitles" />
+                            <span>Include Event Date in Episode Titles</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            Appends the event date to episode titles, e.g. "Celtics vs Heat (2026-05-14)".
+                            Useful for playoff series where several games between the same teams sit side by side.
+                        </div>
+                    </div>
+
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="txtCacheHours">Image Cache Duration (hours)</label>
                         <input is="emby-input" type="number" id="txtCacheHours" min="1" max="720" />
@@ -73,6 +84,7 @@
                     ApiClient.getPluginConfiguration(SportarrConfig.pluginUniqueId).then(function (config) {
                         document.querySelector('#txtApiUrl').value = config.SportarrApiUrl || 'https://sportarr.net';
                         document.querySelector('#chkDebugLogging').checked = config.EnableDebugLogging || false;
+                        document.querySelector('#chkDateInTitles').checked = config.IncludeDateInEpisodeTitles !== false;
                         document.querySelector('#txtCacheHours').value = config.ImageCacheHours || 24;
                         Dashboard.hideLoadingMsg();
                     });
@@ -88,6 +100,7 @@
                         // doesn't become "http://host:1867//api/..." when used.
                         config.SportarrApiUrl = document.querySelector('#txtApiUrl').value.trim().replace(/\/+$/, '');
                         config.EnableDebugLogging = document.querySelector('#chkDebugLogging').checked;
+                        config.IncludeDateInEpisodeTitles = document.querySelector('#chkDateInTitles').checked;
                         config.ImageCacheHours = parseInt(document.querySelector('#txtCacheHours').value) || 24;
 
                         ApiClient.updatePluginConfiguration(SportarrConfig.pluginUniqueId, config).then(function () {

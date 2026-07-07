@@ -59,6 +59,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
     {
         RenameEvents = config.RenameEvents,
         ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
+        DownloadPropersAndRepacks = config.DownloadPropersAndRepacks,
         EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
         StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
         // Granular folder format settings
@@ -74,6 +75,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         CopyFiles = dbMediaSettings?.CopyFiles ?? false,
         // Note: RemoveCompletedDownloads is now a per-client setting in Download Client options
         DeleteEmptyFolders = dbMediaSettings?.DeleteEmptyFolders ?? false,
+        UnmonitorDeletedEvents = dbMediaSettings?.UnmonitorDeletedEvents ?? false,
         SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
         MinimumFreeSpace = config.MinimumFreeSpace,
         UseHardlinks = config.UseHardlinks,
@@ -88,8 +90,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         SetPermissions = config.SetPermissions,
         ChmodFolder = config.ChmodFolder,
         ChownGroup = config.ChownGroup,
-        EnableEventRetention = config.EnableEventRetention,
-        EventRetentionDays = config.EventRetentionDays,
+        WatchFolders = config.WatchFolders ?? new List<string>(),
         // Preserve timestamps from database
         Created = dbMediaSettings?.Created ?? DateTime.UtcNow,
         LastModified = dbMediaSettings?.LastModified
@@ -198,6 +199,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         CheckForFinishedDownloadInterval = config.CheckForFinishedDownloadInterval,
         RedownloadFailedDownloads = config.RedownloadFailedDownloads,
         RedownloadFailedFromInteractiveSearch = config.RedownloadFailedFromInteractiveSearch,
+        StalledDownloadTimeoutMinutes = config.StalledDownloadTimeoutMinutes,
 
         // Search Queue Management (Huntarr-style)
         MaxDownloadQueueSize = config.MaxDownloadQueueSize,
@@ -209,6 +211,8 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         PreferIndexerFlags = config.PreferIndexerFlags,
         SearchCacheDuration = config.SearchCacheDuration,
         IndexerMinimumAgeMinutes = config.IndexerMinimumAgeMinutes,
+        IptvPlaylistRefreshHours = config.IptvPlaylistRefreshHours,
+        EpgRefreshHours = config.EpgRefreshHours,
 
         // Development Settings (hidden)
         DevelopmentSettings = System.Text.Json.JsonSerializer.Serialize(new DevelopmentSettings
@@ -419,6 +423,12 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         {
             config.RenameEvents = mediaManagementSettings.RenameEvents;
             config.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
+            config.DownloadPropersAndRepacks = mediaManagementSettings.DownloadPropersAndRepacks switch
+            {
+                "doNotUpgrade" => "doNotUpgrade",
+                "doNotPrefer" => "doNotPrefer",
+                _ => "preferAndUpgrade",
+            };
             config.EnableMultiPartEpisodes = mediaManagementSettings.EnableMultiPartEpisodes;
             config.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             config.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
@@ -433,8 +443,14 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             config.SetPermissions = mediaManagementSettings.SetPermissions;
             config.ChmodFolder = mediaManagementSettings.ChmodFolder;
             config.ChownGroup = mediaManagementSettings.ChownGroup;
-            config.EnableEventRetention = mediaManagementSettings.EnableEventRetention;
-            config.EventRetentionDays = Math.Max(1, mediaManagementSettings.EventRetentionDays); // Clamp at 1 day minimum
+            // Sanitize: trim, drop blanks, dedupe. Existence isn't validated
+            // here - a watch folder on a network mount can legitimately be
+            // offline at save time; the watcher logs and skips it per tick.
+            config.WatchFolders = (mediaManagementSettings.WatchFolders ?? new List<string>())
+                .Select(p => p?.Trim() ?? "")
+                .Where(p => p.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         // Download handling settings (flat properties from frontend)
@@ -443,6 +459,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         config.CheckForFinishedDownloadInterval = updatedSettings.CheckForFinishedDownloadInterval;
         config.RedownloadFailedDownloads = updatedSettings.RedownloadFailedDownloads;
         config.RedownloadFailedFromInteractiveSearch = updatedSettings.RedownloadFailedFromInteractiveSearch;
+        config.StalledDownloadTimeoutMinutes = Math.Clamp(updatedSettings.StalledDownloadTimeoutMinutes, 0, 1440);
 
         // Search Queue Management (Huntarr-style)
         config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;
@@ -454,6 +471,8 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         config.PreferIndexerFlags = updatedSettings.PreferIndexerFlags;
         config.SearchCacheDuration = Math.Max(10, updatedSettings.SearchCacheDuration); // Enforce minimum of 10 seconds
         config.IndexerMinimumAgeMinutes = Math.Max(0, updatedSettings.IndexerMinimumAgeMinutes); // Clamp at 0 (no negative delays)
+        config.IptvPlaylistRefreshHours = Math.Max(0, updatedSettings.IptvPlaylistRefreshHours); // 0 = disabled
+        config.EpgRefreshHours = Math.Max(0, updatedSettings.EpgRefreshHours); // 0 = disabled
 
         // Development Settings (hidden)
         if (developmentSettings != null)
@@ -494,6 +513,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
                 CreateEventFolders = mediaManagementSettings.CreateEventFolders,
                 ReorganizeFolders = mediaManagementSettings.ReorganizeFolders,
                 DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders,
+                UnmonitorDeletedEvents = mediaManagementSettings.UnmonitorDeletedEvents,
                 SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck,
                 MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace,
                 UseHardlinks = mediaManagementSettings.UseHardlinks,
@@ -534,6 +554,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             dbSettings.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             dbSettings.ReorganizeFolders = mediaManagementSettings.ReorganizeFolders;
             dbSettings.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
+            dbSettings.UnmonitorDeletedEvents = mediaManagementSettings.UnmonitorDeletedEvents;
             dbSettings.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
             dbSettings.MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace;
             dbSettings.UseHardlinks = mediaManagementSettings.UseHardlinks;

@@ -17,7 +17,11 @@ public class MediaFileParser
     private static readonly Regex VideoCodecPattern = new(@"(?<codec>x265|x264|h[\.\s]?265|h[\.\s]?264|HEVC|AVC|XviD|DivX|VP9|AV1)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex AudioCodecPattern = new(@"(?<audio>AAC(?:[\s\.]2[\s\.]0)?|AC3|E[\-\s]?AC[\-\s]?3|DDP|DD(?:[\s\.]5[\s\.]1)?|TrueHD|Atmos|DTS(?:[\s\-]HD)?(?:[\s\-]MA)?|FLAC|MP3|Opus)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ReleaseGroupPattern = new(@"-([A-Za-z0-9]+)(?:\[.*?\])?$", RegexOptions.Compiled);
-    private static readonly Regex ProperRepackPattern = new(@"\b(?<proper>PROPER|REPACK|REAL)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ProperRepackPattern = new(@"\b(?<proper>PROPER|REPACK)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // REAL only counts as a proper-marker when fully uppercase (scene
+    // convention). A case-insensitive match flags every file containing
+    // "Real" (Real Madrid, Real Sociedad, Real Salt Lake...) as a PROPER.
+    private static readonly Regex RealProperPattern = new(@"\bREAL\b", RegexOptions.Compiled);
     private static readonly Regex EditionPattern = new(@"(?<edition>EXTENDED|UNRATED|DIRECTORS?\.?\s*CUT|THEATRICAL|REMASTERED|IMAX|CRITERION)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex LanguagePattern = new(@"(?<lang>MULTI|MULTiSUBS|DUAL|DUBBED|SUBBED|GERMAN|FRENCH|SPANISH|ITALIAN|JAPANESE|KOREAN|CHINESE)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -160,7 +164,7 @@ public class MediaFileParser
             AirDate = ExtractAirDate(originalName), // Use original for date parsing
             Edition = ExtractEdition(cleanName),
             Language = ExtractLanguage(cleanName),
-            IsProperOrRepack = ProperRepackPattern.IsMatch(cleanName)
+            IsProperOrRepack = ProperRepackPattern.IsMatch(cleanName) || RealProperPattern.IsMatch(cleanName)
         };
 
         _logger.LogDebug("Parsed '{Filename}': Title='{Title}', Quality='{Quality}', Group='{Group}'",

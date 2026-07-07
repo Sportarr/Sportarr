@@ -14,7 +14,9 @@ public enum DownloadClientType
     NzbGet,
     Decypharr,
     DecypharrUsenet,
-    NZBdav
+    NZBdav,
+    TorrentBlackhole,
+    UsenetBlackhole
 }
 
 /// <summary>
@@ -69,6 +71,14 @@ public class DownloadClient
     // e.g., SABnzbd can remove after import (no seeding needed) while qBittorrent preserves for seeding
     public bool RemoveCompletedDownloads { get; set; } = true; // Default ON for backwards compatibility
     public bool RemoveFailedDownloads { get; set; } = true;
+
+    // Blackhole client settings (TorrentBlackhole / UsenetBlackhole only).
+    // BlackholeFolder is where grabbed .torrent/.nzb/.magnet files are written for the
+    // external downloader to pick up; WatchFolder is where finished downloads appear.
+    public string? BlackholeFolder { get; set; }
+    public string? WatchFolder { get; set; }
+    public bool SaveMagnetFiles { get; set; } // Write .magnet files for magnet-only releases (torrent blackhole)
+    public bool ReadOnly { get; set; } = true; // Import by copy/hardlink and never delete watch folder contents
 
     // Tags for scoping to specific leagues
     public List<int> Tags { get; set; } = new();
@@ -179,7 +189,8 @@ public enum IndexerType
     Torznab,
     Newznab,
     Rss,
-    Torrent
+    Torrent,
+    BroadcasTheNet
 }
 
 /// <summary>
@@ -364,6 +375,14 @@ public class ReleaseSearchResult
     public string? Source { get; set; } // WEB-DL, BluRay, HDTV, etc.
     public string? Codec { get; set; } // H.264, HEVC, AV1, etc.
     public string? Language { get; set; } // Detected language from title (English, German, French, etc.)
+
+    /// <summary>
+    /// For MULTI releases: the languages this indexer's MULTI releases
+    /// carry, copied from the indexer's Multi Languages setting at fetch
+    /// time so language custom formats can match against them.
+    /// </summary>
+    public List<string>? MultiLanguageNames { get; set; }
+
     public string? ReleaseGroup { get; set; } // Release group extracted from title (e.g., "MWR", "FLUX")
     public int? Seeders { get; set; }
     public int? Leechers { get; set; }

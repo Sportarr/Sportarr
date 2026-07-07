@@ -19,11 +19,11 @@ public class DecypharrClient
     private readonly QBittorrentClient _qbClient;
     private readonly ILogger<DecypharrClient> _logger;
 
-    public DecypharrClient(HttpClient httpClient, ILogger<DecypharrClient> logger)
+    public DecypharrClient(HttpClient httpClient, ILogger<DecypharrClient> logger, IHttpClientFactory? httpClientFactory = null)
     {
         _logger = logger;
         // Decypharr implements qBittorrent API, so we delegate to QBittorrentClient
-        _qbClient = new QBittorrentClient(httpClient, new LoggerFactory().CreateLogger<QBittorrentClient>());
+        _qbClient = new QBittorrentClient(httpClient, new LoggerFactory().CreateLogger<QBittorrentClient>(), httpClientFactory);
     }
 
     /// <summary>

@@ -367,6 +367,59 @@ public static class SonarrEpisodeFileEndpoints
             return Results.Ok(result);
         });
 
+        // PUT /api/v3/episode/{id} - Update episode monitoring (Maintainerr
+        // unmonitors an episode before deleting its file so the removal
+        // doesn't trigger a re-download).
+        app.MapPut("/api/v3/episode/{id:int}", async (int id, HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
+            logger.LogInformation("[V3-COMPAT] PUT /api/v3/episode/{Id} - {Json}", id, json);
+
+            var eventItem = await db.Events
+                .Include(e => e.Files)
+                .FirstOrDefaultAsync(e => e.Id == id);
+
+            if (eventItem == null)
+            {
+                return Results.NotFound(new { message = "Episode not found" });
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("monitored", out var monitoredElement))
+                {
+                    var newMonitored = monitoredElement.GetBoolean();
+                    if (eventItem.Monitored != newMonitored)
+                    {
+                        logger.LogInformation("[V3-COMPAT] Event {Id} '{Title}' monitored: {Old} -> {New}",
+                            eventItem.Id, eventItem.Title, eventItem.Monitored, newMonitored);
+                        eventItem.Monitored = newMonitored;
+                        eventItem.LastUpdate = DateTime.UtcNow;
+                        await db.SaveChangesAsync();
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON body" });
+            }
+
+            var firstFile = eventItem.Files.FirstOrDefault(f => f.Exists);
+            return Results.Ok(new
+            {
+                id = eventItem.Id,
+                seriesId = eventItem.LeagueId ?? 0,
+                episodeFileId = firstFile?.Id ?? 0,
+                seasonNumber = eventItem.SeasonNumber ?? DateTime.Now.Year,
+                episodeNumber = eventItem.EpisodeNumber ?? 0,
+                title = eventItem.Title,
+                hasFile = firstFile != null,
+                monitored = eventItem.Monitored
+            });
+        });
+
         return app;
     }
 }

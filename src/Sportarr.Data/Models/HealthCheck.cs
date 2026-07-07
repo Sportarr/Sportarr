@@ -10,6 +10,14 @@ public class HealthCheckResult
     public string Message { get; set; } = string.Empty;
     public string? Details { get; set; }
     public DateTime CheckedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// True when the user dismissed this check type from the header banner
+    /// (Config.DismissedHealthCheckTypes). The banner hides dismissed
+    /// checks; the health page still shows them, dimmed, with a restore
+    /// action. Never true for Error level - errors always resurface.
+    /// </summary>
+    public bool Dismissed { get; set; }
 }
 
 /// <summary>

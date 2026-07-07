@@ -13,6 +13,12 @@ public class SabnzbdClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<SabnzbdClient> _logger;
 
+    /// <remarks>
+    /// When the download client config has SSL certificate validation
+    /// disabled, DownloadClientService injects the factory-managed
+    /// SSL-bypass client here, so every request path can use _httpClient
+    /// directly instead of building a throwaway handler per call.
+    /// </remarks>
     public SabnzbdClient(HttpClient httpClient, ILogger<SabnzbdClient> logger)
     {
         _httpClient = httpClient;
@@ -1142,20 +1148,7 @@ public class SabnzbdClient
             _logger.LogDebug("[SABnzbd] POST addfile request to: {Url} (file: {Filename}, size: {Size} bytes)",
                 baseUrl, filename, nzbData.Length);
 
-            HttpResponseMessage response;
-            if (config.UseSsl && config.DisableSslCertificateValidation)
-            {
-                using var handler = new HttpClientHandler
-                {
-                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
-                };
-                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
-                response = await client.PostAsync(baseUrl, content);
-            }
-            else
-            {
-                response = await _httpClient.PostAsync(baseUrl, content);
-            }
+            var response = await _httpClient.PostAsync(baseUrl, content);
 
             var responseBody = await response.Content.ReadAsStringAsync();
 
@@ -1267,22 +1260,8 @@ public class SabnzbdClient
 
             _logger.LogInformation("[SABnzbd] POST addurl request to: {Url}", baseUrl);
 
-            HttpResponseMessage response;
             var content = new FormUrlEncodedContent(formData);
-
-            if (config.UseSsl && config.DisableSslCertificateValidation)
-            {
-                using var handler = new HttpClientHandler
-                {
-                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
-                };
-                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
-                response = await client.PostAsync(postUrl, content);
-            }
-            else
-            {
-                response = await _httpClient.PostAsync(postUrl, content);
-            }
+            var response = await _httpClient.PostAsync(postUrl, content);
 
             if (response.IsSuccessStatusCode)
             {
@@ -1390,21 +1369,7 @@ public class SabnzbdClient
                 logUrl = logUrl.Replace(config.Password, "***PASSWORD***");
             _logger.LogDebug("[SABnzbd] API request: {FullUrl}", logUrl);
 
-            // Use custom HttpClient with SSL validation disabled if option is enabled
-            HttpResponseMessage response;
-            if (config.UseSsl && config.DisableSslCertificateValidation)
-            {
-                using var handler = new HttpClientHandler
-                {
-                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
-                };
-                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
-                response = await client.GetAsync(fullUrl);
-            }
-            else
-            {
-                response = await _httpClient.GetAsync(fullUrl);
-            }
+            var response = await _httpClient.GetAsync(fullUrl);
 
             var responseBody = await response.Content.ReadAsStringAsync();
             _logger.LogDebug("[SABnzbd] API response: Status={StatusCode}", response.StatusCode);

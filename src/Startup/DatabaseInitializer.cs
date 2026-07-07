@@ -24,19 +24,47 @@ public static class DatabaseInitializer
         {
         // Check if database exists and has tables but no migration history
         // This happens when database was created with EnsureCreated() instead of Migrate()
+
+        // Write-lock preflight: take (and immediately release) a write lock
+        // so a database held by another process fails FAST with an
+        // actionable message instead of every later step fighting busy
+        // timeouts. The classic Windows case: a leftover Sportarr service
+        // still running while a second copy launches from the Start Menu.
+        for (var lockAttempt = 1; ; lockAttempt++)
+        {
+            try
+            {
+                db.Database.ExecuteSqlRaw("BEGIN IMMEDIATE; ROLLBACK;");
+                break;
+            }
+            catch (Exception ex) when (ex.Message.Contains("locked", StringComparison.OrdinalIgnoreCase) ||
+                                       ex.Message.Contains("busy", StringComparison.OrdinalIgnoreCase))
+            {
+                if (lockAttempt >= 3)
+                {
+                    Console.WriteLine("[Sportarr] ERROR: The database is locked by another process after 3 attempts.");
+                    Console.WriteLine("[Sportarr] Another Sportarr instance (Windows service, tray icon, or second console) is most likely running against the same data directory. Stop it and launch again.");
+                    throw;
+                }
+                Console.WriteLine($"[Sportarr] Database is locked by another process; retrying in 10s (attempt {lockAttempt}/3)...");
+                await Task.Delay(TimeSpan.FromSeconds(10));
+            }
+        }
+        Console.WriteLine("[Sportarr] Database lock check passed");
+
         var canConnect = await db.Database.CanConnectAsync();
         var hasMigrationHistory = canConnect && (await db.Database.GetAppliedMigrationsAsync()).Any();
 
-        // Check if AppSettings table exists (core table that should always be present)
+        // Check if AppSettings table exists (core table that should always
+        // be present). Queried via EF rather than GetDbConnection() -
+        // wrapping the context's OWN connection in a using block disposed
+        // it out from under the context.
         bool hasTables = false;
         if (canConnect)
         {
-            using var connection = db.Database.GetDbConnection();
-            await connection.OpenAsync();
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AppSettings'";
-            var result = await command.ExecuteScalarAsync();
-            hasTables = Convert.ToInt32(result) > 0;
+            hasTables = db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS \"Value\" FROM sqlite_master WHERE type='table' AND name='AppSettings'")
+                .AsEnumerable().FirstOrDefault() > 0;
         }
 
         if (canConnect && hasTables && !hasMigrationHistory)
@@ -76,8 +104,43 @@ public static class DatabaseInitializer
         }
         } // end: if (!db.Database.IsNpgsql()) - legacy EnsureCreated() detection/seeding
 
-        // Now apply any new migrations
+        // Now apply any new migrations. Breadcrumbs before and after so a
+        // report of "stuck at Applying database migrations" pinpoints the
+        // phase - this whole initializer speaks through the console, not
+        // the (buffered, later-started) log files.
+        var pendingMigrations = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        Console.WriteLine(pendingMigrations.Count > 0
+            ? $"[Sportarr] Applying {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}"
+            : "[Sportarr] No pending migrations");
+
+        // EF Core 9 takes an exclusive migration lock - a row in
+        // __EFMigrationsLock - while applying migrations and deletes it on
+        // completion. If a previous run was killed mid-migration (exactly
+        // what users do when startup looks hung), the row is orphaned and
+        // every later Migrate() waits on it forever: silently, with no
+        // timeout and no log output. We are guaranteed to be the only
+        // process at this point (single-instance mutex on Windows plus the
+        // write-lock preflight above), so any lock row present now is a
+        // corpse from a killed run - clear it and say so. Postgres is
+        // unaffected: its advisory lock dies with the crashed connection.
+        if (!db.Database.IsNpgsql())
+        {
+            var hasLockTable = db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS \"Value\" FROM sqlite_master WHERE type='table' AND name='__EFMigrationsLock'")
+                .AsEnumerable().FirstOrDefault() > 0;
+            if (hasLockTable)
+            {
+                var cleared = db.Database.ExecuteSqlRaw("DELETE FROM \"__EFMigrationsLock\"");
+                if (cleared > 0)
+                {
+                    Console.WriteLine($"[Sportarr] Cleared {cleared} stale migration lock row(s) left behind by a previously killed startup; migrations would otherwise wait on it forever");
+                }
+            }
+        }
+
         db.Database.Migrate();
+
+        Console.WriteLine("[Sportarr] Core migrations applied; running schema safety nets...");
 
         // Everything below repairs/backfills schema drift accumulated across the SQLite
         // migration history (added columns, dedup passes, renamed enum values, etc.). A
@@ -1181,6 +1244,40 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify SeasonPosters table: {ex.Message}");
         }
 
+        // Ensure ChannelTeamMappings table exists (per-team DVR channel
+        // preference, checked by the resolver before the league mapping).
+        try
+        {
+            var checkTeamMappingsSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ChannelTeamMappings'";
+            var teamMappingsExists = db.Database.SqlQueryRaw<int>(checkTeamMappingsSql).AsEnumerable().FirstOrDefault();
+
+            if (teamMappingsExists == 0)
+            {
+                Console.WriteLine("[Sportarr] ChannelTeamMappings table missing - creating it now...");
+
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""ChannelTeamMappings"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""ChannelId"" INTEGER NOT NULL,
+                        ""TeamId"" INTEGER NOT NULL,
+                        ""IsPreferred"" INTEGER NOT NULL DEFAULT 1,
+                        ""Priority"" INTEGER NOT NULL DEFAULT 1,
+                        ""Created"" TEXT NOT NULL,
+                        CONSTRAINT ""FK_ChannelTeamMappings_IptvChannels_ChannelId"" FOREIGN KEY (""ChannelId"") REFERENCES ""IptvChannels"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_ChannelTeamMappings_Teams_TeamId"" FOREIGN KEY (""TeamId"") REFERENCES ""Teams"" (""Id"") ON DELETE CASCADE
+                    )");
+
+                db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX ""IX_ChannelTeamMappings_ChannelId_TeamId"" ON ""ChannelTeamMappings"" (""ChannelId"", ""TeamId"")");
+                db.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX ""UX_ChannelTeamMappings_PreferredPerTeam"" ON ""ChannelTeamMappings"" (""TeamId"") WHERE ""IsPreferred"" = 1");
+
+                Console.WriteLine("[Sportarr] ChannelTeamMappings table created successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify ChannelTeamMappings table: {ex.Message}");
+        }
+
         // Ensure granular folder format/creation columns exist in MediaManagementSettings
         // These were added after some installs and may be missing from older databases
         try
@@ -2231,6 +2328,16 @@ public static class DatabaseInitializer
         EnsureColumn(db, "IptvChannels", "ArchiveDays", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DvrRecordings", "Method", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "IptvSources", "DetectedCatchupMode", "TEXT");
+        EnsureColumn(db, "IptvSources", "FfmpegInputArgs", "TEXT");
+        EnsureColumn(db, "EpgSources", "Priority", "INTEGER NOT NULL DEFAULT 25");
+        EnsureColumn(db, "Leagues", "RetentionDays", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "Leagues", "AllowHighlights", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "MediaManagementSettings", "UnmonitorDeletedEvents", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "Teams", "UserAliases", "TEXT");
+        EnsureColumn(db, "DownloadClients", "BlackholeFolder", "TEXT");
+        EnsureColumn(db, "DownloadClients", "WatchFolder", "TEXT");
+        EnsureColumn(db, "DownloadClients", "SaveMagnetFiles", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "DownloadClients", "ReadOnly", "INTEGER NOT NULL DEFAULT 0");
 
         RelaxLegacyRootFolderColumns(db);
     }

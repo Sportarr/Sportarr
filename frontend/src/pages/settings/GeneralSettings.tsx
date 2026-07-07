@@ -119,7 +119,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
 
   // Analytics Settings
   const [analyticsSettings, setAnalyticsSettings] = useState<AnalyticsSettings>({
-    sendAnonymousUsageData: false,
+    sendAnonymousUsageData: true,
   });
 
   // Backup Settings
@@ -877,7 +877,10 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           <div>
             <span className="text-white font-medium">Send Anonymous Usage Data</span>
             <p className="text-sm text-gray-400 mt-1">
-              Help improve Sportarr by sending anonymous usage statistics. No personal information is collected.
+              Help improve Sportarr by sending anonymous usage data. This currently includes team
+              aliases you add, so popular aliases can be promoted into the shared metadata and
+              benefit everyone automatically. Submissions carry only the team, the alias text, and
+              a random install identifier. No personal information is collected.
             </p>
           </div>
         </label>

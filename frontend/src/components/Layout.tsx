@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus, useActivityCounts } from '../api/hooks';
 import { getImageUrl } from '../utils/request';
+import { apiGet, apiPost } from '../utils/api';
 import {
   FolderIcon,
   ClockIcon,
@@ -111,6 +112,7 @@ export default function Layout() {
         { label: 'Status', path: '/system/status' },
         { label: 'Health', path: '/system/health' },
         { label: 'Tasks', path: '/system/tasks' },
+        { label: 'Stats', path: '/system/stats' },
         { label: 'Backup', path: '/system/backup' },
         { label: 'Updates', path: '/system/updates' },
         { label: 'Events', path: '/system/events' },
@@ -371,8 +373,90 @@ export default function Layout() {
         className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pt-14 md:pt-0"
         style={{ scrollbarGutter: 'stable' }}
       >
+        <HealthBanner />
         <Outlet />
       </main>
+    </div>
+  );
+}
+
+/**
+ * Persistent warning strip shown on every page while any health check is
+ * at Warning (2) or Error (3). Notices stay off the banner - they live on
+ * the health page. Polls alongside the page so a failing indexer or
+ * download client is visible without opening System > Health.
+ */
+function HealthBanner() {
+  const [issues, setIssues] = useState<{ type: number; level: number; message: string; dismissed?: boolean }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const response = await apiGet('/api/system/health');
+        if (!response.ok) return;
+        const results: { type: number; level: number; message: string; dismissed?: boolean }[] =
+          await response.json();
+        if (!cancelled) {
+          // Warnings the user dismissed stay off the banner (they remain
+          // visible on System > Health, where they can be restored).
+          setIssues(results.filter((r) => r.level >= 2 && !r.dismissed));
+        }
+      } catch {
+        // Network errors are not health issues; leave the banner as-is.
+      }
+    };
+
+    check();
+    const interval = setInterval(check, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  if (issues.length === 0) return null;
+
+  const hasError = issues.some((i) => i.level >= 3);
+  // Errors are never dismissible; the X only appears for warning-only banners.
+  const dismissable = issues.filter((i) => i.level === 2);
+
+  const dismissAll = async () => {
+    setIssues((prev) => prev.filter((i) => i.level >= 3));
+    for (const issue of dismissable) {
+      try {
+        await apiPost('/api/system/health/dismiss', { type: issue.type });
+      } catch {
+        // Best effort; the health page offers the same action.
+      }
+    }
+  };
+
+  return (
+    <div
+      className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b transition-colors ${
+        hasError
+          ? 'bg-red-900/40 border-red-700/50 text-red-200'
+          : 'bg-yellow-900/30 border-yellow-700/50 text-yellow-200'
+      }`}
+    >
+      <ExclamationCircleIcon className="h-5 w-5 shrink-0" />
+      <Link to="/system/health" className="flex-1 min-w-0 truncate hover:underline">
+        {issues.length === 1 ? issues[0].message : `${issues.length} health issues detected`}
+      </Link>
+      <Link to="/system/health" className="shrink-0 underline underline-offset-2">
+        Details
+      </Link>
+      {!hasError && dismissable.length > 0 && (
+        <button
+          onClick={dismissAll}
+          className="shrink-0 ml-1 p-1 rounded hover:bg-black/20 transition-colors"
+          title="Dismiss this warning. It stays visible on the Health page, where you can restore it. Dismissals survive restarts; errors always reappear."
+        >
+          <span className="text-lg leading-none">&times;</span>
+        </button>
+      )}
     </div>
   );
 }

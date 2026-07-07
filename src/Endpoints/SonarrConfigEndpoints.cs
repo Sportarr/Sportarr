@@ -33,7 +33,9 @@ public static class SonarrConfigEndpoints
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/qualityprofile");
 
-            var profiles = await db.QualityProfiles.Include(p => p.Items).ToListAsync();
+            // Items is a JSON-converted column, not a navigation - Include on
+            // it throws, which broke this shim for every v3 consumer.
+            var profiles = await db.QualityProfiles.ToListAsync();
             return Results.Ok(profiles.Select(p => new
             {
                 id = p.Id,
@@ -59,6 +61,47 @@ public static class SonarrConfigEndpoints
                 id = t.Id,
                 label = t.Label
             }));
+        });
+
+        // POST /api/v3/tag - Create a tag (Maintainerr creates its exclusion
+        // tag on first use). Sonarr returns the existing tag when the label
+        // is already taken, so match that instead of erroring.
+        app.MapPost("/api/v3/tag", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
+            logger.LogInformation("[V3-COMPAT] POST /api/v3/tag - {Json}", json);
+
+            string? label;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                label = doc.RootElement.TryGetProperty("label", out var labelElement)
+                    ? labelElement.GetString()
+                    : null;
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON body" });
+            }
+
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return Results.BadRequest(new { error = "Tag label is required" });
+            }
+
+            var normalized = label.Trim();
+            var existing = await db.Tags.FirstOrDefaultAsync(t => t.Label.ToLower() == normalized.ToLower());
+            if (existing != null)
+            {
+                return Results.Ok(new { id = existing.Id, label = existing.Label });
+            }
+
+            var tag = new Tag { Label = normalized };
+            db.Tags.Add(tag);
+            await db.SaveChangesAsync();
+
+            return Results.Ok(new { id = tag.Id, label = tag.Label });
         });
 
         // GET /api/v3/importlistexclusion - List import list exclusions (Maintainerr)

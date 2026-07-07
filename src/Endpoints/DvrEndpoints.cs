@@ -458,11 +458,16 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         prePaddingMinutes = config.DvrPrePaddingMinutes,
         postPaddingMinutes = config.DvrPostPaddingMinutes,
         maxConcurrentRecordings = config.DvrMaxConcurrentRecordings,
+        simultaneousChannels = config.DvrSimultaneousChannels,
         conflictPolicy = config.DvrConflictPolicy,
         deleteAfterImport = config.DvrDeleteAfterImport,
         recordingRetentionDays = config.DvrRecordingRetentionDays,
+        keepLastRecordingsPerLeague = config.DvrKeepLastRecordingsPerLeague,
         hardwareAcceleration = config.DvrHardwareAcceleration,
         ffmpegPath = config.DvrFfmpegPath,
+        postRecordingCommand = config.DvrPostRecordingCommand,
+        overtimeGuardEnabled = config.DvrOvertimeGuardEnabled,
+        overtimeMaxExtensionMinutes = config.DvrOvertimeMaxExtensionMinutes,
         enableReconnect = config.DvrEnableReconnect,
         maxReconnectAttempts = config.DvrMaxReconnectAttempts,
         reconnectDelaySeconds = config.DvrReconnectDelaySeconds,
@@ -502,6 +507,10 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         config.DvrPostPaddingMinutes = postPadding.GetInt32();
     if (settings.TryGetProperty("maxConcurrentRecordings", out var maxConcurrent))
         config.DvrMaxConcurrentRecordings = maxConcurrent.GetInt32();
+    if (settings.TryGetProperty("simultaneousChannels", out var simultaneousChannels))
+        // Clamp: 1 = preferred channel only (default); a runaway value
+        // would burn every tuner slot on one event.
+        config.DvrSimultaneousChannels = Math.Clamp(simultaneousChannels.GetInt32(), 1, 5);
     if (settings.TryGetProperty("conflictPolicy", out var conflictPolicyJson))
     {
         var v = conflictPolicyJson.GetString();
@@ -517,10 +526,20 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         config.DvrDeleteAfterImport = deleteAfter.GetBoolean();
     if (settings.TryGetProperty("recordingRetentionDays", out var retention))
         config.DvrRecordingRetentionDays = retention.GetInt32();
+    if (settings.TryGetProperty("keepLastRecordingsPerLeague", out var keepLast))
+        config.DvrKeepLastRecordingsPerLeague = Math.Max(0, keepLast.GetInt32());
     if (settings.TryGetProperty("hardwareAcceleration", out var hwAccel))
         config.DvrHardwareAcceleration = hwAccel.GetInt32();
     if (settings.TryGetProperty("ffmpegPath", out var ffmpegPath))
         config.DvrFfmpegPath = ffmpegPath.GetString() ?? "";
+    if (settings.TryGetProperty("postRecordingCommand", out var postRecordingCommand))
+        config.DvrPostRecordingCommand = postRecordingCommand.GetString() ?? "";
+
+    if (settings.TryGetProperty("overtimeGuardEnabled", out var overtimeGuardEnabled))
+        config.DvrOvertimeGuardEnabled = overtimeGuardEnabled.GetBoolean();
+
+    if (settings.TryGetProperty("overtimeMaxExtensionMinutes", out var overtimeMaxExtensionMinutes))
+        config.DvrOvertimeMaxExtensionMinutes = Math.Clamp(overtimeMaxExtensionMinutes.GetInt32(), 0, 360);
     if (settings.TryGetProperty("enableReconnect", out var enableReconnect))
         config.DvrEnableReconnect = enableReconnect.GetBoolean();
     if (settings.TryGetProperty("maxReconnectAttempts", out var maxReconnect))

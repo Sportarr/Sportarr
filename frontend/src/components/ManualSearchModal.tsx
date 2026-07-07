@@ -49,6 +49,7 @@ interface ReleaseSearchResult {
   title: string;
   guid: string;
   downloadUrl: string;
+  infoUrl?: string | null;
   indexer: string;
   indexerFlags?: string[];
   size: number;
@@ -72,6 +73,7 @@ interface ReleaseSearchResult {
 }
 
 interface QueueItem {
+  id: number;
   eventId: number;
   title: string;
   status: string;
@@ -391,7 +393,7 @@ export default function ManualSearchModal({
       if (isOverride && queueItems.length > 0) {
         for (const item of queueItems) {
           try {
-            await apiPost(`/api/queue/${item.eventId}/remove`, {});
+            await apiDelete(`/api/queue/${item.id}?removalMethod=removeFromClient&blocklistAction=none`);
           } catch (e) {
             console.warn('Failed to remove queue item:', e);
           }
@@ -1209,12 +1211,28 @@ export default function ManualSearchModal({
                                       {result.isBlocklisted && (
                                         <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
                                       )}
-                                      <span
-                                        className={`truncate ${isDownloaded ? 'text-gray-400' : result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
-                                        title={result.title}
-                                      >
-                                        {result.title}
-                                      </span>
+                                      {result.infoUrl ? (
+                                        /* Link to the release's details page on the indexer,
+                                           like Prowlarr. stopPropagation so opening the page
+                                           never triggers row actions. */
+                                        <a
+                                          href={result.infoUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className={`truncate hover:underline ${isDownloaded ? 'text-gray-400' : result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                          title={`${result.title}\nOpen on ${result.indexer}`}
+                                        >
+                                          {result.title}
+                                        </a>
+                                      ) : (
+                                        <span
+                                          className={`truncate ${isDownloaded ? 'text-gray-400' : result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                          title={result.title}
+                                        >
+                                          {result.title}
+                                        </span>
+                                      )}
                                       {/* The Actions column sits off-screen to the right on phone-width
                                           viewports and horizontal scroll inside a modal is unreliable on
                                           touch devices, so mobile gets its own always-visible download

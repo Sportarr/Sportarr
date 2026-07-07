@@ -73,6 +73,7 @@ public class FileImportService : IFileImportService
     private readonly DiskSpaceService _diskSpaceService;
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly NotificationService _notificationService;
+    private readonly CustomFormatService _customFormatService;
     private readonly ILogger<FileImportService> _logger;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
@@ -87,6 +88,7 @@ public class FileImportService : IFileImportService
         DiskSpaceService diskSpaceService,
         SportarrApiClient sportarrApiClient,
         NotificationService notificationService,
+        CustomFormatService customFormatService,
         ILogger<FileImportService> logger)
     {
         _db = db;
@@ -98,6 +100,7 @@ public class FileImportService : IFileImportService
         _diskSpaceService = diskSpaceService;
         _sportarrApiClient = sportarrApiClient;
         _notificationService = notificationService;
+        _customFormatService = customFormatService;
         _logger = logger;
     }
 
@@ -398,7 +401,15 @@ public class FileImportService : IFileImportService
                 var existingTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(upgradedFile.Quality) + upgradedFile.CustomFormatScore;
                 var newTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(download.Quality) + download.CustomFormatScore;
 
-                if (newTotalScore <= existingTotalScore)
+                // A proper/repack at the SAME score is a legitimate upgrade
+                // (broken original, fixed re-release) when the Download
+                // Propers and Repacks setting allows it.
+                var revisionUpgrade = config.DownloadPropersAndRepacks == "preferAndUpgrade" &&
+                    newTotalScore == existingTotalScore &&
+                    ReleaseRevision.Parse(download.Title) >
+                    ReleaseRevision.Parse(upgradedFile.OriginalTitle ?? upgradedFile.Quality);
+
+                if (newTotalScore <= existingTotalScore && !revisionUpgrade)
                 {
                     _logger.LogWarning(
                         "[Import] Not an upgrade - existing file has same or better quality: " +
@@ -416,16 +427,30 @@ public class FileImportService : IFileImportService
                 _logger.LogInformation("[Import] Upgrade detected - replacing existing file: {OldPath} ({OldQuality}) with {NewQuality}",
                     upgradedFile.FilePath, upgradedFile.Quality, qualityString);
 
-                // Delete the old file from disk BEFORE transferring the new one.
+                // Remove the old file from disk BEFORE transferring the new one.
                 // The new file often resolves to the same destination path as the old one
                 // (same quality string = same filename). Deleting after transfer would kill
                 // the just-imported file. Deleting before transfer avoids this entirely.
+                // Honors the recycle bin like manual delete and retention do - an upgrade
+                // that replaces a good file with a broken release must be recoverable.
                 if (!string.IsNullOrEmpty(upgradedFile.FilePath) && File.Exists(upgradedFile.FilePath))
                 {
                     try
                     {
-                        File.Delete(upgradedFile.FilePath);
-                        _logger.LogInformation("[Import] Deleted old file during upgrade: {Path}", upgradedFile.FilePath);
+                        var upgradeConfig = await _configService.GetConfigAsync();
+                        var recycleBin = upgradeConfig.RecycleBin;
+                        if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
+                        {
+                            var recyclePath = Path.Combine(recycleBin, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(upgradedFile.FilePath)}");
+                            File.Move(upgradedFile.FilePath, recyclePath);
+                            _logger.LogInformation("[Import] Moved old file to recycle bin during upgrade: {Path} -> {RecyclePath}",
+                                upgradedFile.FilePath, recyclePath);
+                        }
+                        else
+                        {
+                            File.Delete(upgradedFile.FilePath);
+                            _logger.LogInformation("[Import] Deleted old file during upgrade: {Path}", upgradedFile.FilePath);
+                        }
 
                         // Try to clean up empty parent folder
                         var oldFileParentDir = Path.GetDirectoryName(upgradedFile.FilePath);
@@ -481,7 +506,14 @@ public class FileImportService : IFileImportService
             }
 
             // Move or copy file (old file already deleted above if this is an upgrade)
-            await TransferFileAsync(sourceFile, destinationPath, settings);
+            // Read-only blackhole clients import by copy so the external downloader
+            // keeps seeding from the watch folder.
+            var blackholeReadOnly = download.DownloadClient is
+            {
+                Type: DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole,
+                ReadOnly: true
+            };
+            await TransferFileAsync(sourceFile, destinationPath, settings, forceCopy: blackholeReadOnly);
 
             // Record what we just transferred so a later failure in this method
             // can roll the file back instead of leaving an orphan in the library.
@@ -493,6 +525,11 @@ public class FileImportService : IFileImportService
             {
                 SetFilePermissions(destinationPath, settings);
             }
+
+            // Bring matching sidecar files (subtitles, nfo, ...) along and
+            // stamp the file date per the Change File Date setting.
+            ImportExtraFiles(settings, sourceFile, destinationPath);
+            ApplyChangeFileDate(settings, destinationPath, eventInfo.EventDate);
 
             // Create import history record
             // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
@@ -631,11 +668,14 @@ public class FileImportService : IFileImportService
 
             // NOTIFICATIONS: Send notifications (Discord, Telegram, Plex, Jellyfin, Emby, etc.) for the import.
             // Media server refresh (Plex/Jellyfin/Emby) is handled through the notification system.
+            // An import that replaced an existing file fires OnUpgrade instead of
+            // OnDownload so the two toggles mean what they say.
             try
             {
+                var isUpgradeImport = !string.IsNullOrEmpty(upgradedOldFilePath);
                 await _notificationService.SendNotificationAsync(
-                    NotificationTrigger.OnDownload,
-                    $"Imported: {eventInfo.Title}",
+                    isUpgradeImport ? NotificationTrigger.OnUpgrade : NotificationTrigger.OnDownload,
+                    $"{(isUpgradeImport ? "Upgraded" : "Imported")}: {eventInfo.Title}",
                     $"File: {Path.GetFileName(destinationPath)}\nQuality: {qualityString}",
                     new Dictionary<string, object>
                     {
@@ -687,7 +727,12 @@ public class FileImportService : IFileImportService
             // - Move mode (CopyFiles=false): Delete source folder after import
             // - Copy mode (CopyFiles=true): Don't delete locally - rely on download client to cleanup
             //   after seeding completes (via RemoveDownloadAsync with deleteFiles=true in EnhancedDownloadMonitorService)
-            if (shouldRemoveCompleted && !settings.CopyFiles)
+            // - Read-only blackhole: never touch the watch folder - the external client owns it
+            if (blackholeReadOnly)
+            {
+                _logger.LogInformation("[Import] Source preserved (blackhole Read Only) - the external download client owns the watch folder: {File}", sourceFile);
+            }
+            else if (shouldRemoveCompleted && !settings.CopyFiles)
             {
                 await CleanupDownloadAsync(downloadPath, sourceFile);
             }
@@ -1060,7 +1105,12 @@ public class FileImportService : IFileImportService
                 PartName = partNameSuffix
             };
 
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            // {Custom Formats} token: match against the real source
+            // filename, which carries the release's quality/format tags.
+            tokens.CustomFormats = _customFormatService.BuildRenameToken(
+                Path.GetFileName(sourceFile), await _db.CustomFormats.ToListAsync());
+
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {
@@ -1123,11 +1173,94 @@ public class FileImportService : IFileImportService
     /// <summary>
     /// Transfer file (move, copy, or hardlink)
     /// </summary>
-    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
+    /// <summary>
+    /// Copy sidecar files (subtitles, nfo, ...) that share the imported
+    /// file's base name into the destination folder, renamed to the
+    /// destination base name with any language/suffix tags preserved
+    /// ("event.en.srt" follows as "New Name.en.srt"). Gated on the
+    /// Import Extra Files setting; failures never fail the import.
+    /// </summary>
+    private void ImportExtraFiles(MediaManagementSettings settings, string sourceFilePath, string destinationFilePath)
+    {
+        if (!settings.ImportExtraFiles || string.IsNullOrWhiteSpace(settings.ExtraFileExtensions))
+            return;
+
+        try
+        {
+            var sourceDir = Path.GetDirectoryName(sourceFilePath);
+            var destDir = Path.GetDirectoryName(destinationFilePath);
+            if (string.IsNullOrEmpty(sourceDir) || string.IsNullOrEmpty(destDir) || !Directory.Exists(sourceDir))
+                return;
+
+            var sourceBase = Path.GetFileNameWithoutExtension(sourceFilePath);
+            var destBase = Path.GetFileNameWithoutExtension(destinationFilePath);
+
+            var wantedExtensions = settings.ExtraFileExtensions
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(e => e.TrimStart('.').ToLowerInvariant())
+                .ToHashSet();
+
+            foreach (var candidate in Directory.GetFiles(sourceDir))
+            {
+                var candidateName = Path.GetFileName(candidate);
+                if (!candidateName.StartsWith(sourceBase, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (string.Equals(candidate, sourceFilePath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var extension = Path.GetExtension(candidate).TrimStart('.').ToLowerInvariant();
+                if (!wantedExtensions.Contains(extension))
+                    continue;
+
+                // Preserve whatever sits between the base name and the
+                // extension (".en", ".forced", ...).
+                var suffix = candidateName.Substring(sourceBase.Length);
+                var destFile = Path.Combine(destDir, destBase + suffix);
+
+                File.Copy(candidate, destFile, overwrite: true);
+                _logger.LogInformation("[Import] Imported extra file: {Source} -> {Dest}", candidateName, Path.GetFileName(destFile));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Import] Failed to import extra files for {Path}", destinationFilePath);
+        }
+    }
+
+    /// <summary>
+    /// Stamp the imported file's modification time with the event's air
+    /// date per the Change File Date setting (None / LocalAirDate /
+    /// UtcAirDate), so date-sorted library views follow the event date.
+    /// </summary>
+    private void ApplyChangeFileDate(MediaManagementSettings settings, string destinationPath, DateTime eventDateUtc)
+    {
+        if (string.IsNullOrWhiteSpace(settings.ChangeFileDate) ||
+            settings.ChangeFileDate.Equals("None", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            var utc = DateTime.SpecifyKind(eventDateUtc, DateTimeKind.Utc);
+            if (settings.ChangeFileDate.Equals("LocalAirDate", StringComparison.OrdinalIgnoreCase))
+            {
+                File.SetLastWriteTime(destinationPath, utc.ToLocalTime());
+            }
+            else if (settings.ChangeFileDate.Equals("UtcAirDate", StringComparison.OrdinalIgnoreCase))
+            {
+                File.SetLastWriteTimeUtc(destinationPath, utc);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Import] Failed to set file date on {Path}", destinationPath);
+        }
+    }
+
+    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings, bool forceCopy = false)
     {
         // Log at Info level for visibility - helps debug copy vs move issues
-        _logger.LogInformation("[Transfer] Transfer mode: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
-            settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+        _logger.LogInformation("[Transfer] Transfer mode: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, ForceCopy={ForceCopy}, IsWindows={IsWindows}",
+            settings.UseHardlinks, settings.CopyFiles, forceCopy, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
         _logger.LogInformation("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
 
         // Tell the watcher this transfer is ours so it doesn't treat the new file as an
@@ -1202,9 +1335,10 @@ public class FileImportService : IFileImportService
             }
         }
 
-        // Use copy if: CopyFiles is enabled OR hardlinks were enabled but failed
+        // Use copy if: CopyFiles is enabled, the caller demands the source survives
+        // (read-only blackhole), OR hardlinks were enabled but failed
         // This ensures UseHardlinks never results in moving (deleting) the source file
-        if (settings.CopyFiles || useHardlinksCopyFallback)
+        if (settings.CopyFiles || forceCopy || useHardlinksCopyFallback)
         {
             // Copy file (handles symlinks specially to preserve debrid streaming)
             if (IsSymbolicLink(source))

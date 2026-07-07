@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MagnifyingGlassIcon, CheckIcon, TrashIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CheckIcon, TrashIcon, ArrowPathIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import SortableFilterableHeader from '../components/SortableFilterableHeader';
 import ColumnPicker from '../components/ColumnPicker';
 import CompactTableFrame from '../components/CompactTableFrame';
@@ -21,6 +21,8 @@ const isInternalLeagueName = (name: string) => {
   const normalized = name.trim();
   return normalized.startsWith('_') || normalized.endsWith('_');
 };
+
+const NO_CHANGE = 'no-change';
 
 export default function LeaguesPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,6 +57,104 @@ export default function LeaguesPage() {
     staleTime: 2 * 60 * 1000, // 2 minutes - library data changes less frequently
     refetchOnWindowFocus: false, // Don't refetch on tab focus
   });
+
+  // Bulk edit dialog (select leagues -> Edit). Field pickers only load once
+  // the dialog opens.
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [monitoredChange, setMonitoredChange] = useState(NO_CHANGE);
+  const [profileChange, setProfileChange] = useState(NO_CHANGE);
+  const [rootChange, setRootChange] = useState(NO_CHANGE);
+  const [moveFiles, setMoveFiles] = useState(true);
+  const [tagsAction, setTagsAction] = useState(NO_CHANGE);
+  const [selectedEditTags, setSelectedEditTags] = useState<Set<number>>(new Set());
+  // '' = no change; otherwise a stringified non-negative day count (0 = keep forever)
+  const [retentionChange, setRetentionChange] = useState('');
+  const [applyingEdit, setApplyingEdit] = useState(false);
+
+  const { data: qualityProfiles } = useQuery({
+    queryKey: ['qualityprofiles'],
+    queryFn: async () => (await apiClient.get<{ id: number; name: string }[]>('/qualityprofile')).data,
+    enabled: showEditDialog,
+  });
+  const { data: rootFolders } = useQuery({
+    queryKey: ['rootfolders'],
+    queryFn: async () => (await apiClient.get<{ id: number; path: string }[]>('/rootfolder')).data,
+    enabled: showEditDialog,
+  });
+  const { data: editTags } = useQuery({
+    queryKey: ['tags'],
+    queryFn: async () => (await apiClient.get<{ id: number; label: string }[]>('/tag')).data,
+    enabled: showEditDialog,
+  });
+
+  const toggleEditTag = (id: number) => {
+    setSelectedEditTags(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const hasFieldChanges =
+    monitoredChange !== NO_CHANGE ||
+    profileChange !== NO_CHANGE ||
+    retentionChange !== '' ||
+    (tagsAction !== NO_CHANGE && (tagsAction === 'replace' || selectedEditTags.size > 0));
+  const hasRootChange = rootChange !== NO_CHANGE;
+  const canApplyEdit = selectedLeagueIds.size > 0 && (hasFieldChanges || hasRootChange) && !applyingEdit;
+
+  const resetEditForm = () => {
+    setMonitoredChange(NO_CHANGE);
+    setProfileChange(NO_CHANGE);
+    setRootChange(NO_CHANGE);
+    setMoveFiles(true);
+    setTagsAction(NO_CHANGE);
+    setSelectedEditTags(new Set());
+    setRetentionChange('');
+  };
+
+  const handleApplyEdit = async () => {
+    setApplyingEdit(true);
+    const leagueIds = [...selectedLeagueIds];
+    try {
+      if (hasFieldChanges) {
+        await apiClient.put('/leagues/bulk', {
+          leagueIds,
+          monitored: monitoredChange === NO_CHANGE ? null : monitoredChange === 'monitored',
+          qualityProfileId: profileChange === NO_CHANGE ? null : parseInt(profileChange),
+          tags: tagsAction === NO_CHANGE ? null : [...selectedEditTags],
+          tagsAction: tagsAction === NO_CHANGE ? null : tagsAction,
+          retentionDays: retentionChange === '' ? null : Math.max(0, parseInt(retentionChange) || 0),
+        });
+      }
+
+      if (hasRootChange) {
+        const { data } = await apiClient.post('/leagues/move/bulk', {
+          leagueIds,
+          rootFolderId: parseInt(rootChange),
+          moveFiles,
+        });
+        if (data?.anyFailed) {
+          const failed = (data.results ?? []).filter((r: { success: boolean }) => !r.success);
+          toast.warning(`${failed.length} league move(s) failed`, {
+            description: failed
+              .map((r: { leagueId: number; message?: string }) => `#${r.leagueId}: ${r.message ?? 'unknown error'}`)
+              .slice(0, 3)
+              .join('; '),
+          });
+        }
+      }
+
+      toast.success(`Changes applied to ${leagueIds.length} league(s)`);
+      resetEditForm();
+      setShowEditDialog(false);
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+    } catch {
+      toast.error('Failed to apply changes');
+    } finally {
+      setApplyingEdit(false);
+    }
+  };
 
   // Filter leagues by selected sport and search query, then sort alphabetically.
   // Entries whose name starts or ends with '_' are internal/test records — hidden everywhere.
@@ -229,8 +329,10 @@ export default function LeaguesPage() {
       );
     }
 
-    // Apply column filters + sort via shared utility. missingCount is derived
-    // from eventCount - downloadedMonitoredCount since it's not stored on the object.
+    // Apply column filters + sort via shared utility. Downloaded counts
+    // every event with a file (monitored or not - unmonitoring a downloaded
+    // event must not hide its file from the stats); Missing is the API's
+    // monitored-without-file count.
     const tableLeagues = applyTableSortFilter(
       filteredLeagues,
       colFilters,
@@ -241,8 +343,8 @@ export default function LeaguesPage() {
           case 'sport': return String(item.sport || '');
           case 'name': return String(item.name || '');
           case 'eventCount': return String(item.eventCount || 0);
-          case 'downloadedMonitoredCount': return String(item.downloadedMonitoredCount || 0);
-          case 'missingCount': return String((item.eventCount || 0) - (item.downloadedMonitoredCount || 0));
+          case 'downloadedMonitoredCount': return String(item.fileCount || 0);
+          case 'missingCount': return String(item.missingCount || 0);
           default: return '';
         }
       }
@@ -301,7 +403,7 @@ export default function LeaguesPage() {
           <tbody className="divide-y divide-gray-700">
             {tableLeagues.map((league: typeof filteredLeagues[0]) => {
               const isSelected = selectedLeagueIds.has(league.id);
-              const missingCount = (league.eventCount || 0) - (league.downloadedMonitoredCount || 0);
+              const missingCount = league.missingCount || 0;
 
               return (
                 <tr
@@ -352,7 +454,7 @@ export default function LeaguesPage() {
                   )}
                   {isVisible('downloaded') && (
                     <td className="px-2 py-1.5 text-center">
-                      <span className="text-green-400">{league.downloadedMonitoredCount || 0}</span>
+                      <span className="text-green-400">{league.fileCount || 0}</span>
                     </td>
                   )}
                   {isVisible('missing') && (
@@ -588,7 +690,7 @@ export default function LeaguesPage() {
                   <div className="flex items-center gap-1 whitespace-nowrap">
                     <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></span>
                     <span className="text-gray-400">Have:</span>
-                    <span className="text-white font-semibold">{league.downloadedMonitoredCount || 0}</span>
+                    <span className="text-white font-semibold">{league.fileCount || 0}</span>
                   </div>
                   {(league.missingCount || 0) > 0 && (
                     <div className="flex items-center gap-1 whitespace-nowrap">
@@ -635,6 +737,14 @@ export default function LeaguesPage() {
             </div>
             <div className="flex items-center gap-3">
               <button
+                onClick={() => setShowEditDialog(true)}
+                className="px-3 md:px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 font-semibold transition-colors flex items-center gap-2 text-sm md:text-base"
+              >
+                <PencilSquareIcon className="h-4 w-4 md:h-5 md:w-5" />
+                <span className="hidden sm:inline">Edit Selected</span>
+                <span className="sm:hidden">Edit</span>
+              </button>
+              <button
                 onClick={handleOpenRenameDialog}
                 className="px-3 md:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition-colors flex items-center gap-2 text-sm md:text-base"
               >
@@ -649,6 +759,135 @@ export default function LeaguesPage() {
                 <TrashIcon className="h-4 w-4 md:h-5 md:w-5" />
                 <span className="hidden sm:inline">Delete Selected</span>
                 <span className="sm:hidden">Delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Edit Dialog */}
+      {showEditDialog && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-red-900/50 rounded-lg p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-white mb-1">Edit {selectedLeagueIds.size} {selectedLeagueIds.size === 1 ? 'League' : 'Leagues'}</h2>
+            <p className="text-sm text-gray-400 mb-5">Only fields you change are applied; everything else is left alone.</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400">Monitored</label>
+                <select
+                  value={monitoredChange}
+                  onChange={(e) => setMonitoredChange(e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-red-600 focus:outline-none"
+                >
+                  <option value={NO_CHANGE}>No change</option>
+                  <option value="monitored">Monitored</option>
+                  <option value="unmonitored">Unmonitored</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400">Quality Profile</label>
+                <select
+                  value={profileChange}
+                  onChange={(e) => setProfileChange(e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-red-600 focus:outline-none"
+                >
+                  <option value={NO_CHANGE}>No change</option>
+                  {(qualityProfiles ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400">Root Folder</label>
+                <select
+                  value={rootChange}
+                  onChange={(e) => setRootChange(e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-red-600 focus:outline-none"
+                >
+                  <option value={NO_CHANGE}>No change</option>
+                  {(rootFolders ?? []).map((rf) => (
+                    <option key={rf.id} value={rf.id}>{rf.path}</option>
+                  ))}
+                </select>
+                {rootChange !== NO_CHANGE && (
+                  <label className="mt-2 flex items-center gap-2 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={moveFiles}
+                      onChange={(e) => setMoveFiles(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                    />
+                    Move existing files to the new root folder
+                  </label>
+                )}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400" title="Unmonitor events and delete their files this many days after they air. 0 = keep forever.">
+                  Delete After (days)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="No change"
+                  value={retentionChange}
+                  onChange={(e) => setRetentionChange(e.target.value)}
+                  className="w-40 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-red-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400">Tags</label>
+                <select
+                  value={tagsAction}
+                  onChange={(e) => setTagsAction(e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-red-600 focus:outline-none"
+                >
+                  <option value={NO_CHANGE}>No change</option>
+                  <option value="add">Add</option>
+                  <option value="remove">Remove</option>
+                  <option value="replace">Replace</option>
+                </select>
+                {tagsAction !== NO_CHANGE && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(editTags ?? []).length === 0 ? (
+                      <span className="text-xs text-gray-500">No tags defined</span>
+                    ) : (
+                      (editTags ?? []).map((tag) => (
+                        <button
+                          key={tag.id}
+                          onClick={() => toggleEditTag(tag.id)}
+                          className={`rounded px-2 py-1 text-xs transition-colors ${
+                            selectedEditTags.has(tag.id)
+                              ? 'bg-red-700 text-white'
+                              : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                          }`}
+                        >
+                          {tag.label}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => { resetEditForm(); setShowEditDialog(false); }}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyEdit}
+                disabled={!canApplyEdit}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {applyingEdit ? 'Applying...' : `Apply to ${selectedLeagueIds.size} ${selectedLeagueIds.size === 1 ? 'league' : 'leagues'}`}
               </button>
             </div>
           </div>

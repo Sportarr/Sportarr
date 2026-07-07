@@ -240,8 +240,31 @@ public class XmltvParserService
                 return null;
 
             var title = element.Element("title")?.Value ?? "Unknown";
+
+            // Sports EPGs routinely carry the actual matchup in <sub-title>
+            // ("Arsenal v Chelsea") under a generic <title> ("Premier League
+            // Football"). Folding it into the title makes the guide readable
+            // AND lets the DVR channel resolver match programs to events by
+            // team names, which the bare generic title never could.
+            var subTitle = element.Element("sub-title")?.Value;
+            if (!string.IsNullOrWhiteSpace(subTitle) &&
+                !title.Contains(subTitle, StringComparison.OrdinalIgnoreCase))
+            {
+                title = $"{title} - {subTitle}";
+            }
+
             var description = element.Element("desc")?.Value;
-            var category = element.Element("category")?.Value;
+
+            // Feeds often tag several categories ("Sports" plus the
+            // discipline); keep the first few instead of all-but-first.
+            var categories = element.Elements("category")
+                .Select(c => c.Value)
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .ToList();
+            var category = categories.Count > 0 ? string.Join(" / ", categories) : null;
+
             var iconUrl = element.Element("icon")?.Attribute("src")?.Value;
 
             // Auto-detect sports programs

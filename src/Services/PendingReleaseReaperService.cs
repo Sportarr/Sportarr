@@ -61,6 +61,7 @@ public class PendingReleaseReaperService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+        var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
 
         var now = DateTime.UtcNow;
 
@@ -110,7 +111,7 @@ public class PendingReleaseReaperService : BackgroundService
                 .ThenByDescending(p => p.Seeders ?? 0)
                 .First();
 
-            var grabbed = await TryGrabPendingAsync(db, downloadClientService, evt, winner, cancellationToken);
+            var grabbed = await TryGrabPendingAsync(db, downloadClientService, notificationService, evt, winner, cancellationToken);
 
             if (grabbed)
             {
@@ -139,6 +140,7 @@ public class PendingReleaseReaperService : BackgroundService
     private async Task<bool> TryGrabPendingAsync(
         SportarrDbContext db,
         DownloadClientService downloadClientService,
+        NotificationService notificationService,
         Event evt,
         PendingRelease pending,
         CancellationToken cancellationToken)
@@ -211,6 +213,27 @@ public class PendingReleaseReaperService : BackgroundService
             Part = pending.Part,
             IsManualSearch = false
         });
+
+        try
+        {
+            await notificationService.SendNotificationAsync(
+                NotificationTrigger.OnGrab,
+                $"Grabbed: {pending.Title}",
+                $"Event: {evt.Title}\nQuality: {pending.Quality ?? "Unknown"}\nIndexer: {pending.Indexer}\nSize: {pending.Size / 1024.0 / 1024.0 / 1024.0:F2} GB\nReleased from delay profile hold.",
+                new Dictionary<string, object>
+                {
+                    { "eventId", evt.Id },
+                    { "eventTitle", evt.Title ?? "" },
+                    { "indexer", pending.Indexer ?? "" },
+                    { "quality", pending.Quality ?? "" },
+                    { "downloadId", downloadId },
+                },
+                evt.League?.Tags);
+        }
+        catch (Exception notifyEx)
+        {
+            _logger.LogWarning(notifyEx, "[Pending Release Reaper] Failed to send grab notification");
+        }
 
         return true;
     }

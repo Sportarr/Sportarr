@@ -24,6 +24,7 @@ app.MapGet("/api/epg/sources", async (EpgService epgService) =>
         s.Name,
         s.Url,
         s.IsActive,
+        s.Priority,
         s.Created,
         s.LastUpdated,
         s.LastError,
@@ -44,6 +45,7 @@ app.MapGet("/api/epg/sources/{id:int}", async (int id, EpgService epgService) =>
         source.Name,
         source.Url,
         source.IsActive,
+        source.Priority,
         source.Created,
         source.LastUpdated,
         source.LastError,
@@ -54,13 +56,14 @@ app.MapGet("/api/epg/sources/{id:int}", async (int id, EpgService epgService) =>
 // Add a new EPG source
 app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, EpgService epgService) =>
 {
-    var source = await epgService.AddSourceAsync(request.Name, request.Url);
+    var source = await epgService.AddSourceAsync(request.Name, request.Url, request.Priority);
     return Results.Created($"/api/epg/sources/{source.Id}", new
     {
         source.Id,
         source.Name,
         source.Url,
         source.IsActive,
+        source.Priority,
         source.Created
     });
 }).WithRequestValidation<AddEpgSourceRequest>();
@@ -68,7 +71,7 @@ app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, EpgService e
 // Update an EPG source
 app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest request, EpgService epgService) =>
 {
-    var source = await epgService.UpdateSourceAsync(id, request.Name, request.Url, request.IsActive);
+    var source = await epgService.UpdateSourceAsync(id, request.Name, request.Url, request.IsActive, request.Priority);
     if (source == null)
         return Results.NotFound();
 
@@ -78,6 +81,7 @@ app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest reque
         source.Name,
         source.Url,
         source.IsActive,
+        source.Priority,
         source.Created,
         source.LastUpdated,
         source.LastError,

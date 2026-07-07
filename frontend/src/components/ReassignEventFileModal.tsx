@@ -13,6 +13,7 @@ interface EventSearchResult {
   eventDate: string;
   broadcastDate?: string | null;
   hasFile: boolean;
+  currentQuality?: string | null;
 }
 
 interface ReassignEventFileModalProps {
@@ -207,7 +208,7 @@ export default function ReassignEventFileModal({
                             </div>
                             {evt.hasFile && (
                               <span className="text-xs text-yellow-400 flex-shrink-0">
-                                Has file
+                                Has file{evt.currentQuality ? ` (${evt.currentQuality})` : ''}
                               </span>
                             )}
                           </div>

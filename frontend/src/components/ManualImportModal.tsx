@@ -728,8 +728,12 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
                                 </p>
                               </div>
                               {event.hasFile && (
-                                <span className="text-xs bg-yellow-900/50 text-yellow-400 px-2 py-0.5 rounded ml-2">
+                                <span className="text-xs bg-yellow-900/50 text-yellow-400 px-2 py-0.5 rounded ml-2 whitespace-nowrap">
                                   Has File
+                                  {(() => {
+                                    const qualities = [...new Set(event.files.map(f => f.quality).filter(Boolean))];
+                                    return qualities.length > 0 ? ` (${qualities.join(' / ')})` : '';
+                                  })()}
                                 </span>
                               )}
                             </div>

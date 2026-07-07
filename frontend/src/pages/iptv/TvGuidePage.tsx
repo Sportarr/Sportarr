@@ -13,7 +13,6 @@ import {
   VideoCameraIcon,
   MagnifyingGlassIcon,
   ArrowPathIcon,
-  PlusIcon,
   Cog6ToothIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
@@ -21,6 +20,7 @@ import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import PageHeader from '../../components/PageHeader';
 import PageShell from '../../components/PageShell';
+import EpgSourcesPanel from '../../components/EpgSourcesPanel';
 import { useUISettings } from '../../hooks/useUISettings';
 import { formatTimeInTimezone, formatDateInTimezone } from '../../utils/timezone';
 
@@ -61,6 +61,7 @@ interface EpgSource {
   name: string;
   url: string;
   isActive: boolean;
+  priority: number;
   lastUpdated?: string;
   lastError?: string;
   programCount: number;
@@ -105,8 +106,6 @@ export default function TvGuidePage() {
 
   const [showFilters, setShowFilters] = useState(false);
   const [showEpgSettings, setShowEpgSettings] = useState(false);
-  const [newEpgUrl, setNewEpgUrl] = useState('');
-  const [newEpgName, setNewEpgName] = useState('');
   const [channelGroups, setChannelGroups] = useState<string[]>([]);
   const [channelCountries, setChannelCountries] = useState<string[]>([]);
 
@@ -207,37 +206,9 @@ export default function TvGuidePage() {
     }
   };
 
-  const addEpgSource = async () => {
-    if (!newEpgUrl.trim() || !newEpgName.trim()) {
-      toast.error('Please enter both name and URL');
-      return;
-    }
-
-    try {
-      await apiClient.post('/epg/sources', {
-        name: newEpgName.trim(),
-        url: newEpgUrl.trim(),
-      });
-      toast.success('EPG source added');
-      setNewEpgUrl('');
-      setNewEpgName('');
-      await loadEpgSources();
-    } catch (error) {
-      console.error('Failed to add EPG source:', error);
-      toast.error('Failed to add EPG source');
-    }
-  };
-
-  const deleteEpgSource = async (id: number) => {
-    try {
-      await apiClient.delete(`/epg/sources/${id}`);
-      toast.success('EPG source deleted');
-      await loadEpgSources();
-    } catch (error) {
-      console.error('Failed to delete EPG source:', error);
-      toast.error('Failed to delete EPG source');
-    }
-  };
+  // Source CRUD lives in the shared EpgSourcesPanel component (also used by
+  // Settings > IPTV); this page only refreshes its own guide state when the
+  // panel reports a change.
 
   const scheduleDvr = async (program: TvGuideProgram) => {
     try {
@@ -527,67 +498,12 @@ export default function TvGuidePage() {
           {showEpgSettings && (
             <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
               <h3 className="text-white font-semibold mb-3">EPG Sources</h3>
-
-            {/* Add new source */}
-            <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                placeholder="Source name"
-                value={newEpgName}
-                onChange={(e) => setNewEpgName(e.target.value)}
-                className="flex-1 max-w-xs px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
+              <EpgSourcesPanel
+                onSourcesChanged={() => {
+                  loadEpgSources();
+                  loadGuideData();
+                }}
               />
-              <input
-                type="text"
-                placeholder="XMLTV URL (http://... or .xml.gz)"
-                value={newEpgUrl}
-                onChange={(e) => setNewEpgUrl(e.target.value)}
-                className="flex-[2] px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
-              />
-              <button
-                onClick={addEpgSource}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-              >
-                <PlusIcon className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Existing sources */}
-            {epgSources.length === 0 ? (
-              <p className="text-gray-400 text-sm">No EPG sources configured. Add an XMLTV URL above to get started.</p>
-            ) : (
-              <div className="space-y-2">
-                {epgSources.map((source) => (
-                  <div key={source.id} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
-                    <div>
-                      <div className="text-white font-medium">{source.name}</div>
-                      <div className="text-gray-400 text-xs truncate max-w-md">{source.url}</div>
-                      <div className="text-gray-500 text-xs mt-1">
-                        {source.programCount} programs
-                        {source.lastUpdated && ` | Updated: ${formatDateInTimezone(source.lastUpdated, timezone, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
-                        {source.lastError && <span className="text-red-400"> | Error: {source.lastError}</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => apiClient.post(`/epg/sources/${source.id}/sync`).then(() => { toast.success('Syncing...'); loadEpgSources(); })}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-600 rounded transition-colors"
-                        title="Sync this source"
-                      >
-                        <ArrowPathIcon className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => deleteEpgSource(source.id)}
-                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors"
-                        title="Delete"
-                      >
-                        <span className="text-lg">&times;</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
             </div>
           )}
         </PageShell>

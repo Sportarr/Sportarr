@@ -30,6 +30,7 @@ public class IndexerSearchService : IIndexerSearchService
     private readonly ILogger<IndexerSearchService> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IRateLimitService _rateLimitService;
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly ReleaseProfileService _releaseProfileService;
     private readonly QualityDetectionService _qualityDetection;
@@ -66,6 +67,7 @@ public class IndexerSearchService : IIndexerSearchService
         SportarrDbContext db,
         ILoggerFactory loggerFactory,
         IHttpClientFactory httpClientFactory,
+        IRateLimitService rateLimitService,
         ILogger<IndexerSearchService> logger,
         ReleaseEvaluator releaseEvaluator,
         ReleaseProfileService releaseProfileService,
@@ -76,6 +78,7 @@ public class IndexerSearchService : IIndexerSearchService
         _db = db;
         _loggerFactory = loggerFactory;
         _httpClientFactory = httpClientFactory;
+        _rateLimitService = rateLimitService;
         _logger = logger;
         _releaseEvaluator = releaseEvaluator;
         _releaseProfileService = releaseProfileService;
@@ -94,7 +97,7 @@ public class IndexerSearchService : IIndexerSearchService
     /// <param name="sport">Sport type for part validation (e.g., "Fighting")</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
     /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
-    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null, List<SkippedIndexer>? skippedIndexers = null)
+    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null, List<SkippedIndexer>? skippedIndexers = null, bool allowHighlights = false)
     {
         _logger.LogInformation("[Indexer Search] Searching all indexers for: {Query}", query);
 
@@ -177,7 +180,12 @@ public class IndexerSearchService : IIndexerSearchService
         {
             var include = indexer.Type switch
             {
-                IndexerType.Torznab or IndexerType.Torrent => hasTorrentClient,
+                // Plain-RSS feeds serve torrent links/magnets (their releases
+                // are tagged Protocol=Torrent throughout), so they need a
+                // torrent client like any other torrent indexer. Rss was
+                // missing here and fell through to the default, which skipped
+                // every plain-RSS indexer regardless of configured clients.
+                IndexerType.Torznab or IndexerType.Torrent or IndexerType.BroadcasTheNet or IndexerType.Rss => hasTorrentClient,
                 IndexerType.Newznab => hasUsenetClient,
                 _ => false
             };
@@ -374,7 +382,8 @@ public class IndexerSearchService : IIndexerSearchService
                 enableMultiPartEpisodes,
                 eventTitle,
                 null,  // runtimeMinutes
-                isPack);
+                isPack,
+                allowHighlights);
 
             // Update release with evaluation results
             release.Score = evaluation.TotalScore;
@@ -412,12 +421,19 @@ public class IndexerSearchService : IIndexerSearchService
         // 1. Approved status (approved first)
         // 2. Quality score (profile position)
         // 3. Custom format score
-        // 4. Seeders (for torrents)
-        // 5. Size score (proximity to preferred size, or larger if no preferred)
+        // 4. Revision (repack > proper > none) unless propers are set to Do Not Prefer
+        // 5. Indexer flags (freeleech etc.) when Prefer Indexer Flags is on
+        // 6. Seeders (for torrents)
+        // 7. Size score (proximity to preferred size, or larger if no preferred)
+        var rankingConfig = await _configService.GetConfigAsync();
+        var preferIndexerFlags = rankingConfig.PreferIndexerFlags;
+        var preferRevisions = rankingConfig.DownloadPropersAndRepacks != "doNotPrefer";
         allResults = allResults
             .OrderByDescending(r => r.Approved)
             .ThenByDescending(r => r.QualityScore)
             .ThenByDescending(r => r.CustomFormatScore)
+            .ThenByDescending(r => preferRevisions ? Helpers.ReleaseRevision.Parse(r.Title) : 0)
+            .ThenByDescending(r => preferIndexerFlags && !string.IsNullOrEmpty(r.IndexerFlags) ? 1 : 0)
             .ThenByDescending(r => r.Seeders ?? 0)
             .ThenByDescending(r => r.SizeScore)
             .ToList();
@@ -453,11 +469,13 @@ public class IndexerSearchService : IIndexerSearchService
                 {
                     IndexerType.Torznab => await SearchTorznabAsync(indexer, query, maxResults),
                     IndexerType.Newznab => await SearchNewznabAsync(indexer, query, maxResults),
-                    // Plain-RSS indexers don't support search — the feed
-                    // has no ?q= parameter, so RSS is poll-only. Mirrors
-                    // the upstream "Torrent RSS Feed" indexer's
-                    // SupportsSearch=false. Returning empty here means
-                    // RSS results only ever come from FetchRssFeedAsync.
+                    IndexerType.BroadcasTheNet => await SearchBroadcasTheNetAsync(indexer, query, maxResults),
+                    // Plain-RSS feeds have no ?q= parameter, so a "search"
+                    // fetches the current feed and filters it locally by the
+                    // query's terms. The feed only ever contains recent
+                    // items, so this surfaces what's available right now;
+                    // ongoing coverage still comes from RSS sync.
+                    IndexerType.Rss => await SearchPlainRssAsync(indexer, query, maxResults),
                     _ => new List<ReleaseSearchResult>()
                 };
 
@@ -481,6 +499,7 @@ public class IndexerSearchService : IIndexerSearchService
             var protocol = indexer.Type switch
             {
                 IndexerType.Torznab => "Torrent",
+                IndexerType.BroadcasTheNet => "Torrent",
                 IndexerType.Torrent => "Torrent",
                 IndexerType.Rss => "Torrent", // RSS feeds are typically torrents
                 IndexerType.Newznab => "Usenet",
@@ -493,7 +512,7 @@ public class IndexerSearchService : IIndexerSearchService
             }
 
             // Filter by minimum seeders (for torrents)
-            if (indexer.Type == IndexerType.Torznab && indexer.MinimumSeeders > 0)
+            if ((indexer.Type == IndexerType.Torznab || indexer.Type == IndexerType.BroadcasTheNet) && indexer.MinimumSeeders > 0)
             {
                 results = results.Where(r => r.Seeders >= indexer.MinimumSeeders).ToList();
             }
@@ -585,8 +604,13 @@ public class IndexerSearchService : IIndexerSearchService
                 IndexerType.Torznab => await TestTorznabAsync(indexer),
                 IndexerType.Newznab => await TestNewznabAsync(indexer),
                 IndexerType.Rss => await TestRssAsync(indexer),
+                IndexerType.BroadcasTheNet => await TestBroadcasTheNetAsync(indexer),
                 _ => false
             };
+        }
+        catch (IndexerRequestException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -670,6 +694,7 @@ public class IndexerSearchService : IIndexerSearchService
                     IndexerType.Torznab => await FetchTorznabRssAsync(indexer, maxResults),
                     IndexerType.Newznab => await FetchNewznabRssAsync(indexer, maxResults),
                     IndexerType.Rss => await FetchPlainRssAsync(indexer, maxResults),
+                    IndexerType.BroadcasTheNet => await FetchBroadcasTheNetRecentAsync(indexer, maxResults),
                     _ => new List<ReleaseSearchResult>()
                 };
 
@@ -704,7 +729,7 @@ public class IndexerSearchService : IIndexerSearchService
             }
 
             // Filter by minimum seeders (for torrents)
-            if (indexer.Type == IndexerType.Torznab && indexer.MinimumSeeders > 0)
+            if ((indexer.Type == IndexerType.Torznab || indexer.Type == IndexerType.BroadcasTheNet) && indexer.MinimumSeeders > 0)
             {
                 results = results.Where(r => r.Seeders >= indexer.MinimumSeeders).ToList();
             }
@@ -734,6 +759,25 @@ public class IndexerSearchService : IIndexerSearchService
         var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection);
 
         return await client.FetchRssFeedAsync(indexer, maxResults);
+    }
+
+    private BroadcasTheNetClient CreateBtnClient()
+    {
+        var httpClient = _httpClientFactory.CreateClient("BtnClient");
+        var btnLogger = _loggerFactory.CreateLogger<BroadcasTheNetClient>();
+        return new BroadcasTheNetClient(httpClient, _rateLimitService, btnLogger, _qualityDetection);
+    }
+
+    private async Task<List<ReleaseSearchResult>> FetchBroadcasTheNetRecentAsync(Indexer indexer, int maxResults)
+    {
+        var client = CreateBtnClient();
+        return await client.FetchRecentAsync(indexer, maxResults);
+    }
+
+    private async Task<bool> TestBroadcasTheNetAsync(Indexer indexer)
+    {
+        var client = CreateBtnClient();
+        return await client.TestConnectionAsync(indexer);
     }
 
     private async Task<List<ReleaseSearchResult>> FetchNewznabRssAsync(Indexer indexer, int maxResults)
@@ -771,6 +815,12 @@ public class IndexerSearchService : IIndexerSearchService
         return await client.SearchAsync(indexer, query, maxResults);
     }
 
+    private async Task<List<ReleaseSearchResult>> SearchBroadcasTheNetAsync(Indexer indexer, string query, int maxResults)
+    {
+        var client = CreateBtnClient();
+        return await client.SearchAsync(indexer, query, maxResults);
+    }
+
     private async Task<bool> TestTorznabAsync(Indexer indexer)
     {
         var httpClient = _httpClientFactory.CreateClient("IndexerClient");
@@ -793,6 +843,47 @@ public class IndexerSearchService : IIndexerSearchService
     {
         var client = BuildRssClient();
         return await client.FetchRssFeedAsync(indexer, maxResults);
+    }
+
+    /// <summary>
+    /// "Search" a plain-RSS feed: fetch the current feed and keep items whose
+    /// title contains most of the query's terms. Separator-insensitive
+    /// substring matching per token ("Formula1.2026.British.GP" satisfies
+    /// "formula", "1", "british", "2026"), requiring at least half the
+    /// tokens so date fragments and stylistic differences don't zero out
+    /// legitimate hits, while unrelated feed items still drop out instead
+    /// of flooding the search results.
+    /// </summary>
+    private async Task<List<ReleaseSearchResult>> SearchPlainRssAsync(Indexer indexer, string query, int maxResults)
+    {
+        var client = BuildRssClient();
+        var feed = await client.FetchRssFeedAsync(indexer, maxResults);
+
+        var tokens = System.Text.RegularExpressions.Regex
+            .Matches(query.ToLowerInvariant(), @"[a-z0-9]+")
+            .Select(m => m.Value)
+            .Where(t => t.Length >= 2 || t == "1")
+            .Distinct()
+            .ToList();
+
+        if (tokens.Count == 0)
+        {
+            return feed;
+        }
+
+        var required = Math.Max(1, (tokens.Count + 1) / 2);
+        var matched = feed.Where(r =>
+        {
+            var normalizedTitle = System.Text.RegularExpressions.Regex
+                .Replace(r.Title.ToLowerInvariant(), @"[^a-z0-9]+", " ");
+            var hits = tokens.Count(t => normalizedTitle.Contains(t));
+            return hits >= required;
+        }).ToList();
+
+        _logger.LogDebug("[Indexer Search] RSS feed '{Indexer}': {Matched}/{Total} items matched query '{Query}'",
+            indexer.Name, matched.Count, feed.Count, query);
+
+        return matched;
     }
 
     private async Task<bool> TestRssAsync(Indexer indexer)

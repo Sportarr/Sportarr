@@ -6,6 +6,7 @@ import PageShell, { PageErrorState, PageLoadingState } from '../components/PageS
 import { useCalendarEvents } from '../api/hooks';
 import type { Event } from '../types';
 import { useSettings } from '../hooks/useSettings';
+import { createRequestUrl } from '../utils/request';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
 import { BUTTON_TOOLBAR_ACTIVE as TOOLBAR_BUTTON_ACTIVE_CLASS, BUTTON_TOOLBAR_BASE as TOOLBAR_BUTTON_BASE_CLASS, BUTTON_TOOLBAR_INACTIVE as TOOLBAR_BUTTON_INACTIVE_CLASS } from '../utils/designTokens';
@@ -842,13 +843,13 @@ export default function CalendarPage() {
               <input
                 type="text"
                 readOnly
-                value={`${window.location.origin}/api/calendar.ics?apikey=${window.Sportarr?.apiKey || ''}`}
+                value={`${window.location.origin}${createRequestUrl('/api/calendar.ics')}?apikey=${window.Sportarr?.apiKey || ''}`}
                 className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm text-gray-300 focus:outline-none"
                 onFocus={(e) => e.target.select()}
               />
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/api/calendar.ics?apikey=${window.Sportarr?.apiKey || ''}`);
+                  navigator.clipboard.writeText(`${window.location.origin}${createRequestUrl('/api/calendar.ics')}?apikey=${window.Sportarr?.apiKey || ''}`);
                   setIcalCopied(true);
                   setTimeout(() => setIcalCopied(false), 3000);
                 }}

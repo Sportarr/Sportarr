@@ -14,3 +14,9 @@ public record BulkMoveLeaguesRequest(List<int> LeagueIds, int RootFolderId, bool
 
 // POST /api/leagues/{id}/reorganize
 public record ReorganizeLeagueRequest(int RootFolderId);
+
+// PUT /api/leagues/bulk (mass editor field changes)
+public record BulkEditLeaguesRequest(List<int> LeagueIds, bool? Monitored, int? QualityProfileId, List<int>? Tags, string? TagsAction, int? RetentionDays);
+
+// POST /api/blocklist/bulk/delete
+public record BulkBlocklistDeleteRequest(List<int> Ids);

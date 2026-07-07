@@ -1315,38 +1315,10 @@ public class EventPartDetector
         // Detect event type based on league — dispatch per wrestling
         // promotion so AEW and ROH events get classified by their own
         // detectors, not by WWE's regex.
-        string detectedType;
-        switch (DetectWrestlingPromotion(leagueName))
+        var detectedType = DetectFightingEventTypeName(eventTitle, leagueName);
+        if (detectedType.Length == 0)
         {
-            case WrestlingPromotion.Wwe:
-                var wweType = DetectWweEventType(eventTitle);
-                if (wweType == WweEventType.Other) return true; // Unknown = permissive
-                detectedType = wweType.ToString();
-                break;
-            case WrestlingPromotion.Aew:
-                var aewType = DetectAewEventType(eventTitle);
-                if (aewType == AewEventType.Other) return true;
-                detectedType = aewType.ToString();
-                break;
-            case WrestlingPromotion.Roh:
-                var rohType = DetectRohEventType(eventTitle);
-                if (rohType == RohEventType.Other) return true;
-                detectedType = rohType.ToString();
-                break;
-            default:
-                if (IsOneChampionship(leagueName))
-                {
-                    var oneType = DetectOneEventType(eventTitle);
-                    if (oneType == OneEventType.Other) return true;
-                    detectedType = oneType.ToString();
-                }
-                else
-                {
-                    var ufcType = DetectUfcEventType(eventTitle);
-                    if (ufcType == UfcEventType.Other) return true;
-                    detectedType = ufcType.ToString();
-                }
-                break;
+            return true; // Unknown = permissive
         }
 
         var monitoredList = monitoredEventTypes.Split(',')
@@ -1360,6 +1332,36 @@ public class EventPartDetector
         return monitoredList.Contains(detectedType, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The detected fighting event type name for a title within its league's
+    /// taxonomy ("Ppv", "FightNight", "Weekly", ...), or empty when the title
+    /// doesn't classify. Shared by the monitored event-type filter and the
+    /// {EventType} search template token.
+    /// </summary>
+    public static string DetectFightingEventTypeName(string eventTitle, string? leagueName = null)
+    {
+        switch (DetectWrestlingPromotion(leagueName))
+        {
+            case WrestlingPromotion.Wwe:
+                var wweType = DetectWweEventType(eventTitle);
+                return wweType == WweEventType.Other ? "" : wweType.ToString();
+            case WrestlingPromotion.Aew:
+                var aewType = DetectAewEventType(eventTitle);
+                return aewType == AewEventType.Other ? "" : aewType.ToString();
+            case WrestlingPromotion.Roh:
+                var rohType = DetectRohEventType(eventTitle);
+                return rohType == RohEventType.Other ? "" : rohType.ToString();
+            default:
+                if (IsOneChampionship(leagueName))
+                {
+                    var oneType = DetectOneEventType(eventTitle);
+                    return oneType == OneEventType.Other ? "" : oneType.ToString();
+                }
+                var ufcType = DetectUfcEventType(eventTitle);
+                return ufcType == UfcEventType.Other ? "" : ufcType.ToString();
+        }
+    }
+
     #endregion
 
     /// <summary>
@@ -1371,6 +1373,43 @@ public class EventPartDetector
     {
         // Only fighting sports use multi-part episodes
         return IsFightingSport(sport);
+    }
+
+    // Trailing session designators on motorsport event titles, as the hub
+    // spells them ("Mexico City Grand Prix Practice 3", "Monaco Grand
+    // Prix - Qualifying", "MXGP of Portugal Race 2"). Stripped repeatedly
+    // so compound suffixes like "Qualifying Race" collapse too. Anchored to
+    // the END of the title so a race whose proper name contains one of
+    // these words mid-title is left alone.
+    private static readonly Regex WeekendSessionSuffix = new(
+        @"[\s._-]*\b(free\s+practice(\s*\d)?|practice(\s*\d)?|fp[1-3]|sprint(\s+(qualifying|shootout))?|qualifying(\s*\d)?|quali|shootout|warm\s*up|race(\s*\d)?|session|testing(\s*\d)?(\s*day\s*\d)?|test(\s*\d)?(\s*day\s*\d)?|day\s*\d|q[1-3])\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// The weekend (parent event) portion of a motorsport session title:
+    /// "Mexico City Grand Prix Practice 3" and "Mexico City Grand Prix
+    /// Qualifying" both become "Mexico City Grand Prix", so every session
+    /// of the same weekend can share one folder. Titles without a
+    /// recognized trailing session designator (team sports, fight cards)
+    /// come back unchanged, and stripping never returns an empty string.
+    /// </summary>
+    public static string GetMotorsportWeekendTitle(string? eventTitle)
+    {
+        if (string.IsNullOrWhiteSpace(eventTitle))
+        {
+            return eventTitle ?? "";
+        }
+
+        var current = eventTitle.Trim();
+        while (true)
+        {
+            var stripped = WeekendSessionSuffix.Replace(current, "").Trim();
+            if (stripped.Length == 0 || stripped == current)
+            {
+                return current;
+            }
+            current = stripped;
+        }
     }
 
     /// <summary>

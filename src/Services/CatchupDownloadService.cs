@@ -111,12 +111,11 @@ public class CatchupDownloadService : BackgroundService
     /// <summary>
     /// Populate / refresh the archive flags on existing channels straight
     /// from the provider's stream list, WITHOUT a full channel re-sync.
-    /// A full sync deletes and recreates every channel row (new ids,
-    /// remapped leagues); this is a surgical UPDATE matched by stream id,
-    /// so channel ids, league mappings, favorites and scheduled
-    /// recordings are untouched. A failed or empty fetch never clears
-    /// existing flags - downgrading catchup capability on a provider
-    /// hiccup would silently flip recordings back to the live path.
+    /// (Full sync now upserts in place, but this stays a surgical UPDATE
+    /// matched by stream id: it is much cheaper than a full reconcile and
+    /// runs daily.) A failed or empty fetch never clears existing flags -
+    /// downgrading catchup capability on a provider hiccup would silently
+    /// flip recordings back to the live path.
     /// </summary>
     private async Task RefreshArchiveFlagsAsync(CancellationToken ct)
     {

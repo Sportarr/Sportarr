@@ -47,9 +47,28 @@ public class Config
     public string ConsoleLogLevel { get; set; } = ""; // Separate log level for console (Docker). Empty = use LogLevel
     public int LogSizeLimit { get; set; } = 1; // Maximum log file size in MB before rotation
 
-    // Analytics
-    public bool SendAnonymousUsageData { get; set; } = false;
+    // Analytics. Default ON for fresh installs (the arr-family convention);
+    // existing installs keep whatever value their config.xml already holds.
+    // Currently covers team alias suggestions - anonymous (team id + alias
+    // strings + random install id), used to tally which aliases are worth
+    // promoting into the shared metadata for everyone.
+    public bool SendAnonymousUsageData { get; set; } = true;
     public bool AnalyticsEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Random anonymous install identifier attached to usage-data
+    /// submissions so the server can count one install once. Generated on
+    /// first use; carries no personal or machine-derived information.
+    /// </summary>
+    public string AnalyticsInstanceId { get; set; } = "";
+
+    /// <summary>
+    /// Health check types (enum names) the user dismissed from the header
+    /// banner. Persisted so a dismissal survives restarts and updates.
+    /// Dismissal is honored for Notice/Warning levels only - an Error, or a
+    /// dismissed check that escalates to Error, always resurfaces.
+    /// </summary>
+    public List<string> DismissedHealthCheckTypes { get; set; } = new();
 
     // Backup
     public string BackupFolder { get; set; } = "";
@@ -93,6 +112,16 @@ public class Config
     public string ChangeFileDate { get; set; } = "None";
     public string RecycleBin { get; set; } = "";
     public int RecycleBinCleanup { get; set; } = 7;
+
+    /// <summary>
+    /// Extra folders outside the library roots that the file watcher
+    /// monitors for droppable video files (e.g. an external DVR's recording
+    /// folder). Matched files auto-import into the library at the same
+    /// confidence floor the library rescan uses; everything else lands in
+    /// manual import review. Empty = feature off.
+    /// </summary>
+    public List<string> WatchFolders { get; set; } = new();
+
     public bool SetPermissions { get; set; } = false;
     public string ChmodFolder { get; set; } = "755";
     public string ChownGroup { get; set; } = "";
@@ -122,10 +151,11 @@ public class Config
     public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags (Freeleech, Scene, etc.)
 
     /// <summary>
-    /// When enabled, a daily background pass unmonitors events (and deletes
-    /// their files, respecting the recycle bin) once EventRetentionDays have
-    /// passed since EventDate. Off by default - every existing install is
-    /// unaffected unless a user opts in.
+    /// RETIRED: event retention moved to League.RetentionDays (per-league).
+    /// These two stay only so the retention service can read an existing
+    /// install's old global opt-in once and seed it onto every league, after
+    /// which EnableEventRetention is flipped false and never consulted again.
+    /// Do not surface in settings UI or wire models.
     /// </summary>
     public bool EnableEventRetention { get; set; } = false;
     public int EventRetentionDays { get; set; } = 30;
@@ -147,6 +177,12 @@ public class Config
     public int RssSyncInterval { get; set; } = 15; // minutes between RSS sync cycles (default 15, min 10, max 120)
     public int MaxRssReleasesPerIndexer { get; set; } = 500; // max releases to fetch per indexer RSS feed (increased from 100 to avoid missing releases)
     public int RssReleaseAgeLimit { get; set; } = 14; // days - only consider releases posted within this window (sports releases are time-sensitive)
+
+    // IPTV / EPG auto-refresh (IptvEpgRefreshService). Playlists rot as
+    // providers rotate channels and guide data ages out fast, so both are
+    // refreshed on their own cadence. 0 disables the respective refresh.
+    public int IptvPlaylistRefreshHours { get; set; } = 168; // weekly
+    public int EpgRefreshHours { get; set; } = 48; // every 2 days
 
     // Backlog Search Settings — scheduled missing/cutoff-unmet search.
     // RSS only catches recent releases. The backlog service walks past-aired monitored
@@ -175,13 +211,20 @@ public class Config
     public int DvrPrePaddingMinutes { get; set; } = 5; // Minutes to start recording before scheduled event
     public int DvrPostPaddingMinutes { get; set; } = 30; // Minutes to continue recording after scheduled end
     public int DvrMaxConcurrentRecordings { get; set; } = 0; // Maximum concurrent recordings (0 = unlimited)
+    public int DvrSimultaneousChannels { get; set; } = 1; // Channels to record each event from at once (1 = preferred only; more = redundancy against a provider dropping mid-event)
     public bool DvrDeleteAfterImport { get; set; } = false; // Delete recordings after successful import
     public int DvrRecordingRetentionDays { get; set; } = 0; // Days to keep recordings (0 = never delete)
+    public int DvrKeepLastRecordingsPerLeague { get; set; } = 0; // Keep only the newest N finished recordings per league, prune older ones (0 = unlimited)
     public int DvrHardwareAcceleration { get; set; } = 99; // HardwareAcceleration enum (99 = Auto)
     public string DvrFfmpegPath { get; set; } = ""; // Custom FFmpeg path (empty = use system PATH)
+    public string DvrPostRecordingCommand { get; set; } = ""; // Executable/script run after each completed recording (empty = disabled); recording details passed via SPORTARR_* env vars
     public bool DvrEnableReconnect { get; set; } = true; // Enable stream reconnection on failures
     public int DvrMaxReconnectAttempts { get; set; } = 5; // Maximum reconnection attempts
     public int DvrReconnectDelaySeconds { get; set; } = 5; // Delay between reconnection attempts
+    public int StalledDownloadTimeoutMinutes { get; set; } = 60; // Fail, blocklist, and re-search torrents with no progress for this long (0 = never)
+    public string DownloadPropersAndRepacks { get; set; } = "preferAndUpgrade"; // preferAndUpgrade | doNotUpgrade | doNotPrefer
+    public bool DvrOvertimeGuardEnabled { get; set; } = true; // Keep recording past the scheduled end while livescore says the event is still in progress
+    public int DvrOvertimeMaxExtensionMinutes { get; set; } = 120; // Ceiling on total overtime extension per recording (0 = disabled)
 
     /// <summary>
     /// What happens when scheduling a new recording would push an

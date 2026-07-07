@@ -154,5 +154,32 @@ public static class TeamNameVariationData
         { "Vegas Golden Knights", new[] { "VGK", "Golden Knights", "Knights" } },
         { "Washington Capitals", new[] { "WSH Capitals", "Capitals", "Caps" } },
         { "Winnipeg Jets", new[] { "WPG", "WPG Jets" } },
+
+        // ============================================================
+        // AFL Teams (18). TheSportsDB canonical names are "<Place>
+        // Football Club" or "<Place> <Nickname>"; releases use either the
+        // bare place ("St Kilda v West Coast") or place+nickname ("Carlton
+        // Blues V Western Bulldogs" in KAYO web releases). The generic
+        // club-suffix strip covers the bare-place forms; these entries add
+        // the nickname-attached and abbreviated forms.
+        // ============================================================
+        { "Adelaide Football Club", new[] { "Adelaide Crows" } },
+        { "Brisbane Lions", new[] { "Brisbane" } },
+        { "Carlton Football Club", new[] { "Carlton Blues" } },
+        { "Collingwood Football Club", new[] { "Collingwood Magpies" } },
+        { "Essendon Football Club", new[] { "Essendon Bombers" } },
+        { "Fremantle Football Club", new[] { "Fremantle Dockers", "Freo" } },
+        { "Geelong Football Club", new[] { "Geelong Cats" } },
+        { "Gold Coast Football Club", new[] { "Gold Coast Suns" } },
+        { "Greater Western Sydney Giants", new[] { "GWS", "GWS Giants", "Greater Western Sydney" } },
+        { "Hawthorn Football Club", new[] { "Hawthorn Hawks" } },
+        { "Melbourne Football Club", new[] { "Melbourne Demons" } },
+        { "North Melbourne Football Club", new[] { "North Melbourne Kangaroos" } },
+        { "Port Adelaide Football Club", new[] { "Port Adelaide Power" } },
+        { "Richmond Football Club", new[] { "Richmond Tigers" } },
+        { "St Kilda Football Club", new[] { "St Kilda Saints" } },
+        { "Sydney Swans", new[] { "Sydney" } },
+        { "West Coast Eagles", new[] { "West Coast" } },
+        { "Western Bulldogs", new[] { "Footscray" } },
     };
 }

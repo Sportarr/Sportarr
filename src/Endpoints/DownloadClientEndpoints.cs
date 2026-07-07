@@ -99,6 +99,10 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.InitialState = updatedClient.InitialState;
     client.RemoveCompletedDownloads = updatedClient.RemoveCompletedDownloads;
     client.RemoveFailedDownloads = updatedClient.RemoveFailedDownloads;
+    client.BlackholeFolder = updatedClient.BlackholeFolder;
+    client.WatchFolder = updatedClient.WatchFolder;
+    client.SaveMagnetFiles = updatedClient.SaveMagnetFiles;
+    client.ReadOnly = updatedClient.ReadOnly;
     client.Tags = updatedClient.Tags;
     client.LastModified = DateTime.UtcNow;
 
@@ -146,7 +150,7 @@ app.MapPost("/api/downloadclient/test", async (DownloadClient client, DownloadCl
         var needsCategory = string.IsNullOrWhiteSpace(client.Category) && client.Type is
             DownloadClientType.QBittorrent or DownloadClientType.Transmission or
             DownloadClientType.Deluge or DownloadClientType.RTorrent or
-            DownloadClientType.UTorrent or DownloadClientType.Decypharr;
+            DownloadClientType.Decypharr;
 
         if (needsCategory)
         {

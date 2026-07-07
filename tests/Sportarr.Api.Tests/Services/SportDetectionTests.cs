@@ -49,7 +49,8 @@ public class SportDetectionTests
             null,
             null,
             null,
-            null);
+            null,
+            new CustomFormatService(_fileParser));
     }
 
     #region Fighting Sport Tests

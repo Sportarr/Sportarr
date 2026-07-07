@@ -433,7 +433,8 @@ public class ReleaseCacheService
             return "NASCAR";
         if (normalized.Contains("WEC") || normalized.Contains("WORLD.ENDURANCE"))
             return "WEC";
-        if (normalized.Contains("WSBK") || normalized.Contains("SUPERBIKE"))
+        if (normalized.Contains("WSBK") || normalized.Contains("SUPERBIKE") ||
+            System.Text.RegularExpressions.Regex.IsMatch(normalized, @"\bSBK\b"))
             return "WSBK";
         if (normalized.Contains("WRC") || normalized.Contains("WORLD.RALLY"))
             return "WRC";

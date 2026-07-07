@@ -102,6 +102,121 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
     }
 
     /// <summary>
+    /// Rename rescue: a tracked file whose path no longer exists, while its
+    /// directory contains exactly one untracked video file of exactly the
+    /// same byte size, was almost certainly renamed in place - users do this
+    /// by hand to fix naming, and a rename never changes the size. Re-point
+    /// the records instead of letting miss-detection flag the event missing
+    /// and eventually re-search or re-download it. Live renames are already
+    /// reconciled by the file watcher; this covers renames made while
+    /// Sportarr was stopped and on network mounts that never deliver watcher
+    /// events. Ambiguity (zero or multiple size matches) falls through to
+    /// normal miss-detection - this must never guess.
+    /// </summary>
+    private async Task RescueRenamedFilesAsync(SportarrDbContext db, Config config, CancellationToken cancellationToken)
+    {
+        var files = await db.EventFiles
+            .AsNoTracking()
+            .Where(ef => ef.FilePath != null && ef.FilePath != "" && ef.Size > 0)
+            .Select(ef => new { ef.Id, ef.FilePath, ef.Size })
+            .ToListAsync(cancellationToken);
+        if (files.Count == 0)
+            return;
+
+        // Every path Sportarr already tracks, so a candidate that is just
+        // another tracked file (multi-part sets, a second event's file in
+        // the same folder) can never be claimed as a rename target.
+        var trackedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in files) trackedPaths.Add(f.FilePath!);
+        var eventPaths = await db.Events
+            .AsNoTracking()
+            .Where(e => e.FilePath != null && e.FilePath != "")
+            .Select(e => e.FilePath!)
+            .ToListAsync(cancellationToken);
+        foreach (var p in eventPaths) trackedPaths.Add(p);
+
+        var videoExtensions = new HashSet<string>(SupportedExtensions.Video, StringComparer.OrdinalIgnoreCase);
+        var dirListingCache = new Dictionary<string, List<FileInfo>>(StringComparer.OrdinalIgnoreCase);
+        var rescued = 0;
+
+        foreach (var file in files)
+        {
+            if (LibraryPathFilter.IsExcluded(file.FilePath, config.RecycleBin))
+                continue;
+            if (File.Exists(file.FilePath))
+                continue;
+
+            var dir = Path.GetDirectoryName(file.FilePath);
+            // A missing parent directory means the mount is down or the
+            // folder itself was moved - not a rename; leave it to the
+            // unreachable-root and miss-detection handling.
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+                continue;
+
+            if (!dirListingCache.TryGetValue(dir, out var listing))
+            {
+                try
+                {
+                    listing = new DirectoryInfo(dir).EnumerateFiles()
+                        .Where(fi => videoExtensions.Contains(fi.Extension))
+                        .ToList();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[Disk Scan] Could not list {Dir} for rename rescue", dir);
+                    listing = new List<FileInfo>();
+                }
+                dirListingCache[dir] = listing;
+            }
+
+            var candidates = listing
+                .Where(fi => fi.Length == file.Size && !trackedPaths.Contains(fi.FullName))
+                .ToList();
+            if (candidates.Count != 1)
+                continue;
+
+            var oldPath = file.FilePath!;
+            var newPath = candidates[0].FullName;
+
+            var row = await db.EventFiles.FirstOrDefaultAsync(ef => ef.Id == file.Id, cancellationToken);
+            if (row == null)
+                continue;
+            row.FilePath = newPath;
+            row.Exists = true;
+            row.MissingSince = null;
+            row.LastVerified = DateTime.UtcNow;
+
+            var eventsPointingAtOld = await db.Events
+                .Where(e => e.FilePath == oldPath)
+                .ToListAsync(cancellationToken);
+            foreach (var evt in eventsPointingAtOld)
+            {
+                evt.FilePath = newPath;
+                evt.HasFile = true;
+            }
+
+            // The watcher or a folder scan may have already filed the renamed
+            // file as a new manual-import candidate; that row is stale once
+            // the rename is reconciled.
+            var stalePending = await db.PendingImports
+                .Where(pi => pi.FilePath == newPath && pi.Status == PendingImportStatus.Pending)
+                .ToListAsync(cancellationToken);
+            if (stalePending.Count > 0)
+                db.PendingImports.RemoveRange(stalePending);
+
+            trackedPaths.Add(newPath);
+            rescued++;
+            _logger.LogInformation("[Disk Scan] Tracked file was renamed on disk; re-pointed record: {Old} -> {New}", oldPath, newPath);
+        }
+
+        if (rescued > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("[Disk Scan] Rename rescue re-pointed {Count} file record(s)", rescued);
+        }
+    }
+
+    /// <summary>
     /// Scan all event files and verify they exist on disk.
     /// Optimized to use AsNoTracking and batch updates for memory efficiency.
     ///
@@ -123,12 +238,23 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 
         _logger.LogInformation("[Disk Scan] Starting disk scan...");
 
+        // Rename rescue must run before miss-detection so a hand-renamed file
+        // is re-pointed instead of flagged missing (and eventually re-searched).
+        try
+        {
+            await RescueRenamedFilesAsync(db, config, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Disk Scan] Rename rescue failed; continuing with normal scan");
+        }
+
         // Identify unreachable root folders up front. Files under any of them
-        // are excluded from the existence check — we don't know whether they're
+        // are excluded from the existence check - we don't know whether they're
         // really missing or the mount is just down, so we leave their state
-        // alone instead of marking them missing. This is the equivalent of
-        // Sonarr's "skip cleanup when the series folder is missing" guard,
-        // applied at the root-folder level.
+        // alone instead of marking them missing. Applied at the root-folder
+        // level, mirroring the skip-cleanup-when-folder-missing guard the arr
+        // family uses.
         var unreachableRoots = (await db.RootFolders.ToListAsync(cancellationToken))
             .Where(rf => !string.IsNullOrEmpty(rf.Path) && !Directory.Exists(rf.Path))
             .Select(rf => rf.Path)
@@ -505,6 +631,28 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                 .Where(e => eventsToMarkMissing.Contains(e.Id))
                 .ExecuteUpdateAsync(s => s.SetProperty(e => e.HasFile, false),
                     cancellationToken);
+
+            // Unmonitor Deleted Events: files removed by external forces
+            // (cron cleanup, media server delete-after-watch) unmonitor the
+            // event so it isn't re-downloaded. Safe here because this list
+            // is built after the rename-rescue pass and the
+            // unreachable-root guard, so a down mount or a moved file never
+            // lands in it.
+            var mediaSettings = await db.MediaManagementSettings.AsNoTracking()
+                .FirstOrDefaultAsync(cancellationToken);
+            if (mediaSettings?.UnmonitorDeletedEvents == true)
+            {
+                var unmonitored = await db.Events
+                    .Where(e => eventsToMarkMissing.Contains(e.Id) && e.Monitored)
+                    .ExecuteUpdateAsync(s => s.SetProperty(e => e.Monitored, false),
+                        cancellationToken);
+                if (unmonitored > 0)
+                {
+                    _logger.LogInformation(
+                        "[Disk Scan] Unmonitored {Count} event(s) whose files were deleted from disk (Unmonitor Deleted Events is enabled)",
+                        unmonitored);
+                }
+            }
         }
 
         // For restored events, we need individual updates since each has different file info
@@ -691,6 +839,23 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             await db.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("[Disk Scan] Discovered {Count} new untracked files (available as pending imports in Activity)",
                 discoveredCount);
+
+            // One aggregate notification per scan, not one per file - a
+            // first scan of a large library can queue hundreds at once.
+            try
+            {
+                using var notifyScope = _serviceProvider.CreateScope();
+                var notificationService = notifyScope.ServiceProvider.GetRequiredService<NotificationService>();
+                await notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnManualInteractionRequired,
+                    $"{discoveredCount} file(s) awaiting manual import",
+                    "Untracked files were discovered on disk and queued for review under Activity.",
+                    new Dictionary<string, object> { { "pendingCount", discoveredCount } });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Disk Scan] Failed to send pending-import notification");
+            }
         }
     }
 }

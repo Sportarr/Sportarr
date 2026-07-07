@@ -26,6 +26,25 @@ using System.Windows.Forms;
 // Use system SQLite library instead of bundled e_sqlite3 (avoids "invalid opcode" on older CPUs)
 SQLitePCL.Batteries_V2.Init();
 
+// Windows single-instance guard. A leftover Windows service (or a tray
+// instance) still running while the user launches from the Start Menu
+// makes the second copy silently fight the first over the SQLite database
+// - the classic symptom is hanging at "Applying database migrations" with
+// empty logs. Windows-only: on Linux, multiple intentional instances
+// (separate containers/data dirs) are a supported setup.
+System.Threading.Mutex? singleInstanceMutex = null;
+if (OperatingSystem.IsWindows())
+{
+    singleInstanceMutex = new System.Threading.Mutex(true, @"Global\Sportarr.SingleInstance", out var isFirstInstance);
+    if (!isFirstInstance)
+    {
+        Console.WriteLine("[Sportarr] ERROR: Another Sportarr instance is already running on this machine.");
+        Console.WriteLine("[Sportarr] Check for a Sportarr Windows service (services.msc), a system-tray icon, or a second console window, stop it, then launch again.");
+        Environment.Exit(1);
+    }
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => singleInstanceMutex.Dispose();
+}
+
 // Set default environment variables (same as Docker sets, for consistency outside Docker)
 // These can still be overridden by the user if needed
 Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT",
@@ -465,6 +484,19 @@ builder.WebHost.UseUrls($"http://{bindAddress}:{port}");
 // Use Serilog for all logging
 builder.Host.UseSerilog();
 
+#if WINDOWS
+// Register with the Windows Service Control Manager so the SCM receives
+// lifecycle signals (started / stopping). This is a no-op when the process
+// is not running as a service (interactive / tray mode), so it is safe to
+// call unconditionally. Without this call the SCM waits 30 seconds for a
+// "running" notification that never comes, then kills the process with
+// error 1053 "did not respond to the start request in a timely fashion".
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    builder.Host.UseWindowsService();
+}
+#endif
+
 builder.Configuration["Sportarr:ApiKey"] = apiKey;
 // Propagate the resolved data path into the DI configuration so that services
 // like ConfigService (which loads/saves config.xml) use the same directory as
@@ -536,8 +568,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseCors();
-
 // Per-IP rate limiting (currently applied to the login endpoint to slow brute force).
 app.UseRateLimiter();
 
@@ -584,6 +614,14 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 // This ensures API endpoints are matched to handlers before the SPA fallback
 // middleware runs, preventing API routes from being served index.html.
 app.UseRouting();
+
+// CORS must run AFTER UseRouting so the matched endpoint's RequireCors metadata is
+// visible, and before the endpoint executes. Because the app calls UseRouting()
+// explicitly (which suppresses WebApplication's auto-injected routing), a UseCors()
+// placed before it never applied to endpoint-scoped policies (e.g. /api/health's
+// PublicProbe) — ASP.NET then rejected those requests with HTTP 400 "endpoint contains
+// CORS metadata, but a middleware was not found that supports CORS".
+app.UseCors();
 
 // Configure static files (UI from wwwroot)
 // For URL base support, we need to inject the urlBase into index.html
@@ -943,6 +981,7 @@ app.MapSonarrConfigEndpoints();
 app.MapSonarrIndexerEndpoints();
 app.MapSonarrDownloadClientEndpoint();
 app.MapSonarrQueueEndpoints();
+app.MapSonarrReleasePushEndpoint();
 
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");
@@ -961,73 +1000,85 @@ try
     Log.Information("[Sportarr] Starting web host");
 
 #if WINDOWS
-    // Windows: Support system tray mode
+    // Windows: Support system tray mode (interactive sessions only)
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     {
-        // Create shutdown token that tray icon can use to signal exit
-        using var appShutdown = new CancellationTokenSource();
-
-        // If --tray flag is set, hide console and show tray icon
-        if (runInTray)
+        // When running as a Windows service there is no interactive desktop:
+        // Environment.UserInteractive is false, and Windows Forms will fail to
+        // create windows. Skip the tray entirely and just run the web host.
+        // UseWindowsService() above handles the SCM lifecycle signals.
+        if (!Environment.UserInteractive)
         {
-            WindowsTrayIcon.HideConsole();
-            Log.Information("[Sportarr] Running in tray mode - console hidden");
+            Log.Information("[Sportarr] Running as Windows service - skipping system tray");
+            await app.RunAsync();
         }
-
-        // Always show tray icon on Windows
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.SetHighDpiMode(HighDpiMode.SystemAware);
-
-        using var trayIcon = new WindowsTrayIcon(1867, appShutdown);
-
-        // Run web host in background, tray icon on UI thread.
-        // If the host fails to start (e.g. port already in use), capture the
-        // exception, trigger app shutdown so the tray loop exits, and rethrow
-        // it to the outer catch so the user sees a clean error instead of a
-        // zombie tray icon with no web UI behind it.
-        Exception? webHostFailure = null;
-        var webHostTask = Task.Run(async () =>
+        else
         {
-            try
+            // Create shutdown token that tray icon can use to signal exit
+            using var appShutdown = new CancellationTokenSource();
+
+            // If --tray flag is set, hide console and show tray icon
+            if (runInTray)
             {
-                await app.RunAsync(appShutdown.Token);
+                WindowsTrayIcon.HideConsole();
+                Log.Information("[Sportarr] Running in tray mode - console hidden");
             }
-            catch (OperationCanceledException)
+
+            // Always show tray icon on Windows interactive sessions
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.SetHighDpiMode(HighDpiMode.SystemAware);
+
+            using var trayIcon = new WindowsTrayIcon(1867, appShutdown);
+
+            // Run web host in background, tray icon on UI thread.
+            // If the host fails to start (e.g. port already in use), capture the
+            // exception, trigger app shutdown so the tray loop exits, and rethrow
+            // it to the outer catch so the user sees a clean error instead of a
+            // zombie tray icon with no web UI behind it.
+            Exception? webHostFailure = null;
+            var webHostTask = Task.Run(async () =>
             {
-                // Expected when shutting down
-            }
-            catch (Exception ex)
+                try
+                {
+                    await app.RunAsync(appShutdown.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when shutting down
+                }
+                catch (Exception ex)
+                {
+                    webHostFailure = ex;
+                    appShutdown.Cancel();
+                }
+            });
+
+            // Show startup notification
+            trayIcon.ShowBalloon("Sportarr", "Sportarr is running on port 1867", System.Windows.Forms.ToolTipIcon.Info);
+
+            // Run Windows Forms message loop until shutdown requested
+            while (!appShutdown.Token.IsCancellationRequested)
             {
-                webHostFailure = ex;
-                appShutdown.Cancel();
+                Application.DoEvents();
+                Thread.Sleep(100);
             }
-        });
 
-        // Show startup notification
-        trayIcon.ShowBalloon("Sportarr", "Sportarr is running on port 1867", System.Windows.Forms.ToolTipIcon.Info);
+            // Wait for web host to finish
+            webHostTask.Wait(TimeSpan.FromSeconds(5));
 
-        // Run Windows Forms message loop until shutdown requested
-        while (!appShutdown.Token.IsCancellationRequested)
-        {
-            Application.DoEvents();
-            Thread.Sleep(100);
-        }
-
-        // Wait for web host to finish
-        webHostTask.Wait(TimeSpan.FromSeconds(5));
-
-        // If the web host died on startup, rethrow so the outer catch can
-        // translate it into a user-friendly error (e.g. port in use).
-        if (webHostFailure != null)
-        {
-            throw webHostFailure;
+            // If the web host died on startup, rethrow so the outer catch can
+            // translate it into a user-friendly error (e.g. port in use).
+            if (webHostFailure != null)
+            {
+                throw webHostFailure;
+            }
         }
     }
     else
     {
         // Non-Windows: just run normally
-        app.Run();
+        await app.RunAsync();
     }
 #else
     // Non-Windows build: just run normally

@@ -64,6 +64,8 @@ interface QueueItem {
   completedAt?: string;
   importedAt?: string;
   part?: string; // For multi-part events (e.g., "Early Prelims", "Prelims", "Main Card")
+  qualityScore?: number;
+  customFormatScore?: number;
 }
 
 interface ColumnVisibility {
@@ -212,6 +214,23 @@ const decisionColors = ['text-green-400', 'text-red-400', 'text-yellow-400', 'te
 const blocklistReasonNames = ['Failed Download', 'Missing Files', 'Corrupted Files', 'Quality Mismatch', 'Manual Block', 'Import Failed'];
 const blocklistReasonColors = ['text-red-400', 'text-orange-400', 'text-yellow-400', 'text-purple-400', 'text-blue-400', 'text-red-500'];
 
+// Custom format score badge shown next to the quality badge on queue,
+// history, and grab history rows. Hidden when the score is 0 so installs
+// without custom formats don't get a noise badge on every row.
+const cfScoreBadge = (score?: number) => {
+  if (!score) return null;
+  return (
+    <span
+      className={`px-1.5 py-0.5 text-xs rounded font-medium whitespace-nowrap ${
+        score > 0 ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
+      }`}
+      title="Custom format score"
+    >
+      CF {score > 0 ? '+' : ''}{score}
+    </span>
+  );
+};
+
 export default function ActivityPage() {
   const [activeTab, setActiveTab] = useState<TabType>('queue');
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
@@ -232,6 +251,8 @@ export default function ActivityPage() {
   const [removeQueueDialog, setRemoveQueueDialog] = useState<RemoveQueueDialog | null>(null);
   const [removeHistoryDialog, setRemoveHistoryDialog] = useState<RemoveHistoryDialog | null>(null);
   const [removeBlocklistDialog, setRemoveBlocklistDialog] = useState<RemoveBlocklistDialog | null>(null);
+  const [selectedBlocklistIds, setSelectedBlocklistIds] = useState<Set<number>>(new Set());
+  const [bulkRemoveBlocklistOpen, setBulkRemoveBlocklistOpen] = useState(false);
   const [removalMethod, setRemovalMethod] = useState<RemovalMethod>('removeFromClient');
   const [blocklistAction, setBlocklistAction] = useState<BlocklistAction>('none');
   const [historyBlocklistAction, setHistoryBlocklistAction] = useState<BlocklistAction>('none');
@@ -755,6 +776,48 @@ export default function ActivityPage() {
     }
   };
 
+  const toggleBlocklistSelection = (id: number) => {
+    setSelectedBlocklistIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllBlocklist = () => {
+    setSelectedBlocklistIds(prev =>
+      prev.size === blocklistItems.length
+        ? new Set()
+        : new Set(blocklistItems.map(i => i.id))
+    );
+  };
+
+  const handleIgnorePendingImport = async (id: number) => {
+    try {
+      // Rejects the pending import: the row is removed and the file's path
+      // is blocklisted, so scans and the file watcher stop rediscovering it.
+      await apiClient.post(`/pending-imports/${id}/reject`);
+      loadQueue();
+    } catch (error) {
+      console.error('Failed to ignore pending import:', error);
+    }
+  };
+
+  const handleBulkDeleteBlocklist = async () => {
+    try {
+      await apiClient.post('/blocklist/bulk/delete', { ids: Array.from(selectedBlocklistIds) });
+      setBulkRemoveBlocklistOpen(false);
+      setSelectedBlocklistIds(new Set());
+      loadBlocklist();
+    } catch (error) {
+      console.error('Failed to bulk delete blocklist items:', error);
+    }
+  };
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -1068,7 +1131,10 @@ export default function ActivityPage() {
       case 'quality':
         return (
           <td key="quality" className="px-2 py-1.5 text-center">
-            <span className={BADGE_PURPLE}>{item.quality || 'Unknown'}</span>
+            <div className="flex items-center justify-center gap-1 flex-wrap">
+              <span className={BADGE_PURPLE}>{item.quality || 'Unknown'}</span>
+              {cfScoreBadge(item.customFormatScore)}
+            </div>
           </td>
         );
       case 'protocol':
@@ -1225,7 +1291,7 @@ export default function ActivityPage() {
   const anyHasPostImportCategory = removeQueueDialog?.items.some(
     item => item.downloadClient?.postImportCategory != null && item.downloadClient?.postImportCategory !== ''
   );
-  const showChangeCategory = anyCompleted && !anyHasPostImportCategory;
+  const showChangeCategory = anyCompleted && anyHasPostImportCategory;
 
   return (
     <PageShell>
@@ -1538,6 +1604,13 @@ export default function ActivityPage() {
                                         </button>
                                       )}
                                       <button
+                                        onClick={() => handleIgnorePendingImport(pendingImport.id)}
+                                        className={BUTTON_ICON_SECONDARY}
+                                        title="Ignore this file: it stays on disk but Sportarr stops detecting or suggesting it (undo from the Blocklist tab)"
+                                      >
+                                        <NoSymbolIcon className="w-4 h-4" />
+                                      </button>
+                                      <button
                                         onClick={async () => {
                                           try {
                                             // Remove from download client AND pending imports list
@@ -1783,6 +1856,14 @@ export default function ActivityPage() {
                             </button>
                           )}
                           <button
+                            onClick={() => handleIgnorePendingImport(pendingImport.id)}
+                            className={BUTTON_SECONDARY}
+                            title="Ignore this file: it stays on disk but Sportarr stops detecting or suggesting it (undo from the Blocklist tab)"
+                          >
+                            <NoSymbolIcon className="w-4 h-4" />
+                            Ignore
+                          </button>
+                          <button
                             onClick={async () => {
                               try {
                                 await apiClient.post(`/pending-imports/${pendingImport.id}/remove-from-client`);
@@ -1835,6 +1916,7 @@ export default function ActivityPage() {
                                   <span className="text-xs">{statusNames[item.status]}</span>
                                 </span>
                                 {item.quality && <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality}</span>}
+                                {cfScoreBadge(item.customFormatScore)}
                                 {item.protocol && <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>}
                               </div>
                               <p className="text-sm text-gray-400 truncate mb-2">{item.title}</p>
@@ -1946,7 +2028,10 @@ export default function ActivityPage() {
                               {item.errors.length > 0 && <div className="text-xs text-red-400 mt-0.5">{item.errors.length} error(s)</div>}
                             </td>
                             <td className="px-2 py-1.5 text-center">
-                              <span className={BADGE_PURPLE}>{item.quality}</span>
+                              <div className="flex items-center justify-center gap-1 flex-wrap">
+                                <span className={BADGE_PURPLE}>{item.quality}</span>
+                                {cfScoreBadge(item.downloadQueueItem?.customFormatScore)}
+                              </div>
                             </td>
                             <td className="px-3 py-1.5">
                               <div className={`flex items-center justify-center gap-1 ${decisionColors[item.decision]}`}>
@@ -1998,6 +2083,7 @@ export default function ActivityPage() {
                                 <span className="text-xs">{decisionNames[item.decision]}</span>
                               </span>
                               <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality}</span>
+                              {cfScoreBadge(item.downloadQueueItem?.customFormatScore)}
                               {item.warnings.length > 0 && <span className="px-2 py-1 bg-yellow-900/30 text-yellow-400 text-xs rounded">{item.warnings.length} warning{item.warnings.length !== 1 ? 's' : ''}</span>}
                               {item.errors.length > 0 && <span className="px-2 py-1 bg-red-900/30 text-red-400 text-xs rounded">{item.errors.length} error{item.errors.length !== 1 ? 's' : ''}</span>}
                             </div>
@@ -2059,11 +2145,33 @@ export default function ActivityPage() {
               </div>
             ) : (
               <>
+                {/* Bulk actions: select all on the current page + remove selected */}
+                <div className="flex items-center justify-between px-1 pb-3">
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={blocklistItems.length > 0 && selectedBlocklistIds.size === blocklistItems.length}
+                      onChange={toggleSelectAllBlocklist}
+                      className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-red-600"
+                    />
+                    Select all on page
+                  </label>
+                  {selectedBlocklistIds.size > 0 && (
+                    <button
+                      onClick={() => setBulkRemoveBlocklistOpen(true)}
+                      className={BUTTON_DESTRUCTIVE}
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                      Remove Selected ({selectedBlocklistIds.size})
+                    </button>
+                  )}
+                </div>
                 {compactView ? (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="bg-gray-800 text-gray-300 text-xs">
+                          <th className="px-2 py-1.5 w-8"></th>
                           <th className="px-3 py-1.5 text-left font-medium">Event</th>
                           <th className="px-3 py-1.5 text-left font-medium">Reason</th>
                           <th className="px-2 py-1.5 text-center font-medium">Indexer</th>
@@ -2074,6 +2182,14 @@ export default function ActivityPage() {
                       <tbody className="divide-y divide-gray-700">
                         {blocklistItems.map((item) => (
                           <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
+                            <td className="px-2 py-1.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedBlocklistIds.has(item.id)}
+                                onChange={() => toggleBlocklistSelection(item.id)}
+                                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-red-600"
+                              />
+                            </td>
                             <td className="px-3 py-1.5 min-w-[150px]">
                               <div className="text-white text-xs font-medium break-words">
                                 {item.event?.title || 'Unknown Event'}
@@ -2116,6 +2232,12 @@ export default function ActivityPage() {
                     {blocklistItems.map((item) => (
                       <div key={item.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:bg-gray-750 transition-colors">
                         <div className="flex items-start justify-between">
+                          <input
+                            type="checkbox"
+                            checked={selectedBlocklistIds.has(item.id)}
+                            onChange={() => toggleBlocklistSelection(item.id)}
+                            className="w-5 h-5 mt-1 mr-3 rounded border-gray-600 bg-gray-700 text-red-600 flex-shrink-0"
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-2 flex-wrap">
                               <h3 className="text-lg font-semibold text-white">
@@ -2256,7 +2378,10 @@ export default function ActivityPage() {
                               <div className="text-gray-300 text-xs break-words">{item.title}</div>
                             </td>
                             <td className="px-2 py-1.5 text-center">
-                              <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality || 'Unknown'}</span>
+                              <div className="flex items-center justify-center gap-1 flex-wrap">
+                                <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality || 'Unknown'}</span>
+                                {cfScoreBadge(item.customFormatScore)}
+                              </div>
                             </td>
                             <td className="px-2 py-1.5 text-center">
                               <span className="text-gray-400 text-xs">{item.indexer}</span>
@@ -2320,6 +2445,7 @@ export default function ActivityPage() {
                                 <span className="flex items-center gap-1 text-gray-400 text-xs"><ClockIcon className="w-3.5 h-3.5" />Not Imported</span>
                               )}
                               {item.quality && <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality}</span>}
+                              {cfScoreBadge(item.customFormatScore)}
                               <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>
                             </div>
                             <p className="text-sm text-gray-400 truncate mb-1">{item.title}</p>
@@ -2563,6 +2689,48 @@ export default function ActivityPage() {
                   className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                 >
                   Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Remove Blocklist Confirmation */}
+        {bulkRemoveBlocklistOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
+              <div className="flex items-start justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">
+                  Remove from Blocklist
+                </h3>
+                <button
+                  onClick={() => setBulkRemoveBlocklistOpen(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <p className="text-gray-300 mb-6">
+                Are you sure you want to remove {selectedBlocklistIds.size} release{selectedBlocklistIds.size === 1 ? '' : 's'} from the blocklist?
+              </p>
+
+              <p className="text-sm text-yellow-500 mb-6">
+                These releases will be allowed in future RSS and Automatic searches.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setBulkRemoveBlocklistOpen(false)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleBulkDeleteBlocklist}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Remove {selectedBlocklistIds.size}
                 </button>
               </div>
             </div>

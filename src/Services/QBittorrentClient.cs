@@ -13,16 +13,18 @@ namespace Sportarr.Api.Services;
 public class QBittorrentClient
 {
     private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory? _httpClientFactory;
     private readonly ILogger<QBittorrentClient> _logger;
     private string? _cookie;
     private string? _apiKey; // qBittorrent 5.2+ Bearer API key (when configured)
     private System.Version? _webApiVersion; // cached /api/v2/app/webapiVersion (instances are per-config); System.Version, not Sportarr.Api.Version
     private HttpClient? _customHttpClient; // For SSL bypass
 
-    public QBittorrentClient(HttpClient httpClient, ILogger<QBittorrentClient> logger)
+    public QBittorrentClient(HttpClient httpClient, ILogger<QBittorrentClient> logger, IHttpClientFactory? httpClientFactory = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     /// <summary>
@@ -1147,7 +1149,9 @@ public class QBittorrentClient
         // Shared with the Transmission and rTorrent paths via TorrentFileResolver,
         // which follows redirects manually so a magnet redirect is detected rather
         // than handed to an HTTP client that cannot follow a cross-scheme redirect.
-        => TorrentFileResolver.ResolveAsync(torrentUrl, skipSslValidation: false, _logger);
+        => _httpClientFactory != null
+            ? TorrentFileResolver.ResolveAsync(torrentUrl, skipSslValidation: false, _httpClientFactory, _logger)
+            : throw new InvalidOperationException("Torrent-file resolution requires an IHttpClientFactory-constructed client");
 
     /// <summary>
     /// Pre-validate a torrent URL by fetching headers to check if it returns valid torrent data.

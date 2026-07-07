@@ -6,13 +6,10 @@ namespace Sportarr.Api.Helpers;
 
 public static class PluginDownloadHelper
 {
-    public static async Task<string?> GetPluginDownloadUrlAsync(string pluginType, ILogger logger)
+    public static async Task<string?> GetPluginDownloadUrlAsync(string pluginType, HttpClient httpClient, ILogger logger)
     {
         try
         {
-            using var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Add("User-Agent", $"Sportarr/{Sportarr.Api.Version.GetFullVersion()}");
-            httpClient.Timeout = TimeSpan.FromSeconds(15);
 
             var response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases/latest");
             if (!response.IsSuccessStatusCode)

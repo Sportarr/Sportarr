@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useLogFiles, useLogFileContent } from '../api/hooks';
-import { ArrowDownTrayIcon, DocumentTextIcon, XMarkIcon, FunnelIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, ChevronDoubleDownIcon, DocumentTextIcon, XMarkIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import { parseAsUtc } from '../utils/timezone';
@@ -14,6 +14,36 @@ export default function LogFilesPage() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<LogLevel>('ALL');
   const { data: logContent, isLoading: isLoadingContent } = useLogFileContent(selectedFile);
+
+  // Tail behavior: the newest lines are what people open logs for, so the
+  // viewer pins to the bottom on open and stays pinned across auto-refreshes.
+  // Scrolling up to read releases the pin (refreshes stop yanking the view)
+  // and a jump-to-bottom button re-pins.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pinnedRef = useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  const handleViewerScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    pinnedRef.current = nearBottom;
+    setShowJumpToBottom(!nearBottom);
+  };
+
+  const jumpToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    pinnedRef.current = true;
+    setShowJumpToBottom(false);
+  };
+
+  // Opening a (different) file always starts at the tail.
+  useEffect(() => {
+    pinnedRef.current = true;
+    setShowJumpToBottom(false);
+  }, [selectedFile]);
 
   // Filter log content by selected level
   const filteredContent = useMemo(() => {
@@ -39,6 +69,15 @@ export default function LogFilesPage() {
 
     return filteredLines.join('\n');
   }, [logContent?.content, selectedLevel]);
+
+  // After content renders (initial load or auto-refresh), keep the tail in
+  // view while pinned. Runs post-commit, so scrollHeight reflects the new
+  // content.
+  useEffect(() => {
+    if (pinnedRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [filteredContent, isLoadingContent]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -164,7 +203,7 @@ export default function LogFilesPage() {
 
           {/* Log Content Viewer */}
           <div className="lg:col-span-2">
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden h-[600px] flex flex-col">
+            <div className="relative bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden h-[600px] flex flex-col">
               <div className="px-6 py-4 bg-red-950/30 border-b border-red-900/30 flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-white">
                   {selectedFile ? selectedFile : 'Select a log file'}
@@ -198,7 +237,7 @@ export default function LogFilesPage() {
                   )}
                 </div>
               </div>
-              <div className="flex-1 overflow-auto p-6">
+              <div ref={scrollRef} onScroll={handleViewerScroll} className="flex-1 overflow-auto p-6">
                 {!selectedFile ? (
                   <div className="flex items-center justify-center h-full text-gray-400">
                     <p>Select a log file from the list to view its contents</p>
@@ -217,6 +256,16 @@ export default function LogFilesPage() {
                   </div>
                 )}
               </div>
+              {selectedFile && showJumpToBottom && (
+                <button
+                  onClick={jumpToBottom}
+                  className="absolute bottom-16 right-6 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-full shadow-lg transition-colors"
+                  title="Jump to the newest log lines and resume following"
+                >
+                  <ChevronDoubleDownIcon className="w-4 h-4" />
+                  Newest
+                </button>
+              )}
               {logContent && (
                 <div className="px-6 py-3 bg-red-950/20 border-t border-red-900/30 text-sm text-gray-400 flex items-center justify-between">
                   <span>Size: {formatFileSize(logContent.size)}</span>

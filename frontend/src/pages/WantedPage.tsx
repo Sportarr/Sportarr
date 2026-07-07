@@ -21,7 +21,7 @@ import { useColumnVisibility } from '../hooks/useColumnVisibility';
 import ManualSearchModal from '../components/ManualSearchModal';
 import { useSearchQueueStatus } from '../api/hooks';
 import { apiGet, apiPost, apiPut } from '../utils/api';
-import { formatTimeInTimezone } from '../utils/timezone';
+import { formatTimeInTimezone, parseAsUtc } from '../utils/timezone';
 import { useUISettings } from '../hooks/useUISettings';
 import { BADGE_AMBER, BADGE_BLUE, BUTTON_BASE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_WARNING, BUTTON_SECONDARY, TABLE_ROW_HOVER } from '../utils/designTokens';
 
@@ -245,6 +245,39 @@ const WantedPage: React.FC = () => {
     });
   };
 
+  const [searchingAll, setSearchingAll] = useState(false);
+
+  // Queue a search for everything on the active tab, server-side (covers the
+  // whole wanted set, not just the loaded page).
+  const handleSearchAll = async () => {
+    if (searchingAll || totalRecords === 0) return;
+    const label = activeTab === 'missing' ? 'missing event' : 'cutoff unmet event';
+    if (!window.confirm(`Queue a search for all ${totalRecords} ${label}${totalRecords !== 1 ? 's' : ''}? Searches run one at a time through the queue.`)) {
+      return;
+    }
+    setSearchingAll(true);
+    try {
+      const url = activeTab === 'missing'
+        ? '/api/wanted/missing/search-all'
+        : '/api/wanted/cutoff-unmet/search-all';
+      const response = await apiPost(url, {});
+      if (!response.ok) throw new Error('Failed to queue searches');
+      const result = await response.json();
+      const skippedBits: string[] = [];
+      if (result.skippedAlreadyQueued > 0) skippedBits.push(`${result.skippedAlreadyQueued} already queued`);
+      if (result.skippedUnsearchable > 0) skippedBits.push(`${result.skippedUnsearchable} postponed/cancelled`);
+      toast.success(`Queued ${result.queued} search${result.queued !== 1 ? 'es' : ''}`, {
+        description: skippedBits.length > 0 ? `Skipped: ${skippedBits.join(', ')}.` : 'Check the sidebar for progress.',
+      });
+    } catch (err) {
+      toast.error('Search All Failed', {
+        description: err instanceof Error ? err.message : 'Failed to queue searches.',
+      });
+    } finally {
+      setSearchingAll(false);
+    }
+  };
+
   const handleToggleMonitored = async (event: Event) => {
     try {
       const response = await apiPut(`/api/events/${event.id}`, { monitored: !event.monitored });
@@ -261,7 +294,11 @@ const WantedPage: React.FC = () => {
   };
 
   const formatRelativeTime = (dateString: string) => {
-    const date = new Date(dateString + 'Z');
+    // parseAsUtc handles timestamps with or without timezone info. The old
+    // naive `+ 'Z'` append produced "...ZZ" (an Invalid Date) once the API
+    // started returning proper UTC timestamps, which rendered every row's
+    // countdown as "In NaN days".
+    const date = parseAsUtc(dateString);
     const now = new Date();
 
     const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -609,6 +646,16 @@ const WantedPage: React.FC = () => {
       <PageHeader
         title="Wanted"
         subtitle="Events that are monitored but missing files or below quality cutoff"
+        actions={
+          <button
+            onClick={handleSearchAll}
+            disabled={searchingAll || totalRecords === 0}
+            className="flex items-center rounded-lg bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <MagnifyingGlassIcon className={`w-5 h-5 mr-2 ${searchingAll ? 'animate-pulse' : ''}`} />
+            {searchingAll ? 'Queueing...' : 'Search All'}
+          </button>
+        }
       />
 
       {/* Tabs */}

@@ -801,12 +801,27 @@ export default function SeasonSearchModal({
                                           <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
                                         )}
                                         <div className="min-w-0 flex-1">
-                                          <span
-                                            className={`truncate block ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
-                                            title={result.title}
-                                          >
-                                            {result.title}
-                                          </span>
+                                          {result.infoUrl ? (
+                                            /* Link to the release's details page on the indexer,
+                                               like Prowlarr. */
+                                            <a
+                                              href={result.infoUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              onClick={(e) => e.stopPropagation()}
+                                              className={`truncate block hover:underline ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                              title={`${result.title}\nOpen on ${result.indexer}`}
+                                            >
+                                              {result.title}
+                                            </a>
+                                          ) : (
+                                            <span
+                                              className={`truncate block ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                              title={result.title}
+                                            >
+                                              {result.title}
+                                            </span>
+                                          )}
                                           {result.isSeasonPack && (
                                             <span className="text-yellow-500 text-[10px]">Season Pack</span>
                                           )}

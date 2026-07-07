@@ -12,8 +12,19 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class LibraryImportService
 {
+    /// <summary>
+    /// Minimum match confidence (0-100) at which a scanned file is
+    /// auto-imported without admin review. The score comes from this
+    /// service's match engine; 85 corresponds to the "high confidence"
+    /// tier the manual import UI already displays. Shared by the periodic
+    /// library rescan and the real-time file watcher so the two paths can
+    /// never disagree on what "safe to import" means.
+    /// </summary>
+    public const int AutoImportConfidenceFloor = 85;
+
     private readonly SportarrDbContext _db;
     private readonly ILogger<LibraryImportService> _logger;
+    private readonly CustomFormatService _customFormatService;
     private readonly MediaFileParser _fileParser;
     private readonly SportsFileNameParser _sportsParser;
     private readonly FileNamingService _namingService;
@@ -33,7 +44,8 @@ public class LibraryImportService
         EventPartDetector partDetector,
         ConfigService configService,
         SportarrApiClient sportarrApiClient,
-        DiskSpaceService diskSpaceService)
+        DiskSpaceService diskSpaceService,
+        CustomFormatService customFormatService)
     {
         _db = db;
         _logger = logger;
@@ -44,6 +56,7 @@ public class LibraryImportService
         _configService = configService;
         _sportarrApiClient = sportarrApiClient;
         _diskSpaceService = diskSpaceService;
+        _customFormatService = customFormatService;
     }
 
     /// <summary>
@@ -80,11 +93,26 @@ public class LibraryImportService
 
             result.TotalFiles = files.Count;
 
+            // User-ignored files: rejecting a pending import blocklists the
+            // file's path. Scans skip those entirely so an ignored file
+            // doesn't resurface as matched/unmatched on every rescan
+            // (DiskScanService and the file watcher apply the same rule).
+            var ignoredPaths = new HashSet<string>(
+                await _db.Blocklist
+                    .Where(b => b.FilePath != null)
+                    .Select(b => b.FilePath!)
+                    .ToListAsync(),
+                StringComparer.OrdinalIgnoreCase);
+
             // Track event IDs claimed by earlier files in this batch so two files can't match the same event
             var claimedEventIds = new HashSet<int>();
 
             foreach (var filePath in files)
             {
+                if (ignoredPaths.Contains(filePath))
+                {
+                    continue;
+                }
                 try
                 {
                     var fileInfo = new FileInfo(filePath);
@@ -117,10 +145,12 @@ public class LibraryImportService
                     if (seMatch.Success && int.TryParse(seMatch.Groups[1].Value, out var seEp))
                         explicitEpisodeNumber = seEp;
 
-                    // Detect multi-part files (e.g. "UFC - S2025E04 - pt3 - UFC 312...")
-                    // Part files must be allowed to match the same event as the main file even if
-                    // that event was already claimed by an earlier file in this batch.
-                    var isPartFile = System.Text.RegularExpressions.Regex.IsMatch(filename, @"\bpt\d+\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    // Detect multi-part files (e.g. "UFC - S2025E04 - pt3 - UFC 312..."
+                    // or the episode-attached form "S2024E107pt2"). The lookbehind
+                    // replaces \b, which never fires between a digit and 'p'
+                    // (both word characters), while still rejecting words that
+                    // merely contain pt+digits (Egypt2026).
+                    var isPartFile = System.Text.RegularExpressions.Regex.IsMatch(filename, @"(?<![a-zA-Z])pt\d+\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
                     // Check if file is already in library
                     // First check Event.FilePath (main file path)
@@ -166,10 +196,13 @@ public class LibraryImportService
                         // Load candidates, excluding events already claimed by earlier files in this scan batch
                         // and events that already have files.
                         // Exception: part files (pt2, pt3…) may match the same event as their main file,
-                        // so they bypass the claimedEventIds filter to allow multiple parts per event.
+                        // so they bypass BOTH filters - the whole point of a ptN file is
+                        // adding another file to an event that already has one, so the
+                        // !HasFile filter would otherwise exclude exactly the right event
+                        // and the file would sit unmatched at 0% confidence.
                         var candidates = await _db.Events
                             .Include(e => e.League)
-                            .Where(e => !e.HasFile && (isPartFile || !claimedEventIds.Contains(e.Id)))
+                            .Where(e => isPartFile || (!e.HasFile && !claimedEventIds.Contains(e.Id)))
                             .ToListAsync();
 
                         foreach (var candidate in candidates)
@@ -203,7 +236,7 @@ public class LibraryImportService
                     string? destinationPreview = null;
                     if (matchedEvent != null)
                     {
-                        destinationPreview = BuildDestinationPreview(matchedEvent, fileInfo.Name, settings);
+                        destinationPreview = await BuildDestinationPreviewAsync(matchedEvent, fileInfo.Name, settings);
                     }
 
                     var importable = new ImportableFile
@@ -291,18 +324,19 @@ public class LibraryImportService
                     Path.GetFileNameWithoutExtension(request.FilePath),
                     request.FilePath);
 
-                // Parse import mode from request: "move" or "copy"
+                // Parse import mode from request: "move", "copy", or "hardlink"
                 // Default behavior based on CopyFiles setting:
                 // - CopyFiles=true: Use Copy mode (preserves source files)
                 // - CopyFiles=false: Use Move mode (removes source files)
-                // UseHardlinks only affects HOW copies are done (hardlink vs actual copy), not WHETHER to copy
+                // In Copy mode, UseHardlinks decides HOW copies are done (hardlink vs actual copy).
+                // "hardlink" requests links regardless of the global UseHardlinks setting.
                 var importMode = settings.CopyFiles ? LibraryImportMode.Copy : LibraryImportMode.Move;
                 if (!string.IsNullOrEmpty(request.ImportMode))
                 {
                     importMode = request.ImportMode.ToLowerInvariant() switch
                     {
                         "copy" => LibraryImportMode.Copy,
-                        "hardlink" => LibraryImportMode.Copy, // Hardlink is handled within Copy mode
+                        "hardlink" => LibraryImportMode.Hardlink,
                         "move" => LibraryImportMode.Move,
                         _ => importMode // Keep the default based on CopyFiles setting
                     };
@@ -661,7 +695,10 @@ public class LibraryImportService
                 Part = partSuffix
             };
 
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            tokens.CustomFormats = _customFormatService.BuildRenameToken(
+                Path.GetFileName(sourcePath), await _db.CustomFormats.ToListAsync());
+
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {
@@ -810,9 +847,10 @@ public class LibraryImportService
             return;
         }
 
-        // Copy mode: Try hardlink first (if enabled), then fall back based on CopyFiles setting.
+        // Copy/Hardlink mode: Try hardlink first (when explicitly requested per-import,
+        // or when the global UseHardlinks setting is on), then fall back.
         // Hardlinks let two paths reference the same on-disk bytes without duplicating storage.
-        if (settings.UseHardlinks)
+        if (importMode == LibraryImportMode.Hardlink || settings.UseHardlinks)
         {
             try
             {
@@ -846,18 +884,27 @@ public class LibraryImportService
                     _logger.LogWarning(ex, "[Transfer] Hardlink failed");
                 }
 
+                // Explicitly requested hardlinks always fall back to COPY, never move.
+                // The user asked for links to keep the source seedable, so deleting
+                // the source on a fallback would defeat the purpose of the request.
+                if (importMode == LibraryImportMode.Hardlink)
+                {
+                    _logger.LogInformation("[Transfer] Hardlink was explicitly requested - falling back to copy to preserve the source file");
+                }
                 // CRITICAL FIX: When hardlink fails and CopyFiles=false, fall back to MOVE not copy
                 // This prevents duplicates when user has "Copy Files" disabled but hardlinks enabled
                 // (common on Unraid where downloads are on NVMe and library is on array)
-                if (!settings.CopyFiles)
+                else if (!settings.CopyFiles)
                 {
                     _logger.LogInformation("[Transfer] CopyFiles=false, falling back to MOVE instead of copy");
                     File.Move(source, destination, overwrite: false);
                     _logger.LogInformation("[Transfer] File moved (hardlink fallback): {Source} -> {Destination}", source, destination);
                     return;
                 }
-
-                _logger.LogInformation("[Transfer] CopyFiles=true, falling back to copy");
+                else
+                {
+                    _logger.LogInformation("[Transfer] CopyFiles=true, falling back to copy");
+                }
                 // Fall through to copy
             }
         }
@@ -1343,10 +1390,10 @@ public class LibraryImportService
         var evt = await _db.Events.Include(e => e.League).FirstOrDefaultAsync(e => e.Id == eventId);
         if (evt == null) return null;
         var settings = await GetMediaManagementSettingsAsync();
-        return BuildDestinationPreview(evt, originalFileName, settings);
+        return await BuildDestinationPreviewAsync(evt, originalFileName, settings);
     }
 
-    private string BuildDestinationPreview(Event matchedEvent, string originalFileName, MediaManagementSettings settings)
+    private async Task<string> BuildDestinationPreviewAsync(Event matchedEvent, string originalFileName, MediaManagementSettings settings)
     {
         var extension = Path.GetExtension(originalFileName);
 
@@ -1361,14 +1408,20 @@ public class LibraryImportService
             // Use the actual file format with all tokens including episode number
             var episodeNumber = matchedEvent.EpisodeNumber ?? 1;
             var brandingDate = matchedEvent.BroadcastDate ?? matchedEvent.EventDate.Date;
+            // Parse the real filename so the preview shows the name the
+            // import will actually produce. The old hardcoded
+            // "WEBDL-1080p" placeholder made every file preview as WEBDL
+            // regardless of its actual quality, and the empty release
+            // group made {Release Group} formats look broken.
+            var parsedPreview = _fileParser.Parse(originalFileName);
             var tokens = new FileNamingTokens
             {
                 EventTitle = matchedEvent.Title,
                 EventTitleThe = matchedEvent.Title,
                 AirDate = brandingDate,
-                Quality = "WEBDL-1080p", // Preview placeholder
-                QualityFull = "WEBDL-1080p",
-                ReleaseGroup = string.Empty,
+                Quality = parsedPreview.Quality ?? "Unknown",
+                QualityFull = _fileParser.BuildQualityString(parsedPreview),
+                ReleaseGroup = parsedPreview.ReleaseGroup ?? string.Empty,
                 OriginalTitle = matchedEvent.Title,
                 OriginalFilename = Path.GetFileNameWithoutExtension(originalFileName),
                 Series = matchedEvent.League?.Name ?? matchedEvent.Sport ?? "Unknown",
@@ -1376,7 +1429,9 @@ public class LibraryImportService
                 Episode = episodeNumber.ToString("00"),
                 Part = string.Empty
             };
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            tokens.CustomFormats = _customFormatService.BuildRenameToken(
+                originalFileName, await _db.CustomFormats.ToListAsync());
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {
@@ -1637,9 +1692,11 @@ public class FileImportRequest
     public string? Season { get; set; }
 
     /// <summary>
-    /// Import mode: "move" or "copy".
+    /// Import mode: "move", "copy", or "hardlink".
     /// - "move" (default): Moves files from source to destination
     /// - "copy": Copies files or creates hardlinks based on settings
+    /// - "hardlink": Creates hardlinks regardless of the global UseHardlinks
+    ///   setting, falling back to copy (never move) so seeds stay intact
     /// </summary>
     public string? ImportMode { get; set; }
 
@@ -1670,7 +1727,14 @@ public enum LibraryImportMode
     /// <summary>
     /// Copy files or create hardlinks based on UseHardlinks setting
     /// </summary>
-    Copy
+    Copy,
+
+    /// <summary>
+    /// Explicitly requested hardlinks (per-import, independent of the global
+    /// UseHardlinks setting). Falls back to copy on failure - never move -
+    /// so the source file always survives for seeding.
+    /// </summary>
+    Hardlink
 }
 
 /// <summary>

@@ -78,6 +78,16 @@ namespace Jellyfin.Plugin.Sportarr
                 // maps to, for the cost of one small response per file.
                 var url = $"{ApiUrl}/api/metadata/match?series={seriesId}&season={info.ParentIndexNumber}&episode={info.IndexNumber}";
 
+                // Multi-part events (Prelims / Main Card) share one episode
+                // number, so the filename is what identifies which part this
+                // file is. The server recognizes both renamer conventions
+                // (readable label and pt{N}) and returns part_name for the
+                // title below.
+                if (!string.IsNullOrEmpty(info.Path))
+                {
+                    url += $"&filename={Uri.EscapeDataString(System.IO.Path.GetFileName(info.Path))}";
+                }
+
                 _logger.LogDebug("[Sportarr] Matching episode: {Url}", url);
 
                 var response = await FetchNoCacheStringAsync(client, url, cancellationToken);
@@ -117,6 +127,17 @@ namespace Jellyfin.Plugin.Sportarr
                         !string.IsNullOrEmpty(partName.GetString()))
                     {
                         episode.Name = $"{episode.Name} - {partName.GetString()}";
+                    }
+
+                    // Event date in the title (on by default). Playoff series
+                    // produce several games between the same two teams in
+                    // quick succession; the date in the title is what tells
+                    // them apart on clients that don't show the aired-on
+                    // field next to the name.
+                    if ((SportarrPlugin.Instance?.Configuration.IncludeDateInEpisodeTitles ?? true) &&
+                        episode.PremiereDate.HasValue)
+                    {
+                        episode.Name = $"{episode.Name} ({episode.PremiereDate.Value:yyyy-MM-dd})";
                     }
 
                     // Provider ID

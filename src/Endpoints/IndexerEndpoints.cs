@@ -115,8 +115,8 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
                         indexer.Url = fieldValue?.TrimEnd('/') ?? "";
                         break;
                     case "apiPath":
-                        var apiPath = fieldValue ?? "/api";
-                        indexer.ApiPath = apiPath.StartsWith('/') ? apiPath : $"/{apiPath}";
+                        var apiPath = fieldValue ?? "";
+                        indexer.ApiPath = string.IsNullOrEmpty(apiPath) ? "" : (apiPath.StartsWith('/') ? apiPath : $"/{apiPath}");
                         break;
                     case "apiKey":
                         indexer.ApiKey = fieldValue;
@@ -171,16 +171,14 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
             }
         }
 
-        // Plain-RSS indexers can't satisfy a targeted search (no ?q=
-        // parameter), so the two search-enable flags are forced off
-        // regardless of what the request asked for. Auto-detect the
-        // parser variant so the user doesn't have to fiddle with the
-        // ezRSS / enclosure / description-regex switches by hand.
+        // Auto-detect the parser variant for plain-RSS feeds so the user
+        // doesn't have to fiddle with the ezRSS / enclosure /
+        // description-regex switches by hand. Searches against RSS fetch
+        // the current feed and filter locally, so the search-enable flags
+        // are honored as saved (previously they were forced off here,
+        // which read as the checkboxes silently unchecking).
         if (indexer.Type == IndexerType.Rss)
         {
-            indexer.EnableAutomaticSearch = false;
-            indexer.EnableInteractiveSearch = false;
-
             var detectorService = request.HttpContext.RequestServices.GetRequiredService<IndexerSearchService>();
             var detection = await detectorService.DetectRssSettingsAsync(indexer);
             if (!detection.Success)
@@ -270,11 +268,8 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                         }
                         break;
                     case "apiPath":
-                        if (!string.IsNullOrEmpty(fieldValue))
-                        {
-                            var apiPath = fieldValue;
-                            indexer.ApiPath = apiPath.StartsWith('/') ? apiPath : $"/{apiPath}";
-                        }
+                        var updatedApiPath = fieldValue ?? "";
+                        indexer.ApiPath = string.IsNullOrEmpty(updatedApiPath) ? "" : (updatedApiPath.StartsWith('/') ? updatedApiPath : $"/{updatedApiPath}");
                         break;
                     case "apiKey":
                         // Only update API key if a new value is provided (not empty)
@@ -338,13 +333,6 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
         {
             indexer.Tags = System.Text.Json.JsonSerializer.Deserialize<List<int>>(indexerTags.GetRawText()) ?? new();
             db.Entry(indexer).Property(i => i.Tags).IsModified = true;
-        }
-
-        // Plain-RSS still can't satisfy a search after edit either.
-        if (indexer.Type == IndexerType.Rss)
-        {
-            indexer.EnableAutomaticSearch = false;
-            indexer.EnableInteractiveSearch = false;
         }
 
         indexer.LastModified = DateTime.UtcNow;
@@ -687,6 +675,7 @@ app.MapPost("/api/indexer/test", async (
         {
             "newznab" => IndexerType.Newznab,
             "rss" or "torrentrss" or "torrent rss feed" => IndexerType.Rss,
+            "broadcasthenet" or "btn" => IndexerType.BroadcasTheNet, // "btn" kept for legacy/import compat
             _ => IndexerType.Torznab,
         };
     }

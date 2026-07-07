@@ -28,7 +28,8 @@ public interface IIndexerSearchService
         bool enableMultiPartEpisodes = true,
         string? eventTitle = null,
         List<int>? leagueTags = null,
-        List<SkippedIndexer>? skippedIndexers = null);
+        List<SkippedIndexer>? skippedIndexers = null,
+        bool allowHighlights = false);
 
     /// <summary>
     /// Search a single indexer

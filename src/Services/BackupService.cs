@@ -380,6 +380,21 @@ public class BackupService
                 var dumpPath = Path.Combine(restoreDir, "postgres.dump");
                 if (File.Exists(dumpPath))
                 {
+                    // Safety dump before --clean drops everything: best
+                    // effort, so a broken pg_dump doesn't block a restore
+                    // the user explicitly asked for - but its absence is
+                    // logged loudly since there's no rollback without it.
+                    var safetyDumpPath = Path.Combine(_dataDirectory, $"pre_restore_{DateTime.UtcNow:yyyyMMdd_HHmmss}.dump");
+                    try
+                    {
+                        await RunPgToolAsync("pg_dump", BuildPgDumpArguments(safetyDumpPath));
+                        _logger.LogInformation("Pre-restore safety dump written: {Path}", safetyDumpPath);
+                    }
+                    catch (Exception dumpEx)
+                    {
+                        _logger.LogWarning(dumpEx, "Pre-restore safety dump FAILED; continuing restore without a rollback point");
+                    }
+
                     // Release pooled connections before --clean drops/recreates objects;
                     // a stale pooled connection can otherwise cause "database is being
                     // accessed by other users" mid-restore.
@@ -396,23 +411,52 @@ public class BackupService
                     File.Copy(_databasePath, currentBackupPath, true);
                 }
 
-                // Replace database files
-                var restoredDbPath = Path.Combine(restoreDir, "sportarr.db");
-                if (File.Exists(restoredDbPath))
+                try
                 {
-                    File.Copy(restoredDbPath, _databasePath, true);
-                }
+                    // Replace database files
+                    var restoredDbPath = Path.Combine(restoreDir, "sportarr.db");
+                    if (File.Exists(restoredDbPath))
+                    {
+                        File.Copy(restoredDbPath, _databasePath, true);
+                    }
 
-                var restoredWalPath = Path.Combine(restoreDir, "sportarr.db-wal");
-                if (File.Exists(restoredWalPath))
-                {
-                    File.Copy(restoredWalPath, _databasePath + "-wal", true);
-                }
+                    var restoredWalPath = Path.Combine(restoreDir, "sportarr.db-wal");
+                    if (File.Exists(restoredWalPath))
+                    {
+                        File.Copy(restoredWalPath, _databasePath + "-wal", true);
+                    }
+                    else if (File.Exists(_databasePath + "-wal"))
+                    {
+                        // The backup carries no WAL: a leftover live WAL would
+                        // shadow the restored main file with stale pages.
+                        File.Delete(_databasePath + "-wal");
+                    }
 
-                var restoredShmPath = Path.Combine(restoreDir, "sportarr.db-shm");
-                if (File.Exists(restoredShmPath))
+                    var restoredShmPath = Path.Combine(restoreDir, "sportarr.db-shm");
+                    if (File.Exists(restoredShmPath))
+                    {
+                        File.Copy(restoredShmPath, _databasePath + "-shm", true);
+                    }
+                    else if (File.Exists(_databasePath + "-shm"))
+                    {
+                        File.Delete(_databasePath + "-shm");
+                    }
+                }
+                catch (Exception copyEx)
                 {
-                    File.Copy(restoredShmPath, _databasePath + "-shm", true);
+                    // Roll back to the pre-restore snapshot instead of leaving
+                    // a half-replaced database on disk. The failed copy's
+                    // WAL/SHM are removed so the rolled-back main file isn't
+                    // shadowed by mismatched journal pages.
+                    _logger.LogError(copyEx, "Database replacement failed mid-copy; rolling back to the pre-restore snapshot");
+                    if (File.Exists(currentBackupPath))
+                    {
+                        File.Copy(currentBackupPath, _databasePath, true);
+                        try { File.Delete(_databasePath + "-wal"); } catch { /* may not exist */ }
+                        try { File.Delete(_databasePath + "-shm"); } catch { /* may not exist */ }
+                        _logger.LogWarning("Rolled back to the pre-restore database snapshot");
+                    }
+                    throw;
                 }
             }
 
@@ -435,6 +479,18 @@ public class BackupService
         }
         catch (Exception ex)
         {
+            // Don't leave the extracted backup contents on disk after a
+            // failed restore - the success path already removes them.
+            try
+            {
+                var staleRestoreDir = Path.Combine(_dataDirectory, "restore_temp");
+                if (Directory.Exists(staleRestoreDir))
+                {
+                    Directory.Delete(staleRestoreDir, true);
+                }
+            }
+            catch { /* best effort */ }
+
             _logger.LogError(ex, "Failed to restore backup: {BackupPath}", backupPath);
             throw new InvalidOperationException($"Failed to restore backup: {ex.Message}", ex);
         }

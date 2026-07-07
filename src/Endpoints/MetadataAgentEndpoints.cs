@@ -159,7 +159,7 @@ public static class MetadataAgentEndpoints
         // instead of the whole season list (the expensive pattern against the
         // cloud). Same numbering source as /episodes, so the resolved event
         // matches the season list and the filename.
-        app.MapGet("/api/metadata/match", async (string? series, string? season, int? episode, SportarrDbContext db, SportarrApiClient apiClient) =>
+        app.MapGet("/api/metadata/match", async (string? series, string? season, int? episode, string? filename, SportarrDbContext db, SportarrApiClient apiClient, EventPartDetector partDetector) =>
         {
             if (string.IsNullOrWhiteSpace(series) || string.IsNullOrWhiteSpace(season) || episode == null)
                 return Results.Ok(new { error = "series, season and episode are required" });
@@ -188,6 +188,37 @@ public static class MetadataAgentEndpoints
                 .Where(sp => sp.LeagueId == league.Id)
                 .ToListAsync();
             var cast = await apiClient.GetEventCastAsync(evt.ExternalId);
+
+            // Multi-part events share one episode number, so the S/E pair
+            // alone can't say which part a FILE is; the filename can. Both
+            // renamer conventions are recognized: the readable label
+            // ("... - Prelims - ...") through the segment patterns, and the
+            // pt{N} suffix mapped back through the same segment vocabulary.
+            EventPartInfo? partInfo = null;
+            if (!string.IsNullOrWhiteSpace(filename) && !string.IsNullOrWhiteSpace(evt.Sport))
+            {
+                partInfo = partDetector.DetectPart(filename, evt.Sport, evt.Title, league.Name);
+                if (partInfo == null)
+                {
+                    var ptMatch = System.Text.RegularExpressions.Regex.Match(
+                        filename, @"\bpt(\d{1,2})\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (ptMatch.Success && int.TryParse(ptMatch.Groups[1].Value, out var ptNum) && ptNum > 0)
+                    {
+                        var seg = EventPartDetector.GetSegmentDefinitions(evt.Sport, evt.Title, league.Name)
+                            .FirstOrDefault(d => d.PartNumber == ptNum);
+                        if (seg != null)
+                        {
+                            partInfo = new EventPartInfo
+                            {
+                                PartNumber = seg.PartNumber,
+                                SegmentName = seg.Name,
+                                PartSuffix = $"pt{seg.PartNumber}",
+                                SportCategory = "Fighting"
+                            };
+                        }
+                    }
+                }
+            }
 
             return Results.Ok(new
             {
@@ -219,11 +250,11 @@ public static class MetadataAgentEndpoints
                         episode_count = events.Count(e => !IsExcluded(e.Status)),
                         year = ParseYear(seasonLabel) ?? sn
                     },
-                    episode = ToEpisode(evt, cast),
+                    episode = ToEpisode(evt, cast, partInfo),
                     confidence = 1.0
                 },
                 confidence = 1.0,
-                query = new { series, season, episode }
+                query = new { series, season, episode, filename }
             });
         });
 
@@ -304,10 +335,14 @@ public static class MetadataAgentEndpoints
 
     // Bulk/season-list callers use the cast-free overload so the whole-season
     // response stays lean (no per-event hub call). The per-episode handlers
-    // pass the cast they fetched from the hub.
+    // pass the cast they fetched from the hub. The part-aware overload is
+    // for /match calls that carry a filename: parts share an episode number,
+    // so only the filename identifies which part a specific file is.
     private static object ToEpisode(Event e) => ToEpisode(e, null);
 
-    private static object ToEpisode(Event e, IReadOnlyList<HubCastMember>? cast) => new
+    private static object ToEpisode(Event e, IReadOnlyList<HubCastMember>? cast) => ToEpisode(e, cast, null);
+
+    private static object ToEpisode(Event e, IReadOnlyList<HubCastMember>? cast, EventPartInfo? part) => new
     {
         id = e.ExternalId,
         title = e.Title,
@@ -317,8 +352,8 @@ public static class MetadataAgentEndpoints
         broadcast_date = e.BroadcastDate?.ToString("yyyy-MM-dd"),
         season_number = e.SeasonNumber,
         episode_number = e.EpisodeNumber,
-        part_number = (int?)null,
-        part_name = (string?)null,
+        part_number = (int?)part?.PartNumber,
+        part_name = part?.SegmentName,
         duration_minutes = (int?)null,
         round = e.Round,
         venue = e.Venue,

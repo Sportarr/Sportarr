@@ -10,11 +10,12 @@ using Moq;
 namespace Sportarr.Api.Tests.Services;
 
 /// <summary>
-/// Coverage for issue #116: sports content ages out differently than TV, so
-/// old events with files pile up on disk with no built-in way to clean them
-/// up automatically. EventRetentionService is an opt-in (off by default)
-/// daily pass that unmonitors and deletes files for events older than a
-/// configurable threshold.
+/// Coverage for issue #116 and its follow-up: sports content ages out
+/// differently than TV, and how fast differs per competition, so retention is
+/// a per-league window (League.RetentionDays, 0 = keep forever). The daily
+/// pass unmonitors and deletes files for events older than their league's
+/// window, and installs that had opted into the retired global setting get it
+/// seeded onto their leagues exactly once.
 /// </summary>
 public class EventRetentionServiceTests : IDisposable
 {
@@ -63,7 +64,7 @@ public class EventRetentionServiceTests : IDisposable
         return db;
     }
 
-    private async Task ConfigureRetentionAsync(bool enabled, int days)
+    private async Task ConfigureLegacyGlobalRetentionAsync(bool enabled, int days)
     {
         using var scope = _provider.CreateScope();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
@@ -74,18 +75,27 @@ public class EventRetentionServiceTests : IDisposable
         });
     }
 
+    private static League MakeLeague(int id, int retentionDays) => new()
+    {
+        Id = id,
+        Name = $"League {id}",
+        Sport = "Basketball",
+        RetentionDays = retentionDays,
+    };
+
     private EventRetentionService CreateService() =>
         new(_provider, Microsoft.Extensions.Logging.Abstractions.NullLogger<EventRetentionService>.Instance);
 
     [Fact]
-    public async Task RunRetentionPassAsync_DoesNothingWhenDisabled()
+    public async Task RunRetentionPassAsync_DoesNothingWhenLeagueRetentionIsOff()
     {
-        await ConfigureRetentionAsync(enabled: false, days: 30);
         await SeedAsync(db =>
         {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 0));
             db.Events.Add(new Event
             {
                 Id = 1,
+                LeagueId = 1,
                 Title = "Old Game",
                 Sport = "Basketball",
                 Monitored = true,
@@ -103,16 +113,16 @@ public class EventRetentionServiceTests : IDisposable
     [Fact]
     public async Task RunRetentionPassAsync_UnmonitorsAndDeletesFileForOldEvent()
     {
-        await ConfigureRetentionAsync(enabled: true, days: 30);
-
         var tempFile = Path.Combine(_tempDataPath, "old-game.mkv");
         await File.WriteAllTextAsync(tempFile, "fake video data");
 
         await SeedAsync(db =>
         {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 30));
             var evt = new Event
             {
                 Id = 1,
+                LeagueId = 1,
                 Title = "Old Game",
                 Sport = "Basketball",
                 Monitored = true,
@@ -144,12 +154,13 @@ public class EventRetentionServiceTests : IDisposable
     [Fact]
     public async Task RunRetentionPassAsync_LeavesRecentEventsAlone()
     {
-        await ConfigureRetentionAsync(enabled: true, days: 30);
         await SeedAsync(db =>
         {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 30));
             db.Events.Add(new Event
             {
                 Id = 1,
+                LeagueId = 1,
                 Title = "Recent Game",
                 Sport = "Basketball",
                 Monitored = true,
@@ -169,12 +180,13 @@ public class EventRetentionServiceTests : IDisposable
     {
         // An old event with no file (never found) should still stop being
         // searched for once past retention, even though there's nothing to delete.
-        await ConfigureRetentionAsync(enabled: true, days: 30);
         await SeedAsync(db =>
         {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 30));
             db.Events.Add(new Event
             {
                 Id = 1,
+                LeagueId = 1,
                 Title = "Never Found",
                 Sport = "Basketball",
                 Monitored = true,
@@ -188,5 +200,55 @@ public class EventRetentionServiceTests : IDisposable
         processed.Should().Be(1);
         using var db = await OpenDbAsync();
         (await db.Events.FindAsync(1))!.Monitored.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RunRetentionPassAsync_RespectsPerLeagueWindows()
+    {
+        // Same-age events in two leagues: the 30-day league's event expires,
+        // the retention-off league's event is untouched, and a third league
+        // with a longer window than the event's age keeps its event too.
+        await SeedAsync(db =>
+        {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 30));
+            db.Leagues.Add(MakeLeague(2, retentionDays: 0));
+            db.Leagues.Add(MakeLeague(3, retentionDays: 365));
+            db.Events.Add(new Event { Id = 1, LeagueId = 1, Title = "Expired", Sport = "Basketball", Monitored = true, EventDate = DateTime.UtcNow.AddDays(-100) });
+            db.Events.Add(new Event { Id = 2, LeagueId = 2, Title = "Keep Forever", Sport = "Basketball", Monitored = true, EventDate = DateTime.UtcNow.AddDays(-100) });
+            db.Events.Add(new Event { Id = 3, LeagueId = 3, Title = "Long Window", Sport = "Basketball", Monitored = true, EventDate = DateTime.UtcNow.AddDays(-100) });
+        });
+
+        var processed = await CreateService().RunRetentionPassAsync(CancellationToken.None);
+
+        processed.Should().Be(1);
+        using var db = await OpenDbAsync();
+        (await db.Events.FindAsync(1))!.Monitored.Should().BeFalse();
+        (await db.Events.FindAsync(2))!.Monitored.Should().BeTrue();
+        (await db.Events.FindAsync(3))!.Monitored.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunRetentionPassAsync_SeedsRetiredGlobalSettingOntoLeaguesOnce()
+    {
+        // An install that had opted into the old global retention keeps its
+        // behavior: the global window lands on every league without its own,
+        // leagues that already chose a window keep it, and the global flag is
+        // cleared so later per-league edits are never overwritten.
+        await ConfigureLegacyGlobalRetentionAsync(enabled: true, days: 45);
+        await SeedAsync(db =>
+        {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 0));
+            db.Leagues.Add(MakeLeague(2, retentionDays: 7));
+        });
+
+        await CreateService().RunRetentionPassAsync(CancellationToken.None);
+
+        using var db = await OpenDbAsync();
+        (await db.Leagues.FindAsync(1))!.RetentionDays.Should().Be(45);
+        (await db.Leagues.FindAsync(2))!.RetentionDays.Should().Be(7);
+
+        using var scope = _provider.CreateScope();
+        var config = await scope.ServiceProvider.GetRequiredService<ConfigService>().GetConfigAsync();
+        config.EnableEventRetention.Should().BeFalse(because: "the seed must run exactly once");
     }
 }

@@ -43,7 +43,16 @@ public enum MonitorType
     /// <summary>
     /// Do not monitor any events (manual monitoring only)
     /// </summary>
-    None
+    None,
+
+    /// <summary>
+    /// Monitor only special events (finals / playoffs / preseason, per the
+    /// league's MonitorFinals / MonitorPlayoffs / MonitorPreseason toggles)
+    /// across all seasons. Lets users collect e.g. every Super Bowl without
+    /// monitoring the rest of the league. Appended last: the column stores
+    /// the enum's numeric value, so existing rows must keep their values.
+    /// </summary>
+    SpecialsOnly
 }
 
 /// <summary>
@@ -139,6 +148,15 @@ public class League
     public int? QualityProfileId { get; set; }
 
     /// <summary>
+    /// Per-league retention: once an event's air date is older than this many
+    /// days, the retention pass unmonitors it and deletes its files
+    /// (recycle-bin aware). 0 = keep forever (retention disabled for this
+    /// league). Replaces the retired global EnableEventRetention/
+    /// EventRetentionDays config pair.
+    /// </summary>
+    public int RetentionDays { get; set; } = 0;
+
+    /// <summary>
     /// The RootFolder this league's media should live under. Set at add time
     /// from the Add League modal and used by the import path builder so a
     /// single league always lands in the same root regardless of which root
@@ -214,6 +232,16 @@ public class League
     /// TheSportsDB reserves round code 500 for pre-season.
     /// </summary>
     public bool MonitorPreseason { get; set; } = false;
+
+    /// <summary>
+    /// Allow Highlights releases to match and grab for this league. By
+    /// default highlights are hard-rejected as non-event content, which is
+    /// right for most sports, but some (sumo notably) ship each day as a
+    /// multi-hour Live cut and a short Highlights cut, and users may want
+    /// the highlights. When enabled, highlights releases also skip the
+    /// per-quality minimum size check, since that assumes full-event runtime.
+    /// </summary>
+    public bool AllowHighlights { get; set; } = false;
 
     /// <summary>
     /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
@@ -400,6 +428,12 @@ public class AddLeagueRequest
     /// <summary>Monitor preseason/exhibition games even when monitored teams are not playing.</summary>
     public bool MonitorPreseason { get; set; } = false;
 
+    /// <summary>Allow Highlights releases to match and grab for this league.</summary>
+    public bool AllowHighlights { get; set; } = false;
+
+    /// <summary>Per-league retention window in days (0 = keep forever).</summary>
+    public int RetentionDays { get; set; } = 0;
+
     /// <summary>
     /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
     /// {Round}, {Week}, {EventTitle}, {HomeTeam}, {AwayTeam}, {vs}, {Season}
@@ -431,6 +465,8 @@ public class AddLeagueRequest
             MonitorFinals = MonitorFinals,
             MonitorPlayoffs = MonitorPlayoffs,
             MonitorPreseason = MonitorPreseason,
+            AllowHighlights = AllowHighlights,
+            RetentionDays = Math.Max(0, RetentionDays),
             SearchQueryTemplate = SearchQueryTemplate,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
@@ -458,6 +494,7 @@ public class LeagueResponse
     public bool Monitored { get; set; }
     public MonitorType MonitorType { get; set; }
     public int? QualityProfileId { get; set; }
+    public int RetentionDays { get; set; }
     public int? RootFolderId { get; set; }
     public bool SearchForMissingEvents { get; set; }
     public bool SearchForCutoffUnmetEvents { get; set; }
@@ -467,6 +504,7 @@ public class LeagueResponse
     public bool MonitorFinals { get; set; }
     public bool MonitorPlayoffs { get; set; }
     public bool MonitorPreseason { get; set; }
+    public bool AllowHighlights { get; set; }
     public string? SearchQueryTemplate { get; set; }
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
@@ -529,24 +567,31 @@ public class LeagueResponse
         int downloadedMonitoredCount = 0,
         bool hasFutureEvents = false)
     {
-        // Calculate progress
+        // Progress accounting: an unmonitored event that has a file still
+        // counts as downloaded. A common workflow is unmonitoring an event
+        // once it has reached the desired quality (to stop upgrade searches);
+        // those files must not vanish from the stats. The "wanted" set is
+        // monitored events plus unmonitored events that already have files,
+        // and missing is monitored events without a file.
         var missingCount = monitoredEventCount - downloadedMonitoredCount;
-        var progressPercent = monitoredEventCount > 0
-            ? (double)downloadedMonitoredCount / monitoredEventCount * 100
+        var unmonitoredDownloadedCount = Math.Max(0, fileCount - downloadedMonitoredCount);
+        var wantedCount = monitoredEventCount + unmonitoredDownloadedCount;
+        var progressPercent = wantedCount > 0
+            ? (double)fileCount / wantedCount * 100
             : 0;
 
         // Determine status
         string progressStatus;
-        if (monitoredEventCount == 0)
+        if (wantedCount == 0)
         {
             progressStatus = "unmonitored";
         }
-        else if (downloadedMonitoredCount >= monitoredEventCount)
+        else if (fileCount >= wantedCount)
         {
-            // All monitored events downloaded
+            // Everything wanted is downloaded
             progressStatus = hasFutureEvents ? "continuing" : "complete";
         }
-        else if (downloadedMonitoredCount > 0)
+        else if (fileCount > 0)
         {
             progressStatus = "partial";
         }
@@ -575,6 +620,8 @@ public class LeagueResponse
             MonitorFinals = league.MonitorFinals,
             MonitorPlayoffs = league.MonitorPlayoffs,
             MonitorPreseason = league.MonitorPreseason,
+            AllowHighlights = league.AllowHighlights,
+            RetentionDays = league.RetentionDays,
             SearchQueryTemplate = league.SearchQueryTemplate,
             LogoUrl = league.LogoUrl,
             BannerUrl = league.BannerUrl,

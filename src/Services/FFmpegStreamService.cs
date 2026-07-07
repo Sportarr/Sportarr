@@ -25,6 +25,26 @@ public class FFmpegStreamService : IDisposable
         {
             Directory.CreateDirectory(_hlsOutputPath);
         }
+        else
+        {
+            // Dispose deletes this tree on graceful shutdown, so anything
+            // here at construction is an orphan from a crashed/killed
+            // process (this is a startup singleton - no sessions can be
+            // live yet). Without this sweep, crash leftovers accumulate in
+            // temp forever on installs that never shut down cleanly.
+            foreach (var stale in Directory.GetDirectories(_hlsOutputPath))
+            {
+                try
+                {
+                    Directory.Delete(stale, true);
+                    _logger.LogInformation("[Stream] Removed orphaned HLS session directory from previous run: {Path}", stale);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Stream] Could not remove orphaned HLS directory {Path}", stale);
+                }
+            }
+        }
     }
 
     /// <summary>

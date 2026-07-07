@@ -877,7 +877,7 @@ public class PackImportService
                 Part = string.Empty
             };
 
-            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
         else
         {

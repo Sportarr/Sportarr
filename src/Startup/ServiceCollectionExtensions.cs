@@ -90,6 +90,36 @@ public static class ServiceCollectionExtensions
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
             });
 
+        // GitHub API lookups (update checks, plugin release downloads).
+        services.AddHttpClient("GitHub")
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd($"Sportarr/{Sportarr.Api.Version.GetFullVersion()}");
+            });
+
+        // Torrent-file resolution: redirects are validated by hand (to
+        // catch cross-scheme magnet: redirects), so auto-redirect is OFF.
+        services.AddHttpClient("TorrentResolver")
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                AllowAutoRedirect = false,
+            })
+            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(60));
+
+        services.AddHttpClient("TorrentResolverSkipSsl")
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                AllowAutoRedirect = false,
+                SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+                {
+                    RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true
+                }
+            })
+            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(60));
+
         services.AddHttpClient("TrashGuides")
             .ConfigureHttpClient(client =>
             {
@@ -113,6 +143,23 @@ public static class ServiceCollectionExtensions
             {
                 client.Timeout = TimeSpan.FromSeconds(30);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
+            });
+
+        // BTN requires a dedicated client: no auto-redirect (so Cloudflare/site redirects surface as
+        // 3xx rather than silently resolving to an HTML page), and a recognised User-Agent.
+        services.AddHttpClient("BtnClient")
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+                // BTN's API only accepts user agents it recognizes as
+                // established client apps; unknown UAs are rejected (verified
+                // live). Present an allowlisted one until Sportarr is
+                // registered with the tracker.
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Sonarr/4.0.14.3025");
             });
 
         // IPTV stream proxying (avoids CORS issues in browser)
@@ -322,6 +369,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ChannelAutoMappingService>();
         services.AddSingleton<FFmpegRecorderService>();
         services.AddSingleton<FFmpegStreamService>();
+        // Viewer-stream counting for per-source MaxStreams enforcement on
+        // the proxy/HDHomeRun path.
+        services.AddSingleton<StreamSessionTracker>();
         services.AddScoped<DvrRecordingService>();
         services.AddScoped<EventDvrService>();
         services.AddScoped<DvrQualityScoreCalculator>();
@@ -347,7 +397,14 @@ public static class ServiceCollectionExtensions
 
         services.AddHostedService<TrashSyncBackgroundService>();
         services.AddHostedService<EnhancedDownloadMonitorService>();
-        services.AddHostedService<RssSyncService>();
+
+        // RssSyncService doubles as the decision engine for externally pushed
+        // releases (POST /api/v3/release/push, used by autobrr and similar
+        // IRC announce watchers), so the endpoint must resolve the same
+        // instance the host runs.
+        services.AddSingleton<RssSyncService>();
+        services.AddHostedService(sp => sp.GetRequiredService<RssSyncService>());
+
         services.AddHostedService<BacklogSearchService>();
         services.AddHostedService<PendingReleaseReaperService>();
         services.AddHostedService<TvScheduleSyncService>();
@@ -380,11 +437,23 @@ public static class ServiceCollectionExtensions
         // live scheduler above. Method ported from timeshifter by
         // scottrobertson (github.com/scottrobertson/timeshifter).
         services.AddHostedService<CatchupDownloadService>();
+        services.AddHostedService<IptvEpgRefreshService>();
 
         // Auto-unmonitor + delete files for events past Config.EventRetentionDays.
         // Off by default (Config.EnableEventRetention).
         services.AddSingleton<EventRetentionService>();
         services.AddHostedService(sp => sp.GetRequiredService<EventRetentionService>());
+
+        // Daily maintenance: scheduled backups (BackupInterval), recycle-bin
+        // cleanup, DVR recording retention, system-event pruning.
+        services.AddHostedService<HousekeepingService>();
+
+        // Periodic health evaluation + OnHealthIssue/OnHealthRestored
+        // notifications; previously checks only ran when the UI asked.
+        services.AddHostedService<HealthCheckMonitorService>();
+
+        // Periodic sync of enabled import lists (previously manual-only).
+        services.AddHostedService<ImportListSyncService>();
 
         return services;
     }

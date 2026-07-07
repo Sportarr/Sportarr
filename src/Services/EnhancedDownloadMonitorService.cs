@@ -175,6 +175,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
         var config = await configService.GetConfigAsync();
         var enableCompletedHandling = config.EnableCompletedDownloadHandling;
         var redownloadFailed = config.RedownloadFailedDownloads;
+        var stalledFailMinutes = config.StalledDownloadTimeoutMinutes;
         var redownloadFailedFromInteractive = config.RedownloadFailedFromInteractiveSearch;
         // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
         // accessed via download.DownloadClient.RemoveCompletedDownloads/RemoveFailedDownloads
@@ -194,6 +195,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     enableCompletedHandling,
                     redownloadFailed,
                     redownloadFailedFromInteractive,
+                    stalledFailMinutes,
                     cancellationToken);
 
                 // Save changes after each successful download to prevent data loss
@@ -229,6 +231,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
         bool enableCompletedHandling,
         bool redownloadFailed,
         bool redownloadFailedFromInteractive,
+        int stalledFailMinutes,
         CancellationToken cancellationToken)
     {
         // For ImportPending downloads, skip the download client check and just retry import
@@ -496,7 +499,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // Detect stalled downloads
         if (download.Status == DownloadStatus.Downloading)
         {
-            CheckForStalledDownload(download, previousProgress, db);
+            CheckForStalledDownload(download, stalledFailMinutes);
         }
 
         // Handle completed downloads
@@ -527,23 +530,62 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
     }
 
+    // Last observed progress and when it last MOVED, per queue item. The
+    // old check compared against the download's Added time, which flagged
+    // any slow-but-moving torrent older than the threshold; this tracks
+    // actual movement. In-memory: an app restart just restarts the timers.
+    private readonly Dictionary<int, (double Progress, DateTime Since)> _stallProgress = new();
+
+    /// <summary>
+    /// Two-stage stalled handling for torrents in Downloading state. After
+    /// the soft window with no progress movement the row is flagged
+    /// Warning (visible in Activity). After the configured hard timeout
+    /// (Settings > Download Clients; 0 disables) the row is marked Failed,
+    /// which flows through the same pipeline as a client-reported failure:
+    /// removed from the client, blocklisted, and re-searched. Dead
+    /// torrents (no seeders, dead tracker) stop squatting in the queue
+    /// forever. Usenet is exempt - it downloads at line speed or errors.
+    /// </summary>
     private void CheckForStalledDownload(
         DownloadQueueItem download,
-        double previousProgress,
-        SportarrDbContext db)
+        int stalledFailMinutes)
     {
-        // If progress hasn't changed and we've been downloading for a while
-        if (Math.Abs(download.Progress - previousProgress) < 0.1 && download.Added < DateTime.UtcNow - _stalledTimeout)
-        {
-            // Check if this is the first time we've detected stalled state
-            if (!download.ErrorMessage?.Contains("stalled") == true)
-            {
-                _logger.LogWarning("[Enhanced Download Monitor] Download appears stalled: {Title} (Progress: {Progress:F1}%)",
-                    download.Title, download.Progress);
+        var isStallable = download.Protocol == "Torrent" &&
+                          download.Status == DownloadStatus.Downloading &&
+                          download.Progress < 99.9;
 
-                download.Status = DownloadStatus.Warning;
-                download.ErrorMessage = $"Download stalled at {download.Progress:F1}% for {_stalledTimeout.TotalMinutes} minutes";
-            }
+        if (!isStallable)
+        {
+            _stallProgress.Remove(download.Id);
+            return;
+        }
+
+        if (!_stallProgress.TryGetValue(download.Id, out var tracked) ||
+            Math.Abs(tracked.Progress - download.Progress) >= 0.1)
+        {
+            _stallProgress[download.Id] = (download.Progress, DateTime.UtcNow);
+            return;
+        }
+
+        var stalledFor = DateTime.UtcNow - tracked.Since;
+
+        if (stalledFailMinutes > 0 && stalledFor > TimeSpan.FromMinutes(stalledFailMinutes))
+        {
+            _logger.LogWarning(
+                "[Enhanced Download Monitor] Download stalled at {Progress:F1}% for {Minutes:F0}m; failing for blocklist + re-search: {Title}",
+                download.Progress, stalledFor.TotalMinutes, download.Title);
+
+            download.Status = DownloadStatus.Failed;
+            download.ErrorMessage = $"Stalled: no progress for {(int)stalledFor.TotalMinutes} minutes";
+            _stallProgress.Remove(download.Id);
+        }
+        else if (stalledFor > _stalledTimeout && download.ErrorMessage?.Contains("stalled", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            _logger.LogWarning("[Enhanced Download Monitor] Download appears stalled: {Title} (Progress: {Progress:F1}%)",
+                download.Title, download.Progress);
+
+            download.Status = DownloadStatus.Warning;
+            download.ErrorMessage = $"Download stalled at {download.Progress:F1}% for {(int)stalledFor.TotalMinutes} minutes";
         }
     }
 
@@ -890,6 +932,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+        var libraryImport = scope.ServiceProvider.GetRequiredService<LibraryImportService>();
 
         // Get all enabled download clients
         var clients = await db.DownloadClients
@@ -1060,29 +1103,92 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         continue;
                     }
 
-                    // Try to match to an event by title
+                    // Match with the real import engine when the completed
+                    // files are reachable on disk - same engine and
+                    // auto-import floor as the library rescan and the file
+                    // watcher, so an externally-added finished job imports
+                    // itself instead of requiring a manual library scan.
                     int? suggestedEventId = null;
                     int confidence = 0;
+                    var imported = false;
 
-                    // Simple title matching: search for events whose title contains key words from download title
-                    var cleanTitle = CleanDownloadTitle(download.Title);
-                    if (!string.IsNullOrEmpty(cleanTitle))
+                    // Only completed downloads get engine analysis: a
+                    // still-downloading torrent's folder holds partial
+                    // files that must never be imported.
+                    string? scanFolder = null;
+                    if (download.IsCompleted && !string.IsNullOrEmpty(download.FilePath))
                     {
-                        var pattern = $"%{cleanTitle}%";
-                        var matchedEvent = await db.Events
-                            .Where(e => !e.HasFile)
-                            .Where(e => EF.Functions.Like(e.Title, pattern) ||
-                                       e.Title != null && cleanTitle.Contains(e.Title))
-                            .FirstOrDefaultAsync(cancellationToken);
+                        if (Directory.Exists(download.FilePath))
+                            scanFolder = download.FilePath;
+                        else if (File.Exists(download.FilePath))
+                            scanFolder = Path.GetDirectoryName(download.FilePath);
+                    }
 
-                        if (matchedEvent != null)
+                    if (scanFolder != null)
+                    {
+                        try
                         {
-                            suggestedEventId = matchedEvent.Id;
-                            confidence = 50; // Basic title match
+                            var scan = await libraryImport.ScanFolderAsync(scanFolder, includeSubfolders: true);
+                            var best = scan.MatchedFiles
+                                .OrderByDescending(f => f.MatchConfidence ?? 0)
+                                .FirstOrDefault();
+                            if (best != null)
+                            {
+                                suggestedEventId = best.MatchedEventId;
+                                confidence = best.MatchConfidence ?? 0;
+
+                                if (best.MatchedEventId.HasValue &&
+                                    confidence >= LibraryImportService.AutoImportConfidenceFloor &&
+                                    best.ExistingEventId == null)
+                                {
+                                    var importResult = await libraryImport.ImportFilesAsync(new List<FileImportRequest>
+                                    {
+                                        new()
+                                        {
+                                            FilePath = best.FilePath,
+                                            EventId = best.MatchedEventId,
+                                            Quality = best.Quality
+                                        }
+                                    });
+                                    imported = importResult.Imported.Count + importResult.Created.Count > 0;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug(ex,
+                                "[Enhanced Download Monitor] Match-engine analysis failed for '{Title}', falling back to title suggestion",
+                                download.Title);
                         }
                     }
 
-                    // Create pending import
+                    // Fallback suggestion when the files aren't reachable
+                    // from this process (remote download client, unmapped
+                    // path): a coarse title search so the pending row at
+                    // least carries a candidate.
+                    if (!imported && suggestedEventId == null)
+                    {
+                        var cleanTitle = CleanDownloadTitle(download.Title);
+                        if (!string.IsNullOrEmpty(cleanTitle))
+                        {
+                            var pattern = $"%{cleanTitle}%";
+                            var matchedEvent = await db.Events
+                                .Where(e => !e.HasFile)
+                                .Where(e => EF.Functions.Like(e.Title, pattern) ||
+                                           e.Title != null && cleanTitle.Contains(e.Title))
+                                .FirstOrDefaultAsync(cancellationToken);
+
+                            if (matchedEvent != null)
+                            {
+                                suggestedEventId = matchedEvent.Id;
+                                confidence = 50; // Basic title match
+                            }
+                        }
+                    }
+
+                    // Record the detection either way: a Completed row is the
+                    // audit trail for the auto-import AND what suppresses
+                    // re-detection of this download id on the next poll.
                     var pendingImport = new PendingImport
                     {
                         DownloadClientId = client.Id,
@@ -1095,7 +1201,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         SuggestedEventId = suggestedEventId,
                         SuggestionConfidence = confidence,
                         Detected = DateTime.UtcNow,
-                        Status = PendingImportStatus.Pending
+                        Status = imported ? PendingImportStatus.Completed : PendingImportStatus.Pending
                     };
 
                     db.PendingImports.Add(pendingImport);
@@ -1103,10 +1209,39 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     if (!string.IsNullOrEmpty(download.TorrentInfoHash))
                         knownHashes.Add(download.TorrentInfoHash);
 
-                    _logger.LogInformation(
-                        "[Enhanced Download Monitor] Detected external download: {Title} (Client: {Client}, Id: {Id}, Hash: {Hash}, Confidence: {Confidence}%) — no match in DownloadQueue, PendingImports, GrabHistory, knownHashes, or Blocklist",
-                        download.Title, client.Name, download.DownloadId,
-                        download.TorrentInfoHash ?? "(none)", confidence);
+                    if (imported)
+                    {
+                        _logger.LogInformation(
+                            "[Enhanced Download Monitor] Auto-imported external completed download: {Title} (Client: {Client}, Confidence: {Confidence}%, Event: {EventId})",
+                            download.Title, client.Name, confidence, suggestedEventId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation(
+                            "[Enhanced Download Monitor] Detected external download: {Title} (Client: {Client}, Id: {Id}, Hash: {Hash}, Confidence: {Confidence}%) — no match in DownloadQueue, PendingImports, GrabHistory, knownHashes, or Blocklist",
+                            download.Title, client.Name, download.DownloadId,
+                            download.TorrentInfoHash ?? "(none)", confidence);
+
+                        try
+                        {
+                            using var notifyScope = _serviceProvider.CreateScope();
+                            var notificationService = notifyScope.ServiceProvider.GetRequiredService<NotificationService>();
+                            await notificationService.SendNotificationAsync(
+                                NotificationTrigger.OnManualInteractionRequired,
+                                $"Manual import required: {download.Title}",
+                                $"An external download finished in {client.Name} and could not be matched automatically (confidence {confidence}%). Review it under Activity.",
+                                new Dictionary<string, object>
+                                {
+                                    { "downloadTitle", download.Title },
+                                    { "client", client.Name },
+                                    { "confidence", confidence },
+                                });
+                        }
+                        catch (Exception notifyEx)
+                        {
+                            _logger.LogWarning(notifyEx, "[Enhanced Download Monitor] Failed to send pending-import notification");
+                        }
+                    }
                 }
             }
             catch (Exception ex)

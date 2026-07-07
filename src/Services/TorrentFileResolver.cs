@@ -23,7 +23,7 @@ namespace Sportarr.Api.Services;
 public static class TorrentFileResolver
 {
     public static async Task<TorrentDownloadResult> ResolveAsync(
-        string torrentUrl, bool skipSslValidation, ILogger logger, CancellationToken ct = default)
+        string torrentUrl, bool skipSslValidation, IHttpClientFactory httpClientFactory, ILogger logger, CancellationToken ct = default)
     {
         try
         {
@@ -45,14 +45,10 @@ public static class TorrentFileResolver
                 return TorrentDownloadResult.Failure($"Unsupported URL scheme: {uri.Scheme}. Expected http or https.");
             }
 
-            // Disable automatic redirect following so we can validate redirect
-            // URLs and catch cross-scheme magnet: redirects ourselves.
-            var handler = new HttpClientHandler { AllowAutoRedirect = false };
-            if (skipSslValidation)
-            {
-                handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
-            }
-            using var downloadClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+            // Redirects are validated by hand (cross-scheme magnet: redirects),
+            // so both named clients have auto-redirect disabled. Factory-pooled
+            // handlers replace the previous per-call HttpClient.
+            var downloadClient = httpClientFactory.CreateClient(skipSslValidation ? "TorrentResolverSkipSsl" : "TorrentResolver");
 
             var request = new HttpRequestMessage(HttpMethod.Get, uri);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-bittorrent"));

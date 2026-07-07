@@ -676,7 +676,10 @@ function FileRow({
                 {file.releaseGroup}
               </span>
             )}
-            {file.customFormatScore !== undefined && file.customFormatScore !== 0 && (
+            {/* Shown even at 0 - in this detail view "no formats matched" is
+                useful information, unlike the dense activity rows where a 0
+                badge on every line would be noise. */}
+            {file.customFormatScore !== undefined && (
               <span className="px-1.5 py-0.5 bg-purple-600/20 text-purple-400 rounded" title="Custom Format Score - Higher is better">
                 CF Score: {file.customFormatScore}
               </span>

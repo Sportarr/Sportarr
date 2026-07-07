@@ -64,6 +64,7 @@ public class SearchResultCache
         public string Title { get; set; } = string.Empty;
         public string? Guid { get; set; }
         public string? DownloadUrl { get; set; }
+        public string? InfoUrl { get; set; }
         public string Indexer { get; set; } = string.Empty;
         public string? IndexerFlags { get; set; }
         public long Size { get; set; }
@@ -90,6 +91,7 @@ public class SearchResultCache
                 Title = result.Title,
                 Guid = result.Guid,
                 DownloadUrl = result.DownloadUrl,
+                InfoUrl = result.InfoUrl,
                 Indexer = result.Indexer,
                 IndexerFlags = result.IndexerFlags,
                 Size = result.Size,
@@ -116,6 +118,7 @@ public class SearchResultCache
                 Title = Title,
                 Guid = Guid ?? string.Empty,
                 DownloadUrl = DownloadUrl ?? string.Empty,
+                InfoUrl = InfoUrl,
                 Indexer = Indexer,
                 IndexerFlags = IndexerFlags,
                 Size = Size,

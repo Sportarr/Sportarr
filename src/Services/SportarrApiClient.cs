@@ -114,6 +114,41 @@ public class SportarrApiClient
         }
     }
 
+    /// <summary>
+    /// Submit a user's team alias list as an anonymous usage-data suggestion.
+    /// The server tallies distinct installs per (team, alias) so popular
+    /// aliases can be promoted into the shared alternates by hand. Best
+    /// effort: gated on SendAnonymousUsageData by the caller, and any failure
+    /// is swallowed - saving aliases locally must never depend on this call.
+    /// Lives at the metadata service root, not under the v2/json shim base.
+    /// </summary>
+    public async Task SubmitTeamAliasSuggestionAsync(
+        string installId, string teamExternalId, string teamName, string? leagueExternalId, IReadOnlyList<string> aliases)
+    {
+        try
+        {
+            var root = _apiBaseUrl.Replace("/api/v2/json", string.Empty).TrimEnd('/');
+            var url = $"{root}/api/metadata/suggestions/team-aliases";
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                installId,
+                teamId = teamExternalId,
+                teamName,
+                leagueId = leagueExternalId,
+                aliases,
+            });
+
+            using var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+            using var response = await _httpClient.PostAsync(url, content);
+            _logger.LogDebug("[SportarrAPI] Alias suggestion for '{Team}' -> {Status}", teamName, (int)response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[SportarrAPI] Alias suggestion submission failed (ignored)");
+        }
+    }
+
     #region Search Endpoints
 
     /// <summary>

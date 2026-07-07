@@ -107,6 +107,15 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.MonitoredParts,
         league.MonitoredSessionTypes,
         league.MonitoredEventTypes,
+        // The edit modal initializes its checkboxes from this response, so
+        // every flag it can save must round-trip here - omitting one means
+        // the modal re-saves it as false/default every time.
+        league.MonitorFinals,
+        league.MonitorPlayoffs,
+        league.MonitorPreseason,
+        league.AllowHighlights,
+        league.RetentionDays,
+        league.RootFolderId,
         league.SearchQueryTemplate,
         league.LogoUrl,
         league.BannerUrl,
@@ -485,6 +494,17 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    if (body.TryGetProperty("retentionDays", out var retentionProp))
+    {
+        var newRetentionDays = Math.Max(0, retentionProp.GetInt32());
+        if (league.RetentionDays != newRetentionDays)
+        {
+            logger.LogInformation("[LEAGUES] RetentionDays changing from {Old} to {New} (0 = keep forever)",
+                league.RetentionDays, newRetentionDays);
+            league.RetentionDays = newRetentionDays;
+        }
+    }
+
     if (body.TryGetProperty("monitorType", out var monitorTypeProp))
     {
         var monitorTypeStr = monitorTypeProp.GetString();
@@ -637,6 +657,19 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Allow Highlights releases: affects future release matching only, no
+    // event re-monitoring needed.
+    if (body.TryGetProperty("allowHighlights", out var allowHighlightsProp) &&
+        (allowHighlightsProp.ValueKind == JsonValueKind.True || allowHighlightsProp.ValueKind == JsonValueKind.False))
+    {
+        var newAllowHighlights = allowHighlightsProp.GetBoolean();
+        if (league.AllowHighlights != newAllowHighlights)
+        {
+            logger.LogInformation("[LEAGUES] AllowHighlights changing from {Old} to {New}", league.AllowHighlights, newAllowHighlights);
+            league.AllowHighlights = newAllowHighlights;
+        }
+    }
+
     // Handle custom search query template
     if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))
     {
@@ -681,6 +714,16 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             int unmonitoredCount = 0;
             int unchangedCount = 0;
 
+            // SpecialsOnly classification needs to know whether each season
+            // mixes round-less events with stage-size rounds (the cup shape;
+            // see SpecialEventClassifier). Computed once per season here so
+            // the per-event loop stays cheap. Teamless sports skip the
+            // title-keyword fallback, mirroring the sync-time logic.
+            var seasonHasUnrounded = allEvents
+                .GroupBy(e => e.Season ?? "")
+                .ToDictionary(g => g.Key, g => g.Any(e => string.IsNullOrWhiteSpace(e.Round)));
+            var isTeamlessSport = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name);
+
             foreach (var evt in allEvents)
             {
                 // Base monitoring: is the league monitored?
@@ -700,6 +743,11 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                                                   year == DateTime.UtcNow.Year + 1,
                         MonitorType.Recent => evt.EventDate >= DateTime.UtcNow.AddDays(-30),
                         MonitorType.None => false,
+                        MonitorType.SpecialsOnly => SpecialEventClassifier.BypassesTeamFilter(
+                            evt.Round,
+                            isTeamlessSport ? null : evt.Title,
+                            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                            seasonHasUnrounded[evt.Season ?? ""]),
                         _ => true
                     };
                 }
@@ -1422,7 +1470,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, Ta
 // Removed duplicate PUT endpoint - now using JsonElement-based endpoint above for partial updates
 
 // API: Update monitored teams for a league
-app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, SportarrApiClient sportsDbClient, TaskService taskService, ILogger<Program> logger) =>
 {
     // Use a transaction to ensure all changes succeed or fail together
     using var transaction = await db.Database.BeginTransactionAsync();
@@ -1440,6 +1488,14 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
         {
             return Results.NotFound(new { error = "League not found" });
         }
+
+        // Snapshot the current monitored set so we can tell whether this
+        // request actually changed anything (the frontend re-sends the
+        // full list on every save).
+        var previousTeamIds = league.MonitoredTeams
+            .Where(lt => lt.Monitored && lt.Team?.ExternalId != null)
+            .Select(lt => lt.Team!.ExternalId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // Remove existing monitored teams
         var existingTeams = await db.LeagueTeams.Where(lt => lt.LeagueId == id).ToListAsync();
@@ -1467,6 +1523,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
         // Add new monitored teams
         logger.LogInformation("[LEAGUES] Adding {Count} monitored teams", request.MonitoredTeamIds.Count);
 
+        var appliedTeamIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var teamExternalId in request.MonitoredTeamIds)
         {
             // Find or create team in database
@@ -1505,6 +1562,10 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
             };
 
             db.LeagueTeams.Add(leagueTeam);
+            if (!string.IsNullOrEmpty(team.ExternalId))
+            {
+                appliedTeamIds.Add(team.ExternalId);
+            }
             logger.LogInformation("[LEAGUES] Marked team as monitored: {TeamName} for league: {LeagueName}",
                 team.Name, league.Name);
         }
@@ -1515,6 +1576,35 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
         // Save all changes and commit transaction
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
+
+        // A changed team set means the last event sync's monitored-team
+        // filter no longer matches the user's selection: events for newly
+        // monitored teams were filtered out at sync time, and nothing else
+        // ever re-fetches them. A Quick Sync doesn't help because the hub
+        // has no new changes (the gap is local), so it truthfully reports
+        // "library is current" while the new team's events stay missing.
+        // Queue the same deep sync a league add runs so the selection takes
+        // effect on events without manual intervention. Skip only when a
+        // refresh for this league is still QUEUED (it will read the new
+        // team set when it starts); a RUNNING one may already be past the
+        // affected seasons with the old filter, so queue behind it.
+        if (!appliedTeamIds.SetEquals(previousTeamIds))
+        {
+            var refreshAlreadyQueued = await db.Tasks.AnyAsync(t =>
+                t.CommandName == "RefreshLeague" &&
+                t.Status == Sportarr.Api.Models.TaskStatus.Queued &&
+                t.Body != null && t.Body.Contains($"\"leagueId\":{league.Id},"));
+            if (refreshAlreadyQueued)
+            {
+                logger.LogInformation("[LEAGUES] Monitored team set changed for {Name}; a league refresh is already queued and will apply it", league.Name);
+            }
+            else
+            {
+                logger.LogInformation("[LEAGUES] Monitored team set changed for {Name} - queueing deep sync to apply the new selection to events", league.Name);
+                var teamChangeSyncBody = JsonSerializer.Serialize(new { leagueId = league.Id, scope = "full" });
+                await taskService.QueueTaskAsync($"Deep Sync {league.Name}", "RefreshLeague", priority: 0, body: teamChangeSyncBody);
+            }
+        }
 
         logger.LogInformation("[LEAGUES] Successfully updated {Count} monitored teams", request.MonitoredTeamIds.Count);
         return Results.Ok(new { message = "Monitored teams updated successfully", leagueId = league.Id, teamCount = request.MonitoredTeamIds.Count });
@@ -2012,6 +2102,63 @@ app.MapPost("/api/leagues/{id:int}/reorganize", async (int id, ReorganizeLeagueR
 
     var result = await moveService.ReorganizeLeagueAsync(id, request.RootFolderId);
     return MapMoveResultToHttp(result);
+});
+
+// PUT /api/leagues/bulk - mass editor field changes (monitored, quality
+// profile, tags) across many leagues in one call. Root-folder changes go
+// through POST /api/leagues/move/bulk below, which also relocates files.
+app.MapPut("/api/leagues/bulk", async (BulkEditLeaguesRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    if (request == null || request.LeagueIds == null || request.LeagueIds.Count == 0)
+    {
+        return Results.BadRequest(new { error = "leagueIds must not be empty" });
+    }
+
+    if (request.QualityProfileId.HasValue &&
+        !await db.QualityProfiles.AnyAsync(p => p.Id == request.QualityProfileId.Value))
+    {
+        return Results.BadRequest(new { error = $"Quality profile {request.QualityProfileId} does not exist" });
+    }
+
+    var leagues = await db.Leagues
+        .Where(l => request.LeagueIds.Contains(l.Id))
+        .ToListAsync();
+
+    foreach (var league in leagues)
+    {
+        if (request.Monitored.HasValue)
+        {
+            league.Monitored = request.Monitored.Value;
+        }
+
+        if (request.QualityProfileId.HasValue)
+        {
+            league.QualityProfileId = request.QualityProfileId.Value;
+        }
+
+        if (request.RetentionDays.HasValue)
+        {
+            league.RetentionDays = Math.Max(0, request.RetentionDays.Value);
+        }
+
+        // Tags: "replace" applies even with an empty list (clear all);
+        // add/remove are no-ops without tags to add or remove.
+        if (request.TagsAction == "replace" || request.Tags is { Count: > 0 })
+        {
+            var tags = request.Tags ?? new List<int>();
+            league.Tags = request.TagsAction switch
+            {
+                "add" => league.Tags.Union(tags).ToList(),
+                "remove" => league.Tags.Except(tags).ToList(),
+                "replace" => tags,
+                _ => league.Tags,
+            };
+        }
+    }
+
+    await db.SaveChangesAsync();
+    logger.LogInformation("[LEAGUES] Mass edit applied to {Count} league(s)", leagues.Count);
+    return Results.Ok(new { updated = leagues.Count });
 });
 
 // POST /api/leagues/move/bulk — same operation across many leagues.

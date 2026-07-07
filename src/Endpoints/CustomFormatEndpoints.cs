@@ -32,6 +32,16 @@ app.MapGet("/api/customformat/{id}", async (int id, SportarrDbContext db) =>
 // API: Create custom format
 app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext db, CustomFormatMatchCache cfCache) =>
 {
+    // Names are unique (DB index). Without this guard a duplicate create -
+    // most commonly a double-fired save from the UI - surfaced as an
+    // unhandled 500 from the constraint violation even though the first
+    // request already created the format.
+    var duplicate = await db.CustomFormats.FirstOrDefaultAsync(cf => cf.Name == format.Name);
+    if (duplicate != null)
+    {
+        return Results.Conflict(new { error = $"Custom format '{format.Name}' already exists", existingId = duplicate.Id });
+    }
+
     format.Created = DateTime.UtcNow;
     db.CustomFormats.Add(format);
     await db.SaveChangesAsync();
@@ -58,6 +68,14 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Sportar
     {
         var existing = await db.CustomFormats.FindAsync(id);
         if (existing == null) return Results.NotFound();
+
+        // Same unique-name guard as create: renaming onto another format's
+        // name would otherwise die on the DB constraint as a 500.
+        var duplicate = await db.CustomFormats.FirstOrDefaultAsync(cf => cf.Id != id && cf.Name == format.Name);
+        if (duplicate != null)
+        {
+            return Results.Conflict(new { error = $"Custom format '{format.Name}' already exists", existingId = duplicate.Id });
+        }
 
         // If this is a synced format, mark it as customized to prevent auto-sync overwriting changes
         bool syncPaused = false;

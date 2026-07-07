@@ -260,7 +260,6 @@ public enum DvrRecordingMethod
 
 /// <summary>
 /// IPTV source configuration (M3U playlist or Xtream account)
-/// Similar to how Dispatcharr manages M3U accounts
 /// </summary>
 public class IptvSource
 {
@@ -310,6 +309,15 @@ public class IptvSource
     /// User-Agent string to use when fetching streams
     /// </summary>
     public string? UserAgent { get; set; }
+
+    /// <summary>
+    /// Extra ffmpeg INPUT arguments injected before -i when recording from
+    /// this source (stream profile). Power-user knob for providers that
+    /// need special handling (longer analyzeduration, custom headers,
+    /// different reconnect behavior). Space-separated; quotes are stripped
+    /// at use so a value can never break out into extra options.
+    /// </summary>
+    public string? FfmpegInputArgs { get; set; }
 
     /// <summary>
     /// When this source was added
@@ -499,6 +507,43 @@ public class IptvChannel
     /// Navigation property for league mappings
     /// </summary>
     public List<ChannelLeagueMapping> LeagueMappings { get; set; } = new();
+}
+
+/// <summary>
+/// Maps an IPTV channel to a specific team, layered ABOVE the league
+/// mapping: the DVR channel resolver checks the event's teams before the
+/// league preference, so "Lakers games record from the LA regional
+/// channel" can override "NBA records from the national channel" without
+/// disturbing the rest of the league.
+/// </summary>
+public class ChannelTeamMapping
+{
+    public int Id { get; set; }
+
+    /// <summary>
+    /// The IPTV channel
+    /// </summary>
+    public int ChannelId { get; set; }
+    public IptvChannel? Channel { get; set; }
+
+    /// <summary>
+    /// The team whose events prefer this channel
+    /// </summary>
+    public int TeamId { get; set; }
+    public Team? Team { get; set; }
+
+    /// <summary>
+    /// Whether this is the preferred channel for this team
+    /// (at most one preferred mapping per team)
+    /// </summary>
+    public bool IsPreferred { get; set; } = true;
+
+    /// <summary>
+    /// Priority among this team's mapped channels (lower = tried first)
+    /// </summary>
+    public int Priority { get; set; } = 1;
+
+    public DateTime Created { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -775,6 +820,13 @@ public class EpgSource
     public bool IsActive { get; set; } = true;
 
     /// <summary>
+    /// Priority when several sources carry the same channel id: lower wins
+    /// (same convention as indexer priority). Ties break on the older
+    /// source (lower Id).
+    /// </summary>
+    public int Priority { get; set; } = 25;
+
+    /// <summary>
     /// When this source was added
     /// </summary>
     public DateTime Created { get; set; } = DateTime.UtcNow;
@@ -917,6 +969,7 @@ public class AddIptvSourceRequest
     public string? Password { get; set; }
     public int MaxStreams { get; set; } = 1;
     public string? UserAgent { get; set; }
+    public string? FfmpegInputArgs { get; set; }
 
     public IptvSource ToEntity()
     {
@@ -929,6 +982,7 @@ public class AddIptvSourceRequest
             Password = Password,
             MaxStreams = MaxStreams,
             UserAgent = UserAgent,
+            FfmpegInputArgs = FfmpegInputArgs,
             IsActive = true,
             Created = DateTime.UtcNow
         };
@@ -953,6 +1007,7 @@ public class IptvSourceResponse
     public bool IsActive { get; set; }
     public int ChannelCount { get; set; }
     public string? UserAgent { get; set; }
+    public string? FfmpegInputArgs { get; set; }
     public DateTime Created { get; set; }
     public DateTime? LastUpdated { get; set; }
     public string? LastError { get; set; }
@@ -971,6 +1026,7 @@ public class IptvSourceResponse
             IsActive = source.IsActive,
             ChannelCount = source.ChannelCount,
             UserAgent = source.UserAgent,
+            FfmpegInputArgs = source.FfmpegInputArgs,
             Created = source.Created,
             LastUpdated = source.LastUpdated,
             LastError = source.LastError
@@ -1050,6 +1106,7 @@ public class AddEpgSourceRequest
     public required string Name { get; set; }
     public required string Url { get; set; }
     public bool IsActive { get; set; } = true;
+    public int Priority { get; set; } = 25;
 
     public EpgSource ToEntity()
     {
@@ -1058,6 +1115,7 @@ public class AddEpgSourceRequest
             Name = Name,
             Url = Url,
             IsActive = IsActive,
+            Priority = Priority,
             Created = DateTime.UtcNow
         };
     }

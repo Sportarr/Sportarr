@@ -15,6 +15,9 @@ interface Notification {
   // Triggers
   onGrab?: boolean;
   onDownload?: boolean;
+  onRecordingStarted?: boolean;
+  onRecordingCompleted?: boolean;
+  onRecordingFailed?: boolean;
   onUpgrade?: boolean;
   onRename?: boolean;
   onHealthIssue?: boolean;
@@ -34,6 +37,18 @@ interface Notification {
   apiKey?: string;
   token?: string;
   chatId?: string;
+  scriptPath?: string;
+  arguments?: string;
+  serverUrl?: string;
+  configKey?: string;
+  appriseUrls?: string;
+  // ntfy-specific fields
+  ntfyServerUrl?: string;
+  ntfyTopic?: string;
+  ntfyAccessToken?: string;
+  ntfyPriority?: string;
+  ntfyTags?: string;
+  ntfyClickUrl?: string;
   channel?: string;
   username?: string;
   server?: string;
@@ -80,42 +95,63 @@ const notificationTemplates: NotificationTemplate[] = [
     implementation: 'Discord',
     description: 'Send notifications via Discord webhook',
     icon: '💬',
-    fields: ['webhook', 'username', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate']
+    fields: ['webhook', 'username', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   },
   {
     name: 'Telegram',
     implementation: 'Telegram',
     description: 'Send notifications via Telegram bot',
     icon: '✈️',
-    fields: ['token', 'chatId', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate']
+    fields: ['token', 'chatId', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   },
   {
     name: 'Email (SMTP)',
     implementation: 'Email',
     description: 'Send notifications via email',
     icon: '📧',
-    fields: ['server', 'port', 'useSsl', 'username', 'password', 'from', 'to', 'subject', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate']
+    fields: ['server', 'port', 'useSsl', 'username', 'password', 'from', 'to', 'subject', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   },
   {
     name: 'Webhook',
     implementation: 'Webhook',
     description: 'Send JSON notifications to a custom URL (works with media-automation tools like Autoscan)',
     icon: '🔗',
-    fields: ['webhook', 'method', 'username', 'password', 'headers', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onEventFileDelete', 'onEventFileDeleteForUpgrade', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired']
+    fields: ['webhook', 'method', 'username', 'password', 'headers', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onEventFileDelete', 'onEventFileDeleteForUpgrade', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   },
   {
     name: 'Pushover',
     implementation: 'Pushover',
     description: 'Send push notifications via Pushover',
     icon: '📱',
-    fields: ['userKey', 'apiToken', 'devices', 'priority', 'sound', 'retry', 'expire', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate']
+    fields: ['userKey', 'apiToken', 'devices', 'priority', 'sound', 'retry', 'expire', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   },
   {
     name: 'Slack',
     implementation: 'Slack',
     description: 'Send notifications to Slack channel',
     icon: '💼',
-    fields: ['webhook', 'username', 'channel', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate']
+    fields: ['webhook', 'username', 'channel', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
+    name: 'Apprise',
+    implementation: 'Apprise',
+    description: 'Send notifications through an Apprise API server (80+ services)',
+    icon: '📡',
+    fields: ['serverUrl', 'configKey', 'appriseUrls', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
+    name: 'ntfy',
+    implementation: 'Ntfy',
+    description: 'Push notifications via ntfy.sh or a self-hosted ntfy server',
+    icon: '📣',
+    fields: ['ntfyServerUrl', 'ntfyTopic', 'ntfyAccessToken', 'username', 'password', 'ntfyPriority', 'ntfyTags', 'ntfyClickUrl', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
+    name: 'Custom Script',
+    implementation: 'CustomScript',
+    description: 'Run a script on events with details passed as SPORTARR_* environment variables',
+    icon: '📜',
+    fields: ['scriptPath', 'arguments', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onEventFileDelete', 'onEventFileDeleteForUpgrade', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   },
   // Media Server Connections (like Sonarr/Radarr)
   {
@@ -182,6 +218,9 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
     onRename: false,
     onHealthIssue: true,
     onApplicationUpdate: false,
+    onRecordingCompleted: true,
+    onRecordingFailed: true,
+    onRecordingStarted: false,
     includeHealthWarnings: false,
     useSsl: true,
     port: 587,
@@ -205,6 +244,9 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
       onRename: false,
       onHealthIssue: true,
       onApplicationUpdate: false,
+      onRecordingCompleted: true,
+      onRecordingFailed: true,
+      onRecordingStarted: false,
       includeHealthWarnings: false,
       useSsl: template.implementation === 'Email',
       port: template.implementation === 'Email' ? 587 : undefined,
@@ -275,6 +317,9 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
         onRename: false,
         onHealthIssue: true,
         onApplicationUpdate: false,
+        onRecordingCompleted: true,
+        onRecordingFailed: true,
+        onRecordingStarted: false,
         includeHealthWarnings: false,
         tags: []
       });
@@ -354,6 +399,9 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
       onRename: false,
       onHealthIssue: true,
       onApplicationUpdate: false,
+      onRecordingCompleted: true,
+      onRecordingFailed: true,
+      onRecordingStarted: false,
       includeHealthWarnings: false,
       tags: []
     });
@@ -747,6 +795,162 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                       </div>
                     )}
 
+                    {selectedTemplate?.fields.includes('serverUrl') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Apprise Server URL *</label>
+                        <input
+                          type="text"
+                          value={formData.serverUrl || ''}
+                          onChange={(e) => handleFormChange('serverUrl', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="http://apprise:8000"
+                        />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('configKey') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Configuration Key</label>
+                        <input
+                          type="text"
+                          value={formData.configKey || ''}
+                          onChange={(e) => handleFormChange('configKey', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="Optional stored-config key on the Apprise server"
+                        />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('appriseUrls') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Notification URLs</label>
+                        <input
+                          type="text"
+                          value={formData.appriseUrls || ''}
+                          onChange={(e) => handleFormChange('appriseUrls', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="discord://webhook_id/token, mailto://user:pass@host (optional with a config key)"
+                        />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('ntfyServerUrl') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">ntfy Server URL</label>
+                        <input
+                          type="text"
+                          value={formData.ntfyServerUrl || ''}
+                          onChange={(e) => handleFormChange('ntfyServerUrl', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="https://ntfy.sh"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Leave empty for ntfy.sh, or point at your self-hosted server</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('ntfyTopic') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Topic *</label>
+                        <input
+                          type="text"
+                          value={formData.ntfyTopic || ''}
+                          onChange={(e) => handleFormChange('ntfyTopic', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="sportarr"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Anyone who knows the topic name can subscribe on a public server, so treat it like a password</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('ntfyAccessToken') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Access Token</label>
+                        <input
+                          type="password"
+                          value={formData.ntfyAccessToken || ''}
+                          onChange={(e) => handleFormChange('ntfyAccessToken', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="tk_..."
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Optional. Takes precedence over username/password when both are set</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('ntfyPriority') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Priority</label>
+                        <select
+                          value={formData.ntfyPriority || ''}
+                          onChange={(e) => handleFormChange('ntfyPriority', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        >
+                          <option value="">Server default</option>
+                          <option value="5">Max (urgent)</option>
+                          <option value="4">High</option>
+                          <option value="3">Default</option>
+                          <option value="2">Low</option>
+                          <option value="1">Min</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('ntfyTags') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Tags</label>
+                        <input
+                          type="text"
+                          value={formData.ntfyTags || ''}
+                          onChange={(e) => handleFormChange('ntfyTags', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="trophy,tv"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Optional comma-separated ntfy tags; emoji shortcodes become icons</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('ntfyClickUrl') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Click URL</label>
+                        <input
+                          type="text"
+                          value={formData.ntfyClickUrl || ''}
+                          onChange={(e) => handleFormChange('ntfyClickUrl', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="https://sportarr.example.com/activity"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Optional URL opened when tapping the notification</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('scriptPath') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Script Path *</label>
+                        <input
+                          type="text"
+                          value={formData.scriptPath || ''}
+                          onChange={(e) => handleFormChange('scriptPath', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="/config/scripts/on-event.sh"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Details arrive as SPORTARR_EVENT_TYPE, SPORTARR_TITLE, SPORTARR_MESSAGE plus per-event SPORTARR_* variables
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('arguments') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Arguments</label>
+                        <input
+                          type="text"
+                          value={formData.arguments || ''}
+                          onChange={(e) => handleFormChange('arguments', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="Optional space-separated arguments"
+                        />
+                      </div>
+                    )}
+
                     {selectedTemplate?.fields.includes('apiKey') && (
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">API Key *</label>
@@ -1099,6 +1303,42 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                         />
                         <span className="text-sm font-medium text-gray-300">On App Update</span>
                       </label>
+
+                      {selectedTemplate?.fields.includes('onRecordingStarted') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onRecordingStarted || false}
+                            onChange={(e) => handleFormChange('onRecordingStarted', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Recording Started</span>
+                        </label>
+                      )}
+
+                      {selectedTemplate?.fields.includes('onRecordingCompleted') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onRecordingCompleted || false}
+                            onChange={(e) => handleFormChange('onRecordingCompleted', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Recording Complete</span>
+                        </label>
+                      )}
+
+                      {selectedTemplate?.fields.includes('onRecordingFailed') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onRecordingFailed || false}
+                            onChange={(e) => handleFormChange('onRecordingFailed', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Recording Failed</span>
+                        </label>
+                      )}
 
                       {selectedTemplate?.fields.includes('onEventAdded') && (
                         <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">

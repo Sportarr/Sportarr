@@ -379,6 +379,59 @@ app.MapGet("/api/teams", async (SportarrDbContext db, int? leagueId, string? spo
     return Results.Ok(teams);
 });
 
+// API: Update a team's user-defined aliases (comma-separated). Local-only
+// field the metadata sync never writes, so edits survive refreshes. Used by
+// release matching alongside the upstream alternate names.
+app.MapPut("/api/teams/{id:int}/aliases", async (int id, System.Text.Json.JsonElement body, SportarrDbContext db, ConfigService configService, SportarrApiClient sportarrApiClient, ILogger<Program> logger) =>
+{
+    var team = await db.Teams.FindAsync(id);
+    if (team == null)
+    {
+        return Results.NotFound(new { error = "Team not found" });
+    }
+
+    string? aliases = null;
+    List<string> cleaned = new();
+    if (body.TryGetProperty("userAliases", out var aliasesProp) &&
+        aliasesProp.ValueKind == System.Text.Json.JsonValueKind.String)
+    {
+        // Normalize: trim entries, drop blanks, dedupe, re-join.
+        cleaned = (aliasesProp.GetString() ?? "")
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        aliases = cleaned.Count > 0 ? string.Join(", ", cleaned) : null;
+    }
+
+    team.UserAliases = aliases;
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[TEAMS] Updated user aliases for '{Team}': {Aliases}", team.Name, aliases ?? "(cleared)");
+
+    // Anonymous usage data: share the alias list so popular aliases can be
+    // tallied and promoted into the shared alternates for everyone. Opt-out
+    // via Settings > General > Analytics; fire-and-forget so the save never
+    // waits on (or fails with) the metadata service.
+    var config = await configService.GetConfigAsync();
+    if (config.SendAnonymousUsageData && cleaned.Count > 0 && !string.IsNullOrEmpty(team.ExternalId))
+    {
+        if (string.IsNullOrEmpty(config.AnalyticsInstanceId))
+        {
+            config.AnalyticsInstanceId = Guid.NewGuid().ToString("N");
+            await configService.SaveConfigAsync(config);
+        }
+        var installId = config.AnalyticsInstanceId;
+        var teamExternalId = team.ExternalId!;
+        var teamName = team.Name;
+        var leagueExternalId = team.LeagueId.HasValue
+            ? await db.Leagues.Where(l => l.Id == team.LeagueId.Value).Select(l => l.ExternalId).FirstOrDefaultAsync()
+            : null;
+        _ = sportarrApiClient.SubmitTeamAliasSuggestionAsync(installId, teamExternalId, teamName, leagueExternalId, cleaned);
+    }
+
+    return Results.Ok(new { team.Id, userAliases = team.UserAliases });
+});
+
 // API: Get team by ID
 app.MapGet("/api/teams/{id:int}", async (int id, SportarrDbContext db) =>
 {

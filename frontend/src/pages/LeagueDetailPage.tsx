@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon, TagIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, CheckIcon } from '@heroicons/react/24/solid';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import apiClient from '../api/client';
@@ -10,6 +10,7 @@ import SeasonSearchModal from '../components/SeasonSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
 import EventFileDetailModal from '../components/EventFileDetailModal';
 import LeagueFilesModal from '../components/LeagueFilesModal';
+import TeamAliasesModal from '../components/TeamAliasesModal';
 import EventStatusBadge from '../components/EventStatusBadge';
 import ManualImportModal from '../components/ManualImportModal';
 import RefreshScopeModal, { type RefreshScope } from '../components/RefreshScopeModal';
@@ -219,6 +220,7 @@ export default function LeagueDetailPage() {
     files: [],
     isFightingSport: false,
   });
+  const [showTeamAliasesModal, setShowTeamAliasesModal] = useState(false);
   const [leagueFilesModal, setLeagueFilesModal] = useState<{ isOpen: boolean; season?: string }>({
     isOpen: false,
   });
@@ -247,6 +249,11 @@ export default function LeagueDetailPage() {
 
   // Track which seasons are expanded (default: none - user manually expands)
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
+
+  // Deep-history leagues carry decades of catalog seasons; old ones the user
+  // never touched are hidden behind a "Show all seasons" toggle (see
+  // visibleSeasons below).
+  const [showAllSeasons, setShowAllSeasons] = useState(false);
 
   // Toggle for showing cancelled / postponed events in the season list.
   // Default off because for the typical admin a cancelled game is noise -- it
@@ -595,6 +602,8 @@ export default function LeagueDetailPage() {
       monitorFinals?: boolean;
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
+      retentionDays?: number;
+      allowHighlights?: boolean;
     }) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
@@ -740,6 +749,8 @@ export default function LeagueDetailPage() {
     monitorFinals: boolean,
     monitorPlayoffs: boolean,
     monitorPreseason: boolean,
+    retentionDays: number,
+    allowHighlights: boolean,
   ) => {
     void _rootFolderId;
     void league;
@@ -758,6 +769,8 @@ export default function LeagueDetailPage() {
       monitorFinals,
       monitorPlayoffs,
       monitorPreseason,
+      retentionDays,
+      allowHighlights,
     });
   };
 
@@ -1161,6 +1174,26 @@ export default function LeagueDetailPage() {
     return yearB - yearA;
   });
 
+  // Declutter deep-history leagues: hide old seasons the user never touched.
+  // A season stays visible by default when any of these hold:
+  // - it's one of the 5 newest (a league whose last season is years old still
+  //   shows something)
+  // - it started within the last 5 years
+  // - it contains files or monitored events (hiding those would read as data
+  //   loss)
+  // - it's the 'Unknown' bucket (only present when it has events)
+  // Everything else sits behind the "Show all seasons" toggle.
+  const currentYear = new Date().getFullYear();
+  const defaultVisibleSeasons = sortedSeasons.filter((season, index) => {
+    if (season === 'Unknown') return true;
+    if (index < 5) return true;
+    const startYear = parseInt(season.split('-')[0]);
+    if (!Number.isNaN(startYear) && startYear >= currentYear - 5) return true;
+    return groupedEvents[season].some(e => e.hasFile || e.monitored);
+  });
+  const hiddenSeasonCount = sortedSeasons.length - defaultVisibleSeasons.length;
+  const visibleSeasons = showAllSeasons ? sortedSeasons : defaultVisibleSeasons;
+
   // Toggle season expansion
   const toggleSeason = (season: string) => {
     setExpandedSeasons(prev => {
@@ -1352,6 +1385,14 @@ export default function LeagueDetailPage() {
                 Edit
               </button>
               <button
+                onClick={() => setShowTeamAliasesModal(true)}
+                className={BUTTON_SECONDARY}
+                title="Add the team names your release groups use so releases match and download automatically"
+              >
+                <TagIcon className="h-4 w-4" />
+                Aliases
+              </button>
+              <button
                 onClick={openMoveModal}
                 disabled={rootFolders.length === 0}
                 className={BUTTON_SECONDARY}
@@ -1402,18 +1443,31 @@ export default function LeagueDetailPage() {
               </div>
             )}
 
-            {league.website && (
+            <div className="flex flex-wrap items-center gap-4 mt-4">
+              {league.website && (
+                <a
+                  href={league.website.startsWith('http://') || league.website.startsWith('https://')
+                    ? league.website
+                    : `https://${league.website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors"
+                >
+                  Visit Official Website →
+                </a>
+              )}
+              {/* Search-with-go redirects straight to the article when the name
+                  (or a redirect for it, e.g. "NFL") matches exactly - works for
+                  every league with no stored data required */}
               <a
-                href={league.website.startsWith('http://') || league.website.startsWith('https://')
-                  ? league.website
-                  : `https://${league.website}`}
+                href={`https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(league.name)}&go=Go`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 mt-4 text-red-400 hover:text-red-300 transition-colors"
+                className="inline-flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors"
               >
-                Visit Official Website →
+                Wikipedia →
               </a>
-            )}
+            </div>
 
 
             {/* DVR Channel Preference - Only show if IPTV sources are configured */}
@@ -1598,7 +1652,7 @@ export default function LeagueDetailPage() {
           ) : (
             <div>
               {/* Season Groups */}
-              {sortedSeasons.map(season => {
+              {visibleSeasons.map(season => {
                 const seasonEvents = groupedEvents[season];
                 const isExpanded = expandedSeasons.has(season);
                 const monitoredCount = seasonEvents.filter(e => e.monitored).length;
@@ -2578,6 +2632,20 @@ export default function LeagueDetailPage() {
                   </div>
                 );
               })}
+
+              {/* Show/hide old untouched seasons */}
+              {hiddenSeasonCount > 0 && (
+                <div className="p-4 text-center">
+                  <button
+                    onClick={() => setShowAllSeasons(v => !v)}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-sm rounded-lg transition-colors"
+                  >
+                    {showAllSeasons
+                      ? `Hide ${hiddenSeasonCount} older season${hiddenSeasonCount === 1 ? '' : 's'}`
+                      : `Show all ${sortedSeasons.length} seasons (${hiddenSeasonCount} hidden)`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -2611,6 +2679,16 @@ export default function LeagueDetailPage() {
           leagueId={league.id}
           leagueName={league.name}
           season={leagueFilesModal.season}
+        />
+      )}
+
+      {/* Team Aliases Modal */}
+      {league && (
+        <TeamAliasesModal
+          isOpen={showTeamAliasesModal}
+          onClose={() => setShowTeamAliasesModal(false)}
+          leagueId={league.id}
+          leagueName={league.name}
         />
       )}
 

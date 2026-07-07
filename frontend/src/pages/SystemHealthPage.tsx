@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -17,7 +19,19 @@ interface HealthCheckResult {
   message: string;
   details?: string;
   checkedAt: string;
+  dismissed?: boolean;
 }
+
+interface OrphanedEvent {
+  id: number;
+  title: string;
+  eventDate: string;
+  leagueId?: number;
+  league?: string;
+  fileRecordCount: number;
+}
+
+const ORPHANED_EVENTS_TYPE = 12;
 
 const healthCheckTypeNames: { [key: number]: string } = {
   0: 'Root Folder',
@@ -46,6 +60,72 @@ export default function SystemHealthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [orphanedEvents, setOrphanedEvents] = useState<OrphanedEvent[] | null>(null);
+  const [showOrphaned, setShowOrphaned] = useState(false);
+  const [fixingOrphaned, setFixingOrphaned] = useState(false);
+
+  const loadOrphanedEvents = async () => {
+    try {
+      const { data } = await apiClient.get<OrphanedEvent[]>('/system/health/orphaned-events');
+      setOrphanedEvents(data);
+    } catch (err) {
+      console.error('Failed to load orphaned events:', err);
+      toast.error('Failed to load orphaned events');
+    }
+  };
+
+  const toggleOrphaned = async () => {
+    const next = !showOrphaned;
+    setShowOrphaned(next);
+    if (next && orphanedEvents === null) {
+      await loadOrphanedEvents();
+    }
+  };
+
+  // Dismissals hide a Notice/Warning from the header banner (persisted in
+  // config, so they survive restarts and updates). The check stays visible
+  // here, dimmed, and can be restored. Errors are never dismissible.
+  const dismissCheck = async (type: number) => {
+    try {
+      await apiClient.post('/system/health/dismiss', { type });
+      toast.success('Warning dismissed', {
+        description: 'It will no longer appear in the header banner. Restore it here anytime.',
+      });
+      await loadHealthChecks();
+    } catch (err) {
+      console.error('Failed to dismiss health check:', err);
+      toast.error('Failed to dismiss');
+    }
+  };
+
+  const restoreCheck = async (type: number) => {
+    try {
+      await apiClient.delete(`/system/health/dismiss/${type}`);
+      toast.success('Warning restored to the banner');
+      await loadHealthChecks();
+    } catch (err) {
+      console.error('Failed to restore health check:', err);
+      toast.error('Failed to restore');
+    }
+  };
+
+  const fixOrphaned = async () => {
+    setFixingOrphaned(true);
+    try {
+      const { data } = await apiClient.post<{ repaired: number; cleared: number }>('/system/health/orphaned-events/fix');
+      toast.success('Orphaned events fixed', {
+        description: `${data.repaired} file path(s) restored, ${data.cleared} event(s) returned to missing.`,
+      });
+      setOrphanedEvents(null);
+      setShowOrphaned(false);
+      await loadHealthChecks();
+    } catch (err) {
+      console.error('Failed to fix orphaned events:', err);
+      toast.error('Failed to fix orphaned events');
+    } finally {
+      setFixingOrphaned(false);
+    }
+  };
 
   useEffect(() => {
     loadHealthChecks();
@@ -190,7 +270,7 @@ export default function SystemHealthPage() {
             {healthChecks.map((check, index) => (
               <div
                 key={index}
-                className={`${levelBgColors[check.level]} border ${levelBorderColors[check.level]} rounded-lg p-4 transition-all hover:shadow-lg`}
+                className={`${levelBgColors[check.level]} border ${levelBorderColors[check.level]} rounded-lg p-4 transition-all hover:shadow-lg ${check.dismissed ? 'opacity-50' : ''}`}
               >
                 <div className="flex items-start gap-4">
                   <div className={`${levelColors[check.level]} flex-shrink-0 mt-0.5`}>
@@ -206,10 +286,80 @@ export default function SystemHealthPage() {
                         <span className="px-3 py-1 bg-gray-800 text-gray-400 text-xs rounded-full">
                           {healthCheckTypeNames[check.type] || 'System'}
                         </span>
+                        {check.dismissed ? (
+                          <button
+                            onClick={() => restoreCheck(check.type)}
+                            className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded-full transition-colors"
+                            title="Show this check in the header banner again"
+                          >
+                            Restore
+                          </button>
+                        ) : check.level > 0 && check.level < 3 ? (
+                          <button
+                            onClick={() => dismissCheck(check.type)}
+                            className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded-full transition-colors"
+                            title="Hide this check from the header banner. It stays listed here and survives restarts; errors always resurface."
+                          >
+                            Dismiss
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                     {check.details && (
                       <p className="text-gray-300 text-sm leading-relaxed">{check.details}</p>
+                    )}
+                    {check.type === ORPHANED_EVENTS_TYPE && (
+                      <div className="mt-3">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={toggleOrphaned}
+                            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm rounded-lg transition-colors"
+                          >
+                            {showOrphaned ? 'Hide events' : 'Show events'}
+                          </button>
+                          <button
+                            onClick={fixOrphaned}
+                            disabled={fixingOrphaned}
+                            title="Restores the file path from the event's file records when the file exists on disk, otherwise clears the stale downloaded flag so the event shows as missing again. Never deletes files."
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {fixingOrphaned ? 'Fixing...' : 'Fix all'}
+                          </button>
+                        </div>
+                        {showOrphaned && (
+                          <div className="mt-3 space-y-1">
+                            {orphanedEvents === null ? (
+                              <p className="text-gray-400 text-sm">Loading...</p>
+                            ) : orphanedEvents.length === 0 ? (
+                              <p className="text-gray-400 text-sm">No orphaned events found. Refresh the health checks.</p>
+                            ) : (
+                              orphanedEvents.map((evt) => (
+                                <div key={evt.id} className="flex items-center justify-between px-3 py-2 bg-black/30 border border-gray-800 rounded-lg text-sm">
+                                  <div className="min-w-0">
+                                    <span className="text-white">{evt.title}</span>
+                                    <span className="text-gray-500 ml-2">
+                                      {new Date(evt.eventDate).toLocaleDateString()}
+                                      {evt.fileRecordCount > 0
+                                        ? ` • ${evt.fileRecordCount} file record(s)`
+                                        : ' • no file records'}
+                                    </span>
+                                  </div>
+                                  {evt.leagueId ? (
+                                    <Link
+                                      to={`/leagues/${evt.leagueId}`}
+                                      className="ml-4 text-red-400 hover:text-red-300 flex-shrink-0"
+                                    >
+                                      {evt.league || 'View league'}
+                                    </Link>
+                                  ) : (
+                                    <span className="ml-4 text-gray-500 flex-shrink-0">{evt.league || 'No league'}</span>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

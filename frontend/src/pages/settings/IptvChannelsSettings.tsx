@@ -412,6 +412,128 @@ export default function IptvChannelsSettings() {
     }
   };
 
+  // Manual EPG picker: search EPG channels by name and map one explicitly,
+  // for the cases auto-map gets wrong or misses entirely.
+  const [epgPickerChannel, setEpgPickerChannel] = useState<IptvChannel | null>(null);
+  const [epgPickerSearch, setEpgPickerSearch] = useState('');
+  const [epgPickerResults, setEpgPickerResults] = useState<Array<{
+    id: number; channelId: string; displayName: string; iconUrl?: string;
+  }>>([]);
+  const [isEpgPickerSearching, setIsEpgPickerSearching] = useState(false);
+
+  const openEpgPicker = (channel: IptvChannel) => {
+    setEpgPickerChannel(channel);
+    // Seed the search with the channel name so likely matches appear
+    // immediately; the user can refine from there.
+    setEpgPickerSearch(channel.name || '');
+  };
+
+  useEffect(() => {
+    if (!epgPickerChannel) {
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        setIsEpgPickerSearching(true);
+        const { data } = await apiClient.get<Array<{
+          id: number; channelId: string; displayName: string; iconUrl?: string;
+        }>>('/epg/channels', {
+          params: { search: epgPickerSearch || undefined, limit: 50 },
+        });
+        setEpgPickerResults(Array.isArray(data) ? data : []);
+      } catch {
+        setEpgPickerResults([]);
+      } finally {
+        setIsEpgPickerSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [epgPickerChannel, epgPickerSearch]);
+
+  // Per-team DVR channel preference, shown inside the league mapping
+  // modal: the resolver records a mapped team's events from this channel
+  // even when the league prefers a different one.
+  const [channelTeamMappings, setChannelTeamMappings] = useState<Array<{
+    id: number; teamId: number; teamName?: string;
+  }>>([]);
+  const [teamPickerLeagueId, setTeamPickerLeagueId] = useState<number | ''>('');
+  const [teamPickerTeams, setTeamPickerTeams] = useState<Array<{ id: number; name: string }>>([]);
+  const [teamPickerTeamId, setTeamPickerTeamId] = useState<number | ''>('');
+
+  useEffect(() => {
+    if (!mappingChannel) {
+      setChannelTeamMappings([]);
+      setTeamPickerLeagueId('');
+      setTeamPickerTeamId('');
+      setTeamPickerTeams([]);
+      return;
+    }
+    apiClient
+      .get<Array<{ id: number; teamId: number; teamName?: string }>>(`/iptv/channels/${mappingChannel.id}/team-mappings`)
+      .then(({ data }) => setChannelTeamMappings(Array.isArray(data) ? data : []))
+      .catch(() => setChannelTeamMappings([]));
+  }, [mappingChannel]);
+
+  useEffect(() => {
+    if (teamPickerLeagueId === '') {
+      setTeamPickerTeams([]);
+      setTeamPickerTeamId('');
+      return;
+    }
+    apiClient
+      .get<Array<{ id: number; name: string }>>('/teams', { params: { leagueId: teamPickerLeagueId } })
+      .then(({ data }) => setTeamPickerTeams(Array.isArray(data) ? data : []))
+      .catch(() => setTeamPickerTeams([]));
+  }, [teamPickerLeagueId]);
+
+  const handleAddTeamMapping = async () => {
+    if (!mappingChannel || teamPickerTeamId === '') {
+      return;
+    }
+    try {
+      await apiClient.post(`/iptv/channels/${mappingChannel.id}/team-mappings/${teamPickerTeamId}`);
+      const { data } = await apiClient.get<Array<{ id: number; teamId: number; teamName?: string }>>(
+        `/iptv/channels/${mappingChannel.id}/team-mappings`);
+      setChannelTeamMappings(Array.isArray(data) ? data : []);
+      setTeamPickerTeamId('');
+      toast.success('Team preference saved', {
+        description: `This channel is now preferred for that team's recordings`,
+      });
+    } catch (err: any) {
+      toast.error('Failed to save team preference', { description: err.message });
+    }
+  };
+
+  const handleRemoveTeamMapping = async (teamId: number) => {
+    if (!mappingChannel) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/iptv/channels/${mappingChannel.id}/team-mappings/${teamId}`);
+      setChannelTeamMappings((prev) => prev.filter((m) => m.teamId !== teamId));
+    } catch (err: any) {
+      toast.error('Failed to remove team preference', { description: err.message });
+    }
+  };
+
+  const handleMapEpg = async (epgChannelId: string, epgDisplayName: string) => {
+    if (!epgPickerChannel) {
+      return;
+    }
+    try {
+      await apiClient.post(
+        `/iptv/channels/${epgPickerChannel.id}/map-epg?epgChannelId=${encodeURIComponent(epgChannelId)}`
+      );
+      toast.success('EPG channel mapped', {
+        description: `${epgPickerChannel.name} -> ${epgDisplayName}`,
+      });
+      setEpgPickerChannel(null);
+      await loadChannels(0, true);
+    } catch (err: any) {
+      toast.error('Failed to map EPG channel', { description: err.message });
+    }
+  };
+
   const handleUpdatePreferred = async () => {
     try {
       const { data } = await apiClient.post<{
@@ -1127,9 +1249,13 @@ export default function IptvChannelsSettings() {
                           Mapped
                         </button>
                       ) : (
-                        <span className="px-2 py-0.5 text-xs rounded bg-gray-800 text-gray-500">
-                          -
-                        </span>
+                        <button
+                          onClick={() => openEpgPicker(channel)}
+                          className="px-2 py-0.5 text-xs rounded bg-gray-800 text-gray-400 hover:bg-blue-900/40 hover:text-blue-300 transition-colors"
+                          title="Manually pick an EPG channel for this IPTV channel"
+                        >
+                          Map...
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -1260,6 +1386,61 @@ export default function IptvChannelsSettings() {
           channelName={playerChannel?.name || ''}
         />
 
+        {/* Manual EPG Picker Modal */}
+        {epgPickerChannel && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-2xl w-full my-8">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-2xl font-bold text-white">Map EPG Channel</h3>
+                  <p className="text-gray-400 mt-1">{epgPickerChannel.name}</p>
+                </div>
+                <button
+                  onClick={() => setEpgPickerChannel(null)}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+              <input
+                type="text"
+                value={epgPickerSearch}
+                onChange={(e) => setEpgPickerSearch(e.target.value)}
+                placeholder="Search EPG channels by name or ID..."
+                autoFocus
+                className="w-full px-4 py-2 mb-4 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <div className="max-h-96 overflow-y-auto space-y-1">
+                {isEpgPickerSearching && (
+                  <p className="text-sm text-gray-500 py-2">Searching...</p>
+                )}
+                {!isEpgPickerSearching && epgPickerResults.length === 0 && (
+                  <p className="text-sm text-gray-500 py-2">
+                    No EPG channels found. Sync an EPG source from the TV Guide page first, or broaden the search.
+                  </p>
+                )}
+                {!isEpgPickerSearching && epgPickerResults.map((epg) => (
+                  <button
+                    key={epg.id}
+                    onClick={() => handleMapEpg(epg.channelId, epg.displayName)}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-800/60 hover:bg-blue-900/40 text-left transition-colors"
+                  >
+                    {epg.iconUrl ? (
+                      <img src={epg.iconUrl} alt="" className="w-8 h-8 rounded object-contain bg-gray-900" />
+                    ) : (
+                      <div className="w-8 h-8 rounded bg-gray-900" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-white text-sm truncate">{epg.displayName}</p>
+                      <p className="text-gray-500 text-xs truncate">{epg.channelId}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* League Mapping Modal */}
         {mappingChannel && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -1379,6 +1560,61 @@ export default function IptvChannelsSettings() {
                     <p className="text-sm mt-1">Add leagues to your library first</p>
                   </div>
                 )}
+              </div>
+
+              {/* Per-team preference */}
+              <div className="mb-6 pt-4 border-t border-gray-800">
+                <p className="text-sm font-medium text-white mb-1">Preferred for Teams</p>
+                <p className="text-xs text-gray-500 mb-3">
+                  A team mapped here records from this channel even when its league prefers a different one,
+                  e.g. a regional channel for one team's games. Applied immediately; each team can prefer one channel.
+                </p>
+                {channelTeamMappings.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {channelTeamMappings.map((m) => (
+                      <span key={m.id} className="flex items-center gap-1 px-2 py-1 rounded bg-yellow-900/30 text-yellow-300 text-xs">
+                        {m.teamName || `Team #${m.teamId}`}
+                        <button
+                          onClick={() => handleRemoveTeamMapping(m.teamId)}
+                          className="hover:text-red-400"
+                          title="Remove team preference"
+                        >
+                          <XMarkIcon className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={teamPickerLeagueId}
+                    onChange={(e) => setTeamPickerLeagueId(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                  >
+                    <option value="">Select league...</option>
+                    {leagues.map((l) => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={teamPickerTeamId}
+                    onChange={(e) => setTeamPickerTeamId(e.target.value === '' ? '' : Number(e.target.value))}
+                    disabled={teamPickerLeagueId === ''}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600 disabled:opacity-50"
+                  >
+                    <option value="">Select team...</option>
+                    {teamPickerTeams.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleAddTeamMapping}
+                    disabled={teamPickerTeamId === ''}
+                    className="px-3 py-2 bg-yellow-700 hover:bg-yellow-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
 
               <div className="pt-6 border-t border-gray-800 flex items-center justify-between">

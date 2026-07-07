@@ -33,6 +33,13 @@ public class ReleaseEvaluator
     public const int DefaultSportsRuntimeMinutes = 180;
 
     /// <summary>
+    /// Highlights-tagged release titles (mirrors the release matcher's
+    /// non-event pattern). Used to skip runtime-based size checks when a
+    /// league opts into highlights, since those assume full-event length.
+    /// </summary>
+    private static readonly Regex HighlightsPattern = new(@"\bhighlights?\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
     /// Chunk size in MB for rounding size comparisons.
     /// This prevents minor size differences from affecting selection.
     /// </summary>
@@ -68,7 +75,8 @@ public class ReleaseEvaluator
         bool enableMultiPartEpisodes = true,
         string? eventTitle = null,
         int? runtimeMinutes = null,
-        bool isPack = false)
+        bool isPack = false,
+        bool allowHighlights = false)
     {
         var evaluation = new ReleaseEvaluation();
 
@@ -170,6 +178,14 @@ public class ReleaseEvaluator
         {
             _logger.LogDebug("[Release Evaluator] {Title} - Skipping size validation (weekly pack)", release.Title);
         }
+        else if (allowHighlights && HighlightsPattern.IsMatch(release.Title))
+        {
+            // Highlights run a fraction of the event's length, so a
+            // MB-per-minute floor computed from full-event runtime would
+            // reject every one of them. Leagues that opt into highlights
+            // skip the size gates for highlights-tagged releases.
+            _logger.LogDebug("[Release Evaluator] {Title} - Skipping size validation (highlights release, league allows highlights)", release.Title);
+        }
         else if (release.Size > 0 && qualityDefinitions != null && qualityDefinitions.Any())
         {
             var sizeRejection = ValidateSizeAgainstQualityDefinition(
@@ -233,9 +249,12 @@ public class ReleaseEvaluator
         // This combined score is for UI display/reference only
         evaluation.TotalScore = evaluation.QualityScore + evaluation.CustomFormatScore;
 
-        // All releases are approved for manual search
-        // Rejections are shown as warnings, but users can still download
-        evaluation.Approved = true;
+        // Approved must reflect the rejection list: a caller that gates on
+        // it alone (rather than re-checking Rejections) must never auto-grab
+        // a rejected release. Manual search still SHOWS rejected releases -
+        // the UI lists them with their rejection reasons and lets the user
+        // download anyway; that display choice doesn't belong in this flag.
+        evaluation.Approved = !evaluation.Rejections.Any();
 
         _logger.LogDebug(
             "[Release Evaluator] {Title} - Quality: {Quality} ({QScore}), CF Score: {CScore}, Total: {Total}",
@@ -918,6 +937,16 @@ public class ReleaseEvaluator
                 return true;
             }
 
+            // Per-indexer Multi Languages: when the indexer declares which
+            // languages its MULTI releases carry, the spec matches any of
+            // those declared languages.
+            if (isMultiLanguage && release.MultiLanguageNames is { Count: > 0 } &&
+                release.MultiLanguageNames.Any(l => string.Equals(l, targetLanguage, StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.LogDebug("[Language Spec] Multi-language release carries '{Target}' per indexer Multi Languages", targetLanguage);
+                return true;
+            }
+
             // Compare detected language with target
             return string.Equals(detectedLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase);
         }
@@ -927,6 +956,13 @@ public class ReleaseEvaluator
         if (isMultiLanguage && value.Equals("English", StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogDebug("[Language Spec] Multi-language release satisfies 'English' requirement");
+            return true;
+        }
+
+        // Per-indexer Multi Languages, name-valued specs.
+        if (isMultiLanguage && release.MultiLanguageNames is { Count: > 0 } &&
+            release.MultiLanguageNames.Any(l => string.Equals(l, value, StringComparison.OrdinalIgnoreCase)))
+        {
             return true;
         }
 

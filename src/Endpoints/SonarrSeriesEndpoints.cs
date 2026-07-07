@@ -42,6 +42,27 @@ public static class SonarrSeriesEndpoints
                 })
                 .ToDictionaryAsync(x => x.LeagueId ?? 0);
 
+            // Real per-season entries: consumers like Maintainerr read the
+            // seasons array to decide what to unmonitor, so a single
+            // current-year placeholder breaks their season handling.
+            var seasonRows = await db.Events
+                .Where(e => e.LeagueId.HasValue && leagueIds.Contains(e.LeagueId.Value) && e.SeasonNumber.HasValue)
+                .GroupBy(e => new { e.LeagueId, e.SeasonNumber })
+                .Select(g => new
+                {
+                    LeagueId = g.Key.LeagueId!.Value,
+                    SeasonNumber = g.Key.SeasonNumber!.Value,
+                    Monitored = g.Any(e => e.Monitored)
+                })
+                .ToListAsync();
+            var seasonsByLeague = seasonRows
+                .GroupBy(s => s.LeagueId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(s => s.SeasonNumber)
+                          .Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored })
+                          .ToArray());
+
             var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
             var rootPath = rootFolder?.Path ?? "/data";
 
@@ -68,7 +89,9 @@ public static class SonarrSeriesEndpoints
                     overview = league.Description ?? $"Sports events from {league.Name}",
                     network = "",
                     images = images.ToArray(),
-                    seasons = new[] { new { seasonNumber = DateTime.Now.Year, monitored = league.Monitored } },
+                    seasons = seasonsByLeague.TryGetValue(league.Id, out var leagueSeasons)
+                        ? leagueSeasons
+                        : new object[] { new { seasonNumber = DateTime.Now.Year, monitored = league.Monitored } },
                     year = DateTime.Now.Year,
                     path = leaguePath,
                     qualityProfileId = league.QualityProfileId ?? 1,
@@ -84,7 +107,10 @@ public static class SonarrSeriesEndpoints
                     cleanTitle = league.Name.ToLowerInvariant().Replace(" ", ""),
                     titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
                     genres = new[] { "Sports" },
-                    tags = Array.Empty<int>(),
+                    // Bazarr indexes alternateTitles and tags directly
+                    // (KeyError on absence), so both must always be present.
+                    alternateTitles = Array.Empty<object>(),
+                    tags = league.Tags.ToArray(),
                     added = league.Added.ToString("o"),
                     ratings = new { votes = 0, value = 0.0 },
                     statistics = new
@@ -122,6 +148,17 @@ public static class SonarrSeriesEndpoints
                 })
                 .FirstOrDefaultAsync();
 
+            var seasonEntries = await db.Events
+                .Where(e => e.LeagueId == id && e.SeasonNumber.HasValue)
+                .GroupBy(e => e.SeasonNumber)
+                .Select(g => new
+                {
+                    SeasonNumber = g.Key!.Value,
+                    Monitored = g.Any(e => e.Monitored)
+                })
+                .OrderBy(s => s.SeasonNumber)
+                .ToListAsync();
+
             var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
             var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
             var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
@@ -143,7 +180,9 @@ public static class SonarrSeriesEndpoints
                 overview = league.Description ?? $"Sports events from {league.Name}",
                 network = "",
                 images = images.ToArray(),
-                seasons = new[] { new { seasonNumber = DateTime.Now.Year, monitored = league.Monitored } },
+                seasons = seasonEntries.Count > 0
+                    ? seasonEntries.Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray()
+                    : new object[] { new { seasonNumber = DateTime.Now.Year, monitored = league.Monitored } },
                 year = DateTime.Now.Year,
                 path = leaguePath,
                 qualityProfileId = league.QualityProfileId ?? 1,
@@ -159,7 +198,10 @@ public static class SonarrSeriesEndpoints
                 cleanTitle = league.Name.ToLowerInvariant().Replace(" ", ""),
                 titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
                 genres = new[] { "Sports" },
-                tags = Array.Empty<int>(),
+                // Bazarr indexes alternateTitles and tags directly
+                // (KeyError on absence), so both must always be present.
+                alternateTitles = Array.Empty<object>(),
+                tags = league.Tags.ToArray(),
                 added = league.Added.ToString("o"),
                 ratings = new { votes = 0, value = 0.0 },
                 statistics = new
@@ -178,72 +220,32 @@ public static class SonarrSeriesEndpoints
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
-            logger.LogInformation("[V3-COMPAT] PUT /api/v3/series/{Id} - {Json}", id, json);
+            return await UpdateSeriesAsync(id, json, db, logger);
+        });
 
-            var league = await db.Leagues.FindAsync(id);
-            if (league == null)
-            {
-                return Results.NotFound(new { message = "Series not found" });
-            }
+        // PUT /api/v3/series - Sonarr also accepts the id in the BODY (its
+        // [RestPutById] convention), and Maintainerr uses exactly that form
+        // ('series' and 'series/') for its unmonitor-season flow.
+        app.MapPut("/api/v3/series", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
 
+            int id;
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                if (root.TryGetProperty("monitored", out var monitoredElement))
+                if (!doc.RootElement.TryGetProperty("id", out var idElement) || !idElement.TryGetInt32(out id))
                 {
-                    var newMonitored = monitoredElement.GetBoolean();
-                    logger.LogInformation("[V3-COMPAT] Changing league {Name} monitored: {Old} -> {New}",
-                        league.Name, league.Monitored, newMonitored);
-
-                    league.Monitored = newMonitored;
-
-                    var events = await db.Events
-                        .Where(e => e.LeagueId == id)
-                        .ToListAsync();
-
-                    foreach (var evt in events)
-                    {
-                        evt.Monitored = newMonitored;
-                        evt.LastUpdate = DateTime.UtcNow;
-                    }
-
-                    logger.LogInformation("[V3-COMPAT] Updated {Count} events to monitored={Monitored}",
-                        events.Count, newMonitored);
+                    return Results.BadRequest(new { error = "Series id missing from body" });
                 }
-
-                if (root.TryGetProperty("qualityProfileId", out var qpElement))
-                {
-                    league.QualityProfileId = qpElement.GetInt32();
-                }
-
-                league.LastUpdate = DateTime.UtcNow;
-                await db.SaveChangesAsync();
-
-                var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
-                var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
-                var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
-
-                return Results.Ok(new
-                {
-                    id = league.Id,
-                    title = league.Name,
-                    sortTitle = league.Name.ToLowerInvariant(),
-                    status = "continuing",
-                    monitored = league.Monitored,
-                    tvdbId = externalId,
-                    path = leaguePath,
-                    qualityProfileId = league.QualityProfileId ?? 1,
-                    genres = new[] { "Sports" },
-                    added = league.Added.ToString("o")
-                });
             }
-            catch (Exception ex)
+            catch (JsonException)
             {
-                logger.LogError(ex, "[V3-COMPAT] Error updating series {Id}", id);
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new { error = "Invalid JSON body" });
             }
+
+            return await UpdateSeriesAsync(id, json, db, logger);
         });
 
         // DELETE /api/v3/series/{id} - Delete series with files (Maintainerr delete support)
@@ -355,6 +357,238 @@ public static class SonarrSeriesEndpoints
             return Results.Ok();
         });
 
+        // GET /api/v3/series/lookup?term= - Title search (Maintainerr matches
+        // Plex items to series by title when it has no id to go on).
+        app.MapGet("/api/v3/series/lookup", async (string? term, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/series/lookup - term={Term}", term);
+
+            if (string.IsNullOrWhiteSpace(term))
+            {
+                return Results.Ok(Array.Empty<object>());
+            }
+
+            var needle = term.Trim().ToLowerInvariant();
+            var leagues = await db.Leagues
+                .Where(l => l.Name.ToLower().Contains(needle))
+                .ToListAsync();
+
+            var results = leagues.Select(league => (object)new
+            {
+                id = league.Id,
+                title = league.Name,
+                sortTitle = league.Name.ToLowerInvariant(),
+                status = "continuing",
+                monitored = league.Monitored,
+                tvdbId = int.TryParse(league.ExternalId, out var extId) ? extId : 0,
+                qualityProfileId = league.QualityProfileId ?? 1,
+                seriesType = "standard",
+                titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
+                genres = new[] { "Sports" },
+                tags = league.Tags.ToArray(),
+                year = league.Added.Year
+            }).ToArray();
+
+            return Results.Ok(results);
+        });
+
+        // PUT /api/v3/series/editor - Batch tag add/remove (Maintainerr's
+        // exclusion-tag feature). Only 'add' and 'remove' arrive in practice;
+        // 'replace' overwrites the full tag list, matching Sonarr.
+        app.MapPut("/api/v3/series/editor", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
+            logger.LogInformation("[V3-COMPAT] PUT /api/v3/series/editor - {Json}", json);
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                var seriesIds = root.TryGetProperty("seriesIds", out var idsElement) && idsElement.ValueKind == JsonValueKind.Array
+                    ? idsElement.EnumerateArray().Where(e => e.TryGetInt32(out _)).Select(e => e.GetInt32()).ToList()
+                    : new List<int>();
+                var tagIds = root.TryGetProperty("tags", out var tagsElement) && tagsElement.ValueKind == JsonValueKind.Array
+                    ? tagsElement.EnumerateArray().Where(e => e.TryGetInt32(out _)).Select(e => e.GetInt32()).ToList()
+                    : new List<int>();
+                var applyTags = root.TryGetProperty("applyTags", out var applyElement) ? applyElement.GetString() : "add";
+
+                var leagues = await db.Leagues.Where(l => seriesIds.Contains(l.Id)).ToListAsync();
+                foreach (var league in leagues)
+                {
+                    league.Tags = applyTags?.ToLowerInvariant() switch
+                    {
+                        "remove" => league.Tags.Where(t => !tagIds.Contains(t)).ToList(),
+                        "replace" => tagIds.ToList(),
+                        _ => league.Tags.Union(tagIds).ToList()
+                    };
+                    league.LastUpdate = DateTime.UtcNow;
+                }
+                await db.SaveChangesAsync();
+
+                return Results.Ok(leagues.Select(l => new { id = l.Id, tags = l.Tags.ToArray() }));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[V3-COMPAT] Error in series editor");
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        // GET /api/v3/history/series?seriesId= - Grab history for a series as
+        // a flat array (Sonarr's shape). Maintainerr derives torrent
+        // infohashes from this to clean the download client when deleting.
+        app.MapGet("/api/v3/history/series", async (int seriesId, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/history/series - seriesId={SeriesId}", seriesId);
+
+            var records = await db.GrabHistory
+                .Join(db.Events.Where(e => e.LeagueId == seriesId),
+                    g => g.EventId,
+                    e => e.Id,
+                    (g, e) => new { Grab = g, EventId = e.Id })
+                .OrderByDescending(x => x.Grab.GrabbedAt)
+                .Take(1000)
+                .ToListAsync();
+
+            var history = records.Select(x => (object)new
+            {
+                episodeId = x.EventId,
+                seriesId,
+                eventType = "grabbed",
+                date = x.Grab.GrabbedAt.ToString("o"),
+                downloadId = x.Grab.TorrentInfoHash ?? x.Grab.DownloadId,
+                sourceTitle = x.Grab.Title,
+                data = new
+                {
+                    torrentInfoHash = x.Grab.TorrentInfoHash,
+                    indexer = x.Grab.Indexer
+                }
+            }).ToArray();
+
+            return Results.Ok(history);
+        });
+
         return app;
+    }
+
+    /// <summary>
+    /// Shared body for PUT /api/v3/series/{id} and PUT /api/v3/series (id in
+    /// body). Handles league-level monitored (cascading to events ONLY when
+    /// the value actually changes - Maintainerr PUTs the whole series object
+    /// with monitored unchanged while flipping one season, and an
+    /// unconditional cascade would wipe that season change), a per-season
+    /// monitored array, and qualityProfileId.
+    /// </summary>
+    private static async Task<IResult> UpdateSeriesAsync(int id, string json, SportarrDbContext db, ILogger<Program> logger)
+    {
+        logger.LogInformation("[V3-COMPAT] PUT series {Id} - {Json}", id, json);
+
+        var league = await db.Leagues.FindAsync(id);
+        if (league == null)
+        {
+            return Results.NotFound(new { message = "Series not found" });
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("monitored", out var monitoredElement))
+            {
+                var newMonitored = monitoredElement.GetBoolean();
+                if (league.Monitored != newMonitored)
+                {
+                    logger.LogInformation("[V3-COMPAT] Changing league {Name} monitored: {Old} -> {New}",
+                        league.Name, league.Monitored, newMonitored);
+
+                    league.Monitored = newMonitored;
+
+                    var events = await db.Events
+                        .Where(e => e.LeagueId == id)
+                        .ToListAsync();
+
+                    foreach (var evt in events)
+                    {
+                        evt.Monitored = newMonitored;
+                        evt.LastUpdate = DateTime.UtcNow;
+                    }
+
+                    logger.LogInformation("[V3-COMPAT] Updated {Count} events to monitored={Monitored}",
+                        events.Count, newMonitored);
+                }
+            }
+
+            // Per-season monitored flags (Maintainerr's unmonitor-season flow
+            // PUTs the seasons array with the target season flipped).
+            if (root.TryGetProperty("seasons", out var seasonsElement) && seasonsElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var seasonElement in seasonsElement.EnumerateArray())
+                {
+                    if (!seasonElement.TryGetProperty("seasonNumber", out var numElement) || !numElement.TryGetInt32(out var seasonNumber))
+                        continue;
+                    if (!seasonElement.TryGetProperty("monitored", out var seasonMonElement))
+                        continue;
+
+                    var seasonMonitored = seasonMonElement.GetBoolean();
+                    var changed = await db.Events
+                        .Where(e => e.LeagueId == id && e.SeasonNumber == seasonNumber && e.Monitored != seasonMonitored)
+                        .ToListAsync();
+
+                    if (changed.Count == 0)
+                        continue;
+
+                    foreach (var evt in changed)
+                    {
+                        evt.Monitored = seasonMonitored;
+                        evt.LastUpdate = DateTime.UtcNow;
+                    }
+
+                    logger.LogInformation("[V3-COMPAT] Season {Season}: set {Count} events to monitored={Monitored}",
+                        seasonNumber, changed.Count, seasonMonitored);
+                }
+            }
+
+            if (root.TryGetProperty("qualityProfileId", out var qpElement) && qpElement.TryGetInt32(out var qpId))
+            {
+                league.QualityProfileId = qpId;
+            }
+
+            league.LastUpdate = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+
+            var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
+            var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
+            var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
+
+            var seasonEntries = await db.Events
+                .Where(e => e.LeagueId == id && e.SeasonNumber.HasValue)
+                .GroupBy(e => e.SeasonNumber)
+                .Select(g => new { SeasonNumber = g.Key!.Value, Monitored = g.Any(e => e.Monitored) })
+                .OrderBy(s => s.SeasonNumber)
+                .ToListAsync();
+
+            return Results.Ok(new
+            {
+                id = league.Id,
+                title = league.Name,
+                sortTitle = league.Name.ToLowerInvariant(),
+                status = "continuing",
+                monitored = league.Monitored,
+                seasons = seasonEntries.Select(s => new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray(),
+                tvdbId = externalId,
+                path = leaguePath,
+                qualityProfileId = league.QualityProfileId ?? 1,
+                genres = new[] { "Sports" },
+                added = league.Added.ToString("o")
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[V3-COMPAT] Error updating series {Id}", id);
+            return Results.BadRequest(new { error = ex.Message });
+        }
     }
 }

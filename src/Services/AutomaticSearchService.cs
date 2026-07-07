@@ -25,6 +25,7 @@ public class AutomaticSearchService : IAutomaticSearchService
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly ReleaseProfileService _releaseProfileService;
     private readonly EventPartDetector _partDetector;
+    private readonly NotificationService _notificationService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Max 3 concurrent event searches to prevent overwhelming indexers
@@ -47,6 +48,7 @@ public class AutomaticSearchService : IAutomaticSearchService
         ReleaseEvaluator releaseEvaluator,
         ReleaseProfileService releaseProfileService,
         EventPartDetector partDetector,
+        NotificationService notificationService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
@@ -62,6 +64,7 @@ public class AutomaticSearchService : IAutomaticSearchService
         _releaseEvaluator = releaseEvaluator;
         _releaseProfileService = releaseProfileService;
         _partDetector = partDetector;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -288,7 +291,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                     // Re-evaluate cached releases against quality profile
                     // Cached releases have Approved=true and empty Rejections by default
                     // We must run ReleaseEvaluator to apply CF minimum score and other profile requirements
-                    await ReEvaluateCachedReleasesAsync(allReleases, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags);
+                    await ReEvaluateCachedReleasesAsync(allReleases, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags,
+                        allowHighlights: evt.League?.AllowHighlights ?? false);
 
                     // Pre-populate seenGuids so supplementary queries below don't re-add cached releases
                     foreach (var r in allReleases)
@@ -317,7 +321,8 @@ public class AutomaticSearchService : IAutomaticSearchService
 
                     // Pass part to indexer for proper filtering (with league tag-based indexer selection)
                     var leagueTags = evt.League?.Tags ?? new List<int>();
-                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, leagueTags);
+                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, leagueTags,
+                        allowHighlights: evt.League?.AllowHighlights ?? false);
 
                     if (releases.Count == 0)
                     {
@@ -475,13 +480,24 @@ public class AutomaticSearchService : IAutomaticSearchService
                 .Select(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+            // Indexers that opted out of hash-based blocklist rejection
+            // (RejectBlocklistedTorrentHashes = false). Title-based Usenet
+            // blocking always applies.
+            var hashRejectionDisabled = (await _db.Indexers
+                .Where(i => !i.RejectBlocklistedTorrentHashes)
+                .Select(i => i.Name)
+                .ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var blocklistedCount = 0;
             foreach (var release in allReleases)
             {
                 bool isBlocked = false;
 
                 // Check torrent hash blocklist
-                if (!string.IsNullOrEmpty(release.TorrentInfoHash) && blocklistHashSet.Contains(release.TorrentInfoHash))
+                if (!string.IsNullOrEmpty(release.TorrentInfoHash) &&
+                    blocklistHashSet.Contains(release.TorrentInfoHash) &&
+                    !hashRejectionDisabled.Contains(release.Indexer ?? ""))
                 {
                     isBlocked = true;
                 }
@@ -999,6 +1015,17 @@ public class AutomaticSearchService : IAutomaticSearchService
                         shouldUpgrade = true;
                         upgradeReason = $"format score upgrade at same quality ({existingFormatScore} -> {newReleaseFormatScore})";
                     }
+                    else if ((await _configService.GetConfigAsync()).DownloadPropersAndRepacks == "preferAndUpgrade" &&
+                             newReleaseQualityScore == existingQualityScore &&
+                             newReleaseFormatScore == existingFormatScore &&
+                             Helpers.ReleaseRevision.Parse(bestRelease.Title) >
+                             Helpers.ReleaseRevision.Parse(relevantFile.OriginalTitle ?? relevantFile.Quality))
+                    {
+                        // Proper/repack of the same quality: the original
+                        // was broken and re-released fixed.
+                        shouldUpgrade = true;
+                        upgradeReason = "proper/repack revision of the same quality";
+                    }
                     else
                     {
                         shouldUpgrade = false;
@@ -1014,7 +1041,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                     // so Sportarr would grab and download it only for the importer to throw it
                     // away as "not an upgrade." Mirror the import's total-score rule here so we
                     // never waste a download. Manual searches keep the user's explicit choice.
-                    if (shouldUpgrade && !isManualSearch)
+                    if (shouldUpgrade && !isManualSearch &&
+                        upgradeReason != "proper/repack revision of the same quality")
                     {
                         var existingTotalScore = existingQualityScore + existingFormatScore;
                         var newReleaseTotalScore = newReleaseQualityScore + newReleaseFormatScore;
@@ -1069,14 +1097,19 @@ public class AutomaticSearchService : IAutomaticSearchService
                 ? evt.League.RootFolder.DefaultDownloadClientCategory!
                 : downloadClient.Category;
 
-            // Send to download client with seed config from indexer
+            // Send to download client with seed config from indexer.
+            // Season/multi-event packs use the pack-specific seed time when
+            // the indexer defines one (packs are typically expected to seed
+            // longer than single events).
             var downloadId = await _downloadClientService.AddDownloadAsync(
                 downloadClient,
                 bestRelease.DownloadUrl,
                 grabCategory,
                 bestRelease.Title,
                 indexerRecord?.SeedRatio,
-                indexerRecord?.SeedTime
+                bestRelease.IsPack
+                    ? (indexerRecord?.SeasonPackSeedTime ?? indexerRecord?.SeedTime)
+                    : indexerRecord?.SeedTime
             );
 
             if (downloadId == null)
@@ -1121,6 +1154,27 @@ public class AutomaticSearchService : IAutomaticSearchService
             };
 
             _db.DownloadQueue.Add(queueItem);
+
+            try
+            {
+                await _notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnGrab,
+                    $"Grabbed: {bestRelease.Title}",
+                    $"Event: {evt.Title}\nQuality: {bestRelease.Quality ?? "Unknown"}\nIndexer: {bestRelease.Indexer}\nSize: {bestRelease.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
+                    new Dictionary<string, object>
+                    {
+                        { "eventId", eventId },
+                        { "eventTitle", evt.Title ?? "" },
+                        { "indexer", bestRelease.Indexer },
+                        { "quality", bestRelease.Quality ?? "" },
+                        { "downloadId", downloadId },
+                    },
+                    evt.League?.Tags);
+            }
+            catch (Exception notifyEx)
+            {
+                _logger.LogWarning(notifyEx, "[Automatic Search] Failed to send grab notification");
+            }
 
             // Save grab history for potential re-grabbing (Sportarr-exclusive feature)
             // This allows users to re-download the exact same release if they lose their media files
@@ -1440,7 +1494,8 @@ public class AutomaticSearchService : IAutomaticSearchService
         string? sport,
         bool enableMultiPartEpisodes,
         string? eventTitle,
-        List<int>? leagueTags = null)
+        List<int>? leagueTags = null,
+        bool allowHighlights = false)
     {
         if (!releases.Any()) return;
 
@@ -1485,7 +1540,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                 enableMultiPartEpisodes,
                 eventTitle,
                 null,
-                isPack);
+                isPack,
+                allowHighlights);
 
             // Update release with evaluation results
             release.Score = evaluation.TotalScore;
@@ -1567,8 +1623,10 @@ public class AutomaticSearchService : IAutomaticSearchService
     /// Postponed / cancelled events must never be searched — they won't appear
     /// in indexer results and aren't "missing". Case-insensitive because the DB
     /// stores both Title-case (local) and lowercase (hub) status strings.
+    /// Public because the Wanted page's search-all endpoint applies the same
+    /// rule when bulk-queueing.
     /// </summary>
-    private static bool IsUnsearchableStatus(string? status)
+    public static bool IsUnsearchableStatus(string? status)
     {
         if (string.IsNullOrWhiteSpace(status)) return false;
         return status.Equals("Postponed", StringComparison.OrdinalIgnoreCase)

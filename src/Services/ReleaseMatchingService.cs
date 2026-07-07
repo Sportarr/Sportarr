@@ -36,8 +36,9 @@ public class ReleaseMatchingService
         "ppv", "event", "full", "complete", "live"
     };
 
-    // Non-event content patterns to reject (press conferences, interviews, build-up shows, etc.)
-    // These should never be downloaded when searching for actual sporting events.
+    // Non-event content patterns to reject (press conferences, interviews, build-up
+    // shows, etc.), plus shortened cuts of the event itself (condensed games,
+    // All-22 coaches film). Neither may fill or upgrade a full-event want.
     // Pre-compiled so DetectNonEventContent doesn't re-parse them on every release.
     private static readonly Regex[] NonEventContentPatterns = new[]
     {
@@ -76,6 +77,12 @@ public class ReleaseMatchingService
         new Regex(@"\bpromo\b", RegexOptions.Compiled | RegexOptions.IgnoreCase),                        // promo
         new Regex(@"\btrailer\b", RegexOptions.Compiled | RegexOptions.IgnoreCase),                      // trailer
         new Regex(@"\blaunch\b", RegexOptions.Compiled | RegexOptions.IgnoreCase),                       // launch
+        // Shortened cuts of the actual event. These ARE the event's content, but a
+        // 40-minute condensed edit must never satisfy - or worse, quality-upgrade
+        // and delete - a full-game want just because its resolution is higher.
+        new Regex(@"\bcondensed", RegexOptions.Compiled | RegexOptions.IgnoreCase),                      // condensed, condensed game
+        new Regex(@"\ball[\s\.\-_]*22\b", RegexOptions.Compiled | RegexOptions.IgnoreCase),              // All-22, All.22 coaches film
+        new Regex(@"\bcoach(?:'?s|es)?[\s\.\-_]*(?:film|tape|cam)", RegexOptions.Compiled | RegexOptions.IgnoreCase), // coaches film/tape/cam
     };
 
     // Pre-season test detection — fires inside per-event ValidateRelease loop.
@@ -226,16 +233,32 @@ public class ReleaseMatchingService
             release.Title, evt.Title);
 
         // VALIDATION 0: Reject non-event content (press conferences, interviews, etc.)
-        // This must be checked FIRST before any other validation
+        // This must be checked FIRST before any other validation.
+        // Exception: Highlights releases are allowed through when the league
+        // opts in (League.AllowHighlights) — short-format sports like sumo
+        // ship each day as a multi-hour Live cut and a short Highlights cut,
+        // and some users specifically want the highlights.
         var nonEventContent = DetectNonEventContent(release.Title);
         if (nonEventContent != null)
         {
-            result.Confidence = 0;
-            result.IsHardRejection = true;
-            result.Rejections.Add($"Non-event content detected: {nonEventContent}");
-            _logger.LogDebug("[Release Matching] Hard rejection: non-event content '{ContentType}' detected in '{Release}'",
-                nonEventContent, release.Title);
-            return result;
+            var highlightsAllowed =
+                string.Equals(nonEventContent, "Highlights", StringComparison.OrdinalIgnoreCase)
+                && (evt.League?.AllowHighlights ?? false);
+
+            if (highlightsAllowed)
+            {
+                _logger.LogDebug("[Release Matching] Allowing highlights release for '{Event}' (league opts in): '{Release}'",
+                    evt.Title, release.Title);
+            }
+            else
+            {
+                result.Confidence = 0;
+                result.IsHardRejection = true;
+                result.Rejections.Add($"Non-event content detected: {nonEventContent}");
+                _logger.LogDebug("[Release Matching] Hard rejection: non-event content '{ContentType}' detected in '{Release}'",
+                    nonEventContent, release.Title);
+                return result;
+            }
         }
 
         // VALIDATION 0b: Pre-event scene fake. Opt-in per-indexer via
@@ -1065,6 +1088,35 @@ public class ReleaseMatchingService
                 return true;
         }
 
+        // Club-suffix strip. TheSportsDB canonical names for club sides are
+        // frequently "<Place> Football Club" (all 18 AFL clubs, many soccer
+        // sides) while releases use the bare club name ("Hawthorn Football
+        // Club" vs "AFL 2026 Round 7 Hawthorn v ..."). Safe under the
+        // both-teams-required rule: a bare place name alone can never match
+        // a release by itself.
+        var clubStripped = Regex.Replace(teamName, @"\s+(football club|cricket club|afc|fc)$", "",
+            RegexOptions.IgnoreCase).Trim();
+        if (clubStripped.Length >= 3 &&
+            !clubStripped.Equals(teamName, StringComparison.OrdinalIgnoreCase))
+        {
+            if (normalizedRelease.Contains(NormalizeTitle(clubStripped), StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        // User-defined aliases: the local, sync-safe list a user can edit per
+        // team when release groups use names none of the upstream data has
+        // ("GWS" for Greater Western Sydney, "ManCity", historical names).
+        // Checked exactly like the upstream alternates above.
+        if (team != null && !string.IsNullOrEmpty(team.UserAliases))
+        {
+            foreach (var alias in SplitAliases(team.UserAliases))
+            {
+                if (alias.Length < 2) continue;
+                if (normalizedRelease.Contains(NormalizeTitle(alias), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+
         // Check team name variations (abbreviations, nicknames, alternate forms)
         // e.g., "LA Clippers" for "Los Angeles Clippers", "OKC" for "Oklahoma City Thunder"
         foreach (var (canonicalName, variations) in TeamNameVariationData.Variations)
@@ -1354,6 +1406,12 @@ public class ReleaseMatchingService
                     return "Full Weekend Compilation";
                 if (detected.Contains("launch"))
                     return "Car/Season Launch";
+                if (detected.Contains("condensed"))
+                    return "Condensed cut (not the full event)";
+                if (detected.Contains("22"))
+                    return "All-22 coaches film (not the broadcast)";
+                if (detected.Contains("coach"))
+                    return "Coaches film (not the broadcast)";
 
                 return detected; // Fallback to matched text
             }
@@ -1387,6 +1445,10 @@ public class ReleaseMatchingService
         (new Regex(@"\bnascar\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "NASCAR"),
         (new Regex(@"\bwsbk\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WSBK"),
         (new Regex(@"\bsuperbike", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WSBK"),
+        // TheSportsDB names the World Superbike league literally "SBK", and
+        // some release groups use the bare SBK tag too. Same series family
+        // as WSBK, so either spelling on either side must line up.
+        (new Regex(@"\bsbk\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WSBK"),
         (new Regex(@"\bwrc\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WRC"),
         (new Regex(@"\bworld[\.\-\s]*rally\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WRC"),
         (new Regex(@"\bwec\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WEC"),
@@ -1467,6 +1529,18 @@ public class ReleaseMatchingService
 
                 // Also check reverse: if the release sport pattern matches the event's league/sport context
                 if (pattern.IsMatch(eventSport) || pattern.IsMatch(eventLeague))
+                {
+                    continue;
+                }
+
+                // Sibling-alias hatch: a series can have several spellings
+                // (WSBK releases vs the "SBK" league name TheSportsDB uses).
+                // If ANY pattern mapping to the same series matches the
+                // event's own sport/league/title, the release is that
+                // event's series, not a mismatch — the single matched
+                // pattern above can't see its aliases.
+                if (SportIdentifiers.Any(si => si.Sport == sport &&
+                        (si.Pattern.IsMatch(eventSport) || si.Pattern.IsMatch(eventLeague) || si.Pattern.IsMatch(eventTitle))))
                 {
                     continue;
                 }

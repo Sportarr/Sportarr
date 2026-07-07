@@ -47,6 +47,16 @@ public class Team
     public string? AlternateName { get; set; }
 
     /// <summary>
+    /// User-defined aliases (comma-separated), checked by release matching
+    /// alongside the upstream alternates. Local-only: metadata sync must
+    /// NEVER write this field - it exists precisely so users can teach
+    /// their own install the names their release groups use ("GWS",
+    /// "ManCity") without waiting for upstream data changes and without
+    /// their edits being overwritten on the next sync.
+    /// </summary>
+    public string? UserAliases { get; set; }
+
+    /// <summary>
     /// League/competition the team belongs to
     /// </summary>
     public int? LeagueId { get; set; }

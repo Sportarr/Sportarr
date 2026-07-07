@@ -117,7 +117,7 @@ public class DownloadClientService : IDownloadClientService
         return _clientCache.GetOrCreate(key, entry =>
         {
             entry.SetOptions(GetCacheEntryOptions());
-            return new QBittorrentClient(CreateHttpClient(config.DisableSslCertificateValidation), _loggerFactory.CreateLogger<QBittorrentClient>());
+            return new QBittorrentClient(CreateHttpClient(config.DisableSslCertificateValidation), _loggerFactory.CreateLogger<QBittorrentClient>(), _httpClientFactory);
         })!;
     }
 
@@ -130,7 +130,13 @@ public class DownloadClientService : IDownloadClientService
         return _clientCache.GetOrCreate(key, entry =>
         {
             entry.SetOptions(GetCacheEntryOptions());
-            return new SabnzbdClient(CreateHttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+            // Hand the client the SSL-bypass factory client up front when the
+            // config asks for it, so SabnzbdClient never has to build a
+            // throwaway handler per request. Cache eviction on settings save
+            // picks up a toggled DisableSslCertificateValidation.
+            return new SabnzbdClient(
+                CreateHttpClient(config.UseSsl && config.DisableSslCertificateValidation),
+                _loggerFactory.CreateLogger<SabnzbdClient>());
         })!;
     }
 
@@ -195,7 +201,7 @@ public class DownloadClientService : IDownloadClientService
         return _clientCache.GetOrCreate(key, entry =>
         {
             entry.SetOptions(GetCacheEntryOptions());
-            return new DecypharrClient(CreateHttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+            return new DecypharrClient(CreateHttpClient(), _loggerFactory.CreateLogger<DecypharrClient>(), _httpClientFactory);
         })!;
     }
 
@@ -215,14 +221,16 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Deluge,
                 DownloadClientType.RTorrent,
                 DownloadClientType.UTorrent,
-                DownloadClientType.Decypharr
+                DownloadClientType.Decypharr,
+                DownloadClientType.TorrentBlackhole
             },
             "usenet" => new List<DownloadClientType>
             {
                 DownloadClientType.Sabnzbd,
                 DownloadClientType.NzbGet,
                 DownloadClientType.DecypharrUsenet,
-                DownloadClientType.NZBdav
+                DownloadClientType.NZBdav,
+                DownloadClientType.UsenetBlackhole
             },
             _ => new List<DownloadClientType>() // Unknown protocol returns empty list
         };
@@ -249,6 +257,7 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Decypharr => await TestDecypharrAsync(config),
                 DownloadClientType.DecypharrUsenet => await TestSabnzbdAsync(config), // Decypharr usenet uses SABnzbd API emulation
                 DownloadClientType.NZBdav => await TestSabnzbdAsync(config), // NZBdav uses SABnzbd-compatible API
+                DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => TestBlackhole(config), // throws with a specific message on failure
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -314,6 +323,7 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes),
                 DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToDecypharrUsenetAsync(config, url, category)), // Decypharr usenet only supports addfile mode (not addurl) and requires a specific request format. See https://docs.decypharr.com/guides/usenet/sabnzbd/
                 DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category, expectedName)), // NZBdav uses SABnzbd API but only supports addurl mode (not addfile)
+                DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => await AddToBlackholeAsync(config, url, expectedName),
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
 
@@ -369,6 +379,7 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Decypharr => await GetDecypharrStatusAsync(config, downloadId),
                 DownloadClientType.DecypharrUsenet => await GetSabnzbdStatusAsync(config, downloadId), // Decypharr usenet uses SABnzbd API emulation
                 DownloadClientType.NZBdav => await GetSabnzbdStatusAsync(config, downloadId), // NZBdav uses SABnzbd-compatible API
+                DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => GetBlackholeStatus(config, downloadId),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
         }
@@ -428,6 +439,7 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Decypharr => await RemoveFromDecypharrAsync(config, downloadId, deleteFiles),
                 DownloadClientType.DecypharrUsenet => await RemoveFromSabnzbdAsync(config, downloadId, deleteFiles), // Decypharr usenet uses SABnzbd API emulation
                 DownloadClientType.NZBdav => await RemoveFromSabnzbdAsync(config, downloadId, deleteFiles), // NZBdav uses SABnzbd-compatible API
+                DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => RemoveFromBlackhole(config, downloadId, deleteFiles),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -577,6 +589,197 @@ public class DownloadClientService : IDownloadClientService
 
     // Private methods for each client type
 
+    #region Blackhole
+
+    /// <summary>
+    /// Blackhole "connection" test: both folders configured, creatable, and the
+    /// drop folder writable. Throws with a specific message on failure so the
+    /// test endpoint surfaces the actual problem instead of "Connection failed".
+    /// </summary>
+    private bool TestBlackhole(DownloadClient config)
+    {
+        var label = config.Type == DownloadClientType.UsenetBlackhole ? "Nzb" : "Torrent";
+        if (string.IsNullOrWhiteSpace(config.BlackholeFolder))
+            throw new InvalidOperationException($"{label} Folder is not set");
+        if (string.IsNullOrWhiteSpace(config.WatchFolder))
+            throw new InvalidOperationException("Watch Folder is not set");
+
+        Directory.CreateDirectory(config.BlackholeFolder);
+        Directory.CreateDirectory(config.WatchFolder);
+
+        // Prove the drop folder is writable - the only hard requirement for grabs
+        var probe = Path.Combine(config.BlackholeFolder, $".sportarr-write-test-{Guid.NewGuid():N}");
+        File.WriteAllText(probe, "sportarr");
+        File.Delete(probe);
+        return true;
+    }
+
+    private async Task<AddDownloadResult> AddToBlackholeAsync(DownloadClient config, string url, string? expectedName)
+    {
+        var isUsenet = config.Type == DownloadClientType.UsenetBlackhole;
+        var label = isUsenet ? "nzb" : "torrent";
+
+        if (string.IsNullOrWhiteSpace(config.BlackholeFolder))
+            return AddDownloadResult.Failed($"{(isUsenet ? "Nzb" : "Torrent")} Folder is not configured for blackhole client '{config.Name}'", AddDownloadErrorType.Unknown);
+
+        Directory.CreateDirectory(config.BlackholeFolder);
+
+        // The sanitized release title becomes both the dropped file's name and the
+        // download id, which is what watch-folder matching keys off later.
+        var name = BlackholeDownloadClient.SanitizeFileName(
+            !string.IsNullOrWhiteSpace(expectedName) ? expectedName : DeriveBlackholeNameFromUrl(url));
+        if (string.IsNullOrEmpty(name))
+            return AddDownloadResult.Failed("Could not derive a file name for the release", AddDownloadErrorType.Unknown);
+
+        if (url.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+        {
+            if (isUsenet)
+                return AddDownloadResult.Failed("Magnet links are not supported by a usenet blackhole", AddDownloadErrorType.TorrentRejected);
+            if (!config.SaveMagnetFiles)
+                return AddDownloadResult.Failed("Release only offers a magnet link and Save Magnet Files is disabled for this client", AddDownloadErrorType.TorrentRejected);
+
+            await WriteBlackholeFileAsync(
+                Path.Combine(config.BlackholeFolder, name + ".magnet"),
+                System.Text.Encoding.UTF8.GetBytes(url));
+            _logger.LogInformation("[Blackhole] Saved magnet file for '{Name}' to {Folder}", name, config.BlackholeFolder);
+            return AddDownloadResult.Succeeded(name);
+        }
+
+        byte[] bytes;
+        try
+        {
+            var http = CreateHttpClient(config.DisableSslCertificateValidation);
+            using var response = await http.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+                return AddDownloadResult.Failed($"Failed to download {label} file: HTTP {(int)response.StatusCode}", AddDownloadErrorType.ConnectionFailed);
+            bytes = await response.Content.ReadAsByteArrayAsync();
+        }
+        catch (Exception ex)
+        {
+            return AddDownloadResult.Failed($"Failed to download {label} file: {ex.Message}", AddDownloadErrorType.ConnectionFailed);
+        }
+
+        if (bytes.Length == 0)
+            return AddDownloadResult.Failed($"Downloaded {label} file is empty", AddDownloadErrorType.InvalidTorrent);
+
+        // Light content sniff so an HTML error page never lands in the drop folder:
+        // torrents are bencoded dictionaries (start with 'd'), nzbs are XML.
+        if (!isUsenet && bytes[0] != (byte)'d')
+            return AddDownloadResult.Failed("Downloaded file is not a valid .torrent (the indexer may have returned an error page)", AddDownloadErrorType.InvalidTorrent);
+        if (isUsenet)
+        {
+            var head = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 512));
+            if (!head.Contains("<nzb", StringComparison.OrdinalIgnoreCase) &&
+                !head.Contains("<?xml", StringComparison.OrdinalIgnoreCase))
+                return AddDownloadResult.Failed("Downloaded file is not a valid .nzb (the indexer may have returned an error page)", AddDownloadErrorType.InvalidTorrent);
+        }
+
+        var path = Path.Combine(config.BlackholeFolder, name + (isUsenet ? ".nzb" : ".torrent"));
+        await WriteBlackholeFileAsync(path, bytes);
+        _logger.LogInformation("[Blackhole] Saved {Label} file for '{Name}' to {Path}", label, name, path);
+        return AddDownloadResult.Succeeded(name);
+    }
+
+    private DownloadClientStatus? GetBlackholeStatus(DownloadClient config, string downloadId)
+    {
+        if (string.IsNullOrWhiteSpace(config.WatchFolder))
+        {
+            return new DownloadClientStatus
+            {
+                Status = "warning",
+                Progress = 0,
+                ErrorMessage = "Watch Folder is not configured"
+            };
+        }
+
+        var match = BlackholeDownloadClient.FindWatchFolderMatch(config.WatchFolder, downloadId);
+        if (match == null)
+        {
+            // The external downloader hasn't produced it yet. Report as downloading;
+            // the stalled-download timeout still applies if it never shows up.
+            return new DownloadClientStatus { Status = "downloading", Progress = 0 };
+        }
+
+        var size = BlackholeDownloadClient.GetEntrySize(match);
+
+        if (BlackholeDownloadClient.IsStillBeingWritten(match, DateTime.UtcNow))
+        {
+            return new DownloadClientStatus
+            {
+                Status = "downloading",
+                Progress = 99,
+                Size = size,
+                Downloaded = size,
+                SavePath = match
+            };
+        }
+
+        return new DownloadClientStatus
+        {
+            Status = "completed",
+            Progress = 100,
+            Size = size,
+            Downloaded = size,
+            SavePath = match,
+            CompletedAt = BlackholeDownloadClient.GetCompletionTimeUtc(match)
+        };
+    }
+
+    private bool RemoveFromBlackhole(DownloadClient config, string downloadId, bool deleteFiles)
+    {
+        if (!deleteFiles) return true;
+
+        if (config.ReadOnly)
+        {
+            _logger.LogInformation("[Blackhole] Read Only is enabled - leaving '{DownloadId}' in the watch folder for the external client", downloadId);
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.WatchFolder)) return true;
+
+        var match = BlackholeDownloadClient.FindWatchFolderMatch(config.WatchFolder, downloadId);
+        if (match == null) return true;
+
+        if (Directory.Exists(match)) Directory.Delete(match, recursive: true);
+        else if (File.Exists(match)) File.Delete(match);
+        _logger.LogInformation("[Blackhole] Removed '{Match}' from watch folder", match);
+        return true;
+    }
+
+    /// <summary>
+    /// Write to a temp name then move into place so folder watchers on the
+    /// external downloader's side never pick up a partially written file.
+    /// </summary>
+    private static async Task WriteBlackholeFileAsync(string path, byte[] bytes)
+    {
+        var temp = path + ".sportarr-tmp";
+        await File.WriteAllBytesAsync(temp, bytes);
+        File.Move(temp, path, overwrite: true);
+    }
+
+    private static string DeriveBlackholeNameFromUrl(string url)
+    {
+        if (url.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+        {
+            var dn = System.Text.RegularExpressions.Regex.Match(url, @"[?&]dn=([^&]+)");
+            if (dn.Success) return Uri.UnescapeDataString(dn.Groups[1].Value);
+            var btih = System.Text.RegularExpressions.Regex.Match(url, @"btih:([a-fA-F0-9]{40})");
+            if (btih.Success) return btih.Groups[1].Value;
+            return Guid.NewGuid().ToString("N");
+        }
+
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            var last = uri.Segments.LastOrDefault()?.Trim('/');
+            if (!string.IsNullOrWhiteSpace(last))
+                return Uri.UnescapeDataString(Path.GetFileNameWithoutExtension(last));
+        }
+
+        return Guid.NewGuid().ToString("N");
+    }
+
+    #endregion
+
     private async Task<bool> TestQBittorrentAsync(DownloadClient config)
     {
         var client = GetQBittorrentClient(config);
@@ -647,7 +850,7 @@ public class DownloadClientService : IDownloadClientService
         //      libcurl can't follow a cross-scheme redirect to magnet:, so it
         //      stalls. TorrentFileResolver follows redirects manually and hands
         //      back the magnet, which we then add via 'filename'.
-        var resolved = await TorrentFileResolver.ResolveAsync(url, config.DisableSslCertificateValidation, _logger);
+        var resolved = await TorrentFileResolver.ResolveAsync(url, config.DisableSslCertificateValidation, _httpClientFactory, _logger);
         if (!resolved.IsSuccess)
         {
             _logger.LogError("[Download Client] Failed to resolve torrent for Transmission from {Url}: {Error}", url, resolved.ErrorMessage);
@@ -676,7 +879,7 @@ public class DownloadClientService : IDownloadClientService
         // redirect from a magnet-only indexer is caught and added via add_torrent_magnet.
         // Deluge's own add_torrent_url can't follow a cross-scheme redirect to a magnet:
         // URI and fails with "Unsupported scheme", so we never hand it the raw URL.
-        var resolved = await TorrentFileResolver.ResolveAsync(url, config.DisableSslCertificateValidation, _logger);
+        var resolved = await TorrentFileResolver.ResolveAsync(url, config.DisableSslCertificateValidation, _httpClientFactory, _logger);
         if (!resolved.IsSuccess)
         {
             _logger.LogError("[Download Client] Failed to resolve torrent for Deluge from {Url}: {Error}", url, resolved.ErrorMessage);
@@ -717,7 +920,7 @@ public class DownloadClientService : IDownloadClientService
         // .torrent URL: resolve it here (one fetch — some trackers issue
         // one-time download tokens) following redirects manually so a magnet
         // redirect from a magnet-only indexer is caught instead of failing.
-        var resolved = await TorrentFileResolver.ResolveAsync(url, config.DisableSslCertificateValidation, _logger);
+        var resolved = await TorrentFileResolver.ResolveAsync(url, config.DisableSslCertificateValidation, _httpClientFactory, _logger);
         if (!resolved.IsSuccess)
         {
             _logger.LogError("[Download Client] Failed to resolve torrent for rTorrent from {Url}: {Error}", url, resolved.ErrorMessage);

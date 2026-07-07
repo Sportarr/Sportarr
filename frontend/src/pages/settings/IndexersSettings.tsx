@@ -109,6 +109,13 @@ const indexerTemplates: IndexerTemplate[] = [
     protocol: 'torrent',
     description: 'Plain RSS 2.0 feed (poll-only, no on-demand search). Use this for sites with an RSS feed but no Torznab/Newznab API.',
     fields: ['baseUrl', 'cookie', 'minimumSeeders', 'allowZeroSize', 'seedRatio', 'seedTime']
+  },
+  {
+    name: 'BroadcasTheNet',
+    implementation: 'BroadcasTheNet',
+    protocol: 'torrent',
+    description: 'BroadcasTheNet (BTN) - Private TV tracker with sports content support via JSON-RPC API.',
+    fields: ['apiKey', 'minimumSeeders', 'seedRatio', 'seedTime']
   }
 ];
 
@@ -142,7 +149,7 @@ export default function IndexersSettings() {
     return apiIndexers.map(indexer => {
       const getField = (name: string) => indexer.fields?.find(f => f.name === name)?.value;
       const baseUrl = getField('baseUrl') as string || '';
-      const apiPath = getField('apiPath') as string || '/api';
+      const apiPath = getField('apiPath') as string || (indexer.implementation === 'BroadcasTheNet' ? '' : '/api');
       const apiKey = getField('apiKey') as string || '';
       const categories = getField('categories') as string || '';
       const animeCategories = getField('animeCategories') as string;
@@ -162,9 +169,9 @@ export default function IndexersSettings() {
       const apiTags = indexer.tags;
 
       // Determine protocol based on implementation type
-      // Torrent implementations: Torznab, Torrent, Nyaa, TorrentLeech, IPTorrents, FileList, Rss
+      // Torrent implementations: Torznab, Torrent, Nyaa, TorrentLeech, IPTorrents, FileList, Rss, BroadcasTheNet
       // Usenet implementations: Newznab
-      const isTorrent = ['Torznab', 'Torrent', 'Nyaa', 'TorrentLeech', 'IPTorrents', 'FileList', 'Rss']
+      const isTorrent = ['Torznab', 'Torrent', 'Nyaa', 'TorrentLeech', 'IPTorrents', 'FileList', 'Rss', 'BroadcasTheNet']
         .some(impl => indexer.implementation.toLowerCase().includes(impl.toLowerCase()));
 
       return {
@@ -216,7 +223,7 @@ export default function IndexersSettings() {
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number} | null>(null);
-  const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
+  useUnsavedChanges(hasUnsavedChanges);
 
   // Download clients drive the per-indexer override dropdown below.
   // Previously this field was a bare number input -- there is no UI
@@ -235,7 +242,7 @@ export default function IndexersSettings() {
   const loadDownloadClients = async () => {
     try {
       const response = await apiClient.get('/downloadclient');
-      const clients = (response.data || []).map((c: any) => ({
+      const clients = (response.data || []).map((c: { id: number; name: string; enabled?: boolean }) => ({
         id: c.id,
         name: c.name,
         enabled: c.enabled !== false,
@@ -345,7 +352,8 @@ export default function IndexersSettings() {
       protocol: template.protocol,
       enabled: true,
       priority: 25,
-      baseUrl: '',
+      baseUrl: template.implementation === 'BroadcasTheNet' ? 'https://api.broadcasthe.net' : '',
+      apiPath: template.implementation === 'BroadcasTheNet' ? '' : '/api',
       apiKey: '',
       categories: [],
       minimumSeeders: template.protocol === 'torrent' ? 1 : undefined,
@@ -354,7 +362,7 @@ export default function IndexersSettings() {
     });
   };
 
-  const handleFormChange = (field: keyof Indexer, value: any) => {
+  const handleFormChange = (field: keyof Indexer, value: Indexer[keyof Indexer]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -378,6 +386,7 @@ export default function IndexersSettings() {
     if (!sameAsText) {
       setCategoriesText(current.join(', '));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.categories]);
 
   // Caps-driven category options. Sonarr renders the indexer's
@@ -453,13 +462,14 @@ export default function IndexersSettings() {
       cancelled = true;
       clearTimeout(handle);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showAddModal, supportsCaps, capsKey]);
 
   // Helper function to convert component format to API format
   const toApiFormat = (indexer: Partial<Indexer>): Partial<ApiIndexer> => {
     const fields: { name: string; value: string | string[] }[] = [
-      { name: 'baseUrl', value: indexer.baseUrl || '' },
-      { name: 'apiPath', value: indexer.apiPath || '/api' },
+      { name: 'baseUrl', value: indexer.implementation === 'BroadcasTheNet' ? 'https://api.broadcasthe.net' : (indexer.baseUrl || '') },
+      { name: 'apiPath', value: indexer.implementation === 'BroadcasTheNet' ? '' : (indexer.apiPath || '/api') },
       { name: 'apiKey', value: indexer.apiKey || '' },
       { name: 'categories', value: indexer.categories?.join(',') || '' },
       { name: 'minimumSeeders', value: String(indexer.minimumSeeders || 1) },
@@ -616,23 +626,15 @@ export default function IndexersSettings() {
     }
   };
 
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [isTesting, setIsTesting] = useState(false);
-
   const handleTestIndexer = async (indexer: Indexer | Partial<Indexer>) => {
     try {
-      setIsTesting(true);
-      setTestResult(null);
 
       // Convert to API format for testing
       const apiIndexer = toApiFormat(indexer);
 
       const response = await apiClient.post('/indexer/test', apiIndexer);
       const successMessage = response.data?.message || 'Connection successful!';
-      setTestResult({
-        success: true,
-        message: successMessage,
-      });
+
 
       // For plain-RSS indexers the backend's response message contains
       // the auto-detected parser variant (e.g. "Detected ezRSS" or
@@ -644,16 +646,14 @@ export default function IndexersSettings() {
           ? successMessage
           : `Successfully connected to ${indexer.name || 'indexer'}`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Test failed:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Connection test failed!';
-      setTestResult({ success: false, message: errorMessage });
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      const errorMessage = err?.response?.data?.message ?? err?.message ?? 'Connection test failed!';
 
       toast.error('Test Failed', {
         description: errorMessage,
       });
-    } finally {
-      setIsTesting(false);
     }
   };
 
@@ -752,10 +752,11 @@ export default function IndexersSettings() {
         </div>
 
         {/* Connection */}
-        {hasField('baseUrl') && (
+        {(hasField('baseUrl') || formData.implementation === 'BroadcasTheNet') && (
           <div className="space-y-4">
             <h4 className="text-lg font-semibold text-white">Connection</h4>
 
+            {formData.implementation !== 'BroadcasTheNet' ? (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">URL *</label>
               <input
@@ -769,7 +770,15 @@ export default function IndexersSettings() {
                 {isUsenet ? 'Newznab feed URL' : 'Torznab feed URL (from Jackett/Prowlarr)'}
               </p>
             </div>
+            ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">URL</label>
+              <p className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-400 text-sm">https://api.broadcasthe.net</p>
+              <p className="text-xs text-gray-500 mt-1">BTN API endpoint is fixed and cannot be changed.</p>
+            </div>
+            )}
 
+            {formData.implementation !== 'BroadcasTheNet' && (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">API Path</label>
               <input
@@ -783,6 +792,7 @@ export default function IndexersSettings() {
                 API path for the indexer (usually /api for Newznab/Torznab)
               </p>
             </div>
+            )}
           </div>
         )}
 

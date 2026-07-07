@@ -75,7 +75,9 @@ interface AddLeagueModalProps {
     rootFolderId: number | null,
     monitorFinals: boolean,
     monitorPlayoffs: boolean,
-    monitorPreseason: boolean
+    monitorPreseason: boolean,
+    retentionDays: number,
+    allowHighlights: boolean
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -92,7 +94,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitorFinals, setMonitorFinals] = useState(false);
   const [monitorPlayoffs, setMonitorPlayoffs] = useState(false);
   const [monitorPreseason, setMonitorPreseason] = useState(false);
+  const [allowHighlights, setAllowHighlights] = useState(false);
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
+  const [retentionDays, setRetentionDays] = useState(0);
   const [rootFolderId, setRootFolderId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
   const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
@@ -268,6 +272,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         id: existingLeague.id,
         monitorType: existingLeague.monitorType,
         qualityProfileId: existingLeague.qualityProfileId,
+        retentionDays: existingLeague.retentionDays,
         monitoredParts: existingLeague.monitoredParts,
         monitoredSessionTypes: existingLeague.monitoredSessionTypes,
         monitoredEventTypes: existingLeague.monitoredEventTypes,
@@ -276,6 +281,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         monitorFinals: existingLeague.monitorFinals,
         monitorPlayoffs: existingLeague.monitorPlayoffs,
         monitorPreseason: existingLeague.monitorPreseason,
+        allowHighlights: existingLeague.allowHighlights,
         searchQueryTemplate: existingLeague.searchQueryTemplate,
         tags: existingLeague.tags,
         availableSessionTypesCount: availableSessionTypes.length, // Include to re-run when session types load
@@ -291,12 +297,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
       setMonitorType(existingLeague.monitorType || 'All');
       setQualityProfileId(existingLeague.qualityProfileId || null);
+      setRetentionDays(existingLeague.retentionDays || 0);
       setRootFolderId(existingLeague.rootFolderId ?? null);
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
       setMonitorFinals(existingLeague.monitorFinals || false);
       setMonitorPlayoffs(existingLeague.monitorPlayoffs || false);
       setMonitorPreseason(existingLeague.monitorPreseason || false);
+      setAllowHighlights(existingLeague.allowHighlights || false);
       setSearchQueryTemplate(existingLeague.searchQueryTemplate || '');
       setSearchTemplatePreview(null);
       setSelectedTags(existingLeague.tags || []);
@@ -386,6 +394,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchQuery('');
       setMonitorType('Future');
       setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
+      setRetentionDays(0);
       // Default to the most-free-space accessible root folder so single-root
       // setups don't require a click and multi-root setups still surface a
       // sensible pre-selection.
@@ -597,7 +606,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       rootFolderId,
       monitorFinals,
       monitorPlayoffs,
-      monitorPreseason
+      monitorPreseason,
+      retentionDays,
+      allowHighlights
     );
   };
 
@@ -614,6 +625,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     { token: '{HomeTeam}', description: 'Home team' },
     { token: '{AwayTeam}', description: 'Away team' },
     { token: '{Season}', description: 'Season' },
+    { token: '{Part}', description: 'Part being searched (Prelims, Main Card); empty for whole-event searches' },
+    { token: '{EventType}', description: 'Detected event type (PPV, Fight Night, Contender Series, Weekly)' },
   ];
 
   const insertToken = (token: string) => {
@@ -1040,7 +1053,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     </label>
                     <select
                       value={monitorType}
-                      onChange={(e) => setMonitorType(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setMonitorType(value);
+                        // Specials Only monitors nothing until at least one
+                        // special-event toggle is on; default to finals +
+                        // playoffs so the selection does something immediately.
+                        if (value === 'SpecialsOnly' && !monitorFinals && !monitorPlayoffs && !monitorPreseason) {
+                          setMonitorFinals(true);
+                          setMonitorPlayoffs(true);
+                        }
+                      }}
                       className="w-full px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
                     >
                       <option value="All">All Events (past, present, and future)</option>
@@ -1049,8 +1072,35 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       <option value="LatestSeason">Latest Season Only</option>
                       <option value="NextSeason">Next Season Only</option>
                       <option value="Recent">Recent Events (last 30 days)</option>
+                      <option value="SpecialsOnly">Special Events Only (finals / playoffs / preseason)</option>
                       <option value="None">None (manual monitoring only)</option>
                     </select>
+                    {monitorType === 'SpecialsOnly' && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        Monitors only special events across all seasons, using the Special events
+                        toggles (finals, playoffs, preseason). Great for collecting every
+                        championship game without following the whole league.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Allow Highlights */}
+                  <div className="mb-4">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={allowHighlights}
+                        onChange={(e) => setAllowHighlights(e.target.checked)}
+                        className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                      />
+                      <div>
+                        <div className="text-sm font-medium text-white">Allow highlights releases</div>
+                        <div className="text-xs text-gray-400">
+                          Grab releases tagged Highlights, skipping the full-event size checks for them.
+                          Useful for sports like sumo where each day ships as a multi-hour Live cut and a short Highlights cut.
+                        </div>
+                      </div>
+                    </label>
                   </div>
 
                   {/* Monitor Parts (Fighting Sports - shown in monitoring options) */}
@@ -1165,6 +1215,27 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         Changes will apply to all events in this league.
                       </p>
                     )}
+                  </div>
+
+                  {/* Event Retention */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Delete Events After
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={retentionDays}
+                        onChange={(e) => setRetentionDays(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-28 px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                      />
+                      <span className="text-sm text-gray-400">days after the event airs (0 = keep forever)</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Checked once a day. Events past this age are unmonitored and their files deleted,
+                      using the recycle bin when one is configured.
+                    </p>
                   </div>
 
                   {/* Search Options */}

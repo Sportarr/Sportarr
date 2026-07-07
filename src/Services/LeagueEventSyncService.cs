@@ -318,12 +318,20 @@ public class LeagueEventSyncService
             // team usually still want the championship game and/or postseason
             // regardless of who's playing.
             var originalEventCount = events.Count;
+            // Cup competitions mark knockout rounds as bare stage sizes
+            // ("32" = Round of 32) while their group games carry no round at
+            // all. That mixed shape is the signal that lets the classifier
+            // treat stage-size rounds as playoffs without misfiring on
+            // domestic leagues, where every matchday is numbered. Computed
+            // from the season's full pre-filter list and reused by the
+            // cleanup predicate below so both sides classify identically.
+            var seasonHasUnroundedEvents = events.Any(e => string.IsNullOrWhiteSpace(e.Round));
             if (monitoredTeamIds.Any())
             {
                 events = events.Where(e =>
                     (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
                     (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
-                    SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason)
+                    SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, seasonHasUnroundedEvents)
                 ).ToList();
 
                 _logger.LogInformation("[League Event Sync] Season {Season}: Filtered {Original} events to {Filtered} based on monitored teams{SpecialNote}",
@@ -421,7 +429,7 @@ public class LeagueEventSyncService
                 {
                     ProcessEvent(apiEvent, league, result, currentSeason, apiEpisodeMap,
                         existingByExternalId, teamsByExternalId, scheduledRecordingsByEventId,
-                        localByDateTitle, apiIds, adoptedLocalEventIds);
+                        localByDateTitle, apiIds, adoptedLocalEventIds, seasonHasUnroundedEvents);
                 }
                 catch (Exception ex)
                 {
@@ -492,6 +500,41 @@ public class LeagueEventSyncService
                 .Where(e => e.LeagueId == league.Id && e.Season == season && e.ExternalId != null)
                 .ToListAsync();
 
+            // The TsdbId entries in the do-not-delete set exist so a legacy
+            // row (ExternalId still holding the TheSportsDB id from before
+            // the hub flip) survives until ProcessEvent's migration step
+            // adopts it. But when the MIGRATED twin already exists locally,
+            // Step 1 matches the twin first and the legacy row can never be
+            // adopted again - without the check below, the TsdbId protection
+            // makes such fossils immortal duplicates that survive every deep
+            // sync (observed in the field as pairs like 'Mexico City Grand
+            // Prix Qualifying' + 'Mexico City Grand Prix - Qualifying'
+            // sharing one episode number). Detect them: a local row whose
+            // ExternalId equals some API event's TsdbId while a DIFFERENT
+            // local row already carries that API event's short id.
+            var apiShortIdByTsdbId = new Dictionary<string, string>();
+            foreach (var ev in events)
+            {
+                if (!string.IsNullOrEmpty(ev.TsdbId) && !string.IsNullOrEmpty(ev.ExternalId))
+                {
+                    apiShortIdByTsdbId.TryAdd(ev.TsdbId!, ev.ExternalId!);
+                }
+            }
+            var localRowsByExternalId = allLocalSeasonEvents
+                .GroupBy(e => e.ExternalId!)
+                .ToDictionary(g => g.Key, g => g.First());
+            var fossilTwinByEventId = new Dictionary<int, Event>();
+            foreach (var localEvent in allLocalSeasonEvents)
+            {
+                if (apiShortIdByTsdbId.TryGetValue(localEvent.ExternalId!, out var twinShortId) &&
+                    twinShortId != localEvent.ExternalId &&
+                    localRowsByExternalId.TryGetValue(twinShortId, out var twin) &&
+                    twin.Id != localEvent.Id)
+                {
+                    fossilTwinByEventId[localEvent.Id] = twin;
+                }
+            }
+
             // When team filtering is active, only clean up events the filter
             // would have admitted — monitored-team games plus any special
             // events the league's finals/playoffs opt-ins let through. The
@@ -503,12 +546,12 @@ public class LeagueEventSyncService
                 ? allLocalSeasonEvents.Where(e =>
                         (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
                         (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
-                        SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason))
+                        SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, seasonHasUnroundedEvents))
                     .ToList()
                 : allLocalSeasonEvents;
 
             var orphanedEvents = localEventsForSeason
-                .Where(e => !apiExternalIds.Contains(e.ExternalId!))
+                .Where(e => !apiExternalIds.Contains(e.ExternalId!) || fossilTwinByEventId.ContainsKey(e.Id))
                 .ToList();
 
             // Second safety guard: if more than half the local season
@@ -598,6 +641,27 @@ public class LeagueEventSyncService
                                 "[League Event Sync] Re-linked {Count} scheduled recording(s) from re-identified event '{Title}' (S{Season}) to its replacement instead of orphaning them",
                                 orphanRecordings.Count, orphan.Title, season);
                         }
+                    }
+
+                    // A duplicate-of-a-migrated-twin fossil may hold the
+                    // user's imported file; hand it to the twin instead of
+                    // dropping the import record, so the library keeps
+                    // tracking the file under the surviving event.
+                    if (fossilTwinByEventId.TryGetValue(orphan.Id, out var fossilTwin) &&
+                        orphan.Files.Any() && !fossilTwin.HasFile && !fossilTwin.Files.Any())
+                    {
+                        var transferred = orphan.Files.ToList();
+                        foreach (var file in transferred)
+                        {
+                            orphan.Files.Remove(file);
+                            fossilTwin.Files.Add(file);
+                            file.EventId = fossilTwin.Id;
+                        }
+                        fossilTwin.HasFile = true;
+                        orphan.HasFile = false;
+                        _logger.LogInformation(
+                            "[League Event Sync] Transferred {Count} file(s) from duplicate legacy event '{Title}' (S{Season}) to its migrated twin '{TwinTitle}' before removing the duplicate",
+                            transferred.Count, orphan.Title, season, fossilTwin.Title);
                     }
 
                     if (orphan.HasFile || orphan.Files.Any())
@@ -977,6 +1041,41 @@ public class LeagueEventSyncService
         }
         if (apiTeams == null || apiTeams.Count == 0) return;
 
+        // Refresh upstream alias metadata on every sync. The hub grows
+        // alternate names over time (localized national-team spellings,
+        // bare scene names) and the release matcher reads them from the
+        // local Team row, which was otherwise frozen at creation time:
+        // without this, aliases added upstream never reach matching on
+        // existing installs.
+        var apiTeamsById = new Dictionary<string, Team>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in apiTeams)
+        {
+            if (!string.IsNullOrEmpty(t.ExternalId)) apiTeamsById[t.ExternalId!] = t;
+            if (!string.IsNullOrEmpty(t.TsdbId)) apiTeamsById.TryAdd(t.TsdbId!, t);
+        }
+        var apiTeamIdList = apiTeamsById.Keys.ToList();
+        var localTeamsForAliasRefresh = await _db.Teams
+            .Where(t => t.ExternalId != null && apiTeamIdList.Contains(t.ExternalId))
+            .ToListAsync();
+        var aliasRefreshCount = 0;
+        foreach (var localTeam in localTeamsForAliasRefresh)
+        {
+            if (!apiTeamsById.TryGetValue(localTeam.ExternalId!, out var apiTeam)) continue;
+            if (!string.IsNullOrEmpty(apiTeam.AlternateName) &&
+                !string.Equals(apiTeam.AlternateName, localTeam.AlternateName, StringComparison.Ordinal))
+            {
+                localTeam.AlternateName = apiTeam.AlternateName;
+                aliasRefreshCount++;
+            }
+        }
+        if (aliasRefreshCount > 0)
+        {
+            await _db.SaveChangesAsync();
+            _logger.LogInformation(
+                "[League Event Sync] Refreshed alternate names for {Count} team(s) in {LeagueName}",
+                aliasRefreshCount, league.Name);
+        }
+
         var tsdbToShort = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var t in apiTeams)
         {
@@ -1129,7 +1228,8 @@ public class LeagueEventSyncService
         Dictionary<int, List<DvrRecording>> scheduledRecordingsByEventId,
         Dictionary<string, List<Event>> localByDateTitle,
         HashSet<string> apiIds,
-        HashSet<int> adoptedLocalEventIds)
+        HashSet<int> adoptedLocalEventIds,
+        bool seasonHasUnroundedEvents)
     {
         // Two-pass match against the preloaded existence dictionary (one
         // bulk query per season replaces the former one-to-two DB
@@ -1531,7 +1631,8 @@ public class LeagueEventSyncService
             // For motorsports, also check if the event matches the monitored session types
             // For UFC-style fighting leagues, also check if the event matches monitored event types
             Monitored = league.Monitored
-                && ShouldMonitorEvent(league.MonitorType, apiEvent.EventDate, apiEvent.Season, currentSeason)
+                && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason,
+                    apiEvent.Round, apiEvent.Title, seasonHasUnroundedEvents)
                 && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
                 && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes),
             QualityProfileId = league.QualityProfileId,
@@ -1597,11 +1698,12 @@ public class LeagueEventSyncService
     /// <summary>
     /// Determines if an event should be monitored based on the league's MonitorType setting
     /// </summary>
-    private static bool ShouldMonitorEvent(MonitorType monitorType, DateTime eventDate, string? eventSeason, string currentSeason)
+    private static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason,
+        string? round, string? title, bool seasonHasUnroundedEvents)
     {
         var now = DateTime.UtcNow;
 
-        return monitorType switch
+        return league.MonitorType switch
         {
             MonitorType.All => true,
             MonitorType.Future => eventDate > now,
@@ -1612,6 +1714,16 @@ public class LeagueEventSyncService
                                       year == now.Year + 1,
             MonitorType.Recent => eventDate >= now.AddDays(-30),
             MonitorType.None => false,
+            // Only special events, across all seasons, per the league's
+            // finals/playoffs/preseason toggles. Teamless sports (tennis,
+            // fighting, motorsport) skip the title-keyword fallback: their
+            // event titles routinely contain words like "Championship", so
+            // only explicit round data classifies there.
+            MonitorType.SpecialsOnly => SpecialEventClassifier.BypassesTeamFilter(
+                round,
+                LeagueSportRules.IsTeamlessSport(league.Sport, league.Name) ? null : title,
+                league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                seasonHasUnroundedEvents),
             _ => true // Default to monitoring if unknown type
         };
     }

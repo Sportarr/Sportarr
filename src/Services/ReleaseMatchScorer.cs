@@ -662,7 +662,8 @@ public class ReleaseMatchScorer
             return "NASCAR";
         if (normalized.Contains("WEC") || normalized.Contains("WORLD.ENDURANCE"))
             return "WEC";
-        if (normalized.Contains("WSBK") || normalized.Contains("SUPERBIKE"))
+        if (normalized.Contains("WSBK") || normalized.Contains("SUPERBIKE") ||
+            System.Text.RegularExpressions.Regex.IsMatch(normalized, @"\bSBK\b"))
             return "WSBK";
         if (normalized.Contains("WRC") || normalized.Contains("WORLD.RALLY"))
             return "WRC";
@@ -724,7 +725,8 @@ public class ReleaseMatchScorer
                 return "Moto2";
             if (upper.Contains("MOTOGP") || upper.Contains("MOTO GP"))
                 return "MotoGP";
-            if (upper.Contains("SUPERBIKE") || upper.Contains("WSBK"))
+            if (upper.Contains("SUPERBIKE") || upper.Contains("WSBK") ||
+                System.Text.RegularExpressions.Regex.IsMatch(upper, @"\bSBK\b"))
                 return "WSBK";
             if (upper.Contains("WORLD RALLY") || upper.Contains("WRC"))
                 return "WRC";

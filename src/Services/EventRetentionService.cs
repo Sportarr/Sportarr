@@ -6,11 +6,13 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Background service that auto-unmonitors and deletes files for events once
-/// they've aged past a configurable retention window. Sports content ages out
-/// differently than TV - once a match airs, most users have no reason to keep
-/// it, and old events otherwise pile up on disk indefinitely. Off by default
-/// (Config.EnableEventRetention); every existing install is unaffected unless
-/// a user opts in.
+/// they've aged past a per-league retention window (League.RetentionDays,
+/// 0 = keep forever). Sports content ages out differently than TV - once a
+/// match airs, most users have no reason to keep it, and old events otherwise
+/// pile up on disk indefinitely - but how long varies by competition, so the
+/// window is per league rather than global. Installs that had opted into the
+/// old global retention get its value seeded onto every league once, then
+/// the global flag is retired.
 /// </summary>
 public class EventRetentionService : BackgroundService
 {
@@ -54,7 +56,7 @@ public class EventRetentionService : BackgroundService
     }
 
     /// <summary>
-    /// Find monitored events older than the configured retention window,
+    /// Find monitored events older than their league's retention window,
     /// delete their files (respecting the recycle bin, same as the manual
     /// "delete all files" action), and unmonitor them so they stop being
     /// re-searched. Returns the number of events processed. Public so the
@@ -69,16 +71,58 @@ public class EventRetentionService : BackgroundService
         var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
 
         var config = await configService.GetConfigAsync();
-        if (!config.EnableEventRetention || config.EventRetentionDays <= 0)
+
+        // One-time upgrade path: installs that had opted into the retired
+        // global retention keep their behavior by seeding its window onto
+        // every league that hasn't set its own, then the global flag is
+        // cleared so this never runs again (and the user's subsequent
+        // per-league choices are never overwritten).
+        if (config.EnableEventRetention && config.EventRetentionDays > 0)
+        {
+            var seeded = 0;
+            var leaguesToSeed = await db.Leagues
+                .Where(l => l.RetentionDays == 0)
+                .ToListAsync(cancellationToken);
+            foreach (var league in leaguesToSeed)
+            {
+                league.RetentionDays = config.EventRetentionDays;
+                seeded++;
+            }
+            await db.SaveChangesAsync(cancellationToken);
+
+            config.EnableEventRetention = false;
+            await configService.SaveConfigAsync(config);
+
+            _logger.LogInformation(
+                "[Event Retention] Migrated retired global retention ({Days} days) onto {Count} league(s); retention is per-league from now on",
+                config.EventRetentionDays, seeded);
+        }
+
+        var now = DateTime.UtcNow;
+
+        // Pull retention-enabled leagues first; each league gets its own
+        // cutoff. Doing the event query per league keeps the SQL trivially
+        // indexable and the league count is small.
+        var retentionLeagues = await db.Leagues
+            .Where(l => l.RetentionDays > 0)
+            .Select(l => new { l.Id, l.RetentionDays })
+            .ToListAsync(cancellationToken);
+
+        if (retentionLeagues.Count == 0)
             return 0;
 
-        var cutoff = DateTime.UtcNow.AddDays(-config.EventRetentionDays);
-
-        var eventsToProcess = await db.Events
-            .Include(e => e.Files)
-            .Include(e => e.League)
-            .Where(e => e.Monitored && e.EventDate < cutoff)
-            .ToListAsync(cancellationToken);
+        var eventsToProcess = new List<Event>();
+        var retentionDaysByLeague = retentionLeagues.ToDictionary(l => l.Id, l => l.RetentionDays);
+        foreach (var league in retentionLeagues)
+        {
+            var cutoff = now.AddDays(-league.RetentionDays);
+            var expired = await db.Events
+                .Include(e => e.Files)
+                .Include(e => e.League)
+                .Where(e => e.LeagueId == league.Id && e.Monitored && e.EventDate < cutoff)
+                .ToListAsync(cancellationToken);
+            eventsToProcess.AddRange(expired);
+        }
 
         if (eventsToProcess.Count == 0)
             return 0;
@@ -88,6 +132,9 @@ public class EventRetentionService : BackgroundService
 
         foreach (var evt in eventsToProcess)
         {
+            var retentionDays = evt.LeagueId.HasValue
+                ? retentionDaysByLeague.GetValueOrDefault(evt.LeagueId.Value)
+                : 0;
             var hadFiles = evt.Files.Count > 0;
             var representativeDeletedPath = evt.Files
                 .Select(f => f.FilePath)
@@ -129,8 +176,8 @@ public class EventRetentionService : BackgroundService
             evt.Monitored = false;
 
             _logger.LogInformation(
-                "[Event Retention] Unmonitored{FileNote} event {EventId} ({Title}) - past the {Days}-day retention window (event date {EventDate:yyyy-MM-dd})",
-                hadFiles ? " and deleted files for" : "", evt.Id, evt.Title, config.EventRetentionDays, evt.EventDate);
+                "[Event Retention] Unmonitored{FileNote} event {EventId} ({Title}) - past the league's {Days}-day retention window (event date {EventDate:yyyy-MM-dd})",
+                hadFiles ? " and deleted files for" : "", evt.Id, evt.Title, retentionDays, evt.EventDate);
 
             if (hadFiles)
             {
@@ -139,7 +186,7 @@ public class EventRetentionService : BackgroundService
                     await notificationService.SendNotificationAsync(
                         NotificationTrigger.OnEventFileDelete,
                         $"Deleted: {evt.Title}",
-                        $"Removed by retention policy ({config.EventRetentionDays} days)",
+                        $"Removed by league retention policy ({retentionDays} days)",
                         new Dictionary<string, object>
                         {
                             { "eventId", evt.Id },
@@ -160,8 +207,8 @@ public class EventRetentionService : BackgroundService
         await db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "[Event Retention] Processed {Count} event(s) past the {Days}-day retention threshold",
-            eventsToProcess.Count, config.EventRetentionDays);
+            "[Event Retention] Processed {Count} event(s) past their league retention thresholds",
+            eventsToProcess.Count);
 
         return eventsToProcess.Count;
     }

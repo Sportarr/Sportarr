@@ -33,6 +33,11 @@ interface DownloadClient {
   initialState?: number; // Initial state when torrent is added: 0=Started, 1=ForceStarted, 2=Stopped
   removeCompletedDownloads?: boolean; // Remove successful downloads from client after import (per-client setting)
   removeFailedDownloads?: boolean; // Remove failed downloads from client
+  // Blackhole client settings (TorrentBlackhole/UsenetBlackhole only)
+  blackholeFolder?: string; // Where grabbed .torrent/.nzb files are written
+  watchFolder?: string; // Where the external downloader drops finished downloads
+  saveMagnetFiles?: boolean; // Write .magnet files for magnet-only releases
+  readOnly?: boolean; // Import by copy/hardlink, never delete watch folder contents
   tags?: number[];
   created?: string;
   lastModified?: string;
@@ -59,7 +64,9 @@ const clientTypeMap: Record<string, number> = {
   'NZBGet': 6,
   'Decypharr': 7,
   'DecypharrUsenet': 8,
-  'NZBdav': 9
+  'NZBdav': 9,
+  'TorrentBlackhole': 10,
+  'UsenetBlackhole': 11
 };
 
 const clientTypeNameMap: Record<number, string> = {
@@ -72,12 +79,17 @@ const clientTypeNameMap: Record<number, string> = {
   6: 'NZBGet',
   7: 'Decypharr',
   8: 'DecypharrUsenet',
-  9: 'NZBdav'
+  9: 'NZBdav',
+  10: 'TorrentBlackhole',
+  11: 'UsenetBlackhole'
 };
+
+// Blackhole clients have no API connection - they exchange files via folders
+const isBlackholeType = (type: number | undefined): boolean => type === 10 || type === 11;
 
 // Determine protocol based on type
 const getProtocol = (type: number): 'usenet' | 'torrent' => {
-  const protocol = (type === 5 || type === 6 || type === 8 || type === 9) ? 'usenet' : 'torrent';
+  const protocol = (type === 5 || type === 6 || type === 8 || type === 9 || type === 11) ? 'usenet' : 'torrent';
   console.log(`[DEBUG] getProtocol: type=${type}, protocol=${protocol}, type===5: ${type === 5}, type===6: ${type === 6}, type===8: ${type === 8}, type===9: ${type === 9}`);
   return protocol;
 };
@@ -171,6 +183,22 @@ const downloadClientTemplates: ClientTemplate[] = [
     description: 'Usenet streaming via WebDAV (SABnzbd-compatible API)',
     defaultPort: 3000,
     fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'category', 'directory']
+  },
+  {
+    name: 'Torrent Blackhole',
+    implementation: 'TorrentBlackhole',
+    protocol: 'torrent',
+    description: 'Saves .torrent files to a folder for an external downloader and imports from a watch folder',
+    defaultPort: 0,
+    fields: ['torrentFolder', 'watchFolder', 'saveMagnetFiles', 'readOnly']
+  },
+  {
+    name: 'Usenet Blackhole',
+    implementation: 'UsenetBlackhole',
+    protocol: 'usenet',
+    description: 'Saves .nzb files to a folder for an external downloader and imports from a watch folder',
+    defaultPort: 0,
+    fields: ['nzbFolder', 'watchFolder', 'readOnly']
   }
 ];
 
@@ -225,6 +253,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
           checkForFinishedDownloads: data.checkForFinishedDownloadInterval ?? 1,
           redownloadFailedEvents: data.redownloadFailedDownloads ?? true,
           redownloadFailedFromInteractiveSearch: data.redownloadFailedFromInteractiveSearch ?? true,
+          stalledDownloadTimeoutMinutes: data.stalledDownloadTimeoutMinutes ?? 60,
           removeFailedDownloadsGlobal: data.removeFailedDownloads ?? true,
           maxDownloadQueueSize: data.maxDownloadQueueSize ?? -1,
           searchSleepDuration: data.searchSleepDuration ?? 900
@@ -235,6 +264,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         setCheckForFinishedDownloads(loadedSettings.checkForFinishedDownloads);
         setRedownloadFailedEvents(loadedSettings.redownloadFailedEvents);
         setRedownloadFailedFromInteractiveSearch(loadedSettings.redownloadFailedFromInteractiveSearch);
+        setStalledDownloadTimeoutMinutes(loadedSettings.stalledDownloadTimeoutMinutes);
         setRemoveFailedDownloadsGlobal(loadedSettings.removeFailedDownloadsGlobal);
         setMaxDownloadQueueSize(loadedSettings.maxDownloadQueueSize);
         setSearchSleepDuration(loadedSettings.searchSleepDuration);
@@ -264,6 +294,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         checkForFinishedDownloadInterval: checkForFinishedDownloads,
         redownloadFailedDownloads: redownloadFailedEvents,
         redownloadFailedFromInteractiveSearch,
+        stalledDownloadTimeoutMinutes,
         removeFailedDownloads: removeFailedDownloadsGlobal,
         maxDownloadQueueSize,
         searchSleepDuration,
@@ -280,6 +311,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         removeFailedDownloadsGlobal,
         redownloadFailedEvents,
         redownloadFailedFromInteractiveSearch,
+        stalledDownloadTimeoutMinutes,
         maxDownloadQueueSize,
         searchSleepDuration
       };
@@ -303,6 +335,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const [removeFailedDownloadsGlobal, setRemoveFailedDownloadsGlobal] = useState(true);
   const [redownloadFailedEvents, setRedownloadFailedEvents] = useState(true);
   const [redownloadFailedFromInteractiveSearch, setRedownloadFailedFromInteractiveSearch] = useState(true);
+  const [stalledDownloadTimeoutMinutes, setStalledDownloadTimeoutMinutes] = useState(60);
 
   // Search Queue Management (Huntarr-style queue threshold pause)
   const [maxDownloadQueueSize, setMaxDownloadQueueSize] = useState(-1); // -1 = no limit
@@ -318,6 +351,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     removeFailedDownloadsGlobal: boolean;
     redownloadFailedEvents: boolean;
     redownloadFailedFromInteractiveSearch: boolean;
+    stalledDownloadTimeoutMinutes: number;
     maxDownloadQueueSize: number;
     searchSleepDuration: number;
   } | null>(null);
@@ -362,11 +396,14 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const handleSelectTemplate = (template: ClientTemplate) => {
     setSelectedTemplate(template);
     setTestResult(null);
+    const type = clientTypeMap[template.implementation] ?? 0;
     setFormData({
       name: template.name,
-      type: clientTypeMap[template.implementation] ?? 0,
+      type,
       enabled: true,
       priority: 1,
+      // Blackhole clients have no connection; host/port are placeholders that
+      // satisfy the save validation and the backend's required host field.
       host: 'localhost',
       port: template.defaultPort,
       useSsl: false,
@@ -379,6 +416,10 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       // Default ON for Usenet (no seeding), user can disable for torrents to preserve seeding
       removeCompletedDownloads: true,
       removeFailedDownloads: true,
+      blackholeFolder: '',
+      watchFolder: '',
+      saveMagnetFiles: false,
+      readOnly: isBlackholeType(type), // Read Only defaults on so seeds are never moved
       tags: []
     });
   };
@@ -403,7 +444,15 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   };
 
   const handleSaveClient = async () => {
-    if (!formData.name || !formData.host) {
+    if (!formData.name) {
+      return;
+    }
+    if (isBlackholeType(formData.type)) {
+      if (!formData.blackholeFolder || !formData.watchFolder) {
+        setTestResult({ success: false, message: 'Both folders are required for a blackhole client' });
+        return;
+      }
+    } else if (!formData.host) {
       return;
     }
 
@@ -630,7 +679,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
               <li className="flex items-start">
                 <span className="text-red-400 mr-2">•</span>
                 <span>
-                  <strong>Torrent Clients:</strong> qBittorrent, Transmission, Deluge, rTorrent, uTorrent
+                  <strong>Torrent Clients:</strong> qBittorrent, Transmission, Deluge, rTorrent
                 </span>
               </li>
               <li className="flex items-start">
@@ -710,9 +759,11 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                         <span className="text-white">{clientTypeNameMap[client.type]}</span>
                       </p>
                       <p>
-                        <span className="text-gray-500">Host:</span>{' '}
+                        <span className="text-gray-500">{isBlackholeType(client.type) ? 'Folder:' : 'Host:'}</span>{' '}
                         <span className="text-white">
-                          {client.host}:{client.port}
+                          {isBlackholeType(client.type)
+                            ? (client.blackholeFolder || 'not set')
+                            : `${client.host}:${client.port}`}
                         </span>
                       </p>
                       {client.category && (
@@ -860,6 +911,21 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
               </p>
             </div>
           </label>
+
+          <div>
+            <label className="block text-white font-medium mb-2">Stalled Download Timeout (Minutes)</label>
+            <input
+              type="number"
+              min={0}
+              max={1440}
+              value={stalledDownloadTimeoutMinutes}
+              onChange={(e) => setStalledDownloadTimeoutMinutes(parseInt(e.target.value) || 0)}
+              className="w-full max-w-xs px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            />
+            <p className="text-sm text-gray-400 mt-1">
+              Torrents with no download progress for this long are failed, blocklisted, and re-searched. 0 disables.
+            </p>
+          </div>
 
           <div className="p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
             <p className="text-sm text-blue-300">
@@ -1047,7 +1113,80 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                     <span className="text-sm font-medium text-gray-300">Enable this download client</span>
                   </label>
 
+                  {/* Folder Settings (blackhole clients exchange files via folders instead of an API) */}
+                  {isBlackholeType(formData.type) && (
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-semibold text-white">Folders</h4>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          {formData.type === 11 ? 'Nzb Folder *' : 'Torrent Folder *'}
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.blackholeFolder || ''}
+                          onChange={(e) => handleFormChange('blackholeFolder', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
+                          placeholder={formData.type === 11 ? '/downloads/nzb' : '/downloads/torrents'}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Folder in which Sportarr will store the {formData.type === 11 ? '.nzb' : '.torrent'} file
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Watch Folder *</label>
+                        <input
+                          type="text"
+                          value={formData.watchFolder || ''}
+                          onChange={(e) => handleFormChange('watchFolder', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
+                          placeholder="/downloads/complete"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Folder from which Sportarr should import completed downloads
+                        </p>
+                      </div>
+
+                      {selectedTemplate?.fields.includes('saveMagnetFiles') && (
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={formData.saveMagnetFiles || false}
+                            onChange={(e) => handleFormChange('saveMagnetFiles', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-300">Save Magnet Files</span>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Save a .magnet file when a release only offers a magnet link. Requires an external
+                              downloader that watches for .magnet files.
+                            </p>
+                          </div>
+                        </label>
+                      )}
+
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.readOnly ?? true}
+                          onChange={(e) => handleFormChange('readOnly', e.target.checked)}
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                        <div>
+                          <span className="text-sm font-medium text-gray-300">Read Only</span>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Import by copying (or hardlinking, per your File Management settings) instead of moving,
+                            and never delete anything from the watch folder. Keeps torrents seeding in the external client.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
+
                   {/* Connection Settings */}
+                  {!isBlackholeType(formData.type) && (
+                  <>
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold text-white">Connection</h4>
 
@@ -1259,8 +1398,11 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                       </div>
                     )}
                   </div>
+                  </>
+                  )}
 
-                  {/* Category */}
+                  {/* Category (not applicable to blackhole clients - no API to categorize in) */}
+                  {!isBlackholeType(formData.type) && (
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold text-white">Category</h4>
 
@@ -1316,6 +1458,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* Tags */}
                   <div className="space-y-4">

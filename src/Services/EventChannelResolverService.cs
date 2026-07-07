@@ -251,6 +251,26 @@ public class EventChannelResolverService
             .ToListAsync(ct);
         if (programs.Count == 0) return new Dictionary<int, EpgProgram>();
 
+        // When several EPG sources carry the same channel id, keep only the
+        // preferred source's rows per channel: lowest Priority wins, ties
+        // break on the older source. Otherwise the same programme appears
+        // once per source and match scoring double-counts it.
+        var resolverSourcePriorities = await _db.EpgSources
+            .ToDictionaryAsync(s => s.Id, s => s.Priority, ct);
+        programs = programs
+            .GroupBy(p => p.ChannelId, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(g =>
+            {
+                var preferredSource = g
+                    .Select(p => p.EpgSourceId)
+                    .Distinct()
+                    .OrderBy(id => resolverSourcePriorities.GetValueOrDefault(id, int.MaxValue))
+                    .ThenBy(id => id)
+                    .First();
+                return g.Where(p => p.EpgSourceId == preferredSource);
+            })
+            .ToList();
+
         // Pre-compute event search terms once — used per-program inside
         // the loop. Both team names AND title-derived keywords get
         // tried, with team-based events requiring a name match and

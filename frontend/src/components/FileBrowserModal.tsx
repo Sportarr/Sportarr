@@ -7,6 +7,8 @@ interface FileBrowserModalProps {
   onClose: () => void;
   onSelect: (path: string) => void;
   title?: string;
+  /** Open the browser at this path instead of the filesystem root. */
+  initialPath?: string;
 }
 
 interface FileSystemItem {
@@ -24,7 +26,7 @@ interface FileSystemResponse {
   files?: FileSystemItem[];
 }
 
-export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'Select Folder' }: FileBrowserModalProps) {
+export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'Select Folder', initialPath }: FileBrowserModalProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [items, setItems] = useState<FileSystemItem[]>([]);
   const [parent, setParent] = useState<string | null>(null);
@@ -33,11 +35,13 @@ export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'S
 
   useEffect(() => {
     if (isOpen) {
-      loadDirectory('');
+      // Resume at the caller's current path so re-browsing doesn't restart
+      // from / every time; fall back to the root if that path is gone.
+      loadDirectory(initialPath || '', Boolean(initialPath));
     }
-  }, [isOpen]);
+  }, [isOpen, initialPath]);
 
-  const loadDirectory = async (path: string) => {
+  const loadDirectory = async (path: string, fallbackToRoot = false) => {
     setLoading(true);
     setError(null);
 
@@ -50,11 +54,18 @@ export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'S
         setItems(data.directories);
         setParent(data.parent);
         setCurrentPath(path);
+      } else if (fallbackToRoot && path) {
+        await loadDirectory('');
+        return;
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Failed to load directory');
       }
     } catch (err) {
+      if (fallbackToRoot && path) {
+        await loadDirectory('');
+        return;
+      }
       setError('Failed to load directory');
       console.error('Failed to load directory:', err);
     } finally {

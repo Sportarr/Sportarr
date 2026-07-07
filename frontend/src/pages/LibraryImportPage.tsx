@@ -11,8 +11,11 @@ import {
   ArrowPathIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
-  PencilSquareIcon
+  PencilSquareIcon,
+  HeartIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
+import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
 import FileBrowserModal from '../components/FileBrowserModal';
 import FileDetailsModal from '../components/FileDetailsModal';
 import PageHeader from '../components/PageHeader';
@@ -83,6 +86,7 @@ interface FileImportRequest {
   originalTitle?: string;
   languages?: string[];
   indexerFlags?: string;
+  importMode?: string;
 }
 
 function nonEmpty(s: string | undefined): string | undefined {
@@ -124,9 +128,19 @@ interface EventSearchResult {
   awayTeam?: string;
   existsInDatabase: boolean;
   hasFile: boolean;
+  currentQuality?: string | null;
 }
 
 type WizardStep = 'select' | 'scan' | 'review' | 'importing' | 'complete';
+
+interface RecentFolder {
+  path: string;
+  lastUsed: string;
+  pinned?: boolean;
+}
+
+const RECENT_FOLDERS_KEY = 'sportarr-library-import-recent-folders';
+const MAX_RECENT_FOLDERS = 8;
 
 const LibraryImportPage: React.FC = () => {
   // Wizard step
@@ -144,6 +158,52 @@ const LibraryImportPage: React.FC = () => {
   const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
 
+  // Recently scanned folders, persisted locally so batch importers can hop
+  // between the same handful of paths without re-browsing. Pinned entries
+  // (the heart) survive the cap on unpinned history.
+  const [recentFolders, setRecentFolders] = useState<RecentFolder[]>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(RECENT_FOLDERS_KEY) || '[]');
+      return Array.isArray(stored) ? stored : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const persistRecentFolders = (list: RecentFolder[]) => {
+    setRecentFolders(list);
+    try {
+      localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(list));
+    } catch {
+      // Storage full/unavailable: the list just won't survive a reload.
+    }
+  };
+
+  const rememberFolder = (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) return;
+    const existing = recentFolders.find(f => f.path === trimmed);
+    const rest = recentFolders.filter(f => f.path !== trimmed);
+    const updated = [{ path: trimmed, lastUsed: new Date().toISOString(), pinned: existing?.pinned }, ...rest];
+    persistRecentFolders([
+      ...updated.filter(f => f.pinned),
+      ...updated.filter(f => !f.pinned).slice(0, MAX_RECENT_FOLDERS)
+    ]);
+  };
+
+  const toggleFolderPin = (path: string) => {
+    persistRecentFolders(recentFolders.map(f => f.path === path ? { ...f, pinned: !f.pinned } : f));
+  };
+
+  const removeRecentFolder = (path: string) => {
+    persistRecentFolders(recentFolders.filter(f => f.path !== path));
+  };
+
+  const sortedRecentFolders = [...recentFolders].sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    return b.lastUsed.localeCompare(a.lastUsed);
+  });
+
   // Scan state
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
@@ -158,6 +218,9 @@ const LibraryImportPage: React.FC = () => {
   const [fileMetadataOverrides, setFileMetadataOverrides] =
     useState<Map<string, FileMetadataEditorValues>>(new Map());
   const [editorOpenForFile, setEditorOpenForFile] = useState<string | null>(null);
+  // Hardlink the imported files into the library instead of moving them, so
+  // torrents spanning many events keep seeding from the original paths.
+  const [createHardlinks, setCreateHardlinks] = useState(false);
 
   // Import state
   const [importing, setImporting] = useState(false);
@@ -204,7 +267,20 @@ const LibraryImportPage: React.FC = () => {
       }
 
       const result: ScanResult = await response.json();
+
+      // Present files in a stable, human order: numeric-aware path sort so
+      // sequences like ...02.FP2 / ...03.Quali / ...04.Race read in
+      // chronological filename order instead of whatever order the
+      // filesystem walk returned. Sorting by full path keeps files grouped
+      // by folder on recursive scans.
+      const byPath = (a: { filePath: string }, b: { filePath: string }) =>
+        a.filePath.localeCompare(b.filePath, undefined, { numeric: true, sensitivity: 'base' });
+      result.matchedFiles.sort(byPath);
+      result.unmatchedFiles.sort(byPath);
+      result.alreadyInLibrary?.sort(byPath);
+
       setScanResult(result);
+      rememberFolder(folderPath);
 
       // Auto-select all matched files
       const autoSelected = new Set(result.matchedFiles.map(f => f.filePath));
@@ -391,6 +467,10 @@ const LibraryImportPage: React.FC = () => {
         };
       });
 
+      if (createHardlinks) {
+        requests.forEach(r => { r.importMode = 'hardlink'; });
+      }
+
       const response = await apiPost('/api/library/import', requests);
 
       if (!response.ok) {
@@ -564,6 +644,44 @@ const LibraryImportPage: React.FC = () => {
               <span className="text-gray-300">Include subfolders (recursive scan)</span>
             </label>
           </div>
+
+          {sortedRecentFolders.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-medium text-gray-300 mb-2">Recent Folders</h3>
+              <div className="border border-gray-700 rounded-lg divide-y divide-gray-700 overflow-hidden">
+                {sortedRecentFolders.map(folder => (
+                  <div key={folder.path} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-700/50 transition-colors">
+                    <button
+                      onClick={() => setFolderPath(folder.path)}
+                      className="flex-1 min-w-0 text-left text-sm text-gray-200 hover:text-white truncate"
+                      title={folder.path}
+                    >
+                      {folder.path}
+                    </button>
+                    <span className="text-xs text-gray-500 flex-shrink-0">
+                      {new Date(folder.lastUsed).toLocaleDateString()}
+                    </span>
+                    <button
+                      onClick={() => toggleFolderPin(folder.path)}
+                      className="p-1 text-gray-400 hover:text-red-400 transition-colors flex-shrink-0"
+                      title={folder.pinned ? 'Unpin (allow this entry to age out)' : 'Pin (keep this entry)'}
+                    >
+                      {folder.pinned
+                        ? <HeartSolidIcon className="w-4 h-4 text-red-500" />
+                        : <HeartIcon className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={() => removeRecentFolder(folder.path)}
+                      className="p-1 text-gray-400 hover:text-white transition-colors flex-shrink-0"
+                      title="Remove from recent folders"
+                    >
+                      <XMarkIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 p-4 bg-blue-900/20 border border-blue-800 rounded-lg">
             <p className="text-sm text-gray-300">
@@ -842,6 +960,24 @@ const LibraryImportPage: React.FC = () => {
             )}
           </div>
 
+          {/* Import options */}
+          <label className="flex items-start gap-3 pt-4 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={createHardlinks}
+              onChange={(e) => setCreateHardlinks(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500"
+            />
+            <span>
+              <span className="text-white text-sm font-medium">Create hardlinks instead of moving files</span>
+              <span className="block text-xs text-gray-400 mt-0.5">
+                Leaves the original files untouched so seeding torrents stay intact. Requires the
+                source and library to be on the same filesystem; falls back to copying if a link
+                cannot be created.
+              </span>
+            </span>
+          </label>
+
           {/* Navigation */}
           <div className="flex justify-between pt-4">
             <button
@@ -928,6 +1064,7 @@ const LibraryImportPage: React.FC = () => {
         onClose={() => setShowFileBrowser(false)}
         onSelect={(path) => setFolderPath(path)}
         title="Select Import Folder"
+        initialPath={folderPath}
       />
 
       {/* Search Modal */}
@@ -1010,7 +1147,9 @@ const LibraryImportPage: React.FC = () => {
                         </div>
                         <div className="ml-4">
                           {event.hasFile ? (
-                            <span className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded">Has File</span>
+                            <span className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded">
+                              Has File{event.currentQuality ? ` (${event.currentQuality})` : ''}
+                            </span>
                           ) : event.existsInDatabase ? (
                             <span className="text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded">In Database</span>
                           ) : (

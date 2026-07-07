@@ -45,6 +45,15 @@ namespace Sportarr.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("HubChangesCursor")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("IndexerMinimumAgeMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("IndexerRetention")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("TEXT");
 
@@ -59,6 +68,9 @@ namespace Sportarr.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("PreferIndexerFlags")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ProxySettings")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -69,22 +81,13 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("RedownloadFailedFromInteractiveSearch")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("SearchSleepDuration")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("IndexerMinimumAgeMinutes")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("IndexerRetention")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int>("RssSyncInterval")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("PreferIndexerFlags")
+                    b.Property<int>("SearchCacheDuration")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("SearchCacheDuration")
+                    b.Property<int>("SearchSleepDuration")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("SecuritySettings")
@@ -303,16 +306,49 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("IsPreferred");
 
-                    b.HasIndex("LeagueId");
-
-                    b.HasIndex(new[] { "LeagueId" }, "UX_ChannelLeagueMappings_PreferredPerLeague")
+                    b.HasIndex("LeagueId")
                         .IsUnique()
+                        .HasDatabaseName("UX_ChannelLeagueMappings_PreferredPerLeague")
                         .HasFilter("\"IsPreferred\" = 1");
 
                     b.HasIndex("ChannelId", "LeagueId")
                         .IsUnique();
 
                     b.ToTable("ChannelLeagueMappings");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.ChannelTeamMapping", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ChannelId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsPreferred")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TeamId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ChannelTeamMappings_PreferredPerTeam")
+                        .HasFilter("\"IsPreferred\" = 1");
+
+                    b.HasIndex("ChannelId", "TeamId")
+                        .IsUnique();
+
+                    b.ToTable("ChannelTeamMappings");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.CustomFormat", b =>
@@ -521,12 +557,18 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("ApiKey")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("BlackholeFolder")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Directory")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("DisableSslCertificateValidation")
@@ -566,14 +608,24 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ReadOnly")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("RemoveCompletedDownloads")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("RemoveFailedDownloads")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("SaveMagnetFiles")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("SequentialDownload")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("Type")
                         .HasColumnType("INTEGER");
@@ -585,6 +637,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Username")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WatchFolder")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -627,6 +682,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("EventId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("ImportRetryCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("ImportedAt")
                         .HasColumnType("TEXT");
 
@@ -666,9 +724,6 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("QualityScore")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int?>("ImportRetryCount")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int?>("RetryCount")
                         .HasColumnType("INTEGER");
 
@@ -702,9 +757,9 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("DownloadId");
 
-                    b.HasIndex("EventId");
-
                     b.HasIndex("Status");
+
+                    b.HasIndex("EventId", "Status");
 
                     b.ToTable("DownloadQueue");
                 });
@@ -922,8 +977,6 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("EventId");
 
-                    b.HasIndex("Method");
-
                     b.HasIndex("ScheduledEnd");
 
                     b.HasIndex("ScheduledStart");
@@ -1058,6 +1111,9 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Priority")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("ProgramCount")
                         .HasColumnType("INTEGER");
 
@@ -1102,7 +1158,12 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("BroadcastDate")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasAnnotation("Relational:JsonPropertyName", "broadcastDate");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT")
+                        .HasAnnotation("Relational:JsonPropertyName", "strDescriptionEN");
 
                     b.Property<int?>("EpisodeNumber")
                         .HasColumnType("INTEGER");
@@ -1212,6 +1273,8 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("LeagueId");
 
+                    b.HasIndex("Monitored");
+
                     b.HasIndex("Sport");
 
                     b.HasIndex("Status");
@@ -1296,6 +1359,86 @@ namespace Sportarr.Api.Migrations
                     b.ToTable("EventFiles");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.EventFileHistory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("EventId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Part")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Quality")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceTitle")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date");
+
+                    b.HasIndex("EventId");
+
+                    b.ToTable("EventFileHistory");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.FollowedTeam", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Added")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BadgeUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastLeagueDiscovery")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sport")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("Sport");
+
+                    b.ToTable("FollowedTeams");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.GrabHistory", b =>
                 {
                     b.Property<int>("Id")
@@ -1311,6 +1454,9 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<int?>("DownloadClientId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("DownloadId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("DownloadUrl")
                         .IsRequired()
@@ -1450,6 +1596,8 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DestinationPath");
+
                     b.HasIndex("DownloadQueueItemId");
 
                     b.HasIndex("EventId");
@@ -1548,47 +1696,6 @@ namespace Sportarr.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("ImportListExclusions");
-                });
-
-            modelBuilder.Entity("Sportarr.Api.Models.FollowedTeam", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("Added")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("BadgeUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ExternalId")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("LastLeagueDiscovery")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Sport")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExternalId")
-                        .IsUnique();
-
-                    b.HasIndex("Sport");
-
-                    b.ToTable("FollowedTeams");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Indexer", b =>
@@ -1702,7 +1809,7 @@ namespace Sportarr.Api.Migrations
                     b.Property<int?>("SeedTime")
                         .HasColumnType("INTEGER");
 
-                    b.PrimitiveCollection<string>("Tags")
+                    b.Property<string>("Tags")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -1837,6 +1944,12 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("HasArchive")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("IptvOrgConfidence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("IptvOrgId")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("INTEGER");
 
@@ -1848,12 +1961,6 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<bool>("IsSportsChannel")
                         .HasColumnType("INTEGER");
-
-                    b.Property<int?>("IptvOrgConfidence")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("IptvOrgId")
-                        .HasColumnType("TEXT");
 
                     b.Property<string>("Language")
                         .HasMaxLength(50)
@@ -1929,6 +2036,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("DetectedCatchupMode")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("FfmpegInputArgs")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
@@ -1985,6 +2095,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime>("Added")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AllowHighlights")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("AlternateName")
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strLeagueAlternate");
@@ -2030,19 +2143,28 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime?>("MetadataLastSyncedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("MonitorFinals")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("MonitorPlayoffs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("MonitorPreseason")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("MonitorType")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("Monitored")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MonitoredEventTypes")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("MonitoredParts")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("MonitoredSessionTypes")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("MonitoredEventTypes")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
@@ -2057,6 +2179,9 @@ namespace Sportarr.Api.Migrations
                         .HasAnnotation("Relational:JsonPropertyName", "strPoster");
 
                     b.Property<int?>("QualityProfileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RetentionDays")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("RootFolderId")
@@ -2076,6 +2201,10 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strSport");
+
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Website")
                         .HasMaxLength(500)
@@ -2168,6 +2297,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("DeleteEmptyFolders")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("EnableEventRetention")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("EnableMultiPartEpisodes")
                         .HasColumnType("INTEGER");
 
@@ -2175,6 +2307,9 @@ namespace Sportarr.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("EventRetentionDays")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ExtraFileExtensions")
                         .IsRequired()
@@ -2230,6 +2365,9 @@ namespace Sportarr.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("UnmonitorDeletedEvents")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("UseHardlinks")
                         .HasColumnType("INTEGER");
@@ -2360,6 +2498,10 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("Notifications");
@@ -2374,7 +2516,7 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime>("Detected")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("DownloadClientId")
+                    b.Property<int?>("DownloadClientId")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("DownloadId")
@@ -2509,10 +2651,10 @@ namespace Sportarr.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ReleaseGroup")
+                    b.Property<DateTime>("ReleasableAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("ReleasableAt")
+                    b.Property<string>("ReleaseGroup")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Score")
@@ -2541,20 +2683,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("EventId");
 
-                    b.HasIndex("Status", "ReleasableAt");
-
                     b.ToTable("PendingReleases");
-                });
-
-            modelBuilder.Entity("Sportarr.Api.Models.PendingRelease", b =>
-                {
-                    b.HasOne("Sportarr.Api.Models.Event", "Event")
-                        .WithMany()
-                        .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Player", b =>
@@ -3002,10 +3131,10 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("FormatScoreIncrement")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IsDefault")
+                    b.Property<bool>("IsCustomized")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IsCustomized")
+                    b.Property<bool>("IsDefault")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsSynced")
@@ -3287,6 +3416,58 @@ namespace Sportarr.Api.Migrations
                     b.ToTable("RemotePathMappings");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.RestoreReport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BackupFileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FilesFound")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FilesMissing")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FilesSkippedUnreachableRoot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ManifestJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PathRemapsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceHost")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceSportarrVersion")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TotalEventFiles")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RestoreReports");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.RootFolder", b =>
                 {
                     b.Property<int>("Id")
@@ -3314,6 +3495,36 @@ namespace Sportarr.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("RootFolders");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.SeasonPoster", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastSyncedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LeagueId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PosterUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Season")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeagueId", "Season")
+                        .IsUnique();
+
+                    b.ToTable("SeasonPosters");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.SystemEvent", b =>
@@ -3395,7 +3606,7 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("AlternateName")
-                        .HasMaxLength(200)
+                        .HasMaxLength(1000)
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strAlternate");
 
@@ -3480,6 +3691,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strStadiumLocation");
 
+                    b.Property<string>("UserAliases")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Website")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT")
@@ -3556,6 +3770,25 @@ namespace Sportarr.Api.Migrations
                     b.Navigation("Channel");
 
                     b.Navigation("League");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.ChannelTeamMapping", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.IptvChannel", "Channel")
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Sportarr.Api.Models.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.DownloadQueueItem", b =>
@@ -3658,6 +3891,16 @@ namespace Sportarr.Api.Migrations
                     b.Navigation("Event");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.EventFileHistory", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Event");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.GrabHistory", b =>
                 {
                     b.HasOne("Sportarr.Api.Models.Event", "Event")
@@ -3708,6 +3951,16 @@ namespace Sportarr.Api.Migrations
                     b.Navigation("Source");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.League", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.RootFolder", "RootFolder")
+                        .WithMany()
+                        .HasForeignKey("RootFolderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("RootFolder");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.LeagueTeam", b =>
                 {
                     b.HasOne("Sportarr.Api.Models.League", "League")
@@ -3732,8 +3985,7 @@ namespace Sportarr.Api.Migrations
                     b.HasOne("Sportarr.Api.Models.DownloadClient", "DownloadClient")
                         .WithMany()
                         .HasForeignKey("DownloadClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Sportarr.Api.Models.Event", "SuggestedEvent")
                         .WithMany()
@@ -3743,6 +3995,17 @@ namespace Sportarr.Api.Migrations
                     b.Navigation("DownloadClient");
 
                     b.Navigation("SuggestedEvent");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.PendingRelease", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Player", b =>
@@ -3764,6 +4027,17 @@ namespace Sportarr.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Format");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.SeasonPoster", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.League", "League")
+                        .WithMany()
+                        .HasForeignKey("LeagueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("League");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Team", b =>
@@ -3798,14 +4072,7 @@ namespace Sportarr.Api.Migrations
 
             modelBuilder.Entity("Sportarr.Api.Models.League", b =>
                 {
-                    b.HasOne("Sportarr.Api.Models.RootFolder", "RootFolder")
-                        .WithMany()
-                        .HasForeignKey("RootFolderId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("MonitoredTeams");
-
-                    b.Navigation("RootFolder");
                 });
 #pragma warning restore 612, 618
         }

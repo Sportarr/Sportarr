@@ -26,5 +26,6 @@ public class AddIptvSourceRequestValidator : AbstractValidator<AddIptvSourceRequ
         RuleFor(x => x.Username).MaximumLength(256);
         RuleFor(x => x.Password).MaximumLength(512);
         RuleFor(x => x.UserAgent).MaximumLength(512);
+        RuleFor(x => x.FfmpegInputArgs).MaximumLength(1024);
     }
 }

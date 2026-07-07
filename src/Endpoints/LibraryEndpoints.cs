@@ -72,7 +72,17 @@ public static class LibraryEndpoints
                     foreach (var evt in apiEvents.Take(20))
                     {
                         var existingEvent = await db.Events
+                            .Include(e => e.Files)
                             .FirstOrDefaultAsync(e => e.ExternalId == evt.ExternalId);
+
+                        // Quality of the file(s) already on disk, so the picker can show
+                        // what a "Has File" match would be competing against.
+                        var currentQuality = existingEvent == null
+                            ? null
+                            : string.Join(" / ", existingEvent.Files
+                                .Where(f => !string.IsNullOrEmpty(f.Quality))
+                                .Select(f => f.Quality)
+                                .Distinct());
 
                         results.Add(new
                         {
@@ -86,7 +96,8 @@ public static class LibraryEndpoints
                             homeTeam = evt.HomeTeam?.Name,
                             awayTeam = evt.AwayTeam?.Name,
                             existsInDatabase = existingEvent != null,
-                            hasFile = existingEvent?.HasFile ?? false
+                            hasFile = existingEvent?.HasFile ?? false,
+                            currentQuality = string.IsNullOrEmpty(currentQuality) ? null : currentQuality
                         });
                     }
                 }

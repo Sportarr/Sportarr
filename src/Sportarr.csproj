@@ -51,6 +51,11 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
+  <!-- Windows Service (SCM) integration: required by builder.Host.UseWindowsService() -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' OR '$(RuntimeIdentifier)' == 'win-x86' OR '$(RuntimeIdentifier)' == 'win-arm64'">
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.19" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">

@@ -16,5 +16,9 @@ public class AddEpgSourceRequestValidator : AbstractValidator<AddEpgSourceReques
             .Must(url => Uri.TryCreate(url, UriKind.Absolute, out var uri)
                 && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
             .WithMessage("URL must be a valid http(s) URL.");
+
+        RuleFor(x => x.Priority)
+            .InclusiveBetween(1, 50)
+            .WithMessage("Priority must be between 1 and 50.");
     }
 }

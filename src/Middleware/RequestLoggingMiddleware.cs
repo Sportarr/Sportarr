@@ -3,8 +3,13 @@ using System.Diagnostics;
 namespace Sportarr.Api.Middleware;
 
 /// <summary>
-/// Logs every inbound HTTP request with method, path, status, and elapsed time.
-/// Skips noisy paths (health checks, static files, frontend assets) by default.
+/// Logs inbound HTTP requests with method, path, status, and elapsed time.
+/// Successful requests log at Debug so the default Info log reads as
+/// application events only (grabs, imports, syncs). Failures always
+/// surface (4xx Warning, 5xx Error) and abnormally slow successes stay at
+/// Info so performance problems remain visible without enabling Debug.
+/// Skips noisy paths (health checks, static files, frontend assets)
+/// entirely.
 /// </summary>
 public class RequestLoggingMiddleware
 {
@@ -28,29 +33,9 @@ public class RequestLoggingMiddleware
         ".woff", ".woff2", ".ttf", ".eot"
     };
 
-    // Hot-poll endpoints the SPA hits on a 3-second loop (queue widgets,
-    // task drawer, activity counters, search-state probes). At INFO
-    // they spam the log with 20+ identical 200s per minute and bury
-    // the lines that actually matter — sync warnings, refresh errors,
-    // cleanup decisions. Successful responses on these paths drop to
-    // DEBUG so the polling stays observable when the user opts in via
-    // debug log level, but a normal info-level operator log shows only
-    // the once-per-minute meaningful events. Non-2xx responses (a
-    // failed queue fetch, an auth rejection on /api/task, etc.) still
-    // log at INFO/WARN/ERROR because the elevation paths below only
-    // activate for status < 400.
-    private static readonly string[] QuietPollPathPrefixes =
-    {
-        "/api/queue",
-        "/api/task",
-        "/api/search/active",
-        "/api/search/queue",
-        "/api/activity/counts",
-        "/api/system/status",
-        "/api/auth/check",
-        "/initialize.json",
-        "/api/log/file",
-    };
+    // A successful request taking this long is worth a line in the default
+    // log even though routine successes are Debug-only.
+    private const int SlowRequestThresholdMs = 2000;
 
     public RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger)
     {
@@ -81,11 +66,13 @@ public class RequestLoggingMiddleware
             var statusCode = context.Response.StatusCode;
             var elapsed = stopwatch.ElapsedMilliseconds;
 
-            // Status >= 500 logs at Error, 400-499 at Warning, otherwise
-            // Information — except for the SPA hot-poll endpoints listed
-            // in QuietPollPathPrefixes, whose successful responses drop
-            // to Debug so they don't drown the operator log. Errors on
-            // those paths still surface normally.
+            // 5xx logs at Error and 4xx at Warning so failures always
+            // surface regardless of level. Successful requests log at
+            // Debug: at Info they made the default log a per-request
+            // firehose (an open browser tab produces dozens of identical
+            // 200 lines per minute) that buried the events that matter.
+            // A successful request that was abnormally slow still logs at
+            // Info so performance problems show up in a default-level log.
             if (statusCode >= 500)
             {
                 _logger.LogError(
@@ -98,29 +85,19 @@ public class RequestLoggingMiddleware
                     "[HTTP] {Method} {Path} -> {StatusCode} ({ElapsedMs}ms)",
                     context.Request.Method, path, statusCode, elapsed);
             }
-            else if (IsQuietPollPath(path))
+            else if (elapsed >= SlowRequestThresholdMs)
+            {
+                _logger.LogInformation(
+                    "[HTTP] Slow request: {Method} {Path} -> {StatusCode} ({ElapsedMs}ms)",
+                    context.Request.Method, path, statusCode, elapsed);
+            }
+            else
             {
                 _logger.LogDebug(
                     "[HTTP] {Method} {Path} -> {StatusCode} ({ElapsedMs}ms)",
                     context.Request.Method, path, statusCode, elapsed);
             }
-            else
-            {
-                _logger.LogInformation(
-                    "[HTTP] {Method} {Path} -> {StatusCode} ({ElapsedMs}ms)",
-                    context.Request.Method, path, statusCode, elapsed);
-            }
         }
-    }
-
-    private static bool IsQuietPollPath(string path)
-    {
-        foreach (var prefix in QuietPollPathPrefixes)
-        {
-            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
     }
 
     private static bool ShouldSkip(string path)

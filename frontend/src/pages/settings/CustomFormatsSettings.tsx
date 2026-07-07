@@ -51,6 +51,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
   const [editingFormat, setEditingFormat] = useState<CustomFormat | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [showConditionModal, setShowConditionModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Form state for format creation/editing
   const [formData, setFormData] = useState<CustomFormat>({
@@ -89,6 +90,11 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
   };
 
   const handleSaveFormat = async () => {
+    // Re-entry guard: a second click while the create request is in flight
+    // used to fire a duplicate POST that failed on the unique name index,
+    // showing "Save Failed" even though the first request created the format.
+    if (isSaving) return;
+
     if (!formData.name.trim()) {
       toast.error('Validation Error', {
         description: 'Please enter a format name',
@@ -96,6 +102,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
       return;
     }
 
+    setIsSaving(true);
     try {
       const url = editingFormat ? `/api/customformat/${editingFormat.id}` : '/api/customformat';
       const response = editingFormat
@@ -126,15 +133,22 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
           specifications: []
         });
       } else {
-        toast.error('Save Failed', {
-          description: 'Failed to save custom format. Please try again.',
-        });
+        let description = 'Failed to save custom format. Please try again.';
+        try {
+          const body = await response.json();
+          if (body?.error) description = body.error;
+        } catch {
+          // Non-JSON error body; keep the generic message
+        }
+        toast.error('Save Failed', { description });
       }
     } catch (error) {
       console.error('Error saving custom format:', error);
       toast.error('Save Failed', {
         description: error instanceof Error ? error.message : 'An unexpected error occurred.',
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -580,9 +594,10 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
                 </button>
                 <button
                   onClick={handleSaveFormat}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Save
+                  {isSaving ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </div>

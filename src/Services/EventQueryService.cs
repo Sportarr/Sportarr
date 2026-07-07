@@ -20,16 +20,22 @@ public class EventQueryService
     /// <summary>
     /// Build a search query from a custom template.
     /// Supports tokens: {League}, {Year}, {Month}, {Day}, {Round}, {Round:00}, {Round:0}, {Week}, {EventTitle},
-    /// {HomeTeam}, {AwayTeam}, {vs}, {Season}
+    /// {HomeTeam}, {AwayTeam}, {vs}, {Season}, {Part}, {EventType}
     ///
     /// Round format options:
     /// - {Round} or {Round:00} - Zero-padded to 2 digits (e.g., "01", "22") - default for compatibility
     /// - {Round:0} - No padding (e.g., "1", "22")
+    ///
+    /// {Part} is the part being searched (Prelims, Main Card, ...) and empty
+    /// for a whole-event search. {EventType} is the detected fighting event
+    /// type in query-friendly spacing (PPV, Fight Night, Contender Series,
+    /// Weekly, ...) and empty when the title doesn't classify.
     /// </summary>
     /// <param name="template">The template string with tokens</param>
     /// <param name="evt">The event to extract values from</param>
+    /// <param name="part">The part being searched, when a specific part is targeted</param>
     /// <returns>The processed query string with tokens replaced</returns>
-    public string BuildQueryFromTemplate(string template, Event evt)
+    public string BuildQueryFromTemplate(string template, Event evt, string? part = null)
     {
         if (string.IsNullOrWhiteSpace(template))
         {
@@ -92,6 +98,19 @@ public class EventQueryService
         // Season
         result = result.Replace("{Season}", evt.Season ?? "", StringComparison.OrdinalIgnoreCase);
 
+        // Part being searched (Prelims, Main Card, ...); empty on whole-event
+        // searches so a template like "{EventName} {Part}" degrades cleanly.
+        result = result.Replace("{Part}", part ?? "", StringComparison.OrdinalIgnoreCase);
+
+        // Detected fighting event type, spaced for release-name matching
+        // ("FightNight" -> "Fight Night", "ContenderSeries" -> "Contender
+        // Series"); empty when the title doesn't classify.
+        if (result.Contains("{EventType}", StringComparison.OrdinalIgnoreCase))
+        {
+            var typeName = EventPartDetector.DetectFightingEventTypeName(evt.Title ?? "", evt.League?.Name);
+            result = result.Replace("{EventType}", SpacePascalCase(typeName), StringComparison.OrdinalIgnoreCase);
+        }
+
         // Clean up any double spaces
         while (result.Contains("  "))
         {
@@ -102,6 +121,20 @@ public class EventQueryService
             template, result.Trim(), evt.Title);
 
         return result.Trim();
+    }
+
+    /// <summary>
+    /// Space out a PascalCase identifier for use inside a search query:
+    /// "FightNight" -> "Fight Night". All-caps identifiers (PPV, PLE, SNME)
+    /// pass through unchanged.
+    /// </summary>
+    private static string SpacePascalCase(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "";
+        }
+        return System.Text.RegularExpressions.Regex.Replace(value, "(?<=[a-z])(?=[A-Z])", " ");
     }
 
     /// <summary>
@@ -167,7 +200,7 @@ public class EventQueryService
         // If custom template is provided, use it instead of default logic
         if (!string.IsNullOrWhiteSpace(customTemplate))
         {
-            var templateQuery = BuildQueryFromTemplate(customTemplate, evt);
+            var templateQuery = BuildQueryFromTemplate(customTemplate, evt, part);
             queries.Add(templateQuery);
             _logger.LogInformation("[EventQuery] Using custom template query: '{Query}' for '{EventTitle}'",
                 templateQuery, evt.Title);
@@ -730,6 +763,12 @@ public class EventQueryService
             return "MLB";
         if (lower.Contains("major league soccer") || lower.Contains("mls"))
             return "MLS";
+        // TheSportsDB names the league "Australian AFL" to disambiguate from
+        // US leagues, but no release has ever been tagged that way - scene
+        // and KAYO releases are uniformly "AFL 2026 Round 7 ..." so the
+        // prefix must be the bare abbreviation.
+        if (lower.Contains("afl") || lower.Contains("australian football"))
+            return "AFL";
 
         return "";
     }
@@ -759,6 +798,14 @@ public class EventQueryService
         if (lower.Contains("wrc") || lower.Contains("world rally"))
             return "WRC";
 
+        // World Superbike: TheSportsDB names the league literally "SBK",
+        // while releases are almost always tagged WSBK (WorldSBK branding).
+        // "British Superbike" deliberately does NOT land here — that's a
+        // separate series with its own releases.
+        if (lower.Trim() == "sbk" || lower.Contains("world superbike") ||
+            lower.Contains("superbike world") || lower.Contains("worldsbk") || lower.Contains("wsbk"))
+            return "WSBK";
+
         return leagueName.Replace(" ", "");
     }
 
@@ -777,6 +824,9 @@ public class EventQueryService
         {
             "Formula1" => new List<string> { "Formula 1", "Formula1" },
             "FormulaE" => new List<string> { "Formula E", "FormulaE" },
+            // Releases overwhelmingly use WSBK; SBK appears from some groups
+            // and matches the league's own TheSportsDB name.
+            "WSBK" => new List<string> { "WSBK", "SBK" },
             _ => new List<string> { seriesKey }
         };
     }

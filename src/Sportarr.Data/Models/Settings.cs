@@ -30,6 +30,12 @@ public class AppSettings
     public bool RedownloadFailedDownloads { get; set; } = true;
     public bool RedownloadFailedFromInteractiveSearch { get; set; } = true;
 
+    // Stored in config.xml (Config.StalledDownloadTimeoutMinutes), not in
+    // this table - NotMapped keeps it on the JSON wire contract without a
+    // schema change.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int StalledDownloadTimeoutMinutes { get; set; } = 60;
+
     // Search Queue Management (Huntarr-style queue threshold pause)
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles
@@ -45,6 +51,14 @@ public class AppSettings
     public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags
     public int SearchCacheDuration { get; set; } = 120; // seconds to cache search results
     public int IndexerMinimumAgeMinutes { get; set; } = 0; // minutes to wait after a release is posted before grabbing it
+
+    // IPTV / EPG auto-refresh intervals in hours (0 = disabled).
+    // Stored in config.xml (Config.*); NotMapped keeps them on the settings
+    // JSON contract without a schema change.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int IptvPlaylistRefreshHours { get; set; } = 168;
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int EpgRefreshHours { get; set; } = 48;
 
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
 }
@@ -100,7 +114,7 @@ public class LoggingSettings
 // Analytics Configuration
 public class AnalyticsSettings
 {
-    public bool SendAnonymousUsageData { get; set; } = false;
+    public bool SendAnonymousUsageData { get; set; } = true;
 }
 
 // Backup Configuration
@@ -172,6 +186,12 @@ public class MediaManagementSettings
     // File Management
     public bool RenameEvents { get; set; } = false;
     public bool RenameFiles { get; set; } = true;
+
+    // Stored in config.xml (Config.DownloadPropersAndRepacks); NotMapped
+    // keeps it on the media-management JSON contract without a schema change.
+    // Values: preferAndUpgrade | doNotUpgrade | doNotPrefer.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string DownloadPropersAndRepacks { get; set; } = "preferAndUpgrade";
     public bool ReplaceIllegalCharacters { get; set; } = true;
     public bool EnableMultiPartEpisodes { get; set; } = true; // Detect and name multi-part episodes for Fighting sports
     public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
@@ -187,6 +207,15 @@ public class MediaManagementSettings
     public string SeasonFolderFormat { get; set; } = "Season {Season}";
     public string EventFolderFormat { get; set; } = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}";
     public bool DeleteEmptyFolders { get; set; } = false;
+
+    /// <summary>
+    /// Unmonitor events whose files were deleted from disk by something
+    /// other than Sportarr (cron cleanup, media server delete-after-watch,
+    /// manual deletion), so deliberately removed games aren't re-downloaded.
+    /// Sportarr's own upgrades and renames are unaffected: their replacement
+    /// files are tracked before the old file's deletion is observed.
+    /// </summary>
+    public bool UnmonitorDeletedEvents { get; set; } = false;
     // ReorganizeFolders: When true, file rename operations will also move files to match current folder settings
     // When false, rename only changes filenames without moving files to different folders
     public bool ReorganizeFolders { get; set; } = false;
@@ -236,8 +265,14 @@ public class MediaManagementSettings
     public string RecycleBin { get; set; } = "";
     public int RecycleBinCleanup { get; set; } = 7;
 
-    // Event Retention - auto-unmonitor and delete files for events once
-    // they've aged past EventRetentionDays. Off by default.
+    // Stored in config.xml (Config.WatchFolders); NotMapped keeps it on the
+    // media-management JSON contract without a schema change.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public List<string> WatchFolders { get; set; } = new();
+
+    // RETIRED: event retention moved to League.RetentionDays (per-league).
+    // The columns stay (dropping them would churn the migration snapshot for
+    // nothing) but nothing reads or writes them anymore.
     public bool EnableEventRetention { get; set; } = false;
     public int EventRetentionDays { get; set; } = 30;
 
@@ -361,6 +396,7 @@ public class FileNamingTokens
     public string Episode { get; set; } = string.Empty; // Episode number (01, 02, etc.)
     public string Part { get; set; } = string.Empty;    // Multi-part suffix (pt1, pt2, pt3) for fight card segments
     public string PartName { get; set; } = string.Empty; // Human part label suffix (" - Prelims", " - Main Card"); empty for single-part files. Separator embedded, same convention as Part.
+    public string CustomFormats { get; set; } = string.Empty; // Space-joined names of matched formats flagged IncludeCustomFormatWhenRenaming
 }
 
 // Notification Model (stored separately with Tags)

@@ -26,10 +26,10 @@ public class FileNamingService
     /// <summary>
     /// Build filename from format template and tokens
     /// </summary>
-    public string BuildFileName(string format, FileNamingTokens tokens, string extension)
+    public string BuildFileName(string format, FileNamingTokens tokens, string extension, bool replaceIllegalCharacters = true)
     {
         var filename = ReplaceTokens(format, tokens);
-        filename = CleanFileName(filename);
+        filename = CleanFileName(filename, replaceIllegalCharacters);
 
         // Ensure extension starts with dot
         if (!extension.StartsWith('.'))
@@ -73,7 +73,7 @@ public class FileNamingService
         if (settings.CreateLeagueFolders && !string.IsNullOrWhiteSpace(settings.LeagueFolderFormat))
         {
             var leagueFolder = ReplaceTokens(settings.LeagueFolderFormat, tokens);
-            leagueFolder = CleanFileName(leagueFolder);
+            leagueFolder = CleanFileName(leagueFolder, settings.ReplaceIllegalCharacters);
             if (!string.IsNullOrWhiteSpace(leagueFolder))
             {
                 pathParts.Add(leagueFolder);
@@ -84,21 +84,28 @@ public class FileNamingService
         if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && !string.IsNullOrWhiteSpace(settings.SeasonFolderFormat))
         {
             var seasonFolder = ReplaceTokens(settings.SeasonFolderFormat, tokens);
-            seasonFolder = CleanFileName(seasonFolder);
+            seasonFolder = CleanFileName(seasonFolder, settings.ReplaceIllegalCharacters);
             if (!string.IsNullOrWhiteSpace(seasonFolder))
             {
                 pathParts.Add(seasonFolder);
             }
         }
 
-        // Event folder (e.g., "UFC 310 (2024-12-14) E45") - only if season folders are enabled
-        // HARDCODED format to ensure episode numbers are always included for proper file organization
-        // This prevents conflicts with same-day events and ensures structural consistency
+        // Event folder (e.g., "UFC 310 (2024-12-14) E45") - only if season folders are enabled.
+        // The format is configurable (EventFolderFormat) with the historical
+        // hardcoded value as the default. The default keeps E{Episode} so
+        // same-day events stay in distinct folders; a user who sets
+        // "{Event Weekend Title}" instead is deliberately collapsing every
+        // session of a motorsport weekend into one shared folder, and
+        // filenames (which keep {Event Title} and episode) stay unique
+        // inside it.
         if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && settings.CreateEventFolders)
         {
-            const string EventFolderFormat = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}";
-            var eventFolder = ReplaceTokens(EventFolderFormat, tokens);
-            eventFolder = CleanFileName(eventFolder);
+            var eventFolderFormat = string.IsNullOrWhiteSpace(settings.EventFolderFormat)
+                ? "{Event Title} ({Year}-{Month}-{Day}) E{Episode}"
+                : settings.EventFolderFormat;
+            var eventFolder = ReplaceTokens(eventFolderFormat, tokens);
+            eventFolder = CleanFileName(eventFolder, settings.ReplaceIllegalCharacters);
             if (!string.IsNullOrWhiteSpace(eventFolder))
             {
                 pathParts.Add(eventFolder);
@@ -143,6 +150,11 @@ public class FileNamingService
             { "{Event Title}", effectiveTitle ?? "Unknown Event" },
             { "{Event Title The}", MoveArticleToEnd(effectiveTitle ?? "Unknown Event") },
             { "{Event CleanTitle}", CleanTitle(effectiveTitle ?? "Unknown Event") },
+            // Folder-only token: the weekend (parent) portion of a motorsport
+            // session title, so Practice/Qualifying/Race can share one
+            // "Monaco Grand Prix" folder. Non-motorsport titles pass through
+            // unchanged.
+            { "{Event Weekend Title}", EventPartDetector.GetMotorsportWeekendTitle(effectiveTitle ?? "Unknown Event") },
             { "{Event Id}", eventInfo.Id.ToString() },
             { "{League}", eventInfo.League?.Name ?? "Unknown League" },
             { "{Sport}", eventInfo.Sport ?? "Unknown Sport" },
@@ -187,7 +199,9 @@ public class FileNamingService
             // Human part label with embedded separator (" - Prelims"), empty
             // for single-part files - lets fight cards name Prelims/Main Card
             // in the filename instead of the opaque pt1/pt2.
-            { "{Part Name}", tokens.PartName }
+            { "{Part Name}", tokens.PartName },
+            // Matched custom formats flagged "include when renaming".
+            { "{Custom Formats}", tokens.CustomFormats }
         };
 
         if (tokens.AirDate.HasValue)
@@ -274,17 +288,20 @@ public class FileNamingService
     }
 
     /// <summary>
-    /// Remove invalid characters from filename
+    /// Remove invalid characters from filename. When replaceIllegalCharacters
+    /// is true (the Replace Illegal Characters setting, default) each invalid
+    /// character becomes a space; when false they are removed outright.
     /// </summary>
-    public string CleanFileName(string filename)
+    public string CleanFileName(string filename, bool replaceIllegalCharacters = true)
     {
         if (string.IsNullOrEmpty(filename))
             return filename;
 
-        // Replace invalid characters with space
         foreach (var c in InvalidFileChars)
         {
-            filename = filename.Replace(c, ' ');
+            filename = replaceIllegalCharacters
+                ? filename.Replace(c, ' ')
+                : filename.Replace(c.ToString(), string.Empty);
         }
 
         // Clean up multiple spaces
@@ -369,7 +386,8 @@ public class FileNamingService
             "{Season}",
             "{Episode}",
             "{Part}",
-            "{Part Name}"
+            "{Part Name}",
+            "{Custom Formats}"
         };
     }
 

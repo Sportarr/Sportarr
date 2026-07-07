@@ -139,6 +139,7 @@ public class IptvSourceService
         }
         source.MaxStreams = request.MaxStreams;
         source.UserAgent = request.UserAgent;
+        source.FfmpegInputArgs = request.FfmpegInputArgs;
 
         await _db.SaveChangesAsync();
 
@@ -239,27 +240,24 @@ public class IptvSourceService
                 throw new NotSupportedException($"Source type {source.Type} not supported");
             }
 
-            // Remove existing channels for this source
-            var existingChannels = await _db.IptvChannels
-                .Where(c => c.SourceId == sourceId)
-                .ToListAsync();
-
-            _db.IptvChannels.RemoveRange(existingChannels);
-
-            // Add new channels
-            _db.IptvChannels.AddRange(channels);
+            // Upsert in place. The old delete-and-recreate approach gave
+            // every channel a new Id on every refresh, which cascade-deleted
+            // league mappings, team mappings, and the ENTIRE DvrRecordings
+            // history for the source, and reset favorites, hidden flags, and
+            // EPG mappings.
+            var liveCount = await UpsertChannelsAsync(source, channels);
 
             // Update source metadata
-            source.ChannelCount = channels.Count;
+            source.ChannelCount = liveCount;
             source.LastUpdated = DateTime.UtcNow;
             source.LastError = null;
 
             await _db.SaveChangesAsync();
 
             _logger.LogInformation("[IPTV] Synced {Count} channels for source: {Name}",
-                channels.Count, source.Name);
+                liveCount, source.Name);
 
-            return channels.Count;
+            return liveCount;
         }
         catch (Exception ex)
         {
@@ -270,6 +268,164 @@ public class IptvSourceService
             _logger.LogError(ex, "[IPTV] Failed to sync channels for source: {Name}", source.Name);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Marker written to LastError when a channel is auto-retired because it
+    /// vanished from the provider playlist. Lets a later sync distinguish an
+    /// auto-retired channel (safe to re-enable when it returns) from one the
+    /// user disabled by hand.
+    /// </summary>
+    public const string RemovedFromPlaylistError = "No longer present in the provider playlist";
+
+    /// <summary>
+    /// Reconcile the freshly parsed channel list against the existing rows
+    /// without ever recreating a surviving channel. Matching is three-pass:
+    /// stream URL first (stable for M3U, carries the stream id for Xtream),
+    /// then tvg-id, then name - the latter two only when the key is unique on
+    /// both sides, which handles Xtream credential rotation where every URL
+    /// changes at once. Matched rows are updated in place (preserving Id,
+    /// favorites, hidden flag, and an established EPG mapping in TvgId).
+    /// Channels that vanished from the playlist are deleted only when nothing
+    /// references them; rows with mappings, recordings, or a favorite flag
+    /// are retired (disabled + marked) instead, because deleting them would
+    /// cascade away the user's mappings and recording history.
+    /// </summary>
+    private async Task<int> UpsertChannelsAsync(IptvSource source, List<IptvChannel> incoming)
+    {
+        var existing = await _db.IptvChannels
+            .Where(c => c.SourceId == source.Id)
+            .ToListAsync();
+
+        var matched = new List<(IptvChannel Existing, IptvChannel Incoming)>();
+        var claimedExisting = new HashSet<int>();
+        var consumedIncoming = new HashSet<IptvChannel>();
+
+        // Pass 1: exact stream URL.
+        var byUrl = new Dictionary<string, IptvChannel>(StringComparer.Ordinal);
+        foreach (var c in existing)
+            byUrl.TryAdd(c.StreamUrl, c);
+
+        foreach (var inc in incoming)
+        {
+            if (byUrl.TryGetValue(inc.StreamUrl, out var ex) && claimedExisting.Add(ex.Id))
+            {
+                matched.Add((ex, inc));
+                consumedIncoming.Add(inc);
+            }
+        }
+
+        // Passes 2 + 3: tvg-id, then name - only where the key is unique
+        // among the still-unmatched rows on BOTH sides, so duplicated keys
+        // can never cross-wire two different channels.
+        void MatchByKey(Func<IptvChannel, string?> keyOf)
+        {
+            var remainingExisting = existing
+                .Where(c => !claimedExisting.Contains(c.Id))
+                .Select(c => (Channel: c, Key: keyOf(c)))
+                .Where(t => !string.IsNullOrWhiteSpace(t.Key))
+                .GroupBy(t => t.Key!, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() == 1)
+                .ToDictionary(g => g.Key, g => g.First().Channel, StringComparer.OrdinalIgnoreCase);
+
+            var remainingIncoming = incoming
+                .Where(c => !consumedIncoming.Contains(c))
+                .Select(c => (Channel: c, Key: keyOf(c)))
+                .Where(t => !string.IsNullOrWhiteSpace(t.Key))
+                .GroupBy(t => t.Key!, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() == 1)
+                .ToDictionary(g => g.Key, g => g.First().Channel, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var (key, ex) in remainingExisting)
+            {
+                if (remainingIncoming.TryGetValue(key, out var inc) && claimedExisting.Add(ex.Id))
+                {
+                    matched.Add((ex, inc));
+                    consumedIncoming.Add(inc);
+                }
+            }
+        }
+
+        MatchByKey(c => c.TvgId);
+        MatchByKey(c => c.Name);
+
+        // Update matched rows in place.
+        foreach (var (ex, inc) in matched)
+        {
+            ex.Name = inc.Name;
+            ex.StreamUrl = inc.StreamUrl;
+            ex.ChannelNumber = inc.ChannelNumber;
+            ex.LogoUrl = inc.LogoUrl;
+            ex.Group = inc.Group;
+            ex.TvgName = inc.TvgName;
+            ex.IsSportsChannel = inc.IsSportsChannel;
+            ex.Country = inc.Country;
+            ex.Language = inc.Language;
+            ex.DetectedNetwork = inc.DetectedNetwork;
+            ex.DetectedQuality = inc.DetectedQuality;
+            ex.QualityScore = inc.QualityScore;
+            ex.HasArchive = inc.HasArchive;
+            ex.ArchiveDays = inc.ArchiveDays;
+
+            // TvgId doubles as the EPG mapping (set by auto-map or the manual
+            // picker); never clobber an established mapping with playlist data.
+            if (string.IsNullOrWhiteSpace(ex.TvgId) && !string.IsNullOrWhiteSpace(inc.TvgId))
+            {
+                ex.TvgId = inc.TvgId;
+            }
+
+            // A channel we auto-retired in an earlier sync has returned.
+            if (!ex.IsEnabled && ex.LastError == RemovedFromPlaylistError)
+            {
+                ex.IsEnabled = true;
+                ex.LastError = null;
+                ex.Status = IptvChannelStatus.Unknown;
+            }
+        }
+
+        // Handle channels that vanished from the playlist.
+        var disappeared = existing.Where(c => !claimedExisting.Contains(c.Id)).ToList();
+        var removed = 0;
+        var retired = 0;
+        if (disappeared.Count > 0)
+        {
+            var ids = disappeared.Select(c => c.Id).ToList();
+            var referenced = new HashSet<int>();
+            referenced.UnionWith(await _db.ChannelLeagueMappings
+                .Where(m => ids.Contains(m.ChannelId)).Select(m => m.ChannelId).Distinct().ToListAsync());
+            referenced.UnionWith(await _db.ChannelTeamMappings
+                .Where(m => ids.Contains(m.ChannelId)).Select(m => m.ChannelId).Distinct().ToListAsync());
+            referenced.UnionWith(await _db.DvrRecordings
+                .Where(r => ids.Contains(r.ChannelId)).Select(r => r.ChannelId).Distinct().ToListAsync());
+
+            foreach (var c in disappeared)
+            {
+                if (referenced.Contains(c.Id) || c.IsFavorite)
+                {
+                    if (c.IsEnabled || c.LastError != RemovedFromPlaylistError)
+                    {
+                        c.IsEnabled = false;
+                        c.Status = IptvChannelStatus.Offline;
+                        c.LastError = RemovedFromPlaylistError;
+                        retired++;
+                    }
+                }
+                else
+                {
+                    _db.IptvChannels.Remove(c);
+                    removed++;
+                }
+            }
+        }
+
+        var added = incoming.Where(c => !consumedIncoming.Contains(c)).ToList();
+        _db.IptvChannels.AddRange(added);
+
+        _logger.LogInformation(
+            "[IPTV] Channel reconcile for {Name}: {Updated} updated, {Added} added, {Removed} removed, {Retired} retired (had mappings/recordings/favorite)",
+            source.Name, matched.Count, added.Count, removed, retired);
+
+        return matched.Count + added.Count;
     }
 
     /// <summary>
@@ -503,6 +659,39 @@ public class IptvSourceService
             .FirstOrDefaultAsync();
 
         return mapping?.Channel;
+    }
+
+    /// <summary>
+    /// Get the preferred channel for an event: the home team's mapped
+    /// channel wins, then the away team's, then the league preference.
+    /// Team mappings exist for lineups that carry the same league from
+    /// several regional providers ("Lakers home games on the LA regional
+    /// channel"); home-before-away because regional channels follow the
+    /// hosting market's broadcast.
+    /// </summary>
+    public async Task<IptvChannel?> GetPreferredChannelForEventAsync(int? homeTeamId, int? awayTeamId, int? leagueId)
+    {
+        foreach (var teamId in new[] { homeTeamId, awayTeamId })
+        {
+            if (!teamId.HasValue)
+            {
+                continue;
+            }
+            var teamMapping = await _db.ChannelTeamMappings
+                .Where(m => m.TeamId == teamId.Value)
+                .Include(m => m.Channel)
+                .OrderByDescending(m => m.IsPreferred)
+                .ThenBy(m => m.Priority)
+                .FirstOrDefaultAsync();
+            if (teamMapping?.Channel != null)
+            {
+                return teamMapping.Channel;
+            }
+        }
+
+        return leagueId.HasValue
+            ? await GetPreferredChannelForLeagueAsync(leagueId.Value)
+            : null;
     }
 
     /// <summary>

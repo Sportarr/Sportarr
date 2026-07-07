@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import PageHeader from '../../components/PageHeader';
 import PageShell from '../../components/PageShell';
+import EpgSourcesPanel from '../../components/EpgSourcesPanel';
 import StreamPlayerModal from '../../components/StreamPlayerModal';
 
 // IPTV Source Types
@@ -32,6 +33,7 @@ interface IptvSource {
   hasPassword?: boolean;
   maxStreams?: number;
   userAgent?: string;
+  ffmpegInputArgs?: string;
   isActive: boolean;
   channelCount: number;
   lastUpdated?: string;
@@ -70,6 +72,7 @@ interface SourceFormData {
   password: string;
   maxStreams: number;
   userAgent: string;
+  ffmpegInputArgs: string;
 }
 
 const defaultFormData: SourceFormData = {
@@ -80,6 +83,7 @@ const defaultFormData: SourceFormData = {
   password: '',
   maxStreams: 1,
   userAgent: '',
+  ffmpegInputArgs: '',
 };
 
 // Subscription URLs section component
@@ -247,6 +251,41 @@ export default function IptvSettings() {
   const [sources, setSources] = useState<IptvSource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Automatic refresh intervals (hours; 0 = disabled). Stored in the global
+  // settings and consumed by the background refresh service.
+  const [iptvRefreshHours, setIptvRefreshHours] = useState(168);
+  const [epgRefreshHours, setEpgRefreshHours] = useState(48);
+  const [savingRefresh, setSavingRefresh] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await apiClient.get('/settings');
+        if (typeof data.iptvPlaylistRefreshHours === 'number') setIptvRefreshHours(data.iptvPlaylistRefreshHours);
+        if (typeof data.epgRefreshHours === 'number') setEpgRefreshHours(data.epgRefreshHours);
+      } catch {
+        // Non-fatal: the card just shows defaults.
+      }
+    })();
+  }, []);
+
+  const saveRefreshIntervals = async () => {
+    setSavingRefresh(true);
+    try {
+      // PUT expects the full settings object, so merge onto the current one.
+      const { data: current } = await apiClient.get('/settings');
+      await apiClient.put('/settings', {
+        ...current,
+        iptvPlaylistRefreshHours: Math.max(0, iptvRefreshHours),
+        epgRefreshHours: Math.max(0, epgRefreshHours),
+      });
+    } catch {
+      setError('Failed to save refresh intervals');
+    } finally {
+      setSavingRefresh(false);
+    }
+  };
 
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -525,6 +564,7 @@ export default function IptvSettings() {
       password: source.hasPassword ? EXISTING_PASSWORD_PLACEHOLDER : '',
       maxStreams: source.maxStreams || 1,
       userAgent: source.userAgent || '',
+      ffmpegInputArgs: source.ffmpegInputArgs || '',
     });
   };
 
@@ -672,6 +712,20 @@ export default function IptvSettings() {
               Some providers require a specific user agent string
             </p>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Extra FFmpeg Input Arguments</label>
+            <input
+              type="text"
+              value={formData.ffmpegInputArgs}
+              onChange={(e) => handleFormChange('ffmpegInputArgs', e.target.value)}
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              placeholder="-headers Referer: https://example.com -probesize 10M"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Advanced: extra ffmpeg options added before the input URL when recording from this source. Quotes are stripped.
+            </p>
+          </div>
         </div>
 
         {/* Test Result */}
@@ -730,6 +784,48 @@ export default function IptvSettings() {
           </button>
         </div>
       )}
+
+        {/* Automatic refresh intervals */}
+        <div className="mb-8 rounded-lg border border-gray-800 bg-gray-900/70 p-6">
+          <h3 className="text-lg font-semibold text-white mb-1">Automatic Refresh</h3>
+          <p className="text-sm text-gray-400 mb-4">
+            Playlists and guide data are re-synced in the background when older than these intervals.
+            Manual syncs reset the clock. Set to 0 to disable.
+          </p>
+          <div className="flex flex-wrap gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Playlist refresh (hours)</label>
+              <input
+                type="number"
+                min={0}
+                value={iptvRefreshHours}
+                onChange={(e) => setIptvRefreshHours(Math.max(0, Number(e.target.value)))}
+                className="w-32 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">Default 168 (weekly)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">EPG refresh (hours)</label>
+              <input
+                type="number"
+                min={0}
+                value={epgRefreshHours}
+                onChange={(e) => setEpgRefreshHours(Math.max(0, Number(e.target.value)))}
+                className="w-32 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">Default 48 (every 2 days)</p>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={saveRefreshIntervals}
+                disabled={savingRefresh}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {savingRefresh ? 'Saving...' : 'Save Intervals'}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Info Box */}
         <div className="mb-8 rounded-lg border border-gray-800 bg-gray-900/70 p-6">
@@ -932,6 +1028,18 @@ export default function IptvSettings() {
               </p>
             </div>
           )}
+        </div>
+
+        {/* EPG Sources - same manager as the TV Guide cogwheel, surfaced here
+            so guide data setup is discoverable next to the IPTV sources */}
+        <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
+          <h3 className="text-xl font-semibold text-white mb-2">EPG Sources</h3>
+          <p className="text-sm text-gray-400 mb-4">
+            XMLTV program guide data for your channels. If your provider's M3U didn't include
+            guide data automatically, add its XMLTV URL here. Also editable from the TV Guide
+            page via the cogwheel.
+          </p>
+          <EpgSourcesPanel />
         </div>
 
         {/* Add/Edit Modal */}

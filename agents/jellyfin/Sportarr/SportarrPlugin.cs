@@ -71,6 +71,14 @@ namespace Jellyfin.Plugin.Sportarr
         public bool EnableDebugLogging { get; set; } = false;
 
         /// <summary>
+        /// Gets or sets whether the event date is appended to episode titles.
+        /// Playoff series produce several games between the same two teams in
+        /// quick succession; the date in the title is what tells them apart
+        /// on playback clients that don't surface the aired-on field.
+        /// </summary>
+        public bool IncludeDateInEpisodeTitles { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets the image cache duration in hours.
         /// </summary>
         public int ImageCacheHours { get; set; } = 24;

@@ -1,5 +1,7 @@
 import { toast } from 'sonner';
+import { useEffect, useState } from 'react';
 import { useTasks, useQueueTask, useCancelTask, type AppTask } from '../api/hooks';
+import { apiGet, apiPost } from '../utils/api';
 import {
   PlayIcon,
   CheckCircleIcon,
@@ -15,11 +17,50 @@ import { useCompactView } from '../hooks/useCompactView';
 import { TABLE_ROW_HOVER } from '../utils/designTokens';
 import { parseAsUtc } from '../utils/timezone';
 
+interface ScheduledTask {
+  id: string;
+  name: string;
+  description: string;
+  interval: string;
+  triggerable: boolean;
+}
+
 export default function TasksPage() {
   const { data: tasks, isLoading, error } = useTasks(100);
   const queueTask = useQueueTask();
   const cancelTask = useCancelTask();
   const compactView = useCompactView();
+  const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
+  const [triggering, setTriggering] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await apiGet('/api/task/scheduled');
+        if (response.ok) {
+          setScheduledTasks(await response.json());
+        }
+      } catch (e) {
+        console.error('Failed to load scheduled tasks:', e);
+      }
+    })();
+  }, []);
+
+  const handleTrigger = async (task: ScheduledTask) => {
+    setTriggering(task.id);
+    try {
+      const response = await apiPost(`/api/task/scheduled/${task.id}/trigger`, {});
+      if (response.ok) {
+        toast.success(`${task.name} triggered`);
+      } else {
+        toast.error(`Failed to trigger ${task.name}`);
+      }
+    } catch {
+      toast.error(`Failed to trigger ${task.name}`);
+    } finally {
+      setTriggering(null);
+    }
+  };
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -305,6 +346,47 @@ export default function TasksPage() {
           </button>
         }
       />
+
+      {scheduledTasks.length > 0 && (
+        <div className="mb-6">
+          <h2 className="mb-3 text-lg font-semibold text-white">Scheduled</h2>
+          <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900/50">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 text-left text-gray-400">
+                  <th className="px-4 py-3 font-medium">Task</th>
+                  <th className="px-4 py-3 font-medium">Interval</th>
+                  <th className="px-4 py-3 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {scheduledTasks.map((task) => (
+                  <tr key={task.id} className={`border-b border-gray-800/50 ${TABLE_ROW_HOVER}`}>
+                    <td className="px-4 py-3">
+                      <span className="text-white">{task.name}</span>
+                      <p className="text-xs text-gray-500">{task.description}</p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-300">{task.interval}</td>
+                    <td className="px-4 py-3 text-right">
+                      {task.triggerable && (
+                        <button
+                          onClick={() => handleTrigger(task)}
+                          disabled={triggering === task.id}
+                          title={`Run ${task.name} now`}
+                          className="inline-flex items-center gap-1.5 rounded bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <PlayIcon className="h-3.5 w-3.5" />
+                          {triggering === task.id ? 'Triggering...' : 'Run Now'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {runningTasks.length > 0 && renderTaskSection('Running', runningTasks)}
       {queuedTasks.length > 0 && renderTaskSection('Queued', queuedTasks, true)}

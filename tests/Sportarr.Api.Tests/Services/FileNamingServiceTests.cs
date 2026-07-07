@@ -504,4 +504,74 @@ public class FileNamingServiceTests
     {
         _service.GetAvailableFileTokens().Should().Contain("{Part Name}");
     }
+
+    private static Event MotorsportEvent(string title) => new()
+    {
+        Title = title,
+        Sport = "Motorsport",
+        EventDate = new DateTime(2026, 5, 24, 13, 0, 0, DateTimeKind.Utc),
+        EpisodeNumber = 41,
+        Season = "2026"
+    };
+
+    private static MediaManagementSettings FolderSettings(string? eventFolderFormat = null) => new()
+    {
+        CreateLeagueFolders = true,
+        LeagueFolderFormat = "{League}",
+        CreateSeasonFolders = true,
+        SeasonFolderFormat = "Season {Season}",
+        CreateEventFolders = true,
+        EventFolderFormat = eventFolderFormat ?? "{Event Title} ({Year}-{Month}-{Day}) E{Episode}"
+    };
+
+    [Fact]
+    public void BuildFolderPath_HonorsConfiguredEventFolderFormat()
+    {
+        var path = _service.BuildFolderPath(FolderSettings("{Event Weekend Title}"), MotorsportEvent("Monaco Grand Prix Qualifying"));
+
+        path.Should().EndWith($"{System.IO.Path.DirectorySeparatorChar}Monaco Grand Prix");
+    }
+
+    [Fact]
+    public void BuildFolderPath_WeekendTitleGroupsAllSessionsIntoOneFolder()
+    {
+        var settings = FolderSettings("{Event Weekend Title}");
+        var sessions = new[]
+        {
+            "Monaco Grand Prix Practice 1",
+            "Monaco Grand Prix Practice 3",
+            "Monaco Grand Prix Sprint Qualifying",
+            "Monaco Grand Prix Qualifying",
+            "Monaco Grand Prix - Qualifying",
+            "Monaco Grand Prix Race",
+            "Monaco Grand Prix"
+        };
+
+        var paths = sessions.Select(s => _service.BuildFolderPath(settings, MotorsportEvent(s))).Distinct().ToList();
+
+        paths.Should().HaveCount(1, "every session of the weekend should share one folder");
+        paths[0].Should().EndWith("Monaco Grand Prix");
+    }
+
+    [Fact]
+    public void BuildFolderPath_BlankFormatFallsBackToHistoricalDefault()
+    {
+        var path = _service.BuildFolderPath(FolderSettings(""), MotorsportEvent("Monaco Grand Prix Race"));
+
+        path.Should().EndWith("Monaco Grand Prix Race (2026-05-24) E41");
+    }
+
+    [Theory]
+    [InlineData("Mexico City Grand Prix Practice 3", "Mexico City Grand Prix")]
+    [InlineData("MXGP of Portugal Race 2", "MXGP of Portugal")]
+    [InlineData("MXGP of Portugal Qualifying Race", "MXGP of Portugal")]
+    [InlineData("Australian Grand Prix Sprint Qualifying", "Australian Grand Prix")]
+    [InlineData("Bahrain Testing 1 Day 2", "Bahrain")]
+    [InlineData("Arsenal vs Chelsea", "Arsenal vs Chelsea")]
+    [InlineData("UFC Fight Night: Volkov vs Aspinall", "UFC Fight Night: Volkov vs Aspinall")]
+    [InlineData("Race", "Race")] // stripping must never produce an empty title
+    public void GetMotorsportWeekendTitle_StripsOnlyTrailingSessionDesignators(string title, string expected)
+    {
+        EventPartDetector.GetMotorsportWeekendTitle(title).Should().Be(expected);
+    }
 }

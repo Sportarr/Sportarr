@@ -71,11 +71,72 @@ public class HubChangesPollerService : BackgroundService
                 _logger.LogError(ex, "[Changes Poller] Poll cycle failed: {Message}", ex.Message);
             }
 
+            try
+            {
+                await RescueEmptyLeaguesAsync(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Changes Poller] Empty-league rescue failed: {Message}", ex.Message);
+            }
+
             var jitterMs = Random.Shared.Next(-(int)_maxJitter.TotalMilliseconds, (int)_maxJitter.TotalMilliseconds);
             await Task.Delay(_pollInterval + TimeSpan.FromMilliseconds(jitterMs), stoppingToken);
         }
 
         _logger.LogInformation("[Changes Poller] Hub changes poller stopped");
+    }
+
+    // Leagues already rescued this app run. One attempt per boot: a league
+    // that legitimately has zero events upstream (far-future competition)
+    // must not be re-queued every 15 minutes forever.
+    private readonly HashSet<int> _rescuedLeagueIds = new();
+
+    /// <summary>
+    /// Self-heal for monitored leagues stuck at zero events. The changes
+    /// feed is delta-only, so a league whose one-time initial sync failed
+    /// (hub outage, network blip at add time) never receives events from
+    /// polling - the field case was a FIFA World Cup added during a hub
+    /// outage that sat empty for days mid-tournament. Any monitored league
+    /// with a hub id, no events, and an add time old enough that the
+    /// initial Deep Sync task should long since have finished gets one
+    /// re-queued Deep Sync per app run.
+    /// </summary>
+    private async Task RescueEmptyLeaguesAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var taskService = scope.ServiceProvider.GetRequiredService<TaskService>();
+
+        var cutoff = DateTime.UtcNow.AddMinutes(-30);
+        var emptyLeagues = await db.Leagues
+            .Where(l => l.Monitored && !string.IsNullOrEmpty(l.ExternalId))
+            .Where(l => l.Added < cutoff)
+            .Where(l => !db.Events.Any(e => e.LeagueId == l.Id))
+            .Select(l => new { l.Id, l.Name })
+            .ToListAsync(cancellationToken);
+
+        foreach (var league in emptyLeagues)
+        {
+            if (!_rescuedLeagueIds.Add(league.Id))
+                continue;
+
+            // Skip when a refresh for this league is already queued or
+            // running so we never stack duplicate walks.
+            var hasActiveRefresh = await db.Tasks.AnyAsync(t =>
+                t.CommandName == "RefreshLeague" &&
+                (t.Status == Models.TaskStatus.Queued || t.Status == Models.TaskStatus.Running) &&
+                t.Body != null && t.Body.Contains($"\"leagueId\":{league.Id}"),
+                cancellationToken);
+            if (hasActiveRefresh)
+                continue;
+
+            _logger.LogWarning(
+                "[Changes Poller] Monitored league '{Name}' has zero events - its initial sync likely failed. Queueing a Deep Sync to self-heal.",
+                league.Name);
+            var body = System.Text.Json.JsonSerializer.Serialize(new { leagueId = league.Id, scope = "full" });
+            await taskService.QueueTaskAsync($"Deep Sync {league.Name}", "RefreshLeague", priority: 0, body: body);
+        }
     }
 
     /// <summary>

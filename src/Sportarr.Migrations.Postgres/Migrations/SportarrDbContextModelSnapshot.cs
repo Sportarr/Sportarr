@@ -331,6 +331,42 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.ToTable("ChannelLeagueMappings");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.ChannelTeamMapping", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChannelId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("Created")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsPreferred")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TeamId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ChannelTeamMappings_PreferredPerTeam")
+                        .HasFilter("\"IsPreferred\" = true");
+
+                    b.HasIndex("ChannelId", "TeamId")
+                        .IsUnique();
+
+                    b.ToTable("ChannelTeamMappings");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.CustomFormat", b =>
                 {
                     b.Property<int>("Id")
@@ -543,6 +579,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("ApiKey")
                         .HasColumnType("text");
 
+                    b.Property<string>("BlackholeFolder")
+                        .HasColumnType("text");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -591,10 +630,16 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("ReadOnly")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("RemoveCompletedDownloads")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("RemoveFailedDownloads")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("SaveMagnetFiles")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("SequentialDownload")
@@ -614,6 +659,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<string>("Username")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WatchFolder")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -1096,6 +1144,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
 
                     b.Property<int>("ProgramCount")
                         .HasColumnType("integer");
@@ -2043,6 +2094,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("DetectedCatchupMode")
                         .HasColumnType("text");
 
+                    b.Property<string>("FfmpegInputArgs")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -2100,6 +2154,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<DateTime>("Added")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("AllowHighlights")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("AlternateName")
                         .HasColumnType("text")
@@ -2182,6 +2239,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasAnnotation("Relational:JsonPropertyName", "strPoster");
 
                     b.Property<int?>("QualityProfileId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RetentionDays")
                         .HasColumnType("integer");
 
                     b.Property<int?>("RootFolderId")
@@ -2369,6 +2429,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("UnmonitorDeletedEvents")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("UseHardlinks")
                         .HasColumnType("boolean");
@@ -3641,8 +3704,8 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("AlternateName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
                         .HasAnnotation("Relational:JsonPropertyName", "strAlternate");
 
                     b.Property<string>("BadgeUrl")
@@ -3726,6 +3789,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("character varying(200)")
                         .HasAnnotation("Relational:JsonPropertyName", "strStadiumLocation");
 
+                    b.Property<string>("UserAliases")
+                        .HasColumnType("text");
+
                     b.Property<string>("Website")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -3804,6 +3870,25 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Navigation("Channel");
 
                     b.Navigation("League");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.ChannelTeamMapping", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.IptvChannel", "Channel")
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Sportarr.Api.Models.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.DownloadQueueItem", b =>
