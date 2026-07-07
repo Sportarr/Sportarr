@@ -485,7 +485,13 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-image-${{ steps.bump_version.outputs.base_version }}
+          # STABLE category name, never version-suffixed: GitHub only
+          # auto-closes an alert when a NEWER analysis in the SAME category
+          # omits it. Version-suffixed categories (trivy-image-4.0.1000)
+          # orphaned every alert forever - each release scanned into a fresh
+          # category nobody ever wrote to again, so long-fixed CVEs sat
+          # "open" in the Security tab for months.
+          category: trivy-image-release
 
       - name: Send Discord notification
         if: success()
