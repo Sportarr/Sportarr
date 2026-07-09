@@ -8,12 +8,12 @@
     "category": "Metadata",
     "versions": [
       {
-        "version": "4.0.1017.1097",
-        "changelog": "See https://github.com/Sportarr/Sportarr/releases/tag/v4.0.1017.1097",
+        "version": "4.0.1018.1098",
+        "changelog": "See https://github.com/Sportarr/Sportarr/releases/tag/v4.0.1018.1098",
         "targetAbi": "10.10.0.0",
-        "sourceUrl": "https://github.com/Sportarr/Sportarr/releases/download/v4.0.1017.1097/sportarr-jellyfin-plugin_4.0.1017.1097.zip",
-        "checksum": "ef1368f480b826fce5ce0788e86f32a6",
-        "timestamp": "2026-07-07T16:59:42Z"
+        "sourceUrl": "https://github.com/Sportarr/Sportarr/releases/download/v4.0.1018.1098/sportarr-jellyfin-plugin_4.0.1018.1098.zip",
+        "checksum": "0561476f384e00ac853e1972fe4f926d",
+        "timestamp": "2026-07-09T02:07:30Z"
       }
     ]
   }
