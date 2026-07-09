@@ -211,7 +211,7 @@ public class LibraryImportService
                                 eventTitle, candidate.Title, organization, candidate,
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
-                                sportsResult.Location);
+                                sportsResult.Location, _logger);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
@@ -1196,7 +1196,7 @@ public class LibraryImportService
     /// <summary>
     /// Calculate match confidence between a parsed filename and a database event
     /// </summary>
-    private int CalculateMatchConfidence(
+    internal static int CalculateMatchConfidence(
         string searchTitle,
         string eventTitle,
         string? organization,
@@ -1206,30 +1206,48 @@ public class LibraryImportService
         int? parsedRoundNumber = null,
         int? seasonYearEnd = null,
         int? explicitEpisodeNumber = null,
-        string? parsedLocation = null)
+        string? parsedLocation = null,
+        ILogger? logger = null)
     {
         int confidence = 0;
 
         // ── ROUND NUMBER ────────────────────────────────────────────────────────
-        // Round match = strong bonus. Mismatch = significant penalty (not rejection),
-        // because some sports use cumulative episode numbers that don't align with
-        // per-season round numbers. We only penalise when episode numbers look
-        // per-season (≤ 100) to avoid breaking sports with cumulative numbering.
-        if (parsedRoundNumber.HasValue && evt.EpisodeNumber.HasValue)
+        // A filename "Round09" is the CHAMPIONSHIP ROUND, which must be compared
+        // against the event's own Round field, never its EpisodeNumber. For
+        // multi-session sports (F1: practice/qualifying/sprint/race) the episode
+        // number counts every session, so round 9 (Spain) and episode 9 (an early
+        // session of a different weekend) are unrelated. Comparing round to
+        // episode both rewarded the wrong event (+50 when its episode happened to
+        // equal the round) and penalised the correct one (whose episode number is
+        // far higher), which is exactly how "Round09 Spain Qualifying" matched
+        // "Chinese GP Free Practice 1".
+        var eventRoundNumber = int.TryParse(evt.Round, out var er) ? er : (int?)null;
+        if (parsedRoundNumber.HasValue && eventRoundNumber.HasValue)
         {
-            if (evt.EpisodeNumber.Value == parsedRoundNumber.Value)
+            // Authoritative when the event carries real round data.
+            if (eventRoundNumber.Value == parsedRoundNumber.Value)
             {
                 confidence += 50;
-                _logger.LogDebug("[Match] Round {Round} matches EpisodeNumber for '{Event}'", parsedRoundNumber.Value, eventTitle);
+                logger?.LogDebug("[Match] Round {Round} matches event Round for '{Event}'", parsedRoundNumber.Value, eventTitle);
             }
-            else if (evt.EpisodeNumber.Value <= 100)
+            else
             {
-                // Per-season numbering likely — penalise the mismatch
-                confidence -= 25;
-                _logger.LogDebug("[Match] Round mismatch: file round {FileRound} vs event episode {EventEp} for '{Event}' (penalising)",
-                    parsedRoundNumber.Value, evt.EpisodeNumber.Value, eventTitle);
+                confidence -= 50;
+                logger?.LogDebug("[Match] Round mismatch: file round {FileRound} vs event round {EventRound} for '{Event}' (penalising)",
+                    parsedRoundNumber.Value, eventRoundNumber.Value, eventTitle);
             }
-            // If EpisodeNumber > 100 it's likely cumulative numbering — no penalty
+        }
+        else if (parsedRoundNumber.HasValue && evt.EpisodeNumber.HasValue)
+        {
+            // Fallback ONLY for events with no round data. Some single-session
+            // series legitimately number round == episode, so keep the old
+            // heuristic here, but weight it lightly so it can never overpower a
+            // location or title signal the way the round-vs-episode bug did.
+            if (evt.EpisodeNumber.Value == parsedRoundNumber.Value && evt.EpisodeNumber.Value <= 100)
+            {
+                confidence += 15;
+                logger?.LogDebug("[Match] Round {Round} matches EpisodeNumber (no round data) for '{Event}'", parsedRoundNumber.Value, eventTitle);
+            }
         }
 
         // ── EXPLICIT S/E EPISODE NUMBER ─────────────────────────────────────────
@@ -1263,7 +1281,7 @@ public class LibraryImportService
 
             if (!yearMatches)
             {
-                _logger.LogDebug("[Match] Year mismatch: file has {ParsedYear}, event '{Event}' is from {EventYear} (Season: {Season})",
+                logger?.LogDebug("[Match] Year mismatch: file has {ParsedYear}, event '{Event}' is from {EventYear} (Season: {Season})",
                     parsedYear.Value, eventTitle, eventYear, evt.Season);
                 return 0;
             }
@@ -1340,7 +1358,7 @@ public class LibraryImportService
         return Math.Min(100, confidence);
     }
 
-    private string NormalizeTitle(string title)
+    private static string NormalizeTitle(string title)
     {
         return title
             .Replace(":", " ")

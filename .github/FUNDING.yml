@@ -1,0 +1,6 @@
+# Powers the "Sponsor" button GitHub shows at the top of the repo and on
+# every release. Mirrors the donation methods listed in the README.
+open_collective: sportarr
+ko_fi: sportarr
+custom:
+  - https://sportarr.net/donate/btc

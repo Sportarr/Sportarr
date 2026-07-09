@@ -424,14 +424,36 @@ public class ReleaseMatchingService
             }
             else if (teamMatch == 1)
             {
-                // Only ONE team matches - this is likely a DIFFERENT game
-                // e.g., searching "Detroit Pistons vs Denver Nuggets" but found "New York Knicks vs Denver Nuggets"
-                // Hard reject to prevent downloading wrong matchups
-                result.Confidence -= 100;
-                result.IsHardRejection = true;
-                result.Rejections.Add("Only one team name found - likely a different matchup");
-                _logger.LogDebug("[Release Matching] Hard rejection: only 1 of 2 teams found in '{Release}' for event '{Event}'",
-                    release.Title, evt.Title);
+                // A non-Latin title (e.g. Russian trackers naming a World Cup
+                // game "Швейцария - Колумбия") is a special case: our team
+                // dictionary is Latin, so matching only one side usually means
+                // the other side is our team written in a language we have no
+                // alias for, NOT a different matchup. We can't read the
+                // unmatched foreign token to tell which, so treat it like
+                // "teams not confirmed" (soft, kept out of auto-grab) instead
+                // of hard-rejecting it as the wrong game.
+                // ɏ is the end of Latin Extended-B; letters beyond it are
+                // Cyrillic, Greek, CJK, Arabic, etc. Accented Latin (é, ñ) stays
+                // below it and does not count as non-Latin.
+                var titleHasNonLatinScript = release.Title.Any(c => c > 'ɏ' && char.IsLetter(c));
+                if (titleHasNonLatinScript)
+                {
+                    result.Confidence -= 20;
+                    result.Rejections.Add("Could not confirm both teams in a non-Latin release title - add team aliases in that language for automatic matching");
+                    _logger.LogDebug("[Release Matching] Non-Latin title, only 1 of 2 teams recognized in '{Release}' for event '{Event}' (soft)",
+                        release.Title, evt.Title);
+                }
+                else
+                {
+                    // Latin title: only ONE team matches - this is likely a
+                    // DIFFERENT game (e.g. wanting "Pistons vs Nuggets" but
+                    // finding "Knicks vs Nuggets"). Hard reject.
+                    result.Confidence -= 100;
+                    result.IsHardRejection = true;
+                    result.Rejections.Add("Only one team name found - likely a different matchup");
+                    _logger.LogDebug("[Release Matching] Hard rejection: only 1 of 2 teams found in '{Release}' for event '{Event}'",
+                        release.Title, evt.Title);
+                }
             }
             else
             {

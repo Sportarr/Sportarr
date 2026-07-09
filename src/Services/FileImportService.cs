@@ -1565,10 +1565,80 @@ public class FileImportService : IFileImportService
         if (IsSymbolicLink(source))
         {
             await MoveSymbolicLinkAsync(source, destination);
+            return;
         }
-        else
+
+        try
         {
             File.Move(source, destination, overwrite: false);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            // On cross-filesystem moves .NET implements Move as copy-then-delete.
+            // SMB/NAS-backed download mounts (QNAP, Samba shares) deny unlink
+            // while ANY handle is open on the file - including a stale handle in
+            // our own process still awaiting finalization - so the delete step
+            // can fail AFTER the destination copy fully landed. Failing the
+            // import at that point left downloads stuck at Importing and
+            // re-transferred multi-GB files on every retry (issue #192).
+            // If the destination is verifiably complete, the move succeeded in
+            // every way that matters: recover by retrying only the source delete.
+            var sourceInfo = new FileInfo(source);
+            var destInfo = new FileInfo(destination);
+            if (!destInfo.Exists || !sourceInfo.Exists || destInfo.Length != sourceInfo.Length)
+            {
+                throw; // the copy itself did not complete - genuine move failure
+            }
+
+            _logger.LogWarning(
+                "[Transfer] Move landed the destination but the source delete was denied (open handle on the source?); retrying delete: {Source}",
+                source);
+            await DeleteSourceWithRetryAsync(source);
+        }
+    }
+
+    /// <summary>
+    /// Delete a source file that a just-completed transfer could not remove.
+    /// Transient holders (a stale FileStream awaiting finalization, an
+    /// SMB lease that hasn't released) clear within seconds, so retry with
+    /// backoff. If the file still can't be deleted, log and move on WITHOUT
+    /// failing the import - the destination is complete, and the download
+    /// client removal / folder cleanup deletes the source through the
+    /// download client's own handle instead.
+    /// </summary>
+    private async Task DeleteSourceWithRetryAsync(string source)
+    {
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                File.Delete(source);
+                _logger.LogInformation("[Transfer] Source deleted on retry attempt {Attempt}: {Source}", attempt, source);
+                return;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                if (attempt == 1)
+                {
+                    // The most common blocker is a handle in OUR OWN process
+                    // whose owner forgot to dispose it - it only closes when
+                    // its finalizer runs. Force that now so attempt 2 usually
+                    // succeeds instead of waiting on a whole-GC coincidence.
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                }
+
+                if (attempt == maxAttempts)
+                {
+                    _logger.LogWarning(ex,
+                        "[Transfer] Source still undeletable after {Attempts} attempts - leaving it for download client cleanup: {Source}",
+                        maxAttempts, source);
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)));
+            }
         }
     }
 

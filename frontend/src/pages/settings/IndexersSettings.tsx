@@ -518,18 +518,14 @@ export default function IndexersSettings() {
     // sending an empty string. List is converted back to int[] on the
     // server side.
     fields.push({ name: 'failDownloads', value: (indexer.failDownloads ?? []).join(',') });
-    // Plain RSS indexers can't satisfy a search — force the two
-    // search-enable flags off in the request so the UI doesn't show
-    // them as enabled while the backend silently rejects them.
-    const isRss = (indexer.implementation || '').toLowerCase() === 'rss';
     return {
       id: indexer.id,
       name: indexer.name || '',
       implementation: indexer.implementation || 'Torznab',
       enable: indexer.enabled ?? true,
       enableRss: indexer.enableRss ?? true,
-      enableAutomaticSearch: isRss ? false : (indexer.enableAutomaticSearch ?? true),
-      enableInteractiveSearch: isRss ? false : (indexer.enableInteractiveSearch ?? true),
+      enableAutomaticSearch: indexer.enableAutomaticSearch ?? true,
+      enableInteractiveSearch: indexer.enableInteractiveSearch ?? true,
       priority: indexer.priority || 25,
       fields,
       tags: indexer.tags || [],

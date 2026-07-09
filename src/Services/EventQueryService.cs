@@ -34,8 +34,11 @@ public class EventQueryService
     /// <param name="template">The template string with tokens</param>
     /// <param name="evt">The event to extract values from</param>
     /// <param name="part">The part being searched, when a specific part is targeted</param>
+    /// <param name="homeTeamName">Override for {HomeTeam} (used for user-alias query variants)</param>
+    /// <param name="awayTeamName">Override for {AwayTeam} (used for user-alias query variants)</param>
     /// <returns>The processed query string with tokens replaced</returns>
-    public string BuildQueryFromTemplate(string template, Event evt, string? part = null)
+    public string BuildQueryFromTemplate(string template, Event evt, string? part = null,
+        string? homeTeamName = null, string? awayTeamName = null)
     {
         if (string.IsNullOrWhiteSpace(template))
         {
@@ -91,8 +94,8 @@ public class EventQueryService
         result = result.Replace("{EventName}", StripFightersFromTitle(evt.Title ?? ""), StringComparison.OrdinalIgnoreCase);
 
         // Team names
-        result = result.Replace("{HomeTeam}", evt.HomeTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{AwayTeam}", evt.AwayTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{HomeTeam}", homeTeamName ?? evt.HomeTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{AwayTeam}", awayTeamName ?? evt.AwayTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
         result = result.Replace("{vs}", "vs", StringComparison.OrdinalIgnoreCase);
 
         // Season
@@ -202,8 +205,24 @@ public class EventQueryService
         {
             var templateQuery = BuildQueryFromTemplate(customTemplate, evt, part);
             queries.Add(templateQuery);
-            _logger.LogInformation("[EventQuery] Using custom template query: '{Query}' for '{EventTitle}'",
-                templateQuery, evt.Title);
+
+            // User-defined team aliases exist so releases named in another
+            // language match - but a query built from the canonical names
+            // never RETURNS those releases from the indexer in the first
+            // place (a Cyrillic-only rutracker title has no "Portugal" to
+            // hit). Re-expand the template once per alias slot so the
+            // indexer is also asked in the alias language.
+            foreach (var (home, away) in BuildTeamAliasPairs(evt))
+            {
+                var variant = BuildQueryFromTemplate(customTemplate, evt, part, home, away);
+                if (!queries.Contains(variant, StringComparer.OrdinalIgnoreCase))
+                {
+                    queries.Add(variant);
+                }
+            }
+
+            _logger.LogInformation("[EventQuery] Using custom template query: '{Query}' for '{EventTitle}' ({Count} variant(s) incl. team aliases)",
+                templateQuery, evt.Title, queries.Count);
             return queries;
         }
 
@@ -283,7 +302,7 @@ public class EventQueryService
     /// </summary>
     private bool IsTeamSport(string sport, string? leagueName)
     {
-        var teamSportKeywords = new[] { "football", "basketball", "hockey", "baseball", "soccer", "nfl", "nba", "nhl", "mlb", "mls", "premier league", "la liga", "bundesliga" };
+        var teamSportKeywords = new[] { "football", "basketball", "hockey", "baseball", "soccer", "rugby", "nfl", "nba", "nhl", "mlb", "mls", "nrl", "premier league", "la liga", "bundesliga" };
         var sportLower = sport.ToLowerInvariant();
         var leagueLower = leagueName?.ToLowerInvariant() ?? "";
 
@@ -535,23 +554,100 @@ public class EventQueryService
     private void BuildTeamSportQueries(Event evt, string? leagueName, List<string> queries)
     {
         var leaguePrefix = GetTeamSportLeaguePrefix(leagueName);
+        var queryDate = evt.BroadcastDate ?? evt.EventDate.Date;
+        var year = queryDate.Year;
 
         if (string.IsNullOrEmpty(leaguePrefix))
         {
             queries.Add(NormalizeEventTitle(evt.Title));
+            AddTeamAliasQueries(evt, leagueName, year, queries);
             return;
         }
 
         // Prefer broadcast-local date over UTC EventDate so games right at the
         // month boundary aren't queried for the wrong month.
-        var queryDate = evt.BroadcastDate ?? evt.EventDate.Date;
-        var year = queryDate.Year;
         var month = queryDate.Month;
 
         // Primary: "NFL 2025 12" (year + month)
         queries.Add($"{leaguePrefix} {year} {month:D2}");
         // Fallback: "NFL 2025" (year only)
         queries.Add($"{leaguePrefix} {year}");
+        AddTeamAliasQueries(evt, leaguePrefix, year, queries);
+    }
+
+    /// <summary>
+    /// Extra team-sport queries built from user-defined team aliases, so
+    /// releases titled in another language are actually RETURNED by the
+    /// indexer (matching already understood the aliases; searching did not).
+    /// Shape mirrors what works on the trackers those aliases target:
+    /// "FIFA World Cup 2026 Португалия Испания".
+    /// </summary>
+    private void AddTeamAliasQueries(Event evt, string? leagueToken, int year, List<string> queries)
+    {
+        foreach (var (home, away) in BuildTeamAliasPairs(evt))
+        {
+            var query = string.IsNullOrWhiteSpace(leagueToken)
+                ? $"{home} {away} {year}"
+                : $"{leagueToken} {year} {home} {away}";
+            if (!queries.Contains(query, StringComparer.OrdinalIgnoreCase))
+            {
+                queries.Add(query);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Pair the two teams' user aliases slot by slot: alias N of the home
+    /// team goes with alias N of the away team, falling back to the
+    /// canonical name when one side has fewer aliases. Users naturally list
+    /// aliases in the same language order on both teams ("Португалия" and
+    /// "Испания" both first), so slot pairing keeps queries single-language
+    /// instead of emitting a wasteful full cartesian product. Slots where
+    /// both sides fall back to canonical are skipped (that query already
+    /// exists), and slots are capped to keep indexers unhammered.
+    /// </summary>
+    private static IEnumerable<(string Home, string Away)> BuildTeamAliasPairs(Event evt)
+    {
+        const int maxSlots = 3;
+
+        var homeName = evt.HomeTeam?.Name;
+        var awayName = evt.AwayTeam?.Name;
+        if (string.IsNullOrWhiteSpace(homeName) || string.IsNullOrWhiteSpace(awayName))
+        {
+            yield break;
+        }
+
+        var homeAliases = ParseUserAliases(evt.HomeTeam?.UserAliases);
+        var awayAliases = ParseUserAliases(evt.AwayTeam?.UserAliases);
+        var slots = Math.Min(maxSlots, Math.Max(homeAliases.Count, awayAliases.Count));
+
+        for (var i = 0; i < slots; i++)
+        {
+            var home = i < homeAliases.Count ? homeAliases[i] : homeName;
+            var away = i < awayAliases.Count ? awayAliases[i] : awayName;
+            if (home == homeName && away == awayName)
+            {
+                continue;
+            }
+            yield return (home, away);
+        }
+    }
+
+    /// <summary>
+    /// Same separators the release matcher accepts for the alias field
+    /// (comma, pipe, slash) so searching and matching read the field the
+    /// same way.
+    /// </summary>
+    private static List<string> ParseUserAliases(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return new List<string>();
+        }
+        return raw.Split(new[] { ',', '|', '/' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
 
@@ -769,6 +865,11 @@ public class EventQueryService
         // prefix must be the bare abbreviation.
         if (lower.Contains("afl") || lower.Contains("australian football"))
             return "AFL";
+        // Same story as AFL: the metadata name is "Australian National Rugby
+        // League" but every KAYO/scene release is "NRL 2026 Round 18 ...",
+        // so searching with the full name returned zero results everywhere.
+        if (lower.Contains("national rugby league") || lower.Contains("nrl"))
+            return "NRL";
 
         return "";
     }

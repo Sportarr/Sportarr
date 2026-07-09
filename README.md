@@ -1,41 +1,43 @@
-# <img width="24px" src="./Logo/256.png" alt="Sportarr"></img> Sportarr
-
-### Sports PVR for Usenet and Torrents
-
-Like Sonarr & Radarr but for sports events. Monitors sports leagues, searches your indexers for releases, and handles file renaming, organization, and media server integration.
+<div align="center">
 
 <p>
-  <a href="https://sportarr.net"><img src="https://img.shields.io/badge/WEBSITE-sportarr.net-blue?style=for-the-badge" alt="Website"></a>
-  <a href="https://github.com/Sportarr/Sportarr/blob/main/COPYRIGHT.md"><img src="https://img.shields.io/badge/LICENSE-GPL--v3-green?style=for-the-badge" alt="License"></a>
-  <a href="https://discord.gg/YjHVWGWjjG"><img src="https://img.shields.io/badge/DISCORD-Join-7289da?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://github.com/Sportarr/Sportarr/blob/main/COPYRIGHT.md"><img src="https://img.shields.io/badge/license-GPL--v3-green?style=flat" alt="License"></a>
+  <a href="https://discord.gg/YjHVWGWjjG"><img src="https://img.shields.io/badge/discord-join-7289da?style=flat&logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
+<img src="./Logo/512.png" width="200" alt="Sportarr">
+
+<h3>Sports PVR for Usenet and Torrents</h3>
+
+<p>Like Sonarr &amp; Radarr, but for sports events. Monitors sports leagues, searches your indexers<br>for releases, and handles file renaming, organization, and media server integration.</p>
+
 <p>
-  <a href="https://hub.docker.com/r/sportarr/sportarr"><img src="https://img.shields.io/badge/DOCKER-sportarr%2Fsportarr-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"></a>
-  <img src="https://img.shields.io/badge/AMD64%20%2F%20ARM64-supported-orange?style=for-the-badge" alt="AMD64 / ARM64">
+  <a href="https://sportarr.net"><img src="https://img.shields.io/badge/website-sportarr.net-blue?style=flat" alt="Website"></a>
+  <a href="https://hub.docker.com/r/sportarr/sportarr"><img src="https://img.shields.io/badge/docker-sportarr%2Fsportarr-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker"></a>
+  <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-orange?style=flat" alt="Architecture">
+  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/github/v/release/Sportarr/Sportarr?style=flat&label=release&color=blueviolet" alt="Latest release"></a>
+  <a href="https://github.com/Sportarr/Sportarr/stargazers"><img src="https://img.shields.io/github/stars/Sportarr/Sportarr?style=flat&color=yellow" alt="Stars"></a>
 </p>
 
-### Downloads (Latest)
+</div>
 
-<p>
-  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/WINDOWS-Sportarr.exe-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows"></a>
-  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/INSTALLER-Setup.exe-blueviolet?style=for-the-badge" alt="Installer"></a>
-  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/PORTABLE-ZIP-lightgrey?style=for-the-badge" alt="Portable"></a>
-</p>
-<p>
-  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/macOS-Apple%20Silicon-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Apple Silicon"></a>
-  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/macOS-Intel-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Intel"></a>
-</p>
-<p>
-  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/LINUX-tar.gz-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux"></a>
-</p>
+### Downloads
+
+Most people should run Sportarr with **Docker** (above). To run it natively instead, grab your
+platform from the [latest release](https://github.com/Sportarr/Sportarr/releases/latest):
+
+| Platform | Options |
+|---|---|
+| <img src="https://img.shields.io/badge/-Windows-0078D6?style=flat&logo=windows&logoColor=white" alt="Windows"> | **Installer** (`Sportarr-Setup.exe`) installs it for you, or **Portable** (`win-x64.zip`) runs from a folder with no install. |
+| <img src="https://img.shields.io/badge/-macOS-000000?style=flat&logo=apple&logoColor=white" alt="macOS"> | **Apple Silicon** (`osx-arm64`) for M1/M2/M3/M4 Macs, or **Intel** (`osx-x64`) for older Macs. |
+| <img src="https://img.shields.io/badge/-Linux-FCC624?style=flat&logo=linux&logoColor=black" alt="Linux"> | **x64** (`linux-x64`) for most servers, or **ARM64** (`linux-arm64`) for Raspberry Pi and ARM boxes. |
 
 ### Support the Project
 
 <p>
-  <a href="https://opencollective.com/sportarr"><img src="https://img.shields.io/badge/SPONSOR-Open%20Collective-7FADF2?style=for-the-badge&logo=opencollective&logoColor=white" alt="Sponsor"></a>
-  <a href="https://ko-fi.com/sportarr"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
-<a href="https://sportarr.net/donate/btc"><img src="https://img.shields.io/badge/Send%20Bitcoin-F7931A?style=for-the-badge&logo=bitcoin&logoColor=white" alt="Bitcoin"></a>
+  <a href="https://opencollective.com/sportarr"><img src="https://img.shields.io/badge/sponsor-Open%20Collective-7FADF2?style=flat&logo=opencollective&logoColor=white" alt="Sponsor"></a>
+  <a href="https://ko-fi.com/sportarr"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-FF5E5B?style=flat&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
+  <a href="https://sportarr.net/donate/btc"><img src="https://img.shields.io/badge/send-Bitcoin-F7931A?style=flat&logo=bitcoin&logoColor=white" alt="Bitcoin"></a>
 </p>
 
 ---
@@ -50,6 +52,8 @@ Like Sonarr & Radarr but for sports events. Monitors sports leagues, searches yo
 - Organizes files with customizable naming schemes
 - Supports multi-part events (prelims, main cards) for fighting sports
 - Integrates with Plex, Jellyfin, Emby for library updates
+- Fetches subtitles through Bazarr
+- Notifies you on grabs, imports, and health issues via Discord, ntfy, Apprise, webhooks, or custom scripts
 
 ## Installation
 
@@ -181,7 +185,7 @@ it was created on.
 
    ![Add Root Folder](docs/images/add-root-folder.png)
 
-2. **Download Client** - Settings > Download Clients. Add your download client (qBittorrent, Transmission, Deluge, rTorrent, uTorrent, SABnzbd, NZBGet, or Decypharr). If using Docker, make sure both containers can access the same download path.
+2. **Download Client** - Settings > Download Clients. Add your download client (qBittorrent, Transmission, Deluge, rTorrent, uTorrent, SABnzbd, NZBGet, NZBdav, Decypharr, or a torrent/usenet blackhole folder). If using Docker, make sure both containers can access the same download path.
 
    ![Add Download Client](docs/images/add-download-client.png)
 
@@ -203,6 +207,8 @@ it was created on.
 
 **Torrents:** qBittorrent, Transmission, Deluge, rTorrent, uTorrent
 
+**Blackhole:** Torrent Blackhole, Usenet Blackhole - Sportarr drops the grabbed .torrent/.nzb into a folder for any external downloader and imports the finished download from a watch folder, so you can keep your downloader independent of Sportarr.
+
 **Debrid/Proxy:** Decypharr (torrents and usenet)
 
 ## Prowlarr Integration
@@ -216,6 +222,25 @@ If you use Prowlarr, you can sync your indexers automatically:
 5. Select **TV (5000)** categories for sync - this includes TV/HD (5040), TV/UHD (5045), and TV/Sport (5060)
 
 Indexers will sync automatically and stay updated.
+
+## Bazarr (Subtitles)
+
+Bazarr can manage subtitles for your sports library. Add Sportarr in Bazarr exactly like you'd add Sonarr:
+
+1. In Bazarr, go to Settings > Sonarr and enable it
+2. Set the Address and Port to your Sportarr host (e.g. your server IP and `1867`)
+3. Paste your Sportarr API key (Settings > General), then test and save
+
+Bazarr reads your leagues and events and searches for subtitles automatically.
+
+## Notifications
+
+Sportarr can notify you on grabs, imports, upgrades, and health issues. Configure providers in the Notifications settings:
+
+- **Discord** and generic **webhooks** (with optional username/password auth and custom headers)
+- **ntfy** (self-hosted or ntfy.sh)
+- **Apprise** (one endpoint, 90+ services)
+- **Custom scripts** (run any executable on events)
 
 ## File Naming
 
@@ -413,6 +438,65 @@ To skip the automatic frontend build (e.g., if you built it separately):
 ```bash
 dotnet build src/Sportarr.csproj -p:SkipFrontendBuild=true
 ```
+
+## Project Activity
+
+![Repobeats analytics](https://repobeats.axiom.co/api/embed/e53905c36a9f4ad733f63ffa19201d63ab43c890.svg)
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=Sportarr%2FSportarr&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Sportarr/Sportarr&type=date&theme=dark&legend=top-left&sealed_token=loM7FRYSXaXqn9lTcTishVtPaTcjxXer6HbzwSQ3Dg7QDKXGmTOsc2xoEc01aDr8vEZFTXyRc76fxgdckzJKpxH84MmDWLWNUY83aEa7xcK5XjOUWMvzqd353S9mqCK4hQ3R7kdhDXZBpI-gBTpD8cQCUEzOq-hFCBEVqXOUz9S9tuaN677TBZ8q0QT2" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Sportarr/Sportarr&type=date&legend=top-left&sealed_token=loM7FRYSXaXqn9lTcTishVtPaTcjxXer6HbzwSQ3Dg7QDKXGmTOsc2xoEc01aDr8vEZFTXyRc76fxgdckzJKpxH84MmDWLWNUY83aEa7xcK5XjOUWMvzqd353S9mqCK4hQ3R7kdhDXZBpI-gBTpD8cQCUEzOq-hFCBEVqXOUz9S9tuaN677TBZ8q0QT2" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Sportarr/Sportarr&type=date&legend=top-left&sealed_token=loM7FRYSXaXqn9lTcTishVtPaTcjxXer6HbzwSQ3Dg7QDKXGmTOsc2xoEc01aDr8vEZFTXyRc76fxgdckzJKpxH84MmDWLWNUY83aEa7xcK5XjOUWMvzqd353S9mqCK4hQ3R7kdhDXZBpI-gBTpD8cQCUEzOq-hFCBEVqXOUz9S9tuaN677TBZ8q0QT2" />
+ </picture>
+</a>
+
+## Contributors
+
+Sportarr is made better by everyone who has contributed code. Thank you.
+
+<!-- Regenerated automatically by .github/workflows/contributors.yml. The /-
+     entries skip the release bot and other automated accounts. The block below
+     is pre-filled so the section renders before the first automated run; the
+     action replaces it on schedule. -->
+<!-- readme: contributors,claude/-,Sportarr/- -start -->
+<p>
+  <a href="https://github.com/ohathar"><img src="https://github.com/ohathar.png" width="64" alt="ohathar" /></a>
+  <a href="https://github.com/BenjaminDecreusefond"><img src="https://github.com/BenjaminDecreusefond.png" width="64" alt="BenjaminDecreusefond" /></a>
+  <a href="https://github.com/mmmmmtasty"><img src="https://github.com/mmmmmtasty.png" width="64" alt="mmmmmtasty" /></a>
+  <a href="https://github.com/gwyden"><img src="https://github.com/gwyden.png" width="64" alt="gwyden" /></a>
+  <a href="https://github.com/FacePlant101"><img src="https://github.com/FacePlant101.png" width="64" alt="FacePlant101" /></a>
+  <a href="https://github.com/gerrewsb"><img src="https://github.com/gerrewsb.png" width="64" alt="gerrewsb" /></a>
+  <a href="https://github.com/abcattell91"><img src="https://github.com/abcattell91.png" width="64" alt="abcattell91" /></a>
+  <a href="https://github.com/scottrobertson"><img src="https://github.com/scottrobertson.png" width="64" alt="scottrobertson" /></a>
+  <a href="https://github.com/slflowfoon"><img src="https://github.com/slflowfoon.png" width="64" alt="slflowfoon" /></a>
+  <a href="https://github.com/skjaere"><img src="https://github.com/skjaere.png" width="64" alt="skjaere" /></a>
+  <a href="https://github.com/schlort"><img src="https://github.com/schlort.png" width="64" alt="schlort" /></a>
+  <a href="https://github.com/Pukabyte"><img src="https://github.com/Pukabyte.png" width="64" alt="Pukabyte" /></a>
+  <a href="https://github.com/Percentnineteen"><img src="https://github.com/Percentnineteen.png" width="64" alt="Percentnineteen" /></a>
+  <a href="https://github.com/nathanjcollins"><img src="https://github.com/nathanjcollins.png" width="64" alt="nathanjcollins" /></a>
+  <a href="https://github.com/lyrova-andy"><img src="https://github.com/lyrova-andy.png" width="64" alt="lyrova-andy" /></a>
+  <a href="https://github.com/lustered"><img src="https://github.com/lustered.png" width="64" alt="lustered" /></a>
+  <a href="https://github.com/kristofferR"><img src="https://github.com/kristofferR.png" width="64" alt="kristofferR" /></a>
+  <a href="https://github.com/jpaull-nz"><img src="https://github.com/jpaull-nz.png" width="64" alt="jpaull-nz" /></a>
+  <a href="https://github.com/hobbithau5"><img src="https://github.com/hobbithau5.png" width="64" alt="hobbithau5" /></a>
+  <a href="https://github.com/gilesw"><img src="https://github.com/gilesw.png" width="64" alt="gilesw" /></a>
+  <a href="https://github.com/Donai82"><img src="https://github.com/Donai82.png" width="64" alt="Donai82" /></a>
+  <a href="https://github.com/afrancke"><img src="https://github.com/afrancke.png" width="64" alt="afrancke" /></a>
+</p>
+<!-- readme: contributors,claude/-,Sportarr/- -end -->
+
+<sub>See the full <a href="https://github.com/Sportarr/Sportarr/graphs/contributors">contributor graph</a>, plus everyone helping with testing and bug reports on <a href="https://discord.gg/YjHVWGWjjG">Discord</a>.</sub>
+
+## Sponsors
+
+Sportarr is free and self-funded. If it saves you time, a [one-time or monthly contribution](https://opencollective.com/sportarr) keeps it moving, and every supporter shows up here.
+
+<a href="https://opencollective.com/sportarr"><img src="https://opencollective.com/sportarr/backers.svg?width=800" alt="Backers" /></a>
+
+<a href="https://opencollective.com/sportarr"><img src="https://opencollective.com/sportarr/sponsors.svg?width=800" alt="Sponsors" /></a>
 
 ## License
 

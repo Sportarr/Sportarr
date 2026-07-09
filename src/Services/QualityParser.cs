@@ -217,7 +217,7 @@ public static class QualityParser
         @"(?<R1080p>1080p|1080i|1920x1080|1440x1080|FullHD|Full[-_. ]HD|FHD)|" +
         @"(?<R2160p>2160p|2160i|3840x2160|4096x2160|UHD|4K[-_. ]?UHD|(?<![a-z])4K(?![a-z]))" +
         @")" +
-        @"(?:[a-z]{0,2}\d{1,3}(?:fps)?)?(?=[._\s\-\[]|$)", //swallow optional trailing FPS suffix
+        @"(?:[a-z]{0,2}\d{1,3}(?:fps)?)?(?=[._\s\-\[/,]|$)", //swallow optional trailing FPS suffix; allow / and , separators (e.g. IPTV/2160p/60fps in bracketed metadata)
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>

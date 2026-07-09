@@ -259,10 +259,14 @@ public class SeasonSearchService
 
         // For team sports with seasons (NFL, NBA, etc.)
         if (sport.Contains("american football") || sport.Contains("basketball") ||
-            sport.Contains("hockey") || sport.Contains("baseball"))
+            sport.Contains("hockey") || sport.Contains("baseball") ||
+            sport.Contains("rugby"))
         {
-            // "NFL 2024" or "NBA 2024-25"
-            return $"{league.Name} {season}";
+            // "NFL 2024" or "NBA 2024-25". Prefer the abbreviation over the
+            // verbose metadata name: KAYO/scene releases are tagged "NRL
+            // 2026 ...", never "Australian National Rugby League 2026",
+            // which returned zero results everywhere (field report).
+            return $"{AbbreviateLeagueForSearch(league.Name)} {season}";
         }
 
         // For soccer/football leagues
@@ -281,6 +285,24 @@ public class SeasonSearchService
 
         // Default: league name + season
         return $"{league.Name} {season}";
+    }
+
+    /// <summary>
+    /// Map a verbose metadata league name to the abbreviation scene/KAYO
+    /// releases actually use. TheSportsDB stores "Australian National Rugby
+    /// League" and "Australian AFL", but no release is ever tagged that way,
+    /// so a season search built from the full name returns nothing. Only the
+    /// leagues with a known metadata/release-name mismatch are mapped; every
+    /// other league passes through unchanged.
+    /// </summary>
+    private static string AbbreviateLeagueForSearch(string leagueName)
+    {
+        var lower = leagueName.ToLowerInvariant();
+        if (lower.Contains("national rugby league") || lower.Contains("nrl"))
+            return "NRL";
+        if (lower.Contains("australian football") || lower == "australian afl")
+            return "AFL";
+        return leagueName;
     }
 
     /// <summary>

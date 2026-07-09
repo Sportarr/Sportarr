@@ -181,5 +181,35 @@ public static class TeamNameVariationData
         { "Sydney Swans", new[] { "Sydney" } },
         { "West Coast Eagles", new[] { "West Coast" } },
         { "Western Bulldogs", new[] { "Footscray" } },
+
+        // ============================================================
+        // NRL Teams (17). TheSportsDB canonical names are "<Place>
+        // <Nickname>" (sometimes hyphenated: "Manly-Warringah Sea
+        // Eagles"); KAYO/scene releases use the bare nickname
+        // ("NRL 2026 Round 18 Eels v Sea Eagles"). Safe under the
+        // both-teams-required rule: a lone nickname can never match a
+        // release by itself.
+        // ============================================================
+        { "Brisbane Broncos", new[] { "Broncos", "Brisbane" } },
+        { "Canberra Raiders", new[] { "Raiders", "Canberra" } },
+        // Keyed on the nickname because the TSDB canonical is hyphenated
+        // ("Canterbury-Bankstown ...", "Cronulla-Sutherland ...") and
+        // hyphens normalize to spaces, so a place+nickname key would never
+        // be contained in the canonical name.
+        { "Bulldogs", new[] { "Bulldogs", "Canterbury" } },
+        { "Sharks", new[] { "Sharks", "Cronulla" } },
+        { "Gold Coast Titans", new[] { "Titans" } },
+        { "Sea Eagles", new[] { "Sea Eagles", "Manly" } },
+        { "Melbourne Storm", new[] { "Storm" } },
+        { "Newcastle Knights", new[] { "Knights", "Newcastle" } },
+        { "New Zealand Warriors", new[] { "Warriors" } },
+        { "North Queensland Cowboys", new[] { "Cowboys", "North Queensland" } },
+        { "Parramatta Eels", new[] { "Eels", "Parramatta" } },
+        { "Penrith Panthers", new[] { "Panthers", "Penrith" } },
+        { "South Sydney Rabbitohs", new[] { "Rabbitohs", "Souths" } },
+        { "Illawarra Dragons", new[] { "Dragons", "St George" } },
+        { "Sydney Roosters", new[] { "Roosters" } },
+        { "Wests Tigers", new[] { "Wests Tigers" } },
+        { "Redcliffe Dolphins", new[] { "Dolphins" } },
     };
 }

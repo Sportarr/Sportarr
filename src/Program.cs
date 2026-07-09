@@ -523,6 +523,10 @@ Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication
 
 builder.Services.AddHealthChecks().AddSportarrHealthChecks();
 
+// SignalR powers the Sonarr-compatible /signalr/messages hub that Bazarr (and
+// other Sonarr consumers) connect to for live status. See SonarrMessageHub.
+builder.Services.AddSignalR();
+
 var app = builder.Build();
 
 await DatabaseInitializer.InitializeAsync(app.Services);
@@ -982,6 +986,14 @@ app.MapSonarrIndexerEndpoints();
 app.MapSonarrDownloadClientEndpoint();
 app.MapSonarrQueueEndpoints();
 app.MapSonarrReleasePushEndpoint();
+
+// Sonarr-compatible SignalR hub. Bazarr opens a SignalR connection here and
+// reports the instance DOWN until it succeeds, independent of the REST API,
+// so without this the "Series" status stayed red even though every REST call
+// worked. Reachable without the dynamic-auth gate (see IsPublicPath) because
+// Bazarr's WebSocket transport passes the api key as the access_token query
+// param rather than a header, and the hub carries no sensitive data.
+app.MapHub<Sportarr.Api.Hubs.SonarrMessageHub>("/signalr/messages");
 
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");

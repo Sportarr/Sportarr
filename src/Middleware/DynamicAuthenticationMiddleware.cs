@@ -247,6 +247,14 @@ public class DynamicAuthenticationMiddleware
     private bool IsPublicPath(string path)
     {
         return path.StartsWith("/assets/") ||
+               // Sonarr-compatible SignalR hub for Bazarr. The WebSocket
+               // transport can't send the X-Api-Key header, so Bazarr passes
+               // the key as the access_token query param; the dynamic-auth gate
+               // here only knows the "apikey" query name and would 401 the
+               // connection, keeping Bazarr's status DOWN. The hub exposes no
+               // data (Bazarr syncs over REST), so serving it without the gate
+               // is safe.
+               path.StartsWith("/signalr/") ||
                path.StartsWith("/login") ||
                path.StartsWith("/api/login") ||
                path.StartsWith("/api/logout") ||

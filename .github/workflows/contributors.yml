@@ -1,0 +1,33 @@
+name: Update Contributors
+
+# Regenerates the contributor grid between the readme markers in README.md so
+# the list stays current without hand edits. Runs weekly and on demand only -
+# not on push - so it never triggers the release workflow, and its own commit
+# carries [skip ci] as a second guard. The /- entries in the README markers
+# skip the release bot and other automated accounts.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update-contributors:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Pinned to a commit SHA (v2.3.11) rather than a moving tag, matching the
+      # supply-chain posture of the other third-party actions in this repo.
+      - uses: akhilmhdh/contributors-readme-action@83ea0b4f1ac928fbfe88b9e8460a932a528eb79f # v2.3.11
+        env:
+          # PAT (same one the release workflow uses) so the commit can land on
+          # the protected default branch directly instead of opening a PR.
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        with:
+          image_size: 72
+          columns_per_row: 6
+          use_username: true
+          committer_username: Sportarr
+          committer_email: sportarr@users.noreply.github.com
+          commit_message: "chore: update contributors list [skip ci]"
