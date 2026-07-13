@@ -26,6 +26,8 @@ public static class EnvironmentVariableNames
 {
     public const string DataPath = "Sportarr__DataPath";
     public const string ApiKey = "Sportarr__ApiKey";
+    public const string Port = "Sportarr__Port";
+    public const string BindAddress = "Sportarr__BindAddress";
     public const string Branch = "SPORTARR_BRANCH";
     public const string AspNetCoreEnvironment = "ASPNETCORE_ENVIRONMENT";
     public const string DotNetCliTelemetryOptOut = "DOTNET_CLI_TELEMETRY_OPTOUT";

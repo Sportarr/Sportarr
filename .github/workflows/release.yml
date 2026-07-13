@@ -457,6 +457,20 @@ jobs:
         env:
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
 
+      # Sync the Docker Hub repo overview/description from DOCKERHUB.md.
+      # Requires the access token to have read/write/delete scope; runs
+      # non-blocking so a metadata sync failure can never fail a release.
+      - name: Sync Docker Hub description
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        if: success()
+        continue-on-error: true
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: sportarr/sportarr
+          short-description: Sports PVR for Usenet and BitTorrent. Track leagues, grab events, organize your sports library.
+          readme-filepath: ./DOCKERHUB.md
+
       # Scan the freshly-published image for HIGH/CRITICAL CVEs and post the
       # results to the Security tab. Non-blocking: a CVE finding doesn't fail
       # the release, but it's recorded so we get notified the same way Eric

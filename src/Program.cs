@@ -424,6 +424,30 @@ if (File.Exists(configPath))
     }
 }
 
+// Environment overrides for orchestrated deployments (TrueNAS apps, compose
+// stacks, anything that assigns the listen port at deploy time). Env wins
+// over config.xml: the orchestrator owns the port mapping, and a UI-edited
+// Port value must not silently fight it after a container recreate.
+var envPort = Environment.GetEnvironmentVariable(EnvironmentVariableNames.Port);
+if (!string.IsNullOrWhiteSpace(envPort))
+{
+    if (int.TryParse(envPort, out var parsedEnvPort) && parsedEnvPort >= 1 && parsedEnvPort <= 65535)
+    {
+        port = parsedEnvPort;
+        Console.WriteLine($"[Sportarr] Port from {EnvironmentVariableNames.Port} environment variable: {port}");
+    }
+    else
+    {
+        Console.WriteLine($"[Sportarr] Warning: ignoring invalid {EnvironmentVariableNames.Port} value '{envPort}'");
+    }
+}
+var envBindAddress = Environment.GetEnvironmentVariable(EnvironmentVariableNames.BindAddress);
+if (!string.IsNullOrWhiteSpace(envBindAddress))
+{
+    bindAddress = envBindAddress.Trim();
+    Console.WriteLine($"[Sportarr] Bind address from {EnvironmentVariableNames.BindAddress} environment variable: {bindAddress}");
+}
+
 Console.WriteLine($"[Sportarr] Configured to listen on {bindAddress}:{port}");
 
 // Output template for logs (shared between console and file)

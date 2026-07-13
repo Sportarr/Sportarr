@@ -141,9 +141,11 @@ ENV Sportarr__DataPath="/config" \
 # Port 1867: Sportarr default port
 EXPOSE 1867
 
-# Health check
+# Health check. Sportarr__Port is the env override the app honors ahead of
+# config.xml; the fallback keeps the check correct for installs that never
+# set it.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:1867/ping || exit 1
+    CMD curl -f "http://localhost:${Sportarr__Port:-1867}/ping" || exit 1
 
 VOLUME ["/config"]
 
