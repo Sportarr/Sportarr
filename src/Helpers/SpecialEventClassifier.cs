@@ -49,7 +49,72 @@ public static class SpecialEventClassifier
         "semifinal", "semi-final", "playoff", "knockout", "elimination round"
     };
 
-    public static SpecialTier Classify(string? round, string? title, bool seasonHasUnroundedEvents = false)
+    private static readonly int[] StageSizes = { 2, 4, 8, 16, 32, 64 };
+
+    /// <summary>
+    /// Computes which bare stage-size rounds ("32", "16", "8", "4", "2")
+    /// may classify as knockout stages for a season, from the season's
+    /// full round list. Two conditions, both from how cup data actually
+    /// arrives:
+    ///
+    ///   1. The season contains round-less events (the group stage).
+    ///      Fully numbered league seasons never classify by stage size -
+    ///      EPL matchday 32 is a regular week of a 38-round season.
+    ///   2. The event count behind a stage-size round fits the bracket
+    ///      that round implies: a Round of 32 is at most 16 games, a
+    ///      final is 1. This is what separates a real knockout round
+    ///      from a matchday that happens to share the number. MLB 2026
+    ///      ships thousands of round-less games plus series rounds 2-21
+    ///      carrying 90-270 games each - none fit a bracket, so nothing
+    ///      classifies. The FIFA World Cup's group MATCHDAYS 1/2/3 (24
+    ///      games each) fail the same test, while its Round of 32 (16
+    ///      games) and Round of 16 (8 games) pass.
+    ///
+    /// Under the previous any-unrounded-event signal, every MLB game
+    /// carrying round 2/4/8/16/32 classified as a knockout and bypassed
+    /// the monitored-team filter, flooding one-team libraries with the
+    /// whole league's schedule.
+    /// </summary>
+    public static IReadOnlySet<int> ComputeCupStageSizes(IEnumerable<string?> rounds)
+    {
+        var hasUnrounded = false;
+        var countByNumericRound = new Dictionary<int, int>();
+        foreach (var round in rounds)
+        {
+            if (string.IsNullOrWhiteSpace(round))
+            {
+                hasUnrounded = true;
+                continue;
+            }
+            if (!int.TryParse(round.Trim(), out var n))
+            {
+                continue; // word rounds ("Semi-Final") classify on their own
+            }
+            if (n == 0)
+            {
+                hasUnrounded = true; // 0 is "no round info", not a matchday
+                continue;
+            }
+            countByNumericRound[n] = countByNumericRound.GetValueOrDefault(n) + 1;
+        }
+
+        if (!hasUnrounded)
+        {
+            return new HashSet<int>();
+        }
+
+        var result = new HashSet<int>();
+        foreach (var size in StageSizes)
+        {
+            if (countByNumericRound.TryGetValue(size, out var count) && count >= 1 && count <= size / 2)
+            {
+                result.Add(size);
+            }
+        }
+        return result;
+    }
+
+    public static SpecialTier Classify(string? round, string? title, IReadOnlySet<int>? cupStageSizes = null)
     {
         // 1. Numeric TheSportsDB round codes.
         if (!string.IsNullOrWhiteSpace(round) && int.TryParse(round.Trim(), out var code))
@@ -67,21 +132,13 @@ public static class SpecialEventClassifier
             }
 
             // Cup knockouts arrive as bare stage sizes ("32" = Round of 32,
-            // "16" = Round of 16, "2" = the two-team final). A domestic
-            // league's numeric matchdays look identical (EPL round 32 is a
-            // regular week of a 38-round season), so stage sizes only
-            // classify when the season also contains UNROUNDED events - the
-            // cup shape of a round-less group stage followed by stage-size
-            // knockouts. League seasons number every round, so they never
-            // present that mix and never match here.
-            if (seasonHasUnroundedEvents)
+            // "16" = Round of 16, "2" = the two-team final). A matchday can
+            // share the number, so a stage size only classifies when the
+            // season's data says that round actually is a bracket stage
+            // (see ComputeCupStageSizes).
+            if (cupStageSizes != null && cupStageSizes.Contains(code))
             {
-                return code switch
-                {
-                    2 => SpecialTier.Final,
-                    4 or 8 or 16 or 32 or 64 => SpecialTier.Playoff,
-                    _ => SpecialTier.None
-                };
+                return code == 2 ? SpecialTier.Final : SpecialTier.Playoff;
             }
 
             return SpecialTier.None;
@@ -151,13 +208,13 @@ public static class SpecialEventClassifier
     /// </summary>
     public static bool BypassesTeamFilter(string? round, string? title,
         bool monitorFinals, bool monitorPlayoffs, bool monitorPreseason = false,
-        bool seasonHasUnroundedEvents = false)
+        IReadOnlySet<int>? cupStageSizes = null)
     {
         if (!monitorFinals && !monitorPlayoffs && !monitorPreseason)
         {
             return false;
         }
-        var tier = Classify(round, title, seasonHasUnroundedEvents);
+        var tier = Classify(round, title, cupStageSizes);
         return (tier == SpecialTier.Final && monitorFinals)
             || (tier == SpecialTier.Playoff && monitorPlayoffs)
             || (tier == SpecialTier.Preseason && monitorPreseason);

@@ -122,10 +122,13 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
                         indexer.ApiKey = fieldValue;
                         break;
                     case "categories":
-                        if (!string.IsNullOrEmpty(fieldValue))
-                        {
-                            indexer.Categories = fieldValue.Split(',').Select(c => c.Trim()).ToList();
-                        }
+                        // An empty value is a deliberate "clear" and must stick.
+                        // Silently keeping the old list is why clearing all
+                        // categories appeared to revert on save. Empty categories
+                        // fall back to the sport defaults at search time.
+                        indexer.Categories = string.IsNullOrEmpty(fieldValue)
+                            ? new List<string>()
+                            : fieldValue.Split(',').Select(c => c.Trim()).ToList();
                         break;
                     case "minimumSeeders":
                         if (int.TryParse(fieldValue, out var minSeeders))
@@ -279,10 +282,13 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                         }
                         break;
                     case "categories":
-                        if (!string.IsNullOrEmpty(fieldValue))
-                        {
-                            indexer.Categories = fieldValue.Split(',').Select(c => c.Trim()).ToList();
-                        }
+                        // An empty value is a deliberate "clear" and must stick.
+                        // Silently keeping the old list is why clearing all
+                        // categories appeared to revert on save. Empty categories
+                        // fall back to the sport defaults at search time.
+                        indexer.Categories = string.IsNullOrEmpty(fieldValue)
+                            ? new List<string>()
+                            : fieldValue.Split(',').Select(c => c.Trim()).ToList();
                         break;
                     case "minimumSeeders":
                         if (int.TryParse(fieldValue, out var minSeeders))

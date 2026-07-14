@@ -906,7 +906,7 @@ export default function IptvSettings() {
                 key={source.id}
                 className="group bg-black/30 border border-gray-800 hover:border-red-900/50 rounded-lg p-4 transition-all"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex flex-wrap items-start justify-between gap-y-2">
                   <div className="flex items-start space-x-4 flex-1">
                     <input
                       type="checkbox"
@@ -963,7 +963,7 @@ export default function IptvSettings() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center space-x-2 ml-4">
+                  <div className="flex items-center space-x-2 ml-auto">
                     <button
                       onClick={() => handleViewChannels(source)}
                       className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"

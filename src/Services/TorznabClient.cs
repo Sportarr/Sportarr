@@ -528,29 +528,7 @@ public class TorznabClient
 
         try
         {
-            var doc = XDocument.Parse(xml);
-
-            // Parse searching capabilities
-            var searching = doc.Descendants("searching").FirstOrDefault();
-            if (searching != null)
-            {
-                capabilities.SearchAvailable = ParseBool(searching.Element("search")?.Attribute("available")?.Value);
-                capabilities.TvSearchAvailable = ParseBool(searching.Element("tv-search")?.Attribute("available")?.Value);
-                capabilities.MovieSearchAvailable = ParseBool(searching.Element("movie-search")?.Attribute("available")?.Value);
-            }
-
-            // Parse categories
-            var categories = doc.Descendants("category");
-            foreach (var category in categories)
-            {
-                var id = category.Attribute("id")?.Value;
-                var name = category.Attribute("name")?.Value;
-
-                if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
-                {
-                    capabilities.Categories.Add(new TorznabCategory { Id = id, Name = name });
-                }
-            }
+            ParseCapabilitiesXml(xml, capabilities);
         }
         catch (Exception ex)
         {
@@ -558,6 +536,58 @@ public class TorznabClient
         }
 
         return capabilities;
+    }
+
+    /// <summary>
+    /// Parse a Torznab caps XML document into capabilities. Categories are
+    /// nested in caps output - each top-level category element can contain
+    /// subcat children (TV -> TV/HD, and Prowlarr indexer-specific forum
+    /// mappings nest the same way). Reading only the category elements
+    /// silently drops every subcategory, which left users unable to pick
+    /// exactly the categories they cared about (the picker showed bare
+    /// numbers for saved subcategory ids and never offered the rest).
+    /// </summary>
+    public static void ParseCapabilitiesXml(string xml, TorznabCapabilities capabilities)
+    {
+        var doc = XDocument.Parse(xml);
+
+        // Parse searching capabilities
+        var searching = doc.Descendants("searching").FirstOrDefault();
+        if (searching != null)
+        {
+            capabilities.SearchAvailable = ParseBool(searching.Element("search")?.Attribute("available")?.Value);
+            capabilities.TvSearchAvailable = ParseBool(searching.Element("tv-search")?.Attribute("available")?.Value);
+            capabilities.MovieSearchAvailable = ParseBool(searching.Element("movie-search")?.Attribute("available")?.Value);
+        }
+
+        // Parse categories and their nested subcategories
+        var seenIds = new HashSet<string>();
+        foreach (var category in doc.Descendants("category"))
+        {
+            var id = category.Attribute("id")?.Value;
+            var name = category.Attribute("name")?.Value;
+
+            if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name) && seenIds.Add(id))
+            {
+                capabilities.Categories.Add(new TorznabCategory { Id = id, Name = name });
+            }
+
+            foreach (var subcat in category.Elements("subcat"))
+            {
+                var subId = subcat.Attribute("id")?.Value;
+                var subName = subcat.Attribute("name")?.Value;
+                if (string.IsNullOrEmpty(subId) || string.IsNullOrEmpty(subName) || !seenIds.Add(subId))
+                    continue;
+
+                // Standard subcats usually carry their full name already
+                // ("TV/HD"); indexer-specific forum names don't, so prefix
+                // the parent for context when it isn't there.
+                var display = !string.IsNullOrEmpty(name) && !subName.Contains(name, StringComparison.OrdinalIgnoreCase)
+                    ? $"{name} / {subName}"
+                    : subName;
+                capabilities.Categories.Add(new TorznabCategory { Id = subId, Name = display });
+            }
+        }
     }
 
     private static readonly System.Text.RegularExpressions.Regex ReleaseGroupRegex =
@@ -624,7 +654,7 @@ public class TorznabClient
         return null;
     }
 
-    private bool ParseBool(string? value)
+    private static bool ParseBool(string? value)
     {
         return value?.ToLower() == "yes" || value == "true" || value == "1";
     }

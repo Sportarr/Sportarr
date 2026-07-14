@@ -319,19 +319,21 @@ public class LeagueEventSyncService
             // regardless of who's playing.
             var originalEventCount = events.Count;
             // Cup competitions mark knockout rounds as bare stage sizes
-            // ("32" = Round of 32) while their group games carry no round at
-            // all. That mixed shape is the signal that lets the classifier
-            // treat stage-size rounds as playoffs without misfiring on
-            // domestic leagues, where every matchday is numbered. Computed
-            // from the season's full pre-filter list and reused by the
-            // cleanup predicate below so both sides classify identically.
-            var seasonHasUnroundedEvents = events.Any(e => string.IsNullOrWhiteSpace(e.Round));
+            // ("32" = Round of 32) while their group games carry no round
+            // at all. Which stage sizes really are knockout stages for this
+            // season is decided by bracket arithmetic in
+            // ComputeCupStageSizes (a Round of 32 is at most 16 games; MLB
+            // series rounds 2..21 carry 90-270 games each and never fit).
+            // Computed from the season's full pre-filter list and reused by
+            // the cleanup predicates below so all sides classify
+            // identically.
+            var cupStageSizes = SpecialEventClassifier.ComputeCupStageSizes(events.Select(e => e.Round));
             if (monitoredTeamIds.Any())
             {
                 events = events.Where(e =>
                     (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
                     (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
-                    SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, seasonHasUnroundedEvents)
+                    SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, cupStageSizes)
                 ).ToList();
 
                 _logger.LogInformation("[League Event Sync] Season {Season}: Filtered {Original} events to {Filtered} based on monitored teams{SpecialNote}",
@@ -429,7 +431,7 @@ public class LeagueEventSyncService
                 {
                     ProcessEvent(apiEvent, league, result, currentSeason, apiEpisodeMap,
                         existingByExternalId, teamsByExternalId, scheduledRecordingsByEventId,
-                        localByDateTitle, apiIds, adoptedLocalEventIds, seasonHasUnroundedEvents);
+                        localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes);
                 }
                 catch (Exception ex)
                 {
@@ -546,7 +548,7 @@ public class LeagueEventSyncService
                 ? allLocalSeasonEvents.Where(e =>
                         (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
                         (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
-                        SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, seasonHasUnroundedEvents))
+                        SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, cupStageSizes))
                     .ToList()
                 : allLocalSeasonEvents;
 
@@ -681,6 +683,83 @@ public class LeagueEventSyncService
                 result.RemovedCount += orphanedEvents.Count;
                 _logger.LogInformation("[League Event Sync] Season {Season}: Removed {Count} cancelled/deleted events",
                     season, orphanedEvents.Count);
+            }
+
+            // SELF-HEAL for out-of-filter events. The team filter prevents
+            // these rows from being CREATED, but rows can predate a narrowed
+            // team selection, and the cup-shape misclassification (see
+            // SeasonHasCupRoundShape) let non-team games sync in monitored.
+            // The orphan cleanup above deliberately ignores out-of-filter
+            // rows, so without this pass they stay monitored forever and RSS
+            // keeps grabbing them. File-less rows are removed outright -
+            // under a correct filter they would never have existed (rows
+            // with an active queue item are left for the import to finish
+            // and get picked up here on the next sync). Rows holding files
+            // are kept but unmonitored, so they stop upgrade-grabbing and
+            // the user decides what to do with the media.
+            if (monitoredTeamIds.Any())
+            {
+                var orphanedIds = orphanedEvents.Select(e => e.Id).ToHashSet();
+                bool MatchesTeamFilter(Event e) =>
+                    (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
+                    (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId));
+                var outOfFilter = allLocalSeasonEvents
+                    .Where(e => !orphanedIds.Contains(e.Id))
+                    .Where(e => !MatchesTeamFilter(e) &&
+                        !SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, cupStageSizes))
+                    .ToList();
+
+                // SAFETY GUARD: a broken team-id mapping (the pre-short-id
+                // failure mode MigrateLegacyExternalIdsAsync exists for)
+                // makes the filter reject EVERY event. A working selection
+                // always has its own team's games locally, so when not a
+                // single event matches the team side of the filter, refuse
+                // the cleanup rather than wipe the season.
+                if (outOfFilter.Any() && !allLocalSeasonEvents.Any(MatchesTeamFilter))
+                {
+                    _logger.LogWarning("[League Event Sync] Season {Season}: every local event fails the monitored-team filter ({Count} candidates). This looks like a team id mismatch, not a real selection - skipping out-of-filter cleanup.",
+                        season, outOfFilter.Count);
+                    outOfFilter.Clear();
+                }
+
+                if (outOfFilter.Any())
+                {
+                    var outOfFilterIds = outOfFilter.Select(e => e.Id).ToList();
+                    var queuedEventIds = (await _db.DownloadQueue
+                            .Where(q => outOfFilterIds.Contains(q.EventId))
+                            .Select(q => q.EventId)
+                            .ToListAsync())
+                        .ToHashSet();
+
+                    var strayRemovedCount = 0;
+                    var strayUnmonitoredCount = 0;
+                    foreach (var stray in outOfFilter)
+                    {
+                        if (stray.HasFile || stray.Files.Any() || queuedEventIds.Contains(stray.Id))
+                        {
+                            if (stray.Monitored)
+                            {
+                                stray.Monitored = false;
+                                strayUnmonitoredCount++;
+                                _logger.LogDebug("[League Event Sync] Unmonitored out-of-filter event '{Title}' (S{Season}) - not a monitored team's game and no specials bypass applies",
+                                    stray.Title, season);
+                            }
+                            continue;
+                        }
+
+                        _db.Events.Remove(stray);
+                        strayRemovedCount++;
+                        _logger.LogDebug("[League Event Sync] Removed out-of-filter event '{Title}' (S{Season}) - not a monitored team's game and no specials bypass applies",
+                            stray.Title, season);
+                    }
+
+                    if (strayRemovedCount > 0 || strayUnmonitoredCount > 0)
+                    {
+                        result.RemovedCount += strayRemovedCount;
+                        _logger.LogInformation("[League Event Sync] Season {Season}: Out-of-filter cleanup removed {Removed} file-less event(s) and unmonitored {Unmonitored} with files/queue - events outside the monitored team selection",
+                            season, strayRemovedCount, strayUnmonitoredCount);
+                    }
+                }
             }
 
             // Save changes after each season (batch save)
@@ -1229,7 +1308,7 @@ public class LeagueEventSyncService
         Dictionary<string, List<Event>> localByDateTitle,
         HashSet<string> apiIds,
         HashSet<int> adoptedLocalEventIds,
-        bool seasonHasUnroundedEvents)
+        IReadOnlySet<int> cupStageSizes)
     {
         // Two-pass match against the preloaded existence dictionary (one
         // bulk query per season replaces the former one-to-two DB
@@ -1632,7 +1711,7 @@ public class LeagueEventSyncService
             // For UFC-style fighting leagues, also check if the event matches monitored event types
             Monitored = league.Monitored
                 && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason,
-                    apiEvent.Round, apiEvent.Title, seasonHasUnroundedEvents)
+                    apiEvent.Round, apiEvent.Title, cupStageSizes)
                 && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
                 && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes),
             QualityProfileId = league.QualityProfileId,
@@ -1699,7 +1778,7 @@ public class LeagueEventSyncService
     /// Determines if an event should be monitored based on the league's MonitorType setting
     /// </summary>
     private static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason,
-        string? round, string? title, bool seasonHasUnroundedEvents)
+        string? round, string? title, IReadOnlySet<int> cupStageSizes)
     {
         var now = DateTime.UtcNow;
 
@@ -1723,7 +1802,7 @@ public class LeagueEventSyncService
                 round,
                 LeagueSportRules.IsTeamlessSport(league.Sport, league.Name) ? null : title,
                 league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
-                seasonHasUnroundedEvents),
+                cupStageSizes),
             _ => true // Default to monitoring if unknown type
         };
     }

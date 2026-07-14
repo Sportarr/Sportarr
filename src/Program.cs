@@ -33,16 +33,73 @@ SQLitePCL.Batteries_V2.Init();
 // empty logs. Windows-only: on Linux, multiple intentional instances
 // (separate containers/data dirs) are a supported setup.
 System.Threading.Mutex? singleInstanceMutex = null;
+
+// Another instance owns the database (usually the Windows service). For a
+// double-click launch that is not really an error - the user just wants
+// Sportarr open - so take them to the running instance's web UI and keep the
+// console visible long enough to read why. Non-interactive launches (the
+// service itself, scripts) exit immediately.
+static void ExitBecauseAlreadyRunning(params string[] reasonLines)
+{
+    foreach (var line in reasonLines)
+    {
+        Console.WriteLine(line);
+    }
+
+    bool interactive;
+    try { interactive = Environment.UserInteractive && !Console.IsInputRedirected; }
+    catch { interactive = false; }
+
+    if (interactive)
+    {
+        const string url = "http://localhost:1867";
+        Console.WriteLine($"[Sportarr] The running instance is serving the web interface - opening {url} in your browser.");
+        Console.WriteLine("[Sportarr] (If you changed Sportarr's port, adjust the address in the browser.)");
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch
+        {
+            // No default browser handler - the printed URL still tells the user where to go.
+        }
+        Console.WriteLine("[Sportarr] This window closes in 15 seconds.");
+        System.Threading.Thread.Sleep(TimeSpan.FromSeconds(15));
+    }
+
+    Environment.Exit(1);
+}
+
 if (OperatingSystem.IsWindows())
 {
-    singleInstanceMutex = new System.Threading.Mutex(true, @"Global\Sportarr.SingleInstance", out var isFirstInstance);
-    if (!isFirstInstance)
+    try
     {
-        Console.WriteLine("[Sportarr] ERROR: Another Sportarr instance is already running on this machine.");
-        Console.WriteLine("[Sportarr] Check for a Sportarr Windows service (services.msc), a system-tray icon, or a second console window, stop it, then launch again.");
-        Environment.Exit(1);
+        singleInstanceMutex = new System.Threading.Mutex(true, @"Global\Sportarr.SingleInstance", out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            ExitBecauseAlreadyRunning(
+                "[Sportarr] Another Sportarr instance is already running on this machine.",
+                "[Sportarr] It is usually the Sportarr Windows service (services.msc), a system-tray icon, or another console window.");
+        }
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => singleInstanceMutex.Dispose();
     }
-    AppDomain.CurrentDomain.ProcessExit += (_, _) => singleInstanceMutex.Dispose();
+    catch (UnauthorizedAccessException)
+    {
+        // The mutex exists but belongs to a different Windows account - the
+        // usual culprit is the Sportarr Windows service (running as SYSTEM) or
+        // an elevated console still holding it. Windows then refuses this
+        // process access to the handle entirely. That still means another
+        // instance is running.
+        ExitBecauseAlreadyRunning(
+            "[Sportarr] Another Sportarr instance is already running under a different Windows account.",
+            "[Sportarr] It is usually the Sportarr Windows service, or a copy launched 'As Administrator'.");
+    }
+    catch (Exception ex)
+    {
+        // The guard is a convenience, not a requirement - never let it block
+        // startup on exotic permission setups.
+        Console.WriteLine($"[Sportarr] WARNING: Could not create the single-instance guard ({ex.Message}). Continuing without it.");
+    }
 }
 
 // Set default environment variables (same as Docker sets, for consistency outside Docker)
@@ -749,7 +806,24 @@ app.Use(async (context, next) =>
 });
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // index.html must always revalidate so a new build's hashed chunk names
+        // are picked up on the next load - otherwise browsers (iOS Safari
+        // especially) keep serving the previous UI after an update. The hashed
+        // /assets/* files are immutable by construction and can cache forever.
+        if (string.Equals(ctx.File.Name, "index.html", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+        }
+        else if (ctx.Context.Request.Path.StartsWithSegments("/assets"))
+        {
+            ctx.Context.Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+        }
+    }
+});
 
 // Defensive API contract: ensure unmatched API requests return JSON payloads
 // rather than HTML fallback pages.
@@ -1019,8 +1093,12 @@ app.MapSonarrReleasePushEndpoint();
 // param rather than a header, and the hub carries no sensitive data.
 app.MapHub<Sportarr.Api.Hubs.SonarrMessageHub>("/signalr/messages");
 
-// Fallback to index.html for SPA routing
-app.MapFallbackToFile("index.html");
+// Fallback to index.html for SPA routing. Same no-cache rule as the direct
+// index.html route above: deep links must not pin an outdated bundle either.
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 Log.Information("========================================");
 Log.Information("Sportarr is starting...");

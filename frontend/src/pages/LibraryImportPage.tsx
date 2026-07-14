@@ -21,6 +21,7 @@ import FileDetailsModal from '../components/FileDetailsModal';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import { apiGet, apiPost } from '../utils/api';
+import { useQueryClient } from '@tanstack/react-query';
 import FileMetadataEditor, { type FileMetadataEditorValues } from '../components/FileMetadataEditor';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
@@ -143,6 +144,7 @@ const RECENT_FOLDERS_KEY = 'sportarr-library-import-recent-folders';
 const MAX_RECENT_FOLDERS = 8;
 
 const LibraryImportPage: React.FC = () => {
+  const queryClient = useQueryClient();
   // Wizard step
   const [currentStep, setCurrentStep] = useState<WizardStep>('select');
 
@@ -220,7 +222,27 @@ const LibraryImportPage: React.FC = () => {
   const [editorOpenForFile, setEditorOpenForFile] = useState<string | null>(null);
   // Hardlink the imported files into the library instead of moving them, so
   // torrents spanning many events keep seeding from the original paths.
+  // Defaults from the global "Use Hardlinks instead of Copy" media-management
+  // setting: users who enabled it expect manual imports to honor it too. The
+  // checkbox stays user-overridable per import.
   const [createHardlinks, setCreateHardlinks] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiGet('/api/settings');
+        if (!res.ok) return;
+        const data = await res.json();
+        const mm = data.mediaManagementSettings ? JSON.parse(data.mediaManagementSettings) : null;
+        if (!cancelled && mm && typeof mm.useHardlinks === 'boolean') {
+          setCreateHardlinks(mm.useHardlinks);
+        }
+      } catch {
+        // Keep the off default if settings can't load.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Import state
   const [importing, setImporting] = useState(false);
@@ -480,6 +502,13 @@ const LibraryImportPage: React.FC = () => {
       const result: ImportResult = await response.json();
       setImportResult(result);
       setCurrentStep('complete');
+      // Imported files change event Downloaded states across the app, but
+      // the league/event queries are cached. Without this, freshly imported
+      // events keep showing as missing until a full page refresh.
+      queryClient.invalidateQueries({ queryKey: ['league-events'] });
+      queryClient.invalidateQueries({ queryKey: ['league'] });
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      queryClient.invalidateQueries({ queryKey: ['wanted'] });
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'An error occurred');
       setCurrentStep('review');

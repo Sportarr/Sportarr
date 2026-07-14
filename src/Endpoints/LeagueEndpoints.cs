@@ -714,14 +714,15 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             int unmonitoredCount = 0;
             int unchangedCount = 0;
 
-            // SpecialsOnly classification needs to know whether each season
-            // mixes round-less events with stage-size rounds (the cup shape;
-            // see SpecialEventClassifier). Computed once per season here so
-            // the per-event loop stays cheap. Teamless sports skip the
-            // title-keyword fallback, mirroring the sync-time logic.
-            var seasonHasUnrounded = allEvents
+            // SpecialsOnly classification needs to know which bare
+            // stage-size rounds are real knockout stages per season (see
+            // SpecialEventClassifier.ComputeCupStageSizes). Computed once
+            // per season here so the per-event loop stays cheap. Teamless
+            // sports skip the title-keyword fallback, mirroring the
+            // sync-time logic.
+            var cupStageSizesBySeason = allEvents
                 .GroupBy(e => e.Season ?? "")
-                .ToDictionary(g => g.Key, g => g.Any(e => string.IsNullOrWhiteSpace(e.Round)));
+                .ToDictionary(g => g.Key, g => SpecialEventClassifier.ComputeCupStageSizes(g.Select(e => e.Round)));
             var isTeamlessSport = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name);
 
             foreach (var evt in allEvents)
@@ -747,7 +748,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                             evt.Round,
                             isTeamlessSport ? null : evt.Title,
                             league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
-                            seasonHasUnrounded[evt.Season ?? ""]),
+                            cupStageSizesBySeason[evt.Season ?? ""]),
                         _ => true
                     };
                 }
@@ -881,16 +882,29 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
 
     var videoExtensions = new HashSet<string>(SupportedExtensions.Video, StringComparer.OrdinalIgnoreCase);
 
-    // Build set of already tracked file paths
+    // Build set of already tracked file paths, remembering which event owns
+    // each path so a skipped file can be explained (a file can be tracked by
+    // an event OTHER than the one its name suggests, e.g. after upstream
+    // episode renumbering, and that otherwise looks like a scan that "missed"
+    // the file).
     var trackedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    var eventPaths = await db.Events.AsNoTracking()
+    var trackedOwners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    var eventPathRows = await db.Events.AsNoTracking()
         .Where(e => !string.IsNullOrEmpty(e.FilePath))
-        .Select(e => e.FilePath!).ToListAsync();
-    foreach (var p in eventPaths) trackedPaths.Add(p);
+        .Select(e => new { Path = e.FilePath!, e.Title }).ToListAsync();
+    foreach (var row in eventPathRows)
+    {
+        trackedPaths.Add(row.Path);
+        trackedOwners.TryAdd(row.Path, row.Title);
+    }
 
-    var eventFilePaths = await db.EventFiles.AsNoTracking()
-        .Select(ef => ef.FilePath).ToListAsync();
-    foreach (var p in eventFilePaths) trackedPaths.Add(p);
+    var eventFileRows = await db.EventFiles.AsNoTracking()
+        .Select(ef => new { ef.FilePath, Title = ef.Event != null ? ef.Event.Title : null }).ToListAsync();
+    foreach (var row in eventFileRows)
+    {
+        trackedPaths.Add(row.FilePath);
+        if (row.Title != null) trackedOwners.TryAdd(row.FilePath, row.Title);
+    }
 
     var pendingPaths = new HashSet<string>(
         await db.PendingImports
@@ -907,6 +921,14 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
 
     var pendingImports = new List<(PendingImport Import, ImportSuggestion? Suggestion)>();
     var leagueFolderName = leagueFolderFormat.Replace("{Series}", league.Name);
+
+    // Skip-reason counters. A scan that reports "0 new files" while the user
+    // can see untracked-looking files in the folder is a dead end unless it
+    // says WHY each file was skipped (already tracked by some event, already
+    // waiting in the import queue, or blocklisted by an earlier rejection).
+    var skippedTracked = 0;
+    var skippedPending = 0;
+    var skippedBlocklisted = 0;
 
     foreach (var rootFolder in rootFolders)
     {
@@ -926,8 +948,27 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
 
             foreach (var filePath in files)
             {
-                if (trackedPaths.Contains(filePath) || pendingPaths.Contains(filePath) || blocklistedPaths.Contains(filePath))
+                if (trackedPaths.Contains(filePath))
+                {
+                    skippedTracked++;
+                    logger.LogDebug("[League Scan] Skipping {File}: already tracked by event '{Owner}'",
+                        Path.GetFileName(filePath), trackedOwners.GetValueOrDefault(filePath, "(unknown)"));
                     continue;
+                }
+                if (pendingPaths.Contains(filePath))
+                {
+                    skippedPending++;
+                    logger.LogInformation("[League Scan] Skipping {File}: already waiting in the import queue (Activity > Import)",
+                        Path.GetFileName(filePath));
+                    continue;
+                }
+                if (blocklistedPaths.Contains(filePath))
+                {
+                    skippedBlocklisted++;
+                    logger.LogWarning("[League Scan] Skipping {File}: previously rejected and blocklisted; remove it from the Blocklist to rediscover it",
+                        Path.GetFileName(filePath));
+                    continue;
+                }
 
                 try
                 {
@@ -984,7 +1025,8 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
     if (pendingImports.Count > 0)
         await db.SaveChangesAsync(); // IDs are now assigned
 
-    logger.LogInformation("[League Scan] Scan complete for {League}: {Count} new files discovered", league.Name, pendingImports.Count);
+    logger.LogInformation("[League Scan] Scan complete for {League}: {Count} new files discovered (skipped: {Tracked} already tracked, {Pending} in import queue, {Blocklisted} blocklisted)",
+        league.Name, pendingImports.Count, skippedTracked, skippedPending, skippedBlocklisted);
 
     // Build response: newly discovered files + existing pending imports in league folders
     var allFiles = pendingImports.Select(p => new

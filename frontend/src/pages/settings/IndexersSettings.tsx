@@ -875,7 +875,8 @@ export default function IndexersSettings() {
                     placeholder={capsLoading ? 'Loading categories…' : 'Select categories...'}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Pick categories the indexer should be searched in. Leave empty to use all categories.
+                    Pick categories the indexer should be searched in. Leave empty to use the sport
+                    TV defaults (5000, 5040, 5045, 5060).
                   </p>
                 </>
               ) : (
@@ -899,7 +900,7 @@ export default function IndexersSettings() {
                       ? 'Loading categories from indexer…'
                       : capsError
                         ? `${capsError} Falling back to manual entry: comma-separated category IDs.`
-                        : 'Comma-separated category IDs. Leave empty to search all categories.'}
+                        : 'Comma-separated category IDs. Leave empty to use the sport TV defaults (5000, 5040, 5045, 5060).'}
                   </p>
                 </>
               )}

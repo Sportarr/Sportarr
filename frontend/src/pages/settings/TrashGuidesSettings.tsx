@@ -521,7 +521,7 @@ export default function TrashGuidesSettings() {
         />
         <div className="pb-6">
           <div className="py-12 text-center">
-            <ArrowPathIcon className="mx-auto h-8 w-8 animate-spin text-blue-500" />
+            <ArrowPathIcon className="mx-auto h-8 w-8 animate-spin text-red-500" />
           </div>
         </div>
       </div>
@@ -950,7 +950,7 @@ export default function TrashGuidesSettings() {
             <div className="p-4 overflow-y-auto flex-1">
               {loadingPreview ? (
                 <div className="flex items-center justify-center py-8">
-                  <ArrowPathIcon className="w-8 h-8 text-blue-500 animate-spin" />
+                  <ArrowPathIcon className="w-8 h-8 text-red-500 animate-spin" />
                 </div>
               ) : preview ? (
                 <div className="space-y-4">
@@ -1205,7 +1205,7 @@ export default function TrashGuidesSettings() {
             <div className="p-4 overflow-y-auto flex-1">
               {loadingProfiles ? (
                 <div className="flex items-center justify-center py-8">
-                  <ArrowPathIcon className="w-8 h-8 text-blue-500 animate-spin" />
+                  <ArrowPathIcon className="w-8 h-8 text-red-500 animate-spin" />
                 </div>
               ) : availableProfiles.length > 0 ? (
                 <div className="space-y-3">

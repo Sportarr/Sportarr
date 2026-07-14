@@ -511,10 +511,19 @@ public class IndexerSearchService : IIndexerSearchService
                 result.IndexerId = indexer.Id; // For release profile filtering
             }
 
-            // Filter by minimum seeders (for torrents)
+            // Filter by minimum seeders (for torrents). Releases with UNKNOWN
+            // seed counts pass: some indexers omit the seeders attribute
+            // entirely, and rejecting null as "below minimum" silently threw
+            // away every result they returned (null >= min is false).
             if ((indexer.Type == IndexerType.Torznab || indexer.Type == IndexerType.BroadcasTheNet) && indexer.MinimumSeeders > 0)
             {
-                results = results.Where(r => r.Seeders >= indexer.MinimumSeeders).ToList();
+                var beforeSeederFilter = results.Count;
+                results = results.Where(r => !r.Seeders.HasValue || r.Seeders.Value >= indexer.MinimumSeeders).ToList();
+                if (results.Count < beforeSeederFilter)
+                {
+                    _logger.LogInformation("[Indexer Search] {Indexer}: {Dropped} of {Total} results below minimum seeders ({Min})",
+                        indexer.Name, beforeSeederFilter - results.Count, beforeSeederFilter, indexer.MinimumSeeders);
+                }
             }
 
             _logger.LogInformation("[Indexer Search] {Indexer} returned {Count} results", indexer.Name, results.Count);
@@ -728,10 +737,11 @@ public class IndexerSearchService : IIndexerSearchService
                 result.Protocol = protocol;
             }
 
-            // Filter by minimum seeders (for torrents)
+            // Filter by minimum seeders (for torrents). Unknown seed counts
+            // pass - see the search-path filter above for why.
             if ((indexer.Type == IndexerType.Torznab || indexer.Type == IndexerType.BroadcasTheNet) && indexer.MinimumSeeders > 0)
             {
-                results = results.Where(r => r.Seeders >= indexer.MinimumSeeders).ToList();
+                results = results.Where(r => !r.Seeders.HasValue || r.Seeders.Value >= indexer.MinimumSeeders).ToList();
             }
 
             _logger.LogDebug("[RSS Feed] {Indexer} returned {Count} releases", indexer.Name, results.Count);

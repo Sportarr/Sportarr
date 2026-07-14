@@ -810,6 +810,57 @@ public class AutomaticSearchService : IAutomaticSearchService
                 delayProfile = new DelayProfile();
             }
 
+            // Anti-churn for automatic searches. The scheduled missing/backlog
+            // pass previously had no memory of its own grabs: an event whose
+            // import never succeeds (bad match, failing download) got the same
+            // top-ranked release re-sent to the download client on EVERY cycle,
+            // forever. Apply the same cooldown/cap policy the RSS path uses:
+            // drop candidates that were already fetched and haven't imported,
+            // unless their cooldown elapsed and they're under the retry cap.
+            // Manual searches bypass this - an explicit user grab always wins.
+            List<GrabHistory> eventGrabs = new();
+            if (!isManualSearch)
+            {
+                eventGrabs = await _db.GrabHistory
+                    .Where(g => g.EventId == eventId)
+                    .ToListAsync();
+
+                GrabHistory? FindPriorGrab(ReleaseSearchResult r) =>
+                    eventGrabs
+                        .Where(g =>
+                            (!string.IsNullOrEmpty(r.TorrentInfoHash) && g.TorrentInfoHash == r.TorrentInfoHash) ||
+                            (!string.IsNullOrEmpty(r.Guid) && g.Guid == r.Guid) ||
+                            (!string.IsNullOrEmpty(r.DownloadUrl) && g.DownloadUrl == r.DownloadUrl))
+                        .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
+                        .FirstOrDefault();
+
+                if (eventGrabs.Count > 0)
+                {
+                    var nowUtc = DateTime.UtcNow;
+                    var beforeChurnFilter = matchedReleases.Count;
+                    matchedReleases = matchedReleases
+                        .Where(r =>
+                        {
+                            var decision = GrabHistoryChurnGuard.Evaluate(FindPriorGrab(r), nowUtc);
+                            return decision is GrabHistoryChurnGuard.Decision.Allow
+                                or GrabHistoryChurnGuard.Decision.AllowControlledRetry;
+                        })
+                        .ToList();
+                    if (matchedReleases.Count < beforeChurnFilter)
+                    {
+                        _logger.LogInformation(
+                            "[Automatic Search] Anti-churn: skipped {Skipped} of {Total} candidate release(s) already grabbed for '{Title}' without a successful import",
+                            beforeChurnFilter - matchedReleases.Count, beforeChurnFilter, evt.Title);
+                    }
+                    if (matchedReleases.Count == 0)
+                    {
+                        result.Success = false;
+                        result.Message = "All candidate releases were already grabbed without importing - not re-fetching (check why imports fail for this event)";
+                        return result;
+                    }
+                }
+            }
+
             // Select best release using delay profile and protocol priority (from validated releases only)
             var bestRelease = _delayProfileService.SelectBestReleaseWithDelayProfile(
                 matchedReleases, delayProfile, qualityProfile);
@@ -1178,6 +1229,28 @@ public class AutomaticSearchService : IAutomaticSearchService
 
             // Save grab history for potential re-grabbing (Sportarr-exclusive feature)
             // This allows users to re-download the exact same release if they lose their media files
+
+            // If this automatic grab is a controlled retry of a release we
+            // already fetched, advance its cooldown/cap counters so the
+            // churn guard can eventually stop a release that never imports.
+            if (!isManualSearch)
+            {
+                var priorGrabOfSelected = eventGrabs
+                    .Where(g =>
+                        (!string.IsNullOrEmpty(bestRelease.TorrentInfoHash) && g.TorrentInfoHash == bestRelease.TorrentInfoHash) ||
+                        (!string.IsNullOrEmpty(bestRelease.Guid) && g.Guid == bestRelease.Guid) ||
+                        (!string.IsNullOrEmpty(bestRelease.DownloadUrl) && g.DownloadUrl == bestRelease.DownloadUrl))
+                    .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
+                    .FirstOrDefault();
+                if (priorGrabOfSelected != null && !priorGrabOfSelected.WasImported)
+                {
+                    priorGrabOfSelected.RegrabCount += 1;
+                    priorGrabOfSelected.LastRegrabAttempt = DateTime.UtcNow;
+                    _logger.LogInformation(
+                        "[Automatic Search] Controlled re-grab {Count}/{Max} of '{Title}' for event {EventId}",
+                        priorGrabOfSelected.RegrabCount, GrabHistoryChurnGuard.MaxAutomaticRegrabs, bestRelease.Title, eventId);
+                }
+            }
 
             // Mark any previous grabs for the same event+part as superseded
             // This prevents users from re-grabbing an old file that was replaced

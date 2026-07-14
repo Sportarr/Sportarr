@@ -256,14 +256,22 @@ public class ImportMatchingService
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
 
+        // A degenerate title carries no signal - and the contains branch
+        // below would award EVERY event 40 points for an empty search string
+        // (string.Contains("") is true).
+        if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
+        {
+            return 0;
+        }
+
         // Exact title match = 60 points
         if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
         {
             confidence += 60;
         }
         // Contains match = 40 points
-        else if (normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
-                 normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        else if ((normalizedSearch.Length >= 3 && normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)) ||
+                 (normalizedEvent.Length >= 3 && normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
         {
             confidence += 40;
         }

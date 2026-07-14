@@ -100,6 +100,20 @@ begin
   Result := DataDirPage.Values[0];
 end;
 
+function InitializeSetup(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+  // Upgrades must not leave the previous version running: a service or tray
+  // instance surviving the install keeps the old binary, fights the fresh
+  // launch over the database, and holds the single-instance mutex so the new
+  // copy refuses to start. Stop the service politely, then clear stragglers.
+  Exec('sc', 'stop Sportarr', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(2000);
+  Exec('taskkill', '/F /IM Sportarr.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
@@ -117,6 +131,13 @@ begin
       Exec('sc', 'description ' + ServiceName + ' "Sports PVR for Usenet and Torrents - monitors sports leagues and downloads releases automatically."', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       // Start the service
       Exec('sc', 'start ' + ServiceName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end
+    else
+    begin
+      // Upgrade path: InitializeSetup stopped any existing service so the
+      // binary could be replaced. If a Sportarr service exists from a prior
+      // install, bring it back up; harmless no-op when there is none.
+      Exec('sc', 'start Sportarr', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
   end;
 end;

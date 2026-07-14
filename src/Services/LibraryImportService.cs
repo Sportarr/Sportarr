@@ -211,7 +211,7 @@ public class LibraryImportService
                                 eventTitle, candidate.Title, organization, candidate,
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
-                                sportsResult.Location, _logger);
+                                sportsResult.Location, _logger, sport);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
@@ -325,12 +325,20 @@ public class LibraryImportService
                     request.FilePath);
 
                 // Parse import mode from request: "move", "copy", or "hardlink"
-                // Default behavior based on CopyFiles setting:
-                // - CopyFiles=true: Use Copy mode (preserves source files)
-                // - CopyFiles=false: Use Move mode (removes source files)
-                // In Copy mode, UseHardlinks decides HOW copies are done (hardlink vs actual copy).
-                // "hardlink" requests links regardless of the global UseHardlinks setting.
-                var importMode = settings.CopyFiles ? LibraryImportMode.Copy : LibraryImportMode.Move;
+                // Default behavior when the request doesn't specify a mode:
+                // - CopyFiles=true: Copy (preserves sources; UseHardlinks decides HOW
+                //   the copy happens - hardlink vs actual copy)
+                // - CopyFiles=false + UseHardlinks=true: Hardlink. Users who enabled
+                //   "Use Hardlinks instead of Copy" expect manual imports to honor it
+                //   (keeps torrents seeding from the source path); previously this
+                //   combination silently chose Move and broke seeding.
+                // - CopyFiles=false + UseHardlinks=false: Move (removes source files)
+                // An explicit "hardlink" request links regardless of the global setting.
+                var importMode = settings.CopyFiles
+                    ? LibraryImportMode.Copy
+                    : settings.UseHardlinks
+                        ? LibraryImportMode.Hardlink
+                        : LibraryImportMode.Move;
                 if (!string.IsNullOrEmpty(request.ImportMode))
                 {
                     importMode = request.ImportMode.ToLowerInvariant() switch
@@ -1207,9 +1215,23 @@ public class LibraryImportService
         int? seasonYearEnd = null,
         int? explicitEpisodeNumber = null,
         string? parsedLocation = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        string? parsedSport = null)
     {
         int confidence = 0;
+
+        // ── SPORT GATE ──────────────────────────────────────────────────────────
+        // When the filename parser identified the sport, an event from a
+        // different sport can never be the right match, no matter how the
+        // fuzzy title arithmetic works out. Without this a soccer World Cup
+        // file auto-matched a World Snooker event.
+        if (!string.IsNullOrEmpty(parsedSport) && !string.IsNullOrEmpty(evt.Sport) &&
+            !evt.Sport.Equals(parsedSport, StringComparison.OrdinalIgnoreCase))
+        {
+            logger?.LogDebug("[Match] Sport gate: file parsed as {ParsedSport}, event '{Event}' is {EventSport} - rejecting",
+                parsedSport, eventTitle, evt.Sport);
+            return 0;
+        }
 
         // ── ROUND NUMBER ────────────────────────────────────────────────────────
         // A filename "Round09" is the CHAMPIONSHIP ROUND, which must be compared
@@ -1295,12 +1317,21 @@ public class LibraryImportService
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
 
+        // A degenerate parsed title carries no signal. Without this guard the
+        // contains branch below hands EVERY event a 40-point award when the
+        // search string is empty (string.Contains("") is true), which put an
+        // arbitrary event exactly on the acceptance floor.
+        if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
+        {
+            return 0;
+        }
+
         if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
         {
             confidence += 60;
         }
-        else if (normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
-                 normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        else if ((normalizedSearch.Length >= 3 && normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)) ||
+                 (normalizedEvent.Length >= 3 && normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
         {
             confidence += 40;
         }

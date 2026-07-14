@@ -573,10 +573,36 @@ public class SportsFileNameParser
                     _logger.LogDebug("[SportsFileNameParser] Extracted date {Date} from '{Filename}'",
                         result.EventDate.Value.ToString("yyyy-MM-dd"), filename);
                 }
-                catch (Exception ex)
+                catch (ArgumentOutOfRangeException)
                 {
-                    _logger.LogWarning("[SportsFileNameParser] Invalid date {Year}-{Month}-{Day} in '{Filename}': {Error}",
-                        year, month, day, filename, ex.Message);
+                    // Some feeds order the trailing pair day-first ("EPL 2017 15 01"
+                    // is 15 January 2017). Retry swapped before giving up.
+                    if (day >= 1 && day <= 12 && month >= 1 && month <= 31)
+                    {
+                        try
+                        {
+                            result.EventDate = new DateTime(year, day, month);
+                            _logger.LogDebug("[SportsFileNameParser] Extracted day-first date {Date} from '{Filename}'",
+                                result.EventDate.Value.ToString("yyyy-MM-dd"), filename);
+                        }
+                        catch (ArgumentOutOfRangeException)
+                        {
+                            // fall through to the year salvage below
+                        }
+                    }
+
+                    // Even when the day/month pair is garbage, the year is
+                    // still a usable signal. Losing it entirely let a
+                    // 2017-stamped release match a current-season fixture:
+                    // this branch used to swallow the exception AND skip the
+                    // year-only extraction (it only runs when no date pattern
+                    // matched), so validation saw no date and no year at all.
+                    if (result.EventDate == null && year >= 1900 && year <= 2100)
+                    {
+                        result.EventYear = year;
+                        _logger.LogDebug("[SportsFileNameParser] Invalid date {Year}-{Month}-{Day} in '{Filename}'; keeping year {Year} for validation",
+                            year, month, day, filename, year);
+                    }
                 }
             }
         }

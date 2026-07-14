@@ -82,19 +82,62 @@ public class SpecialEventClassifierTests
         BypassesTeamFilter("7", "Team A vs Team B", monitorFinals: true, monitorPlayoffs: true, monitorPreseason: true).Should().BeFalse();
     }
 
+    /// <summary>Builds a season round list: (round value, event count) pairs.</summary>
+    private static IEnumerable<string?> Season(params (string? Round, int Count)[] groups)
+        => groups.SelectMany(g => Enumerable.Repeat(g.Round, g.Count));
+
+    // The real FIFA World Cup 2026 shape as delivered by the metadata API:
+    // 29 round-less events, group MATCHDAYS 1/2/3 with 24 games each,
+    // Round of 32 (16 games), Round of 16 (8 games), then explicit codes.
+    private static IReadOnlySet<int> WorldCupShape() => ComputeCupStageSizes(Season(
+        (null, 29), ("1", 24), ("2", 24), ("3", 24), ("32", 16), ("16", 8), ("125", 4), ("150", 2)));
+
+    // The real MLB 2026 shape: thousands of round-less games plus series
+    // rounds 2..21 carrying 90-270 games each. Nothing fits a bracket.
+    private static IReadOnlySet<int> MlbShape() => ComputeCupStageSizes(Season(
+        (null, 6778), ("2", 137), ("3", 136), ("4", 168), ("5", 171), ("6", 272),
+        ("7", 262), ("8", 219), ("9", 141), ("16", 97), ("21", 94)));
+
+    [Fact]
+    public void Cup_stage_sizes_come_from_bracket_arithmetic()
+    {
+        // World Cup: 32 and 16 fit their brackets; matchday 2 (24 games)
+        // can never be "the final" and stays out.
+        WorldCupShape().Should().BeEquivalentTo(new[] { 32, 16 });
+
+        // MLB: no numeric round fits a bracket, nothing classifies.
+        MlbShape().Should().BeEmpty();
+
+        // Fully rounded league season (EPL): no unrounded events, so no
+        // stage sizes even when counts would fit.
+        ComputeCupStageSizes(Season(("32", 10), ("33", 10), ("38", 10))).Should().BeEmpty();
+
+        // Pure bracket cup: group stage unrounded, knockouts by size.
+        ComputeCupStageSizes(Season((null, 48), ("16", 8), ("8", 4), ("4", 2), ("2", 1)))
+            .Should().BeEquivalentTo(new[] { 16, 8, 4, 2 });
+    }
+
     [Theory]
-    [InlineData("64", SpecialTier.Playoff)]
     [InlineData("32", SpecialTier.Playoff)] // World Cup 2026 Round of 32
     [InlineData("16", SpecialTier.Playoff)] // Round of 16
-    [InlineData("8", SpecialTier.Playoff)]  // Quarter-finals
-    [InlineData("4", SpecialTier.Playoff)]  // Semi-finals
-    [InlineData("2", SpecialTier.Final)]    // Two teams left: the final
-    [InlineData("3", SpecialTier.None)]     // Not a stage size
-    [InlineData("38", SpecialTier.None)]    // Not a stage size either
-    public void Classifies_stage_size_rounds_in_cup_shaped_seasons(string round, SpecialTier expected)
+    [InlineData("2", SpecialTier.None)]     // Group MATCHDAY 2, not the final
+    [InlineData("3", SpecialTier.None)]     // Group matchday
+    public void Classifies_world_cup_rounds_by_bracket_fit(string round, SpecialTier expected)
     {
-        // Cup shape: the season also contains unrounded (group stage) events.
-        Classify(round, "Australia vs Egypt", seasonHasUnroundedEvents: true).Should().Be(expected);
+        Classify(round, "Australia vs Egypt", WorldCupShape()).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("2")]  // 137 games with this round - a series number, not the final
+    [InlineData("4")]
+    [InlineData("8")]
+    [InlineData("16")]
+    public void Mlb_series_rounds_never_classify(string round)
+    {
+        // The 2026-07 field bug: with the old any-unrounded signal these
+        // classified as knockouts and every game carrying one bypassed the
+        // monitored-team filter, flooding one-team libraries.
+        Classify(round, "New York Mets vs Kansas City Royals", MlbShape()).Should().Be(SpecialTier.None);
     }
 
     [Theory]
@@ -105,24 +148,26 @@ public class SpecialEventClassifierTests
     {
         // Domestic league shape: every event carries a numeric matchday, so
         // round 32 is a regular week (EPL has 38), not a knockout stage.
-        Classify(round, "Arsenal vs Chelsea", seasonHasUnroundedEvents: false).Should().Be(SpecialTier.None);
+        var eplShape = ComputeCupStageSizes(Season(("2", 10), ("16", 10), ("32", 10), ("38", 10)));
+        Classify(round, "Arsenal vs Chelsea", eplShape).Should().Be(SpecialTier.None);
     }
 
     [Fact]
-    public void Bypass_admits_cup_knockouts_only_with_the_cup_shape_signal()
+    public void Bypass_admits_cup_knockouts_only_when_the_bracket_fits()
     {
         // The World Cup E86 case: Round-of-32 game, playoffs opt-in on.
         BypassesTeamFilter("32", "Australia vs Egypt", monitorFinals: false, monitorPlayoffs: true,
-            monitorPreseason: false, seasonHasUnroundedEvents: true).Should().BeTrue();
+            monitorPreseason: false, cupStageSizes: WorldCupShape()).Should().BeTrue();
 
-        // Same round value without the cup shape (domestic matchday): no bypass.
-        BypassesTeamFilter("32", "Arsenal vs Chelsea", monitorFinals: false, monitorPlayoffs: true,
-            monitorPreseason: false, seasonHasUnroundedEvents: false).Should().BeFalse();
+        // MLB series round with the same number: no bypass.
+        BypassesTeamFilter("32", "Mets vs Royals", monitorFinals: false, monitorPlayoffs: true,
+            monitorPreseason: false, cupStageSizes: MlbShape()).Should().BeFalse();
 
         // Stage-size final honors the finals opt-in, not the playoffs one.
+        var bracketCup = ComputeCupStageSizes(Season((null, 48), ("2", 1)));
         BypassesTeamFilter("2", null, monitorFinals: true, monitorPlayoffs: false,
-            monitorPreseason: false, seasonHasUnroundedEvents: true).Should().BeTrue();
+            monitorPreseason: false, cupStageSizes: bracketCup).Should().BeTrue();
         BypassesTeamFilter("2", null, monitorFinals: false, monitorPlayoffs: true,
-            monitorPreseason: false, seasonHasUnroundedEvents: true).Should().BeFalse();
+            monitorPreseason: false, cupStageSizes: bracketCup).Should().BeFalse();
     }
 }

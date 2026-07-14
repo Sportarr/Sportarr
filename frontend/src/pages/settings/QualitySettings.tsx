@@ -189,14 +189,14 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
       </div>
 
       {/* Import from TRaSH Guides */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-400">
           Sizes are in MB per minute of runtime. Adjust based on your preferences and storage capacity.
         </p>
         <button
           onClick={handleImportFromTrash}
           disabled={importing}
-          className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-purple-800 disabled:to-purple-900 disabled:opacity-50 text-white font-medium rounded-lg transition-all inline-flex items-center"
+          className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-purple-800 disabled:to-purple-900 disabled:opacity-50 text-white font-medium rounded-lg transition-all inline-flex items-center whitespace-nowrap self-start sm:self-auto sm:flex-shrink-0"
         >
           {importing ? (
             <>

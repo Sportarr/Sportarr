@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon, ChevronUpIcon, ChevronDownIcon, FolderPlusIcon, FolderMinusIcon, DocumentDuplicateIcon, CloudArrowDownIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface ProfilesSettingsProps {
@@ -162,6 +163,7 @@ const availableQualities: QualityItem[] = [
 ];
 
 export default function ProfilesSettings({ showAdvanced = false }: ProfilesSettingsProps) {
+  const queryClient = useQueryClient();
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [customFormats, setCustomFormats] = useState<CustomFormat[]>([]);
   const [editingProfile, setEditingProfile] = useState<QualityProfile | null>(null);
@@ -256,6 +258,14 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     } finally {
       setLoading(false);
     }
+    // This page manages profiles with local state, but other screens (the
+    // add/edit league modal, league pages, teams page) cache the profile list
+    // through react-query with a stale window. Without this, a freshly created
+    // profile doesn't appear in those dropdowns until a full page reload.
+    // Multiple key spellings exist historically; invalidate them all.
+    queryClient.invalidateQueries({ queryKey: ['quality-profiles'] });
+    queryClient.invalidateQueries({ queryKey: ['qualityProfiles'] });
+    queryClient.invalidateQueries({ queryKey: ['qualityprofiles'] });
   };
 
   const loadCustomFormats = async () => {
