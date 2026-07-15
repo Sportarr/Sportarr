@@ -107,6 +107,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.MonitoredParts,
         league.MonitoredSessionTypes,
         league.MonitoredEventTypes,
+        league.SessionTypeQualityProfiles,
         // The edit modal initializes its checkboxes from this response, so
         // every flag it can save must round-trip here - omitting one means
         // the modal re-saves it as false/default every time.
@@ -467,26 +468,89 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    var cascadeEventProfiles = false;
+
     if (body.TryGetProperty("qualityProfileId", out var qualityProp))
     {
         var newQualityProfileId = qualityProp.ValueKind == JsonValueKind.Null ? null : (int?)qualityProp.GetInt32();
         league.QualityProfileId = newQualityProfileId;
         logger.LogInformation("[LEAGUES] Updated quality profile ID to: {QualityProfileId}", league.QualityProfileId?.ToString() ?? "null");
+        cascadeEventProfiles = true;
+    }
 
-        // Always apply quality profile to ALL events in this league (monitored or not)
-        // User can override individual events if needed, but league setting cascades to all
+    // Per-session-type quality profile overrides (JSON map of type name to
+    // profile id). Sent as an object by the UI; stored as its JSON string.
+    if (body.TryGetProperty("sessionTypeQualityProfiles", out var sessionQualityProp))
+    {
+        string? newMap = sessionQualityProp.ValueKind switch
+        {
+            JsonValueKind.Null => null,
+            JsonValueKind.String => sessionQualityProp.GetString(),
+            JsonValueKind.Object => sessionQualityProp.GetRawText(),
+            _ => null
+        };
+        // Normalize an empty object to null so "no overrides" has one spelling.
+        if (newMap != null && (newMap.Trim() == "{}" || newMap.Trim().Length == 0))
+        {
+            newMap = null;
+        }
+        // Reject maps that don't parse or reference profiles that don't exist,
+        // so events can never be stamped with a dangling profile id.
+        if (newMap != null)
+        {
+            Dictionary<string, int>? parsedMap;
+            try
+            {
+                parsedMap = JsonSerializer.Deserialize<Dictionary<string, int>>(newMap);
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "sessionTypeQualityProfiles must be a JSON object of type name to quality profile id" });
+            }
+            if (parsedMap != null && parsedMap.Count > 0)
+            {
+                var referencedIds = parsedMap.Values.Where(v => v > 0).Distinct().ToList();
+                var knownIds = await db.QualityProfiles
+                    .Where(p => referencedIds.Contains(p.Id))
+                    .Select(p => p.Id)
+                    .ToListAsync();
+                var missing = referencedIds.Except(knownIds).ToList();
+                if (missing.Count > 0)
+                {
+                    return Results.BadRequest(new { error = $"sessionTypeQualityProfiles references unknown quality profile id(s): {string.Join(", ", missing)}" });
+                }
+            }
+        }
+        if (league.SessionTypeQualityProfiles != newMap)
+        {
+            logger.LogInformation("[LEAGUES] SessionTypeQualityProfiles changing from '{Old}' to '{New}'",
+                league.SessionTypeQualityProfiles ?? "(none)", newMap ?? "(none)");
+            league.SessionTypeQualityProfiles = newMap;
+            cascadeEventProfiles = true;
+        }
+    }
+
+    // Always apply quality profiles to ALL events in this league (monitored or
+    // not) when the league profile or the per-session-type map changed. Events
+    // whose title classifies to a mapped session/event type get that profile;
+    // everything else gets the league profile. User can still override
+    // individual events afterwards, but a league save cascades to all.
+    if (cascadeEventProfiles)
+    {
         var eventsToUpdate = await db.Events
             .Where(e => e.LeagueId == id)
             .ToListAsync();
 
         if (eventsToUpdate.Count > 0)
         {
-            logger.LogInformation("[LEAGUES] Cascading quality profile {ProfileId} to {Count} events in league",
-                newQualityProfileId?.ToString() ?? "null", eventsToUpdate.Count);
+            logger.LogInformation("[LEAGUES] Cascading quality profile {ProfileId} (with {MapState} session-type overrides) to {Count} events in league",
+                league.QualityProfileId?.ToString() ?? "null",
+                league.SessionTypeQualityProfiles == null ? "no" : "active",
+                eventsToUpdate.Count);
 
             foreach (var evt in eventsToUpdate)
             {
-                evt.QualityProfileId = newQualityProfileId;
+                evt.QualityProfileId = SessionTypeQualityResolver.Resolve(league, evt.Title) ?? league.QualityProfileId;
                 evt.LastUpdate = DateTime.UtcNow;
             }
 
@@ -1179,8 +1243,6 @@ app.MapGet("/api/search/available-tokens", (ILogger<Program> logger) =>
 // API: Get all leagues from Sportarr API (cached)
 app.MapGet("/api/leagues/all", async (SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
-    logger.LogInformation("[LEAGUES] Fetching all leagues from cache");
-
     var results = await sportsDbClient.GetAllLeaguesAsync();
 
     if (results == null || !results.Any())
@@ -1189,15 +1251,7 @@ app.MapGet("/api/leagues/all", async (SportarrApiClient sportsDbClient, ILogger<
         return Results.Ok(new List<object>());
     }
 
-    // Debug: Log a sample league to see if LogoUrl is populated
-    var sampleWithLogo = results.FirstOrDefault(l => !string.IsNullOrEmpty(l.LogoUrl));
-    var sampleWithoutLogo = results.FirstOrDefault(l => string.IsNullOrEmpty(l.LogoUrl));
-    var leaguesWithLogos = results.Count(l => !string.IsNullOrEmpty(l.LogoUrl));
-    logger.LogInformation("[LEAGUES] Found {Count} leagues, {WithLogos} have logos", results.Count, leaguesWithLogos);
-    if (sampleWithLogo != null)
-        logger.LogInformation("[LEAGUES] Sample with logo: {Name} - LogoUrl: {Logo}", sampleWithLogo.Name, sampleWithLogo.LogoUrl);
-    if (sampleWithoutLogo != null)
-        logger.LogInformation("[LEAGUES] Sample without logo: {Name} - ExternalId: {Id}", sampleWithoutLogo.Name, sampleWithoutLogo.ExternalId);
+    logger.LogDebug("[LEAGUES] Returning {Count} leagues", results.Count);
 
     // Convert to DTO to ensure correct field names for frontend (strBadge, strLogo, etc.)
     var dtos = results.Select(SportarrLeagueDto.FromLeague).ToList();

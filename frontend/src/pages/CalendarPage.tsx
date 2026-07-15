@@ -9,6 +9,7 @@ import { useSettings } from '../hooks/useSettings';
 import { createRequestUrl } from '../utils/request';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { BUTTON_TOOLBAR_ACTIVE as TOOLBAR_BUTTON_ACTIVE_CLASS, BUTTON_TOOLBAR_BASE as TOOLBAR_BUTTON_BASE_CLASS, BUTTON_TOOLBAR_INACTIVE as TOOLBAR_BUTTON_INACTIVE_CLASS } from '../utils/designTokens';
 import {
   addDays,
@@ -365,6 +366,16 @@ export default function CalendarPage() {
   const dateInputRef = useRef<HTMLInputElement>(null);
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
   const [currentView, setCurrentView] = useState<CalendarView>('month');
+  const isPhone = useMediaQuery('(max-width: 639px)');
+
+  // Phones default to the agenda list: the month grid needs a 900px canvas and
+  // horizontal scrolling, which is no way to read a calendar on a phone. Only
+  // a default - the moment the user picks a view themselves we respect it.
+  useEffect(() => {
+    if (isPhone && !localStorage.getItem('sportarr.calendarViewChosen')) {
+      setCurrentView('agenda');
+    }
+  }, [isPhone]);
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterTvOnly, setFilterTvOnly] = useState(false);
   const [showIcalModal, setShowIcalModal] = useState(false);
@@ -536,8 +547,8 @@ export default function CalendarPage() {
   }
 
   return (
-    <PageShell>
-      <div className="mx-auto">
+    <PageShell className="md:h-full">
+      <div className="mx-auto md:flex md:h-full md:min-h-0 md:flex-col">
         {/* Header */}
         <div className="mb-2 md:mb-3">
           <div className="mb-2 flex flex-col justify-between gap-2 xl:flex-row xl:items-start">
@@ -546,7 +557,7 @@ export default function CalendarPage() {
             </div>
 
             <div className="overflow-x-auto xl:max-w-[calc(100%-16rem)]">
-              <div className="flex min-w-max flex-wrap items-center justify-start gap-2 xl:justify-end">
+              <div className="flex sm:min-w-max flex-wrap items-center justify-start gap-2 xl:justify-end">
                 {/* Calendar Navigation */}
                 <div className={TOOLBAR_GROUP_CLASS}>
                   {/* Today Button */}
@@ -612,7 +623,10 @@ export default function CalendarPage() {
                     <button
                       key={view}
                       type="button"
-                      onClick={() => setCurrentView(view)}
+                      onClick={() => {
+                        localStorage.setItem('sportarr.calendarViewChosen', '1');
+                        setCurrentView(view);
+                      }}
                       className={`${TOOLBAR_BUTTON_BASE_CLASS} ${
                         currentView === view ? TOOLBAR_BUTTON_ACTIVE_CLASS : TOOLBAR_BUTTON_INACTIVE_CLASS
                       }`}
@@ -710,13 +724,16 @@ export default function CalendarPage() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] table-fixed border-collapse" data-testid="calendar-table">
+          <div className="overflow-x-auto md:flex-1 md:min-h-0">
+            {/* Phones fit all 7 columns (Google-style dot cells); sm+ keeps the
+                wide grid with full event chips. */}
+            <table className="w-full sm:min-w-[900px] table-fixed border-collapse md:h-full" data-testid="calendar-table">
               <thead>
                 <tr>
                   {weekdayNames.map(dayName => (
-                    <th key={dayName} className="border-b border-gray-700/35 px-1 py-1 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                      {dayName}
+                    <th key={dayName} className="border-b border-gray-700/35 px-1 py-1 text-center sm:text-left text-xs font-semibold uppercase sm:tracking-[0.12em] text-gray-500">
+                      <span className="sm:hidden">{dayName.charAt(0)}</span>
+                      <span className="hidden sm:inline">{dayName}</span>
                     </th>
                   ))}
                 </tr>
@@ -732,7 +749,7 @@ export default function CalendarPage() {
                         <td
                           key={day.date.toISOString()}
                           data-testid={`calendar-day-${formatDateInputValue(day.date)}`}
-                          className={`relative h-[132px] align-top border-b border-r border-gray-700/35 ${currentDayIsToday ? 'bg-amber-500/5 ring-1 ring-inset ring-amber-500' : ''} ${currentView === 'week' ? 'md:h-[200px]' : 'md:h-[152px]'}`}
+                          className={`relative h-14 sm:h-[132px] md:h-auto align-top border-b border-r border-gray-700/35 ${currentDayIsToday ? "bg-amber-500/5 ring-1 ring-inset ring-amber-500" : ""}`}
                         >
                           {currentDayIsToday && (
                             <div className="absolute left-0 top-0 bg-amber-500 px-1.5 py-0.5 text-xs font-bold leading-tight text-black">
@@ -746,30 +763,56 @@ export default function CalendarPage() {
                                 {day.date.getDate()}
                               </div>
                               {currentView === 'month' && !day.isCurrentMonth ? (
-                                <div className="text-[10px] uppercase tracking-[0.1em] text-gray-600">
+                                <div className="hidden sm:block text-[10px] uppercase tracking-[0.1em] text-gray-600">
                                   {day.date.toLocaleDateString('en-US', { month: 'short' })}
                                 </div>
                               ) : null}
                             </div>
 
-                            {/* Events for the day - stacked within the active cell */}
-                            <div
-                              data-testid={`calendar-day-events-${formatDateInputValue(day.date)}`}
-                              className="space-y-1 overflow-y-auto pr-0.5"
-                            >
-                              {dayEvents.map(event => (
-                                <EventCard
-                                  key={event.id}
-                                  event={event}
-                                  timezone={timezone}
+                            {/* Phones: sport-colored dots, whole cell jumps to the
+                                agenda (Google month pattern - cells are too small
+                                for titled chips). sm+: full event chips. */}
+                            {isPhone ? (
+                              dayEvents.length > 0 && (
+                                <button
+                                  type="button"
+                                  aria-label={`${dayEvents.length} events on ${day.date.toDateString()}`}
                                   onClick={() => {
-                                    if (event.leagueId) {
-                                      navigate(`/leagues/${event.leagueId}`);
-                                    }
+                                    localStorage.setItem('sportarr.calendarViewChosen', '1');
+                                    setCurrentView('agenda');
                                   }}
-                                />
-                              ))}
-                            </div>
+                                  className="flex flex-wrap items-center gap-1 px-0.5 pt-1"
+                                >
+                                  {dayEvents.slice(0, 4).map(event => (
+                                    <span
+                                      key={event.id}
+                                      className={`h-1.5 w-1.5 rounded-full ${getSportColors(event.sport || 'default').accent}`}
+                                    />
+                                  ))}
+                                  {dayEvents.length > 4 && (
+                                    <span className="text-[9px] leading-none text-gray-400">+{dayEvents.length - 4}</span>
+                                  )}
+                                </button>
+                              )
+                            ) : (
+                              <div
+                                data-testid={`calendar-day-events-${formatDateInputValue(day.date)}`}
+                                className="space-y-1 overflow-y-auto pr-0.5"
+                              >
+                                {dayEvents.map(event => (
+                                  <EventCard
+                                    key={event.id}
+                                    event={event}
+                                    timezone={timezone}
+                                    onClick={() => {
+                                      if (event.leagueId) {
+                                        navigate(`/leagues/${event.leagueId}`);
+                                      }
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </td>
                       );

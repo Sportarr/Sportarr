@@ -426,39 +426,80 @@ app.MapGet("/api/grab-history", async (SportarrDbContext db, int page = 1, int p
         query = query.Where(g => g.WasImported && !g.FileExists);
     }
 
-    var totalCount = await query.CountAsync();
-    var history = await query
-        .Include(g => g.Event)
-            .ThenInclude(e => e!.League)
-        .OrderByDescending(g => g.GrabbedAt)
+    // Unified download ledger: grabbed releases plus imports that never had a
+    // grab (manual imports, DVR recordings), so one History tab covers both.
+    // Both sides project into the same row type so EF translates the union
+    // and orders/pages it in SQL.
+    var grabRows = query.Select(g => new UnifiedHistoryRow {
+        Kind = "grab",
+        Id = g.Id,
+        EventId = g.EventId,
+        EventTitle = g.Event != null ? g.Event.Title : null,
+        LeagueName = g.Event != null && g.Event.League != null ? g.Event.League.Name : null,
+        Title = g.Title,
+        Indexer = g.Indexer,
+        IndexerId = g.IndexerId,
+        Protocol = g.Protocol,
+        Size = g.Size,
+        Quality = g.Quality,
+        Codec = g.Codec,
+        Source = g.Source,
+        QualityScore = g.QualityScore,
+        CustomFormatScore = g.CustomFormatScore,
+        PartName = g.PartName,
+        GrabbedAt = g.GrabbedAt,
+        WasImported = g.WasImported,
+        ImportedAt = g.ImportedAt,
+        FileExists = g.FileExists,
+        LastRegrabAttempt = g.LastRegrabAttempt,
+        RegrabCount = g.RegrabCount,
+        // Don't expose the download URL directly for security
+        HasDownloadUrl = g.DownloadUrl != "",
+        HasTorrentHash = g.TorrentInfoHash != null && g.TorrentInfoHash != "",
+        DestinationPath = null
+    });
+
+    var importRows = db.ImportHistories
+        .Where(h => h.Decision == ImportDecision.Approved || h.Decision == ImportDecision.Upgraded)
+        .Where(h => h.EventId == null || !db.GrabHistory.Any(g => g.EventId == h.EventId));
+    if (missingOnly == true)
+    {
+        importRows = importRows.Where(h => h.Event == null || !h.Event.HasFile);
+    }
+    var importUnified = importRows.Select(h => new UnifiedHistoryRow {
+        Kind = "import",
+        Id = h.Id,
+        EventId = h.EventId,
+        EventTitle = h.Event != null ? h.Event.Title : null,
+        LeagueName = h.Event != null && h.Event.League != null ? h.Event.League.Name : null,
+        Title = h.SourcePath,
+        Indexer = null,
+        IndexerId = null,
+        Protocol = null,
+        Size = h.Size,
+        Quality = h.Quality,
+        Codec = null,
+        Source = null,
+        QualityScore = 0,
+        CustomFormatScore = 0,
+        PartName = h.Part,
+        GrabbedAt = h.ImportedAt,
+        WasImported = true,
+        ImportedAt = h.ImportedAt,
+        FileExists = h.Event != null && h.Event.HasFile,
+        LastRegrabAttempt = null,
+        RegrabCount = 0,
+        HasDownloadUrl = false,
+        HasTorrentHash = false,
+        DestinationPath = h.DestinationPath
+    });
+
+    var unified = grabRows.Concat(importUnified);
+    var totalCount = await unified.CountAsync();
+    var history = await unified
+        .OrderByDescending(r => r.GrabbedAt)
         .Skip((page - 1) * pageSize)
         .Take(pageSize)
-        .Select(g => new {
-            g.Id,
-            g.EventId,
-            EventTitle = g.Event != null ? g.Event.Title : null,
-            LeagueName = g.Event != null && g.Event.League != null ? g.Event.League.Name : null,
-            g.Title,
-            g.Indexer,
-            g.IndexerId,
-            g.Protocol,
-            g.Size,
-            g.Quality,
-            g.Codec,
-            g.Source,
-            g.QualityScore,
-            g.CustomFormatScore,
-            g.PartName,
-            g.GrabbedAt,
-            g.WasImported,
-            g.ImportedAt,
-            g.FileExists,
-            g.LastRegrabAttempt,
-            g.RegrabCount,
-            // Don't expose the download URL directly for security
-            HasDownloadUrl = !string.IsNullOrEmpty(g.DownloadUrl),
-            HasTorrentHash = !string.IsNullOrEmpty(g.TorrentInfoHash)
-        })
         .ToListAsync();
 
     return Results.Ok(new {
@@ -810,4 +851,39 @@ app.MapDelete("/api/grab-history/{id:int}", async (int id, SportarrDbContext db)
 
         return app;
     }
+}
+
+/// <summary>
+/// Row shape for the unified download ledger served by /api/grab-history:
+/// grabbed releases and grab-less imports (manual imports, DVR recordings)
+/// projected identically so EF Core can union and page them in SQL.
+/// Kind is "grab" or "import"; re-grab actions only apply to grabs.
+/// </summary>
+public class UnifiedHistoryRow
+{
+    public required string Kind { get; set; }
+    public int Id { get; set; }
+    public int? EventId { get; set; }
+    public string? EventTitle { get; set; }
+    public string? LeagueName { get; set; }
+    public required string Title { get; set; }
+    public string? Indexer { get; set; }
+    public int? IndexerId { get; set; }
+    public string? Protocol { get; set; }
+    public long Size { get; set; }
+    public string? Quality { get; set; }
+    public string? Codec { get; set; }
+    public string? Source { get; set; }
+    public int QualityScore { get; set; }
+    public int CustomFormatScore { get; set; }
+    public string? PartName { get; set; }
+    public DateTime GrabbedAt { get; set; }
+    public bool WasImported { get; set; }
+    public DateTime? ImportedAt { get; set; }
+    public bool FileExists { get; set; }
+    public DateTime? LastRegrabAttempt { get; set; }
+    public int RegrabCount { get; set; }
+    public bool HasDownloadUrl { get; set; }
+    public bool HasTorrentHash { get; set; }
+    public string? DestinationPath { get; set; }
 }

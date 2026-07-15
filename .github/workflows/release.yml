@@ -174,10 +174,14 @@ jobs:
 
             if [ "$BODY_LINES" -ge 3 ]; then
               echo "Using curated changelog from commit $SQUASH_SHA (body has $BODY_LINES non-empty lines)"
+              # Co-authored-by trailers stay in the commit (that is what feeds
+              # GitHub's contributor graph) but are dropped from the notes:
+              # on the release page they render as a wall of names, and in the
+              # Discord embed they eat ~half the description budget.
               {
                 git log -1 --pretty=format:"%s" "$SQUASH_SHA"
                 echo
-                git log -1 --pretty=format:"%b" "$SQUASH_SHA"
+                git log -1 --pretty=format:"%b" "$SQUASH_SHA" | { grep -iv "^Co-authored-by:" || true; }
               } > release_notes.md
             else
               echo "Single-commit release but body is too short ($BODY_LINES lines) — keeping auto-categorized notes"
@@ -537,6 +541,8 @@ jobs:
           for line in lines:
             if line.startswith('**Full Changelog**'):
               continue  # rendered separately below as a markdown link
+            if line.lower().startswith('co-authored-by:'):
+              continue  # commit trailers are credit plumbing, not release news
             if line.startswith('### '):
               rendered.append('**' + line[4:] + '**')
             elif line.strip():

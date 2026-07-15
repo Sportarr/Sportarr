@@ -170,10 +170,25 @@ public class FileNamingService
             { "{Month}", brandingDate.Month.ToString("00") },
             { "{Day}", brandingDate.Day.ToString("00") },
             // Episode number for unique identification (handles double headers)
-            { "{Episode}", eventInfo.EpisodeNumber?.ToString("00") ?? "01" }
+            { "{Episode}", eventInfo.EpisodeNumber?.ToString("00") ?? "01" },
+            // Canonical id token (docs/RELEASE_NAMING.md); empty for legacy rows
+            { "{Sportarr Id}", FormatSportarrIdToken(eventInfo.ExternalId) }
         };
 
         return tokens;
+    }
+
+    /// <summary>
+    /// Render the canonical id as a release naming standard token. Only
+    /// hub-canonical event ids (ev-XXXXXXX) qualify - legacy numeric ids
+    /// from old installs produce an empty string rather than a junk token.
+    /// </summary>
+    internal static string FormatSportarrIdToken(string? externalId)
+    {
+        return !string.IsNullOrEmpty(externalId)
+            && externalId.StartsWith("ev-", StringComparison.OrdinalIgnoreCase)
+            ? $"{{sportarr-{externalId.ToLowerInvariant()}}}"
+            : string.Empty;
     }
 
     /// <summary>
@@ -201,7 +216,12 @@ public class FileNamingService
             // in the filename instead of the opaque pt1/pt2.
             { "{Part Name}", tokens.PartName },
             // Matched custom formats flagged "include when renaming".
-            { "{Custom Formats}", tokens.CustomFormats }
+            { "{Custom Formats}", tokens.CustomFormats },
+            // Canonical id token per docs/RELEASE_NAMING.md - stamps
+            // {sportarr-ev-XXXXXXX} into the filename so imports, rescans,
+            // and manual moves match exactly forever. Empty for legacy
+            // events without a canonical id, so no junk token is emitted.
+            { "{Sportarr Id}", FormatSportarrIdToken(tokens.SportarrId) }
         };
 
         if (tokens.AirDate.HasValue)
@@ -387,7 +407,8 @@ public class FileNamingService
             "{Episode}",
             "{Part}",
             "{Part Name}",
-            "{Custom Formats}"
+            "{Custom Formats}",
+            "{Sportarr Id}"
         };
     }
 

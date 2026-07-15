@@ -131,6 +131,71 @@ app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, IptvSourceService 
     }
 });
 
+// One-button pipeline: sync every active IPTV source's channels, refresh all
+// EPG sources, then re-run both auto-mappers so newly arrived channels come
+// out the other end fully wired (league mapping + guide data). The per-step
+// endpoints above/below remain for troubleshooting individual stages.
+app.MapPost("/api/iptv/sync-now", async (
+    SportarrDbContext db,
+    IptvSourceService iptvService,
+    EpgService epgService,
+    ChannelAutoMappingService autoMappingService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[IPTV] Sync Now: starting full pipeline (sources -> EPG -> mapping)");
+
+    var sources = await db.IptvSources
+        .Where(s => s.IsActive)
+        .Select(s => new { s.Id, s.Name })
+        .ToListAsync();
+
+    var channelCount = 0;
+    var sourcesSynced = 0;
+    var sourceErrors = new List<object>();
+    foreach (var source in sources)
+    {
+        try
+        {
+            channelCount += await iptvService.SyncChannelsAsync(source.Id);
+            sourcesSynced++;
+        }
+        catch (Exception ex)
+        {
+            // One dead provider must not abort the whole pipeline - record it
+            // and keep going so the remaining sources still refresh.
+            logger.LogWarning(ex, "[IPTV] Sync Now: source {Name} failed to sync", source.Name);
+            sourceErrors.Add(new { source.Id, source.Name, error = ex.Message });
+        }
+    }
+
+    var epgResults = await epgService.SyncAllSourcesAsync();
+    var programCount = epgResults.Where(r => r.Success).Sum(r => r.ProgramCount);
+    var epgErrors = epgResults
+        .Where(r => !r.Success)
+        .Select(r => new { id = r.SourceId, name = r.SourceName, error = r.Error })
+        .ToList();
+
+    var leagueMapping = await autoMappingService.AutoMapAllChannelsAsync();
+    var epgMappedCount = await epgService.AutoMapChannelsAsync();
+
+    logger.LogInformation(
+        "[IPTV] Sync Now complete: {Sources}/{Total} sources, {Channels} channels, {Programs} programs, {LeagueMappings} league mappings, {EpgMappings} EPG mappings",
+        sourcesSynced, sources.Count, channelCount, programCount, leagueMapping.MappingsCreated, epgMappedCount);
+
+    return Results.Ok(new
+    {
+        sourcesSynced,
+        sourcesTotal = sources.Count,
+        channelCount,
+        epgSourcesSynced = epgResults.Count(r => r.Success),
+        programCount,
+        leagueMappingsCreated = leagueMapping.MappingsCreated,
+        epgChannelsMapped = epgMappedCount,
+        sourceErrors,
+        epgErrors
+    });
+});
+
 // Test all channels for an IPTV source
 // This can be run after sync to determine channel status
 app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, IptvSourceService iptvService, ILogger<Program> logger) =>

@@ -513,7 +513,25 @@ public class FileImportService : IFileImportService
                 Type: DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole,
                 ReadOnly: true
             };
-            await TransferFileAsync(sourceFile, destinationPath, settings, forceCopy: blackholeReadOnly);
+
+            // Seeding-aware transfer plan: symlink sources re-link, per-client
+            // overrides win, and Auto preserves any torrent its client still
+            // tracks so an import can never break seeding.
+            var isTorrentDownload = string.Equals(download.Protocol, "Torrent", StringComparison.OrdinalIgnoreCase);
+            var stillInClient = isTorrentDownload && await IsStillInClientAsync(download);
+            var plan = blackholeReadOnly
+                ? new TransferPlan(TransferAction.Copy, PreserveSource: true, "read-only blackhole - external client owns the watch folder")
+                : ImportTransferPlanner.Resolve(
+                    download.DownloadClient?.PostImportMode ?? PostImportMode.Auto,
+                    isTorrentDownload,
+                    stillInClient,
+                    settings.UseHardlinks,
+                    settings.CopyFiles,
+                    IsSymbolicLink(sourceFile));
+            _logger.LogInformation("[Import] Transfer plan: {Action} (preserve source: {Preserve}) - {Reason}",
+                plan.Action, plan.PreserveSource, plan.Reason);
+
+            await TransferFileAsync(sourceFile, destinationPath, settings, forceCopy: blackholeReadOnly, plan: plan);
 
             // Record what we just transferred so a later failure in this method
             // can roll the file back instead of leaving an orphan in the library.
@@ -723,22 +741,18 @@ public class FileImportService : IFileImportService
                 }
             }
 
-            // Only delete source folder locally when in MOVE mode
-            // - Move mode (CopyFiles=false): Delete source folder after import
-            // - Copy mode (CopyFiles=true): Don't delete locally - rely on download client to cleanup
-            //   after seeding completes (via RemoveDownloadAsync with deleteFiles=true in EnhancedDownloadMonitorService)
-            // - Read-only blackhole: never touch the watch folder - the external client owns it
-            if (blackholeReadOnly)
+            // Local source cleanup is gated on the transfer plan: whenever the
+            // plan preserved the source (seeding torrent, copy/hardlink/symlink
+            // modes, legacy CopyFiles, read-only blackhole) nothing local is
+            // deleted - the download client owns the source's lifecycle and the
+            // existing RemoveDownloadAsync flow cleans up after seeding ends.
+            if (plan.PreserveSource)
             {
-                _logger.LogInformation("[Import] Source preserved (blackhole Read Only) - the external download client owns the watch folder: {File}", sourceFile);
+                _logger.LogInformation("[Import] Source preserved ({Reason}): {File}", plan.Reason, sourceFile);
             }
-            else if (shouldRemoveCompleted && !settings.CopyFiles)
+            else if (shouldRemoveCompleted)
             {
                 await CleanupDownloadAsync(downloadPath, sourceFile);
-            }
-            else if (settings.CopyFiles)
-            {
-                _logger.LogInformation("[Import] Source preserved for seeding (CopyFiles=true) - download client will handle cleanup after seeding: {File}", sourceFile);
             }
 
             return history;
@@ -1091,6 +1105,7 @@ public class FileImportService : IFileImportService
             {
                 EventTitle = eventInfo.Title ?? string.Empty,
                 EventTitleThe = eventInfo.Title ?? string.Empty,
+                SportarrId = eventInfo.ExternalId ?? string.Empty,
                 AirDate = brandingDate,
                 Quality = effectiveQuality,
                 QualityFull = effectiveQualityFull,
@@ -1256,22 +1271,92 @@ public class FileImportService : IFileImportService
         }
     }
 
-    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings, bool forceCopy = false)
+    /// <summary>
+    /// Look up whether the download's client still tracks this item. Used by
+    /// the seeding-aware transfer plan: a torrent the client still has must
+    /// keep its source file. On any lookup failure the answer is TRUE - when
+    /// in doubt, preserving a seed beats breaking one.
+    /// </summary>
+    private async Task<bool> IsStillInClientAsync(DownloadQueueItem download)
+    {
+        if (download.DownloadClient == null || string.IsNullOrEmpty(download.DownloadId))
+        {
+            return false;
+        }
+
+        try
+        {
+            var status = await _downloadClientService.GetDownloadStatusAsync(download.DownloadClient, download.DownloadId);
+            return status != null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[Import] Could not check whether the download is still in {Client} ({Error}) - assuming it is, to protect seeding",
+                download.DownloadClient.Name, ex.Message);
+            return true;
+        }
+    }
+
+    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings, bool forceCopy = false, TransferPlan? plan = null)
     {
         // Log at Info level for visibility - helps debug copy vs move issues
-        _logger.LogInformation("[Transfer] Transfer mode: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, ForceCopy={ForceCopy}, IsWindows={IsWindows}",
-            settings.UseHardlinks, settings.CopyFiles, forceCopy, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+        _logger.LogInformation("[Transfer] Transfer mode: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, ForceCopy={ForceCopy}, Plan={Plan}, IsWindows={IsWindows}",
+            settings.UseHardlinks, settings.CopyFiles, forceCopy, plan?.Action.ToString() ?? "legacy", RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
         _logger.LogInformation("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
 
         // Tell the watcher this transfer is ours so it doesn't treat the new file as an
         // externally-dropped import or re-process the source's disappearance.
         SelfMoveTracker.Register(source, destination);
 
+        // Plan-driven symlink: point the library at the source (virtual/streaming
+        // mounts) or recreate a symlink source. Falls through to copy on failure
+        // so the import still lands.
+        if (plan?.Action == TransferAction.Symlink)
+        {
+            try
+            {
+                if (IsSymbolicLink(source))
+                {
+                    await CopySymbolicLinkAsync(source, destination);
+                }
+                else
+                {
+                    File.CreateSymbolicLink(destination, source);
+                    _logger.LogInformation("[Transfer] Symlink created: {Destination} -> {Source}", destination, source);
+                }
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Transfer] Symlink failed - falling back to copy");
+                await CopyFileAsync(source, destination);
+                return;
+            }
+        }
+
+        // Plan-driven copy: source must survive, and hardlinking wasn't chosen.
+        if (plan?.Action == TransferAction.Copy)
+        {
+            if (IsSymbolicLink(source))
+            {
+                await CopySymbolicLinkAsync(source, destination);
+            }
+            else
+            {
+                await CopyFileAsync(source, destination);
+                _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
+            }
+            return;
+        }
+
         // Track if we should fall back to copy when hardlinks are enabled but fail.
         // UseHardlinks implies "copy mode" even if hardlink fails.
         var useHardlinksCopyFallback = false;
 
-        if (settings.UseHardlinks)
+        // Hardlink when the plan chose it, or (legacy path, no plan) when the
+        // global setting is on.
+        var wantHardlink = plan != null ? plan.Action == TransferAction.Hardlink : settings.UseHardlinks;
+        if (wantHardlink)
         {
             // Try to create hardlink
             try
@@ -1335,10 +1420,11 @@ public class FileImportService : IFileImportService
             }
         }
 
-        // Use copy if: CopyFiles is enabled, the caller demands the source survives
-        // (read-only blackhole), OR hardlinks were enabled but failed
-        // This ensures UseHardlinks never results in moving (deleting) the source file
-        if (settings.CopyFiles || forceCopy || useHardlinksCopyFallback)
+        // Use copy if: the plan (or legacy CopyFiles) demands the source survives,
+        // the caller does (read-only blackhole), OR hardlinks were chosen but failed.
+        // This ensures a preserve-source decision never results in moving the file.
+        var mustPreserveSource = plan?.PreserveSource ?? settings.CopyFiles;
+        if (mustPreserveSource || forceCopy || useHardlinksCopyFallback)
         {
             // Copy file (handles symlinks specially to preserve debrid streaming)
             if (IsSymbolicLink(source))

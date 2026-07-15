@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -73,6 +74,26 @@ public class MediaFileParser
         if (string.IsNullOrEmpty(parsed.AudioCodec) && !string.IsNullOrEmpty(probed.AudioCodec))
             parsed.AudioCodec = probed.AudioCodec;
 
+        // Embedded SPORTARR tag (docs/RELEASE_NAMING.md): the id lives in the
+        // file itself, so it survives renames that destroy every filename
+        // signal. A token in the name still wins when both are present -
+        // the name is what the user or renamer last touched deliberately.
+        if (!string.IsNullOrEmpty(probed.SportarrId))
+        {
+            if (parsed.SportarrEventId == null &&
+                probed.SportarrId.StartsWith("ev-", StringComparison.Ordinal))
+            {
+                parsed.SportarrEventId = probed.SportarrId;
+                _logger.LogInformation("[MediaInfo] Embedded sportarr id tag {Id} found in '{File}'",
+                    probed.SportarrId, Path.GetFileName(filePath));
+            }
+            else if (parsed.SportarrLeagueId == null &&
+                     probed.SportarrId.StartsWith("lg-", StringComparison.Ordinal))
+            {
+                parsed.SportarrLeagueId = probed.SportarrId;
+            }
+        }
+
         // ffprobe also gives us the audio-stream language tags. Surface them
         // separately on ParsedFileInfo so the import flow can pre-fill the
         // Languages chip-list in the metadata editor.
@@ -121,6 +142,15 @@ public class MediaFileParser
             }
         }
 
+        // Sportarr id tokens are matching metadata, not media info. Surface
+        // them, then strip before anything else derives from the name:
+        // DatePattern has no word boundaries, so an 8+ digit id would
+        // otherwise parse as a date, and the digits would pollute the
+        // extracted title on the fuzzy path.
+        var sportarrEventId = SportarrIdToken.ExtractEventId(originalName);
+        var sportarrLeagueId = SportarrIdToken.ExtractLeagueId(originalName);
+        originalName = SportarrIdToken.Strip(originalName).Trim();
+
         // Clean filename for other patterns
         var cleanName = CleanFilename(originalName);
 
@@ -164,7 +194,9 @@ public class MediaFileParser
             AirDate = ExtractAirDate(originalName), // Use original for date parsing
             Edition = ExtractEdition(cleanName),
             Language = ExtractLanguage(cleanName),
-            IsProperOrRepack = ProperRepackPattern.IsMatch(cleanName) || RealProperPattern.IsMatch(cleanName)
+            IsProperOrRepack = ProperRepackPattern.IsMatch(cleanName) || RealProperPattern.IsMatch(cleanName),
+            SportarrEventId = sportarrEventId,
+            SportarrLeagueId = sportarrLeagueId
         };
 
         _logger.LogDebug("Parsed '{Filename}': Title='{Title}', Quality='{Quality}', Group='{Group}'",

@@ -519,8 +519,18 @@ public class SportsFileNameParser
             OriginalFilename = filename ?? string.Empty
         };
 
+        // Sportarr id tokens ({sportarr-ev-2336155}, see docs/RELEASE_NAMING.md)
+        // are the authoritative match signal when present. Extract them first,
+        // then strip them so the token digits can never confuse the date,
+        // year, or round extraction below.
+        result.SportarrEventId = Helpers.SportarrIdToken.ExtractEventId(filename);
+        result.SportarrLeagueId = Helpers.SportarrIdToken.ExtractLeagueId(filename);
+        var tokenFreeName = (result.SportarrEventId != null || result.SportarrLeagueId != null) && filename != null
+            ? Helpers.SportarrIdToken.Strip(filename)
+            : filename;
+
         // Clean the filename (remove extension, replace dots/underscores with spaces for processing)
-        var cleanName = CleanFilename(filename);
+        var cleanName = CleanFilename(tokenFreeName);
 
         // Try each sports pattern
         foreach (var pattern in SportsPatterns)
@@ -892,6 +902,16 @@ public class SportsParseResult
     /// Used to disambiguate events sharing the same round number.
     /// </summary>
     public string? Session { get; set; }
+    /// <summary>
+    /// Canonical event id ("ev-2336155") extracted from a release naming
+    /// standard token ({sportarr-ev-2336155}). Authoritative when present -
+    /// matchers compare it against Event.ExternalId and skip fuzzy logic.
+    /// </summary>
+    public string? SportarrEventId { get; set; }
+    /// <summary>
+    /// Canonical league id ("lg-000123") from a pack release token.
+    /// </summary>
+    public string? SportarrLeagueId { get; set; }
     public int Confidence { get; set; } // 0-100
     public string? MatchedPattern { get; set; }
 }

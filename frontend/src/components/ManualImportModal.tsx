@@ -441,7 +441,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-4xl w-full max-h-[85dvh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-br from-gray-900 to-black border-b border-gray-700 px-6 py-4 flex items-center justify-between z-10">
           <div>
@@ -463,7 +463,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
               <InformationCircleIcon className="w-5 h-5 text-blue-400" />
               Download Information
             </h4>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
               <div className="flex justify-between col-span-2">
                 <span className="text-gray-400">Title:</span>
                 <span className="text-white max-w-lg truncate text-right" title={pendingImport.title}>{pendingImport.title}</span>

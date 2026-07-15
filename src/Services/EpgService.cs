@@ -49,7 +49,7 @@ public class EpgService
     /// <summary>
     /// Add a new EPG source
     /// </summary>
-    public async Task<EpgSource> AddSourceAsync(string name, string url, int priority = 25)
+    public async Task<EpgSource> AddSourceAsync(string name, string url, int priority = 25, int? iptvSourceId = null)
     {
         _logger.LogInformation("[EPG] Adding new EPG source: {Name}", name);
 
@@ -59,6 +59,7 @@ public class EpgService
             Url = url,
             IsActive = true,
             Priority = priority,
+            IptvSourceId = iptvSourceId,
             Created = DateTime.UtcNow
         };
 

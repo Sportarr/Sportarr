@@ -9,6 +9,7 @@ import {
   ChevronDownIcon,
   TrophyIcon,
   TvIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { useQualityProfiles } from '../api/hooks';
@@ -322,7 +323,10 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                           {/* Warning if sport is Unknown */}
                           {sport === 'Unknown' && (
                             <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-3">
-                              <p className="text-yellow-400 text-sm font-semibold mb-1">🚨 Sportarr-API Integration Error</p>
+                              <p className="flex items-center gap-1.5 text-yellow-400 text-sm font-semibold mb-1">
+                                <ExclamationTriangleIcon className="h-4 w-4 flex-shrink-0" />
+                                Sportarr-API Integration Error
+                              </p>
                               <p className="text-yellow-300/80 text-xs">
                                 This event is missing sport classification from Sportarr API. Check Sportarr-API response or network connection.
                               </p>

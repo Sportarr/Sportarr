@@ -86,7 +86,7 @@ namespace Jellyfin.Plugin.Sportarr
                 {
                     var client = _httpClientFactory.CreateClient();
                     var url = $"{ApiUrl}/api/metadata/agents/series/{sportarrId}";
-                    var response = await client.GetStringAsync(url, cancellationToken);
+                    var response = await SportarrHttp.GetStringWithRetryAsync(client, url, cancellationToken);
                     var json = JsonDocument.Parse(response);
                     var root = json.RootElement;
 
@@ -162,7 +162,7 @@ namespace Jellyfin.Plugin.Sportarr
                 {
                     var client = _httpClientFactory.CreateClient();
                     var url = $"{ApiUrl}/api/metadata/agents/episode/{sportarrId}";
-                    var response = await client.GetStringAsync(url, cancellationToken);
+                    var response = await SportarrHttp.GetStringWithRetryAsync(client, url, cancellationToken);
                     if (string.IsNullOrEmpty(response))
                     {
                         _logger.LogWarning("[Sportarr] Empty episode image metadata response for ID: {Id}", sportarrId);

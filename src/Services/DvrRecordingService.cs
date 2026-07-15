@@ -1247,6 +1247,7 @@ public class DvrRecordingService
                 {
                     EventTitle = eventInfo.Title,
                     EventTitleThe = eventInfo.Title,
+                    SportarrId = eventInfo.ExternalId ?? string.Empty,
                     AirDate = brandingDate,
                     Quality = recording.Quality ?? "HDTV-1080p",
                     QualityFull = $"{recording.Quality ?? "HDTV-1080p"}.DVR",

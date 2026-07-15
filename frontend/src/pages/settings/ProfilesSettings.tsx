@@ -1061,8 +1061,8 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                 key={profile.id}
                 className="group bg-black/30 border border-gray-800 hover:border-red-900/50 rounded-lg p-4 transition-all"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-y-2">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center space-x-3 mb-2">
                       <h4 className="text-lg font-semibold text-white">{profile.name}</h4>
                       {profile.isDefault && (
@@ -1095,7 +1095,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="ml-auto flex items-center space-x-2">
                     {!profile.isDefault && (
                       <button
                         onClick={() => handleSetDefault(profile.id!)}
@@ -1747,7 +1747,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                               type="number"
                               value={item.score}
                               onChange={(e) => handleFormatScoreChange(item.formatId, parseInt(e.target.value) || 0)}
-                              className="w-24 px-3 py-1 bg-gray-900 border border-gray-700 rounded text-white text-center focus:outline-none focus:border-purple-600"
+                              className="w-24 px-3 py-1 bg-gray-800 border border-gray-700 rounded text-white text-center focus:outline-none focus:border-purple-600"
                               placeholder="0"
                             />
                             <span className={`text-xs px-2 py-1 rounded min-w-[60px] text-center ${

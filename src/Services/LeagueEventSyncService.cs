@@ -1714,7 +1714,11 @@ public class LeagueEventSyncService
                     apiEvent.Round, apiEvent.Title, cupStageSizes)
                 && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
                 && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes),
-            QualityProfileId = league.QualityProfileId,
+            // Session/event types the league maps to a specific quality profile
+            // (Race vs Practice, PPV vs weekly show) get that profile; the rest
+            // inherit the league's. Multi-part fight cards are one event, so
+            // every part of a mapped PPV searches at the mapped profile.
+            QualityProfileId = SessionTypeQualityResolver.Resolve(league, apiEvent.Title) ?? league.QualityProfileId,
 
             // Inherit monitored parts from league (for Fighting sports with multi-part episodes)
             MonitoredParts = league.MonitoredParts,

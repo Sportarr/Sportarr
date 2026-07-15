@@ -19,6 +19,7 @@ public interface IIndexerSearchService
     /// <param name="sport">Sport type for part validation</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled</param>
     /// <param name="eventTitle">Optional event title for event-type-specific handling</param>
+    /// <param name="sportarrId">Canonical "ev-"/"lg-" id of the searched event or league, sent to indexers whose caps advertise the sportarrid param (docs/RELEASE_NAMING.md)</param>
     Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(
         string query,
         int maxResultsPerIndexer = 10000,
@@ -29,12 +30,13 @@ public interface IIndexerSearchService
         string? eventTitle = null,
         List<int>? leagueTags = null,
         List<SkippedIndexer>? skippedIndexers = null,
-        bool allowHighlights = false);
+        bool allowHighlights = false,
+        string? sportarrId = null);
 
     /// <summary>
     /// Search a single indexer
     /// </summary>
-    Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 10000);
+    Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 10000, string? sportarrId = null);
 
     /// <summary>
     /// Select the best release from search results

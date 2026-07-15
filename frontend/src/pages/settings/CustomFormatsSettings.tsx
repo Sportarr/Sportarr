@@ -5,6 +5,9 @@ import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface CustomFormatsSettingsProps {
   showAdvanced?: boolean;
+  // When rendered as a tab inside the Quality page, skip the page's own title
+  // block (the tab already labels it).
+  embedded?: boolean;
 }
 
 interface CustomFormat {
@@ -41,7 +44,7 @@ const SOURCE_PRESETS = ['BluRay', 'WEB-DL', 'WEBDL', 'WEBRip', 'HDTV', 'DVDRip',
 const RESOLUTION_PRESETS = ['2160p', '1080p', '720p', '480p', '4K', 'UHD', 'HD', 'SD'];
 const LANGUAGE_PRESETS = ['English', 'Spanish', 'French', 'Japanese', 'Portuguese'];
 
-export default function CustomFormatsSettings({ showAdvanced = false }: CustomFormatsSettingsProps) {
+export default function CustomFormatsSettings({ showAdvanced = false, embedded = false }: CustomFormatsSettingsProps) {
   const [customFormats, setCustomFormats] = useState<CustomFormat[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -329,12 +332,14 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">Custom Formats</h2>
-        <p className="text-gray-400">
-          Custom Formats allow fine control over release scoring and prioritization
-        </p>
-      </div>
+      {!embedded && (
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-white mb-2">Custom Formats</h2>
+          <p className="text-gray-400">
+            Custom Formats allow fine control over release scoring and prioritization
+          </p>
+        </div>
+      )}
 
       {/* Info Box */}
       <div className="mb-8 bg-gradient-to-br from-purple-950/30 to-purple-900/20 border border-purple-900/50 rounded-lg p-6">
@@ -654,7 +659,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
       {/* Add Condition Modal */}
       {showConditionModal && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-blue-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-blue-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[85dvh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-2xl font-bold text-white">Add Condition</h3>
               <button
@@ -702,14 +707,14 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
                   type="text"
                   value={conditionForm.name}
                   onChange={(e) => setConditionForm({ ...conditionForm, name: e.target.value })}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-600"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   placeholder="e.g., 1080p, WEB-DL, etc."
                 />
               </div>
 
               {conditionForm.implementation === 'Size' ? (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-300 mb-2">Min Size (MB)</label>
                       <input
@@ -719,7 +724,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
                           ...conditionForm,
                           fields: { ...conditionForm.fields, min: parseFloat(e.target.value) || 0 }
                         })}
-                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-600"
+                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                         placeholder="0"
                       />
                     </div>
@@ -732,7 +737,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
                           ...conditionForm,
                           fields: { ...conditionForm.fields, max: parseFloat(e.target.value) || 0 }
                         })}
-                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-600"
+                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                         placeholder="Unlimited"
                       />
                     </div>
@@ -753,7 +758,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
                         ...conditionForm,
                         fields: { value: e.target.value }
                       })}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-red-600"
                       placeholder={
                         conditionForm.implementation === 'ReleaseTitle'
                           ? 'e.g., \\b(1080p|FHD)\\b'

@@ -426,7 +426,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
         </div>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-white font-medium mb-2">Bind Address</label>
               <input
@@ -585,7 +585,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           )}
 
           {(securitySettings.authenticationMethod === 'forms' || securitySettings.authenticationMethod === 'basic') && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-white font-medium mb-2">Username</label>
               <input
@@ -620,12 +620,12 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
 
           <div>
             <label className="block text-white font-medium mb-2">API Key</label>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 type="text"
                 value={securitySettings.apiKey}
                 readOnly
-                className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none font-mono text-sm"
+                className="min-w-[200px] flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none font-mono text-sm"
               />
               <button
                 onClick={copyApiKey}
@@ -761,7 +761,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
                   </select>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="col-span-2">
                     <label className="block text-white font-medium mb-2">Hostname</label>
                     <input
@@ -784,7 +784,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-white font-medium mb-2">Username</label>
                     <input
@@ -908,7 +908,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-white font-medium mb-2">Backup Interval</label>
               <div className="flex items-center space-x-2">

@@ -775,46 +775,36 @@ export default function TeamsPage() {
           </p>
         </div>
 
-        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 mb-6">
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Filter by Sport
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {SPORT_FILTERS.map((sport) => (
-                <button
-                  key={sport.id}
-                  onClick={() => setSelectedSport(sport.id)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                    selectedSport === sport.id
-                      ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
-                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                  }`}
-                >
-                  <span className="mr-2">{sport.icon}</span>
-                  {sport.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+        {/* Search + sport filter - one row, same pattern as the Leagues page */}
+        <div className="mb-2 flex flex-wrap gap-2 md:gap-3">
+          <div className="relative min-w-[180px] flex-1">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Filter teams (e.g., Real Madrid, Lakers, Bruins)..."
-              className="w-full pl-10 pr-4 py-3 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
             />
           </div>
-
-          <p className="text-sm text-gray-500 mt-3">
-            Showing {isLoadingTeams ? '...' : filteredTeams.length} of {allTeams.length} teams
-            {searchQuery && ` matching "${searchQuery}"`}
-            {selectedSport !== 'all' && ` in ${SPORT_FILTERS.find((sport) => sport.id === selectedSport)?.name}`}
-          </p>
+          <select
+            value={selectedSport}
+            onChange={(event) => setSelectedSport(event.target.value)}
+            className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-600/20 md:text-base"
+            title="Filter by sport"
+          >
+            {SPORT_FILTERS.map((sport) => (
+              <option key={sport.id} value={sport.id}>
+                {sport.icon} {sport.name}
+              </option>
+            ))}
+          </select>
         </div>
+        <p className="mb-6 text-sm text-gray-500">
+          Showing {isLoadingTeams ? '...' : filteredTeams.length} of {allTeams.length} teams
+          {searchQuery && ` matching "${searchQuery}"`}
+          {selectedSport !== 'all' && ` in ${SPORT_FILTERS.find((sport) => sport.id === selectedSport)?.name}`}
+        </p>
 
         {isLoadingTeams && (
           <div className="text-center py-16">
@@ -855,8 +845,8 @@ export default function TeamsPage() {
                           : 'border-red-900/30 hover:border-red-700/50'
                       }`}
                     >
-                      <div className="flex items-center p-4">
-                        <div className="h-16 w-16 bg-black/50 flex items-center justify-center rounded-lg mr-4 flex-shrink-0">
+                      <div className="flex items-center p-3 sm:p-4">
+                        <div className="h-10 w-10 sm:h-16 sm:w-16 bg-black/50 flex items-center justify-center rounded-lg mr-3 sm:mr-4 flex-shrink-0">
                           {team.badgeUrl ? (
                             <img
                               src={team.badgeUrl}
@@ -864,14 +854,14 @@ export default function TeamsPage() {
                               className="max-h-full max-w-full object-contain"
                             />
                           ) : (
-                            <span className="text-3xl opacity-50">
+                            <span className="text-lg sm:text-3xl opacity-50">
                               {getSportIcon(team.sport || '')}
                             </span>
                           )}
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-lg font-bold text-white truncate">
+                          <h3 className="text-base sm:text-lg font-bold text-white truncate">
                             {team.name}
                           </h3>
                           {team.alternateName && (
@@ -892,15 +882,16 @@ export default function TeamsPage() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 ml-4">
+                        <div className="flex items-center gap-1 sm:gap-2 ml-2 sm:ml-4 flex-shrink-0">
                           {isFollowed ? (
                             <>
                               <button
                                 onClick={() => toggleTeamExpansion(team)}
-                                className="px-4 py-2.5 rounded-lg font-medium bg-green-900/30 text-green-400 border border-green-700 hover:bg-green-900/50 transition-colors flex items-center gap-2"
+                                className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium bg-green-900/30 text-green-400 border border-green-700 hover:bg-green-900/50 transition-colors flex items-center gap-1.5 sm:gap-2"
+                                title="Following - view leagues"
                               >
                                 <CheckCircleIcon className="w-5 h-5" />
-                                Following
+                                <span className="hidden sm:inline">Following</span>
                                 {isExpanded ? (
                                   <ChevronUpIcon className="w-4 h-4" />
                                 ) : (
@@ -923,12 +914,12 @@ export default function TeamsPage() {
                             <button
                               onClick={() => followTeamMutation.mutate(team)}
                               disabled={followTeamMutation.isPending}
-                              className="px-4 py-2.5 rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center gap-2 disabled:opacity-60"
+                              className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center gap-1.5 sm:gap-2 disabled:opacity-60"
                             >
                               {followTeamMutation.isPending ? (
                                 <ArrowPathIcon className="w-5 h-5 animate-spin" />
                               ) : (
-                                <UserGroupIcon className="w-5 h-5" />
+                                <UserGroupIcon className="hidden sm:block w-5 h-5" />
                               )}
                               Follow
                             </button>

@@ -3,20 +3,22 @@ import { useSystemStatus, useActivityCounts } from '../api/hooks';
 import { getImageUrl } from '../utils/request';
 import { apiGet, apiPost } from '../utils/api';
 import {
-  FolderIcon,
+  TrophyIcon,
+  CalendarIcon,
   ClockIcon,
   Cog6ToothIcon,
   ServerIcon,
   ChevronDownIcon,
   ExclamationCircleIcon,
-  Bars3Icon,
-  XMarkIcon,
   SignalIcon,
   ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 import FooterStatusBar from './FooterStatusBar';
+import MobileTabBar from './MobileTabBar';
+import OnboardingWizard from './OnboardingWizard';
 import { useAuth } from '../contexts/AuthContext';
+import { SETTINGS_PAGES } from '../pages/settings/settingsPages';
 
 interface MenuItem {
   label: string;
@@ -32,8 +34,38 @@ export default function Layout() {
   const { data: systemStatus } = useSystemStatus();
   const { data: activityCounts } = useActivityCounts();
   const { isAuthDisabled, logout } = useAuth();
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Leagues']);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Library']);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+
+  // First-run setup guide: show it once when the install isn't set up yet and
+  // the user hasn't dismissed it. Runs once when the shell mounts.
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  useEffect(() => {
+    if (localStorage.getItem('sportarr.onboardingDismissed') === '1') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiGet('/api/onboarding/status');
+        if (!res.ok) return;
+        const status = await res.json();
+        if (!cancelled && status && status.isReady === false) {
+          setShowOnboarding(true);
+        }
+      } catch {
+        // If the check fails, just don't show the guide.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Manual reopen (the "Run Setup Guide" button on System Health). Works
+  // regardless of the dismissed flag or how configured the install is -
+  // the guide hydrates from current settings and shows what's already set.
+  useEffect(() => {
+    const open = () => setShowOnboarding(true);
+    window.addEventListener('sportarr:open-setup-guide', open);
+    return () => window.removeEventListener('sportarr:open-setup-guide', open);
+  }, []);
 
   // Safety net: Clean up any lingering inert attributes on route change
   // This should rarely be needed now that modals use stable ref data
@@ -61,18 +93,18 @@ export default function Layout() {
   // Define menu items first so they're available in useEffect
   const menuItems: MenuItem[] = [
     {
-      label: 'Leagues',
-      icon: FolderIcon,
+      label: 'Library',
+      icon: TrophyIcon,
       path: '/leagues',
       children: [
+        { label: 'Leagues', path: '/leagues' },
         { label: 'Add League', path: '/add-league/search' },
         { label: 'Add Team', path: '/add-team/search' },
-        { label: 'Library Import', path: '/library-import' },
+        { label: 'Import', path: '/library-import' },
       ],
     },
-    { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
+    { label: 'Calendar', icon: CalendarIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity', badge: activityCounts ? ((activityCounts.queueCount + (activityCounts.pendingImportCount ?? 0)) || undefined) : undefined },
-    { label: 'Wanted', icon: ExclamationCircleIcon, path: '/wanted' },
     {
       label: 'IPTV',
       icon: SignalIcon,
@@ -82,7 +114,7 @@ export default function Layout() {
         { label: 'Channels', path: '/iptv/channels' },
         { label: 'TV Guide', path: '/iptv/guide' },
         { label: 'Recordings', path: '/iptv/recordings' },
-        { label: 'Coverage', path: '/iptv/coverage' },
+        { label: 'DVR Settings', path: '/iptv/dvr-settings' },
       ],
     },
     {
@@ -93,8 +125,6 @@ export default function Layout() {
         { label: 'Media Management', path: '/settings/mediamanagement' },
         { label: 'Profiles', path: '/settings/profiles' },
         { label: 'Quality', path: '/settings/quality' },
-        { label: 'Custom Formats', path: '/settings/customformats' },
-        { label: 'TRaSH Guides', path: '/settings/trashguides' },
         { label: 'Indexers', path: '/settings/indexers' },
         { label: 'Import Lists', path: '/settings/importlists' },
         { label: 'Download Clients', path: '/settings/downloadclients' },
@@ -184,17 +214,29 @@ export default function Layout() {
       setExpandedMenus(currentSection.children ? [currentSection.label] : []);
     }
 
-    // Close mobile menu on navigation
-    setMobileMenuOpen(false);
+    // Route changes always dismiss the settings pill
+    setSettingsMenuOpen(false);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   return (
-    <div className="flex h-screen bg-black text-gray-100">
+    /* 100dvh (inline) tracks the phone's real visible viewport as the URL bar
+       collapses; browsers without dvh ignore the invalid inline value and fall
+       back to the h-screen class. With plain 100vh the shell was taller than
+       the visible area on mobile, so the document gained its own scroll on
+       top of <main>'s - the "swipe twice to reach the ends" bug. */
+    <div className="flex flex-col md:flex-row h-screen bg-black text-gray-100" style={{ height: '100dvh' }}>
       {/* Mobile Header - Only visible on small screens */}
-      <div className="fixed top-0 left-0 right-0 z-50 md:hidden bg-gradient-to-r from-gray-900 to-black border-b border-red-900/30">
+      <div
+        className="relative flex-none md:hidden bg-gradient-to-r from-gray-900 to-black border-b border-red-900/30"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        {/* Brand + settings gear. The gear opens a pill menu of the settings
+            pages in place (same pattern as the tab bar's section pills) so
+            the user never leaves the current page just to see the options. */}
         <div className="flex items-center justify-between p-3">
-          <Link to="/leagues" onClick={() => { cleanupInertAttributes(); setMobileMenuOpen(false); }} className="flex items-center space-x-2">
+          <Link to="/leagues" onClick={cleanupInertAttributes} className="flex items-center space-x-2">
             <img
               src={getImageUrl('logo-64.png')}
               alt="Sportarr Logo"
@@ -203,35 +245,49 @@ export default function Layout() {
             <h1 className="text-lg font-bold text-white">Sportarr</h1>
           </Link>
           <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 text-gray-300 hover:text-white hover:bg-red-900/30 rounded-lg transition-colors"
+            onClick={() => { cleanupInertAttributes(); setSettingsMenuOpen(!settingsMenuOpen); }}
+            className={`p-2 rounded-lg transition-colors ${settingsMenuOpen ? 'text-red-500 bg-red-900/20' : 'text-gray-300 hover:text-white hover:bg-red-900/30'}`}
+            title="Settings"
           >
-            {mobileMenuOpen ? (
-              <XMarkIcon className="w-6 h-6" />
-            ) : (
-              <Bars3Icon className="w-6 h-6" />
-            )}
+            <Cog6ToothIcon className="w-6 h-6" />
           </button>
         </div>
+
+        {/* Settings pill */}
+        {settingsMenuOpen && (
+          <div className="absolute right-3 top-full z-50 mt-2 w-64 animate-pill-down">
+            <div className="max-h-[75dvh] overflow-y-auto rounded-2xl border border-red-900/40 bg-gradient-to-b from-gray-900 to-black shadow-2xl shadow-black/70">
+              {SETTINGS_PAGES.map(({ to, title }) => {
+                const current = location.pathname === to;
+                return (
+                  <button
+                    key={to}
+                    onClick={() => {
+                      setSettingsMenuOpen(false);
+                      navigate(to);
+                    }}
+                    className={`flex w-full items-center justify-between border-b border-gray-800/60 px-5 py-2.5 text-left text-sm font-medium last:border-b-0 ${
+                      current ? 'text-red-500' : 'text-gray-200'
+                    }`}
+                  >
+                    {title}
+                    {current && <span className="h-1.5 w-1.5 rounded-full bg-red-500" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Mobile Menu Overlay */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black/80 z-40 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
+      {/* Backdrop for the settings pill - tap anywhere else to close */}
+      {settingsMenuOpen && (
+        <div className="fixed inset-0 z-40 md:hidden" onClick={() => setSettingsMenuOpen(false)} />
       )}
 
-      {/* Sidebar - Hidden on mobile unless menu is open */}
-      <aside className={`
-        fixed md:relative inset-y-0 left-0 z-40
-        w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex flex-col
-        transform transition-transform duration-300 ease-in-out
-        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:translate-x-0 md:flex
-        pt-14 md:pt-0
-      `}>
+      {/* Sidebar - desktop only. Phones cover every destination via the tab
+          bar's pill menus plus the top bar's settings gear; there is no drawer. */}
+      <aside className="hidden md:flex md:relative inset-y-0 left-0 z-40 w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex-col">
         {/* Logo - Hidden on mobile (shown in header instead) */}
         <div className="hidden md:block p-4 border-b border-red-900/30">
           <Link to="/leagues" onClick={cleanupInertAttributes} className="flex items-center space-x-3">
@@ -258,11 +314,7 @@ export default function Layout() {
                 <div>
                   <button
                     onClick={(e) => handleMenuClick(item, e)}
-                    className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors ${
-                      isActive(item.path, item.children)
-                        ? 'bg-red-900/30 text-white border-l-4 border-red-600'
-                        : 'text-gray-300 hover:bg-red-900/10 hover:text-white'
-                    }`}
+                    className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors text-gray-300 hover:bg-red-900/10 hover:text-white"
                   >
                     <div className="flex items-center space-x-3">
                       <item.icon className="w-5 h-5" />
@@ -281,7 +333,7 @@ export default function Layout() {
                           key={child.path}
                           to={child.path}
                           onClick={cleanupInertAttributes}
-                          className={`block px-4 py-2 pl-12 text-sm transition-colors ${
+                          className={`block px-4 py-2.5 pl-12 text-sm transition-colors ${
                             location.pathname === child.path
                               ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                               : 'text-gray-400 hover:bg-red-900/10 hover:text-white'
@@ -298,7 +350,7 @@ export default function Layout() {
                 <Link
                   to={item.path!}
                   onClick={cleanupInertAttributes}
-                  className={`flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors ${
+                  className={`flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${
                     location.pathname === item.path
                       ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                       : 'text-gray-300 hover:bg-red-900/10 hover:text-white'
@@ -370,12 +422,21 @@ export default function Layout() {
           `<main>` is the actual scroll container for the app shell,
           so the gutter has to be reserved here too. */}
       <main
-        className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pt-14 md:pt-0"
+        className="flex-1 overflow-y-auto [touch-action:pan-y_pinch-zoom] bg-gradient-to-br from-gray-950 via-black to-gray-950 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0"
         style={{ scrollbarGutter: 'stable' }}
       >
         <HealthBanner />
         <Outlet />
       </main>
+
+      {/* Phone-only bottom tab bar - covers every destination; no drawer on phones */}
+      <MobileTabBar />
+      {showOnboarding && (
+        <OnboardingWizard
+          onClose={() => setShowOnboarding(false)}
+          onComplete={() => setShowOnboarding(false)}
+        />
+      )}
     </div>
   );
 }

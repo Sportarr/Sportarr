@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -32,6 +33,76 @@ app.MapGet("/api/qualityprofile/{id}", async (int id, SportarrDbContext db) =>
 {
     var profile = await db.QualityProfiles.FindAsync(id);
     return profile == null ? Results.NotFound() : Results.Ok(profile);
+});
+
+// API: Preview how a profile scores a set of sample releases. The samples are
+// fictional format examples (no real content, no files) - just strings run
+// through the same scoring the grabber uses, so a user can see the profile's
+// depth working: which formats matched, the score, and whether it'd be accepted.
+app.MapGet("/api/qualityprofile/{id}/preview", async (int id, SportarrDbContext db, ReleaseEvaluator evaluator) =>
+{
+    var profile = await db.QualityProfiles.FirstOrDefaultAsync(p => p.Id == id);
+    if (profile == null)
+        return Results.NotFound();
+
+    var customFormats = await db.CustomFormats.ToListAsync();
+
+    // Generic, made-up release names spanning the common sports tiers. They exist
+    // only to exercise the scoring rules (resolution/source/HDR/junk/proper).
+    var samples = new[]
+    {
+        "Sports 2026 Team A vs Team B 2160p WEB-DL DDP5.1 HDR H.265-GROUP",
+        "Sports 2026 Team A vs Team B 1080p WEB-DL DDP5.1 H.264-GROUP",
+        "Sports 2026 Team A vs Team B 1080p HDTV H.264-GROUP",
+        "Sports 2026 Team A vs Team B 2160p WEBRip x265 UPSCALED-GROUP",
+        "Sports 2026 Team A vs Team B 1080p WEB-DL PROPER H.264-GROUP",
+    };
+
+    var results = samples.Select(title =>
+    {
+        var score = evaluator.CalculateCustomFormatScore(title, profile, customFormats);
+        var matched = evaluator.GetMatchedFormats(title, profile, customFormats)
+            .Select(m => new { name = m.Name, score = m.Score })
+            .ToList();
+        // The real grabber gates on BOTH the profile's allowed qualities and
+        // the minimum format score. The preview must mirror that: an HD
+        // profile showing "grab" on a 2160p sample teaches users the exact
+        // opposite of what the profile does.
+        var parsed = QualityParser.ParseQuality(title);
+        var qualityAllowed = evaluator.IsQualityAllowed(parsed.Quality, profile);
+        var scoreOk = score >= profile.MinFormatScore;
+        return new
+        {
+            title,
+            quality = parsed.QualityName,
+            customFormatScore = score,
+            matchedFormats = matched,
+            accepted = qualityAllowed && scoreOk,
+            reason = !qualityAllowed
+                ? $"{parsed.QualityName} not in this profile"
+                : !scoreOk
+                    ? "scores below the profile minimum"
+                    : (string?)null,
+        };
+    }).ToList();
+
+    return Results.Ok(new { profileName = profile.Name, minFormatScore = profile.MinFormatScore, samples = results });
+});
+
+// API: Make a profile the default (unsets any other default). Used by the setup
+// guide's quality step and the profiles page.
+app.MapPost("/api/qualityprofile/{id}/set-default", async (int id, SportarrDbContext db) =>
+{
+    var target = await db.QualityProfiles.FindAsync(id);
+    if (target == null)
+        return Results.NotFound();
+
+    var profiles = await db.QualityProfiles.ToListAsync();
+    foreach (var p in profiles)
+        p.IsDefault = p.Id == id;
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { success = true, defaultProfileId = id });
 });
 
 // API: Create quality profile

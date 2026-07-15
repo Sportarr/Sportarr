@@ -376,6 +376,15 @@ public class ParsedFileInfo
     /// the Resolution / Source fields. Empty list if ffprobe wasn't run or
     /// the file had no language tags.</summary>
     public List<string> DetectedLanguages { get; set; } = new();
+
+    /// <summary>Canonical event id ("ev-XXXXXXX") from an id token in the
+    /// name, or from the file's embedded SPORTARR tag when the name carries
+    /// none (docs/RELEASE_NAMING.md). Authoritative for matching.</summary>
+    public string? SportarrEventId { get; set; }
+
+    /// <summary>Canonical league id ("lg-XXXXXX"), the pack-release
+    /// equivalent of <see cref="SportarrEventId"/>.</summary>
+    public string? SportarrLeagueId { get; set; }
 }
 
 // File naming tokens and their replacements
@@ -397,6 +406,7 @@ public class FileNamingTokens
     public string Part { get; set; } = string.Empty;    // Multi-part suffix (pt1, pt2, pt3) for fight card segments
     public string PartName { get; set; } = string.Empty; // Human part label suffix (" - Prelims", " - Main Card"); empty for single-part files. Separator embedded, same convention as Part.
     public string CustomFormats { get; set; } = string.Empty; // Space-joined names of matched formats flagged IncludeCustomFormatWhenRenaming
+    public string SportarrId { get; set; } = string.Empty; // Canonical event id (ev-XXXXXXX); {Sportarr Id} renders it as {sportarr-ev-XXXXXXX} per docs/RELEASE_NAMING.md
 }
 
 // Notification Model (stored separately with Tags)

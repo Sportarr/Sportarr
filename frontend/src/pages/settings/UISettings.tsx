@@ -534,7 +534,7 @@ export default function UISettings({ showAdvanced: propShowAdvanced = false }: U
             Reference for custom date and time format patterns
           </p>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <h4 className="text-white font-medium mb-2">Month</h4>
               <div className="space-y-1 text-sm">

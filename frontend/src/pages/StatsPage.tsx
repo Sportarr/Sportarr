@@ -81,7 +81,7 @@ export default function StatsPage() {
       <PageHeader title="Statistics" subtitle={`Library size: ${formatBytes(stats.totalSizeBytes)}`} />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900/50 p-4">
           <h2 className="mb-3 text-lg font-semibold text-white">Disk Usage by League</h2>
           {stats.perLeague.length === 0 ? (
             <p className="text-sm text-gray-500">No files in the library yet.</p>
@@ -107,7 +107,7 @@ export default function StatsPage() {
           )}
         </div>
 
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900/50 p-4">
           <h2 className="mb-3 text-lg font-semibold text-white">Files by Quality</h2>
           {stats.byQuality.length === 0 ? (
             <p className="text-sm text-gray-500">No files in the library yet.</p>
@@ -133,7 +133,7 @@ export default function StatsPage() {
           )}
         </div>
 
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900/50 p-4">
           <h2 className="mb-3 text-lg font-semibold text-white">Coverage by League</h2>
           {stats.coverage.length === 0 ? (
             <p className="text-sm text-gray-500">No leagues added yet.</p>
@@ -165,7 +165,7 @@ export default function StatsPage() {
           )}
         </div>
 
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <div className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-900/50 p-4">
           <h2 className="mb-3 text-lg font-semibold text-white">DVR Recordings</h2>
           {totalRecordings === 0 ? (
             <p className="text-sm text-gray-500">No recordings yet.</p>

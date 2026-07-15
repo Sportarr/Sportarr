@@ -56,7 +56,9 @@ interface MediaManagementSettingsData {
   skipFreeSpaceCheck: boolean;
   minimumFreeSpace: number;
   useHardlinks: boolean;
-  copyFiles: boolean;
+  // copyFiles was retired: imports are seeding-aware and per-client
+  // Post-Import Behavior covers the always-preserve use case. Old installs
+  // are mapped once at startup; the page no longer reads or writes it.
   importExtraFiles: boolean;
   extraFileExtensions: string;
   userRejectedExtensions: string;
@@ -127,7 +129,6 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     skipFreeSpaceCheck: false,
     minimumFreeSpace: 100,
     useHardlinks: true,
-    copyFiles: false,
     importExtraFiles: false,
     extraFileExtensions: 'srt,nfo',
     userRejectedExtensions: '',
@@ -184,6 +185,8 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
         const data = await response.json();
         if (data.mediaManagementSettings) {
           const parsed = JSON.parse(data.mediaManagementSettings);
+          // Retired setting: never round-trip it back on save.
+          delete parsed.copyFiles;
           // Debug logging to diagnose folder settings persistence issue
           console.log('[MediaManagement] Raw mediaManagementSettings from API:', data.mediaManagementSettings);
           console.log('[MediaManagement] Parsed settings:', parsed);
@@ -1054,36 +1057,15 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
             <div>
               <span className="text-white font-medium">Use Hardlinks instead of Copy</span>
               <p className="text-sm text-gray-400 mt-1">
-                Use hardlinks when copying files from torrents (requires same filesystem)
+                Use hardlinks when trying to copy files from torrents that are still being seeded.
+                Requires the download and library folders to be on the same filesystem; falls back
+                to a copy when a link cannot be created.<br/>
+                <span className="text-gray-500 italic">
+                  A download client's Post-Import Behavior setting overrides this per client.
+                </span>
               </p>
             </div>
           </label>
-
-          <label className="flex items-start space-x-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.copyFiles}
-              onChange={(e) => updateSetting('copyFiles', e.target.checked)}
-              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-            />
-            <div>
-              <span className="text-white font-medium">Copy Files (instead of Move)</span>
-              <p className="text-sm text-gray-400 mt-1">
-                <strong>Disabled (recommended):</strong> Files are moved from downloads to your library, freeing up space.<br/>
-                <strong>Enabled:</strong> Files are copied, keeping the original in downloads (uses more disk space).<br/>
-                <span className="text-gray-500 italic">Debrid users: This setting doesn't affect you - symlinks are always handled correctly.</span>
-              </p>
-            </div>
-          </label>
-
-          {settings.copyFiles && (
-            <div className="bg-blue-900/30 border border-blue-600/50 rounded-lg p-3 ml-8">
-              <p className="text-blue-400 text-sm">
-                <strong>Torrent Seeding:</strong> Source files will be preserved in your download folder for continued seeding,
-                regardless of the "Remove Completed Downloads" setting.
-              </p>
-            </div>
-          )}
 
           <label className="flex items-start space-x-3 cursor-pointer">
             <input

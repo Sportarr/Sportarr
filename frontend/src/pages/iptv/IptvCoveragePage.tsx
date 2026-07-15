@@ -134,7 +134,7 @@ interface TestResolveResponse {
 
 type SortKey = 'name' | 'channels' | 'coverage' | 'gap';
 
-export default function IptvCoveragePage() {
+export default function IptvCoveragePage({ embedded = false }: { embedded?: boolean } = {}) {
   const [report, setReport] = useState<CoverageReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -321,12 +321,14 @@ export default function IptvCoveragePage() {
     return rs;
   }, [report, sortKey, filter]);
 
-  return (
-    <PageShell>
-      <PageHeader
-        title="IPTV Coverage Report"
-        subtitle="Per-league channel mapping coverage and scheduled-recording coverage for upcoming events. Use this to find leagues that need a channel mapped or events that the DVR auto-scheduler couldn't resolve."
-      />
+  const body = (
+    <>
+      {!embedded && (
+        <PageHeader
+          title="IPTV Coverage Report"
+          subtitle="Per-league channel mapping coverage and scheduled-recording coverage for upcoming events. Use this to find leagues that need a channel mapped or events that the DVR auto-scheduler couldn't resolve."
+        />
+      )}
 
       {/* Horizon + filter + refresh row */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -424,7 +426,7 @@ export default function IptvCoveragePage() {
           </div>
 
           {/* Per-league table */}
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-black/40 text-xs text-gray-400 uppercase tracking-wide">
                 <tr>
@@ -612,7 +614,7 @@ export default function IptvCoveragePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
              onClick={() => setTestResolveOpen(null)}>
           <div
-            className="bg-gradient-to-br from-gray-900 to-black border border-purple-900/50 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-gradient-to-br from-gray-900 to-black border border-purple-900/50 rounded-lg shadow-xl max-w-3xl w-full max-h-[85dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-5 py-3 border-b border-purple-900/40 flex items-center justify-between sticky top-0 bg-gradient-to-br from-gray-900 to-black z-10">
@@ -772,8 +774,9 @@ export default function IptvCoveragePage() {
           </div>
         </div>
       )}
-    </PageShell>
+    </>
   );
+  return embedded ? body : <PageShell>{body}</PageShell>;
 }
 
 /**

@@ -516,6 +516,15 @@ public class TrashSyncSettings
     public bool AutoSyncSportRelevantOnly { get; set; } = true;
 
     /// <summary>
+    /// Whether the one-time first-run enrichment has completed. On first run the
+    /// app ships bundled "floor" profiles/formats; once online it pulls the full
+    /// format set fresh from TRaSH Guides and applies scores to the seeded
+    /// profiles, then sets this so it never repeats. Stays false (retries next
+    /// start) if the app was offline, so the enrichment isn't lost.
+    /// </summary>
+    public bool FirstRunEnrichmentDone { get; set; } = false;
+
+    /// <summary>
     /// Auto-apply scores to profiles after syncing CFs
     /// </summary>
     public bool AutoApplyScoresToProfiles { get; set; } = false;

@@ -20,8 +20,8 @@ import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import PageHeader from '../../components/PageHeader';
 import PageShell from '../../components/PageShell';
-import EpgSourcesPanel from '../../components/EpgSourcesPanel';
 import { useUISettings } from '../../hooks/useUISettings';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { formatTimeInTimezone, formatDateInTimezone } from '../../utils/timezone';
 
 // Types
@@ -85,6 +85,9 @@ export default function TvGuidePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { timezone } = useUISettings();
+  // Phones get a vertical now/next list instead of the 3,000px-wide timeline
+  // grid; tablets and up keep the grid untouched.
+  const isPhone = useMediaQuery('(max-width: 639px)');
 
   // State
   const [guideData, setGuideData] = useState<TvGuideResponse | null>(null);
@@ -105,7 +108,6 @@ export default function TvGuidePage() {
   const selectedCountry = searchParams.get('country') || '';
 
   const [showFilters, setShowFilters] = useState(false);
-  const [showEpgSettings, setShowEpgSettings] = useState(false);
   const [channelGroups, setChannelGroups] = useState<string[]>([]);
   const [channelCountries, setChannelCountries] = useState<string[]>([]);
 
@@ -206,9 +208,9 @@ export default function TvGuidePage() {
     }
   };
 
-  // Source CRUD lives in the shared EpgSourcesPanel component (also used by
-  // Settings > IPTV); this page only refreshes its own guide state when the
-  // panel reports a change.
+  // EPG source setup lives on the IPTV Sources page now; the guide only reads
+  // and syncs guide data. The cogwheel links to Sources rather than hosting a
+  // second copy of the source manager.
 
   const scheduleDvr = async (program: TvGuideProgram) => {
     try {
@@ -312,6 +314,56 @@ export default function TvGuidePage() {
     return formatTimeInTimezone(d.toISOString(), timezone, { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Phone layout: collapse each channel to "what's on now / what's next".
+  // The headline program is whatever is airing at this moment, or the first
+  // upcoming program when browsing a future window. Live sports sort first,
+  // then anything currently airing, then idle channels.
+  const phoneChannels = useMemo(() => {
+    if (!guideData) return [];
+    const nowMs = currentTime.getTime();
+    return guideData.channels
+      .map((channel) => {
+        const programs = [...channel.programs].sort(
+          (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+        const current =
+          programs.find(
+            (p) => new Date(p.startTime).getTime() <= nowMs && nowMs < new Date(p.endTime).getTime()
+          ) ?? null;
+        const upcoming = programs.filter((p) => new Date(p.startTime).getTime() > nowMs);
+        const headline = current ?? upcoming[0] ?? null;
+        const next = current ? upcoming[0] ?? null : upcoming[1] ?? null;
+        const progress = current
+          ? Math.min(
+              100,
+              Math.round(
+                ((nowMs - new Date(current.startTime).getTime()) /
+                  Math.max(1, new Date(current.endTime).getTime() - new Date(current.startTime).getTime())) *
+                  100
+              )
+            )
+          : 0;
+        const minutesUntil =
+          !current && upcoming[0]
+            ? Math.max(1, Math.round((new Date(upcoming[0].startTime).getTime() - nowMs) / 60000))
+            : null;
+        return {
+          channel,
+          headline,
+          next,
+          isLive: current !== null,
+          isLiveSports: current?.isSportsProgram === true,
+          progress,
+          minutesUntil,
+        };
+      })
+      .sort((a, b) => {
+        const rank = (x: { isLiveSports: boolean; isLive: boolean; headline: TvGuideProgram | null }) =>
+          x.isLiveSports ? 0 : x.isLive ? 1 : x.headline ? 2 : 3;
+        return rank(a) - rank(b);
+      });
+  }, [guideData, currentTime]);
+
   if (loading && !guideData) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -332,9 +384,9 @@ export default function TvGuidePage() {
             actions={
               <>
                 <button
-                  onClick={() => setShowEpgSettings(!showEpgSettings)}
+                  onClick={() => navigate('/iptv/sources')}
                   className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                  title="EPG Settings"
+                  title="Configure EPG sources on the Sources page"
                 >
                   <Cog6ToothIcon className="w-5 h-5" />
                 </button>
@@ -351,7 +403,7 @@ export default function TvGuidePage() {
           />
 
           {/* Time Navigation */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setTimeOffset(prev => prev - 6)}
@@ -452,7 +504,7 @@ export default function TvGuidePage() {
                       }
                       setSearchParams(newParams);
                     }}
-                    className="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                    className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500"
                   >
                     <option value="">All Groups</option>
                     {channelGroups.map((group) => (
@@ -479,7 +531,7 @@ export default function TvGuidePage() {
                       }
                       setSearchParams(newParams);
                     }}
-                    className="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                    className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500"
                   >
                     <option value="">All Countries</option>
                     {channelCountries.map((country) => (
@@ -494,18 +546,6 @@ export default function TvGuidePage() {
             </div>
           )}
 
-          {/* EPG Settings Panel */}
-          {showEpgSettings && (
-            <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-              <h3 className="text-white font-semibold mb-3">EPG Sources</h3>
-              <EpgSourcesPanel
-                onSourcesChanged={() => {
-                  loadEpgSources();
-                  loadGuideData();
-                }}
-              />
-            </div>
-          )}
         </PageShell>
       </div>
 
@@ -516,10 +556,85 @@ export default function TvGuidePage() {
             <TvIcon className="w-16 h-16 mb-4 opacity-50" />
             <p className="text-lg">No TV Guide data available</p>
             <p className="text-sm mt-2">
-              {epgSources.length === 0
-                ? 'Add an EPG source above to get started'
-                : 'Try syncing your EPG sources or adjusting filters'}
+              {epgSources.length === 0 ? (
+                <button
+                  onClick={() => navigate('/iptv/sources')}
+                  className="text-red-400 underline transition-colors hover:text-red-300"
+                >
+                  Add an EPG source on the Sources page to get started
+                </button>
+              ) : (
+                'Try syncing your EPG sources or adjusting filters'
+              )}
             </p>
+          </div>
+        ) : isPhone ? (
+          /* Compact phone guide: one card per channel, now/next, no horizontal scroll */
+          <div className="h-full overflow-y-auto px-3 py-3 space-y-2">
+            {phoneChannels.map(({ channel, headline, next, isLive, isLiveSports, progress, minutesUntil }) => (
+              <button
+                key={channel.id}
+                onClick={() => {
+                  if (headline) {
+                    setSelectedProgram(headline);
+                    setSelectedChannel(channel);
+                  }
+                }}
+                disabled={!headline}
+                className="w-full text-left bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-xl p-3 flex items-center gap-3 transition-colors active:border-red-600/50 disabled:opacity-60"
+              >
+                {channel.logoUrl ? (
+                  <img
+                    src={channel.logoUrl}
+                    alt={channel.name}
+                    className="w-10 h-10 object-contain rounded-lg bg-gray-800 p-1 flex-shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <TvIcon className="w-5 h-5 text-gray-500" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-sm font-semibold truncate">
+                    {headline ? headline.title : 'No programs in this window'}
+                  </div>
+                  {headline && (
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-[11px] text-gray-400 whitespace-nowrap tabular-nums">
+                        {formatTime(headline.startTime)} - {formatTime(headline.endTime)}
+                      </span>
+                      {isLive && (
+                        <div className="flex-1 h-1 min-w-[40px] rounded-full bg-gray-800 overflow-hidden">
+                          <div className="h-full bg-red-600 rounded-full" style={{ width: `${progress}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="mt-1 text-[11px] text-gray-500 truncate">
+                    {channel.name}
+                    {next && <> · Next: {next.title} · {formatTime(next.startTime)}</>}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  {isLiveSports && (
+                    <span className="text-[9px] font-extrabold tracking-wider text-white bg-red-600 rounded px-1.5 py-0.5">
+                      LIVE
+                    </span>
+                  )}
+                  {!isLive && minutesUntil !== null && (
+                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-800 rounded px-1.5 py-0.5 whitespace-nowrap">
+                      {minutesUntil < 60 ? `in ${minutesUntil}m` : formatTime(headline!.startTime)}
+                    </span>
+                  )}
+                  {headline?.hasDvrRecording && (
+                    <VideoCameraIcon
+                      className={`w-4 h-4 ${DVR_STATUS_COLORS[headline.dvrRecordingStatus || '']?.text || 'text-blue-400'}`}
+                    />
+                  )}
+                </div>
+              </button>
+            ))}
           </div>
         ) : (
           <div className="h-full overflow-auto" ref={gridRef}>
@@ -666,7 +781,7 @@ export default function TvGuidePage() {
           onClick={() => { setSelectedProgram(null); setSelectedChannel(null); }}
         >
           <div
-            className="bg-gray-900 border border-gray-700 rounded-xl max-w-lg w-full max-h-[90vh] overflow-auto"
+            className="bg-gray-900 border border-gray-700 rounded-xl max-w-lg w-full max-h-[85dvh] overflow-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6">
@@ -753,8 +868,8 @@ export default function TvGuidePage() {
         </div>
       )}
 
-      {/* Legend */}
-      <div className="bg-gray-900 border-t border-gray-700 px-4 py-2 flex items-center gap-6 text-xs">
+      {/* Legend - describes the grid's block colors, which the phone list doesn't use */}
+      <div className="hidden sm:flex bg-gray-900 border-t border-gray-700 px-4 py-2 flex-wrap items-center gap-x-6 gap-y-1 text-xs">
         <span className="text-gray-500">Legend:</span>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 bg-gray-800 border border-gray-700 rounded" />

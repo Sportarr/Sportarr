@@ -132,20 +132,20 @@ export default function EpgSourcesPanel({ onSourcesChanged }: EpgSourcesPanelPro
   return (
     <div>
       {/* Add new source */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         <input
           type="text"
           placeholder="Source name"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          className="flex-1 max-w-xs px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
+          className="flex-1 max-w-xs px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
         />
         <input
           type="text"
           placeholder="XMLTV URL (http://... or .xml.gz)"
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
-          className="flex-[2] px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
+          className="flex-[2] px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
         />
         <input
           type="number"
@@ -154,7 +154,7 @@ export default function EpgSourcesPanel({ onSourcesChanged }: EpgSourcesPanelPro
           title="Priority (1-50, lower wins when sources overlap)"
           value={newPriority}
           onChange={(e) => setNewPriority(parseInt(e.target.value, 10) || 25)}
-          className="w-20 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
+          className="w-20 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:border-red-500 focus:ring-1 focus:ring-red-500"
         />
         <button
           onClick={addSource}
@@ -184,17 +184,17 @@ export default function EpgSourcesPanel({ onSourcesChanged }: EpgSourcesPanelPro
       ) : (
         <div className="space-y-2">
           {sources.map((source) => (
-            <div key={source.id} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
-              <div>
+            <div key={source.id} className="flex flex-wrap items-center justify-between gap-y-2 p-3 bg-gray-700/50 rounded-lg">
+              <div className="min-w-0 max-w-full">
                 <div className="text-white font-medium">{source.name}</div>
-                <div className="text-gray-400 text-xs truncate max-w-md">{source.url}</div>
+                <div className="text-gray-400 text-xs truncate max-w-full sm:max-w-md">{source.url}</div>
                 <div className="text-gray-500 text-xs mt-1">
                   {source.programCount} programs
                   {source.lastUpdated && ` | Updated: ${formatDateInTimezone(source.lastUpdated, timezone, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
                   {source.lastError && <span className="text-red-400"> | Error: {source.lastError}</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="ml-auto flex items-center gap-2">
                 <label className="flex items-center gap-1 text-xs text-gray-400" title="Priority (1-50, lower wins when sources overlap)">
                   Priority
                   <input
@@ -206,7 +206,7 @@ export default function EpgSourcesPanel({ onSourcesChanged }: EpgSourcesPanelPro
                       const v = parseInt(e.target.value, 10);
                       if (v !== source.priority) updatePriority(source, v);
                     }}
-                    className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                    className="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-white focus:border-red-500 focus:ring-1 focus:ring-red-500"
                   />
                 </label>
                 <button

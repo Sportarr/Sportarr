@@ -220,12 +220,13 @@ const LibraryImportPage: React.FC = () => {
   const [fileMetadataOverrides, setFileMetadataOverrides] =
     useState<Map<string, FileMetadataEditorValues>>(new Map());
   const [editorOpenForFile, setEditorOpenForFile] = useState<string | null>(null);
-  // Hardlink the imported files into the library instead of moving them, so
-  // torrents spanning many events keep seeding from the original paths.
-  // Defaults from the global "Use Hardlinks instead of Copy" media-management
-  // setting: users who enabled it expect manual imports to honor it too. The
-  // checkbox stays user-overridable per import.
-  const [createHardlinks, setCreateHardlinks] = useState(false);
+  // How imported files transfer into the library. 'auto' follows the global
+  // media-management settings (hardlink when Use Hardlinks is on, copy when
+  // Copy Files is on, otherwise move); the explicit modes override per import
+  // so torrents spanning many events can keep seeding from the original paths.
+  const [importMode, setImportMode] = useState<'auto' | 'copy' | 'hardlink' | 'move'>('auto');
+  // Shown next to Auto so the user knows what it will actually do.
+  const [autoModeLabel, setAutoModeLabel] = useState('follow media management settings');
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -234,11 +235,11 @@ const LibraryImportPage: React.FC = () => {
         if (!res.ok) return;
         const data = await res.json();
         const mm = data.mediaManagementSettings ? JSON.parse(data.mediaManagementSettings) : null;
-        if (!cancelled && mm && typeof mm.useHardlinks === 'boolean') {
-          setCreateHardlinks(mm.useHardlinks);
+        if (!cancelled && mm) {
+          setAutoModeLabel(mm.useHardlinks ? 'hardlink' : mm.copyFiles ? 'copy' : 'move');
         }
       } catch {
-        // Keep the off default if settings can't load.
+        // Keep the generic label if settings can't load.
       }
     })();
     return () => { cancelled = true; };
@@ -489,8 +490,8 @@ const LibraryImportPage: React.FC = () => {
         };
       });
 
-      if (createHardlinks) {
-        requests.forEach(r => { r.importMode = 'hardlink'; });
+      if (importMode !== 'auto') {
+        requests.forEach(r => { r.importMode = importMode; });
       }
 
       const response = await apiPost('/api/library/import', requests);
@@ -650,7 +651,7 @@ const LibraryImportPage: React.FC = () => {
                   value={folderPath}
                   onChange={(e) => setFolderPath(e.target.value)}
                   placeholder="Click Browse to select a folder..."
-                  className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500"
                   readOnly
                 />
                 <button
@@ -746,7 +747,7 @@ const LibraryImportPage: React.FC = () => {
       {currentStep === 'review' && scanResult && (
         <div className="space-y-6">
           {/* Summary Cards */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 text-center">
               <p className="text-3xl font-bold text-white">{scanResult.totalFiles}</p>
               <p className="text-sm text-gray-400 mt-1">Total Files</p>
@@ -990,22 +991,24 @@ const LibraryImportPage: React.FC = () => {
           </div>
 
           {/* Import options */}
-          <label className="flex items-start gap-3 pt-4 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={createHardlinks}
-              onChange={(e) => setCreateHardlinks(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500"
-            />
-            <span>
-              <span className="text-white text-sm font-medium">Create hardlinks instead of moving files</span>
-              <span className="block text-xs text-gray-400 mt-0.5">
-                Leaves the original files untouched so seeding torrents stay intact. Requires the
-                source and library to be on the same filesystem; falls back to copying if a link
-                cannot be created.
-              </span>
-            </span>
-          </label>
+          <div className="pt-4">
+            <label className="block text-sm font-medium text-gray-300 mb-2">Import Mode</label>
+            <select
+              value={importMode}
+              onChange={(e) => setImportMode(e.target.value as 'auto' | 'copy' | 'hardlink' | 'move')}
+              className="w-full max-w-sm px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            >
+              <option value="auto">Auto ({autoModeLabel})</option>
+              <option value="move">Move</option>
+              <option value="hardlink">Hardlink/Copy</option>
+              <option value="copy">Copy</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-1 max-w-xl">
+              Hardlink/Copy and Copy leave the original files untouched so seeding torrents stay intact.
+              Hardlink/Copy links when the source and library are on the same filesystem and copies
+              otherwise. Move relocates the files and frees the source.
+            </p>
+          </div>
 
           {/* Navigation */}
           <div className="flex justify-between pt-4">
@@ -1246,7 +1249,7 @@ const LibraryImportPage: React.FC = () => {
                       Edit File Metadata
                     </Dialog.Title>
                     <button onClick={() => setEditorOpenForFile(null)} className="text-gray-400 hover:text-white">
-                      ✕
+                      <XMarkIcon className="h-5 w-5" />
                     </button>
                   </div>
                   <div className="px-5 py-5">

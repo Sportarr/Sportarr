@@ -42,8 +42,10 @@ public class ImportMatchingService
         // First try sports-specific parser for better accuracy
         var sportsResult = _sportsParser.Parse(title);
 
-        // Fall back to generic parser
-        var parsed = _parser.Parse(title);
+        // Fall back to generic parser, with ffprobe inspection so an
+        // embedded SPORTARR tag is surfaced even when the name carries
+        // no token (the file may have been renamed arbitrarily).
+        var parsed = await _parser.ParseWithInspectionAsync(title, filePath);
 
         // Detect quality from parsed info
         var quality = parsed.Quality;
@@ -66,6 +68,41 @@ public class ImportMatchingService
 
         _logger.LogDebug("[Import Matching] Using event title: {EventTitle} (Sports parser confidence: {Confidence}%)",
             eventTitle, sportsResult.Confidence);
+
+        // AUTHORITATIVE ID TOKEN (docs/RELEASE_NAMING.md): a name tagged
+        // {sportarr-ev-XXXXXXX}, or a file carrying an embedded SPORTARR
+        // tag, identifies its event exactly - resolve it directly and skip
+        // fuzzy matching. Unknown ids (unsynced league, legacy install)
+        // fall through to the normal strategies.
+        var matchTokenId = sportsResult.SportarrEventId ?? parsed.SportarrEventId;
+        if (!string.IsNullOrEmpty(matchTokenId))
+        {
+            var tokenEventId = matchTokenId;
+            var tokenEvent = await _db.Events
+                .Include(e => e.League)
+                .FirstOrDefaultAsync(e => e.ExternalId == tokenEventId);
+            if (tokenEvent != null)
+            {
+                _logger.LogInformation("[Import Matching] Id token match: '{Title}' is tagged {Token} = '{Event}' (ID: {EventId})",
+                    title, tokenEventId, tokenEvent.Title, tokenEvent.Id);
+                return new ImportSuggestion
+                {
+                    EventId = tokenEvent.Id,
+                    EventTitle = tokenEvent.Title,
+                    League = tokenEvent.League?.Name,
+                    Season = tokenEvent.Season,
+                    EventDate = tokenEvent.EventDate,
+                    Quality = quality,
+                    QualityScore = qualityScore,
+                    Part = detectedPart,
+                    Confidence = 100,
+                    ParsedSport = sportsResult.Sport,
+                    ParsedOrganization = sportsResult.Organization
+                };
+            }
+            _logger.LogWarning("[Import Matching] '{Title}' carries id token {Token} but no local event has that id - falling back to fuzzy matching",
+                title, tokenEventId);
+        }
 
         // Search for matching events in database
         var matches = await FindEventMatchesAsync(eventTitle, detectedPart, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);

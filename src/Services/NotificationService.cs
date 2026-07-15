@@ -60,8 +60,16 @@ public class NotificationService : INotificationService
                 if (!ShouldSendForTrigger(config, trigger))
                     continue;
 
-                // Media server connections (Plex/Jellyfin/Emby) need the file path from metadata
+                // Media server connections (Plex/Jellyfin/Emby) need a path
+                // from metadata for partial scans. Imports carry filePath;
+                // renames carry seriesPath (the common folder of the renamed
+                // files) - accept either so a rename triggers a folder scan
+                // instead of falling back to a full library refresh.
                 var filePath = metadata?.TryGetValue("filePath", out var fp) == true ? fp?.ToString() : null;
+                if (string.IsNullOrEmpty(filePath) && metadata?.TryGetValue("seriesPath", out var sp) == true)
+                {
+                    filePath = sp?.ToString();
+                }
 
                 var success = notification.Implementation switch
                 {
@@ -972,7 +980,22 @@ public class NotificationService : INotificationService
             var serverName = doc.Root?.Attribute("friendlyName")?.Value ?? "Plex Server";
             var version = doc.Root?.Attribute("version")?.Value ?? "";
 
-            return (true, $"Connected to {serverName} (v{version})");
+            // Exercise the same call the refresh path depends on, so a token
+            // that can reach the server root but can't list sections fails
+            // the TEST instead of failing silently on every import (the
+            // issue #21 pattern: green test, dead refreshes).
+            var sectionsUrl = $"{host.TrimEnd('/')}/library/sections?X-Plex-Token={apiKey}";
+            using var sectionsResponse = await client.GetAsync(sectionsUrl);
+            if (!sectionsResponse.IsSuccessStatusCode)
+            {
+                return (false, $"Connected to {serverName} but listing libraries failed ({sectionsResponse.StatusCode}) - library refresh will not work with this token");
+            }
+
+            var sectionsContent = await sectionsResponse.Content.ReadAsStringAsync();
+            var sectionsDoc = XDocument.Parse(sectionsContent);
+            var sectionCount = sectionsDoc.Descendants("Directory").Count();
+
+            return (true, $"Connected to {serverName} (v{version}), {sectionCount} libraries visible");
         }
 
         return response.StatusCode == System.Net.HttpStatusCode.Unauthorized
@@ -984,7 +1007,12 @@ public class NotificationService : INotificationService
     {
         var host = GetConfigString(config, "host");
         var apiKey = GetConfigString(config, "apiKey");
-        var updateLibrary = config.TryGetValue("updateLibrary", out var ul) && ul.ValueKind != JsonValueKind.False;
+        // Absent means ENABLED: updating the library is the whole point of a
+        // media-server connection, and configs saved by older UI builds never
+        // wrote this key at all - treating absence as disabled made every
+        // such connection a silent no-op (issue #21's "test works but
+        // nothing refreshes").
+        var updateLibrary = !config.TryGetValue("updateLibrary", out var ul) || ul.ValueKind != JsonValueKind.False;
         var usePartialScan = !config.TryGetValue("usePartialScan", out var ups) || ups.ValueKind != JsonValueKind.False;
 
         if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(apiKey))
@@ -1122,7 +1150,12 @@ public class NotificationService : INotificationService
     {
         var host = GetConfigString(config, "host");
         var apiKey = GetConfigString(config, "apiKey");
-        var updateLibrary = config.TryGetValue("updateLibrary", out var ul) && ul.ValueKind != JsonValueKind.False;
+        // Absent means ENABLED: updating the library is the whole point of a
+        // media-server connection, and configs saved by older UI builds never
+        // wrote this key at all - treating absence as disabled made every
+        // such connection a silent no-op (issue #21's "test works but
+        // nothing refreshes").
+        var updateLibrary = !config.TryGetValue("updateLibrary", out var ul) || ul.ValueKind != JsonValueKind.False;
         var usePartialScan = !config.TryGetValue("usePartialScan", out var ups) || ups.ValueKind != JsonValueKind.False;
 
         if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(apiKey))
@@ -1217,7 +1250,12 @@ public class NotificationService : INotificationService
     {
         var host = GetConfigString(config, "host");
         var apiKey = GetConfigString(config, "apiKey");
-        var updateLibrary = config.TryGetValue("updateLibrary", out var ul) && ul.ValueKind != JsonValueKind.False;
+        // Absent means ENABLED: updating the library is the whole point of a
+        // media-server connection, and configs saved by older UI builds never
+        // wrote this key at all - treating absence as disabled made every
+        // such connection a silent no-op (issue #21's "test works but
+        // nothing refreshes").
+        var updateLibrary = !config.TryGetValue("updateLibrary", out var ul) || ul.ValueKind != JsonValueKind.False;
         var usePartialScan = !config.TryGetValue("usePartialScan", out var ups) || ups.ValueKind != JsonValueKind.False;
 
         if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(apiKey))

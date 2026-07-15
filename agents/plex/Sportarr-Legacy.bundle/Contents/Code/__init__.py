@@ -24,12 +24,28 @@ def get_api_url():
     return DEFAULT_API_URL
 
 
+def fetch_json(url, attempts=4):
+    # JSON fetch with 429 retry. A library refresh fires one call per
+    # episode, and the API rate-limits per IP; without waiting out the
+    # window, every item past the limit errors instead of refreshing.
+    for attempt in range(1, attempts + 1):
+        try:
+            return JSON.ObjectFromURL(url, cacheTime=0)
+        except Exception as e:
+            is_429 = '429' in str(e) or getattr(e, 'code', None) == 429
+            if is_429 and attempt < attempts:
+                Log.Info("[Sportarr-Legacy] Rate limited, waiting before retry %d/%d" % (attempt, attempts - 1))
+                Thread.Sleep(5 * attempt)
+                continue
+            raise
+
+
 def Start():
     Log.Info("[Sportarr-Legacy] Agent starting...")
     Log.Info("[Sportarr-Legacy] API URL: %s" % get_api_url())
     Log.Info("[Sportarr-Legacy] Note: For Plex 1.43.0+, consider using the new Custom Metadata Provider")
-    # No bundle-level HTTP cache. Sportarr-hub is the source of truth for
-    # episode lists, titles, and posters; cancellations, merges, and
+    # No bundle-level HTTP cache. The metadata API is the source of truth
+    # for episode lists, titles, and posters; cancellations, merges, and
     # episode-number reshuffles must reach Plex immediately on the next
     # Refresh Metadata. Every JSON fetch below also passes cacheTime=0
     # to defeat per-call caches.
@@ -56,7 +72,7 @@ class SportarrAgent(Agent.TV_Shows):
                 search_url = search_url + "&year=%s" % media.year
 
             Log.Debug("[Sportarr-Legacy] Search URL: %s" % search_url)
-            response = JSON.ObjectFromURL(search_url, cacheTime=0)
+            response = fetch_json(search_url)
 
             if 'results' in response:
                 for idx, series in enumerate(response['results'][:10]):
@@ -90,7 +106,7 @@ class SportarrAgent(Agent.TV_Shows):
         try:
             series_url = "%s/api/metadata/agents/series/%s" % (get_api_url(), metadata.id)
             Log.Debug("[Sportarr-Legacy] Series URL: %s" % series_url)
-            series = JSON.ObjectFromURL(series_url, cacheTime=0)
+            series = fetch_json(series_url)
 
             if series:
                 metadata.title = series.get('title')
@@ -136,7 +152,7 @@ class SportarrAgent(Agent.TV_Shows):
 
             seasons_url = "%s/api/metadata/agents/series/%s/seasons" % (get_api_url(), metadata.id)
             Log.Debug("[Sportarr-Legacy] Seasons URL: %s" % seasons_url)
-            seasons_response = JSON.ObjectFromURL(seasons_url, cacheTime=0)
+            seasons_response = fetch_json(seasons_url)
 
             if 'seasons' in seasons_response:
                 for season_data in seasons_response['seasons']:
@@ -174,7 +190,7 @@ class SportarrAgent(Agent.TV_Shows):
                     get_api_url(), metadata.id, season_num, ep_num
                 )
                 Log.Debug("[Sportarr-Legacy] Match URL: %s" % match_url)
-                match_response = JSON.ObjectFromURL(match_url, cacheTime=0)
+                match_response = fetch_json(match_url)
 
                 ep_data = None
                 if match_response and 'match' in match_response and match_response['match']:

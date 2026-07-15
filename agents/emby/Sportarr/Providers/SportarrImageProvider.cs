@@ -127,7 +127,7 @@ namespace Sportarr.Providers
                 try
                 {
                     var url = $"{ApiUrl}/api/metadata/agents/series/{sportarrId}";
-                    var seriesData = await _httpClient.GetFromJsonAsync<SportarrSeries>(url, cancellationToken);
+                    var seriesData = await Sportarr.Common.SportarrHttp.GetJsonWithRetryAsync<SportarrSeries>(_httpClient, url, cancellationToken);
 
                     if (seriesData != null)
                     {
@@ -203,7 +203,7 @@ namespace Sportarr.Providers
                 try
                 {
                     var url = $"{ApiUrl}/api/metadata/agents/episode/{sportarrId}";
-                    var episodeData = await _httpClient.GetFromJsonAsync<SportarrEpisode>(url, cancellationToken);
+                    var episodeData = await Sportarr.Common.SportarrHttp.GetJsonWithRetryAsync<SportarrEpisode>(_httpClient, url, cancellationToken);
 
                     if (episodeData != null && !string.IsNullOrEmpty(episodeData.ThumbUrl))
                     {
@@ -238,24 +238,26 @@ namespace Sportarr.Providers
         {
             _logger.Debug($"[Sportarr] Retrieving image from url --> {url}");
 
-            try
+            // Never return null here: Emby's ItemImageProvider dereferences
+            // the result without a null check, so a null turns one failed
+            // image into a NullReferenceException that aborts the item's
+            // whole image refresh. Throwing surfaces a clean per-image
+            // provider error instead.
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
             {
-                var response = await _httpClient.GetAsync(url, cancellationToken);
-                if (!response.IsSuccessStatusCode) return null;
-
-                var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-
-                return new HttpResponseInfo
-                {
-                    ContentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg",
-                    ContentLength = bytes.Length,
-                    Content = new System.IO.MemoryStream(bytes)
-                };
+                response.Dispose();
+                throw new HttpRequestException($"Image fetch failed with {(int)response.StatusCode} for {url}");
             }
-            catch
+
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+
+            return new HttpResponseInfo
             {
-                return null;
-            }
+                ContentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg",
+                ContentLength = bytes.Length,
+                Content = new System.IO.MemoryStream(bytes)
+            };
         }
     }
 }

@@ -32,6 +32,7 @@ public class LibraryImportService
     private readonly ConfigService _configService;
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly DiskSpaceService _diskSpaceService;
+    private readonly NotificationService _notificationService;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
@@ -45,7 +46,8 @@ public class LibraryImportService
         ConfigService configService,
         SportarrApiClient sportarrApiClient,
         DiskSpaceService diskSpaceService,
-        CustomFormatService customFormatService)
+        CustomFormatService customFormatService,
+        NotificationService notificationService)
     {
         _db = db;
         _logger = logger;
@@ -57,6 +59,7 @@ public class LibraryImportService
         _sportarrApiClient = sportarrApiClient;
         _diskSpaceService = diskSpaceService;
         _customFormatService = customFormatService;
+        _notificationService = notificationService;
     }
 
     /// <summary>
@@ -191,7 +194,39 @@ public class LibraryImportService
                     Event? matchedEvent = null;
                     int matchConfidence = 0;
 
-                    if (!string.IsNullOrEmpty(eventTitle))
+                    // AUTHORITATIVE ID TOKEN (docs/RELEASE_NAMING.md): a file
+                    // named with {sportarr-ev-XXXXXXX}, or carrying an
+                    // embedded SPORTARR tag (surfaced via ffprobe on
+                    // parsedInfo), identifies its event exactly - look it up
+                    // directly and skip fuzzy scoring. The same
+                    // claimed/HasFile eligibility rules apply as for fuzzy
+                    // matches, so a token can't double-assign an event
+                    // within one scan batch.
+                    var scanTokenId = sportsResult.SportarrEventId ?? parsedInfo.SportarrEventId;
+                    if (!string.IsNullOrEmpty(scanTokenId))
+                    {
+                        var tokenEventId = scanTokenId;
+                        var tokenEvent = await _db.Events
+                            .Include(e => e.League)
+                            .FirstOrDefaultAsync(e => e.ExternalId == tokenEventId
+                                && (isPartFile || (!e.HasFile && !claimedEventIds.Contains(e.Id))));
+                        if (tokenEvent != null)
+                        {
+                            matchedEvent = tokenEvent;
+                            matchConfidence = 100;
+                            if (!isPartFile)
+                                claimedEventIds.Add(tokenEvent.Id);
+                            _logger.LogInformation("[Library Import] Id token match: '{File}' is tagged {Token} = '{Event}'",
+                                filename, tokenEventId, tokenEvent.Title);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("[Library Import] File '{File}' carries id token {Token} but no eligible local event has that id - falling back to fuzzy matching",
+                                filename, tokenEventId);
+                        }
+                    }
+
+                    if (matchedEvent == null && !string.IsNullOrEmpty(eventTitle))
                     {
                         // Load candidates, excluding events already claimed by earlier files in this scan batch
                         // and events that already have files.
@@ -299,6 +334,11 @@ public class LibraryImportService
     {
         var result = new ImportResult();
 
+        // Successful imports queued for OnDownload notifications after the
+        // batch save, so media-server connections (Plex/Jellyfin/Emby)
+        // refresh for manual imports exactly like automatic ones.
+        var notifyQueue = new List<(Event Evt, string Path, string Quality)>();
+
         // Get media management settings for file transfer
         var settings = await GetMediaManagementSettingsAsync();
         var config = await _configService.GetConfigAsync();
@@ -325,29 +365,36 @@ public class LibraryImportService
                     request.FilePath);
 
                 // Parse import mode from request: "move", "copy", or "hardlink"
-                // Default behavior when the request doesn't specify a mode:
-                // - CopyFiles=true: Copy (preserves sources; UseHardlinks decides HOW
-                //   the copy happens - hardlink vs actual copy)
-                // - CopyFiles=false + UseHardlinks=true: Hardlink. Users who enabled
-                //   "Use Hardlinks instead of Copy" expect manual imports to honor it
-                //   (keeps torrents seeding from the source path); previously this
-                //   combination silently chose Move and broke seeding.
-                // - CopyFiles=false + UseHardlinks=false: Move (removes source files)
-                // An explicit "hardlink" request links regardless of the global setting.
-                var importMode = settings.CopyFiles
-                    ? LibraryImportMode.Copy
-                    : settings.UseHardlinks
-                        ? LibraryImportMode.Hardlink
+                // Default (Auto) when the request doesn't specify a mode, mirroring
+                // the automatic-import planner's precedence:
+                // - UseHardlinks=true: Hardlink (regardless of CopyFiles - users who
+                //   enabled "Use Hardlinks instead of Copy" expect manual imports to
+                //   honor it and keep torrents seeding from the source path)
+                // - UseHardlinks=false + CopyFiles=true: Copy
+                // - both off: Move (removes source files)
+                var importMode = settings.UseHardlinks
+                    ? LibraryImportMode.Hardlink
+                    : settings.CopyFiles
+                        ? LibraryImportMode.Copy
                         : LibraryImportMode.Move;
+                // An explicit per-import mode is honored literally: explicit Copy
+                // must produce a real copy even when Use Hardlinks is enabled
+                // (Copy and Hardlink are separate choices in the import UI).
+                var modeWasExplicit = false;
                 if (!string.IsNullOrEmpty(request.ImportMode))
                 {
-                    importMode = request.ImportMode.ToLowerInvariant() switch
+                    var requested = request.ImportMode.ToLowerInvariant() switch
                     {
                         "copy" => LibraryImportMode.Copy,
                         "hardlink" => LibraryImportMode.Hardlink,
                         "move" => LibraryImportMode.Move,
-                        _ => importMode // Keep the default based on CopyFiles setting
+                        _ => (LibraryImportMode?)null
                     };
+                    if (requested.HasValue)
+                    {
+                        importMode = requested.Value;
+                        modeWasExplicit = true;
+                    }
                 }
                 _logger.LogInformation("[Import] Library import mode: {ImportMode} (CopyFiles={CopyFiles}, UseHardlinks={UseHardlinks}, requested: {RequestedMode})",
                     importMode, settings.CopyFiles, settings.UseHardlinks, request.ImportMode ?? "auto");
@@ -396,7 +443,8 @@ public class LibraryImportService
                             config,
                             partName,
                             partNumber,
-                            importMode);
+                            importMode,
+                            modeWasExplicit);
 
                         // Update event with new file info
                         existingEvent.FilePath = destinationPath;
@@ -475,6 +523,8 @@ public class LibraryImportService
                         }
 
                         result.Imported.Add(destinationPath);
+                        notifyQueue.Add((existingEvent, destinationPath,
+                            request.Quality ?? _fileParser.BuildQualityString(parsedInfo)));
                     }
                     else
                     {
@@ -549,7 +599,8 @@ public class LibraryImportService
                         config,
                         partName,
                         partNumber,
-                        importMode);
+                        importMode,
+                        modeWasExplicit);
 
                     // Update event with file path
                     newEvent.FilePath = destinationPath;
@@ -578,6 +629,8 @@ public class LibraryImportService
                     _db.EventFiles.Add(eventFile);
 
                     result.Created.Add(destinationPath);
+                    notifyQueue.Add((newEvent, destinationPath,
+                        request.Quality ?? _fileParser.BuildQualityString(parsedInfo)));
                     _logger.LogInformation("Created new event from file: {EventTitle} -> {FilePath} (Part: {PartName})",
                         newEvent.Title, destinationPath, partName ?? "N/A");
                 }
@@ -595,6 +648,35 @@ public class LibraryImportService
         }
 
         await _db.SaveChangesAsync();
+
+        // NOTIFICATIONS: manual imports fire the same OnDownload
+        // notifications as automatic imports. Previously only the
+        // download-queue path notified, so wizard-imported files never
+        // triggered a media-server library refresh until a manual scan.
+        foreach (var (evt, path, quality) in notifyQueue)
+        {
+            try
+            {
+                await _notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnDownload,
+                    $"Imported: {evt.Title}",
+                    $"File: {Path.GetFileName(path)}\nQuality: {quality}",
+                    new Dictionary<string, object>
+                    {
+                        { "eventId", evt.Id },
+                        { "eventTitle", evt.Title ?? "" },
+                        { "league", evt.League?.Name ?? "" },
+                        { "sport", evt.Sport ?? "" },
+                        { "filePath", path },
+                        { "quality", quality }
+                    },
+                    evt.League?.Tags);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Import] Failed to send notification for manual import: {Path}", path);
+            }
+        }
 
         _logger.LogInformation(
             "Import complete: {Imported} imported, {Created} created, {Skipped} skipped, {Failed} failed",
@@ -614,7 +696,8 @@ public class LibraryImportService
         Config config,
         string? partName = null,
         int? partNumber = null,
-        LibraryImportMode importMode = LibraryImportMode.Move)
+        LibraryImportMode importMode = LibraryImportMode.Move,
+        bool modeWasExplicit = false)
     {
         var sourceFileInfo = new FileInfo(sourcePath);
         var extension = sourceFileInfo.Extension;
@@ -691,6 +774,7 @@ public class LibraryImportService
             {
                 EventTitle = eventInfo.Title,
                 EventTitleThe = eventInfo.Title,
+                SportarrId = eventInfo.ExternalId ?? string.Empty,
                 AirDate = brandingDate,
                 Quality = parsed.Quality ?? "Unknown",
                 QualityFull = _fileParser.BuildQualityString(parsed),
@@ -737,7 +821,7 @@ public class LibraryImportService
         }
 
         // Transfer file based on import mode
-        await TransferFileAsync(sourcePath, destinationPath, settings, importMode);
+        await TransferFileAsync(sourcePath, destinationPath, settings, importMode, modeWasExplicit);
 
         // Set permissions (Linux/macOS only)
         if (settings.SetPermissions && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -828,7 +912,7 @@ public class LibraryImportService
     ///   Moving symlinks would break debrid streaming as the link target wouldn't be accessible
     /// Manual import lets the user choose between Move and Copy.
     /// </summary>
-    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings, LibraryImportMode importMode)
+    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings, LibraryImportMode importMode, bool modeWasExplicit = false)
     {
         // Check if source is a symlink (common with debrid services like Decypharr)
         var sourceFileInfo = new FileInfo(source);
@@ -855,10 +939,12 @@ public class LibraryImportService
             return;
         }
 
-        // Copy/Hardlink mode: Try hardlink first (when explicitly requested per-import,
-        // or when the global UseHardlinks setting is on), then fall back.
+        // Hardlink mode: try to link, then fall back. Copy mode never upgrades
+        // to a hardlink - Copy and Hardlink are separate choices in the import
+        // UI, so an explicit Copy must produce real duplicate bytes. (Auto mode
+        // already resolves to Hardlink when Use Hardlinks is enabled.)
         // Hardlinks let two paths reference the same on-disk bytes without duplicating storage.
-        if (importMode == LibraryImportMode.Hardlink || settings.UseHardlinks)
+        if (importMode == LibraryImportMode.Hardlink)
         {
             try
             {
@@ -895,13 +981,14 @@ public class LibraryImportService
                 // Explicitly requested hardlinks always fall back to COPY, never move.
                 // The user asked for links to keep the source seedable, so deleting
                 // the source on a fallback would defeat the purpose of the request.
-                if (importMode == LibraryImportMode.Hardlink)
+                if (modeWasExplicit)
                 {
                     _logger.LogInformation("[Transfer] Hardlink was explicitly requested - falling back to copy to preserve the source file");
                 }
-                // CRITICAL FIX: When hardlink fails and CopyFiles=false, fall back to MOVE not copy
-                // This prevents duplicates when user has "Copy Files" disabled but hardlinks enabled
-                // (common on Unraid where downloads are on NVMe and library is on array)
+                // CRITICAL FIX: When an auto-resolved hardlink fails and CopyFiles=false,
+                // fall back to MOVE not copy. This prevents duplicates when the user has
+                // "Copy Files" disabled but hardlinks enabled (common on Unraid where
+                // downloads are on NVMe and library is on the array).
                 else if (!settings.CopyFiles)
                 {
                     _logger.LogInformation("[Transfer] CopyFiles=false, falling back to MOVE instead of copy");
@@ -1741,9 +1828,11 @@ public class FileImportRequest
     public string? Season { get; set; }
 
     /// <summary>
-    /// Import mode: "move", "copy", or "hardlink".
-    /// - "move" (default): Moves files from source to destination
-    /// - "copy": Copies files or creates hardlinks based on settings
+    /// Import mode: "move", "copy", or "hardlink". When omitted, Auto follows
+    /// the global settings (hardlink when Use Hardlinks is on, else copy when
+    /// Copy Files is on, else move).
+    /// - "move": Moves files from source to destination
+    /// - "copy": Always copies the actual bytes, even when Use Hardlinks is on
     /// - "hardlink": Creates hardlinks regardless of the global UseHardlinks
     ///   setting, falling back to copy (never move) so seeds stay intact
     /// </summary>

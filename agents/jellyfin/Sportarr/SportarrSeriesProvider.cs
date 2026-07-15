@@ -189,18 +189,10 @@ namespace Jellyfin.Plugin.Sportarr
             return client.GetAsync(url, cancellationToken);
         }
 
-        // Metadata fetches must always reach the hub; cancellations / merges
-        // / episode renumberings need to land on the next refresh. Image
+        // No-cache string fetch with 429 retry (see SportarrHttp). Image
         // URLs are content-hashed, so GetImageResponse above can hit any
         // intermediary cache without going stale.
-        private static async Task<string> FetchNoCacheStringAsync(HttpClient client, string url, CancellationToken cancellationToken)
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true, NoStore = true };
-            request.Headers.Pragma.ParseAdd("no-cache");
-            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        }
+        private static Task<string> FetchNoCacheStringAsync(HttpClient client, string url, CancellationToken cancellationToken)
+            => SportarrHttp.GetStringWithRetryAsync(client, url, cancellationToken);
     }
 }

@@ -374,7 +374,7 @@ export default function EventFileDetailModal({
                               type="checkbox"
                               checked={selectedIds.has(file.id)}
                               onChange={() => toggleSelected(file.id)}
-                              className="mt-1 accent-blue-600 cursor-pointer"
+                              className="mt-1 accent-red-600 cursor-pointer"
                               title="Select for bulk edit"
                             />
                             <div className="flex-1 min-w-0">

@@ -362,18 +362,18 @@ const BackupPage: React.FC = () => {
       {/* Create Backup Section */}
       <div className="mb-6 bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h2 className="text-xl font-semibold text-white mb-4">Create New Backup</h2>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <input
             type="text"
             placeholder="Optional note for this backup..."
             value={backupNote}
             onChange={(e) => setBackupNote(e.target.value)}
-            className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="min-w-[200px] flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500"
           />
           <button
             onClick={handleCreateBackup}
             disabled={creating}
-            className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             <ArrowDownTrayIcon className="w-5 h-5" />
             {creating ? 'Creating...' : 'Backup Now'}
@@ -415,7 +415,7 @@ const BackupPage: React.FC = () => {
           <div className="divide-y divide-gray-700">
             {backups.map((backup) => (
               <div key={backup.name} className="p-4 hover:bg-gray-750 transition-colors">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex-1">
                     <h3 className="text-white font-medium mb-1">{backup.name}</h3>
                     <div className="flex items-center gap-4 text-sm text-gray-400">
@@ -424,7 +424,7 @@ const BackupPage: React.FC = () => {
                       <span>{backup.sizeFormatted}</span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => handleDownloadBackup(backup.name)}
                       className="px-4 py-2 bg-blue-900/30 text-blue-400 rounded hover:bg-blue-900/50 flex items-center gap-2 transition-colors"
@@ -626,8 +626,9 @@ const BackupPage: React.FC = () => {
                 <p className="text-sm text-white font-mono bg-gray-900 p-2 rounded mb-2">
                   {showRestoreConfirm}
                 </p>
-                <p className="text-sm text-yellow-400">
-                  ⚠️ Your current database will be backed up before restoration, but you will need to restart Sportarr after the restore.
+                <p className="flex items-start gap-2 text-sm text-yellow-400">
+                  <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span>Your current database will be backed up before restoration, but you will need to restart Sportarr after the restore.</span>
                 </p>
               </div>
             </div>

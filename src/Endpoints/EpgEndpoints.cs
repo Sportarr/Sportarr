@@ -28,7 +28,8 @@ app.MapGet("/api/epg/sources", async (EpgService epgService) =>
         s.Created,
         s.LastUpdated,
         s.LastError,
-        s.ProgramCount
+        s.ProgramCount,
+        s.IptvSourceId
     }));
 });
 
@@ -49,14 +50,15 @@ app.MapGet("/api/epg/sources/{id:int}", async (int id, EpgService epgService) =>
         source.Created,
         source.LastUpdated,
         source.LastError,
-        source.ProgramCount
+        source.ProgramCount,
+        source.IptvSourceId
     });
 });
 
 // Add a new EPG source
 app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, EpgService epgService) =>
 {
-    var source = await epgService.AddSourceAsync(request.Name, request.Url, request.Priority);
+    var source = await epgService.AddSourceAsync(request.Name, request.Url, request.Priority, request.IptvSourceId);
     return Results.Created($"/api/epg/sources/{source.Id}", new
     {
         source.Id,
@@ -64,7 +66,8 @@ app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, EpgService e
         source.Url,
         source.IsActive,
         source.Priority,
-        source.Created
+        source.Created,
+        source.IptvSourceId
     });
 }).WithRequestValidation<AddEpgSourceRequest>();
 

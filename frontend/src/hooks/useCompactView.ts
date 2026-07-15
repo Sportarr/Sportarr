@@ -26,6 +26,14 @@ export function useIsWideScreen(breakpoint = COMPACT_VIEW_BREAKPOINT): boolean {
 export function useCompactView(): boolean {
   const { eventViewMode, loading } = useUISettings();
   const wideScreen = useIsWideScreen();
+  const phone = !useIsWideScreen(640);
+
+  // Phones never get tables, regardless of the user's view-mode setting - a
+  // horizontally clipped table is unusable on a phone. Card views are the
+  // mobile layout; the setting still governs tablets and desktop.
+  if (phone) {
+    return false;
+  }
 
   if (loading) {
     return !wideScreen;

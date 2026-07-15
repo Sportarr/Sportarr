@@ -1,5 +1,6 @@
 using System.Net;
 using System.Xml.Linq;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -183,10 +184,43 @@ public class TorznabClient
         }
     }
 
+    // Caps cache, static because IndexerSearchService constructs a fresh
+    // client per search. Keyed on id + url so editing the indexer
+    // refetches. Failures are cached too (as null) so an indexer with a
+    // broken caps endpoint isn't re-probed on every single search.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (TorznabCapabilities? Caps, DateTime FetchedAt)> CapsCache = new();
+    private static readonly TimeSpan CapsCacheTtl = TimeSpan.FromHours(12);
+    private static readonly TimeSpan CapsFailureRetry = TimeSpan.FromMinutes(15);
+
     /// <summary>
-    /// Search for releases matching query
+    /// Cached wrapper around <see cref="GetCapabilitiesAsync"/>, used to
+    /// decide whether an indexer advertises optional search params (e.g.
+    /// "sportarrid") without a caps round-trip per search.
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 10000)
+    private async Task<TorznabCapabilities?> GetCachedCapabilitiesAsync(Indexer config)
+    {
+        var cacheKey = $"{config.Id}|{config.Url}";
+        if (CapsCache.TryGetValue(cacheKey, out var cached))
+        {
+            var age = DateTime.UtcNow - cached.FetchedAt;
+            if (age < (cached.Caps != null ? CapsCacheTtl : CapsFailureRetry))
+                return cached.Caps;
+        }
+
+        var caps = await GetCapabilitiesAsync(config);
+        CapsCache[cacheKey] = (caps, DateTime.UtcNow);
+        return caps;
+    }
+
+    /// <summary>
+    /// Search for releases matching query. When sportarrId is provided
+    /// (canonical "ev-"/"lg-" id of the event or league being searched) and
+    /// the indexer's caps advertise the "sportarrid" param, it is sent
+    /// alongside the text query so adopting trackers can answer with an
+    /// exact id lookup (docs/RELEASE_NAMING.md). Indexers that don't
+    /// advertise it are never sent the param.
+    /// </summary>
+    public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 10000, string? sportarrId = null)
     {
         // Build parameters with category filtering
         var parameters = new Dictionary<string, string>
@@ -195,6 +229,16 @@ public class TorznabClient
             { "limit", maxResults.ToString() },
             { "extended", "1" }
         };
+
+        if (!string.IsNullOrEmpty(sportarrId))
+        {
+            var caps = await GetCachedCapabilitiesAsync(config);
+            if (caps?.SupportedSearchParams.Contains("sportarrid") == true)
+            {
+                parameters["sportarrid"] = sportarrId;
+                _logger.LogDebug("[Torznab] {Indexer} supports sportarrid - searching by id {Id}", config.Name, sportarrId);
+            }
+        }
 
         // Add category filter - use configured categories or default sport categories
         var categories = GetEffectiveCategories(config);
@@ -481,6 +525,19 @@ public class TorznabClient
                     ReleaseGroup = ExtractReleaseGroup(title)
                 };
 
+                // Sportarr id attribute (docs/RELEASE_NAMING.md): trackers
+                // adopting the release naming standard emit the canonical id
+                // as <torznab:attr name="sportarrid" value="ev-XXXXXXX"/>.
+                // Normalized here so a malformed value reads as absent.
+                var sportarrId = SportarrIdToken.Normalize(GetTorznabAttr(item, "sportarrid"));
+                if (sportarrId != null)
+                {
+                    if (sportarrId.StartsWith("ev-", StringComparison.Ordinal))
+                        result.SportarrEventId = sportarrId;
+                    else if (sportarrId.StartsWith("lg-", StringComparison.Ordinal))
+                        result.SportarrLeagueId = sportarrId;
+                }
+
                 // Parse quality using enhanced detection service if available
                 if (_qualityDetection != null)
                 {
@@ -555,9 +612,21 @@ public class TorznabClient
         var searching = doc.Descendants("searching").FirstOrDefault();
         if (searching != null)
         {
-            capabilities.SearchAvailable = ParseBool(searching.Element("search")?.Attribute("available")?.Value);
+            var searchEl = searching.Element("search");
+            capabilities.SearchAvailable = ParseBool(searchEl?.Attribute("available")?.Value);
             capabilities.TvSearchAvailable = ParseBool(searching.Element("tv-search")?.Attribute("available")?.Value);
             capabilities.MovieSearchAvailable = ParseBool(searching.Element("movie-search")?.Attribute("available")?.Value);
+
+            // supportedParams is how servers advertise optional query params
+            // (the standard mechanism behind id params like tvdbid).
+            var supported = searchEl?.Attribute("supportedParams")?.Value;
+            if (!string.IsNullOrWhiteSpace(supported))
+            {
+                foreach (var p in supported.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    capabilities.SupportedSearchParams.Add(p);
+                }
+            }
         }
 
         // Parse categories and their nested subcategories
@@ -604,9 +673,11 @@ public class TorznabClient
 
     private string? GetTorznabAttr(XElement item, string attrName)
     {
+        // Attr NAME matching is case-insensitive; the namespace stays
+        // exact per the torznab spec.
         var torznabNs = XNamespace.Get("http://torznab.com/schemas/2015/feed");
         return item.Descendants(torznabNs + "attr")
-            .FirstOrDefault(a => a.Attribute("name")?.Value == attrName)
+            .FirstOrDefault(a => string.Equals(a.Attribute("name")?.Value, attrName, StringComparison.OrdinalIgnoreCase))
             ?.Attribute("value")?.Value;
     }
 
@@ -743,6 +814,10 @@ public class TorznabCapabilities
     public bool TvSearchAvailable { get; set; }
     public bool MovieSearchAvailable { get; set; }
     public List<TorznabCategory> Categories { get; set; } = new();
+
+    /// <summary>Params the server's free-text search advertises via
+    /// supportedParams (e.g. "q", "sportarrid"). Case-insensitive.</summary>
+    public HashSet<string> SupportedSearchParams { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>

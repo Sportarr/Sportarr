@@ -254,19 +254,9 @@ namespace Sportarr.Providers
         }
 
         /// <summary>
-        /// JSON fetch that bypasses HTTP caches. Sportarr-hub is the source of
-        /// truth for episode lists / titles / posters; cancellations, merges,
-        /// and renumberings must surface on the next library refresh, not
-        /// minutes-to-hours later when an upstream cache expires.
+        /// No-cache JSON fetch with 429 retry (see Common.SportarrHttp).
         /// </summary>
-        private async Task<T> FetchNoCacheJsonAsync<T>(string url, CancellationToken cancellationToken)
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
-            request.Headers.Pragma.ParseAdd("no-cache");
-            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
+        private Task<T> FetchNoCacheJsonAsync<T>(string url, CancellationToken cancellationToken)
+            => Sportarr.Common.SportarrHttp.GetJsonWithRetryAsync<T>(_httpClient, url, cancellationToken)!;
     }
 }

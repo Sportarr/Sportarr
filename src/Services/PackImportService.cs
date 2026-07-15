@@ -21,6 +21,7 @@ public class PackImportService
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly ILogger<PackImportService> _logger;
+    private readonly NotificationService _notificationService;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
@@ -32,7 +33,8 @@ public class PackImportService
         DiskSpaceService diskSpaceService,
         ReleaseEvaluator releaseEvaluator,
         SportarrApiClient sportarrApiClient,
-        ILogger<PackImportService> logger)
+        ILogger<PackImportService> logger,
+        NotificationService notificationService)
     {
         _db = db;
         _parser = parser;
@@ -42,6 +44,7 @@ public class PackImportService
         _releaseEvaluator = releaseEvaluator;
         _sportarrApiClient = sportarrApiClient;
         _logger = logger;
+        _notificationService = notificationService;
     }
 
     /// <summary>
@@ -541,6 +544,22 @@ public class PackImportService
     /// </summary>
     private Task<EventMatch?> FindBestEventMatchAsync(string fileName, List<Event> monitoredEvents)
     {
+        // AUTHORITATIVE ID TOKEN (docs/RELEASE_NAMING.md): a pack member
+        // named with an event id token maps to its event exactly, no date
+        // or team arithmetic needed.
+        var tokenEventId = Helpers.SportarrIdToken.ExtractEventId(fileName);
+        if (tokenEventId != null)
+        {
+            var tokenEvent = monitoredEvents.FirstOrDefault(e =>
+                string.Equals(e.ExternalId, tokenEventId, StringComparison.OrdinalIgnoreCase));
+            if (tokenEvent != null)
+            {
+                _logger.LogInformation("[Pack Import] Id token match: '{File}' is tagged {Token} = '{Event}'",
+                    fileName, tokenEventId, tokenEvent.Title);
+                return Task.FromResult<EventMatch?>(new EventMatch { Event = tokenEvent, Confidence = 100 });
+            }
+        }
+
         var fileInfo = ParsePackFileName(fileName);
         if (fileInfo == null)
             return Task.FromResult<EventMatch?>(null);
@@ -819,6 +838,32 @@ public class PackImportService
 
         _logger.LogInformation("[Pack Import] ✓ Imported: {FileName} -> {Event} (Quality: {Quality}, CF Score: {CFScore})",
             fileName, eventInfo.Title, eventInfo.Quality, customFormatScore);
+
+        // NOTIFICATIONS: pack members fire the same OnDownload notification
+        // as single-file imports, so media-server connections refresh for
+        // every event a pack fills - previously pack imports never notified
+        // and imported games only appeared after a manual library scan.
+        try
+        {
+            await _notificationService.SendNotificationAsync(
+                NotificationTrigger.OnDownload,
+                $"Imported: {eventInfo.Title}",
+                $"File: {fileName}\nQuality: {eventInfo.Quality}",
+                new Dictionary<string, object>
+                {
+                    { "eventId", eventInfo.Id },
+                    { "eventTitle", eventInfo.Title ?? "" },
+                    { "league", eventInfo.League?.Name ?? "" },
+                    { "sport", eventInfo.Sport ?? "" },
+                    { "filePath", destinationPath },
+                    { "quality", eventInfo.Quality ?? "" }
+                },
+                eventInfo.League?.Tags);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Pack Import] Failed to send notification for {FileName}", fileName);
+        }
     }
 
     /// <summary>

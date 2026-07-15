@@ -1895,6 +1895,40 @@ public static class DatabaseInitializer
         }
     }
 
+    // One-time retirement of the "Copy Files" setting. Imports are seeding-aware
+    // and per-client Post-Import Behavior covers the always-preserve use case, so
+    // the global toggle left the UI. Installs that had it enabled keep their exact
+    // behavior: every existing Auto client is pinned to the preserve mode the old
+    // setting produced (Hardlink when Use Hardlinks is on, otherwise Copy), then
+    // the flag is cleared so it never influences a decision again. Pure EF, runs
+    // on both providers; no-op once the flag is false.
+    using (var scope = services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        try
+        {
+            var mediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
+            if (mediaSettings is { CopyFiles: true })
+            {
+                var preserveMode = mediaSettings.UseHardlinks ? PostImportMode.Hardlink : PostImportMode.Copy;
+                var autoClients = await db.DownloadClients
+                    .Where(c => c.PostImportMode == PostImportMode.Auto)
+                    .ToListAsync();
+                foreach (var client in autoClients)
+                {
+                    client.PostImportMode = preserveMode;
+                }
+                mediaSettings.CopyFiles = false;
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[Sportarr] Copy Files retired: {autoClients.Count} download client(s) pinned to {preserveMode} to preserve the previous always-preserve behavior");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not migrate retired Copy Files setting: {ex.Message}");
+        }
+    }
+
     // Ensure file format matches EnableMultiPartEpisodes setting
     using (var scope = services.CreateScope())
     {
@@ -2330,14 +2364,17 @@ public static class DatabaseInitializer
         EnsureColumn(db, "IptvSources", "DetectedCatchupMode", "TEXT");
         EnsureColumn(db, "IptvSources", "FfmpegInputArgs", "TEXT");
         EnsureColumn(db, "EpgSources", "Priority", "INTEGER NOT NULL DEFAULT 25");
+        EnsureColumn(db, "EpgSources", "IptvSourceId", "INTEGER");
         EnsureColumn(db, "Leagues", "RetentionDays", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "Leagues", "AllowHighlights", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "Leagues", "SessionTypeQualityProfiles", "TEXT NULL");
         EnsureColumn(db, "MediaManagementSettings", "UnmonitorDeletedEvents", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "Teams", "UserAliases", "TEXT");
         EnsureColumn(db, "DownloadClients", "BlackholeFolder", "TEXT");
         EnsureColumn(db, "DownloadClients", "WatchFolder", "TEXT");
         EnsureColumn(db, "DownloadClients", "SaveMagnetFiles", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DownloadClients", "ReadOnly", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "DownloadClients", "PostImportMode", "INTEGER NOT NULL DEFAULT 0");
 
         RelaxLegacyRootFolderColumns(db);
     }

@@ -156,7 +156,7 @@ export default function LogFilesPage() {
               <div className="px-6 py-4 bg-red-950/30 border-b border-red-900/30">
                 <h2 className="text-xl font-semibold text-white">Available Logs</h2>
               </div>
-              <div className="divide-y divide-red-900/20 max-h-[600px] overflow-y-auto">
+              <div className="divide-y divide-red-900/20 lg:max-h-[600px] lg:overflow-y-auto">
                 {logFiles && logFiles.length > 0 ? (
                   logFiles.map((file) => (
                     <div

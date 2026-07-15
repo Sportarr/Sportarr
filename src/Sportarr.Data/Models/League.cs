@@ -208,6 +208,17 @@ public class League
     public string? MonitoredEventTypes { get; set; }
 
     /// <summary>
+    /// Optional quality profile per session/event type, stored as a JSON map of
+    /// type name to profile id (e.g. {"Race":2,"Free Practice 1":5} for
+    /// motorsport sessions, {"PPV":3,"Weekly":1} for fighting/wrestling event
+    /// types). Types absent from the map use the league's quality profile.
+    /// Applied by stamping Event.QualityProfileId, so every downstream path
+    /// (searches, upgrades, and every PART of a multi-part fight card) follows
+    /// the mapped profile automatically.
+    /// </summary>
+    public string? SessionTypeQualityProfiles { get; set; }
+
+    /// <summary>
     /// Also monitor finals/championship events (Super Bowl, NBA Finals,
     /// cup finals) even when team-based filtering is active and the
     /// monitored teams are not playing. Users who follow one team usually
@@ -419,6 +430,9 @@ public class AddLeagueRequest
     /// </summary>
     public string? MonitoredEventTypes { get; set; }
 
+    /// <summary>JSON map of session/event type name to quality profile id (see League).</summary>
+    public string? SessionTypeQualityProfiles { get; set; }
+
     /// <summary>Monitor finals/championship events even when monitored teams aren't playing.</summary>
     public bool MonitorFinals { get; set; } = false;
 
@@ -462,6 +476,7 @@ public class AddLeagueRequest
             MonitoredParts = MonitoredParts,
             MonitoredSessionTypes = MonitoredSessionTypes,
             MonitoredEventTypes = MonitoredEventTypes,
+            SessionTypeQualityProfiles = SessionTypeQualityProfiles,
             MonitorFinals = MonitorFinals,
             MonitorPlayoffs = MonitorPlayoffs,
             MonitorPreseason = MonitorPreseason,
@@ -501,6 +516,7 @@ public class LeagueResponse
     public string? MonitoredParts { get; set; }
     public string? MonitoredSessionTypes { get; set; }
     public string? MonitoredEventTypes { get; set; }
+    public string? SessionTypeQualityProfiles { get; set; }
     public bool MonitorFinals { get; set; }
     public bool MonitorPlayoffs { get; set; }
     public bool MonitorPreseason { get; set; }
@@ -617,6 +633,7 @@ public class LeagueResponse
             MonitoredParts = league.MonitoredParts,
             MonitoredSessionTypes = league.MonitoredSessionTypes,
             MonitoredEventTypes = league.MonitoredEventTypes,
+            SessionTypeQualityProfiles = league.SessionTypeQualityProfiles,
             MonitorFinals = league.MonitorFinals,
             MonitorPlayoffs = league.MonitorPlayoffs,
             MonitorPreseason = league.MonitorPreseason,

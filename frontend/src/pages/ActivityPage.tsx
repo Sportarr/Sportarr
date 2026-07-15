@@ -22,11 +22,12 @@ import ManualImportModal from '../components/ManualImportModal';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import SegmentedTabs from '../components/SegmentedTabs';
+import WantedPage from './WantedPage';
 import { useCompactView } from '../hooks/useCompactView';
 import { BADGE_BLUE, BADGE_PURPLE, BUTTON_DESTRUCTIVE, BUTTON_ICON_DESTRUCTIVE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_SUCCESS, BUTTON_ICON_WARNING, BUTTON_INFO, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_WARNING } from '../utils/designTokens';
 import { formatRelativeDate } from '../utils/timezone';
 
-type TabType = 'queue' | 'history' | 'blocklist' | 'grabHistory';
+type TabType = 'queue' | 'history' | 'blocklist' | 'grabHistory' | 'missing' | 'cutoffUnmet';
 
 interface Event {
   id: number;
@@ -114,8 +115,9 @@ interface BlocklistItem {
 }
 
 interface GrabHistoryItem {
+  kind: 'grab' | 'import';
   id: number;
-  eventId: number;
+  eventId: number | null;
   eventTitle?: string;
   leagueName?: string;
   title: string;
@@ -416,6 +418,9 @@ export default function ActivityPage() {
       loadHistory(showLoading);
     } else if (activeTab === 'grabHistory') {
       loadGrabHistory(showLoading);
+    } else if (activeTab === 'missing' || activeTab === 'cutoffUnmet') {
+      // The embedded Wanted views load their own data.
+      setIsInitialLoad(false);
     } else {
       loadBlocklist(showLoading);
     }
@@ -505,6 +510,20 @@ export default function ActivityPage() {
       alert(error.response?.data?.error || 'Failed to re-grab release');
     } finally {
       setRegrabbing(null);
+    }
+  };
+
+  // Delete the event's file(s) from disk. The history row stays so the
+  // release can be re-grabbed later; its status flips to Missing.
+  const handleDeleteFile = async (item: GrabHistoryItem) => {
+    if (!item.eventId) return;
+    if (!confirm(`Delete the file(s) for "${item.eventTitle || item.title}" from disk? The entry stays in History so you can re-grab it later.`)) return;
+    try {
+      await apiClient.delete(`/events/${item.eventId}/files`);
+      loadGrabHistory();
+    } catch (error: any) {
+      console.error('Failed to delete file:', error);
+      alert(error.response?.data?.error || 'Failed to delete file');
     }
   };
 
@@ -1297,7 +1316,7 @@ export default function ActivityPage() {
     <PageShell>
         <PageHeader
           title="Activity"
-          subtitle="Monitor downloads and import history"
+          subtitle="Monitor grabs and import history"
           actions={
             <>
               {activeTab === 'queue' && (
@@ -1322,18 +1341,19 @@ export default function ActivityPage() {
         />
 
         <SegmentedTabs
-          items={[
-            { key: 'queue', label: 'Queue', badge: (queueItems.length + pendingImports.length) || null },
-            { key: 'history', label: 'History' },
-            { key: 'blocklist', label: 'Blocklist', badge: blocklistItems.length || null },
-            { key: 'grabHistory', label: 'Grab History' },
-          ]}
-          value={activeTab}
-          onChange={(tab) => {
-            setActiveTab(tab);
-            setPage(1);
-          }}
-        />
+            items={[
+              { key: 'queue', label: 'Queue', badge: (queueItems.length + pendingImports.length) || null },
+              { key: 'grabHistory', label: 'History' },
+              { key: 'missing', label: 'Missing' },
+              { key: 'cutoffUnmet', label: 'Cutoff Unmet' },
+              { key: 'blocklist', label: 'Blocklist', badge: blocklistItems.length || null },
+            ]}
+            value={activeTab}
+            onChange={(tab) => {
+              setActiveTab(tab);
+              setPage(1);
+            }}
+          />
 
         {/* Content */}
         {isLoading ? (
@@ -1691,7 +1711,7 @@ export default function ActivityPage() {
                     <select
                       value={queueSortField}
                       onChange={(e) => setQueueSortField(e.target.value as QueueSortField)}
-                      className="flex-1 min-w-0 px-2 py-1 bg-gray-700 border border-gray-600 text-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-red-500"
+                      className="flex-1 min-w-0 px-2 py-1 bg-gray-800 border border-gray-700 text-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-red-500"
                     >
                       <option value="event">Event</option>
                       <option value="title">Episode Title</option>
@@ -2134,6 +2154,16 @@ export default function ActivityPage() {
               </>
             )}
           </div>
+        ) : activeTab === 'missing' ? (
+          // Wanted: monitored events with no file yet (embedded page loads its own data)
+          <div className="pt-2">
+            <WantedPage key="wanted-missing" embedded fixedTab="missing" />
+          </div>
+        ) : activeTab === 'cutoffUnmet' ? (
+          // Wanted: events whose file is below the quality cutoff
+          <div className="pt-2">
+            <WantedPage key="wanted-cutoff" embedded fixedTab="cutoff-unmet" />
+          </div>
         ) : activeTab === 'blocklist' ? (
           // Blocklist Tab
           <div className="rounded-lg overflow-hidden">
@@ -2384,10 +2414,14 @@ export default function ActivityPage() {
                               </div>
                             </td>
                             <td className="px-2 py-1.5 text-center">
-                              <span className="text-gray-400 text-xs">{item.indexer}</span>
+                              <span className="text-gray-400 text-xs">{item.kind === 'import' ? 'Manual/DVR' : item.indexer}</span>
                             </td>
                             <td className="px-2 py-1.5 text-center">
-                              <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>
+                              {item.protocol ? (
+                                <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 bg-gray-700 text-gray-300 text-xs rounded uppercase">Import</span>
+                              )}
                             </td>
                             <td className="px-2 py-1.5 text-center">
                               <span className="text-gray-300 text-xs">{formatBytes(item.size)}</span>
@@ -2409,14 +2443,25 @@ export default function ActivityPage() {
                             </td>
                             <td className="px-2 py-1.5">
                               <div className="flex items-center justify-end gap-1">
-                                <button
-                                  onClick={() => handleRegrab(item.id)}
-                                  disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
-                                  className={BUTTON_ICON_SUCCESS}
-                                  title={!item.hasDownloadUrl && !item.hasTorrentHash ? 'No download URL or torrent hash available' : 'Re-grab this release'}
-                                >
-                                  {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
-                                </button>
+                                {item.kind !== 'import' && (
+                                  <button
+                                    onClick={() => handleRegrab(item.id)}
+                                    disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
+                                    className={BUTTON_ICON_SUCCESS}
+                                    title={!item.hasDownloadUrl && !item.hasTorrentHash ? 'No download URL or torrent hash available' : 'Re-grab this release'}
+                                  >
+                                    {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
+                                  </button>
+                                )}
+                                {item.fileExists && item.eventId != null && (
+                                  <button
+                                    onClick={() => handleDeleteFile(item)}
+                                    className={BUTTON_ICON_DESTRUCTIVE}
+                                    title="Delete file from disk (entry stays for re-grabbing)"
+                                  >
+                                    <TrashIcon className="w-4 h-4" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2446,11 +2491,17 @@ export default function ActivityPage() {
                               )}
                               {item.quality && <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality}</span>}
                               {cfScoreBadge(item.customFormatScore)}
-                              <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>
+                              {item.protocol ? (
+                                <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>
+                              ) : (
+                                <span className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded uppercase">Import</span>
+                              )}
                             </div>
-                            <p className="text-sm text-gray-400 truncate mb-1">{item.title}</p>
+                            <p className="text-sm text-gray-400 truncate mb-1">
+                              {item.kind === 'import' ? item.title.split(/[\\/]/).pop() : item.title}
+                            </p>
                             <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
-                              <span>{item.indexer}</span>
+                              <span>{item.kind === 'import' ? 'Manual/DVR import' : item.indexer}</span>
                               <span className="text-gray-600">•</span>
                               <span>{formatBytes(item.size)}</span>
                               <span className="text-gray-600">•</span>
@@ -2459,15 +2510,26 @@ export default function ActivityPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2 ml-4">
-                            <button
-                              onClick={() => handleRegrab(item.id)}
-                              disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
-                              className={BUTTON_SUCCESS}
-                              title={!item.hasDownloadUrl && !item.hasTorrentHash ? 'No download URL or torrent hash available' : 'Re-grab this release'}
-                            >
-                              {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
-                              Re-grab
-                            </button>
+                            {item.kind !== 'import' && (
+                              <button
+                                onClick={() => handleRegrab(item.id)}
+                                disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
+                                className={BUTTON_SUCCESS}
+                                title={!item.hasDownloadUrl && !item.hasTorrentHash ? 'No download URL or torrent hash available' : 'Re-grab this release'}
+                              >
+                                {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
+                                Re-grab
+                              </button>
+                            )}
+                            {item.fileExists && item.eventId != null && (
+                              <button
+                                onClick={() => handleDeleteFile(item)}
+                                className={BUTTON_ICON_DESTRUCTIVE}
+                                title="Delete file from disk (entry stays for re-grabbing)"
+                              >
+                                <TrashIcon className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2740,7 +2802,7 @@ export default function ActivityPage() {
         {/* View Options Modal */}
         {showTableOptions && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full max-h-[85dvh] overflow-y-auto">
               <div className="sticky top-0 bg-gradient-to-br from-gray-900 to-black border-b border-gray-700 px-6 py-4 flex items-center justify-between">
                 <h3 className="text-xl font-bold text-white">View Options</h3>
                 <button

@@ -109,7 +109,7 @@ export default function TeamAliasesModal({ isOpen, onClose, leagueId, leagueName
                   value={valueFor(team)}
                   onChange={(e) => setEdits((prev) => ({ ...prev, [team.id]: e.target.value }))}
                   placeholder="Your aliases, comma-separated"
-                  className="flex-1 px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-600 focus:outline-none focus:border-red-600"
+                  className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-600 focus:outline-none focus:border-red-600"
                 />
                 <button
                   onClick={() => save(team)}

@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import IptvCoveragePage from '../iptv/IptvCoveragePage';
 import {
   PlusIcon,
   CheckCircleIcon,
@@ -15,8 +17,11 @@ import {
   EyeIcon,
   GlobeAltIcon,
   ChevronDownIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import { Menu } from '@headlessui/react';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import PageHeader from '../../components/PageHeader';
@@ -74,6 +79,15 @@ interface LeagueMapping {
 const PAGE_SIZE = 100; // Load channels in pages for better performance
 
 export default function IptvChannelsSettings() {
+  // Which view is active: the channel-centric list, or the league-centric
+  // coverage report (folded in from the old standalone /iptv/coverage page).
+  const [searchParams] = useSearchParams();
+  const [view, setView] = useState<'channels' | 'coverage'>(
+    searchParams.get('view') === 'coverage' ? 'coverage' : 'channels'
+  );
+  // Under 640px the table becomes a card list (no data tables on phones).
+  const isPhone = useMediaQuery('(max-width: 639px)');
+
   // State
   const [channels, setChannels] = useState<IptvChannel[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -716,58 +730,87 @@ export default function IptvChannelsSettings() {
       <PageHeader
         title="IPTV Channels"
         subtitle="Manage channels across all IPTV sources and map them to leagues"
-        actions={
-          <>
-            <button
-              onClick={handleAutoMap}
-              disabled={isAutoMapping}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-            >
-              <span className="flex items-center gap-2">
-                {isAutoMapping ? (
-                  <>
-                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                    <span>Mapping...</span>
-                  </>
-                ) : (
-                  <>
-                    <LinkIcon className="h-4 w-4" />
-                    <span>Auto-Map Leagues</span>
-                  </>
+        actions={view === 'channels' ? (
+          /* Per-step tools live behind Advanced; the primary "Sync Now" on the
+             Sources page runs the whole pipeline (sources -> EPG -> mapping)
+             so most users never need these individually. */
+          <Menu as="div" className="relative">
+            <Menu.Button className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:bg-gray-700">
+              {(isAutoMapping || isAutoMappingEpg) ? (
+                <ArrowPathIcon className="h-4 w-4 animate-spin" />
+              ) : (
+                <WrenchScrewdriverIcon className="h-4 w-4 text-gray-400" />
+              )}
+              Advanced
+              <ChevronDownIcon className="h-4 w-4 text-gray-400" />
+            </Menu.Button>
+            <Menu.Items className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-lg border border-gray-700 bg-gray-900 shadow-xl shadow-black/50 focus:outline-none">
+              <Menu.Item>
+                {({ active }) => (
+                  <button
+                    onClick={handleAutoMap}
+                    disabled={isAutoMapping}
+                    className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-200 disabled:opacity-50 ${active ? 'bg-gray-800' : ''}`}
+                  >
+                    <LinkIcon className="h-4 w-4 text-gray-400" />
+                    {isAutoMapping ? 'Mapping leagues…' : 'Auto-Map Leagues'}
+                  </button>
                 )}
-              </span>
-            </button>
-            <button
-              onClick={handleAutoMapEpg}
-              disabled={isAutoMappingEpg}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-            >
-              <span className="flex items-center gap-2">
-                {isAutoMappingEpg ? (
-                  <>
-                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                    <span>Mapping EPG...</span>
-                  </>
-                ) : (
-                  <>
-                    <SignalIcon className="h-4 w-4" />
-                    <span>Auto-Map EPG</span>
-                  </>
+              </Menu.Item>
+              <Menu.Item>
+                {({ active }) => (
+                  <button
+                    onClick={handleAutoMapEpg}
+                    disabled={isAutoMappingEpg}
+                    className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-200 disabled:opacity-50 ${active ? 'bg-gray-800' : ''}`}
+                  >
+                    <SignalIcon className="h-4 w-4 text-gray-400" />
+                    {isAutoMappingEpg ? 'Mapping EPG…' : 'Auto-Map EPG'}
+                  </button>
                 )}
-              </span>
-            </button>
-            <button
-              onClick={handleUpdatePreferred}
-              className="rounded-lg bg-gray-800 px-4 py-2 text-sm text-white transition-colors hover:bg-gray-700"
-            >
-              <span className="flex items-center gap-2">
-                <ArrowPathIcon className="h-4 w-4" />
-                <span>Update Preferred</span>
-              </span>
-            </button>
-          </>
-        }
+              </Menu.Item>
+              <Menu.Item>
+                {({ active }) => (
+                  <button
+                    onClick={handleUpdatePreferred}
+                    className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-200 ${active ? 'bg-gray-800' : ''}`}
+                  >
+                    <ArrowPathIcon className="h-4 w-4 text-gray-400" />
+                    Update Preferred
+                  </button>
+                )}
+              </Menu.Item>
+            </Menu.Items>
+          </Menu>
+        ) : undefined}
       />
+
+      {/* View tabs: channel-centric list vs league-centric coverage. Coverage
+          was its own /iptv/coverage page; it is now a view of the same screen
+          so mapping channels and checking what they cover live in one place. */}
+      <div className="mb-6 flex gap-1 border-b border-gray-800">
+        {([
+          { key: 'channels', label: 'Channels' },
+          { key: 'coverage', label: 'Coverage' },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setView(t.key)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              view === t.key
+                ? 'border-red-500 text-white'
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'coverage' ? (
+        <IptvCoveragePage embedded />
+      ) : (
+      <>
 
       {/* Error Alert */}
       {error && (
@@ -1156,8 +1199,150 @@ export default function IptvChannelsSettings() {
           </div>
         </div>
 
-        {/* Channels Table */}
+        {/* Channels: card list on phones, table on sm+ */}
         <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden">
+          {isPhone ? (
+            <div className="divide-y divide-gray-800">
+              {filteredChannels.map((channel) => (
+                <div
+                  key={channel.id}
+                  className={`p-4 ${selectedIds.has(channel.id) ? 'bg-red-950/20' : ''}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(channel.id)}
+                      onChange={() => handleToggleSelect(channel.id)}
+                      className="mt-1.5 h-4 w-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                    />
+                    {channel.logoUrl ? (
+                      <img
+                        src={channel.logoUrl}
+                        alt={channel.name}
+                        className="h-10 w-10 flex-none rounded bg-gray-800 object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-10 w-10 flex-none items-center justify-center rounded bg-gray-800">
+                        <SignalIcon className="h-5 w-5 text-gray-600" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`truncate font-medium ${channel.isHidden ? 'text-gray-500' : 'text-white'}`}>
+                          {channel.name}
+                        </span>
+                        {channel.isFavorite && <StarIconSolid className="h-3.5 w-3.5 flex-none text-yellow-400" />}
+                        {channel.isHidden && <EyeSlashIcon className="h-3.5 w-3.5 flex-none text-gray-500" />}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs text-gray-500">
+                        {channel.channelNumber ? `Ch. ${channel.channelNumber} · ` : ''}
+                        {channel.detectedNetwork || channel.group || 'No network'}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className={`rounded px-2 py-1 text-xs ${getQualityColor(channel.detectedQuality)}`}>
+                          {channel.detectedQuality || 'HD'}
+                        </span>
+                        <span className={`rounded px-2 py-1 text-xs ${getStatusColor(channel.status)}`}>
+                          {channel.status}
+                        </span>
+                        {channel.tvgId ? (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Clear the EPG mapping for "${channel.name}"? You can re-run auto-map or wait for it to pick a new match afterward.`)) {
+                                handleUnmapEpg(channel);
+                              }
+                            }}
+                            className="rounded bg-green-900/30 px-2 py-1 text-xs text-green-400"
+                          >
+                            EPG mapped
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openEpgPicker(channel)}
+                            className="rounded bg-gray-800 px-2 py-1 text-xs text-gray-400"
+                          >
+                            Map EPG…
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleToggleSports(channel)}
+                          className={`rounded px-2 py-1 text-xs ${
+                            channel.isSportsChannel
+                              ? 'bg-green-900/30 text-green-400'
+                              : 'bg-gray-800 text-gray-500'
+                          }`}
+                        >
+                          Sports: {channel.isSportsChannel ? 'Yes' : 'No'}
+                        </button>
+                        <button
+                          onClick={() => openMappingModal(channel)}
+                          className="flex items-center gap-1 rounded bg-gray-800 px-2 py-1 text-xs text-gray-400"
+                        >
+                          <LinkIcon className="h-3 w-3" />
+                          {channel.mappedLeagueIds?.length || 0} leagues
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => handleToggleFavorite(channel)}
+                      className="rounded p-2 transition-colors hover:bg-gray-800"
+                      title={channel.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+                    >
+                      {channel.isFavorite ? (
+                        <StarIconSolid className="h-5 w-5 text-yellow-400" />
+                      ) : (
+                        <StarIconOutline className="h-5 w-5 text-gray-400" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleToggleHidden(channel)}
+                      className="rounded p-2 text-gray-400 transition-colors hover:bg-gray-800"
+                      title={channel.isHidden ? 'Show Channel' : 'Hide Channel'}
+                    >
+                      {channel.isHidden ? (
+                        <EyeSlashIcon className="h-5 w-5 text-gray-500" />
+                      ) : (
+                        <EyeIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleTestChannel(channel.id)}
+                      disabled={testingChannelIds.has(channel.id)}
+                      className={`rounded p-2 text-gray-400 transition-colors hover:bg-gray-800 ${
+                        testingChannelIds.has(channel.id) ? 'animate-pulse' : ''
+                      }`}
+                      title="Test Connection"
+                    >
+                      <BoltIcon className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => setPlayerChannel(channel)}
+                      className="rounded p-2 text-gray-400 transition-colors hover:bg-gray-800"
+                      title="Play Stream"
+                    >
+                      <PlayIcon className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => handleToggleChannel(channel)}
+                      className="rounded p-2 text-gray-400 transition-colors hover:bg-gray-800"
+                      title={channel.isEnabled ? 'Disable' : 'Enable'}
+                    >
+                      {channel.isEnabled ? (
+                        <CheckCircleIcon className="h-5 w-5 text-green-400" />
+                      ) : (
+                        <XCircleIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-black/50 border-b border-gray-800">
@@ -1338,6 +1523,7 @@ export default function IptvChannelsSettings() {
               </tbody>
             </table>
           </div>
+          )}
 
           {isLoading && (
             <div className="text-center py-12">
@@ -1639,6 +1825,8 @@ export default function IptvChannelsSettings() {
             </div>
           </div>
         )}
+      </>
+      )}
     </PageShell>
   );
 }

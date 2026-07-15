@@ -195,7 +195,7 @@ export default function EventSearchPage() {
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full px-4 py-3 bg-gray-900 border border-red-900/30 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20"
+            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20"
           />
         </div>
 
@@ -210,7 +210,7 @@ export default function EventSearchPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by event, league, or team..."
-            className="w-full px-4 py-3 bg-gray-900 border border-red-900/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20"
+            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20"
           />
         </div>
       </div>
@@ -245,7 +245,7 @@ export default function EventSearchPage() {
               key={event.idEvent}
               className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 rounded-lg p-6 hover:border-red-600 transition-colors"
             >
-              <div className="flex gap-6">
+              <div className="flex flex-col gap-6 sm:flex-row">
                 {/* Poster */}
                 <div className="flex-shrink-0">
                   {event.strPoster || event.strThumb || event.strBanner ? (
@@ -287,7 +287,7 @@ export default function EventSearchPage() {
                   </div>
 
                   {/* Event Info */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-2">
                     <div className="flex items-center gap-2 text-gray-300">
                       <CalendarIcon className="w-5 h-5 text-gray-500" />
                       <span>{formatDate(event.dateEvent)}</span>

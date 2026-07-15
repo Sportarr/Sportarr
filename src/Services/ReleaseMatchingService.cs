@@ -310,6 +310,66 @@ public class ReleaseMatchingService
         // release title isn't re-parsed once per monitored event.
         var parseResult = preParsed ?? _sportsParser.Parse(release.Title);
 
+        // AUTHORITATIVE ID TOKEN (docs/RELEASE_NAMING.md): a release tagged
+        // {sportarr-ev-XXXXXXX} in its name, or carrying a "sportarrid"
+        // torznab/newznab attribute from the indexer, names its event
+        // exactly. When the tagged id matches this event's canonical id,
+        // that IS the match - no fuzzy team/date/round arithmetic can
+        // improve on it. When it names a DIFFERENT event, this release is
+        // definitively not for this event, regardless of how similar the
+        // titles read. A token that doesn't correspond to this event's id
+        // because the local event has no canonical id (legacy row) falls
+        // through to normal fuzzy matching. The in-name token wins over the
+        // indexer attribute when both are present.
+        var releaseTokenId = parseResult.SportarrEventId ?? release.SportarrEventId;
+        if (!string.IsNullOrEmpty(releaseTokenId) &&
+            !string.IsNullOrEmpty(evt.ExternalId) &&
+            evt.ExternalId.StartsWith("ev-", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(evt.ExternalId, releaseTokenId, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Confidence = 100;
+                result.IsMatch = true;
+                result.MatchReasons.Add($"Sportarr id token match ({releaseTokenId})");
+                _logger.LogDebug("[Release Matching] Id token match: '{Release}' is tagged {Token} = event '{Event}'",
+                    release.Title, releaseTokenId, evt.Title);
+                return result;
+            }
+
+            result.Confidence = 0;
+            result.IsHardRejection = true;
+            result.Rejections.Add($"Release is tagged for a different event ({releaseTokenId}, this event is {evt.ExternalId})");
+            _logger.LogDebug("[Release Matching] Id token mismatch: '{Release}' is tagged {Token}, event '{Event}' is {EventId}",
+                release.Title, releaseTokenId, evt.Title, evt.ExternalId);
+            return result;
+        }
+
+        // League id token (pack releases): a league id alone can't confirm a
+        // specific event - the pack's season/date text still has to do that -
+        // so a MATCHING league only records a reason and falls through to
+        // fuzzy scoring. But a pack tagged for a DIFFERENT league is
+        // definitively not this event's pack, however similar the names read
+        // (World Cup vs World Snooker being the canonical confusion).
+        var releaseLeagueId = parseResult.SportarrLeagueId ?? release.SportarrLeagueId;
+        if (!string.IsNullOrEmpty(releaseLeagueId) &&
+            !string.IsNullOrEmpty(evt.League?.ExternalId) &&
+            evt.League.ExternalId.StartsWith("lg-", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(evt.League.ExternalId, releaseLeagueId, StringComparison.OrdinalIgnoreCase))
+            {
+                result.MatchReasons.Add($"Sportarr league id token match ({releaseLeagueId})");
+            }
+            else
+            {
+                result.Confidence = 0;
+                result.IsHardRejection = true;
+                result.Rejections.Add($"Release is tagged for a different league ({releaseLeagueId}, this league is {evt.League.ExternalId})");
+                _logger.LogDebug("[Release Matching] League id token mismatch: '{Release}' is tagged {Token}, league '{League}' is {LeagueId}",
+                    release.Title, releaseLeagueId, evt.League.Name, evt.League.ExternalId);
+                return result;
+            }
+        }
+
         // Normalize titles for comparison (includes diacritic removal)
         var normalizedRelease = NormalizeTitle(release.Title);
         var normalizedEvent = NormalizeTitle(evt.Title);

@@ -73,6 +73,10 @@ interface SourceFormData {
   maxStreams: number;
   userAgent: string;
   ffmpegInputArgs: string;
+  // Optional XMLTV guide URL, collected on add so a provider's playlist and its
+  // guide are set up in one step. Not sent to /iptv/sources; used to create the
+  // matching EPG source. Not used when editing an existing source.
+  epgUrl: string;
 }
 
 const defaultFormData: SourceFormData = {
@@ -84,6 +88,7 @@ const defaultFormData: SourceFormData = {
   maxStreams: 1,
   userAgent: '',
   ffmpegInputArgs: '',
+  epgUrl: '',
 };
 
 // Subscription URLs section component
@@ -249,6 +254,9 @@ function SubscriptionUrlsSection() {
 export default function IptvSettings() {
   // State
   const [sources, setSources] = useState<IptvSource[]>([]);
+  // Ids of playlist sources that have a linked guide (EPG source), so each
+  // source card can show it's set up as a full provider.
+  const [linkedGuideSourceIds, setLinkedGuideSourceIds] = useState<Set<number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -295,6 +303,9 @@ export default function IptvSettings() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [formData, setFormData] = useState<SourceFormData>(defaultFormData);
+  // Bumped after the add flow creates an EPG source, to force the EPG Sources
+  // panel to reload and show the newly-created guide.
+  const [epgRefreshKey, setEpgRefreshKey] = useState(0);
 
   // Channel viewer state
   const [viewingSource, setViewingSource] = useState<IptvSource | null>(null);
@@ -318,6 +329,7 @@ export default function IptvSettings() {
 
   // Syncing state
   const [syncingSourceId, setSyncingSourceId] = useState<number | null>(null);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
 
   // Stream player state
   const [playerChannel, setPlayerChannel] = useState<IptvChannel | null>(null);
@@ -338,6 +350,23 @@ export default function IptvSettings() {
       setIsLoading(false);
     }
   };
+
+  // Which playlist sources have a guide attached. Refreshed on mount and after
+  // the combined add creates one. Failure here only hides a badge, so it's soft.
+  const loadLinkedGuides = async () => {
+    try {
+      const { data } = await apiClient.get<Array<{ iptvSourceId: number | null }>>('/epg/sources');
+      setLinkedGuideSourceIds(
+        new Set(data.filter(e => e.iptvSourceId != null).map(e => e.iptvSourceId as number))
+      );
+    } catch {
+      // Guide-link badges are a display nicety; ignore load failures.
+    }
+  };
+
+  useEffect(() => {
+    loadLinkedGuides();
+  }, [epgRefreshKey]);
 
   const loadChannels = async (sourceId: number, page: number = 0, reset: boolean = true) => {
     try {
@@ -396,11 +425,34 @@ export default function IptvSettings() {
     setIsSubmitting(true);
     try {
       setError(null);
-      const response = await apiClient.post<IptvSource>('/iptv/sources', formData);
+      // epgUrl is a UI-only convenience field; the playlist source doesn't take it.
+      const { epgUrl, ...iptvPayload } = formData;
+      const response = await apiClient.post<IptvSource>('/iptv/sources', iptvPayload);
       setSources(prev => [...prev, response.data]);
+      // If the user supplied a guide URL, set up the matching EPG source in the
+      // same step so a provider's playlist and its guide arrive together.
+      const guideUrl = epgUrl.trim();
+      if (guideUrl) {
+        try {
+          await apiClient.post('/epg/sources', {
+            name: `${formData.name.trim()} Guide`,
+            url: guideUrl,
+            priority: 25,
+            // Link the guide to the playlist we just created so they read as one provider.
+            iptvSourceId: response.data.id,
+          });
+          setEpgRefreshKey(k => k + 1);
+        } catch (epgErr: any) {
+          // The playlist source is already created; don't fail the whole add over the guide.
+          const epgMsg = epgErr?.response?.data?.error || epgErr?.message || 'Unknown error';
+          toast.warning('Playlist added, but the guide source failed', { description: epgMsg });
+        }
+      }
       setShowAddModal(false);
       setFormData(defaultFormData);
-      toast.success('Source Added', { description: `${formData.name} was added; channels are syncing in the background` });
+      toast.success('Source Added', {
+        description: `${formData.name} was added; channels are syncing in the background${guideUrl ? ' and its guide is being fetched' : ''}`,
+      });
     } catch (err: any) {
       // Surface the server's actual error (e.g. the real Xtream failure reason,
       // or a duplicate-source message) instead of axios's generic status text.
@@ -486,6 +538,39 @@ export default function IptvSettings() {
     }
   };
 
+  // One-button pipeline: sources -> EPG -> auto-mapping, in order, so users
+  // never have to know which of the per-step buttons does what.
+  const handleSyncNow = async () => {
+    try {
+      setIsSyncingAll(true);
+      const { data } = await apiClient.post<{
+        sourcesSynced: number;
+        sourcesTotal: number;
+        channelCount: number;
+        epgSourcesSynced: number;
+        programCount: number;
+        leagueMappingsCreated: number;
+        epgChannelsMapped: number;
+        sourceErrors: { name: string; error: string }[];
+        epgErrors: { name: string; error: string }[];
+      }>('/iptv/sync-now');
+      await loadSources();
+      const failures = [...data.sourceErrors, ...data.epgErrors];
+      const summary = `${data.channelCount} channels from ${data.sourcesSynced}/${data.sourcesTotal} sources, ${data.programCount} guide programs, ${data.leagueMappingsCreated} league + ${data.epgChannelsMapped} EPG mappings`;
+      if (failures.length > 0) {
+        toast.warning('Sync finished with problems', {
+          description: `${summary}. Failed: ${failures.map(f => f.name).join(', ')}`,
+        });
+      } else {
+        toast.success('Everything synced', { description: summary });
+      }
+    } catch (err: any) {
+      toast.error('Sync failed', { description: err.message });
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
   const handleSyncChannels = async (sourceId: number) => {
     try {
       setSyncingSourceId(sourceId);
@@ -565,6 +650,8 @@ export default function IptvSettings() {
       maxStreams: source.maxStreams || 1,
       userAgent: source.userAgent || '',
       ffmpegInputArgs: source.ffmpegInputArgs || '',
+      // Guide URL is only collected when adding; editing manages EPG separately.
+      epgUrl: '',
     });
   };
 
@@ -678,6 +765,28 @@ export default function IptvSettings() {
               </div>
             </>
           )}
+
+          {!editingSource && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Program Guide (EPG) URL <span className="text-gray-500">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={formData.epgUrl}
+                onChange={(e) => handleFormChange('epgUrl', e.target.value)}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder={isXtream
+                  ? 'http://server.example.com:8080/xmltv.php?username=...&password=...'
+                  : 'http://example.com/guide.xml'}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                XMLTV guide data for this provider. Add it here to set up the playlist and its
+                guide together. Optional, and you can also manage guide sources in the EPG
+                Sources section below.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Advanced Settings */}
@@ -766,6 +875,17 @@ export default function IptvSettings() {
       <PageHeader
         title="IPTV Sources"
         subtitle="Configure IPTV sources for DVR recording of sports events"
+        actions={
+          <button
+            onClick={handleSyncNow}
+            disabled={isSyncingAll}
+            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            title="Sync all sources, refresh the guide, and re-run auto-mapping in one pass"
+          >
+            <ArrowPathIcon className={`h-5 w-5 ${isSyncingAll ? 'animate-spin' : ''}`} />
+            {isSyncingAll ? 'Syncing…' : 'Sync Now'}
+          </button>
+        }
       />
 
       {/* Error Alert */}
@@ -785,86 +905,6 @@ export default function IptvSettings() {
         </div>
       )}
 
-        {/* Automatic refresh intervals */}
-        <div className="mb-8 rounded-lg border border-gray-800 bg-gray-900/70 p-6">
-          <h3 className="text-lg font-semibold text-white mb-1">Automatic Refresh</h3>
-          <p className="text-sm text-gray-400 mb-4">
-            Playlists and guide data are re-synced in the background when older than these intervals.
-            Manual syncs reset the clock. Set to 0 to disable.
-          </p>
-          <div className="flex flex-wrap gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Playlist refresh (hours)</label>
-              <input
-                type="number"
-                min={0}
-                value={iptvRefreshHours}
-                onChange={(e) => setIptvRefreshHours(Math.max(0, Number(e.target.value)))}
-                className="w-32 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-              />
-              <p className="text-xs text-gray-500 mt-1">Default 168 (weekly)</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">EPG refresh (hours)</label>
-              <input
-                type="number"
-                min={0}
-                value={epgRefreshHours}
-                onChange={(e) => setEpgRefreshHours(Math.max(0, Number(e.target.value)))}
-                className="w-32 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-              />
-              <p className="text-xs text-gray-500 mt-1">Default 48 (every 2 days)</p>
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={saveRefreshIntervals}
-                disabled={savingRefresh}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
-              >
-                {savingRefresh ? 'Saving...' : 'Save Intervals'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Info Box */}
-        <div className="mb-8 rounded-lg border border-gray-800 bg-gray-900/70 p-6">
-          <div className="flex items-start">
-            <SignalIcon className="w-6 h-6 text-gray-400 mr-3 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">About IPTV Sources</h3>
-              <ul className="space-y-2 text-sm text-gray-300">
-                <li className="flex items-start">
-                  <span className="text-red-400 mr-2">*</span>
-                  <span>
-                    <strong>M3U Playlists:</strong> Standard playlist format supported by most IPTV providers
-                  </span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-red-400 mr-2">*</span>
-                  <span>
-                    <strong>Xtream Codes:</strong> API-based access with automatic EPG and category support
-                  </span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-red-400 mr-2">*</span>
-                  <span>
-                    Sports channels are automatically detected and can be mapped to leagues for DVR scheduling
-                  </span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-red-400 mr-2">*</span>
-                  <span>
-                    Channel testing verifies stream connectivity before recording
-                  </span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* External App Subscription URLs */}
-        <SubscriptionUrlsSection />
 
         {/* Sources List */}
         <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
@@ -938,6 +978,14 @@ export default function IptvSettings() {
                         <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
                           {source.channelCount} channels
                         </span>
+                        {linkedGuideSourceIds.has(source.id) && (
+                          <span
+                            className="px-2 py-0.5 bg-green-900/30 text-green-400 text-xs rounded"
+                            title="This provider has a program guide (EPG) attached"
+                          >
+                            + Guide
+                          </span>
+                        )}
                       </div>
 
                       <div className="space-y-1 text-sm text-gray-400">
@@ -1023,23 +1071,71 @@ export default function IptvSettings() {
             <div className="text-center py-12">
               <SignalIcon className="w-16 h-16 text-gray-700 mx-auto mb-4" />
               <p className="text-gray-500 mb-2">No IPTV sources configured</p>
-              <p className="text-sm text-gray-400 mb-4">
-                Add your M3U playlist or Xtream Codes credentials to get started
+              <p className="text-sm text-gray-400 mb-1">
+                Add a source and Sportarr detects sports channels, maps them to your leagues, and records events automatically.
+              </p>
+              <p className="text-xs text-gray-500 mb-4">
+                Supported: M3U playlist · Xtream Codes API
               </p>
             </div>
           )}
         </div>
 
-        {/* EPG Sources - same manager as the TV Guide cogwheel, surfaced here
-            so guide data setup is discoverable next to the IPTV sources */}
+        {/* EPG Sources - the single home for guide-data setup, alongside the
+            IPTV playlist sources, so a provider's playlist and its EPG live
+            together. The TV Guide links here rather than hosting its own copy. */}
         <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
           <h3 className="text-xl font-semibold text-white mb-2">EPG Sources</h3>
           <p className="text-sm text-gray-400 mb-4">
             XMLTV program guide data for your channels. If your provider's M3U didn't include
-            guide data automatically, add its XMLTV URL here. Also editable from the TV Guide
-            page via the cogwheel.
+            guide data automatically, add its XMLTV URL here.
           </p>
-          <EpgSourcesPanel />
+          <EpgSourcesPanel key={epgRefreshKey} />
+        </div>
+
+        {/* External App Subscription URLs - playlists derived from your sources and guide */}
+        <SubscriptionUrlsSection />
+
+        {/* Automatic refresh intervals - background sync settings, rarely touched */}
+        <div className="mb-8 rounded-lg border border-gray-800 bg-gray-900/70 p-6">
+          <h3 className="text-lg font-semibold text-white mb-1">Automatic Refresh</h3>
+          <p className="text-sm text-gray-400 mb-4">
+            Playlists and guide data are re-synced in the background when older than these intervals.
+            Manual syncs reset the clock. Set to 0 to disable.
+          </p>
+          <div className="flex flex-wrap gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Playlist refresh (hours)</label>
+              <input
+                type="number"
+                min={0}
+                value={iptvRefreshHours}
+                onChange={(e) => setIptvRefreshHours(Math.max(0, Number(e.target.value)))}
+                className="w-32 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">Default 168 (weekly)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">EPG refresh (hours)</label>
+              <input
+                type="number"
+                min={0}
+                value={epgRefreshHours}
+                onChange={(e) => setEpgRefreshHours(Math.max(0, Number(e.target.value)))}
+                className="w-32 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">Default 48 (every 2 days)</p>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={saveRefreshIntervals}
+                disabled={savingRefresh}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {savingRefresh ? 'Saving...' : 'Save Intervals'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Add/Edit Modal */}

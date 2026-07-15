@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, BellIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import SettingsHeader from '../../components/SettingsHeader';
 import TagSelector from '../../components/TagSelector';
 
 interface NotificationsSettingsProps {
@@ -232,12 +233,20 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
     tags: []
   });
 
+  const isMediaServer = (implementation?: string) =>
+    implementation === 'Plex' || implementation === 'Jellyfin' || implementation === 'Emby';
+
   const handleSelectTemplate = (template: NotificationTemplate) => {
     setSelectedTemplate(template);
     setFormData({
       name: template.name,
       implementation: template.implementation,
       enabled: true,
+      // Media server connections exist to refresh the library, so those
+      // toggles start ON. Without explicit values the saved config used to
+      // omit them and the refresh never fired (issue #21).
+      updateLibrary: isMediaServer(template.implementation) ? true : undefined,
+      usePartialScan: isMediaServer(template.implementation) ? true : undefined,
       onGrab: true,
       onDownload: true,
       onUpgrade: false,
@@ -408,11 +417,14 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">Connect (Notifications)</h2>
-        <p className="text-gray-400">Configure notifications and connections to other services</p>
-      </div>
+    <div>
+      <SettingsHeader
+        title="Connect (Notifications)"
+        subtitle="Configure notifications and connections to other services"
+        showSaveButton={false}
+      />
+
+      <div className="max-w-6xl mx-auto px-6">
 
       {/* Info Box */}
       <div className="mb-8 bg-blue-950/30 border border-blue-900/50 rounded-lg p-6">
@@ -1061,7 +1073,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
 
                     {/* Emergency priority requires retry and expire */}
                     {selectedTemplate?.fields.includes('retry') && formData.priority === 2 && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-300 mb-2">Retry (seconds) *</label>
                           <input
@@ -1090,7 +1102,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                     )}
 
                     {selectedTemplate?.fields.includes('server') && (
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="col-span-2">
                           <label className="block text-sm font-medium text-gray-300 mb-2">SMTP Server *</label>
                           <input
@@ -1116,7 +1128,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                     )}
 
                     {selectedTemplate?.fields.includes('from') && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-300 mb-2">From *</label>
                           <input
@@ -1241,7 +1253,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold text-white">Notification Triggers</h4>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
                         <input
                           type="checkbox"
@@ -1500,6 +1512,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

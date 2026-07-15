@@ -845,6 +845,15 @@ public class EpgSource
     /// Number of programs loaded from this source
     /// </summary>
     public int ProgramCount { get; set; }
+
+    /// <summary>
+    /// Optional link to the IPTV playlist source this guide belongs to, so a
+    /// provider's playlist and its guide can be shown and managed together.
+    /// Null for standalone EPG sources (the historical default). If the linked
+    /// playlist source is deleted this is set back to null (ON DELETE SET NULL),
+    /// leaving the guide as a standalone source rather than removing it.
+    /// </summary>
+    public int? IptvSourceId { get; set; }
 }
 
 /// <summary>
@@ -1108,6 +1117,12 @@ public class AddEpgSourceRequest
     public bool IsActive { get; set; } = true;
     public int Priority { get; set; } = 25;
 
+    /// <summary>
+    /// Optional playlist source to attach this guide to, so they read as one
+    /// provider. Null (the default) creates a standalone EPG source.
+    /// </summary>
+    public int? IptvSourceId { get; set; }
+
     public EpgSource ToEntity()
     {
         return new EpgSource
@@ -1116,6 +1131,7 @@ public class AddEpgSourceRequest
             Url = Url,
             IsActive = IsActive,
             Priority = Priority,
+            IptvSourceId = IptvSourceId,
             Created = DateTime.UtcNow
         };
     }

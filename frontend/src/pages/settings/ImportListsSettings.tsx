@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import SettingsHeader from '../../components/SettingsHeader';
 
 interface ImportListsSettingsProps {
   showAdvanced?: boolean;
@@ -187,13 +188,14 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">Import Lists</h2>
-        <p className="text-gray-400">
-          Automatically discover and add events from external sources
-        </p>
-      </div>
+    <div>
+      <SettingsHeader
+        title="Import Lists"
+        subtitle="Automatically discover and add events from external sources"
+        showSaveButton={false}
+      />
+
+      <div className="max-w-6xl mx-auto px-6">
 
       {/* Import Lists Table */}
       <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
@@ -532,6 +534,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

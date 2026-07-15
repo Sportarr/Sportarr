@@ -495,6 +495,9 @@ public class SportarrDbContext : DbContext
                 Id = 1,
                 Name = "WEB-1080p (Alternative)",
                 IsDefault = true,
+                // TRaSH-managed: first-run enrichment and auto-sync may refresh its
+                // scores, but only until the user edits it (which sets IsCustomized).
+                IsSynced = true,
                 UpgradesAllowed = true,
                 CutoffQuality = 15, // WEBDL-1080p
                 MinFormatScore = 0,
@@ -554,6 +557,8 @@ public class SportarrDbContext : DbContext
             {
                 Id = 2,
                 Name = "WEB-2160p (Alternative)",
+                // TRaSH-managed (see the 1080p profile above).
+                IsSynced = true,
                 UpgradesAllowed = true,
                 CutoffQuality = 19, // WEBDL-2160p
                 MinFormatScore = 0,
@@ -1222,6 +1227,13 @@ public class SportarrDbContext : DbContext
             entity.Property(e => e.Url).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.LastError).HasMaxLength(1000);
             entity.HasIndex(e => e.IsActive);
+            // Optional soft link to the playlist source that owns this guide, so
+            // the two read as one provider. Deliberately NOT a hard foreign key:
+            // a plain indexed column adds via native ADD COLUMN (no SQLite table
+            // rebuild, safe on legacy databases), and if the playlist source is
+            // deleted the guide simply reads as standalone. IptvSourceService
+            // clears these on delete so no id dangles.
+            entity.HasIndex(e => e.IptvSourceId);
         });
 
         // EpgChannel configuration

@@ -322,7 +322,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                     // Pass part to indexer for proper filtering (with league tag-based indexer selection)
                     var leagueTags = evt.League?.Tags ?? new List<int>();
                     var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, leagueTags,
-                        allowHighlights: evt.League?.AllowHighlights ?? false);
+                        allowHighlights: evt.League?.AllowHighlights ?? false,
+                        sportarrId: Helpers.SportarrIdToken.Normalize(evt.ExternalId));
 
                     if (releases.Count == 0)
                     {

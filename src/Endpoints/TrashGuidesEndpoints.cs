@@ -229,6 +229,45 @@ app.MapPost("/api/trash/profiles/create", async (TrashGuideSyncService trashServ
     }
 });
 
+// API: One-press profile setup. Syncs formats first, then creates / refreshes /
+// copies depending on what exists, never overwriting a user-edited profile.
+app.MapPost("/api/trash/profiles/setup", async (TrashGuideSyncService trashService, ILogger<Program> logger, string trashId, string? customName = null) =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] One-press profile setup for template {TrashId}", trashId);
+        var (success, error, profileId, action) = await trashService.SetupProfileFromTemplateAsync(trashId, customName);
+
+        if (success)
+            return Results.Ok(new { success = true, profileId, action });
+        else
+            return Results.BadRequest(new { success = false, error });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Failed to set up profile from template");
+        return Results.Problem($"Failed to set up profile: {ex.Message}");
+    }
+});
+
+// API: One-press "sync now" - refresh the full format set and re-apply scores to
+// the TRaSH-managed profiles the user hasn't customized. The simple path.
+app.MapPost("/api/trash/quick-sync", async (TrashGuideSyncService trashService, ILogger<Program> logger) =>
+{
+    try
+    {
+        var result = await trashService.SyncAndApplyToManagedProfilesAsync();
+        if (!result.Success)
+            return Results.BadRequest(new { success = false, error = result.Error ?? "Sync failed" });
+        return Results.Ok(new { success = true, created = result.Created, updated = result.Updated });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Quick-sync failed");
+        return Results.Problem($"Sync failed: {ex.Message}");
+    }
+});
+
 // API: Get TRaSH sync settings
 app.MapGet("/api/trash/settings", async (TrashGuideSyncService trashService) =>
 {

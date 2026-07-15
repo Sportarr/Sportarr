@@ -136,7 +136,7 @@ const SystemEventsPage: React.FC = () => {
         <select
           value={selectedType}
           onChange={(e) => { setSelectedType(e.target.value); setCurrentPage(1); }}
-          className="px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-red-500"
         >
           <option value="">All Types</option>
           {eventTypes.map((type) => (
@@ -147,7 +147,7 @@ const SystemEventsPage: React.FC = () => {
         <select
           value={selectedCategory}
           onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
-          className="px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-4 py-2 bg-gray-800 border border-gray-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-red-500"
         >
           <option value="">All Categories</option>
           {eventCategories.map((cat) => (

@@ -340,63 +340,82 @@ public class ReleaseEvaluator
 
         var totalScore = 0;
 
-        // For each custom format, check if it matches the synthetic title
+        // Sum the profile's score for every custom format that matches the title.
         foreach (var format in customFormats)
         {
-            if (format.Specifications == null || !format.Specifications.Any())
+            if (!DoesFormatMatchTitle(format, syntheticTitle))
                 continue;
 
-            // Track if we've seen at least one ReleaseTitleSpecification
-            // Formats with ONLY non-title specs (like LanguageSpecification) should NOT match
-            var hasAnyTitleSpec = false;
-            var allTitleSpecsMatch = true;
-
-            foreach (var spec in format.Specifications)
+            var formatItem = profile.FormatItems?.FirstOrDefault(f => f.FormatId == format.Id);
+            if (formatItem != null)
             {
-                // Only evaluate ReleaseTitleSpecification - other spec types cannot be matched
-                // from a synthetic DVR title (no language info, no indexer flags, etc.)
-                if (spec.Implementation == "ReleaseTitleSpecification")
-                {
-                    hasAnyTitleSpec = true;
-                    var matches = MatchesTitleSpecification(spec, syntheticTitle);
-
-                    // Handle Negate flag
-                    if (spec.Negate)
-                        matches = !matches;
-
-                    // Handle Required flag
-                    if (spec.Required && !matches)
-                    {
-                        allTitleSpecsMatch = false;
-                        break;
-                    }
-                    if (!matches)
-                    {
-                        allTitleSpecsMatch = false;
-                    }
-                }
-                else if (spec.Required)
-                {
-                    // If a non-title spec is Required, we can't satisfy it from a synthetic title
-                    // (e.g., LanguageSpecification: German Required=true)
-                    allTitleSpecsMatch = false;
-                    break;
-                }
-                // Non-required, non-title specs are ignored (they're optional and we can't evaluate them)
-            }
-
-            // Only count the format if it has at least one title spec and all of them matched
-            if (hasAnyTitleSpec && allTitleSpecsMatch)
-            {
-                var formatItem = profile.FormatItems?.FirstOrDefault(f => f.FormatId == format.Id);
-                if (formatItem != null)
-                {
-                    totalScore += formatItem.Score;
-                }
+                totalScore += formatItem.Score;
             }
         }
 
         return totalScore;
+    }
+
+    /// <summary>
+    /// Whether a custom format matches a release title. A format matches only if it
+    /// has at least one ReleaseTitleSpecification and all of its title specs pass
+    /// (honoring Negate/Required). Formats whose Required specs can't be evaluated
+    /// from a title string alone (e.g. language) do not match.
+    /// </summary>
+    private static bool DoesFormatMatchTitle(CustomFormat format, string title)
+    {
+        if (format.Specifications == null || !format.Specifications.Any())
+            return false;
+
+        var hasAnyTitleSpec = false;
+        var allTitleSpecsMatch = true;
+
+        foreach (var spec in format.Specifications)
+        {
+            if (spec.Implementation == "ReleaseTitleSpecification")
+            {
+                hasAnyTitleSpec = true;
+                var matches = MatchesTitleSpecification(spec, title);
+                if (spec.Negate)
+                    matches = !matches;
+                if (spec.Required && !matches)
+                    return false;
+                if (!matches)
+                    allTitleSpecsMatch = false;
+            }
+            else if (spec.Required)
+            {
+                // A Required non-title spec (e.g. language) can't be satisfied from a title string.
+                return false;
+            }
+            // Non-required, non-title specs are ignored - we can't evaluate them from a title.
+        }
+
+        return hasAnyTitleSpec && allTitleSpecsMatch;
+    }
+
+    /// <summary>
+    /// The custom formats that match a title and the profile's score for each,
+    /// ordered by absolute score. Backs the profile preview so a user can see how a
+    /// profile would score a release, from a title string alone - no file involved.
+    /// </summary>
+    public List<(string Name, int Score)> GetMatchedFormats(string title, QualityProfile? profile, List<CustomFormat>? customFormats)
+    {
+        var matched = new List<(string, int)>();
+        if (profile?.FormatItems == null || customFormats == null)
+            return matched;
+
+        foreach (var format in customFormats)
+        {
+            if (!DoesFormatMatchTitle(format, title))
+                continue;
+
+            var formatItem = profile.FormatItems.FirstOrDefault(f => f.FormatId == format.Id);
+            if (formatItem != null && formatItem.Score != 0)
+                matched.Add((format.Name, formatItem.Score));
+        }
+
+        return matched.OrderByDescending(m => Math.Abs(m.Item2)).ToList();
     }
 
     /// <summary>
@@ -449,9 +468,12 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Check if quality is allowed in profile (handles quality groups)
+    /// Check if quality is allowed in profile (handles quality groups).
+    /// Public because the quality-profile preview endpoint applies the same
+    /// gate to its sample releases - a preview that shows "grab" for a
+    /// resolution the profile rejects is lying to the user.
     /// </summary>
-    private bool IsQualityAllowed(QualityParser.QualityDefinition quality, QualityProfile profile)
+    public bool IsQualityAllowed(QualityParser.QualityDefinition quality, QualityProfile profile)
     {
         if (!profile.Items.Any())
             return true;

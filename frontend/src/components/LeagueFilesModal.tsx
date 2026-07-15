@@ -637,7 +637,7 @@ function FileRow({
             type="checkbox"
             checked={!!isSelected}
             onChange={onToggleSelect}
-            className="mt-1 accent-blue-600 cursor-pointer"
+            className="mt-1 accent-red-600 cursor-pointer"
             title="Select for bulk edit"
           />
         )}

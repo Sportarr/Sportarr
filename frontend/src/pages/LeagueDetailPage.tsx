@@ -604,6 +604,7 @@ export default function LeagueDetailPage() {
       monitorPreseason?: boolean;
       retentionDays?: number;
       allowHighlights?: boolean;
+      sessionTypeQualityProfiles?: string | null;
     }) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
@@ -751,6 +752,7 @@ export default function LeagueDetailPage() {
     monitorPreseason: boolean,
     retentionDays: number,
     allowHighlights: boolean,
+    sessionTypeQualityProfiles: string | null,
   ) => {
     void _rootFolderId;
     void league;
@@ -771,6 +773,7 @@ export default function LeagueDetailPage() {
       monitorPreseason,
       retentionDays,
       allowHighlights,
+      sessionTypeQualityProfiles,
     });
   };
 
@@ -1413,7 +1416,7 @@ export default function LeagueDetailPage() {
 
             {/* Title + Sport Badge inline */}
             <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-1">
-              <h1 className="text-2xl md:text-3xl font-bold text-white">{league.name}</h1>
+              <h1 className="text-2xl font-bold text-white md:text-3xl">{league.name}</h1>
               <span className="px-2 py-0.5 bg-red-600/20 text-red-400 text-xs rounded font-medium">
                 {league.sport}
               </span>
@@ -1584,19 +1587,19 @@ export default function LeagueDetailPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="bg-gray-900 border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
             <div>
               <div className="text-gray-400 text-xs font-medium">Total Events</div>
               <div className="text-2xl font-bold text-white">{league.eventCount}</div>
             </div>
           </div>
-          <div className="bg-gray-900 border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
             <div>
               <div className="text-gray-400 text-xs font-medium">Monitored</div>
               <div className="text-2xl font-bold text-green-400">{league.monitoredEventCount}</div>
             </div>
           </div>
-          <div className="bg-gray-900 border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
             <div>
               <div className="text-gray-400 text-xs font-medium">Downloaded</div>
               <div className="text-2xl font-bold text-blue-400">{league.fileCount}</div>
@@ -1605,7 +1608,7 @@ export default function LeagueDetailPage() {
         </div>
 
         {/* Events Section */}
-        <div className="bg-gray-900 border border-red-900/30 rounded-lg overflow-hidden">
+        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden">
           <div className="p-4 md:p-6 border-b border-red-900/30">
             <h2 className="text-xl md:text-2xl font-bold text-white">Events</h2>
             <p className="text-gray-400 text-xs md:text-sm mt-1">

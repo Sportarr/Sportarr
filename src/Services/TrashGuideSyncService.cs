@@ -206,6 +206,87 @@ public class TrashGuideSyncService
     }
 
     /// <summary>
+    /// One-time first-run enrichment. The app ships with bundled "floor" quality
+    /// profiles and a handful of formats so a fresh (even offline) install always
+    /// has working profiles. The first time the app is online, this pulls the full
+    /// sport-relevant format set fresh from TRaSH Guides and applies real scores to
+    /// the seeded (non-customized) profiles, taking them from a few formats to the
+    /// full depth. It respects user edits (IsCustomized profiles are skipped) and,
+    /// if the app is offline, leaves the done-flag false so it retries next start
+    /// rather than losing the enrichment.
+    /// </summary>
+    public async Task EnsureFirstRunEnrichmentAsync(CancellationToken cancellationToken = default)
+    {
+        var settings = await GetSyncSettingsAsync();
+        if (settings.FirstRunEnrichmentDone)
+            return;
+
+        _logger.LogInformation("[TRaSH Sync] First-run enrichment: pulling the full format set from TRaSH Guides");
+
+        var result = await SyncAndApplyToManagedProfilesAsync(cancellationToken);
+        if (!result.Success)
+        {
+            _logger.LogWarning("[TRaSH Sync] First-run enrichment deferred (offline?), will retry next start");
+            return; // leave the flag unset so it retries next start
+        }
+
+        settings.FirstRunEnrichmentDone = true;
+        await SaveSyncSettingsAsync(settings);
+        _logger.LogInformation("[TRaSH Sync] First-run enrichment complete");
+    }
+
+    /// <summary>
+    /// Sync the full sport-relevant format set fresh from TRaSH Guides, then apply
+    /// the real scores to every TRaSH-managed (IsSynced) profile the user has NOT
+    /// customized. This is the shared engine behind first-run enrichment and the
+    /// manual "sync now" button. User-created and user-edited profiles are never
+    /// touched. Best-effort: returns a failed result if the format sync couldn't run.
+    /// </summary>
+    public async Task<TrashSyncResult> SyncAndApplyToManagedProfilesAsync(CancellationToken cancellationToken = default)
+    {
+        TrashSyncResult syncResult;
+        try
+        {
+            syncResult = await SyncAllSportCustomFormatsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[TRaSH Sync] Format sync failed (offline?)");
+            return new TrashSyncResult { Success = false, Error = ex.Message };
+        }
+
+        if (!syncResult.Success)
+            return syncResult;
+
+        var profiles = await _db.QualityProfiles
+            .Where(p => p.IsSynced && !p.IsCustomized)
+            .ToListAsync(cancellationToken);
+
+        var settings = await GetSyncSettingsAsync();
+        foreach (var profile in profiles)
+        {
+            await ApplyTrashScoresToProfileAsync(profile.Id, settings.AutoApplyScoreSet);
+        }
+
+        // Also refresh the recommended quality size limits, so "one press" covers
+        // scoring and sizes together. Best-effort - a size-sync failure doesn't fail
+        // the whole operation.
+        try
+        {
+            await SyncQualitySizesFromTrashAsync(enableAutoSync: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[TRaSH Sync] Quality size sync failed during managed-profile sync");
+        }
+
+        _logger.LogInformation(
+            "[TRaSH Sync] Synced {Formats} formats, applied scores to {Profiles} managed profiles, and refreshed sizes",
+            syncResult.Created + syncResult.Updated, profiles.Count);
+        return syncResult;
+    }
+
+    /// <summary>
     /// Sync specific custom formats by their TRaSH IDs
     /// </summary>
     public async Task<TrashSyncResult> SyncCustomFormatsByIdsAsync(List<string> trashIds)
@@ -1181,6 +1262,55 @@ public class TrashGuideSyncService
     }
 
     /// <summary>
+    /// One-press profile setup for the UI. Syncs the formats first (so the profile
+    /// gets real scores, never an empty one), then does the right thing depending on
+    /// what's already there:
+    ///   - profile doesn't exist  -> create it from the template
+    ///   - exists, not customized -> refresh its scores in place (no duplicate)
+    ///   - exists, customized     -> leave the edited one alone, create a fresh copy
+    /// So a user's edits are never overwritten, and re-pressing doesn't spawn dupes.
+    /// Returns the resulting profile id and which of the three actions was taken.
+    /// </summary>
+    public async Task<(bool success, string? error, int? profileId, string action)> SetupProfileFromTemplateAsync(string trashId, string? customName = null)
+    {
+        // Formats first, so the created/refreshed profile scores the full set.
+        try
+        {
+            await SyncAllSportCustomFormatsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[TRaSH Sync] Profile setup: format sync failed, continuing with whatever is present");
+        }
+
+        // Resolve the template name so we can tell whether a matching profile exists.
+        var templates = await GetAvailableQualityProfilesAsync();
+        var template = templates.FirstOrDefault(t => t.TrashId == trashId);
+        if (template == null)
+            return (false, "Profile template not found", null, "none");
+
+        var targetName = customName ?? template.Name;
+        var existing = await _db.QualityProfiles.FirstOrDefaultAsync(p => p.Name == targetName);
+
+        if (existing == null)
+        {
+            var created = await CreateProfileFromTemplateAsync(trashId, customName);
+            return (created.success, created.error, created.profileId, "created");
+        }
+
+        if (!existing.IsCustomized)
+        {
+            // Refresh the un-edited profile's scores in place - no duplicate.
+            await ApplyTrashScoresToProfileAsync(existing.Id, "default", forceUpdate: true);
+            return (true, null, existing.Id, "refreshed");
+        }
+
+        // The existing one is customized: don't touch it, add a fresh copy alongside.
+        var copy = await CreateProfileFromTemplateAsync(trashId, customName);
+        return (copy.success, copy.error, copy.profileId, "copied");
+    }
+
+    /// <summary>
     /// Create a new quality profile from a TRaSH template
     /// </summary>
     public async Task<(bool success, string? error, int? profileId)> CreateProfileFromTemplateAsync(string trashId, string? customName = null)
@@ -1412,9 +1542,11 @@ public class TrashGuideSyncService
         // Auto-apply scores if enabled - only to TRaSH-synced profiles
         if (settings.AutoApplyScoresToProfiles && result.Success)
         {
-            // Only update profiles that were imported from TRaSH (have a TrashId)
+            // Only TRaSH-managed profiles: ones imported from a template (TrashId)
+            // or the seeded defaults (IsSynced). ApplyTrashScoresToProfileAsync
+            // still skips any the user has customized, so edits are never undone.
             var trashProfiles = await _db.QualityProfiles
-                .Where(p => p.TrashId != null)
+                .Where(p => p.TrashId != null || p.IsSynced)
                 .ToListAsync();
 
             _logger.LogInformation("[TRaSH Sync] Auto-applying scores to {Count} TRaSH-synced profiles", trashProfiles.Count);

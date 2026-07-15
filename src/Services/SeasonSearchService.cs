@@ -102,7 +102,8 @@ public class SeasonSearchService
             sport: league.Sport,
             enableMultiPartEpisodes: enableMultiPart,
             leagueTags: league.Tags,
-            allowHighlights: league.AllowHighlights
+            allowHighlights: league.AllowHighlights,
+            sportarrId: Helpers.SportarrIdToken.Normalize(league.ExternalId)
         );
 
         _logger.LogInformation("[Season Search] Found {Count} raw releases from indexers", allReleases.Count);

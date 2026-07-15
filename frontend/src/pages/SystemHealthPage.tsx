@@ -186,6 +186,13 @@ export default function SystemHealthPage() {
         subtitle="Monitor system status and configuration issues"
         actions={
           <>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('sportarr:open-setup-guide'))}
+              className="flex items-center rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-700"
+              title="Reopen the first-run setup guide - it shows what's already configured and lets you fill in the rest"
+            >
+              Run Setup Guide
+            </button>
             <label className="flex items-center gap-2 text-gray-300 text-sm">
               <input
                 type="checkbox"
@@ -279,7 +286,7 @@ export default function SystemHealthPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-4 mb-2">
                       <h3 className="text-lg font-semibold text-white">{check.message}</h3>
-                      <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
                         <span className={`px-3 py-1 ${levelBgColors[check.level]} ${levelColors[check.level]} text-sm font-medium rounded-full border ${levelBorderColors[check.level]}`}>
                           {levelNames[check.level]}
                         </span>

@@ -80,11 +80,43 @@ public class DownloadClient
     public bool SaveMagnetFiles { get; set; } // Write .magnet files for magnet-only releases (torrent blackhole)
     public bool ReadOnly { get; set; } = true; // Import by copy/hardlink and never delete watch folder contents
 
+    /// <summary>
+    /// How completed downloads from this client enter the library. Auto is the
+    /// recommended default: torrents still present in the client are preserved
+    /// (hardlink when the global setting allows, else copy) so seeding never
+    /// breaks, and everything else moves. The explicit values exist for
+    /// virtual-filesystem clients - e.g. Symlink keeps the library pointing at
+    /// a streaming mount instead of pulling the bytes off it.
+    /// </summary>
+    public PostImportMode PostImportMode { get; set; } = PostImportMode.Auto;
+
     // Tags for scoping to specific leagues
     public List<int> Tags { get; set; } = new();
 
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
+}
+
+/// <summary>
+/// Per-download-client override for how imports transfer files.
+/// </summary>
+public enum PostImportMode
+{
+    /// <summary>Seeding-aware: preserve sources torrent clients still need, move the rest.</summary>
+    Auto = 0,
+    /// <summary>Always copy; source untouched.</summary>
+    Copy = 1,
+    /// <summary>Always hardlink (falls back to copy); source untouched.</summary>
+    Hardlink = 2,
+    /// <summary>
+    /// Create a symlink in the library pointing at the source. Reserved and
+    /// API-accepted but not exposed in the UI: symlink sources (debrid and
+    /// virtual-mount tools) are auto-detected and re-linked regardless of
+    /// mode, so no real setup needs to select this explicitly.
+    /// </summary>
+    Symlink = 3,
+    /// <summary>Always move; source is consumed.</summary>
+    Move = 4
 }
 
 /// <summary>
@@ -387,6 +419,20 @@ public class ReleaseSearchResult
     public int? Seeders { get; set; }
     public int? Leechers { get; set; }
     public DateTime PublishDate { get; set; }
+
+    /// <summary>
+    /// Canonical event id ("ev-XXXXXXX") supplied by the indexer as a
+    /// "sportarrid" torznab/newznab attribute (docs/RELEASE_NAMING.md).
+    /// Normalized at parse time; treated as authoritative for matching,
+    /// second in precedence to an id token in the release name itself.
+    /// </summary>
+    public string? SportarrEventId { get; set; }
+
+    /// <summary>
+    /// Canonical league id ("lg-XXXXXX") from the same attribute when the
+    /// release is a pack tagged at league level.
+    /// </summary>
+    public string? SportarrLeagueId { get; set; }
 
     /// <summary>
     /// Indexer flags (e.g., "freeleech", "internal", "scene")

@@ -157,6 +157,12 @@ public class IptvSourceService
 
         _logger.LogInformation("[IPTV] Deleting source: {Id} ({Name})", id, source.Name);
 
+        // Detach any guide sources linked to this playlist so they remain as
+        // standalone EPG sources instead of pointing at a deleted provider.
+        var linkedGuides = await _db.EpgSources.Where(e => e.IptvSourceId == id).ToListAsync();
+        foreach (var guide in linkedGuides)
+            guide.IptvSourceId = null;
+
         _db.IptvSources.Remove(source);
         await _db.SaveChangesAsync();
 
@@ -179,6 +185,14 @@ public class IptvSourceService
             return 0;
 
         _logger.LogInformation("[IPTV] Bulk-deleting {Count} source(s)", sources.Count);
+
+        // Detach any guide sources linked to these playlists (see DeleteSourceAsync).
+        var linkedGuides = await _db.EpgSources
+            .Where(e => e.IptvSourceId != null && idList.Contains(e.IptvSourceId.Value))
+            .ToListAsync();
+        foreach (var guide in linkedGuides)
+            guide.IptvSourceId = null;
+
         _db.IptvSources.RemoveRange(sources);
         await _db.SaveChangesAsync();
 

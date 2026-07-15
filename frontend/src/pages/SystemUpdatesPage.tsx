@@ -82,7 +82,7 @@ const SystemUpdatesPage: React.FC = () => {
           <button
             onClick={checkForUpdates}
             disabled={checking}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50"
           >
             <ArrowPathIcon className={`w-5 h-5 ${checking ? 'animate-spin' : ''}`} />
             {checking ? 'Checking...' : 'Check for Updates'}
@@ -117,7 +117,7 @@ const SystemUpdatesPage: React.FC = () => {
               ) : (
                 <CheckCircleIcon className="w-8 h-8 text-green-400 flex-shrink-0" />
               )}
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <h2 className={`text-2xl font-bold mb-2 ${
                   updateInfo.updateAvailable ? 'text-blue-400' : 'text-green-400'
                 }`}>
@@ -266,7 +266,7 @@ docker restart sportarr
                           {release.changes.map((change, index) => (
                             <li key={index} className="text-sm text-gray-300 flex items-start gap-2">
                               <span className="text-gray-600 mt-1">•</span>
-                              <span className="flex-1">{change}</span>
+                              <span className="min-w-0 flex-1 break-words">{change}</span>
                             </li>
                           ))}
                         </ul>

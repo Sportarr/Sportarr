@@ -1281,8 +1281,8 @@ export default function IndexersSettings() {
                   : 'border-gray-800 hover:border-red-900/50'
               }`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-4 flex-1">
+              <div className="flex flex-wrap items-start justify-between gap-y-2">
+                <div className="flex min-w-0 items-start space-x-4 flex-1">
                   {/* Selection Checkbox */}
                   <div className="mt-1">
                     <input
@@ -1302,8 +1302,8 @@ export default function IndexersSettings() {
                   </div>
 
                   {/* Indexer Info */}
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
                       <h4 className="text-lg font-semibold text-white">{indexer.name}</h4>
                       <span
                         className={`px-2 py-0.5 text-xs rounded ${
@@ -1356,7 +1356,7 @@ export default function IndexersSettings() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center space-x-2 ml-4">
+                <div className="flex items-center space-x-2 ml-auto">
                   <button
                     onClick={() => handleTestIndexer(indexer)}
                     className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"

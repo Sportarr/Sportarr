@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import { apiGet, apiPut } from '../../utils/api';
@@ -33,6 +33,7 @@ interface DownloadClient {
   initialState?: number; // Initial state when torrent is added: 0=Started, 1=ForceStarted, 2=Stopped
   removeCompletedDownloads?: boolean; // Remove successful downloads from client after import (per-client setting)
   removeFailedDownloads?: boolean; // Remove failed downloads from client
+  postImportMode?: number; // How imports transfer files: 0=Auto (seeding-aware), 1=Copy, 2=Hardlink, 3=Symlink, 4=Move
   // Blackhole client settings (TorrentBlackhole/UsenetBlackhole only)
   blackholeFolder?: string; // Where grabbed .torrent/.nzb files are written
   watchFolder?: string; // Where the external downloader drops finished downloads
@@ -416,6 +417,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       // Default ON for Usenet (no seeding), user can disable for torrents to preserve seeding
       removeCompletedDownloads: true,
       removeFailedDownloads: true,
+      postImportMode: 0,
       blackholeFolder: '',
       watchFolder: '',
       saveMagnetFiles: false,
@@ -724,7 +726,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
               key={client.id}
               className="group bg-black/30 border border-gray-800 hover:border-red-900/50 rounded-lg p-4 transition-all"
             >
-              <div className="flex items-start justify-between">
+              <div className="flex flex-wrap items-start justify-between gap-y-2">
                 <div className="flex items-start space-x-4 flex-1">
                   {/* Status Icon */}
                   <div className="mt-1">
@@ -777,7 +779,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center space-x-2 ml-4">
+                <div className="flex items-center space-x-2 ml-auto">
                   <button
                     onClick={() => handleTestClient(client, true)}
                     disabled={testingClientId === client.id}
@@ -991,7 +993,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                   key={mapping.id}
                   className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 hover:border-gray-700 transition-colors"
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex flex-wrap items-start justify-between gap-y-2">
                     <div className="flex-1 space-y-2">
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div>
@@ -1014,7 +1016,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center space-x-2 ml-4">
+                    <div className="flex items-center space-x-2 ml-auto">
                       <button
                         onClick={() => handleEditPathMapping(mapping)}
                         className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
@@ -1190,7 +1192,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold text-white">Connection</h4>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">Host *</label>
                         <input
@@ -1313,7 +1315,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                     )}
 
                     {selectedTemplate?.fields.includes('username') && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
                           <input
@@ -1536,8 +1538,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           <p className="text-xs text-gray-500 mt-0.5">
                             Download pieces in order (first to last). Useful for streaming while downloading.
                           </p>
-                          <p className="text-xs text-yellow-500 mt-1">
-                            ⚠️ <strong>Decypharr users:</strong> Leave this DISABLED. Enabling causes Decypharr to download full files instead of creating symlinks, which fills up /storage/symlinks and breaks functionality.
+                          <p className="flex items-start gap-1.5 text-xs text-yellow-500 mt-1">
+                            <ExclamationTriangleIcon className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                            <span><strong>Decypharr users:</strong> Leave this DISABLED. Enabling causes Decypharr to download full files instead of creating symlinks, which fills up /storage/symlinks and breaks functionality.</span>
                           </p>
                         </div>
                       </label>
@@ -1601,6 +1604,26 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           </p>
                         </div>
                       </label>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Post-Import Behavior</label>
+                        <select
+                          value={formData.postImportMode ?? 0}
+                          onChange={(e) => handleFormChange('postImportMode', parseInt(e.target.value))}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        >
+                          <option value={0}>Auto (recommended)</option>
+                          <option value={1}>Copy</option>
+                          <option value={2}>Hardlink/Copy</option>
+                          <option value={4}>Move</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Auto: hardlink (or copy) while a torrent is still seeding in this client, move once it is gone.
+                          Copy and Hardlink/Copy always leave the original in place for this client.
+                          Move always relocates the file and frees the source. Hardlinks require the download and library
+                          folders to be on the same filesystem and fall back to a copy when a link cannot be created.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

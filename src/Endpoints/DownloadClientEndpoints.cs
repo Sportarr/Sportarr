@@ -99,6 +99,7 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.InitialState = updatedClient.InitialState;
     client.RemoveCompletedDownloads = updatedClient.RemoveCompletedDownloads;
     client.RemoveFailedDownloads = updatedClient.RemoveFailedDownloads;
+    client.PostImportMode = updatedClient.PostImportMode;
     client.BlackholeFolder = updatedClient.BlackholeFolder;
     client.WatchFolder = updatedClient.WatchFolder;
     client.SaveMagnetFiles = updatedClient.SaveMagnetFiles;

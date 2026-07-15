@@ -5,6 +5,7 @@ import { MagnifyingGlassIcon, CheckIcon, TrashIcon, ArrowPathIcon, PencilSquareI
 import SortableFilterableHeader from '../components/SortableFilterableHeader';
 import ColumnPicker from '../components/ColumnPicker';
 import CompactTableFrame from '../components/CompactTableFrame';
+import PageHeader from '../components/PageHeader';
 import { useCompactView } from '../hooks/useCompactView';
 import { useTableSortFilter, applyTableSortFilter } from '../hooks/useTableSortFilter';
 import { useColumnVisibility } from '../hooks/useColumnVisibility';
@@ -484,56 +485,22 @@ export default function LeaguesPage() {
 
   return (
     <div className={PAGE_PADDING}>
-      <div className="mb-3 md:mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-white md:text-3xl">Leagues</h1>
-          <p className="mt-1 text-sm text-gray-400 md:text-base">
-            Manage your monitored leagues and competitions
-          </p>
-        </div>
+      <PageHeader
+        title="Leagues"
+        subtitle="Manage your monitored leagues and competitions"
+        actions={
+          <button
+            onClick={() => navigate('/add-league/search')}
+            className="whitespace-nowrap rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 md:px-6 md:text-base"
+          >
+            + Add League
+          </button>
+        }
+      />
 
-        <div className="overflow-x-auto xl:max-w-[calc(100%-16rem)]">
-          <div className="flex min-w-max flex-wrap items-center justify-start gap-2 xl:justify-end">
-            {sportFilters.length > 1 && (
-              <div className="flex flex-wrap items-center gap-2">
-                {sportFilters.map(sport => (
-                  <button
-                    key={sport.id}
-                    onClick={() => setSelectedSport(sport.id)}
-                    className={`
-                      flex items-center gap-1.5 rounded-lg whitespace-nowrap font-medium transition-all text-sm px-4 py-2.5 md:px-4 md:py-2.5 md:text-base
-                      ${selectedSport === sport.id
-                        ? 'bg-red-600 text-white'
-                        : 'bg-gray-900 text-gray-400 hover:bg-gray-800 hover:text-white border border-red-900/30'
-                      }
-                    `}
-                  >
-                    <span className="text-base leading-none">{sport.icon}</span>
-                    <span>{sport.name}</span>
-                    {sport.id !== 'all' && leaguesBySport[sport.id] && (
-                      <span className="ml-0.5 rounded bg-black/30 px-1.5 py-0.5 text-xs">
-                        {leaguesBySport[sport.id]}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <button
-              onClick={() => navigate('/add-league/search')}
-              className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 md:px-6 md:py-3 md:text-base"
-            >
-              <span className="sm:hidden">+ Add</span>
-              <span className="hidden sm:inline">+ Add League</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Search Bar */}
-      <div className="mb-3 md:mb-4 max-w-2xl">
-        <div className="relative">
+      {/* Search + sport filter - one row, nothing scrolls */}
+      <div className="mb-3 md:mb-4 flex flex-wrap gap-2 md:gap-3">
+        <div className="relative min-w-[180px] flex-1">
           <div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none">
             <MagnifyingGlassIcon className="h-4 w-4 md:h-5 md:w-5 text-gray-400" />
           </div>
@@ -542,30 +509,45 @@ export default function LeaguesPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search leagues..."
-            className="w-full rounded-lg border border-red-900/30 bg-gray-900 py-2 pl-10 pr-4 text-sm text-white transition-all placeholder-gray-500 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-600/20 md:py-2.5 md:pl-12 md:text-base"
+            className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pl-10 pr-4 text-sm text-white transition-all placeholder-gray-500 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-600/20 md:py-2.5 md:pl-12 md:text-base"
           />
         </div>
+        {sportFilters.length > 1 && (
+          <select
+            value={selectedSport}
+            onChange={(e) => setSelectedSport(e.target.value)}
+            className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-600/20 md:py-2.5 md:text-base"
+            title="Filter by sport"
+          >
+            {sportFilters.map(sport => (
+              <option key={sport.id} value={sport.id}>
+                {sport.icon} {sport.name}
+                {sport.id !== 'all' && leaguesBySport[sport.id] ? ` (${leaguesBySport[sport.id]})` : ''}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Stats */}
       <div className="mb-3 md:mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 md:gap-4">
-        <div className="rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4">
+        <div className="rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Total Leagues</p>
           <p className="text-xl md:text-3xl font-bold text-white">{leagues?.length || 0}</p>
         </div>
-        <div className="rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4">
+        <div className="rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Monitored</p>
           <p className="text-xl md:text-3xl font-bold text-white">
             {leagues?.filter(l => l.monitored).length || 0}
           </p>
         </div>
-        <div className="rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4">
+        <div className="rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Total Events</p>
           <p className="text-xl md:text-3xl font-bold text-white">
             {leagues?.reduce((sum, league) => sum + (league.eventCount || 0), 0) || 0}
           </p>
         </div>
-        <div className="rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4">
+        <div className="rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Monitored Events</p>
           <p className="text-xl md:text-3xl font-bold text-white">
             {leagues?.reduce((sum, league) => sum + (league.monitoredEventCount || 0), 0) || 0}
@@ -599,7 +581,7 @@ export default function LeaguesPage() {
               <div
                 key={league.id}
                 onClick={() => navigate(`/leagues/${league.id}`)}
-                className={`bg-gray-900 border rounded-lg overflow-hidden hover:shadow-lg transition-all cursor-pointer group ${
+                className={`bg-gradient-to-br from-gray-900 to-black border rounded-lg overflow-hidden hover:shadow-lg transition-all cursor-pointer group ${
                   isSelected
                     ? 'border-red-500 ring-2 ring-red-500/50 shadow-red-900/30'
                     : 'border-red-900/30 hover:border-red-600/50 hover:shadow-red-900/20'
@@ -768,7 +750,7 @@ export default function LeaguesPage() {
       {/* Bulk Edit Dialog */}
       {showEditDialog && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-900 border border-red-900/50 rounded-lg p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+          <div className="bg-gray-900 border border-red-900/50 rounded-lg p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[85dvh] overflow-y-auto">
             <h2 className="text-xl font-bold text-white mb-1">Edit {selectedLeagueIds.size} {selectedLeagueIds.size === 1 ? 'League' : 'Leagues'}</h2>
             <p className="text-sm text-gray-400 mb-5">Only fields you change are applied; everything else is left alone.</p>
 
@@ -988,7 +970,7 @@ export default function LeaguesPage() {
       {/* Rename Confirmation Dialog */}
       {showRenameDialog && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-900 border border-red-900/50 rounded-lg p-6 max-w-4xl w-full mx-4 shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="bg-gray-900 border border-red-900/50 rounded-lg p-6 max-w-4xl w-full mx-4 shadow-2xl max-h-[85dvh] flex flex-col">
             <h2 className="text-xl font-bold text-white mb-4">
               Organize {selectedLeagueIds.size} Selected {selectedLeagueIds.size === 1 ? 'League' : 'Leagues'}
             </h2>

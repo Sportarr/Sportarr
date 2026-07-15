@@ -34,15 +34,24 @@ public class MediaFileInspector
             return null;
         }
 
+        // ArgumentList, never an interpolated Arguments string: a quote in a
+        // filename would otherwise split into extra arguments (same rule as
+        // FFmpegStreamService).
         var psi = new ProcessStartInfo
         {
             FileName = "ffprobe",
-            Arguments = $"-v error -print_format json -show_streams -show_format \"{filePath}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("-v");
+        psi.ArgumentList.Add("error");
+        psi.ArgumentList.Add("-print_format");
+        psi.ArgumentList.Add("json");
+        psi.ArgumentList.Add("-show_streams");
+        psi.ArgumentList.Add("-show_format");
+        psi.ArgumentList.Add(filePath);
 
         try
         {
@@ -136,6 +145,25 @@ public class MediaFileInspector
                 }
             }
 
+            // Embedded sportarr id (docs/RELEASE_NAMING.md): a Matroska
+            // global tag named SPORTARR carrying "ev-XXXXXXX". ffprobe
+            // surfaces global/segment tags under format.tags, and the value
+            // is normalized so a malformed tag reads as absent.
+            string? sportarrId = null;
+            if (root.TryGetProperty("format", out var format) &&
+                format.TryGetProperty("tags", out var formatTags) &&
+                formatTags.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var tag in formatTags.EnumerateObject())
+                {
+                    if (IsSportarrTagKey(tag.Name))
+                    {
+                        sportarrId = Sportarr.Api.Helpers.SportarrIdToken.Normalize(tag.Value.GetString());
+                        break;
+                    }
+                }
+            }
+
             // Map ffprobe codec_name to Sportarr's verbose codec form
             videoCodec = NormalizeVideoCodec(videoCodec);
             audioCodec = NormalizeAudioCodec(audioCodec);
@@ -157,7 +185,8 @@ public class MediaFileInspector
                 Source = source,
                 VideoCodec = videoCodec,
                 AudioCodec = audioCodec,
-                Languages = languages
+                Languages = languages,
+                SportarrId = sportarrId
             };
         }
         catch (Exception ex)
@@ -218,6 +247,23 @@ public class MediaFileInspector
         };
     }
 
+    /// <summary>
+    /// Match a format.tags key against the SPORTARR tag name, tolerating
+    /// ffmpeg's Matroska key flattening: an optional TargetType string or
+    /// nested SimpleTag parent becomes a "PREFIX/" path ("MOVIE/SPORTARR"),
+    /// and a non-default TagLanguage appends a "-lng" suffix
+    /// ("SPORTARR-eng"). Casing varies by muxer.
+    /// </summary>
+    internal static bool IsSportarrTagKey(string key)
+    {
+        var name = key;
+        var slash = name.LastIndexOf('/');
+        if (slash >= 0) name = name[(slash + 1)..];
+        var dash = name.IndexOf('-');
+        if (dash > 0) name = name[..dash];
+        return name.Equals("SPORTARR", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string Truncate(string? s, int max)
     {
         if (string.IsNullOrEmpty(s)) return "";
@@ -235,4 +281,9 @@ public class MediaFileInspection
     public string? VideoCodec { get; set; }
     public string? AudioCodec { get; set; }
     public List<string> Languages { get; set; } = new();
+
+    /// <summary>Canonical sportarr id ("ev-XXXXXXX"/"lg-XXXXXX") read from the
+    /// file's embedded SPORTARR global tag, or null when absent/invalid.
+    /// Survives any rename, so it matches files whose names carry nothing.</summary>
+    public string? SportarrId { get; set; }
 }

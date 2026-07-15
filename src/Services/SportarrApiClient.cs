@@ -793,6 +793,15 @@ public class SportarrApiClient
     /// </summary>
     public async Task<List<League>?> GetAllLeaguesAsync()
     {
+        // The full catalog is ~3000 leagues and changes rarely; without this
+        // cache every visit to Add League paid a metadata-API round trip plus
+        // a full deserialize before the page could render anything.
+        const string cacheKey = "sportarr-api:all-leagues";
+        if (_cache.TryGetValue(cacheKey, out List<League>? cachedLeagues) && cachedLeagues != null)
+        {
+            return cachedLeagues;
+        }
+
         try
         {
             // Use smart refresh endpoint - returns ALL leagues with auto-caching
@@ -809,17 +818,16 @@ public class SportarrApiClient
 
             var result = JsonSerializer.Deserialize<SportarrApiAllLeaguesResponse>(json, _jsonOptions);
 
-            // Detailed diagnostic logging
-            _logger.LogInformation("[SportarrAPI] Deserialization result - Result null: {ResultNull}, Data null: {DataNull}, Leagues null: {LeaguesNull}, Leagues count: {Count}",
-                result == null,
-                result?.Data == null,
-                result?.Data?.Leagues == null,
-                result?.Data?.Leagues?.Count ?? 0);
-
             if (result?.Data?.Leagues != null && result.Data.Leagues.Any())
             {
                 _logger.LogInformation("[SportarrAPI] Successfully retrieved {Total} leagues (cached: {Cached})",
                     result.Data.Leagues.Count, result._Meta?.Cached ?? false);
+
+                _cache.Set(cacheKey, result.Data.Leagues, new MemoryCacheEntryOptions
+                {
+                    SlidingExpiration = TimeSpan.FromHours(6),
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24)
+                });
 
                 return result.Data.Leagues;
             }

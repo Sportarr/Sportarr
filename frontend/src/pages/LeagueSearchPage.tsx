@@ -201,6 +201,7 @@ export default function LeagueSearchPage() {
       monitorPreseason,
       retentionDays,
       allowHighlights,
+      sessionTypeQualityProfiles,
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -219,6 +220,7 @@ export default function LeagueSearchPage() {
       monitorPreseason?: boolean;
       retentionDays?: number;
       allowHighlights?: boolean;
+      sessionTypeQualityProfiles?: string | null;
     }) => {
       // Teamless sports (motorsport, golf, darts, climbing, gambling, individual
       // tennis, badminton, table tennis, snooker) and fighting leagues that
@@ -242,6 +244,7 @@ export default function LeagueSearchPage() {
         monitoredParts: monitoredParts,
         monitoredSessionTypes: monitoredSessionTypes,
         monitoredEventTypes: monitoredEventTypes,
+        sessionTypeQualityProfiles: sessionTypeQualityProfiles ?? null,
         searchQueryTemplate: searchQueryTemplate,
         tags: tags,
         rootFolderId: rootFolderId,
@@ -315,7 +318,8 @@ export default function LeagueSearchPage() {
       monitorPlayoffs,
       monitorPreseason,
       retentionDays,
-      allowHighlights
+      allowHighlights,
+      sessionTypeQualityProfiles
     }: {
       leagueId: number;
       monitoredTeamIds: string[];
@@ -336,6 +340,7 @@ export default function LeagueSearchPage() {
       monitorPreseason?: boolean;
       retentionDays?: number;
       allowHighlights?: boolean;
+      sessionTypeQualityProfiles?: string | null;
     }) => {
       // Teamless sports auto-monitor; other sports require at least one selected team.
       const isMotorsportLeague = isMotorsport(sport);
@@ -355,6 +360,7 @@ export default function LeagueSearchPage() {
         monitoredParts: monitoredParts,
         monitoredSessionTypes: monitoredSessionTypes,
         monitoredEventTypes: monitoredEventTypes,
+        sessionTypeQualityProfiles: sessionTypeQualityProfiles ?? null,
         applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
         searchQueryTemplate: searchQueryTemplate,
         tags: tags,
@@ -505,6 +511,7 @@ export default function LeagueSearchPage() {
     monitorPreseason: boolean,
     retentionDays: number,
     allowHighlights: boolean,
+    sessionTypeQualityProfiles: string | null,
   ) => {
     const modalData = addModalDataRef.current;
     if (modalData?.editMode && modalData.leagueId) {
@@ -527,7 +534,8 @@ export default function LeagueSearchPage() {
         monitorPlayoffs,
         monitorPreseason,
         retentionDays,
-        allowHighlights
+        allowHighlights,
+        sessionTypeQualityProfiles
       });
     } else {
       addLeagueMutation.mutate({
@@ -547,7 +555,8 @@ export default function LeagueSearchPage() {
         monitorPlayoffs,
         monitorPreseason,
         retentionDays,
-        allowHighlights
+        allowHighlights,
+        sessionTypeQualityProfiles
       });
     }
   };
@@ -675,49 +684,38 @@ export default function LeagueSearchPage() {
           subtitle="Browse and add leagues from the Sportarr database to monitor their events"
         />
 
-        {/* Search Controls */}
-        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-4 md:p-5 mb-4 md:mb-6">
-          {/* Sport Filter */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Filter by Sport
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {sportFilters.map(sport => (
-                <button
-                  key={sport.id}
-                  onClick={() => setSelectedSport(sport.id)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                    selectedSport === sport.id
-                      ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
-                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                  }`}
-                  >
-                  <span className="mr-2">{sport.icon}</span>
-                  {sport.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Search Input */}
-          <div className="relative">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+        {/* Search + sport filter - one row, same pattern as the Leagues page */}
+        <div className="mb-2 flex flex-wrap gap-2 md:gap-3">
+          <div className="relative min-w-[180px] flex-1">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter leagues (e.g., UFC, Premier League, NBA)..."
-              className="w-full pl-10 pr-4 py-3 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
             />
           </div>
-
-            <p className="mt-2 text-sm text-gray-500">
-              💡 Showing {isLoading ? '...' : filteredLeagues.length} of {allLeagues.length} leagues
-              {searchQuery && ` matching "${searchQuery}"`}
-              {selectedSport !== 'all' && ` in ${selectedSport}`}
-            </p>
-          </div>
+          {sportFilters.length > 1 && (
+            <select
+              value={selectedSport}
+              onChange={(e) => setSelectedSport(e.target.value)}
+              className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-600/20 md:text-base"
+              title="Filter by sport"
+            >
+              {sportFilters.map(sport => (
+                <option key={sport.id} value={sport.id}>
+                  {sport.icon} {sport.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <p className="mb-4 text-sm text-gray-500 md:mb-6">
+          Showing {isLoading ? '...' : filteredLeagues.length} of {allLeagues.length} leagues
+          {searchQuery && ` matching "${searchQuery}"`}
+          {selectedSport !== 'all' && ` in ${selectedSport}`}
+        </p>
 
         {/* Loading State */}
         {isLoading && (
@@ -736,7 +734,7 @@ export default function LeagueSearchPage() {
         {!isLoading && filteredLeagues.length > 0 && (
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-white">
+              <h2 className="text-xl font-bold text-white">
                 {selectedSport === 'all' ? 'All Leagues' : `${selectedSport} Leagues`}
                 {' '}({filteredLeagues.length})
               </h2>

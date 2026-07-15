@@ -627,6 +627,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("PostImportCategory")
                         .HasColumnType("text");
 
+                    b.Property<int>("PostImportMode")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
 
@@ -1130,6 +1133,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<DateTime>("Created")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("IptvSourceId")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -1157,6 +1163,8 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("character varying(2000)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IptvSourceId");
 
                     b.HasIndex("IsActive");
 
@@ -2256,6 +2264,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("SearchQueryTemplate")
                         .HasColumnType("text");
 
+                    b.Property<string>("SessionTypeQualityProfiles")
+                        .HasColumnType("text");
+
                     b.Property<string>("Sport")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -3263,7 +3274,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                             FormatScoreIncrement = 1,
                             IsCustomized = false,
                             IsDefault = true,
-                            IsSynced = false,
+                            IsSynced = true,
                             Items = "[{\"Name\":\"WEB 1080p\",\"Quality\":0,\"Allowed\":true,\"Items\":[{\"Name\":\"WEBDL-1080p\",\"Quality\":15,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEBRip-1080p\",\"Quality\":14,\"Allowed\":true,\"Items\":null,\"Id\":null}],\"Id\":null},{\"Name\":\"Bluray-1080p\",\"Quality\":11,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"HDTV-1080p\",\"Quality\":6,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEB 720p\",\"Quality\":0,\"Allowed\":true,\"Items\":[{\"Name\":\"WEBDL-720p\",\"Quality\":3,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEBRip-720p\",\"Quality\":10,\"Allowed\":true,\"Items\":null,\"Id\":null}],\"Id\":null},{\"Name\":\"Bluray-720p\",\"Quality\":7,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"HDTV-720p\",\"Quality\":5,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEB 480p\",\"Quality\":0,\"Allowed\":true,\"Items\":[{\"Name\":\"WEBDL-480p\",\"Quality\":2,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEBRip-480p\",\"Quality\":8,\"Allowed\":true,\"Items\":null,\"Id\":null}],\"Id\":null},{\"Name\":\"Bluray-576p\",\"Quality\":16,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"Bluray-480p\",\"Quality\":9,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"DVD\",\"Quality\":4,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"SDTV\",\"Quality\":1,\"Allowed\":true,\"Items\":null,\"Id\":null}]",
                             MinFormatScore = 0,
                             Name = "WEB-1080p (Alternative)",
@@ -3277,7 +3288,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                             FormatScoreIncrement = 1,
                             IsCustomized = false,
                             IsDefault = false,
-                            IsSynced = false,
+                            IsSynced = true,
                             Items = "[{\"Name\":\"WEB 2160p\",\"Quality\":0,\"Allowed\":true,\"Items\":[{\"Name\":\"WEBDL-2160p\",\"Quality\":19,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEBRip-2160p\",\"Quality\":18,\"Allowed\":true,\"Items\":null,\"Id\":null}],\"Id\":null},{\"Name\":\"Bluray-2160p\",\"Quality\":13,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"HDTV-2160p\",\"Quality\":17,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEB 1080p\",\"Quality\":0,\"Allowed\":true,\"Items\":[{\"Name\":\"WEBDL-1080p\",\"Quality\":15,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEBRip-1080p\",\"Quality\":14,\"Allowed\":true,\"Items\":null,\"Id\":null}],\"Id\":null},{\"Name\":\"Bluray-1080p\",\"Quality\":11,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"HDTV-1080p\",\"Quality\":6,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEB 720p\",\"Quality\":0,\"Allowed\":true,\"Items\":[{\"Name\":\"WEBDL-720p\",\"Quality\":3,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEBRip-720p\",\"Quality\":10,\"Allowed\":true,\"Items\":null,\"Id\":null}],\"Id\":null},{\"Name\":\"Bluray-720p\",\"Quality\":7,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"HDTV-720p\",\"Quality\":5,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEB 480p\",\"Quality\":0,\"Allowed\":true,\"Items\":[{\"Name\":\"WEBDL-480p\",\"Quality\":2,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"WEBRip-480p\",\"Quality\":8,\"Allowed\":true,\"Items\":null,\"Id\":null}],\"Id\":null},{\"Name\":\"Bluray-576p\",\"Quality\":16,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"Bluray-480p\",\"Quality\":9,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"DVD\",\"Quality\":4,\"Allowed\":true,\"Items\":null,\"Id\":null},{\"Name\":\"SDTV\",\"Quality\":1,\"Allowed\":true,\"Items\":null,\"Id\":null}]",
                             MinFormatScore = 0,
                             Name = "WEB-2160p (Alternative)",

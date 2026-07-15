@@ -86,8 +86,9 @@ interface ScoreSet {
   [key: string]: string;
 }
 
-export default function TrashGuidesSettings() {
+export default function TrashGuidesSettings({ embedded = false }: { embedded?: boolean } = {}) {
   const [status, setStatus] = useState<TrashSyncStatus | null>(null);
+  const [quickSyncing, setQuickSyncing] = useState(false);
   const [availableFormats, setAvailableFormats] = useState<TrashCustomFormatInfo[]>([]);
   const [scoreSets, setScoreSets] = useState<ScoreSet>({});
   const [loading, setLoading] = useState(true);
@@ -181,6 +182,28 @@ export default function TrashGuidesSettings() {
       });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  // One press: refresh the full format set and re-apply scores to the managed
+  // profiles (skipping anything the user has customized).
+  const handleQuickSync = async () => {
+    setQuickSyncing(true);
+    try {
+      const response = await apiPost('/api/trash/quick-sync', {});
+      const result = await response.json();
+      if (result.success) {
+        toast.success('Formats and profiles updated', {
+          description: `Created ${result.created ?? 0}, updated ${result.updated ?? 0}. Your edited profiles were left untouched.`,
+        });
+        await loadData();
+      } else {
+        toast.error('Sync failed', { description: result.error || 'Unknown error' });
+      }
+    } catch {
+      toast.error('Sync failed', { description: 'Could not reach TRaSH Guides' });
+    } finally {
+      setQuickSyncing(false);
     }
   };
 
@@ -529,33 +552,56 @@ export default function TrashGuidesSettings() {
   }
 
   return (
-    <div className="px-4 pt-6 sm:px-6">
-      <PageHeader
-        title="TRaSH Guides Integration"
-        subtitle="Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only."
-        actions={
-          <>
-            <button
-              onClick={() => setShowSettingsModal(true)}
-              className="rounded-lg p-2.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
-              title="Auto-Sync Settings"
-            >
-              <Cog6ToothIcon className="w-5 h-5" />
-            </button>
-            <a
-              href="https://trash-guides.info/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-900/20 hover:text-blue-300"
-            >
-              <InformationCircleIcon className="w-4 h-4" />
-              TRaSH Guides
-            </a>
-          </>
-        }
-      />
+    <div className={embedded ? '' : 'px-4 pt-6 sm:px-6'}>
+      {!embedded && (
+        <PageHeader
+          title="TRaSH Guides Integration"
+          subtitle="Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only."
+          actions={
+            <>
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                className="rounded-lg p-2.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
+                title="Auto-Sync Settings"
+              >
+                <Cog6ToothIcon className="w-5 h-5" />
+              </button>
+              <a
+                href="https://trash-guides.info/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-900/20 hover:text-blue-300"
+              >
+                <InformationCircleIcon className="w-4 h-4" />
+                TRaSH Guides
+              </a>
+            </>
+          }
+        />
+      )}
 
       <div className="space-y-6 pb-6">
+
+      {/* One press: keep formats and profile scores current */}
+      <div className="rounded-lg border border-red-900/40 bg-gradient-to-br from-gray-900 to-black p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Keep your scoring current</h3>
+            <p className="mt-1 text-sm text-gray-400">
+              Pull the latest formats from TRaSH Guides and re-apply their scores to your quality
+              profiles. Profiles you've edited are left untouched.
+            </p>
+          </div>
+          <button
+            onClick={handleQuickSync}
+            disabled={quickSyncing}
+            className="flex flex-shrink-0 items-center justify-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+          >
+            {quickSyncing && <ArrowPathIcon className="h-4 w-4 animate-spin" />}
+            {quickSyncing ? 'Syncing...' : 'Sync formats & update profiles'}
+          </button>
+        </div>
+      </div>
 
       {/* Status Card */}
       <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
@@ -864,7 +910,7 @@ export default function TrashGuidesSettings() {
                               checked={selectedFormats.has(format.trashId)}
                               onChange={() => toggleFormat(format.trashId)}
                               onClick={(e) => e.stopPropagation()}
-                              className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                              className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-600"
                             />
                           )}
                           <div className="flex-1 min-w-0">
@@ -1050,7 +1096,7 @@ export default function TrashGuidesSettings() {
       {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-lg w-full max-h-[85dvh] overflow-y-auto">
             <div className="p-4 border-b border-gray-700 flex items-center justify-between sticky top-0 bg-gray-900">
               <h3 className="text-lg font-semibold text-white">Auto-Sync Settings</h3>
               <button
@@ -1186,7 +1232,7 @@ export default function TrashGuidesSettings() {
       {/* Profile Templates Modal */}
       {showProfilesModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-3xl w-full max-h-[85dvh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-700 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-white">TRaSH Quality Profile Templates</h3>
@@ -1231,7 +1277,7 @@ export default function TrashGuidesSettings() {
                               checked={isSelected}
                               onChange={() => toggleProfileSelection(profile.trashId)}
                               disabled={creatingProfile}
-                              className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                              className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-600"
                             />
                           )}
                           {isCreated && (

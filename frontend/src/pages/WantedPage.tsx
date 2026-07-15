@@ -81,14 +81,31 @@ type WantedColumnKey =
   | 'status'
   | 'actions';
 
-const WantedPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('missing');
+interface WantedPageProps {
+  /** Render bare content (no PageShell/PageHeader) for embedding in Activity. */
+  embedded?: boolean;
+  /** Pin to one tab and hide the internal tab strip (the host page has its own tabs). */
+  fixedTab?: TabType;
+}
+
+const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) => {
+  const [activeTab, setActiveTab] = useState<TabType>(fixedTab ?? 'missing');
   const [missingEvents, setMissingEvents] = useState<Event[]>([]);
   const [cutoffUnmetEvents, setCutoffUnmetEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+
+  // Hosts render one instance per pinned tab (with distinct keys), but if an
+  // instance ever survives a fixedTab change, follow the prop instead of
+  // showing the previous tab's data.
+  useEffect(() => {
+    if (fixedTab) {
+      setActiveTab(fixedTab);
+      setCurrentPage(1);
+    }
+  }, [fixedTab]);
   const { timezone } = useUISettings();
   const compactView = useCompactView();
   const missingSortFilter = useTableSortFilter('eventDate');
@@ -496,7 +513,7 @@ const WantedPage: React.FC = () => {
       >
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex flex-wrap items-center gap-3 mb-2">
               <h3 className="text-lg font-semibold text-white">{event.title}</h3>
               {event.leagueName && (
                 <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded">
@@ -641,35 +658,44 @@ const WantedPage: React.FC = () => {
     );
   };
 
-  return (
-    <PageShell>
-      <PageHeader
-        title="Wanted"
-        subtitle="Events that are monitored but missing files or below quality cutoff"
-        actions={
-          <button
-            onClick={handleSearchAll}
-            disabled={searchingAll || totalRecords === 0}
-            className="flex items-center rounded-lg bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <MagnifyingGlassIcon className={`w-5 h-5 mr-2 ${searchingAll ? 'animate-pulse' : ''}`} />
-            {searchingAll ? 'Queueing...' : 'Search All'}
-          </button>
-        }
-      />
+  const searchAllButton = (
+    <button
+      onClick={handleSearchAll}
+      disabled={searchingAll || totalRecords === 0}
+      className="flex items-center rounded-lg bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <MagnifyingGlassIcon className={`w-5 h-5 mr-2 ${searchingAll ? 'animate-pulse' : ''}`} />
+      {searchingAll ? 'Queueing...' : 'Search All'}
+    </button>
+  );
 
-      {/* Tabs */}
-      <SegmentedTabs
-        items={[
-          { key: 'missing', label: 'Missing', badge: activeTab === 'missing' ? totalRecords : '...' },
-          { key: 'cutoff-unmet', label: 'Cutoff Unmet', badge: activeTab === 'cutoff-unmet' ? totalRecords : '...' },
-        ]}
-        value={activeTab}
-        onChange={(tab) => {
-          setActiveTab(tab);
-          setCurrentPage(1);
-        }}
-      />
+  const body = (
+    <>
+      {!embedded && (
+        <PageHeader
+          title="Wanted"
+          subtitle="Events that are monitored but missing files or below quality cutoff"
+          actions={searchAllButton}
+        />
+      )}
+
+      {/* Tabs - hidden when the host page pins one (its own tabs take over) */}
+      {!fixedTab && (
+        <SegmentedTabs
+          items={[
+            { key: 'missing', label: 'Missing', badge: activeTab === 'missing' ? totalRecords : '...' },
+            { key: 'cutoff-unmet', label: 'Cutoff Unmet', badge: activeTab === 'cutoff-unmet' ? totalRecords : '...' },
+          ]}
+          value={activeTab}
+          onChange={(tab) => {
+            setActiveTab(tab);
+            setCurrentPage(1);
+          }}
+        />
+      )}
+      {embedded && (
+        <div className="mb-4 flex justify-end">{searchAllButton}</div>
+      )}
 
       {/* Info Box */}
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-800 rounded-lg">
@@ -751,8 +777,10 @@ const WantedPage: React.FC = () => {
         eventId={manualSearchModal.eventId}
         eventTitle={manualSearchModal.eventTitle}
       />
-    </PageShell>
+    </>
   );
+
+  return embedded ? body : <PageShell>{body}</PageShell>;
 };
 
 export default WantedPage;

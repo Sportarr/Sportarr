@@ -1,50 +1,47 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Toaster, toast } from 'sonner';
 import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import LeaguesPage from './pages/LeaguesPage';
-import LeagueDetailPage from './pages/LeagueDetailPage';
-import TeamsPage from './pages/TeamsPage';
-import EventSearchPage from './pages/EventSearchPage';
-import LeagueSearchPage from './pages/LeagueSearchPage';
-import CalendarPage from './pages/CalendarPage';
-import ActivityPage from './pages/ActivityPage';
-import WantedPage from './pages/WantedPage';
-import LibraryImportPage from './pages/LibraryImportPage';
-import SystemPage from './pages/SystemPage';
-import SystemHealthPage from './pages/SystemHealthPage';
-import StatsPage from './pages/StatsPage';
-import BackupPage from './pages/BackupPage';
-import SystemEventsPage from './pages/SystemEventsPage';
-import SystemUpdatesPage from './pages/SystemUpdatesPage';
-import LogFilesPage from './pages/LogFilesPage';
-import TasksPage from './pages/TasksPage';
-import NotFoundPage from './pages/NotFoundPage';
-import LoginPage from './pages/LoginPage';
-import MediaManagementSettings from './pages/settings/MediaManagementSettings';
-import ProfilesSettings from './pages/settings/ProfilesSettings';
-import QualitySettings from './pages/settings/QualitySettings';
-import CustomFormatsSettings from './pages/settings/CustomFormatsSettings';
-import TrashGuidesSettings from './pages/settings/TrashGuidesSettings';
-import IndexersSettings from './pages/settings/IndexersSettings';
-import ImportListsSettings from './pages/settings/ImportListsSettings';
-import DownloadClientsSettings from './pages/settings/DownloadClientsSettings';
-import NotificationsSettings from './pages/settings/NotificationsSettings';
-import GeneralSettings from './pages/settings/GeneralSettings';
-import UISettings from './pages/settings/UISettings';
-import TagsSettings from './pages/settings/TagsSettings';
-import DevelopmentSettings from './pages/settings/DevelopmentSettings';
-import IptvSettings from './pages/settings/IptvSettings';
-import IptvChannelsSettings from './pages/settings/IptvChannelsSettings';
-import DvrRecordingsSettings from './pages/settings/DvrRecordingsSettings';
-import TvGuidePage from './pages/iptv/TvGuidePage';
-import WatchChannelPage from './pages/iptv/WatchChannelPage';
-import IptvCoveragePage from './pages/iptv/IptvCoveragePage';
+const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
+const LeagueDetailPage = lazy(() => import('./pages/LeagueDetailPage'));
+const TeamsPage = lazy(() => import('./pages/TeamsPage'));
+const EventSearchPage = lazy(() => import('./pages/EventSearchPage'));
+const LeagueSearchPage = lazy(() => import('./pages/LeagueSearchPage'));
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+const ActivityPage = lazy(() => import('./pages/ActivityPage'));
+const LibraryImportPage = lazy(() => import('./pages/LibraryImportPage'));
+const SystemPage = lazy(() => import('./pages/SystemPage'));
+const SystemHealthPage = lazy(() => import('./pages/SystemHealthPage'));
+const StatsPage = lazy(() => import('./pages/StatsPage'));
+const BackupPage = lazy(() => import('./pages/BackupPage'));
+const SystemEventsPage = lazy(() => import('./pages/SystemEventsPage'));
+const SystemUpdatesPage = lazy(() => import('./pages/SystemUpdatesPage'));
+const LogFilesPage = lazy(() => import('./pages/LogFilesPage'));
+const TasksPage = lazy(() => import('./pages/TasksPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const MediaManagementSettings = lazy(() => import('./pages/settings/MediaManagementSettings'));
+const ProfilesSettings = lazy(() => import('./pages/settings/ProfilesSettings'));
+const QualityPage = lazy(() => import('./pages/settings/QualityPage'));
+const IndexersSettings = lazy(() => import('./pages/settings/IndexersSettings'));
+const ImportListsSettings = lazy(() => import('./pages/settings/ImportListsSettings'));
+const DownloadClientsSettings = lazy(() => import('./pages/settings/DownloadClientsSettings'));
+const NotificationsSettings = lazy(() => import('./pages/settings/NotificationsSettings'));
+const GeneralSettings = lazy(() => import('./pages/settings/GeneralSettings'));
+const UISettings = lazy(() => import('./pages/settings/UISettings'));
+const TagsSettings = lazy(() => import('./pages/settings/TagsSettings'));
+const DevelopmentSettings = lazy(() => import('./pages/settings/DevelopmentSettings'));
+const IptvSettings = lazy(() => import('./pages/settings/IptvSettings'));
+const IptvChannelsSettings = lazy(() => import('./pages/settings/IptvChannelsSettings'));
+const DvrRecordingsSettings = lazy(() => import('./pages/settings/DvrRecordingsSettings'));
+const DvrSettingsPage = lazy(() => import('./pages/settings/DvrSettingsPage'));
+const TvGuidePage = lazy(() => import('./pages/iptv/TvGuidePage'));
+const WatchChannelPage = lazy(() => import('./pages/iptv/WatchChannelPage'));
 import { API_CONTRACT_FAILURE_EVENT, type ApiContractFailureDetail } from './utils/apiContract';
 import { apiGet } from './utils/api';
 import { getRetryDelayWithBackoff, setGlobalBackoffCap } from './utils/queryBackoff';
@@ -53,52 +50,40 @@ import { getRetryDelayWithBackoff, setGlobalBackoffCap } from './utils/queryBack
 // This is a failsafe - the primary cleanup happens in modal afterLeave callbacks
 function useInertCleanup() {
   useEffect(() => {
-    // Track elements with inert attribute and when they were added
-    const inertTimestamps = new Map<Element, number>();
+    // Headless UI dialogs mark the rest of the app `inert` (fully non-interactive)
+    // while open. If a dialog's leave transition is interrupted - a fast double
+    // tap, a navigation mid-animation, an unmount - the inert attribute can leak
+    // and the whole page stops responding to taps. This is by far the worst on
+    // touch devices, and was the cause of "can't click around on mobile".
+    //
+    // A dialog is only really open if it's actually RENDERED. A closed dialog can
+    // linger in the DOM with role="dialog" but display:none; the old cleanup keyed
+    // off presence (querySelector('[role="dialog"]')) so a lingering closed dialog
+    // blocked cleanup and the shell stayed inert until the next full navigation.
+    // Keying off visibility (getClientRects) fixes that - inert clears within one
+    // tick of the dialog actually leaving the screen.
+    const aDialogIsVisible = () =>
+      Array.from(document.querySelectorAll('[role="dialog"]')).some(
+        (d) => (d as HTMLElement).getClientRects().length > 0
+      );
 
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'inert') {
-          const target = mutation.target as Element;
-          if (target.hasAttribute('inert')) {
-            // Track when this element got inert
-            inertTimestamps.set(target, Date.now());
-          } else {
-            // Inert was removed, stop tracking
-            inertTimestamps.delete(target);
-          }
-        }
-      }
-    });
+    const clearStuckInert = () => {
+      if (aDialogIsVisible()) return; // a real dialog is open; leave the trap in place
+      document.querySelectorAll('[inert]').forEach((el) => el.removeAttribute('inert'));
+    };
 
-    // Check periodically for stale inert attributes (older than 500ms without a modal visible)
-    const cleanupInterval = setInterval(() => {
-      const now = Date.now();
-      const hasVisibleModal = document.querySelector('[role="dialog"]') !== null;
+    // Belt and suspenders: if a tap ever lands while nothing is actually open,
+    // clear any stuck inert immediately so the very next interaction works.
+    const onPointerDown = () => {
+      if (!aDialogIsVisible() && document.querySelector('[inert]')) clearStuckInert();
+    };
 
-      // Only cleanup if no modal is visible
-      if (!hasVisibleModal) {
-        document.querySelectorAll('[inert]').forEach((el) => {
-          const timestamp = inertTimestamps.get(el);
-          // Remove if tracked for more than 500ms, or if not tracked (legacy)
-          if (!timestamp || now - timestamp > 500) {
-            el.removeAttribute('inert');
-            inertTimestamps.delete(el);
-          }
-        });
-      }
-    }, 200);
-
-    // Start observing the document for inert attribute changes
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['inert'],
-      subtree: true,
-    });
+    const interval = setInterval(clearStuckInert, 300);
+    document.addEventListener('pointerdown', onPointerDown, true);
 
     return () => {
-      observer.disconnect();
-      clearInterval(cleanupInterval);
+      clearInterval(interval);
+      document.removeEventListener('pointerdown', onPointerDown, true);
     };
   }, []);
 }
@@ -112,6 +97,15 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Shown while a lazily-loaded route chunk is being fetched.
+function RouteFallback() {
+  return (
+    <div className="flex h-[60vh] w-full items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-red-600" />
+    </div>
+  );
+}
 
 function App() {
   // Global cleanup for orphaned inert attributes from Headless UI modals
@@ -174,6 +168,7 @@ function App() {
         <BrowserRouter basename={window.Sportarr?.urlBase || ''}>
           <Toaster position="top-right" theme="dark" richColors closeButton />
           <AuthProvider>
+            <Suspense fallback={<RouteFallback />}>
             <Routes>
               {/* Login route (outside Layout and ProtectedRoute) */}
               <Route path="/login" element={<LoginPage />} />
@@ -193,7 +188,7 @@ function App() {
             {/* Other Main Sections */}
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="activity" element={<ActivityPage />} />
-            <Route path="wanted" element={<WantedPage />} />
+            <Route path="wanted" element={<Navigate to="/activity" replace />} />
 
             {/* IPTV Section */}
             <Route path="iptv" element={<Navigate to="/iptv/sources" replace />} />
@@ -203,15 +198,16 @@ function App() {
             <Route path="iptv/watch/:channelId" element={<WatchChannelPage />} />
             <Route path="iptv/schedule" element={<Navigate to="/iptv/guide?scheduledOnly=true" replace />} />
             <Route path="iptv/recordings" element={<DvrRecordingsSettings />} />
-            <Route path="iptv/coverage" element={<IptvCoveragePage />} />
+            <Route path="iptv/dvr-settings" element={<DvrSettingsPage />} />
+            <Route path="iptv/coverage" element={<Navigate to="/iptv/channels?view=coverage" replace />} />
 
             {/* Settings - each page manages its own showAdvanced state */}
             <Route path="settings" element={<Navigate to="/settings/mediamanagement" replace />} />
             <Route path="settings/mediamanagement" element={<MediaManagementSettings />} />
             <Route path="settings/profiles" element={<ProfilesSettings />} />
-            <Route path="settings/quality" element={<QualitySettings />} />
-            <Route path="settings/customformats" element={<CustomFormatsSettings />} />
-            <Route path="settings/trashguides" element={<TrashGuidesSettings />} />
+            <Route path="settings/quality" element={<QualityPage />} />
+            <Route path="settings/customformats" element={<Navigate to="/settings/quality?tab=customformats" replace />} />
+            <Route path="settings/trashguides" element={<Navigate to="/settings/quality?tab=trashguides" replace />} />
             <Route path="settings/indexers" element={<IndexersSettings />} />
             <Route path="settings/importlists" element={<ImportListsSettings />} />
             <Route path="settings/downloadclients" element={<DownloadClientsSettings />} />
@@ -236,6 +232,7 @@ function App() {
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
+            </Suspense>
           </AuthProvider>
       </BrowserRouter>
       <ReactQueryDevtools initialIsOpen={false} />

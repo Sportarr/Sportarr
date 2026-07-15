@@ -27,7 +27,26 @@ public class TrashSyncBackgroundService : BackgroundService
     {
         _logger.LogInformation("[TRaSH Auto-Sync] Background service started");
 
-        // Wait a bit on startup before first check
+        // Let the app settle, then run the guaranteed one-time first-run enrichment
+        // (independent of the auto-sync setting). Best-effort: no-ops if already
+        // done, retries next start if the install is offline.
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(45), stoppingToken);
+            using var scope = _scopeFactory.CreateScope();
+            var trashService = scope.ServiceProvider.GetRequiredService<TrashGuideSyncService>();
+            await trashService.EnsureFirstRunEnrichmentAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[TRaSH Auto-Sync] First-run enrichment check failed; continuing");
+        }
+
+        // Wait a bit more before the first scheduled auto-sync check
         await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)

@@ -557,6 +557,7 @@ public class FileRenameService
         return new FileNamingTokens
         {
             EventTitle = evt.Title,
+            SportarrId = evt.ExternalId ?? string.Empty,
             Series = evt.League?.Name ?? evt.Sport ?? "Unknown",
             Season = evt.SeasonNumber?.ToString() ?? evt.Season ?? brandingDate.Year.ToString(),
             Episode = evt.EpisodeNumber?.ToString() ?? "01",

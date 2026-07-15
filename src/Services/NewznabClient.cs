@@ -1,5 +1,6 @@
 using System.Net;
 using System.Xml.Linq;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -56,10 +57,51 @@ public class NewznabClient
         }
     }
 
+    // Caps cache, static because IndexerSearchService constructs a fresh
+    // client per search. Same shape as TorznabClient's (the caps document
+    // format is shared between the two protocols).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (TorznabCapabilities? Caps, DateTime FetchedAt)> CapsCache = new();
+    private static readonly TimeSpan CapsCacheTtl = TimeSpan.FromHours(12);
+    private static readonly TimeSpan CapsFailureRetry = TimeSpan.FromMinutes(15);
+
+    private async Task<TorznabCapabilities?> GetCachedCapabilitiesAsync(Indexer config)
+    {
+        var cacheKey = $"{config.Id}|{config.Url}";
+        if (CapsCache.TryGetValue(cacheKey, out var cached))
+        {
+            var age = DateTime.UtcNow - cached.FetchedAt;
+            if (age < (cached.Caps != null ? CapsCacheTtl : CapsFailureRetry))
+                return cached.Caps;
+        }
+
+        TorznabCapabilities? caps = null;
+        try
+        {
+            var url = BuildUrl(config, "caps");
+            using var response = await _httpClient.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+            {
+                var xml = await response.Content.ReadAsStringAsync();
+                var parsed = new TorznabCapabilities();
+                TorznabClient.ParseCapabilitiesXml(xml, parsed);
+                caps = parsed;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Newznab] Caps fetch failed for {Indexer}", config.Name);
+        }
+
+        CapsCache[cacheKey] = (caps, DateTime.UtcNow);
+        return caps;
+    }
+
     /// <summary>
-    /// Search for NZB releases matching query
+    /// Search for NZB releases matching query. sportarrId is sent as the
+    /// "sportarrid" param only when the indexer's caps advertise it
+    /// (docs/RELEASE_NAMING.md).
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 10000)
+    public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 10000, string? sportarrId = null)
     {
         // Build parameters with category filtering
         var parameters = new Dictionary<string, string>
@@ -68,6 +110,16 @@ public class NewznabClient
             { "limit", maxResults.ToString() },
             { "extended", "1" }
         };
+
+        if (!string.IsNullOrEmpty(sportarrId))
+        {
+            var caps = await GetCachedCapabilitiesAsync(config);
+            if (caps?.SupportedSearchParams.Contains("sportarrid") == true)
+            {
+                parameters["sportarrid"] = sportarrId;
+                _logger.LogDebug("[Newznab] {Indexer} supports sportarrid - searching by id {Id}", config.Name, sportarrId);
+            }
+        }
 
         // Add category filter - use configured categories or default sport categories
         var categories = GetEffectiveCategories(config);
@@ -327,6 +379,18 @@ public class NewznabClient
                     ReleaseGroup = ExtractReleaseGroup(title)
                 };
 
+                // Sportarr id attribute (docs/RELEASE_NAMING.md): indexers
+                // adopting the release naming standard emit the canonical id
+                // as <newznab:attr name="sportarrid" value="ev-XXXXXXX"/>.
+                var sportarrId = SportarrIdToken.Normalize(GetNewznabAttr(item, "sportarrid"));
+                if (sportarrId != null)
+                {
+                    if (sportarrId.StartsWith("ev-", StringComparison.Ordinal))
+                        result.SportarrEventId = sportarrId;
+                    else if (sportarrId.StartsWith("lg-", StringComparison.Ordinal))
+                        result.SportarrLeagueId = sportarrId;
+                }
+
                 // Parse quality using enhanced detection service if available
                 if (_qualityDetection != null)
                 {
@@ -382,9 +446,11 @@ public class NewznabClient
 
     private string? GetNewznabAttr(XElement item, string attrName)
     {
+        // Attr NAME matching is case-insensitive; the namespace stays
+        // exact per the newznab spec.
         var newznabNs = XNamespace.Get("http://www.newznab.com/DTD/2010/feeds/attributes/");
         return item.Descendants(newznabNs + "attr")
-            .FirstOrDefault(a => a.Attribute("name")?.Value == attrName)
+            .FirstOrDefault(a => string.Equals(a.Attribute("name")?.Value, attrName, StringComparison.OrdinalIgnoreCase))
             ?.Attribute("value")?.Value;
     }
 

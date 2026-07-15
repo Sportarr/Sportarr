@@ -118,7 +118,7 @@ export default function AddEventSearchResult({ event, onSelect }: SearchResultPr
           </div>
 
           {/* Metadata Grid */}
-          <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 text-sm">
             {/* Date */}
             <div className="flex items-center text-gray-300">
               <CalendarIcon className="w-4 h-4 mr-2 text-gray-500" />

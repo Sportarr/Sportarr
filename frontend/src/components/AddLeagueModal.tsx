@@ -77,7 +77,8 @@ interface AddLeagueModalProps {
     monitorPlayoffs: boolean,
     monitorPreseason: boolean,
     retentionDays: number,
-    allowHighlights: boolean
+    allowHighlights: boolean,
+    sessionTypeQualityProfiles: string | null
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -111,6 +112,19 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   // For UFC-style fighting leagues: event types to monitor (PPV, Fight Night, DWCS)
   const [monitoredEventTypes, setMonitoredEventTypes] = useState<Set<string>>(new Set());
   const [selectAllEventTypes, setSelectAllEventTypes] = useState(false);
+  // Optional quality profile per session/event type (type name -> profile id).
+  // Types without an entry use the league's quality profile. For multi-part
+  // fight cards the profile applies to the whole event, so every part of a
+  // mapped PPV grabs at the same profile.
+  const [sessionTypeQualityProfiles, setSessionTypeQualityProfiles] = useState<Record<string, number>>({});
+  const setTypeQualityProfile = (typeName: string, profileId: number) => {
+    setSessionTypeQualityProfiles(prev => {
+      const next = { ...prev };
+      if (profileId > 0) next[typeName] = profileId;
+      else delete next[typeName];
+      return next;
+    });
+  };
   // Custom search query template
   const [searchQueryTemplate, setSearchQueryTemplate] = useState('');
   const [searchTemplatePreview, setSearchTemplatePreview] = useState<{ template: string; samples: { eventTitle: string; eventDate: string; generatedQuery: string }[] } | null>(null);
@@ -372,6 +386,16 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
           setSelectAllEventTypes(eventTypes.length === availableEventTypes.length);
         }
       }
+
+      // Per-type quality overrides (stored as a JSON map)
+      try {
+        const parsed = existingLeague.sessionTypeQualityProfiles
+          ? JSON.parse(existingLeague.sessionTypeQualityProfiles)
+          : {};
+        setSessionTypeQualityProfiles(parsed && typeof parsed === 'object' ? parsed : {});
+      } catch {
+        setSessionTypeQualityProfiles({});
+      }
     }
   }, [editMode, isOpen, existingLeague, league?.strSport, league?.strLeague, availableSessionTypes, availableEventTypes]);
 
@@ -406,6 +430,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchQueryTemplate('');
       setSearchTemplatePreview(null);
       setSelectedTags([]);
+      setSessionTypeQualityProfiles({});
 
       // For fighting sports: default to all parts selected
       // Other sports (including motorsports) don't use parts
@@ -590,6 +615,19 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       }
     }
 
+    // Per-type quality overrides: keep only entries for types that are still
+    // monitored (a deselected type never syncs, so its override is stale).
+    const activeTypeKeys = new Set<string>([
+      ...Array.from(monitoredSessionTypes),
+      ...Array.from(monitoredEventTypes),
+    ]);
+    const prunedOverrides = Object.fromEntries(
+      Object.entries(sessionTypeQualityProfiles).filter(([k, v]) => activeTypeKeys.has(k) && v > 0)
+    );
+    const sessionTypeQualityString = Object.keys(prunedOverrides).length > 0
+      ? JSON.stringify(prunedOverrides)
+      : null;
+
     onAdd(
       league,
       monitoredTeamIds,
@@ -608,7 +646,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       monitorPlayoffs,
       monitorPreseason,
       retentionDays,
-      allowHighlights
+      allowHighlights,
+      sessionTypeQualityString
     );
   };
 
@@ -670,6 +709,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const availableParts = league ? getPartOptions(league.strSport) : [];
   const selectedPartsCount = monitoredParts.size;
   const selectedSessionTypesCount = monitoredSessionTypes.size;
+
+  // Per-type quality dropdowns name the profile the league default resolves
+  // to, so users never have to scroll down to the League Quality Profile
+  // field to know what "default" means.
+  const leagueProfileName = qualityProfiles.find(p => p.id === qualityProfileId)?.name;
+  const leagueDefaultLabel = leagueProfileName ? `League default (${leagueProfileName})` : 'League default';
   const selectedEventTypesCount = monitoredEventTypes.size;
   // Show team selection for leagues with meaningful team data
   // Skip for: Motorsport (no home/away teams), Darts (individual players), Climbing (individual climbers), Gambling (individual poker players), Badminton/Table Tennis/Snooker (individual racket/cue players), individual Tennis (ATP, WTA), and UFC-style fighting leagues (use event types instead)
@@ -954,24 +999,43 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       {availableSessionTypes.map((sessionType) => {
                         const isSelected = monitoredSessionTypes.has(sessionType);
                         return (
-                          <button
+                          <div
                             key={sessionType}
-                            onClick={() => handleSessionTypeToggle(sessionType)}
-                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                            className={`p-3 rounded-lg border transition-all ${
                               isSelected
                                 ? 'bg-red-600/20 border-red-600'
                                 : 'bg-black/30 border-gray-700 hover:border-gray-600'
                             }`}
                           >
-                            <div className="flex-1">
-                              <div className="font-medium text-white">{sessionType}</div>
-                            </div>
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                              isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
-                            }`}>
-                              {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
-                            </div>
-                          </button>
+                            <button
+                              onClick={() => handleSessionTypeToggle(sessionType)}
+                              className="flex w-full items-center gap-3 text-left"
+                            >
+                              <div className="flex-1">
+                                <div className="font-medium text-white">{sessionType}</div>
+                              </div>
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                              }`}>
+                                {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
+                              </div>
+                            </button>
+                            {isSelected && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="text-xs text-gray-400">Quality</span>
+                                <select
+                                  value={sessionTypeQualityProfiles[sessionType] ?? 0}
+                                  onChange={(e) => setTypeQualityProfile(sessionType, parseInt(e.target.value, 10))}
+                                  className="flex-1 min-w-0 rounded-lg border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-white focus:border-red-600 focus:outline-none"
+                                >
+                                  <option value={0}>{leagueDefaultLabel}</option>
+                                  {qualityProfiles.map((profile) => (
+                                    <option key={profile.id} value={profile.id}>{profile.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
@@ -1015,25 +1079,46 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       {availableEventTypes.map((eventType) => {
                         const isSelected = monitoredEventTypes.has(eventType.id);
                         return (
-                          <button
+                          <div
                             key={eventType.id}
-                            onClick={() => handleEventTypeToggle(eventType.id)}
-                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                            className={`p-3 rounded-lg border transition-all ${
                               isSelected
                                 ? 'bg-red-600/20 border-red-600'
                                 : 'bg-black/30 border-gray-700 hover:border-gray-600'
                             }`}
                           >
-                            <div className="flex-1">
-                              <div className="font-medium text-white">{eventType.displayName}</div>
-                              <div className="text-xs text-gray-400">e.g., {eventType.examples.join(', ')}</div>
-                            </div>
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                              isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
-                            }`}>
-                              {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
-                            </div>
-                          </button>
+                            <button
+                              onClick={() => handleEventTypeToggle(eventType.id)}
+                              className="flex w-full items-center gap-3 text-left"
+                            >
+                              <div className="flex-1">
+                                <div className="font-medium text-white">{eventType.displayName}</div>
+                                <div className="text-xs text-gray-400">e.g., {eventType.examples.join(', ')}</div>
+                              </div>
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                              }`}>
+                                {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
+                              </div>
+                            </button>
+                            {isSelected && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="text-xs text-gray-400">Quality</span>
+                                <select
+                                  value={sessionTypeQualityProfiles[eventType.id] ?? 0}
+                                  onChange={(e) => setTypeQualityProfile(eventType.id, parseInt(e.target.value, 10))}
+                                  className="flex-1 min-w-0 rounded-lg border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-white focus:border-red-600 focus:outline-none"
+                                >
+                                  <option value={0}>{leagueDefaultLabel}</option>
+                                  {qualityProfiles.map((profile) => (
+                                    <option key={profile.id} value={profile.id}>{profile.name}</option>
+                                  ))}
+                                </select>
+                                {/* All parts of a multi-part card follow the event's profile,
+                                    so prelims and main card always land at the same quality. */}
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
@@ -1193,10 +1278,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     </div>
                   )}
 
-                  {/* Quality Profile */}
+                  {/* League Quality Profile */}
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Quality Profile
+                      League Quality Profile
                     </label>
                     <select
                       value={qualityProfileId || ''}
@@ -1210,11 +1295,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         </option>
                       ))}
                     </select>
-                    {editMode && (
-                      <p className="text-xs text-gray-400 mt-2">
-                        Changes will apply to all events in this league.
-                      </p>
-                    )}
+                    <p className="text-xs text-gray-400 mt-2">
+                      Used for every event unless a session or event type above overrides it with
+                      its own quality.{editMode && ' Changes will apply to all events in this league.'}
+                    </p>
                   </div>
 
                   {/* Event Retention */}

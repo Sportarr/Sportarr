@@ -213,40 +213,32 @@ namespace Sportarr.Providers
         {
             _logger.Debug($"[Sportarr] Retrieving image from url --> {url}");
 
-            try
+            // Never return null here: Emby's ItemImageProvider dereferences
+            // the result without a null check, so a null turns one failed
+            // image into a NullReferenceException that aborts the item's
+            // whole image refresh. Throwing surfaces a clean per-image
+            // provider error instead.
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
             {
-                var response = await _httpClient.GetAsync(url, cancellationToken);
-                if (!response.IsSuccessStatusCode) return null;
-
-                var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-
-                return new HttpResponseInfo
-                {
-                    ContentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg",
-                    ContentLength = bytes.Length,
-                    Content = new System.IO.MemoryStream(bytes)
-                };
+                response.Dispose();
+                throw new HttpRequestException($"Image fetch failed with {(int)response.StatusCode} for {url}");
             }
-            catch
+
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+
+            return new HttpResponseInfo
             {
-                return null;
-            }
+                ContentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg",
+                ContentLength = bytes.Length,
+                Content = new System.IO.MemoryStream(bytes)
+            };
         }
 
         /// <summary>
-        /// JSON fetch that bypasses HTTP caches. Episode lists shift when
-        /// events are cancelled or renumbered; each refresh must hit the
-        /// hub fresh so Emby's library doesn't hold stale slot-to-title
-        /// mappings.
+        /// No-cache JSON fetch with 429 retry (see Common.SportarrHttp).
         /// </summary>
-        private async Task<T> FetchNoCacheJsonAsync<T>(string url, CancellationToken cancellationToken)
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
-            request.Headers.Pragma.ParseAdd("no-cache");
-            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
+        private Task<T> FetchNoCacheJsonAsync<T>(string url, CancellationToken cancellationToken)
+            => Sportarr.Common.SportarrHttp.GetJsonWithRetryAsync<T>(_httpClient, url, cancellationToken)!;
     }
 }

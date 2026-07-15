@@ -7,6 +7,10 @@ import { apiGet, apiPut, apiPost } from '../../utils/api';
 
 interface QualitySettingsProps {
   showAdvanced?: boolean;
+  // Rendered as a tab inside the Quality page: skip the full SettingsHeader (the
+  // page + tab already title it) and show a compact save bar instead, so there
+  // isn't a second stacked header.
+  embedded?: boolean;
 }
 
 interface QualityDefinition {
@@ -26,7 +30,7 @@ interface TrashImportResult {
   syncedFormats: string[];
 }
 
-export default function QualitySettings({ showAdvanced = false }: QualitySettingsProps) {
+export default function QualitySettings({ showAdvanced = false, embedded = false }: QualitySettingsProps) {
   const [qualityDefinitions, setQualityDefinitions] = useState<QualityDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -137,14 +141,28 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
 
   return (
     <div>
-      <SettingsHeader
-        title="Quality Definitions"
-        subtitle="Quality settings control file size limits for each quality level"
-        onSave={handleSave}
-        isSaving={saving}
-        hasUnsavedChanges={hasUnsavedChanges}
-        saveButtonText="Save Changes"
-      />
+      {embedded ? (
+        hasUnsavedChanges && (
+          <div className="mb-4 flex justify-end">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        )
+      ) : (
+        <SettingsHeader
+          title="Quality Definitions"
+          subtitle="Quality settings control file size limits for each quality level"
+          onSave={handleSave}
+          isSaving={saving}
+          hasUnsavedChanges={hasUnsavedChanges}
+          saveButtonText="Save Changes"
+        />
+      )}
 
       <div className="max-w-6xl mx-auto px-6">
 
