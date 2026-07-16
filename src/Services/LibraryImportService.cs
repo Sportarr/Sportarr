@@ -144,9 +144,16 @@ public class LibraryImportService
                     // Check for explicit SxxxxExx episode number in filename (e.g. "Formula E - S2025E05 - Jeddah E Prix").
                     // This is the highest-confidence signal — explicit S/E parsing wins over fuzzier matchers.
                     int? explicitEpisodeNumber = null;
+                    string? seriesLabel = null;
                     var seMatch = System.Text.RegularExpressions.Regex.Match(filename, @"S\d{4}E(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     if (seMatch.Success && int.TryParse(seMatch.Groups[1].Value, out var seEp))
+                    {
                         explicitEpisodeNumber = seEp;
+                        // Library-format names carry the series/league ahead of the
+                        // S/E token ("V8 Supercars - S2026E19 - …"). That label is
+                        // the file's own statement of WHICH series it belongs to.
+                        seriesLabel = filename.Substring(0, seMatch.Index).Trim(' ', '-', '.', '_');
+                    }
 
                     // Detect multi-part files (e.g. "UFC - S2025E04 - pt3 - UFC 312..."
                     // or the episode-attached form "S2024E107pt2"). The lookbehind
@@ -246,7 +253,7 @@ public class LibraryImportService
                                 eventTitle, candidate.Title, organization, candidate,
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
-                                sportsResult.Location, _logger, sport);
+                                sportsResult.Location, _logger, sport, seriesLabel);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
@@ -1303,9 +1310,25 @@ public class LibraryImportService
         int? explicitEpisodeNumber = null,
         string? parsedLocation = null,
         ILogger? logger = null,
-        string? parsedSport = null)
+        string? parsedSport = null,
+        string? seriesLabel = null)
     {
         int confidence = 0;
+
+        // ── SERIES LABEL GATE ───────────────────────────────────────────────────
+        // A library-format filename names its series ahead of the SxxxxExx token
+        // ("V8 Supercars - S2026E19 - …"). When that label names a different
+        // series than the candidate's league, an agreeing episode number means
+        // nothing — every motorsport league has an episode 19. Without this a
+        // V8 Supercars file was suggested against an F1 event at 75% purely on
+        // S/E + year agreement.
+        if (!string.IsNullOrWhiteSpace(seriesLabel) && evt.League != null &&
+            !ReleaseMatchingService.SeriesLabelMatchesLeague(seriesLabel, evt.League))
+        {
+            logger?.LogDebug("[Match] Series label gate: file names series '{Label}', event '{Event}' is in league '{League}' - rejecting",
+                seriesLabel, eventTitle, evt.League.Name);
+            return 0;
+        }
 
         // ── SPORT GATE ──────────────────────────────────────────────────────────
         // When the filename parser identified the sport, an event from a
