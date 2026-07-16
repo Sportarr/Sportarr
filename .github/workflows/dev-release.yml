@@ -393,11 +393,25 @@ jobs:
           Get-ChildItem installer-output/
 
       - name: Upload installer to dev release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: dev
-          prerelease: true
-          files: |
-            installer-output/Sportarr-Setup-${{ needs.build-dev.outputs.version }}.exe
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # One-shot release actions die on the first 5xx, and GitHub's API
+          # degrades often enough that the installer (which lags the main
+          # build by minutes) kept failing the whole run on a transient
+          # error. Retry with a patient window instead; --clobber replaces
+          # any half-uploaded asset from an earlier attempt.
+          $file = "installer-output/Sportarr-Setup-${{ needs.build-dev.outputs.version }}.exe"
+          $maxAttempts = 15
+          for ($i = 1; $i -le $maxAttempts; $i++) {
+            gh release upload dev $file --clobber --repo ${{ github.repository }}
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Installer uploaded on attempt $i"
+              exit 0
+            }
+            Write-Host "Upload attempt $i of $maxAttempts failed; retrying in 60s..."
+            Start-Sleep -Seconds 60
+          }
+          Write-Error "Installer upload failed after $maxAttempts attempts"
+          exit 1
