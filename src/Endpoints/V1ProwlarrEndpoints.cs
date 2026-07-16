@@ -127,9 +127,27 @@ app.MapPost("/api/v1/indexer", async (
             existingIndexer.Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab;
             existingIndexer.Url = baseUrl ?? existingIndexer.Url; // Update URL to latest hostname
             existingIndexer.ApiKey = apiKey;
-            existingIndexer.Categories = !string.IsNullOrWhiteSpace(categories)
+
+            // Categories: local list wins once it exists. Prowlarr's full sync
+            // re-pushes every indexer with the app's Sync Categories (default:
+            // TV-only), which silently wiped categories users added in Sportarr
+            // (e.g. Movies 2040/2045 for sports posted under Movies > HD) and
+            // made those releases unfindable minutes after the user fixed them.
+            // A locally empty list still adopts Prowlarr's, so clearing the
+            // field in Sportarr re-hands control to Prowlarr.
+            var incomingCategories = !string.IsNullOrWhiteSpace(categories)
                 ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
                 : new List<string>();
+            if (existingIndexer.Categories == null || existingIndexer.Categories.Count == 0)
+            {
+                existingIndexer.Categories = incomingCategories;
+            }
+            else if (!existingIndexer.Categories.OrderBy(c => c).SequenceEqual(incomingCategories.OrderBy(c => c)))
+            {
+                logger.LogInformation("[PROWLARR] Keeping locally configured categories for '{Name}' ({Local}); Prowlarr pushed ({Pushed}). Clear the categories field in Sportarr to re-adopt Prowlarr's list.",
+                    name, string.Join(",", existingIndexer.Categories), string.Join(",", incomingCategories));
+            }
+
             existingIndexer.Enabled = enabled;
             existingIndexer.Priority = priority;
 

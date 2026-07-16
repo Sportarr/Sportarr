@@ -812,7 +812,26 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
                 else if (fieldName == "apiKey")
                     indexer.ApiKey = field.GetProperty("value").GetString();
                 else if (fieldName == "categories" && field.TryGetProperty("value", out var catValue) && catValue.ValueKind == System.Text.Json.JsonValueKind.Array)
-                    indexer.Categories = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
+                {
+                    // Categories: local list wins once it exists. Prowlarr's app
+                    // sync PUTs every indexer on a 6-hour cadence carrying the
+                    // app's Sync Categories (default: TV-only), which silently
+                    // wiped categories users added in Sportarr (movie categories
+                    // for sports posted under Movies > HD is the reported case)
+                    // and made those releases unfindable on every search. An
+                    // empty local list still adopts Prowlarr's, so clearing the
+                    // field in Sportarr re-hands control to Prowlarr.
+                    var pushed = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
+                    if (indexer.Categories == null || indexer.Categories.Count == 0)
+                    {
+                        indexer.Categories = pushed;
+                    }
+                    else if (!indexer.Categories.OrderBy(c => c).SequenceEqual(pushed.OrderBy(c => c)))
+                    {
+                        logger.LogInformation("[PROWLARR] Keeping locally configured categories for '{Name}' ({Local}); Prowlarr pushed ({Pushed}). Clear the categories field in Sportarr to re-adopt Prowlarr's list.",
+                            indexer.Name, string.Join(",", indexer.Categories), string.Join(",", pushed));
+                    }
+                }
                 else if (fieldName == "minimumSeeders" && field.TryGetProperty("value", out var seedValue))
                     indexer.MinimumSeeders = seedValue.GetInt32();
             }
