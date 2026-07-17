@@ -194,9 +194,7 @@ public class RssSyncService : BackgroundService
 
                 // Evaluate release against quality profile and custom formats.
                 // This is the SAME evaluation that manual search uses — identical decision engine.
-                var qualityProfile = matchedEvent.QualityProfileId.HasValue
-                    ? qualityProfiles.FirstOrDefault(p => p.Id == matchedEvent.QualityProfileId.Value)
-                    : qualityProfiles.OrderBy(q => q.Id).FirstOrDefault();
+                var qualityProfile = ResolveQualityProfile(matchedEvent, qualityProfiles);
 
                 if (qualityProfile != null)
                 {
@@ -382,9 +380,7 @@ public class RssSyncService : BackgroundService
         var customFormats = await db.CustomFormats.ToListAsync(cancellationToken);
         var releaseProfiles = await releaseProfileService.LoadReleaseProfilesAsync();
 
-        var qualityProfile = matchedEvent.QualityProfileId.HasValue
-            ? qualityProfiles.FirstOrDefault(p => p.Id == matchedEvent.QualityProfileId.Value)
-            : qualityProfiles.OrderBy(q => q.Id).FirstOrDefault();
+        var qualityProfile = ResolveQualityProfile(matchedEvent, qualityProfiles);
 
         if (qualityProfile != null)
         {
@@ -419,6 +415,31 @@ public class RssSyncService : BackgroundService
         }
 
         return new PushedReleaseOutcome(true, false, matchedEvent.Title, new List<string>());
+    }
+
+    /// <summary>
+    /// Resolve the quality profile that governs an event, mirroring the
+    /// search path: the event's own profile, else its league's, else the
+    /// profile flagged default, else the first by id. RSS previously jumped
+    /// straight from the event to "first profile in the table", so a user
+    /// who disabled upgrades on their league's profile was evaluated against
+    /// an unrelated profile that still allowed them, and events with files
+    /// were re-grabbed as upgrades.
+    /// </summary>
+    internal static QualityProfile? ResolveQualityProfile(Event evt, List<QualityProfile> profiles)
+    {
+        if (evt.QualityProfileId.HasValue)
+        {
+            var own = profiles.FirstOrDefault(p => p.Id == evt.QualityProfileId.Value);
+            if (own != null) return own;
+        }
+        if (evt.League?.QualityProfileId != null)
+        {
+            var league = profiles.FirstOrDefault(p => p.Id == evt.League.QualityProfileId.Value);
+            if (league != null) return league;
+        }
+        return profiles.FirstOrDefault(p => p.IsDefault)
+            ?? profiles.OrderBy(p => p.Id).FirstOrDefault();
     }
 
     /// <summary>
