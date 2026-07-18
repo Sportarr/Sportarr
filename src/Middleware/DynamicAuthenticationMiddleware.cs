@@ -287,7 +287,9 @@ public class DynamicAuthenticationMiddleware
                path.EndsWith(".ico");
     }
 
-    private bool IsLocalAddress(HttpContext context)
+    // Static so the /initialize.json and index.html key-exposure gate in Program.cs
+    // can reuse the exact same local-address decision as the auth middleware.
+    public static bool IsLocalAddress(HttpContext context)
     {
         // Fail closed when the request arrived through a reverse proxy.
         // The "disabledForLocalAddresses" decision is based on the raw TCP peer
@@ -336,7 +338,7 @@ public class DynamicAuthenticationMiddleware
                headers.ContainsKey("X-Forwarded-Host");
     }
 
-    private bool IsPrivateClass172(string ipString)
+    private static bool IsPrivateClass172(string ipString)
     {
         var parts = ipString.Split('.');
         if (parts.Length < 2) return false;
@@ -353,7 +355,7 @@ public class DynamicAuthenticationMiddleware
     /// Get username from external auth proxy headers
     /// Supports common headers used by oauth-proxy, Authelia, Authentik, Traefik Forward Auth, etc.
     /// </summary>
-    private string? GetExternalAuthUser(HttpContext context)
+    public static string? GetExternalAuthUser(HttpContext context)
     {
         // Common headers used by various auth proxies
         // Priority order: most specific to most generic
