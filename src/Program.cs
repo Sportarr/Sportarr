@@ -895,16 +895,20 @@ app.MapGet("/initialize.json", async (HttpContext httpContext, Sportarr.Api.Serv
 
 // Decide whether the master API key may be returned to the current caller.
 // Safe to expose when UI auth is disabled ("none" – there is no auth boundary to defeat),
-// or when the request itself is already authenticated via the API key or a Forms session.
+// when a reverse proxy has already authenticated the request ("external"), or when the
+// request itself is already authenticated via the API key or a Forms session.
 static async Task<bool> ShouldExposeApiKeyAsync(HttpContext context, SportarrDbContext db)
 {
     var authMethod = "none";
+    var authRequired = "disabledForLocalAddresses";
     var appSettings = await db.AppSettings.FirstOrDefaultAsync();
     if (appSettings != null)
     {
         try
         {
-            authMethod = JsonSerializer.Deserialize<SecuritySettings>(appSettings.SecuritySettings)?.AuthenticationMethod ?? "none";
+            var securitySettings = JsonSerializer.Deserialize<SecuritySettings>(appSettings.SecuritySettings);
+            authMethod = securitySettings?.AuthenticationMethod ?? "none";
+            authRequired = securitySettings?.AuthenticationRequired ?? "disabledForLocalAddresses";
         }
         catch
         {
@@ -922,6 +926,25 @@ static async Task<bool> ShouldExposeApiKeyAsync(HttpContext context, SportarrDbC
     if (apiResult.Succeeded)
     {
         return true;
+    }
+
+    // External mode delegates authentication to a reverse proxy (oauth2-proxy,
+    // Authelia, Authentik, ...). A browser behind the proxy has no forms session
+    // and no key to send, so without this branch the UI can never obtain the key
+    // and every write action fails. Mirror the middleware's trust decision: the
+    // proxy's auth headers mean the request was already authenticated upstream,
+    // and a direct connection without them keeps the middleware's local-address
+    // allowance. /initialize.json is a public path, so this gate — not the
+    // middleware — is what stands between an anonymous caller and the key.
+    if (authMethod == "external")
+    {
+        if (!string.IsNullOrEmpty(Sportarr.Api.Middleware.DynamicAuthenticationMiddleware.GetExternalAuthUser(context)))
+        {
+            return true;
+        }
+
+        return authRequired == "disabledForLocalAddresses" &&
+               Sportarr.Api.Middleware.DynamicAuthenticationMiddleware.IsLocalAddress(context);
     }
 
     var formsResult = await context.AuthenticateAsync("Forms");
