@@ -303,8 +303,14 @@ public class DvrAutoSchedulerService : BackgroundService
 
         // Get all sports EPG programs in our scheduling window
         var tvgIds = channels.Select(c => c.TvgId!).ToList();
-        _logger.LogDebug("[DVR Auto-Scheduler] Looking for EPG programs on channels: {Channels}",
-            string.Join(", ", channels.Select(c => $"{c.Name} (TvgId: {c.TvgId})")));
+        // Sample, never the full list: providers that expose VOD/series as
+        // "channels" push this into the tens of thousands, and joining every
+        // name produced multi-megabyte log lines each scheduler cycle (a
+        // field install rotated through 50MB log files in minutes, losing
+        // the history that mattered).
+        _logger.LogDebug("[DVR Auto-Scheduler] Looking for EPG programs on {Count} channels (sample: {Channels})",
+            channels.Count,
+            string.Join(", ", channels.Take(25).Select(c => $"{c.Name} (TvgId: {c.TvgId})")));
         var sportsPrograms = await db.EpgPrograms
             .Where(p => tvgIds.Contains(p.ChannelId))
             .Where(p => p.StartTime >= now && p.StartTime <= schedulingCutoff)

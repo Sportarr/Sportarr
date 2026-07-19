@@ -266,6 +266,16 @@ public class ChannelAutoMappingService
 
         _logger.LogDebug("[AutoMapping] Indexed {Count} league name variations", leagueAltNames.Count);
 
+        // EPG-driven candidates, computed league-side in one pass. The
+        // per-channel EPG signal below only BOOSTS leagues that already
+        // scored from the channel's name, which means providers with
+        // opaque channel names can never map at all, even when the
+        // guide is full of the league's events. This inverts the loop:
+        // find every channel whose guide names the league's competition
+        // or upcoming events, then seed those as candidates.
+        var epgSeeds = await BuildEpgLeagueSeedsAsync(leagues);
+        _logger.LogDebug("[AutoMapping] EPG evidence seeds cover {Count} channels", epgSeeds.Count);
+
         var networksDetectedCount = 0;
         var alreadyMappedCount = 0;
 
@@ -280,7 +290,7 @@ public class ChannelAutoMappingService
                     networksDetectedCount++;
                 }
 
-                var mappingsCreated = await AutoMapChannelAsync(channel, leagueAltNames);
+                var mappingsCreated = await AutoMapChannelAsync(channel, leagueAltNames, epgSeeds);
                 result.ChannelsProcessed++;
                 result.MappingsCreated += mappingsCreated;
 
@@ -347,6 +357,13 @@ public class ChannelAutoMappingService
     private const int W_NAME_DIRECT_LEAGUE = 35;
     private const int W_COUNTRY_MATCH = 10;
     private const int W_EPG_PROGRAMMING = 25;
+    // EPG-seeded league evidence: programs on the channel's guide naming the
+    // league's competition or its upcoming events. Per-hit score with a cap
+    // that clears MIN_CONFIDENCE_FOR_MAPPING on its own at 5+ hits, because
+    // this is the one signal available for providers whose channel names
+    // carry no meaning at all ("UK (MAX 013)", "US (Peacock 047)").
+    private const int W_EPG_SEED_PER_HIT = 10;
+    private const int W_EPG_SEED_CAP = 60;
 
     /// <summary>
     /// Auto-map a single channel to leagues using stacked signals.
@@ -354,7 +371,92 @@ public class ChannelAutoMappingService
     /// rows are refreshed in place and don't count). Manual mappings
     /// are skipped — IsManual=true is an admin lock that survives.
     /// </summary>
-    private async Task<int> AutoMapChannelAsync(IptvChannel channel, Dictionary<string, League> leaguesByName)
+    /// <summary>
+    /// Build per-channel EPG evidence for every league: how many guide
+    /// programs within ±7 days name the league (or its alternate names) or
+    /// the competition its upcoming events belong to. EPG listings name the
+    /// competition ("Tour de France"), not the sanctioning body ("UCI
+    /// World Tour"), so event titles - with trailing stage/round/day
+    /// numbering stripped - are the tokens that actually land.
+    /// Returned as tvg-id → (league id → program hits).
+    /// </summary>
+    internal async Task<Dictionary<string, Dictionary<int, int>>> BuildEpgLeagueSeedsAsync(List<League> leagues)
+    {
+        var seeds = new Dictionary<string, Dictionary<int, int>>(StringComparer.OrdinalIgnoreCase);
+        var windowStart = DateTime.UtcNow.AddDays(-7);
+        var windowEnd = DateTime.UtcNow.AddDays(7);
+
+        foreach (var league in leagues)
+        {
+            var tokens = new List<string>();
+            void AddToken(string? raw)
+            {
+                var t = raw?.Trim().ToLowerInvariant();
+                // Length floor keeps short names ("UCI") from substring-
+                // matching inside unrelated words via LIKE.
+                if (!string.IsNullOrEmpty(t) && t.Length >= 4 && !tokens.Contains(t))
+                    tokens.Add(t);
+            }
+
+            AddToken(NormalizeLeagueName(league.Name));
+            if (!string.IsNullOrEmpty(league.AlternateName))
+            {
+                foreach (var alt in league.AlternateName.Split(new[] { ',', '|', '/' }, StringSplitOptions.RemoveEmptyEntries))
+                    AddToken(alt);
+            }
+
+            var eventTitles = await _db.Events
+                .Where(e => e.LeagueId == league.Id && e.EventDate >= windowStart && e.EventDate <= windowEnd)
+                .Select(e => e.Title)
+                .Distinct()
+                .Take(200)
+                .ToListAsync();
+            foreach (var title in eventTitles)
+                AddToken(StripEventNumberingSuffix(title));
+
+            if (tokens.Count == 0) continue;
+
+            var hitsByChannel = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var token in tokens.Take(24))
+            {
+                var rows = await _db.EpgPrograms
+                    .Where(p => p.StartTime >= windowStart && p.StartTime <= windowEnd)
+                    .Where(p => p.Title.ToLower().Contains(token))
+                    .GroupBy(p => p.ChannelId)
+                    .Select(g => new { g.Key, Count = g.Count() })
+                    .ToListAsync();
+                foreach (var row in rows)
+                    hitsByChannel[row.Key] = hitsByChannel.GetValueOrDefault(row.Key) + row.Count;
+            }
+
+            foreach (var (tvgId, hits) in hitsByChannel)
+            {
+                if (!seeds.TryGetValue(tvgId, out var perLeague))
+                    seeds[tvgId] = perLeague = new Dictionary<int, int>();
+                perLeague[league.Id] = Math.Max(perLeague.GetValueOrDefault(league.Id), hits);
+            }
+        }
+
+        return seeds;
+    }
+
+    /// <summary>
+    /// Strip the per-event numbering tail from an event title so what
+    /// remains is the competition name EPG listings actually use:
+    /// "Tour de France Stage 11" → "Tour de France".
+    /// </summary>
+    internal static string StripEventNumberingSuffix(string title)
+    {
+        var stripped = Regex.Replace(
+            title ?? "",
+            @"\s*[-–:]?\s*(stage|etape|étape|round|day|game|race|week|matchday|prologue)\s*\d+.*$",
+            "",
+            RegexOptions.IgnoreCase);
+        return stripped.Trim(' ', '-', '–', ':');
+    }
+
+    private async Task<int> AutoMapChannelAsync(IptvChannel channel, Dictionary<string, League> leaguesByName,
+        Dictionary<string, Dictionary<int, int>>? epgSeeds = null)
     {
         // Manual mappings stay put. Collect their league_ids so we
         // skip them entirely below — even if the auto-mapper would
@@ -362,7 +464,14 @@ public class ChannelAutoMappingService
         // version wins (and might have a Confidence we shouldn't
         // overwrite).
         var existingMappings = channel.LeagueMappings ?? new List<ChannelLeagueMapping>();
-        var manualLeagueIds = existingMappings.Where(m => m.IsManual).Select(m => m.LeagueId).ToHashSet();
+        // A row with no mapping signals and no auto-map timestamp can only
+        // have come from the manual mapping endpoint - installs that saved
+        // manual rows before the endpoint set IsManual would otherwise have
+        // them deleted below as unjustifiable auto rows.
+        var manualLeagueIds = existingMappings
+            .Where(m => m.IsManual || (m.MappingSignals == null && m.LastAutoMapped == null))
+            .Select(m => m.LeagueId)
+            .ToHashSet();
 
         // Build per-league score buckets so each signal contributes
         // independently and the explain UI can show the breakdown.
@@ -381,6 +490,21 @@ public class ChannelAutoMappingService
         // we want the actual League rows too for sport / country.
         var leaguesById = leaguesByName.Values.Distinct().ToDictionary(l => l.Id);
         var leaguesList = leaguesById.Values.ToList();
+
+        // Signal 0 — EPG evidence seeds (league-side scan). Runs FIRST so
+        // channels whose provider names carry no meaning ("UK (MAX 013)")
+        // can still become candidates; every later signal stacks on top,
+        // and the existing per-channel EPG boost still elaborates.
+        if (epgSeeds != null && !string.IsNullOrWhiteSpace(channel.TvgId) &&
+            epgSeeds.TryGetValue(channel.TvgId, out var seededLeagueHits))
+        {
+            foreach (var (seedLeagueId, hits) in seededLeagueHits)
+            {
+                if (!leaguesById.ContainsKey(seedLeagueId)) continue;
+                AddScore(seedLeagueId, Math.Min(W_EPG_SEED_CAP, hits * W_EPG_SEED_PER_HIT), "epg_events",
+                    $"{hits} guide programs name this league's competition or events");
+            }
+        }
 
         // Signal 1 — network keyword match (legacy path, kept for back-
         // compat). Detects which broadcasters a channel name implies
