@@ -418,6 +418,45 @@ public class RssSyncService : BackgroundService
     }
 
     /// <summary>
+    /// Network/broadcaster words that appear as branding prefixes on
+    /// reposted releases. Used only on the TOKEN DIFFERENCE between two
+    /// titles - words both titles share never reach this set, so common
+    /// words here can't suppress genuine upgrades.
+    /// </summary>
+    private static readonly HashSet<string> BroadcasterWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "sky", "sports", "sport", "espn", "espn2", "eurosport", "tnt", "bein",
+        "dazn", "peacock", "fox", "nbc", "cbs", "abc", "itv", "tsn", "sportsnet",
+        "supersport", "viaplay", "ziggo", "movistar", "canal", "setanta",
+        "arena", "stan", "kayo", "star", "premier", "tv", "channel", "network",
+    };
+
+    /// <summary>
+    /// True when two release titles describe the same content and differ only
+    /// by broadcaster branding tokens ("Sky Sports _ Formula1_2026_…" vs
+    /// "Formula1.2026.…"). Any non-broadcaster difference (HDR, PROPER, a
+    /// different group, another session) keeps normal upgrade rules in play.
+    /// </summary>
+    internal static bool TitlesDifferOnlyByBroadcasterBranding(string? existingTitle, string? newTitle)
+    {
+        if (string.IsNullOrWhiteSpace(existingTitle) || string.IsNullOrWhiteSpace(newTitle))
+            return false;
+
+        static HashSet<string> Tokens(string title) => title
+            .ToLowerInvariant()
+            .Split(new[] { ' ', '.', '_', '-', '(', ')', '[', ']' }, StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var existing = Tokens(existingTitle);
+        var incoming = Tokens(newTitle);
+        if (existing.Count == 0 || incoming.Count == 0)
+            return false;
+
+        var difference = existing.Except(incoming).Concat(incoming.Except(existing)).ToList();
+        return difference.Count > 0 && difference.All(t => BroadcasterWords.Contains(t));
+    }
+
+    /// <summary>
     /// Resolve the quality profile that governs an event, mirroring the
     /// search path: the event's own profile, else its league's, else the
     /// profile flagged default, else the first by id. RSS previously jumped
@@ -829,6 +868,22 @@ public class RssSyncService : BackgroundService
             if (newTotalScore <= existingTotalScore && !revisionUpgrade)
             {
                 return (false, $"Existing file has same or better score ({existingTotalScore})", releasePart);
+            }
+
+            // COSMETIC-DUPLICATE GUARD: broadcasters repost the identical
+            // release under a branded name ("Sky Sports _ Formula1_2026_…"
+            // vs "Formula1.2026.…", same group, same quality). Preferred-
+            // keyword scoring can then rate the branded name higher and
+            // "upgrade" to a byte-identical download. When the only tokens
+            // separating the new title from the existing file's original
+            // title are broadcaster words, it is the same content - only a
+            // proper/repack revision justifies replacing it.
+            if (!revisionUpgrade &&
+                TitlesDifferOnlyByBroadcasterBranding(existingFile.OriginalTitle, release.Title))
+            {
+                return (false,
+                    "Same release as the existing file (title differs only by broadcaster branding)",
+                    releasePart);
             }
 
             // A custom-format-only gain must clear the profile's minimum score

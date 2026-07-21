@@ -241,6 +241,7 @@ export default function ActivityPage() {
   const [blocklistItems, setBlocklistItems] = useState<BlocklistItem[]>([]);
   const [grabHistoryItems, setGrabHistoryItems] = useState<GrabHistoryItem[]>([]);
   const [grabHistoryMissingOnly, setGrabHistoryMissingOnly] = useState(false);
+  const [grabHistoryShowReplaced, setGrabHistoryShowReplaced] = useState(false);
   const [regrabbing, setRegrabbing] = useState<number | null>(null);
   const [bulkRegrabbing, setBulkRegrabbing] = useState(false);
   const [selectedPendingImport, setSelectedPendingImport] = useState<PendingImport | null>(null);
@@ -480,7 +481,7 @@ export default function ActivityPage() {
   const loadGrabHistory = async (showLoading = false) => {
     try {
       if (showLoading) setIsLoading(true);
-      const response = await apiClient.get(`/grab-history?page=${page}&pageSize=50&missingOnly=${grabHistoryMissingOnly}`);
+      const response = await apiClient.get(`/grab-history?page=${page}&pageSize=50&missingOnly=${grabHistoryMissingOnly}&includeSuperseded=${grabHistoryShowReplaced}`);
       setGrabHistoryItems(response.data.history);
       setTotalPages(response.data.totalPages);
     } catch (error) {
@@ -498,7 +499,7 @@ export default function ActivityPage() {
     if (activeTab === 'grabHistory') {
       loadGrabHistory(true);
     }
-  }, [grabHistoryMissingOnly]);
+  }, [grabHistoryMissingOnly, grabHistoryShowReplaced]);
 
   const handleRegrab = async (id: number) => {
     try {
@@ -2345,6 +2346,15 @@ export default function ActivityPage() {
                     className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                   />
                   Show Missing Files Only
+                </label>
+                <label className="flex items-center gap-2 text-gray-300 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={grabHistoryShowReplaced}
+                    onChange={(e) => setGrabHistoryShowReplaced(e.target.checked)}
+                    className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                  />
+                  Show Replaced Grabs
                 </label>
               </div>
               <button
