@@ -930,6 +930,17 @@ static async Task<bool> ShouldExposeApiKeyAsync(HttpContext context, SportarrDbC
         return true;
     }
 
+    // Basic auth carries its credentials on every request, so a page load
+    // that got this far under Basic IS the authenticated user. This scheme
+    // was never consulted here, so installs using Basic served the UI but
+    // withheld the API key from it - every page rendered and every API call
+    // the frontend made then failed ("API key not found in initialize data").
+    var basicResult = await context.AuthenticateAsync("Basic");
+    if (basicResult.Succeeded)
+    {
+        return true;
+    }
+
     // The app's forms login stores a DB-backed session id in the
     // SportarrAuth cookie rather than an ASP.NET cookie ticket, so the
     // "Forms" scheme above never succeeds for real browser sessions.
