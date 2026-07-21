@@ -1423,6 +1423,28 @@ public class LibraryImportService
             }
         }
 
+        // ── DATE GATE ───────────────────────────────────────────────────────────
+        // A dated filename is anchored: sports events are date-identified,
+        // and a file dated weeks away from an event can never be that event
+        // no matter how the title arithmetic lands ("Spain vs Argentina
+        // 19.07.2026" reached the 40-point floor against "Spain vs Saudi
+        // Arabia" from June 21 on one shared team plus the year). Seven days
+        // tolerates broadcast-vs-UTC dating and multi-day events.
+        if (parsedDate.HasValue)
+        {
+            var gateDiff = Math.Abs((evt.EventDate.Date - parsedDate.Value.Date).TotalDays);
+            if (evt.BroadcastDate.HasValue)
+            {
+                gateDiff = Math.Min(gateDiff, Math.Abs((evt.BroadcastDate.Value.Date - parsedDate.Value.Date).TotalDays));
+            }
+            if (gateDiff > 7)
+            {
+                logger?.LogDebug("[Match] Date gate: file dated {FileDate:yyyy-MM-dd}, event '{Event}' is {EventDate:yyyy-MM-dd} ({Diff:F0} days apart) - rejecting",
+                    parsedDate.Value, eventTitle, evt.EventDate, gateDiff);
+                return 0;
+            }
+        }
+
         // ── TITLE SIMILARITY ────────────────────────────────────────────────────
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
@@ -1447,9 +1469,14 @@ public class LibraryImportService
         }
         else
         {
-            // Partial word match — also check location against event title
-            var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // Partial word match — also check location against event title.
+            // Connector words are excluded from the overlap: every matchup
+            // title contains "vs", so counting it handed any two-team title
+            // free similarity against every other two-team event.
+            var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => !MatchConnectorWords.Contains(w)).ToArray();
+            var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => !MatchConnectorWords.Contains(w)).ToArray();
 
             // If we have a parsed location, include it in the word set for matching
             if (!string.IsNullOrEmpty(parsedLocation))
@@ -1498,6 +1525,15 @@ public class LibraryImportService
 
         return Math.Min(100, confidence);
     }
+
+    /// <summary>
+    /// Words that connect matchup titles rather than identify them. Present
+    /// in virtually every two-team title, so they carry zero matching signal.
+    /// </summary>
+    private static readonly HashSet<string> MatchConnectorWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "vs", "v", "versus", "at", "the", "and", "of", "@",
+    };
 
     private static string NormalizeTitle(string title)
     {
