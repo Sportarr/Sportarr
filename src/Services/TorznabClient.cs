@@ -525,6 +525,22 @@ public class TorznabClient
                     ReleaseGroup = ExtractReleaseGroup(title)
                 };
 
+                // Prowlarr/Jackett stamp each item with its true origin
+                // (<prowlarrindexer id="2">IPTorrents</prowlarrindexer> /
+                // <jackettindexer>). Trust it over the config name: an entry
+                // pointed at the proxy's AGGREGATE endpoint (base /api with
+                // no indexer id in the path) returns every tracker's results,
+                // and labeling them all with the config name told users a
+                // release came from a tracker it never touched.
+                var originIndexer = item.Elements()
+                    .FirstOrDefault(e => e.Name.LocalName is "prowlarrindexer" or "jackettindexer")
+                    ?.Value.Trim();
+                if (!string.IsNullOrWhiteSpace(originIndexer) &&
+                    !indexerName.Contains(originIndexer, StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Indexer = $"{originIndexer} (via {indexerName})";
+                }
+
                 // Sportarr id attribute (docs/RELEASE_NAMING.md): trackers
                 // adopting the release naming standard emit the canonical id
                 // as <torznab:attr name="sportarrid" value="ev-XXXXXXX"/>.

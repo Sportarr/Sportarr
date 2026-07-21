@@ -379,6 +379,19 @@ public class NewznabClient
                     ReleaseGroup = ExtractReleaseGroup(title)
                 };
 
+                // Prowlarr/Jackett stamp each item with its true origin
+                // indexer. Trust it over the config name so results fetched
+                // through a proxy's aggregate endpoint keep honest
+                // attribution instead of all wearing one entry's name.
+                var originIndexer = item.Elements()
+                    .FirstOrDefault(e => e.Name.LocalName is "prowlarrindexer" or "jackettindexer")
+                    ?.Value.Trim();
+                if (!string.IsNullOrWhiteSpace(originIndexer) &&
+                    !indexerName.Contains(originIndexer, StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Indexer = $"{originIndexer} (via {indexerName})";
+                }
+
                 // Sportarr id attribute (docs/RELEASE_NAMING.md): indexers
                 // adopting the release naming standard emit the canonical id
                 // as <newznab:attr name="sportarrid" value="ev-XXXXXXX"/>.
