@@ -23,8 +23,13 @@ public static class SonarrSeriesEndpoints
 
             if (tvdbId.HasValue)
             {
-                var tvdbIdStr = tvdbId.Value.ToString();
-                query = query.Where(l => l.ExternalId == tvdbIdStr);
+                // Reverse the numeric alias to the ExternalId form(s) it
+                // can represent: lg-XXXXXX for alias-range values, the raw
+                // TheSportsDB id for legacy pre-flip rows.
+                var candidates = Helpers.NumericIdAlias.LeagueExternalIdCandidates(tvdbId.Value);
+                query = candidates.Count > 0
+                    ? query.Where(l => l.ExternalId != null && candidates.Contains(l.ExternalId))
+                    : query.Where(l => false);
             }
 
             var leagues = await query.ToListAsync();
@@ -70,7 +75,7 @@ public static class SonarrSeriesEndpoints
             {
                 var stat = stats.GetValueOrDefault(league.Id);
                 var leaguePath = Path.Combine(rootPath, league.Name.Replace(" ", "-"));
-                var externalId = int.TryParse(league.ExternalId, out var id) ? id : 0;
+                var externalId = Helpers.NumericIdAlias.FromExternalId(league.ExternalId);
 
                 var images = new List<object>();
                 if (!string.IsNullOrEmpty(league.LogoUrl))
@@ -161,7 +166,7 @@ public static class SonarrSeriesEndpoints
 
             var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
             var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
-            var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
+            var externalId = Helpers.NumericIdAlias.FromExternalId(league.ExternalId);
 
             var images = new List<object>();
             if (!string.IsNullOrEmpty(league.LogoUrl))
@@ -267,7 +272,8 @@ public static class SonarrSeriesEndpoints
 
             if (addImportListExclusion && !string.IsNullOrEmpty(league.ExternalId))
             {
-                if (int.TryParse(league.ExternalId, out var tvdbId))
+                var tvdbId = Helpers.NumericIdAlias.FromExternalId(league.ExternalId);
+                if (tvdbId != 0)
                 {
                     var existingExclusion = await db.ImportListExclusions
                         .FirstOrDefaultAsync(e => e.TvdbId == tvdbId);
@@ -380,7 +386,7 @@ public static class SonarrSeriesEndpoints
                 sortTitle = league.Name.ToLowerInvariant(),
                 status = "continuing",
                 monitored = league.Monitored,
-                tvdbId = int.TryParse(league.ExternalId, out var extId) ? extId : 0,
+                tvdbId = Helpers.NumericIdAlias.FromExternalId(league.ExternalId),
                 qualityProfileId = league.QualityProfileId ?? 1,
                 seriesType = "standard",
                 titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
@@ -561,7 +567,7 @@ public static class SonarrSeriesEndpoints
 
             var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
             var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
-            var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
+            var externalId = Helpers.NumericIdAlias.FromExternalId(league.ExternalId);
 
             var seasonEntries = await db.Events
                 .Where(e => e.LeagueId == id && e.SeasonNumber.HasValue)
