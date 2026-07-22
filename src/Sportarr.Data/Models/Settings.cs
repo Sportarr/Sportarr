@@ -194,7 +194,10 @@ public class MediaManagementSettings
     public string DownloadPropersAndRepacks { get; set; } = "preferAndUpgrade";
     public bool ReplaceIllegalCharacters { get; set; } = true;
     public bool EnableMultiPartEpisodes { get; set; } = true; // Detect and name multi-part episodes for Fighting sports
-    public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
+    // {Sportarr Id} stamps the canonical event id ({sportarr-ev-XXXXXXX})
+    // into every filename so imports, rescans, and manual moves match
+    // exactly forever (docs/RELEASE_NAMING.md). Empty for legacy rows.
+    public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}";
 
     // Folders - Cascading options for granular control
     // CreateLeagueFolders: Creates folders like /UFC/, /Premier League/

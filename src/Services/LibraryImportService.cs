@@ -1203,7 +1203,7 @@ public class LibraryImportService
             settings = new MediaManagementSettings
             {
                 RenameFiles = true,
-                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}",
                 // Granular folder settings - default: league/season folders enabled, event folders disabled
                 CreateLeagueFolders = true,
                 CreateSeasonFolders = true,

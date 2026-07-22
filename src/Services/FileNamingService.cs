@@ -286,18 +286,12 @@ public class FileNamingService
     /// </summary>
     private string ReplaceTokens(string format, Dictionary<string, string> tokens)
     {
-        var result = format;
-
-        foreach (var token in tokens)
-        {
-            if (!string.IsNullOrEmpty(token.Value))
-            {
-                result = result.Replace(token.Key, token.Value, StringComparison.OrdinalIgnoreCase);
-            }
-        }
-
-        // Remove any remaining unreplaced tokens
-        result = Regex.Replace(result, @"\{[^}]+\}", string.Empty);
+        // Single pass with a match evaluator: known tokens substitute, unknown
+        // tokens drop, and substituted values are never rescanned. A second
+        // cleanup pass over the whole result would eat the {Sportarr Id}
+        // token's output, which is itself a braced literal ({sportarr-ev-...}).
+        var result = Regex.Replace(format, @"\{[^{}]+\}",
+            m => tokens.TryGetValue(m.Value, out var value) ? value : string.Empty);
 
         // Clean up extra spaces and dashes
         result = Regex.Replace(result, @"\s+", " ");

@@ -1019,7 +1019,7 @@ public class FileRenameService
             return new MediaManagementSettings
             {
                 RenameEvents = false, // Default to not renaming
-                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}"
+                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}"
             };
         }
 

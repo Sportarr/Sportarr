@@ -115,7 +115,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     replaceIllegalCharacters: true,
     downloadPropersAndRepacks: 'preferAndUpgrade',
     enableMultiPartEpisodes: true,
-    standardFileFormat: '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
+    standardFileFormat: '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}',
     // Granular folder options - default: league/season enabled, event disabled
     createLeagueFolders: true,
     createSeasonFolders: true,
@@ -816,7 +816,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                       setSelectedFilePreset(''); // Clear preset selection when manually editing
                     }}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono"
-                    placeholder="{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}"
+                    placeholder="{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}"
                   />
                 </div>
 
@@ -834,6 +834,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                       { token: '{Event Date}', desc: '2024-04-13', category: 'Event' },
                       { token: '{Quality Full}', desc: 'Bluray-1080p', category: 'Quality' },
                       { token: '{Release Group}', desc: 'GROUP', category: 'Release' },
+                      { token: '{Sportarr Id}', desc: 'exact-match event id', category: 'Event' },
                     ].map((item) => (
                       <button
                         key={item.token}
@@ -871,6 +872,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                       .replace(/{League}/g, 'MMA League')
                       .replace(/{Event Date}/g, '2024-11-16')
                       .replace(/{Quality Full}/g, 'Bluray-1080p')
+                      .replace(/{Sportarr Id}/g, '{sportarr-ev-2338110}')
                       .replace(/{Release Group}/g, 'GROUP')
                     }.mkv
                   </p>

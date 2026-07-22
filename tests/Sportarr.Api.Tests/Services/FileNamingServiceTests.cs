@@ -574,4 +574,58 @@ public class FileNamingServiceTests
     {
         EventPartDetector.GetMotorsportWeekendTitle(title).Should().Be(expected);
     }
+
+    [Fact]
+    public void BuildFileName_SportarrIdToken_SurvivesIntoFilename()
+    {
+        // The rendered token is itself a braced literal; the unknown-token
+        // cleanup must not eat it (it did before the single-pass rewrite).
+        var format = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full} {Sportarr Id}";
+        var tokens = new FileNamingTokens
+        {
+            Series = "Formula 1",
+            Season = "2026",
+            Episode = "12",
+            EventTitle = "British Grand Prix",
+            QualityFull = "WEBDL-1080p",
+            SportarrId = "ev-2338110"
+        };
+
+        var result = _service.BuildFileName(format, tokens, ".mkv");
+
+        result.Should().Be("Formula 1 - S2026E12 - British Grand Prix - WEBDL-1080p {sportarr-ev-2338110}.mkv");
+    }
+
+    [Fact]
+    public void BuildFileName_SportarrIdToken_LegacyEventLeavesCleanName()
+    {
+        // Legacy rows have no ev- id; the token renders empty and the
+        // trailing space it would leave must be trimmed away.
+        var format = "{Event Title} - {Quality Full} {Sportarr Id}";
+        var tokens = new FileNamingTokens
+        {
+            EventTitle = "UFC 300",
+            QualityFull = "Bluray-1080p",
+            SportarrId = "123456"
+        };
+
+        var result = _service.BuildFileName(format, tokens, ".mkv");
+
+        result.Should().Be("UFC 300 - Bluray-1080p.mkv");
+    }
+
+    [Fact]
+    public void BuildFileName_UnknownTokens_AreStillRemoved()
+    {
+        var format = "{Event Title} {Bogus Token} - {Quality}";
+        var tokens = new FileNamingTokens
+        {
+            EventTitle = "UFC 300",
+            Quality = "1080p"
+        };
+
+        var result = _service.BuildFileName(format, tokens, ".mkv");
+
+        result.Should().Be("UFC 300 - 1080p.mkv");
+    }
 }

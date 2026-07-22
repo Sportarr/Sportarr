@@ -585,28 +585,28 @@ public static class TrashNamingTemplates
     {
         // Plex-compatible naming (default for Sportarr)
         { "plex-standard", (
-            "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+            "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}",
             "Plex TV Show style - Best for media servers. Supports multi-part episodes.",
             true
         )},
 
         // Plex with release group
         { "plex-with-group", (
-            "{Series} - {Season}{Episode}{Part} - {Event Title} [{Quality Full}] [{Release Group}]",
+            "{Series} - {Season}{Episode}{Part} - {Event Title} [{Quality Full}] [{Release Group}] {Sportarr Id}",
             "Plex style with release group in brackets",
             true
         )},
 
         // Simple date-based (TRaSH style)
         { "date-based", (
-            "{Event Title} ({Air Date Year}) - {Quality Full}",
+            "{Event Title} ({Air Date Year}) - {Quality Full} {Sportarr Id}",
             "Simple date-based naming without episode numbers",
             false
         )},
 
         // Sports-focused with league prefix
         { "sports-league", (
-            "{Series} - {Air Date} - {Event Title}{Part} [{Quality Full}]",
+            "{Series} - {Air Date} - {Event Title}{Part} [{Quality Full}] {Sportarr Id}",
             "League-first naming with date. Good for sports organization.",
             true
         )},
@@ -620,7 +620,7 @@ public static class TrashNamingTemplates
 
         // Full details (similar to TRaSH Sonarr recommended)
         { "full-details", (
-            "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} [{Release Group}]",
+            "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} [{Release Group}] {Sportarr Id}",
             "Full details with quality and release group",
             true
         )},

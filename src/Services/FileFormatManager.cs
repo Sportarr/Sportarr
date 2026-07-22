@@ -14,8 +14,8 @@ public class FileFormatManager
     private readonly ILogger<FileFormatManager> _logger;
 
     // Standard format templates
-    private const string FORMAT_WITH_PART = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
-    private const string FORMAT_WITHOUT_PART = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full}";
+    private const string FORMAT_WITH_PART = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}";
+    private const string FORMAT_WITHOUT_PART = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full} {Sportarr Id}";
 
     public FileFormatManager(SportarrDbContext db, ILogger<FileFormatManager> logger)
     {

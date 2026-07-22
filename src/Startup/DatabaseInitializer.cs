@@ -1324,7 +1324,7 @@ public static class DatabaseInitializer
                     CREATE TABLE IF NOT EXISTS MediaManagementSettings_new (
                         Id INTEGER PRIMARY KEY,
                         RenameFiles INTEGER NOT NULL DEFAULT 1,
-                        StandardFileFormat TEXT NOT NULL DEFAULT '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
+                        StandardFileFormat TEXT NOT NULL DEFAULT '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}',
                         EventFolderFormat TEXT NOT NULL DEFAULT '{Event Title}',
                         LeagueFolderFormat TEXT NOT NULL DEFAULT '{Series}',
                         SeasonFolderFormat TEXT NOT NULL DEFAULT 'Season {Season}',
@@ -1845,8 +1845,12 @@ public static class DatabaseInitializer
             var mediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
             if (mediaSettings != null)
             {
-                const string correctFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
-                const string correctFormatNoPart = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full}";
+                const string correctFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} {Sportarr Id}";
+                const string correctFormatNoPart = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full} {Sportarr Id}";
+                // Previous stock defaults (pre {Sportarr Id}); these upgrade
+                // in place, keeping the user's part/no-part choice.
+                const string priorFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
+                const string priorFormatNoPart = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full}";
 
                 // Check if StandardFileFormat needs to be updated
                 var currentFormat = mediaSettings.StandardFileFormat ?? "";
@@ -1865,7 +1869,21 @@ public static class DatabaseInitializer
                         ""
                     };
 
-                    if (oldFormats.Any(f => f.Equals(currentFormat, StringComparison.OrdinalIgnoreCase)) ||
+                    if (currentFormat.Equals(priorFormat, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine("[Sportarr] Adding {Sportarr Id} token to stock StandardFileFormat...");
+                        mediaSettings.StandardFileFormat = correctFormat;
+                        await db.SaveChangesAsync();
+                        Console.WriteLine("[Sportarr] StandardFileFormat updated successfully");
+                    }
+                    else if (currentFormat.Equals(priorFormatNoPart, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine("[Sportarr] Adding {Sportarr Id} token to stock StandardFileFormat (no-part variant)...");
+                        mediaSettings.StandardFileFormat = correctFormatNoPart;
+                        await db.SaveChangesAsync();
+                        Console.WriteLine("[Sportarr] StandardFileFormat updated successfully");
+                    }
+                    else if (oldFormats.Any(f => f.Equals(currentFormat, StringComparison.OrdinalIgnoreCase)) ||
                         string.IsNullOrWhiteSpace(currentFormat))
                     {
                         Console.WriteLine($"[Sportarr] Updating StandardFileFormat from '{currentFormat}' to new Plex-style format...");
