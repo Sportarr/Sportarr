@@ -148,6 +148,17 @@ namespace Jellyfin.Plugin.Sportarr
                 // Set provider ID
                 series.SetProviderId("Sportarr", sportarrId);
 
+                // Numeric alias in the Tvdb namespace so external tools that
+                // only read Tvdb/Tmdb/Imdb provider ids (Maintainerr and the
+                // wider arr ecosystem) can resolve this item against a
+                // Sportarr install. Not a real TVDB id; see the Sportarr
+                // repo's docs/EXTERNAL_IDS.md.
+                var tvdbAlias = SportarrIdAlias.TvdbAliasFor(sportarrId);
+                if (tvdbAlias != null)
+                {
+                    series.SetProviderId(MetadataProvider.Tvdb, tvdbAlias);
+                }
+
                 // Year
                 if (root.TryGetProperty("year", out var yearElement) && yearElement.ValueKind == JsonValueKind.Number)
                 {

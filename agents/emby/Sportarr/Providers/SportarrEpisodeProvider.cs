@@ -161,6 +161,14 @@ namespace Sportarr.Providers
                     if (!string.IsNullOrEmpty(ep.Id))
                     {
                         episode.SetProviderId("Sportarr", ep.Id);
+
+                        // Numeric alias in the Tvdb namespace for external
+                        // tools; see docs/EXTERNAL_IDS.md in the Sportarr repo.
+                        var tvdbAlias = SportarrIdAlias.TvdbAliasFor(ep.Id);
+                        if (tvdbAlias != null)
+                        {
+                            episode.SetProviderId(MetadataProviders.Tvdb, tvdbAlias);
+                        }
                     }
 
                     // Venue -> studio (shown on the episode in Emby)

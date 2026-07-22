@@ -120,6 +120,17 @@ namespace Sportarr.Providers
 
                 series.SetProviderId("Sportarr", sportarrId);
 
+                // Numeric alias in the Tvdb namespace so external tools that
+                // only read Tvdb/Tmdb/Imdb provider ids (Maintainerr and the
+                // wider arr ecosystem) can resolve this item against a
+                // Sportarr install. Not a real TVDB id; see the Sportarr
+                // repo's docs/EXTERNAL_IDS.md.
+                var tvdbAlias = SportarrIdAlias.TvdbAliasFor(sportarrId);
+                if (tvdbAlias != null)
+                {
+                    series.SetProviderId(MetadataProviders.Tvdb, tvdbAlias);
+                }
+
                 if (response.Year.HasValue)
                 {
                     series.ProductionYear = response.Year.Value;
