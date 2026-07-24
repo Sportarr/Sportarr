@@ -338,12 +338,18 @@ public class FileImportService : IFileImportService
             // Pass download.Quality to preserve quality info from original release title (not re-parsed from downloaded filename)
             var rootFolders = await RootFolderLoader.LoadAsync(_db, _diskSpaceService);
         var rootFolder = await GetRootFolderForLeagueAsync(settings, rootFolders, eventInfo.League, actualFileSize);
-            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile, download.Part, download.Quality);
+            // The stored grab quality wins, but adopted/external downloads can
+            // carry a literal "Unknown" - fall back to parsing the filename so
+            // the rendered {Quality Full} token and the file record stay
+            // meaningful instead of naming the file "... - Unknown".
+            var qualityString = !string.IsNullOrWhiteSpace(download.Quality) &&
+                !string.Equals(download.Quality, "Unknown", StringComparison.OrdinalIgnoreCase)
+                ? download.Quality
+                : _parser.BuildQualityString(parsed);
+
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile, download.Part, qualityString);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
-
-            // Detect part information for multi-part episodes (needed for upgrade check below)
-            var qualityString = download.Quality ?? _parser.BuildQualityString(parsed);
             var config = await _configService.GetConfigAsync();
             EventPartInfo? partInfo = null;
             if (config.EnableMultiPartEpisodes)
@@ -1287,7 +1293,35 @@ public class FileImportService : IFileImportService
         try
         {
             var status = await _downloadClientService.GetDownloadStatusAsync(download.DownloadClient, download.DownloadId);
-            return status != null;
+            if (status != null)
+            {
+                return true;
+            }
+
+            // A null status can mean EITHER "the torrent is gone" or "the
+            // check failed" - the client adapters swallow login failures,
+            // timeouts, and HTTP errors into null, so the catch below never
+            // sees them. Treating that ambiguity as "gone" moved seeding
+            // torrents out from under their client on any transient blip.
+            // Only trust "gone" when the client is provably reachable right
+            // now, and even then confirm with a second lookup.
+            var (reachable, _) = await _downloadClientService.TestConnectionAsync(download.DownloadClient);
+            if (!reachable)
+            {
+                _logger.LogWarning("[Import] {Client} is unreachable while checking whether the download is still seeding - assuming it is, to protect seeding",
+                    download.DownloadClient.Name);
+                return true;
+            }
+
+            status = await _downloadClientService.GetDownloadStatusAsync(download.DownloadClient, download.DownloadId);
+            if (status != null)
+            {
+                return true;
+            }
+
+            _logger.LogInformation("[Import] {Client} is reachable and does not track download {DownloadId} - treating it as removed from the client",
+                download.DownloadClient.Name, download.DownloadId);
+            return false;
         }
         catch (Exception ex)
         {
