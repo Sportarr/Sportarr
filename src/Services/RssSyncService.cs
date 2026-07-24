@@ -163,6 +163,7 @@ public class RssSyncService : BackgroundService
 
         int newDownloadsAdded = 0;
         int upgradesFound = 0;
+        int matchedReleases = 0;
 
         // Pre-load quality profiles, custom formats, and release profiles for evaluation.
         // Note: Specifications is stored as JSON in CustomFormat, not a navigation property, so no Include needed.
@@ -191,6 +192,8 @@ public class RssSyncService : BackgroundService
 
                 if (matchedEvent == null)
                     continue;
+
+                matchedReleases++;
 
                 // Evaluate release against quality profile and custom formats.
                 // This is the SAME evaluation that manual search uses — identical decision engine.
@@ -252,6 +255,17 @@ public class RssSyncService : BackgroundService
             {
                 _logger.LogError(ex, "[RSS Sync] Error processing release: {Release}", release.Title);
             }
+        }
+
+        // Zero matches across a non-empty feed is almost always the category
+        // filter, not matching: RSS requests are category-filtered while
+        // searches are not, so releases filed under categories outside the
+        // configured list never reach the matcher at all. Say so, or the
+        // operator has nothing to go on ("searches work, RSS never does").
+        if (matchedReleases == 0 && recentReleases.Count > 0)
+        {
+            _logger.LogInformation("[RSS Sync] None of the {Count} fetched releases matched a monitored event. If manual or automatic searches DO find releases for these events, check each indexer's Categories setting: RSS fetches are category-filtered (searches are not), so sports releases your tracker files under other categories never appear in the feed.",
+                recentReleases.Count);
         }
 
         _logger.LogInformation("[RSS Sync] Completed - {New} new downloads, {Upgrades} quality upgrades",

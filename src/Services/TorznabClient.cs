@@ -47,18 +47,27 @@ public static class NewznabCategories
     public const string TV_Documentary = "5080"; // TV/Documentary
     public const string TV_Foreign = "5020";   // TV/Foreign
 
+    // Movies categories (2000 range). Sports events regularly get filed
+    // here by real trackers (PPVs and one-off events read as "movies" to
+    // uploaders and site rules), so RSS must cover them or those releases
+    // never appear in the category-filtered feed even though searches,
+    // which send no category filter, find them fine.
+    public const string Movies_HD = "2040";    // Movies/HD
+    public const string Movies_UHD = "2045";   // Movies/UHD (4K)
+
     // Adult/XXX (6000 range) - always excluded
     public const string XXX = "6000";
 
-    // Default categories for Sportarr (TV categories only)
-    // Sports should be properly categorized under TV/Sport or TV/HD
-    // Note: Some uploaders miscategorize under Movies, but those are incorrect uploads
+    // Default categories for Sportarr, used when an indexer has no
+    // categories configured
     public static readonly string[] DefaultSportCategories = new[]
     {
         TV,          // 5000 - General TV (catches miscategorized sports)
         TV_HD,       // 5040 - TV/HD (high quality releases)
         TV_UHD,      // 5045 - TV/UHD (4K releases)
         TV_Sport,    // 5060 - TV/Sport (primary category for sports)
+        Movies_HD,   // 2040 - Movies/HD (sports events routinely filed here)
+        Movies_UHD,  // 2045 - Movies/UHD (4K sports events filed as movies)
     };
 }
 
