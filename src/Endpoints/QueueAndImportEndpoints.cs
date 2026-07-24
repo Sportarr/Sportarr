@@ -232,11 +232,12 @@ app.MapDelete("/api/queue/{id:int}", async (
             }
             else
             {
-                // For Usenet, check by title+indexer
+                // No hash to match on (usenet, or a torrent whose infohash was
+                // never captured): dedupe by title+indexer. A protocol filter
+                // here let hashless torrents re-add the same entry repeatedly.
                 existingBlock = await db.Blocklist
                     .FirstOrDefaultAsync(b => b.Title == item.Title &&
-                                             b.Indexer == (item.Indexer ?? "Unknown") &&
-                                             b.Protocol == "Usenet");
+                                             b.Indexer == (item.Indexer ?? "Unknown"));
             }
 
             if (existingBlock == null)

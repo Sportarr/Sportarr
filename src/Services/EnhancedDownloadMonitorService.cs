@@ -862,11 +862,14 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
         else if (!string.IsNullOrEmpty(download.Title))
         {
-            // For Usenet, match by title and indexer
+            // No hash to match on (usenet, or a torrent whose infohash was
+            // never captured): dedupe by title+indexer. Filtering on protocol
+            // here let hashless torrents slip past the check and re-add the
+            // same entry on every failed retry, which is how blocklists grew
+            // to thousands of duplicate rows.
             existingBlock = await db.Blocklist
                 .FirstOrDefaultAsync(b => b.Title == download.Title &&
-                                         b.Indexer == (download.Indexer ?? "Unknown") &&
-                                         b.Protocol == "Usenet");
+                                         b.Indexer == (download.Indexer ?? "Unknown"));
         }
 
         if (existingBlock == null)
