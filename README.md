@@ -102,7 +102,7 @@ docker run -d \
 
 - **TrueNAS SCALE** - Sportarr is in the community apps train. Search for "sportarr" on the Apps screen and install from there; catalog updates track new releases automatically.
 - **HexOS** - Sportarr is in the curated apps catalog with the same one-click install.
-- **Unraid** - run the Docker image above (Compose or `docker run`); a Community Applications listing is planned.
+- **Unraid** - search "sportarr" in Community Applications (community-maintained template, thanks tquizzle). Official templates live at [Sportarr/unraid-templates](https://github.com/Sportarr/unraid-templates).
 
 ### Windows / Linux / macOS
 
