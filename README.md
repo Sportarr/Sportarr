@@ -462,6 +462,40 @@ Sportarr is made better by everyone who has contributed code. Thank you.
      is pre-filled so the section renders before the first automated run; the
      action replaces it on schedule. -->
 <!-- readme: contributors,claude/-,Sportarr/- -start -->
+<table>
+	<tbody>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/Sportarr">
+                    <img src="https://avatars.githubusercontent.com/u/224651902?v=4" width="72;" alt="Sportarr"/>
+                    <br />
+                    <sub><b>Sportarr</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/ohathar">
+                    <img src="https://avatars.githubusercontent.com/u/6678917?v=4" width="72;" alt="ohathar"/>
+                    <br />
+                    <sub><b>ohathar</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/nathanjcollins">
+                    <img src="https://avatars.githubusercontent.com/u/53304818?v=4" width="72;" alt="nathanjcollins"/>
+                    <br />
+                    <sub><b>nathanjcollins</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/mmmmmtasty">
+                    <img src="https://avatars.githubusercontent.com/u/14114638?v=4" width="72;" alt="mmmmmtasty"/>
+                    <br />
+                    <sub><b>mmmmmtasty</b></sub>
+                </a>
+            </td>
+		</tr>
+	<tbody>
+</table>
 <!-- readme: contributors,claude/-,Sportarr/- -end -->
 
 <sub>See the full <a href="https://github.com/Sportarr/Sportarr/graphs/contributors">contributor graph</a>, plus everyone helping with testing and bug reports on <a href="https://discord.gg/YjHVWGWjjG">Discord</a>.</sub>
