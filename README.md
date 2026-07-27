@@ -486,7 +486,7 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                 </a>
             </td>
 		</tr>
-	<tbody>
+	</tbody>
 </table>
 <!-- readme: contributors,claude/-,Sportarr/- -end -->
 
