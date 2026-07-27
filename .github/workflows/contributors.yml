@@ -1,16 +1,19 @@
 name: Update Contributors
 
 # Regenerates the contributor grid between the readme markers in README.md so
-# the list stays current without hand edits. Only actual code contributors
-# (commit authors, i.e. people whose PRs were merged) are listed; bots and the
-# release account are excluded. Runs weekly and on demand only - not on push -
-# so it never triggers the release workflow, and its commit carries [skip ci]
-# as a second guard.
+# the list stays current without hand edits. Listed: everyone with a MERGED
+# pull request, sourced from the PR history rather than commit authorship -
+# releases squash dev into main under the release identity, so contributor
+# commits don't survive on the default branch and the commit-based
+# contributors API misses them. Bots and the release account are excluded.
+# Runs weekly and on demand only - not on push - so it never triggers the
+# release workflow, and its commit carries [skip ci] as a second guard.
 #
 # This used to be a third-party readme action, replaced with a plain script:
 # the action could not exclude mixed-case logins (it lowercased the exclusion
 # but compared against the raw login, so the release account always listed
-# itself) and it crashed parsing any hand-edited grid.
+# itself), it crashed parsing any hand-edited grid, and it read commit
+# authorship, which the squash-release flow erases.
 on:
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
@@ -30,9 +33,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          curl -sf -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/contributors?per_page=100" \
-            > /tmp/contributors.json
+          : > /tmp/pulls.json
+          page=1
+          while true; do
+            curl -sf -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls?state=closed&per_page=100&page=$page" \
+              > /tmp/pulls-page.json
+            count=$(python3 -c "import json;print(len(json.load(open('/tmp/pulls-page.json'))))")
+            cat /tmp/pulls-page.json >> /tmp/pulls.json
+            [ "$count" -lt 100 ] && break
+            page=$((page + 1))
+          done
 
           python3 - <<'EOF'
           import json
@@ -43,16 +54,39 @@ jobs:
           START = "<!-- readme: contributors,claude/-,Sportarr/- -start -->"
           END = "<!-- readme: contributors,claude/-,Sportarr/- -end -->"
 
-          with open("/tmp/contributors.json") as f:
-              contributors = json.load(f)
+          merged = []
+          with open("/tmp/pulls.json") as f:
+              # The file is concatenated JSON arrays, one per page.
+              decoder = json.JSONDecoder()
+              text = f.read()
+              pos = 0
+              while pos < len(text):
+                  while pos < len(text) and text[pos].isspace():
+                      pos += 1
+                  if pos >= len(text):
+                      break
+                  batch, pos = decoder.raw_decode(text, pos)
+                  merged.extend(p for p in batch if p.get("merged_at"))
 
-          people = [
-              c
-              for c in contributors
-              if c.get("type") != "Bot"
-              and not c["login"].lower().endswith("[bot]")
-              and c["login"].lower() not in EXCLUDED
-          ]
+          by_login = {}
+          for pr in merged:
+              user = pr["user"]
+              login = user["login"]
+              if (
+                  user.get("type") == "Bot"
+                  or login.lower().endswith("[bot]")
+                  or login.lower() in EXCLUDED
+              ):
+                  continue
+              entry = by_login.setdefault(
+                  login, {"login": login, "avatar_url": user["avatar_url"], "count": 0}
+              )
+              entry["count"] += 1
+
+          # Most merged PRs first; ties alphabetically for a stable grid.
+          people = sorted(
+              by_login.values(), key=lambda e: (-e["count"], e["login"].lower())
+          )
 
           cells = []
           for c in people:
