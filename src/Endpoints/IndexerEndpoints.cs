@@ -20,41 +20,29 @@ app.MapGet("/api/indexer", async (SportarrDbContext db) =>
 {
     var indexers = await db.Indexers.OrderBy(i => i.Priority).ToListAsync();
 
-    // Transform to frontend-compatible format with implementation field
-    var transformedIndexers = indexers.Select(i => new
-    {
-        id = i.Id,
-        name = i.Name,
-        implementation = i.Type.ToString(), // Convert enum to string (Torznab, Newznab, Rss, Torrent)
-        enable = i.Enabled,
-        enableRss = i.EnableRss,
-        enableAutomaticSearch = i.EnableAutomaticSearch,
-        enableInteractiveSearch = i.EnableInteractiveSearch,
-        priority = i.Priority,
-        fields = new object[]
-        {
-            new { name = "baseUrl", value = i.Url },
-            new { name = "apiPath", value = i.ApiPath },
-            new { name = "apiKey", value = i.ApiKey ?? "" },
-            new { name = "categories", value = string.Join(",", i.Categories) },
-            new { name = "animeCategories", value = i.AnimeCategories != null ? string.Join(",", i.AnimeCategories) : "" },
-            new { name = "minimumSeeders", value = i.MinimumSeeders.ToString() },
-            new { name = "seedRatio", value = i.SeedRatio?.ToString() ?? "" },
-            new { name = "seedTime", value = i.SeedTime?.ToString() ?? "" },
-            new { name = "seasonPackSeedTime", value = i.SeasonPackSeedTime?.ToString() ?? "" },
-            new { name = "earlyReleaseLimit", value = i.EarlyReleaseLimit?.ToString() ?? "" },
-            new { name = "additionalParameters", value = i.AdditionalParameters ?? "" },
-            new { name = "multiLanguages", value = i.MultiLanguages != null ? string.Join(",", i.MultiLanguages) : "" },
-            new { name = "rejectBlocklistedTorrentHashes", value = i.RejectBlocklistedTorrentHashes.ToString() },
-            new { name = "downloadClientId", value = i.DownloadClientId?.ToString() ?? "" },
-            new { name = "cookie", value = i.Cookie ?? "" },
-            new { name = "allowZeroSize", value = i.RssAllowZeroSize.ToString().ToLowerInvariant() },
-            new { name = "failDownloads", value = string.Join(",", i.FailDownloads ?? new List<int>()) }
-        },
-        tags = i.Tags ?? new List<int>()
-    }).ToList();
+    return Results.Ok(indexers.Select(TransformIndexer).ToList());
+});
 
-    return Results.Ok(transformedIndexers);
+// Single-indexer read in the same transformed shape as the list. External
+// application syncs (see docs/APPLICATION_API.md) fetch one indexer by the
+// id they stored to decide whether their copy drifted.
+app.MapGet("/api/indexer/{id:int}", async (int id, SportarrDbContext db) =>
+{
+    var indexer = await db.Indexers.FindAsync(id);
+    return indexer is null ? Results.NotFound() : Results.Ok(TransformIndexer(indexer));
+});
+
+// Implementation templates: which indexer implementations exist and which
+// fields each accepts, in the same shape the CRUD endpoints speak. External
+// applications build their payloads from these instead of hardcoding the
+// field list, so additive field changes never break them.
+app.MapGet("/api/indexer/schema", () =>
+{
+    return Results.Ok(new[]
+    {
+        IndexerSchemaTemplate("Newznab", "NewznabSettings"),
+        IndexerSchemaTemplate("Torznab", "TorznabSettings"),
+    });
 });
 
 app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
@@ -107,7 +95,7 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
             foreach (var field in fields.EnumerateArray())
             {
                 var fieldName = field.GetProperty("name").GetString();
-                var fieldValue = field.TryGetProperty("value", out var val) ? val.GetString() : null;
+                var fieldValue = ReadFieldValue(field);
 
                 switch (fieldName)
                 {
@@ -260,7 +248,7 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
             foreach (var field in fields.EnumerateArray())
             {
                 var fieldName = field.GetProperty("name").GetString();
-                var fieldValue = field.TryGetProperty("value", out var val) ? val.GetString() : null;
+                var fieldValue = ReadFieldValue(field);
 
                 switch (fieldName)
                 {
@@ -495,7 +483,7 @@ app.MapPost("/api/indexer/caps", async (
             foreach (var field in fields.EnumerateArray())
             {
                 var fieldName = field.GetProperty("name").GetString();
-                var fieldValue = field.GetProperty("value").GetString();
+                var fieldValue = ReadFieldValue(field);
                 switch (fieldName)
                 {
                     case "baseUrl":
@@ -576,7 +564,7 @@ app.MapPost("/api/indexer/test", async (
             foreach (var field in fields.EnumerateArray())
             {
                 var fieldName = field.GetProperty("name").GetString();
-                var fieldValue = field.GetProperty("value").GetString();
+                var fieldValue = ReadFieldValue(field);
 
                 switch (fieldName)
                 {
@@ -683,6 +671,107 @@ app.MapPost("/api/indexer/test", async (
             "rss" or "torrentrss" or "torrent rss feed" => IndexerType.Rss,
             "broadcasthenet" or "btn" => IndexerType.BroadcasTheNet, // "btn" kept for legacy/import compat
             _ => IndexerType.Torznab,
+        };
+    }
+
+    /// <summary>
+    /// The transformed indexer shape shared by the list, single-read, and
+    /// schema endpoints: implementation string, flat enable flags, and a
+    /// fields array. Categories serialize as a comma-joined string (the shape
+    /// the web frontend edits); the write endpoints accept both that and a
+    /// JSON array of category ids.
+    /// </summary>
+    private static object TransformIndexer(Indexer i) => new
+    {
+        id = i.Id,
+        name = i.Name,
+        implementation = i.Type.ToString(), // Torznab, Newznab, Rss, Torrent
+        configContract = i.Type == IndexerType.Newznab ? "NewznabSettings" : "TorznabSettings",
+        enable = i.Enabled,
+        enableRss = i.EnableRss,
+        enableAutomaticSearch = i.EnableAutomaticSearch,
+        enableInteractiveSearch = i.EnableInteractiveSearch,
+        priority = i.Priority,
+        fields = new object[]
+        {
+            new { name = "baseUrl", value = i.Url },
+            new { name = "apiPath", value = i.ApiPath },
+            new { name = "apiKey", value = i.ApiKey ?? "" },
+            new { name = "categories", value = string.Join(",", i.Categories) },
+            new { name = "animeCategories", value = i.AnimeCategories != null ? string.Join(",", i.AnimeCategories) : "" },
+            new { name = "minimumSeeders", value = i.MinimumSeeders.ToString() },
+            new { name = "seedRatio", value = i.SeedRatio?.ToString() ?? "" },
+            new { name = "seedTime", value = i.SeedTime?.ToString() ?? "" },
+            new { name = "seasonPackSeedTime", value = i.SeasonPackSeedTime?.ToString() ?? "" },
+            new { name = "earlyReleaseLimit", value = i.EarlyReleaseLimit?.ToString() ?? "" },
+            new { name = "additionalParameters", value = i.AdditionalParameters ?? "" },
+            new { name = "multiLanguages", value = i.MultiLanguages != null ? string.Join(",", i.MultiLanguages) : "" },
+            new { name = "rejectBlocklistedTorrentHashes", value = i.RejectBlocklistedTorrentHashes.ToString() },
+            new { name = "downloadClientId", value = i.DownloadClientId?.ToString() ?? "" },
+            new { name = "cookie", value = i.Cookie ?? "" },
+            new { name = "allowZeroSize", value = i.RssAllowZeroSize.ToString().ToLowerInvariant() },
+            new { name = "failDownloads", value = string.Join(",", i.FailDownloads ?? new List<int>()) }
+        },
+        tags = i.Tags ?? new List<int>()
+    };
+
+    /// <summary>
+    /// An empty indexer in the transformed shape, used by the schema endpoint
+    /// as the template for one implementation. Field defaults mirror what the
+    /// add dialog starts from.
+    /// </summary>
+    private static object IndexerSchemaTemplate(string implementation, string configContract) => new
+    {
+        id = 0,
+        name = "",
+        implementation,
+        configContract,
+        enable = true,
+        enableRss = true,
+        enableAutomaticSearch = true,
+        enableInteractiveSearch = true,
+        priority = 25,
+        fields = new object[]
+        {
+            new { name = "baseUrl", value = "" },
+            new { name = "apiPath", value = "/api" },
+            new { name = "apiKey", value = "" },
+            new { name = "categories", value = "" },
+            new { name = "minimumSeeders", value = "1" },
+            new { name = "seedRatio", value = "" },
+            new { name = "seedTime", value = "" },
+            new { name = "seasonPackSeedTime", value = "" },
+            new { name = "additionalParameters", value = "" },
+            new { name = "rejectBlocklistedTorrentHashes", value = "false" }
+        },
+        tags = new List<int>()
+    };
+
+    /// <summary>
+    /// Read a field's value tolerantly. The web frontend sends every value as
+    /// a string, but external application syncs built against the documented
+    /// contract send JSON-typed values: categories as an array of ints,
+    /// enabled flags as booleans, seeders as numbers. GetString() on any of
+    /// those throws, so this normalizes every shape to the string form the
+    /// field switch already understands (arrays become comma-joined).
+    /// </summary>
+    private static string? ReadFieldValue(System.Text.Json.JsonElement field)
+    {
+        if (!field.TryGetProperty("value", out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.String => value.GetString(),
+            System.Text.Json.JsonValueKind.Number => value.GetRawText(),
+            System.Text.Json.JsonValueKind.True => "true",
+            System.Text.Json.JsonValueKind.False => "false",
+            System.Text.Json.JsonValueKind.Array => string.Join(",",
+                value.EnumerateArray().Select(e =>
+                    e.ValueKind == System.Text.Json.JsonValueKind.String ? e.GetString() : e.GetRawText())),
+            _ => null,
         };
     }
 }

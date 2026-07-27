@@ -62,9 +62,13 @@ public class DynamicAuthenticationMiddleware
             }
         }
 
-        // Determine authentication method
-        var authMethod = securitySettings?.AuthenticationMethod ?? "none";
-        var authRequired = securitySettings?.AuthenticationRequired ?? "disabledForLocalAddresses";
+        // Determine authentication method. Normalize both values: config.xml
+        // carries PascalCase ("DisabledForLocalAddresses") and the startup sync
+        // stores lowercase in the database, so a case-sensitive compare against
+        // "disabledForLocalAddresses" silently never matches and the
+        // enforcement decisions below misfire.
+        var authMethod = (securitySettings?.AuthenticationMethod ?? "none").ToLowerInvariant();
+        var authRequired = (securitySettings?.AuthenticationRequired ?? "disabledForLocalAddresses").ToLowerInvariant();
 
         // ALWAYS try API key first (highest priority, works regardless of auth settings)
         var apiKeyResult = await context.AuthenticateAsync("API");
@@ -92,7 +96,7 @@ public class DynamicAuthenticationMiddleware
 
             // Determine if we should enforce external auth headers
             bool shouldEnforceExternalAuth = authRequired == "enabled" ||
-                                             (authRequired == "disabledForLocalAddresses" && !IsLocalAddress(context));
+                                             (authRequired == "disabledforlocaladdresses" && !IsLocalAddress(context));
 
             if (shouldEnforceExternalAuth && string.IsNullOrEmpty(externalUser))
             {
@@ -125,7 +129,7 @@ public class DynamicAuthenticationMiddleware
         // Check if authentication should be enforced
         bool shouldEnforceAuth = authMethod != "none" &&
                                  (authRequired == "enabled" ||
-                                  (authRequired == "disabledForLocalAddresses" && !IsLocalAddress(context)));
+                                  (authRequired == "disabledforlocaladdresses" && !IsLocalAddress(context)));
 
         if (!shouldEnforceAuth)
         {
@@ -287,7 +291,9 @@ public class DynamicAuthenticationMiddleware
                path.EndsWith(".ico");
     }
 
-    private bool IsLocalAddress(HttpContext context)
+    // Static so the /initialize.json and index.html key-exposure gate in Program.cs
+    // can reuse the exact same local-address decision as the auth middleware.
+    public static bool IsLocalAddress(HttpContext context)
     {
         // Fail closed when the request arrived through a reverse proxy.
         // The "disabledForLocalAddresses" decision is based on the raw TCP peer
@@ -310,12 +316,22 @@ public class DynamicAuthenticationMiddleware
             return false;
         }
 
+        // Kestrel reports IPv4 peers on a dual-stack socket as IPv4-mapped
+        // IPv6 (::ffff:127.0.0.1 / ::ffff:192.168.1.5), which none of the
+        // string checks below ever match - loopback and LAN clients were
+        // silently classified as remote.
+        if (remoteIp.IsIPv4MappedToIPv6)
+        {
+            remoteIp = remoteIp.MapToIPv4();
+        }
+
         // Check for localhost
-        var ipString = remoteIp.ToString();
-        if (ipString == "::1" || ipString == "127.0.0.1")
+        if (System.Net.IPAddress.IsLoopback(remoteIp))
         {
             return true;
         }
+
+        var ipString = remoteIp.ToString();
 
         // Check for local network (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
         return ipString.StartsWith("192.168.") ||
@@ -336,7 +352,7 @@ public class DynamicAuthenticationMiddleware
                headers.ContainsKey("X-Forwarded-Host");
     }
 
-    private bool IsPrivateClass172(string ipString)
+    private static bool IsPrivateClass172(string ipString)
     {
         var parts = ipString.Split('.');
         if (parts.Length < 2) return false;
@@ -353,7 +369,7 @@ public class DynamicAuthenticationMiddleware
     /// Get username from external auth proxy headers
     /// Supports common headers used by oauth-proxy, Authelia, Authentik, Traefik Forward Auth, etc.
     /// </summary>
-    private string? GetExternalAuthUser(HttpContext context)
+    public static string? GetExternalAuthUser(HttpContext context)
     {
         // Common headers used by various auth proxies
         // Priority order: most specific to most generic

@@ -84,6 +84,7 @@ public class RTorrentClientAddTorrentTests
                     <value><i8>0</i8></value>
                     <value><i8>0</i8></value>
                     <value><string>/downloads</string></value>
+                    <value><string>/downloads/{t.name}</string></value>
                     <value><string>sportarr</string></value>
                     <value><i8>0</i8></value>
                 </data></array></value>"));

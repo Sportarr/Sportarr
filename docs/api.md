@@ -92,7 +92,11 @@ http://localhost:1867/api
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/indexer` | List indexers |
+| GET | `/api/indexer/{id}` | Get one indexer |
+| GET | `/api/indexer/schema` | Implementation templates (see APPLICATION_API.md) |
 | POST | `/api/indexer` | Add indexer |
+| PUT | `/api/indexer/{id}` | Update indexer |
+| DELETE | `/api/indexer/{id}` | Remove indexer |
 | POST | `/api/indexer/test` | Test indexer |
 
 ### Quality Profiles
