@@ -1,13 +1,15 @@
 name: Update Contributors
 
 # Regenerates the contributor grid between the readme markers in README.md so
-# the list stays current without hand edits. Listed: everyone with a MERGED
-# pull request, sourced from the PR history rather than commit authorship -
-# releases squash dev into main under the release identity, so contributor
-# commits don't survive on the default branch and the commit-based
-# contributors API misses them. Bots and the release account are excluded.
-# Runs weekly and on demand only - not on push - so it never triggers the
-# release workflow, and its commit carries [skip ci] as a second guard.
+# the list stays current without hand edits. Listed: everyone whose pull
+# request landed - either merged through GitHub (merged_at set) or applied to
+# dev/main by hand and tagged with the "merged-manually" label, which is how
+# most historical PRs went in. Sourced from the PR history rather than commit
+# authorship because releases squash dev into main under the release identity,
+# so contributor commits don't survive on the default branch. Bots and the
+# release account are excluded. Runs weekly and on demand only - not on push -
+# so it never triggers the release workflow, and its commit carries [skip ci]
+# as a second guard.
 #
 # This used to be a third-party readme action, replaced with a plain script:
 # the action could not exclude mixed-case logins (it lowercased the exclusion
@@ -66,7 +68,15 @@ jobs:
                   if pos >= len(text):
                       break
                   batch, pos = decoder.raw_decode(text, pos)
-                  merged.extend(p for p in batch if p.get("merged_at"))
+                  merged.extend(
+                      p
+                      for p in batch
+                      if p.get("merged_at")
+                      or any(
+                          label["name"] == "merged-manually"
+                          for label in p.get("labels", [])
+                      )
+                  )
 
           by_login = {}
           for pr in merged:
