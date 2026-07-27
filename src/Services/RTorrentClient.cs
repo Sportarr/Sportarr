@@ -195,7 +195,7 @@ public class RTorrentClient
             // Use d.multicall2 to get all torrents with multiple fields
             var fields = new[] { "d.hash=", "d.name=", "d.size_bytes=", "d.completed_bytes=",
                                 "d.up.total=", "d.state=", "d.down.rate=", "d.up.rate=",
-                                "d.directory=", "d.custom1=", "d.creation_date=" };
+                                "d.directory=", "d.base_path=", "d.custom1=", "d.creation_date=" };
 
             var response = await SendXmlRpcRequestAsync(config, "d.multicall2", new object[] { "", "main" }.Concat(fields).ToArray());
 
@@ -316,8 +316,9 @@ public class RTorrentClient
                 // State: 0=stopped, 1=started. CompletedBytes >= TotalSize means done.
                 var isCompleted = torrent.TotalSize > 0 && torrent.CompletedBytes >= torrent.TotalSize;
 
-                var savePath = !string.IsNullOrEmpty(torrent.Directory) && !string.IsNullOrEmpty(torrent.Name)
-                    ? System.IO.Path.Combine(torrent.Directory, torrent.Name)
+                // d.base_path is the file (single-file) or data root (multi-file); Path.Combine(dir, name) would yield dir/dir for multi-file.
+                var savePath = !string.IsNullOrEmpty(torrent.BasePath)
+                    ? torrent.BasePath
                     : torrent.Directory;
 
                 results.Add(new ExternalDownloadInfo
@@ -388,10 +389,9 @@ public class RTorrentClient
             timeRemaining = TimeSpan.FromSeconds(secondsRemaining);
         }
 
-        // Append torrent name so the returned path points at the actual torrent
-        // file/folder rather than the parent download directory.
-        var computedSavePath = !string.IsNullOrEmpty(torrent.Name)
-            ? Path.Combine(torrent.Directory, torrent.Name)
+        // d.base_path is the file (single-file) or data root (multi-file); Path.Combine(dir, name) would yield dir/dir for multi-file.
+        var computedSavePath = !string.IsNullOrEmpty(torrent.BasePath)
+            ? torrent.BasePath
             : torrent.Directory;
 
         return new DownloadClientStatus
@@ -544,7 +544,7 @@ public class RTorrentClient
             {
                 var values = data.Descendants("value").Select(v => v.Value).ToArray();
 
-                if (values.Length >= 11)
+                if (values.Length >= 12)
                 {
                     torrents.Add(new RTorrentTorrent
                     {
@@ -557,8 +557,9 @@ public class RTorrentClient
                         DownloadRate = long.TryParse(values[6], out var dlRate) ? dlRate : 0,
                         UploadRate = long.TryParse(values[7], out var ulRate) ? ulRate : 0,
                         Directory = values[8],
-                        Label = values[9],
-                        TimeAdded = long.TryParse(values[10], out var added) ? added : 0
+                        BasePath = values[9],
+                        Label = values[10],
+                        TimeAdded = long.TryParse(values[11], out var added) ? added : 0
                     });
                 }
             }
@@ -586,6 +587,7 @@ public class RTorrentTorrent
     public long DownloadRate { get; set; } // bytes/s
     public long UploadRate { get; set; } // bytes/s
     public string Directory { get; set; } = "";
+    public string BasePath { get; set; } = ""; // d.base_path: file path (single-file) or data root (multi-file)
     public string Label { get; set; } = "";
     public long TimeAdded { get; set; } // Unix timestamp
 }
