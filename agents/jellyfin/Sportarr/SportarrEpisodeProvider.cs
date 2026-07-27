@@ -145,7 +145,17 @@ namespace Jellyfin.Plugin.Sportarr
                     {
                         var idValue = eventId.GetString();
                         if (idValue != null)
+                        {
                             episode.SetProviderId("Sportarr", idValue);
+
+                            // Numeric alias in the Tvdb namespace for external
+                            // tools; see docs/EXTERNAL_IDS.md in the Sportarr repo.
+                            var tvdbAlias = SportarrIdAlias.TvdbAliasFor(idValue);
+                            if (tvdbAlias != null)
+                            {
+                                episode.SetProviderId(MetadataProvider.Tvdb, tvdbAlias);
+                            }
+                        }
                     }
 
                     // Venue -> studio (shown on the episode in Jellyfin)

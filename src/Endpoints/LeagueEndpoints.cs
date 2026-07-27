@@ -308,6 +308,57 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
     });
 });
 
+// API: Download-client identifiers for a league's grabbed releases. Media
+// lifecycle tools (Maintainerr) call this after deleting a league/season/event
+// so they can remove the backing torrent/nzb from the download client, the way
+// they already do for the *arr apps. Each row maps a grab to its event and its
+// removal id (the torrent infohash, or the client download id for usenet), so a
+// caller can remove only the downloads whose events it actually deleted.
+//
+// Superseded grabs (old releases replaced by an upgrade) are hidden by default
+// since their file is already gone; pass includeSuperseded=true for the full
+// ledger. Capped to keep the response bounded on large leagues.
+app.MapGet("/api/leagues/{id:int}/download-history", async (int id, SportarrDbContext db, ILogger<Program> logger, bool includeSuperseded = false) =>
+{
+    logger.LogInformation("[LEAGUES] Getting download history for league ID: {LeagueId}", id);
+
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+        return Results.NotFound(new { error = "League not found" });
+
+    var query = db.GrabHistory
+        .Join(db.Events.Where(e => e.LeagueId == id),
+            g => g.EventId,
+            e => e.Id,
+            (g, e) => new { Grab = g, Event = e });
+
+    if (!includeSuperseded)
+        query = query.Where(x => !x.Grab.Superseded);
+
+    var rows = await query
+        .OrderByDescending(x => x.Grab.GrabbedAt)
+        .Take(2000)
+        .Select(x => new
+        {
+            eventId = x.Event.Id,
+            eventExternalId = x.Event.ExternalId,
+            seasonNumber = x.Event.SeasonNumber,
+            title = x.Grab.Title,
+            indexer = x.Grab.Indexer,
+            protocol = x.Grab.Protocol,
+            // The id the download client uses to remove the item: the torrent
+            // infohash when present, otherwise the client download id (usenet).
+            downloadId = x.Grab.TorrentInfoHash ?? x.Grab.DownloadId,
+            torrentInfoHash = x.Grab.TorrentInfoHash,
+            grabbedAt = x.Grab.GrabbedAt,
+            wasImported = x.Grab.WasImported,
+            fileExists = x.Grab.FileExists
+        })
+        .ToListAsync();
+
+    return Results.Ok(rows);
+});
+
 // API: Get all files for a specific season in a league
 app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string season, SportarrDbContext db, ILogger<Program> logger) =>
 {

@@ -101,6 +101,17 @@ app.MapPost("/api/blocklist/bulk/delete", async (Models.Requests.BulkBlocklistDe
     return Results.Ok(new { removed = items.Count });
 });
 
+// Clear-all rides on POST like the bulk delete above (proxies strip DELETE
+// bodies, and a deliberate POST route is harder to hit by accident than a
+// bare DELETE on the collection). Single SQL DELETE so a blocklist with
+// thousands of rows clears instantly.
+app.MapPost("/api/blocklist/clear", async (SportarrDbContext db, ILogger<Program> logger) =>
+{
+    var removed = await db.Blocklist.ExecuteDeleteAsync();
+    logger.LogInformation("[Blocklist] Cleared all entries ({Count} removed)", removed);
+    return Results.Ok(new { removed });
+});
+
 // API: Wanted/Missing Events
 app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db, ILogger<Program> logger) =>
 {

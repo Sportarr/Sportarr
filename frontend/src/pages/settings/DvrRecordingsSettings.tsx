@@ -135,13 +135,17 @@ export default function DvrRecordingsSettings() {
   useEffect(() => {
     loadData();
     checkFfmpeg();
-    // Refresh every 30 seconds to update recording statuses
-    const interval = setInterval(loadRecordings, 30000);
-    return () => clearInterval(interval);
   }, []);
 
+  // Load on filter change and refresh every 30 seconds. The interval lives
+  // in THIS effect so each registration closes over the current filter;
+  // registered on mount it kept polling with the initial 'All' forever and
+  // overwrote a filtered list with everything a few seconds after the user
+  // picked a status.
   useEffect(() => {
     loadRecordings();
+    const interval = setInterval(loadRecordings, 30000);
+    return () => clearInterval(interval);
   }, [statusFilter]);
 
   const loadData = async () => {
@@ -492,25 +496,41 @@ export default function DvrRecordingsSettings() {
         </div>
       )}
 
-        {/* Stats Cards */}
+        {/* Stats Cards - the countable ones double as status filters */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-lg p-4">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('All')}
+              className={`bg-gradient-to-br from-gray-900 to-black border rounded-lg p-4 text-left transition-colors hover:border-gray-600 ${statusFilter === 'All' ? 'border-gray-500' : 'border-gray-800'}`}
+            >
               <div className="text-2xl font-bold text-white">{stats.totalRecordings}</div>
               <div className="text-sm text-gray-400">Total Recordings</div>
-            </div>
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-blue-900/30 rounded-lg p-4">
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('Scheduled')}
+              className={`bg-gradient-to-br from-gray-900 to-black border rounded-lg p-4 text-left transition-colors hover:border-blue-700 ${statusFilter === 'Scheduled' ? 'border-blue-600' : 'border-blue-900/30'}`}
+            >
               <div className="text-2xl font-bold text-blue-400">{stats.scheduledCount}</div>
               <div className="text-sm text-gray-400">Scheduled</div>
-            </div>
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-4">
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('Recording')}
+              className={`bg-gradient-to-br from-gray-900 to-black border rounded-lg p-4 text-left transition-colors hover:border-red-700 ${statusFilter === 'Recording' ? 'border-red-600' : 'border-red-900/30'}`}
+            >
               <div className="text-2xl font-bold text-red-400">{stats.recordingCount}</div>
               <div className="text-sm text-gray-400">Recording Now</div>
-            </div>
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-green-900/30 rounded-lg p-4">
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('Completed')}
+              className={`bg-gradient-to-br from-gray-900 to-black border rounded-lg p-4 text-left transition-colors hover:border-green-700 ${statusFilter === 'Completed' ? 'border-green-600' : 'border-green-900/30'}`}
+            >
               <div className="text-2xl font-bold text-green-400">{stats.completedCount}</div>
               <div className="text-sm text-gray-400">Completed</div>
-            </div>
+            </button>
             <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-lg p-4">
               <div className="text-2xl font-bold text-white">{formatFileSize(stats.totalStorageUsed)}</div>
               <div className="text-sm text-gray-400">Storage Used</div>

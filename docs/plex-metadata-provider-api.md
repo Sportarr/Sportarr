@@ -367,6 +367,37 @@ Examples:
 
 ---
 
+## External ID Mappings (Guid array)
+
+In addition to the top-level `guid` attribute above, show responses carry
+the optional `Guid` array from the Plex Custom Metadata Provider spec.
+Plex stores these as external-id mappings on the library item, which is
+what downstream tools (Maintainerr and other arr-ecosystem integrations)
+read to resolve an id for the item:
+
+```json
+"Guid": [
+  { "id": "sportarr://lg-000142" },
+  { "id": "tvdb://900000142" }
+]
+```
+
+Both entries carry the same Sportarr league id. The `sportarr://` entry is
+the native form (the canonical short id). The `tvdb://` entry is a
+compatibility envelope for tools that only parse the imdb/tmdb/tvdb
+namespaces; its value is the Sportarr numeric alias (900,000,000 plus the
+short id number), **not** a real TVDB id. The Sonarr v3 compatibility API
+on a Sportarr install reports the same number in its `tvdbId` fields, so a
+tool that reads the id from Plex can look the item up against the install
+directly.
+
+Note that this number is unrelated to the numeric part of the rating key.
+Rating keys carry a legacy catalog id; the Guid array carries the
+canonical Sportarr id. See [EXTERNAL_IDS.md](EXTERNAL_IDS.md) for the full
+contract, including the frozen offsets and the envelope retirement policy.
+
+---
+
 ## Matching Logic
 
 ### TV Show Matching (type 2)

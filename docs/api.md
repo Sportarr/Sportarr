@@ -61,6 +61,7 @@ http://localhost:1867/api
 | PUT | `/api/leagues/{id}` | Update league |
 | DELETE | `/api/leagues/{id}` | Delete league |
 | POST | `/api/leagues/{id}/refresh-events` | Refresh league events |
+| GET | `/api/leagues/{id}/download-history` | Download-client ids for the league's grabs (for post-delete cleanup) |
 
 ### Search & Grabbing
 

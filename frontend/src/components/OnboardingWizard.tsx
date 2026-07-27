@@ -114,6 +114,7 @@ function renderNamingExample(format: string): string {
       .replace(/{League}/g, 'MMA League')
       .replace(/{Event Date}/g, '2026-11-16')
       .replace(/{Quality Full}/g, 'WEBDL-1080p')
+      .replace(/{Sportarr Id}/g, '{sportarr-ev-2338110}')
       .replace(/{Release Group}/g, 'GROUP') + '.mkv'
   );
 }

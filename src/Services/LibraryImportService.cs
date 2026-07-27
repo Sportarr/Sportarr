@@ -144,9 +144,16 @@ public class LibraryImportService
                     // Check for explicit SxxxxExx episode number in filename (e.g. "Formula E - S2025E05 - Jeddah E Prix").
                     // This is the highest-confidence signal — explicit S/E parsing wins over fuzzier matchers.
                     int? explicitEpisodeNumber = null;
+                    string? seriesLabel = null;
                     var seMatch = System.Text.RegularExpressions.Regex.Match(filename, @"S\d{4}E(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     if (seMatch.Success && int.TryParse(seMatch.Groups[1].Value, out var seEp))
+                    {
                         explicitEpisodeNumber = seEp;
+                        // Library-format names carry the series/league ahead of the
+                        // S/E token ("V8 Supercars - S2026E19 - …"). That label is
+                        // the file's own statement of WHICH series it belongs to.
+                        seriesLabel = filename.Substring(0, seMatch.Index).Trim(' ', '-', '.', '_');
+                    }
 
                     // Detect multi-part files (e.g. "UFC - S2025E04 - pt3 - UFC 312..."
                     // or the episode-attached form "S2024E107pt2"). The lookbehind
@@ -246,7 +253,7 @@ public class LibraryImportService
                                 eventTitle, candidate.Title, organization, candidate,
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
-                                sportsResult.Location, _logger, sport);
+                                sportsResult.Location, _logger, sport, seriesLabel);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
@@ -1196,7 +1203,7 @@ public class LibraryImportService
             settings = new MediaManagementSettings
             {
                 RenameFiles = true,
-                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} - {Sportarr Id}",
                 // Granular folder settings - default: league/season folders enabled, event folders disabled
                 CreateLeagueFolders = true,
                 CreateSeasonFolders = true,
@@ -1303,9 +1310,25 @@ public class LibraryImportService
         int? explicitEpisodeNumber = null,
         string? parsedLocation = null,
         ILogger? logger = null,
-        string? parsedSport = null)
+        string? parsedSport = null,
+        string? seriesLabel = null)
     {
         int confidence = 0;
+
+        // ── SERIES LABEL GATE ───────────────────────────────────────────────────
+        // A library-format filename names its series ahead of the SxxxxExx token
+        // ("V8 Supercars - S2026E19 - …"). When that label names a different
+        // series than the candidate's league, an agreeing episode number means
+        // nothing — every motorsport league has an episode 19. Without this a
+        // V8 Supercars file was suggested against an F1 event at 75% purely on
+        // S/E + year agreement.
+        if (!string.IsNullOrWhiteSpace(seriesLabel) && evt.League != null &&
+            !ReleaseMatchingService.SeriesLabelMatchesLeague(seriesLabel, evt.League))
+        {
+            logger?.LogDebug("[Match] Series label gate: file names series '{Label}', event '{Event}' is in league '{League}' - rejecting",
+                seriesLabel, eventTitle, evt.League.Name);
+            return 0;
+        }
 
         // ── SPORT GATE ──────────────────────────────────────────────────────────
         // When the filename parser identified the sport, an event from a
@@ -1400,6 +1423,28 @@ public class LibraryImportService
             }
         }
 
+        // ── DATE GATE ───────────────────────────────────────────────────────────
+        // A dated filename is anchored: sports events are date-identified,
+        // and a file dated weeks away from an event can never be that event
+        // no matter how the title arithmetic lands ("Spain vs Argentina
+        // 19.07.2026" reached the 40-point floor against "Spain vs Saudi
+        // Arabia" from June 21 on one shared team plus the year). Seven days
+        // tolerates broadcast-vs-UTC dating and multi-day events.
+        if (parsedDate.HasValue)
+        {
+            var gateDiff = Math.Abs((evt.EventDate.Date - parsedDate.Value.Date).TotalDays);
+            if (evt.BroadcastDate.HasValue)
+            {
+                gateDiff = Math.Min(gateDiff, Math.Abs((evt.BroadcastDate.Value.Date - parsedDate.Value.Date).TotalDays));
+            }
+            if (gateDiff > 7)
+            {
+                logger?.LogDebug("[Match] Date gate: file dated {FileDate:yyyy-MM-dd}, event '{Event}' is {EventDate:yyyy-MM-dd} ({Diff:F0} days apart) - rejecting",
+                    parsedDate.Value, eventTitle, evt.EventDate, gateDiff);
+                return 0;
+            }
+        }
+
         // ── TITLE SIMILARITY ────────────────────────────────────────────────────
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
@@ -1424,9 +1469,14 @@ public class LibraryImportService
         }
         else
         {
-            // Partial word match — also check location against event title
-            var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // Partial word match — also check location against event title.
+            // Connector words are excluded from the overlap: every matchup
+            // title contains "vs", so counting it handed any two-team title
+            // free similarity against every other two-team event.
+            var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => !MatchConnectorWords.Contains(w)).ToArray();
+            var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => !MatchConnectorWords.Contains(w)).ToArray();
 
             // If we have a parsed location, include it in the word set for matching
             if (!string.IsNullOrEmpty(parsedLocation))
@@ -1475,6 +1525,15 @@ public class LibraryImportService
 
         return Math.Min(100, confidence);
     }
+
+    /// <summary>
+    /// Words that connect matchup titles rather than identify them. Present
+    /// in virtually every two-team title, so they carry zero matching signal.
+    /// </summary>
+    private static readonly HashSet<string> MatchConnectorWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "vs", "v", "versus", "at", "the", "and", "of", "@",
+    };
 
     private static string NormalizeTitle(string title)
     {

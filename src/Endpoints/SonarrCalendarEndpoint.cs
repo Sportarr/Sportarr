@@ -64,7 +64,7 @@ public static class SonarrCalendarEndpoint
                     if (!string.IsNullOrEmpty(e.League.PosterUrl))
                         images.Add(new { coverType = "fanart", url = e.League.PosterUrl });
 
-                    var leagueExternalId = int.TryParse(e.League.ExternalId, out var lExt) ? lExt : 0;
+                    var leagueExternalId = Helpers.NumericIdAlias.FromExternalId(e.League.ExternalId);
                     seriesObj = new
                     {
                         id = e.League.Id,
@@ -123,7 +123,7 @@ public static class SonarrCalendarEndpoint
                 {
                     id = e.Id,
                     seriesId = leagueId,
-                    tvdbId = int.TryParse(e.ExternalId, out var extId) ? extId : 0,
+                    tvdbId = Helpers.NumericIdAlias.FromExternalId(e.ExternalId),
                     episodeFileId = firstFile?.Id ?? 0,
                     seasonNumber = episodeSeason,
                     episodeNumber = e.EpisodeNumber ?? 0,

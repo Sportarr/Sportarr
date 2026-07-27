@@ -465,6 +465,83 @@ public class FFmpegRecorderService
     // Public so CatchupDownloadService can reuse the same binary
     // resolution for archive downloads instead of duplicating the
     // candidate-path probing.
+    /// <summary>
+    /// Remux a finished transport-stream capture into its final container.
+    /// Two passes: full stream copy first, then an audio re-encode retry,
+    /// because the usual failure is a corrupt ADTS AAC frame that the mp4
+    /// muxer's aac_adtstoasc filter refuses to copy but an encoder cleans
+    /// up. Returns false when both passes fail; the caller keeps the .ts.
+    /// </summary>
+    public async Task<bool> RemuxAsync(string inputPath, string outputPath)
+    {
+        var ffmpegPath = GetFFmpegPath();
+        if (string.IsNullOrEmpty(ffmpegPath) || !File.Exists(inputPath))
+            return false;
+
+        foreach (var audioArgs in new[] { new[] { "-c:a", "copy" }, new[] { "-c:a", "aac" } })
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+            };
+            foreach (var a in new[]
+            {
+                "-hide_banner", "-y",
+                "-fflags", "+genpts+discardcorrupt",
+                "-err_detect", "ignore_err",
+                "-i", inputPath,
+                "-map", "0",
+                "-c:v", "copy",
+            })
+                psi.ArgumentList.Add(a);
+            foreach (var a in audioArgs) psi.ArgumentList.Add(a);
+            foreach (var a in new[] { "-movflags", "+faststart", outputPath })
+                psi.ArgumentList.Add(a);
+
+            try
+            {
+                using var process = Process.Start(psi);
+                if (process == null) continue;
+                var stderrTask = process.StandardError.ReadToEndAsync();
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+                try
+                {
+                    await process.WaitForExitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                    _logger.LogWarning("[DVR] Remux of {Input} timed out after 30 minutes", inputPath);
+                    continue;
+                }
+
+                if (process.ExitCode == 0 && File.Exists(outputPath) && new FileInfo(outputPath).Length > 0)
+                {
+                    _logger.LogInformation("[DVR] Remuxed capture to {Output} (audio {Mode})",
+                        outputPath, audioArgs[1]);
+                    return true;
+                }
+
+                var stderr = await stderrTask;
+                var tail = stderr.Length > 500 ? stderr[^500..] : stderr;
+                _logger.LogWarning("[DVR] Remux pass (audio {Mode}) failed with code {Code}: {Tail}",
+                    audioArgs[1], process.ExitCode, tail);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[DVR] Remux pass failed for {Input}", inputPath);
+            }
+
+            try { if (File.Exists(outputPath)) File.Delete(outputPath); } catch { /* partial output */ }
+        }
+
+        return false;
+    }
+
     public string? GetFFmpegPath()
     {
         // The user-configured path wins over all auto-detection - the

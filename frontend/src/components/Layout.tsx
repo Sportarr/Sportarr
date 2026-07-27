@@ -391,7 +391,7 @@ export default function Layout() {
         <div className="p-4 border-t border-red-900/30">
           <div className="flex items-center justify-between">
             <div className="text-xs text-gray-500">
-              <p>© 2025 Sportarr</p>
+              <p>© 2025{new Date().getFullYear() > 2025 ? `-${new Date().getFullYear()}` : ''} Sportarr</p>
               <p className="mt-1">Universal Sports Event Manager</p>
             </div>
             <a

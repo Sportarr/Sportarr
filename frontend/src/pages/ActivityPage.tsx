@@ -241,6 +241,7 @@ export default function ActivityPage() {
   const [blocklistItems, setBlocklistItems] = useState<BlocklistItem[]>([]);
   const [grabHistoryItems, setGrabHistoryItems] = useState<GrabHistoryItem[]>([]);
   const [grabHistoryMissingOnly, setGrabHistoryMissingOnly] = useState(false);
+  const [grabHistoryShowReplaced, setGrabHistoryShowReplaced] = useState(false);
   const [regrabbing, setRegrabbing] = useState<number | null>(null);
   const [bulkRegrabbing, setBulkRegrabbing] = useState(false);
   const [selectedPendingImport, setSelectedPendingImport] = useState<PendingImport | null>(null);
@@ -255,6 +256,7 @@ export default function ActivityPage() {
   const [removeBlocklistDialog, setRemoveBlocklistDialog] = useState<RemoveBlocklistDialog | null>(null);
   const [selectedBlocklistIds, setSelectedBlocklistIds] = useState<Set<number>>(new Set());
   const [bulkRemoveBlocklistOpen, setBulkRemoveBlocklistOpen] = useState(false);
+  const [clearAllBlocklistOpen, setClearAllBlocklistOpen] = useState(false);
   const [removalMethod, setRemovalMethod] = useState<RemovalMethod>('removeFromClient');
   const [blocklistAction, setBlocklistAction] = useState<BlocklistAction>('none');
   const [historyBlocklistAction, setHistoryBlocklistAction] = useState<BlocklistAction>('none');
@@ -480,7 +482,7 @@ export default function ActivityPage() {
   const loadGrabHistory = async (showLoading = false) => {
     try {
       if (showLoading) setIsLoading(true);
-      const response = await apiClient.get(`/grab-history?page=${page}&pageSize=50&missingOnly=${grabHistoryMissingOnly}`);
+      const response = await apiClient.get(`/grab-history?page=${page}&pageSize=50&missingOnly=${grabHistoryMissingOnly}&includeSuperseded=${grabHistoryShowReplaced}`);
       setGrabHistoryItems(response.data.history);
       setTotalPages(response.data.totalPages);
     } catch (error) {
@@ -498,7 +500,7 @@ export default function ActivityPage() {
     if (activeTab === 'grabHistory') {
       loadGrabHistory(true);
     }
-  }, [grabHistoryMissingOnly]);
+  }, [grabHistoryMissingOnly, grabHistoryShowReplaced]);
 
   const handleRegrab = async (id: number) => {
     try {
@@ -834,6 +836,17 @@ export default function ActivityPage() {
       loadBlocklist();
     } catch (error) {
       console.error('Failed to bulk delete blocklist items:', error);
+    }
+  };
+
+  const handleClearAllBlocklist = async () => {
+    try {
+      await apiClient.post('/blocklist/clear');
+      setClearAllBlocklistOpen(false);
+      setSelectedBlocklistIds(new Set());
+      loadBlocklist();
+    } catch (error) {
+      console.error('Failed to clear blocklist:', error);
     }
   };
 
@@ -2186,15 +2199,24 @@ export default function ActivityPage() {
                     />
                     Select all on page
                   </label>
-                  {selectedBlocklistIds.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    {selectedBlocklistIds.size > 0 && (
+                      <button
+                        onClick={() => setBulkRemoveBlocklistOpen(true)}
+                        className={BUTTON_DESTRUCTIVE}
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                        Remove Selected ({selectedBlocklistIds.size})
+                      </button>
+                    )}
                     <button
-                      onClick={() => setBulkRemoveBlocklistOpen(true)}
+                      onClick={() => setClearAllBlocklistOpen(true)}
                       className={BUTTON_DESTRUCTIVE}
                     >
                       <TrashIcon className="w-4 h-4" />
-                      Remove Selected ({selectedBlocklistIds.size})
+                      Clear All
                     </button>
-                  )}
+                  </div>
                 </div>
                 {compactView ? (
                   <div className="overflow-x-auto">
@@ -2345,6 +2367,15 @@ export default function ActivityPage() {
                     className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                   />
                   Show Missing Files Only
+                </label>
+                <label className="flex items-center gap-2 text-gray-300 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={grabHistoryShowReplaced}
+                    onChange={(e) => setGrabHistoryShowReplaced(e.target.checked)}
+                    className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                  />
+                  Show Replaced Grabs
                 </label>
               </div>
               <button
@@ -2793,6 +2824,47 @@ export default function ActivityPage() {
                   className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                 >
                   Remove {selectedBlocklistIds.size}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {clearAllBlocklistOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
+              <div className="flex items-start justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">
+                  Clear Blocklist
+                </h3>
+                <button
+                  onClick={() => setClearAllBlocklistOpen(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <p className="text-gray-300 mb-6">
+                Are you sure you want to remove every entry from the blocklist? This affects all pages, not just the entries shown here.
+              </p>
+
+              <p className="text-sm text-yellow-500 mb-6">
+                All blocked releases will be allowed in future RSS and Automatic searches.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setClearAllBlocklistOpen(false)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleClearAllBlocklist}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Clear All
                 </button>
               </div>
             </div>

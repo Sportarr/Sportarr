@@ -966,6 +966,50 @@ public class ReleaseMatchingService
             }
         }
 
+        // FINAL GATE (part 2): league identity. Year, round, session, part,
+        // and date agreement are SLOT signals — every series running the
+        // same weekend format has a Round 2 Race in 2026 — so none of them
+        // says WHICH series a release belongs to. Identity must come from
+        // the league's name/alias in the title, the event's own distinctive
+        // words (teams, fighters, GP location), or an explicit token/number
+        // match. Without this, '2026 AMA Motocross Rd 2 Hangtown Race Day'
+        // matched 'Chinese Grand Prix - Race' (F1 Round 2) at 72% and was
+        // grabbed as a quality upgrade.
+        if (!result.IsHardRejection && evt.League != null)
+        {
+            string[] identityReasons =
+            {
+                "Sportarr league id token match",
+                "Location/naming variation match",
+                "Event number matches",
+                "Both team names found",
+                "Both fighter surnames found",
+                "One fighter surname found",
+                "League/organization matches",
+            };
+            bool hasIdentityReason = result.MatchReasons.Any(r =>
+                identityReasons.Any(w => r.StartsWith(w, StringComparison.OrdinalIgnoreCase)));
+
+            // Distinctive event words: the event title minus format words
+            // shared across whole sports ("Race", "Qualifying", "Grand
+            // Prix"). What survives ("Chinese", "Hangtown", team names)
+            // actually identifies the event.
+            bool sharesDistinctiveWord = ExtractSignificantWords(normalizedEvent)
+                .Where(w => !w.All(char.IsDigit) && !GenericEventWords.Contains(w))
+                .Any(w => ContainsWholeWord(normalizedRelease, w));
+
+            if (!hasIdentityReason && !sharesDistinctiveWord &&
+                !TitleNamesLeague(release.Title, evt.League))
+            {
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add(
+                    $"No league identity: release names neither '{evt.League.Name}' nor anything from the event title");
+                _logger.LogDebug("[Release Matching] Hard rejection: no league identity for '{Release}' -> '{Event}' (league '{League}')",
+                    release.Title, evt.Title, evt.League.Name);
+            }
+        }
+
         // Clamp confidence to 0-100
         result.Confidence = Math.Clamp(result.Confidence, 0, 100);
 
@@ -1322,6 +1366,116 @@ public class ReleaseMatchingService
     /// Normalize a title for comparison.
     /// Removes quality markers, release group, standardizes separators, and removes diacritics.
     /// </summary>
+    /// <summary>
+    /// Format words shared across whole sports. They describe a slot in a
+    /// weekend/season (which session, which stage), never which series or
+    /// matchup, so they carry no identity for the league gate.
+    /// </summary>
+    private static readonly HashSet<string> GenericEventWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "race", "races", "racing", "qualifying", "quali", "sprint", "shootout",
+        "practice", "free", "session", "sessions", "warm", "warmup",
+        "grand", "prix", "gp", "round", "rd", "stage", "lap", "laps",
+        "game", "games", "match", "matches", "week", "matchday",
+        "day", "night", "show", "final", "finals", "semifinal", "semifinals",
+        "quarterfinal", "quarterfinals", "playoff", "playoffs",
+        "cup", "series", "championship", "league", "season", "test", "testing",
+    };
+
+    /// <summary>
+    /// Whether a release title names the event's league: canonical name, any
+    /// alternate name, or a generated abbreviation ("Formula 1" → F1). Long
+    /// aliases match inside the separator-collapsed title so fused forms like
+    /// "Formula1" land; short aliases (F1, NBA) must sit on word boundaries
+    /// or they'd match inside unrelated words ("sunbaked" contains "nba").
+    /// </summary>
+    public static bool TitleNamesLeague(string releaseTitle, League league)
+    {
+        if (string.IsNullOrWhiteSpace(releaseTitle) || league == null) return false;
+
+        var normalizedTitle = NormalizeTitle(releaseTitle);
+        var compactTitle = RemoveSeparators(normalizedTitle);
+
+        foreach (var alias in LeagueAliases(league))
+        {
+            var normalizedAlias = NormalizeTitle(alias);
+            if (string.IsNullOrWhiteSpace(normalizedAlias)) continue;
+
+            var compactAlias = RemoveSeparators(normalizedAlias);
+            if (compactAlias.Length >= 5 &&
+                compactTitle.Contains(compactAlias, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (ContainsWholeWord(normalizedTitle, normalizedAlias))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a library filename's series label (the text ahead of its
+    /// SxxxxExx token, e.g. "V8 Supercars" in "V8 Supercars - S2026E19 - …")
+    /// names the given league. Matches when the label's words are a subset of
+    /// a league alias's words or one side contains the other in compact form.
+    /// A label naming a DIFFERENT series must fail here — an agreeing episode
+    /// number means nothing across leagues (every motorsport league has an
+    /// episode 19).
+    /// </summary>
+    public static bool SeriesLabelMatchesLeague(string seriesLabel, League league)
+    {
+        if (string.IsNullOrWhiteSpace(seriesLabel) || league == null) return false;
+
+        var normalizedLabel = NormalizeTitle(seriesLabel);
+        if (string.IsNullOrWhiteSpace(normalizedLabel)) return false;
+        var compactLabel = RemoveSeparators(normalizedLabel);
+        var labelWords = normalizedLabel
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var alias in LeagueAliases(league))
+        {
+            var normalizedAlias = NormalizeTitle(alias);
+            if (string.IsNullOrWhiteSpace(normalizedAlias)) continue;
+
+            var compactAlias = RemoveSeparators(normalizedAlias);
+            if (compactLabel.Equals(compactAlias, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (compactAlias.Length >= 5 && compactLabel.Contains(compactAlias, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (compactLabel.Length >= 5 && compactAlias.Contains(compactLabel, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Word-subset: "V8 Supercars" ⊆ "Australian V8 Supercars".
+            // Requiring EVERY label word keeps siblings apart ("Formula 2"
+            // is not a subset of "Formula 1").
+            var aliasWords = normalizedAlias
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (labelWords.Count > 0 && labelWords.All(aliasWords.Contains))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> LeagueAliases(League league)
+    {
+        yield return league.Name;
+        if (!string.IsNullOrEmpty(league.AlternateName))
+        {
+            foreach (var alias in SplitAliases(league.AlternateName))
+                yield return alias;
+        }
+
+        // "<Word> <number>" series conventionally abbreviate to first letter
+        // + number (Formula 1 → F1). Generated so leagues whose upstream
+        // record carries no alternate names still match the common form.
+        var abbrev = Regex.Match(league.Name ?? "", @"^([A-Za-z])[A-Za-z]*\s+(\d+)$");
+        if (abbrev.Success)
+            yield return abbrev.Groups[1].Value + abbrev.Groups[2].Value;
+    }
+
     public static string NormalizeTitle(string title)
     {
         // Pre-compiled regex hot path. The matcher runs NormalizeTitle inside
@@ -1542,6 +1696,20 @@ public class ReleaseMatchingService
         (new Regex(@"\bporsche", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Porsche"),
         (new Regex(@"\bcarrera[\.\-\s]*cup\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Carrera Cup"),
         (new Regex(@"\bferrari[\.\-\s]*challenge\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Ferrari Challenge"),
+        // Series that share round-number/session vocabulary with F1/MotoGP
+        // weekends. A '2026 AMA Motocross Rd 2 ... Race Day' release matched
+        // an F1 'Chinese Grand Prix - Race' (Round 2) purely on
+        // year+round+session agreement and was auto-grabbed as an upgrade.
+        (new Regex(@"\bmotocross\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Motocross"),
+        (new Regex(@"\bsupercross\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Motocross"),
+        (new Regex(@"\bmxgp\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "MXGP"),
+        (new Regex(@"\bsupercars?\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Supercars"),
+        (new Regex(@"\bv8s?\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Supercars"),
+        (new Regex(@"\bdtm\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "DTM"),
+        (new Regex(@"\bimsa\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "IMSA"),
+        (new Regex(@"\bbtcc\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "BTCC"),
+        (new Regex(@"\bmotoamerica\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "MotoAmerica"),
+        (new Regex(@"\brallycross\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Rallycross"),
 
         // Olympics
         (new Regex(@"\bolympic", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Olympics"),

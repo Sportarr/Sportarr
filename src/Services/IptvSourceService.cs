@@ -628,12 +628,18 @@ public class IptvSourceService
 
         _db.ChannelLeagueMappings.RemoveRange(existingMappings);
 
-        // Add new mappings
+        // Add new mappings. IsManual makes the admin's decision durable:
+        // the auto-mapper drops non-manual rows it can't justify by score,
+        // and a hand-picked channel usually has nothing in its name for the
+        // scorer to justify - without the flag, the next auto-map run
+        // silently deleted exactly the mappings the user just made.
         var newMappings = request.LeagueIds.Select(leagueId => new ChannelLeagueMapping
         {
             ChannelId = request.ChannelId,
             LeagueId = leagueId,
             IsPreferred = leagueId == request.PreferredLeagueId,
+            IsManual = true,
+            Confidence = 100,
             Created = DateTime.UtcNow
         }).ToList();
 

@@ -163,6 +163,7 @@ public class RssSyncService : BackgroundService
 
         int newDownloadsAdded = 0;
         int upgradesFound = 0;
+        int matchedReleases = 0;
 
         // Pre-load quality profiles, custom formats, and release profiles for evaluation.
         // Note: Specifications is stored as JSON in CustomFormat, not a navigation property, so no Include needed.
@@ -192,11 +193,11 @@ public class RssSyncService : BackgroundService
                 if (matchedEvent == null)
                     continue;
 
+                matchedReleases++;
+
                 // Evaluate release against quality profile and custom formats.
                 // This is the SAME evaluation that manual search uses — identical decision engine.
-                var qualityProfile = matchedEvent.QualityProfileId.HasValue
-                    ? qualityProfiles.FirstOrDefault(p => p.Id == matchedEvent.QualityProfileId.Value)
-                    : qualityProfiles.OrderBy(q => q.Id).FirstOrDefault();
+                var qualityProfile = ResolveQualityProfile(matchedEvent, qualityProfiles);
 
                 if (qualityProfile != null)
                 {
@@ -254,6 +255,17 @@ public class RssSyncService : BackgroundService
             {
                 _logger.LogError(ex, "[RSS Sync] Error processing release: {Release}", release.Title);
             }
+        }
+
+        // Zero matches across a non-empty feed is almost always the category
+        // filter, not matching: RSS requests are category-filtered while
+        // searches are not, so releases filed under categories outside the
+        // configured list never reach the matcher at all. Say so, or the
+        // operator has nothing to go on ("searches work, RSS never does").
+        if (matchedReleases == 0 && recentReleases.Count > 0)
+        {
+            _logger.LogInformation("[RSS Sync] None of the {Count} fetched releases matched a monitored event. If manual or automatic searches DO find releases for these events, check each indexer's Categories setting: RSS fetches are category-filtered (searches are not), so sports releases your tracker files under other categories never appear in the feed.",
+                recentReleases.Count);
         }
 
         _logger.LogInformation("[RSS Sync] Completed - {New} new downloads, {Upgrades} quality upgrades",
@@ -382,9 +394,7 @@ public class RssSyncService : BackgroundService
         var customFormats = await db.CustomFormats.ToListAsync(cancellationToken);
         var releaseProfiles = await releaseProfileService.LoadReleaseProfilesAsync();
 
-        var qualityProfile = matchedEvent.QualityProfileId.HasValue
-            ? qualityProfiles.FirstOrDefault(p => p.Id == matchedEvent.QualityProfileId.Value)
-            : qualityProfiles.OrderBy(q => q.Id).FirstOrDefault();
+        var qualityProfile = ResolveQualityProfile(matchedEvent, qualityProfiles);
 
         if (qualityProfile != null)
         {
@@ -419,6 +429,70 @@ public class RssSyncService : BackgroundService
         }
 
         return new PushedReleaseOutcome(true, false, matchedEvent.Title, new List<string>());
+    }
+
+    /// <summary>
+    /// Network/broadcaster words that appear as branding prefixes on
+    /// reposted releases. Used only on the TOKEN DIFFERENCE between two
+    /// titles - words both titles share never reach this set, so common
+    /// words here can't suppress genuine upgrades.
+    /// </summary>
+    private static readonly HashSet<string> BroadcasterWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "sky", "sports", "sport", "espn", "espn2", "eurosport", "tnt", "bein",
+        "dazn", "peacock", "fox", "nbc", "cbs", "abc", "itv", "tsn", "sportsnet",
+        "supersport", "viaplay", "ziggo", "movistar", "canal", "setanta",
+        "arena", "stan", "kayo", "star", "premier", "tv", "channel", "network",
+    };
+
+    /// <summary>
+    /// True when two release titles describe the same content and differ only
+    /// by broadcaster branding tokens ("Sky Sports _ Formula1_2026_…" vs
+    /// "Formula1.2026.…"). Any non-broadcaster difference (HDR, PROPER, a
+    /// different group, another session) keeps normal upgrade rules in play.
+    /// </summary>
+    internal static bool TitlesDifferOnlyByBroadcasterBranding(string? existingTitle, string? newTitle)
+    {
+        if (string.IsNullOrWhiteSpace(existingTitle) || string.IsNullOrWhiteSpace(newTitle))
+            return false;
+
+        static HashSet<string> Tokens(string title) => title
+            .ToLowerInvariant()
+            .Split(new[] { ' ', '.', '_', '-', '(', ')', '[', ']' }, StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var existing = Tokens(existingTitle);
+        var incoming = Tokens(newTitle);
+        if (existing.Count == 0 || incoming.Count == 0)
+            return false;
+
+        var difference = existing.Except(incoming).Concat(incoming.Except(existing)).ToList();
+        return difference.Count > 0 && difference.All(t => BroadcasterWords.Contains(t));
+    }
+
+    /// <summary>
+    /// Resolve the quality profile that governs an event, mirroring the
+    /// search path: the event's own profile, else its league's, else the
+    /// profile flagged default, else the first by id. RSS previously jumped
+    /// straight from the event to "first profile in the table", so a user
+    /// who disabled upgrades on their league's profile was evaluated against
+    /// an unrelated profile that still allowed them, and events with files
+    /// were re-grabbed as upgrades.
+    /// </summary>
+    internal static QualityProfile? ResolveQualityProfile(Event evt, List<QualityProfile> profiles)
+    {
+        if (evt.QualityProfileId.HasValue)
+        {
+            var own = profiles.FirstOrDefault(p => p.Id == evt.QualityProfileId.Value);
+            if (own != null) return own;
+        }
+        if (evt.League?.QualityProfileId != null)
+        {
+            var league = profiles.FirstOrDefault(p => p.Id == evt.League.QualityProfileId.Value);
+            if (league != null) return league;
+        }
+        return profiles.FirstOrDefault(p => p.IsDefault)
+            ?? profiles.OrderBy(p => p.Id).FirstOrDefault();
     }
 
     /// <summary>
@@ -808,6 +882,22 @@ public class RssSyncService : BackgroundService
             if (newTotalScore <= existingTotalScore && !revisionUpgrade)
             {
                 return (false, $"Existing file has same or better score ({existingTotalScore})", releasePart);
+            }
+
+            // COSMETIC-DUPLICATE GUARD: broadcasters repost the identical
+            // release under a branded name ("Sky Sports _ Formula1_2026_…"
+            // vs "Formula1.2026.…", same group, same quality). Preferred-
+            // keyword scoring can then rate the branded name higher and
+            // "upgrade" to a byte-identical download. When the only tokens
+            // separating the new title from the existing file's original
+            // title are broadcaster words, it is the same content - only a
+            // proper/repack revision justifies replacing it.
+            if (!revisionUpgrade &&
+                TitlesDifferOnlyByBroadcasterBranding(existingFile.OriginalTitle, release.Title))
+            {
+                return (false,
+                    "Same release as the existing file (title differs only by broadcaster branding)",
+                    releasePart);
             }
 
             // A custom-format-only gain must clear the profile's minimum score

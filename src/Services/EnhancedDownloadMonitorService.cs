@@ -704,7 +704,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         download.DownloadId,
                         deleteFiles: true);
 
-                    _logger.LogDebug("[Enhanced Download Monitor] Removed completed download from client: {Title}", download.Title);
+                    // Info, not Debug: whether the download-dir folder was
+                    // cleaned up is the question every "empty folders left
+                    // behind" support thread turns on, and at Debug the
+                    // default log couldn't answer it in either direction.
+                    _logger.LogInformation("[Enhanced Download Monitor] Removed completed download and its files from client: {Title}", download.Title);
                 }
                 catch (Exception ex)
                 {
@@ -716,8 +720,17 @@ public class EnhancedDownloadMonitorService : BackgroundService
             {
                 // Log when download client removal is skipped due to missing client association
                 // This helps diagnose why folders might not be removed from the download client
-                _logger.LogDebug("[Enhanced Download Monitor] Skipped removal from download client: No download client associated with {Title}",
+                _logger.LogInformation("[Enhanced Download Monitor] Skipped removal from download client: No download client associated with {Title}",
                     download.Title);
+            }
+            else
+            {
+                // The toggle-off case was completely silent, which made every
+                // "empty folders left behind" report unanswerable from a log:
+                // no line existed in either direction. One info line per
+                // import names the setting that decides the behavior.
+                _logger.LogInformation("[Enhanced Download Monitor] Leaving download in client (Remove Completed Downloads is off for '{Client}'): {Title}",
+                    download.DownloadClient!.Name, download.Title);
             }
         }
         catch (IndexerFailDownloadException ex)
@@ -849,11 +862,14 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
         else if (!string.IsNullOrEmpty(download.Title))
         {
-            // For Usenet, match by title and indexer
+            // No hash to match on (usenet, or a torrent whose infohash was
+            // never captured): dedupe by title+indexer. Filtering on protocol
+            // here let hashless torrents slip past the check and re-add the
+            // same entry on every failed retry, which is how blocklists grew
+            // to thousands of duplicate rows.
             existingBlock = await db.Blocklist
                 .FirstOrDefaultAsync(b => b.Title == download.Title &&
-                                         b.Indexer == (download.Indexer ?? "Unknown") &&
-                                         b.Protocol == "Usenet");
+                                         b.Indexer == (download.Indexer ?? "Unknown"));
         }
 
         if (existingBlock == null)

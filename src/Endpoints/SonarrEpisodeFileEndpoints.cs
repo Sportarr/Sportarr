@@ -285,7 +285,7 @@ public static class SonarrEpisodeFileEndpoints
                 {
                     id = e.Id,
                     seriesId = seriesId.Value,
-                    tvdbId = int.TryParse(e.ExternalId, out var extId) ? extId : 0,
+                    tvdbId = Helpers.NumericIdAlias.FromExternalId(e.ExternalId),
                     episodeFileId = firstFile?.Id ?? 0,
                     seasonNumber = episodeSeason,
                     episodeNumber = e.EpisodeNumber ?? 0,
@@ -349,7 +349,7 @@ public static class SonarrEpisodeFileEndpoints
             {
                 id = eventItem.Id,
                 seriesId = eventItem.LeagueId ?? 0,
-                tvdbId = int.TryParse(eventItem.ExternalId, out var extId) ? extId : 0,
+                tvdbId = Helpers.NumericIdAlias.FromExternalId(eventItem.ExternalId),
                 episodeFileId = firstFile?.Id ?? 0,
                 seasonNumber = episodeSeason,
                 episodeNumber = eventItem.EpisodeNumber ?? 0,
