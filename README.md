@@ -472,17 +472,24 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/nathanjcollins">
-                    <img src="https://avatars.githubusercontent.com/u/53304818?v=4" width="72;" alt="nathanjcollins"/>
-                    <br />
-                    <sub><b>nathanjcollins</b></sub>
-                </a>
-            </td>
-            <td align="center">
                 <a href="https://github.com/mmmmmtasty">
                     <img src="https://avatars.githubusercontent.com/u/14114638?v=4" width="72;" alt="mmmmmtasty"/>
                     <br />
                     <sub><b>mmmmmtasty</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/gerrewsb">
+                    <img src="https://avatars.githubusercontent.com/u/23342425?v=4" width="72;" alt="gerrewsb"/>
+                    <br />
+                    <sub><b>gerrewsb</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/nathanjcollins">
+                    <img src="https://avatars.githubusercontent.com/u/53304818?v=4" width="72;" alt="nathanjcollins"/>
+                    <br />
+                    <sub><b>nathanjcollins</b></sub>
                 </a>
             </td>
 		</tr>
