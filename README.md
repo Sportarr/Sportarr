@@ -98,9 +98,11 @@ docker run -d \
   sportarr/sportarr:latest
 ```
 
-### Unraid
+### NAS App Catalogs
 
-Sportarr will be available in the Unraid Community Applications after official launch. Search for "sportarr" and install from there. The app is currently in alpha testing and remaining more hidden for limited visibility during this phase.
+- **TrueNAS SCALE** - Sportarr is in the community apps train. Search for "sportarr" on the Apps screen and install from there; catalog updates track new releases automatically.
+- **HexOS** - Sportarr is in the curated apps catalog with the same one-click install.
+- **Unraid** - run the Docker image above (Compose or `docker run`); a Community Applications listing is planned.
 
 ### Windows / Linux / macOS
 
