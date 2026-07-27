@@ -466,13 +466,6 @@ Sportarr is made better by everyone who has contributed code. Thank you.
 	<tbody>
 		<tr>
             <td align="center">
-                <a href="https://github.com/Sportarr">
-                    <img src="https://avatars.githubusercontent.com/u/224651902?v=4" width="72;" alt="Sportarr"/>
-                    <br />
-                    <sub><b>Sportarr</b></sub>
-                </a>
-            </td>
-            <td align="center">
                 <a href="https://github.com/ohathar">
                     <img src="https://avatars.githubusercontent.com/u/6678917?v=4" width="72;" alt="ohathar"/>
                     <br />
