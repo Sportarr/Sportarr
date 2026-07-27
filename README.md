@@ -530,6 +530,13 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                 </a>
             </td>
             <td align="center">
+                <a href="https://github.com/benjamin-decreusefond">
+                    <img src="https://avatars.githubusercontent.com/u/34320855?v=4" width="72;" alt="benjamin-decreusefond"/>
+                    <br />
+                    <sub><b>benjamin-decreusefond</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/Donai82">
                     <img src="https://avatars.githubusercontent.com/u/99044513?v=4" width="72;" alt="Donai82"/>
                     <br />
@@ -543,6 +550,8 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>gilesw</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/hobbithau5">
                     <img src="https://avatars.githubusercontent.com/u/73753815?v=4" width="72;" alt="hobbithau5"/>
@@ -550,8 +559,6 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>hobbithau5</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/jpaull-nz">
                     <img src="https://avatars.githubusercontent.com/u/209406876?v=4" width="72;" alt="jpaull-nz"/>
@@ -587,6 +594,15 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>nathanjcollins</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/nickperkins">
+                    <img src="https://avatars.githubusercontent.com/u/569924?v=4" width="72;" alt="nickperkins"/>
+                    <br />
+                    <sub><b>nickperkins</b></sub>
+                </a>
+            </td>
             <td align="center">
                 <a href="https://github.com/Percentnineteen">
                     <img src="https://avatars.githubusercontent.com/u/12090180?v=4" width="72;" alt="Percentnineteen"/>
@@ -594,8 +610,6 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>Percentnineteen</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/Pukabyte">
                     <img src="https://avatars.githubusercontent.com/u/120460627?v=4" width="72;" alt="Pukabyte"/>
