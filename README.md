@@ -457,10 +457,9 @@ dotnet build src/Sportarr.csproj -p:SkipFrontendBuild=true
 
 Sportarr is made better by everyone who has contributed code. Thank you.
 
-<!-- Regenerated automatically by .github/workflows/contributors.yml. The /-
-     entries skip the release bot and other automated accounts. The block below
-     is pre-filled so the section renders before the first automated run; the
-     action replaces it on schedule. -->
+<!-- Regenerated automatically by .github/workflows/contributors.yml. Lists
+     code contributors (merged PRs) only; bots and the release account are
+     excluded. Do not hand-edit the block between the markers. -->
 <!-- readme: contributors,claude/-,Sportarr/- -start -->
 <table>
 	<tbody>

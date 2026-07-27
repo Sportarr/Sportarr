@@ -1,10 +1,16 @@
 name: Update Contributors
 
 # Regenerates the contributor grid between the readme markers in README.md so
-# the list stays current without hand edits. Runs weekly and on demand only -
-# not on push - so it never triggers the release workflow, and its own commit
-# carries [skip ci] as a second guard. The /- entries in the README markers
-# skip the release bot and other automated accounts.
+# the list stays current without hand edits. Only actual code contributors
+# (commit authors, i.e. people whose PRs were merged) are listed; bots and the
+# release account are excluded. Runs weekly and on demand only - not on push -
+# so it never triggers the release workflow, and its commit carries [skip ci]
+# as a second guard.
+#
+# This used to be a third-party readme action, replaced with a plain script:
+# the action could not exclude mixed-case logins (it lowercased the exclusion
+# but compared against the raw login, so the release account always listed
+# itself) and it crashed parsing any hand-edited grid.
 on:
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
@@ -13,21 +19,80 @@ on:
 jobs:
   update-contributors:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
-      # Pinned to a commit SHA (v2.3.11) rather than a moving tag, matching the
-      # supply-chain posture of the other third-party actions in this repo.
-      - uses: akhilmhdh/contributors-readme-action@83ea0b4f1ac928fbfe88b9e8460a932a528eb79f # v2.3.11
-        env:
-          # PAT (same one the release workflow uses) so the commit can land on
-          # the protected default branch directly instead of opening a PR.
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+      - uses: actions/checkout@v4
         with:
-          image_size: 72
-          columns_per_row: 6
-          use_username: true
-          committer_username: Sportarr
-          committer_email: sportarr@users.noreply.github.com
-          commit_message: "chore: update contributors list [skip ci]"
+          # PAT (same one the release workflow uses) so the commit can land on
+          # the default branch directly.
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Regenerate contributor grid
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          curl -sf -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/contributors?per_page=100" \
+            > /tmp/contributors.json
+
+          python3 - <<'EOF'
+          import json
+          import re
+
+          EXCLUDED = {"sportarr", "claude"}
+          COLUMNS = 6
+          START = "<!-- readme: contributors,claude/-,Sportarr/- -start -->"
+          END = "<!-- readme: contributors,claude/-,Sportarr/- -end -->"
+
+          with open("/tmp/contributors.json") as f:
+              contributors = json.load(f)
+
+          people = [
+              c
+              for c in contributors
+              if c.get("type") != "Bot"
+              and not c["login"].lower().endswith("[bot]")
+              and c["login"].lower() not in EXCLUDED
+          ]
+
+          cells = []
+          for c in people:
+              cells.append(
+                  "            <td align=\"center\">\n"
+                  f"                <a href=\"https://github.com/{c['login']}\">\n"
+                  f"                    <img src=\"{c['avatar_url']}\" width=\"72;\" alt=\"{c['login']}\"/>\n"
+                  "                    <br />\n"
+                  f"                    <sub><b>{c['login']}</b></sub>\n"
+                  "                </a>\n"
+                  "            </td>"
+              )
+
+          rows = []
+          for i in range(0, len(cells), COLUMNS):
+              rows.append("\t\t<tr>\n" + "\n".join(cells[i : i + COLUMNS]) + "\n\t\t</tr>")
+
+          grid = "<table>\n\t<tbody>\n" + "\n".join(rows) + "\n\t</tbody>\n</table>"
+
+          with open("README.md") as f:
+              readme = f.read()
+
+          pattern = re.compile(re.escape(START) + r"[\s\S]*?" + re.escape(END))
+          replacement = START + "\n" + grid + "\n" + END
+          updated = pattern.sub(lambda _: replacement, readme, count=1)
+
+          with open("README.md", "w") as f:
+              f.write(updated)
+
+          print(f"grid rebuilt with {len(people)} contributors")
+          EOF
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet README.md; then
+            echo "Contributor grid unchanged"
+            exit 0
+          fi
+          git config user.name "Sportarr"
+          git config user.email "sportarr@users.noreply.github.com"
+          git add README.md
+          git commit -m "chore: update contributors list [skip ci]"
+          git push
