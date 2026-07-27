@@ -462,30 +462,6 @@ Sportarr is made better by everyone who has contributed code. Thank you.
      is pre-filled so the section renders before the first automated run; the
      action replaces it on schedule. -->
 <!-- readme: contributors,claude/-,Sportarr/- -start -->
-<p>
-  <a href="https://github.com/ohathar"><img src="https://github.com/ohathar.png" width="64" alt="ohathar" /></a>
-  <a href="https://github.com/BenjaminDecreusefond"><img src="https://github.com/BenjaminDecreusefond.png" width="64" alt="BenjaminDecreusefond" /></a>
-  <a href="https://github.com/mmmmmtasty"><img src="https://github.com/mmmmmtasty.png" width="64" alt="mmmmmtasty" /></a>
-  <a href="https://github.com/gwyden"><img src="https://github.com/gwyden.png" width="64" alt="gwyden" /></a>
-  <a href="https://github.com/FacePlant101"><img src="https://github.com/FacePlant101.png" width="64" alt="FacePlant101" /></a>
-  <a href="https://github.com/gerrewsb"><img src="https://github.com/gerrewsb.png" width="64" alt="gerrewsb" /></a>
-  <a href="https://github.com/abcattell91"><img src="https://github.com/abcattell91.png" width="64" alt="abcattell91" /></a>
-  <a href="https://github.com/scottrobertson"><img src="https://github.com/scottrobertson.png" width="64" alt="scottrobertson" /></a>
-  <a href="https://github.com/slflowfoon"><img src="https://github.com/slflowfoon.png" width="64" alt="slflowfoon" /></a>
-  <a href="https://github.com/skjaere"><img src="https://github.com/skjaere.png" width="64" alt="skjaere" /></a>
-  <a href="https://github.com/schlort"><img src="https://github.com/schlort.png" width="64" alt="schlort" /></a>
-  <a href="https://github.com/Pukabyte"><img src="https://github.com/Pukabyte.png" width="64" alt="Pukabyte" /></a>
-  <a href="https://github.com/Percentnineteen"><img src="https://github.com/Percentnineteen.png" width="64" alt="Percentnineteen" /></a>
-  <a href="https://github.com/nathanjcollins"><img src="https://github.com/nathanjcollins.png" width="64" alt="nathanjcollins" /></a>
-  <a href="https://github.com/lyrova-andy"><img src="https://github.com/lyrova-andy.png" width="64" alt="lyrova-andy" /></a>
-  <a href="https://github.com/lustered"><img src="https://github.com/lustered.png" width="64" alt="lustered" /></a>
-  <a href="https://github.com/kristofferR"><img src="https://github.com/kristofferR.png" width="64" alt="kristofferR" /></a>
-  <a href="https://github.com/jpaull-nz"><img src="https://github.com/jpaull-nz.png" width="64" alt="jpaull-nz" /></a>
-  <a href="https://github.com/hobbithau5"><img src="https://github.com/hobbithau5.png" width="64" alt="hobbithau5" /></a>
-  <a href="https://github.com/gilesw"><img src="https://github.com/gilesw.png" width="64" alt="gilesw" /></a>
-  <a href="https://github.com/Donai82"><img src="https://github.com/Donai82.png" width="64" alt="Donai82" /></a>
-  <a href="https://github.com/afrancke"><img src="https://github.com/afrancke.png" width="64" alt="afrancke" /></a>
-</p>
 <!-- readme: contributors,claude/-,Sportarr/- -end -->
 
 <sub>See the full <a href="https://github.com/Sportarr/Sportarr/graphs/contributors">contributor graph</a>, plus everyone helping with testing and bug reports on <a href="https://discord.gg/YjHVWGWjjG">Discord</a>.</sub>
