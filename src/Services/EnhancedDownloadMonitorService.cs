@@ -1,6 +1,7 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -1134,10 +1135,14 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     string? scanFolder = null;
                     if (download.IsCompleted && !string.IsNullOrEmpty(download.FilePath))
                     {
-                        if (Directory.Exists(download.FilePath))
-                            scanFolder = download.FilePath;
-                        else if (File.Exists(download.FilePath))
-                            scanFolder = Path.GetDirectoryName(download.FilePath);
+                        using var pathScope = _serviceProvider.CreateScope();
+                        var pathMapping = pathScope.ServiceProvider.GetRequiredService<IRemotePathMappingService>();
+                        var localFilePath = await pathMapping.RemapRemoteToLocalAsync(client.Host, download.FilePath);
+
+                        if (Directory.Exists(localFilePath))
+                            scanFolder = localFilePath;
+                        else if (File.Exists(localFilePath))
+                            scanFolder = Path.GetDirectoryName(localFilePath);
                     }
 
                     if (scanFolder != null)

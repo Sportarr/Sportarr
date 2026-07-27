@@ -2,6 +2,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
+using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Services;
 
@@ -18,6 +19,7 @@ public class ImportService
 {
     private readonly SportarrDbContext _db;
     private readonly ConfigService _configService;
+    private readonly IRemotePathMappingService _pathMappingService;
     private readonly ILogger<ImportService> _logger;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
@@ -25,10 +27,12 @@ public class ImportService
     public ImportService(
         SportarrDbContext db,
         ConfigService configService,
+        IRemotePathMappingService pathMappingService,
         ILogger<ImportService> logger)
     {
         _db = db;
         _configService = configService;
+        _pathMappingService = pathMappingService;
         _logger = logger;
     }
 
@@ -57,7 +61,7 @@ public class ImportService
             _logger.LogInformation("[Import] Remote path: {RemotePath}", remotePath);
 
             // Translate remote path to local path using path mappings
-            var localPath = await TranslatePathAsync(remotePath, downloadClientHost);
+            var localPath = await _pathMappingService.RemapRemoteToLocalAsync(downloadClientHost, remotePath);
             _logger.LogInformation("[Import] Local path: {LocalPath}", localPath);
 
             // Find video file in the download
@@ -253,74 +257,6 @@ public class ImportService
         return await _db.DownloadQueue
             .Include(dq => dq.DownloadClient)
             .FirstOrDefaultAsync(dq => dq.DownloadId == downloadId);
-    }
-
-    /// <summary>
-    /// Translate remote path to local path using Remote Path Mappings
-    /// </summary>
-    private async Task<string> TranslatePathAsync(string remotePath, string host)
-    {
-        _logger.LogInformation("[PathMapping] Starting path translation for host '{Host}'", host);
-        _logger.LogInformation("[PathMapping] Remote path from download client: '{RemotePath}'", remotePath);
-
-        // Get all path mappings for this host
-        var allMappings = await _db.RemotePathMappings.ToListAsync();
-        _logger.LogInformation("[PathMapping] Total configured mappings: {Count}", allMappings.Count);
-
-        foreach (var m in allMappings)
-        {
-            _logger.LogInformation("[PathMapping] Configured mapping: Host='{Host}', RemotePath='{RemotePath}' → LocalPath='{LocalPath}'",
-                m.Host, m.RemotePath, m.LocalPath);
-        }
-
-        var mappings = allMappings
-            .Where(m => m.Host.Equals(host, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(m => m.RemotePath.Length) // Longest match first
-            .ToList();
-
-        _logger.LogInformation("[PathMapping] Mappings matching host '{Host}': {Count}", host, mappings.Count);
-
-        foreach (var mapping in mappings)
-        {
-            // Check if remote path starts with this mapping's remote path
-            var remoteMappingPath = mapping.RemotePath.TrimEnd('/', '\\');
-            var remoteCheckPath = remotePath.Replace('\\', '/').TrimEnd('/');
-            var normalizedMappingPath = remoteMappingPath.Replace('\\', '/');
-
-            _logger.LogInformation("[PathMapping] Checking: Does '{RemoteCheckPath}' start with '{NormalizedMapping}'?",
-                remoteCheckPath, normalizedMappingPath);
-
-            if (remoteCheckPath.StartsWith(normalizedMappingPath, StringComparison.OrdinalIgnoreCase))
-            {
-                // Replace remote path with local path
-                var relativePath = remoteCheckPath.Substring(remoteMappingPath.Length).TrimStart('/');
-                var localPath = Path.Combine(mapping.LocalPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
-
-                _logger.LogInformation("[PathMapping] ✓ MATCH! Path mapped: {Remote} → {Local}", remotePath, localPath);
-
-                // Check if path exists
-                var pathExists = Directory.Exists(localPath) || File.Exists(localPath);
-                _logger.LogInformation("[PathMapping] Translated path exists: {Exists}", pathExists);
-                if (!pathExists)
-                {
-                    _logger.LogWarning("[PathMapping] WARNING: Translated path does not exist!");
-                }
-
-                return localPath;
-            }
-            else
-            {
-                _logger.LogInformation("[PathMapping] ✗ No match");
-            }
-        }
-
-        // No mapping found, return as-is
-        _logger.LogWarning("[PathMapping] No matching path mapping found for host '{Host}' and path '{RemotePath}'", host, remotePath);
-
-        var unmappedPathExists = Directory.Exists(remotePath) || File.Exists(remotePath);
-        _logger.LogInformation("[PathMapping] Unmapped path exists: {Exists}", unmappedPathExists);
-
-        return remotePath;
     }
 
     /// <summary>

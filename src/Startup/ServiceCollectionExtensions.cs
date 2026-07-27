@@ -10,6 +10,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Health;
 using Sportarr.Api.Middleware;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Interfaces;
 using Sportarr.Api.Validators;
 using System.Net.Http;
 using System.Reflection;
@@ -311,6 +312,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PathRemapService>();
         services.AddScoped<LibraryRescanService>();
         services.AddScoped<RestoreReconciliationService>();
+        services.AddScoped<IRemotePathMappingService, RemotePathMappingService>();
 
         return services;
     }
