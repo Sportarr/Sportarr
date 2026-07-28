@@ -158,6 +158,33 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
                                 .Select(v => v!.Value)
                                 .ToList();
                         break;
+                    case "downloadClientId":
+                        // Empty or 0 means "Use Default" (no assignment).
+                        indexer.DownloadClientId = int.TryParse(fieldValue, out var dcId) && dcId > 0
+                            ? dcId
+                            : null;
+                        break;
+                    case "animeCategories":
+                        indexer.AnimeCategories = string.IsNullOrWhiteSpace(fieldValue)
+                            ? null
+                            : fieldValue.Split(',').Select(c => c.Trim()).ToList();
+                        break;
+                    case "seasonPackSeedTime":
+                        indexer.SeasonPackSeedTime = int.TryParse(fieldValue, out var packSeedTime)
+                            ? packSeedTime
+                            : null;
+                        break;
+                    case "additionalParameters":
+                        indexer.AdditionalParameters = string.IsNullOrWhiteSpace(fieldValue) ? null : fieldValue;
+                        break;
+                    case "multiLanguages":
+                        indexer.MultiLanguages = string.IsNullOrWhiteSpace(fieldValue)
+                            ? null
+                            : fieldValue.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()).ToList();
+                        break;
+                    case "rejectBlocklistedTorrentHashes":
+                        indexer.RejectBlocklistedTorrentHashes = string.Equals(fieldValue, "true", StringComparison.OrdinalIgnoreCase);
+                        break;
                 }
             }
         }
@@ -317,6 +344,35 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                                 .Where(v => v.HasValue)
                                 .Select(v => v!.Value)
                                 .ToList();
+                        break;
+                    case "downloadClientId":
+                        // Empty or 0 means "Use Default" and must clear the
+                        // assignment. This field was silently dropped before,
+                        // so the selection always reverted on save (#198).
+                        indexer.DownloadClientId = int.TryParse(fieldValue, out var dcId) && dcId > 0
+                            ? dcId
+                            : null;
+                        break;
+                    case "animeCategories":
+                        indexer.AnimeCategories = string.IsNullOrWhiteSpace(fieldValue)
+                            ? null
+                            : fieldValue.Split(',').Select(c => c.Trim()).ToList();
+                        break;
+                    case "seasonPackSeedTime":
+                        indexer.SeasonPackSeedTime = int.TryParse(fieldValue, out var packSeedTime)
+                            ? packSeedTime
+                            : null;
+                        break;
+                    case "additionalParameters":
+                        indexer.AdditionalParameters = string.IsNullOrWhiteSpace(fieldValue) ? null : fieldValue;
+                        break;
+                    case "multiLanguages":
+                        indexer.MultiLanguages = string.IsNullOrWhiteSpace(fieldValue)
+                            ? null
+                            : fieldValue.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()).ToList();
+                        break;
+                    case "rejectBlocklistedTorrentHashes":
+                        indexer.RejectBlocklistedTorrentHashes = string.Equals(fieldValue, "true", StringComparison.OrdinalIgnoreCase);
                         break;
                 }
             }

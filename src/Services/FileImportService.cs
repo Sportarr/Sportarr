@@ -60,6 +60,23 @@ public class ExtractionPendingException : Exception
 }
 
 /// <summary>
+/// Thrown when the selected video file exists but its bytes haven't finished
+/// landing on disk — it is 0 bytes, or its size changed between two probes.
+/// Happens when the download client reports "completed" but the path Sportarr
+/// reads is filled asynchronously (remote-seedbox mirror synced by rclone or
+/// similar, slow copy into the watched path). NOT terminal: the monitor holds
+/// the item as ImportPending and retries on every poll without burning retry
+/// budget, because importing the placeholder would transfer a 0-byte/partial
+/// file over a possibly good one already at the destination.
+/// </summary>
+public class FileNotReadyException : Exception
+{
+    public FileNotReadyException(string message) : base(message)
+    {
+    }
+}
+
+/// <summary>
 /// Handles importing downloaded media files into the library
 /// </summary>
 public class FileImportService : IFileImportService
@@ -74,6 +91,7 @@ public class FileImportService : IFileImportService
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly NotificationService _notificationService;
     private readonly CustomFormatService _customFormatService;
+    private readonly IRemotePathMappingService _pathMappingService;
     private readonly ILogger<FileImportService> _logger;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
@@ -89,6 +107,7 @@ public class FileImportService : IFileImportService
         SportarrApiClient sportarrApiClient,
         NotificationService notificationService,
         CustomFormatService customFormatService,
+        IRemotePathMappingService pathMappingService,
         ILogger<FileImportService> logger)
     {
         _db = db;
@@ -101,6 +120,7 @@ public class FileImportService : IFileImportService
         _sportarrApiClient = sportarrApiClient;
         _notificationService = notificationService;
         _customFormatService = customFormatService;
+        _pathMappingService = pathMappingService;
         _logger = logger;
     }
 
@@ -320,14 +340,29 @@ public class FileImportService : IFileImportService
                 throw new Exception($"No video files found in: {downloadPath}. Found {allFiles.Length} file(s) but none are recognized video formats. Files: {fileList}");
             }
 
-            // For now, take the largest file (most likely the main video)
-            // Use symlink-resolving file size for debrid service compatibility
-            var sourceFile = videoFiles.OrderByDescending(f => GetFileSizeResolvingSymlinks(f)).First();
+            // Largest file wins, except when an ancillary-named file (pre/post
+            // show, analysis, highlights) edges out the actual session by a few
+            // percent - then the biggest cleanly-named file is preferred (#205).
+            // Uses symlink-resolving file size for debrid service compatibility.
+            var sourceFile = Helpers.MainFileSelector.SelectMainVideoFile(videoFiles, GetFileSizeResolvingSymlinks);
             var fileInfo = new FileInfo(sourceFile);
             var actualFileSize = GetFileSizeResolvingSymlinks(sourceFile);
 
             _logger.LogInformation("Found video file: {File} ({Size:N0} bytes)",
                 sourceFile, actualFileSize);
+
+            // The client saying "completed" doesn't guarantee the bytes are here:
+            // with a remote seedbox mirrored locally by an external sync tool, the
+            // local path can hold a 0-byte placeholder (or a partial file) when the
+            // import fires. Never import those - the transfer would overwrite a
+            // good previously-imported file at the same destination.
+            if (actualFileSize == 0)
+            {
+                throw new FileNotReadyException(
+                    $"Video file is empty (0 bytes): {sourceFile}. The bytes may still be transferring into this path.");
+            }
+
+            await EnsureFileSizeStableAsync(sourceFile, actualFileSize);
 
             // Parse filename, augmenting with ffprobe inspection when the filename
             // alone doesn't yield a Resolution+Source pair. download.Quality (the
@@ -1600,6 +1635,50 @@ public class FileImportService : IFileImportService
     }
 
     /// <summary>
+    /// Confirms the source file's size holds steady before import when the file
+    /// was written to in the last minute. A file that changes size between two
+    /// probes is still being filled (external mirror sync, slow copy) even
+    /// though the download client already reports completed. Files with an
+    /// older last-write time skip the probe entirely, so the common case (file
+    /// finished long before the import fires) pays no delay.
+    /// </summary>
+    private async Task EnsureFileSizeStableAsync(string sourceFile, long initialSize)
+    {
+        try
+        {
+            var lastWriteUtc = File.GetLastWriteTimeUtc(sourceFile);
+            if (DateTime.UtcNow - lastWriteUtc > TimeSpan.FromSeconds(60))
+            {
+                return;
+            }
+        }
+        catch
+        {
+            // Unreadable timestamps (some FUSE/debrid mounts) shouldn't block
+            // the import - fall through to the probe.
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(5));
+
+        long probedSize;
+        try
+        {
+            probedSize = GetFileSizeResolvingSymlinks(sourceFile);
+        }
+        catch (FileNotFoundException)
+        {
+            throw new FileNotReadyException(
+                $"Video file disappeared while checking size stability: {sourceFile}.");
+        }
+
+        if (probedSize != initialSize)
+        {
+            throw new FileNotReadyException(
+                $"Video file is still growing ({initialSize:N0} -> {probedSize:N0} bytes): {sourceFile}. The bytes are still transferring into this path.");
+        }
+    }
+
+    /// <summary>
     /// Copy a symbolic link to a new location, preserving the symlink target.
     /// </summary>
     private async Task CopySymbolicLinkAsync(string source, string destination)
@@ -2033,7 +2112,7 @@ public class FileImportService : IFileImportService
 
             // Translate remote path to local path using Remote Path Mappings
             // This handles Docker volume mapping differences (e.g., /data/usenet → /downloads)
-            var localPath = await TranslatePathAsync(status.SavePath, downloadClient.Host);
+            var localPath = await _pathMappingService.RemapRemoteToLocalAsync(downloadClient.Host, status.SavePath);
 
             _logger.LogInformation("[PathMapping] Final path for import: '{LocalPath}'", localPath);
             _logger.LogInformation("[PathMapping] ========== PATH TRANSLATION END ==========");
@@ -2043,93 +2122,6 @@ public class FileImportService : IFileImportService
         // Fallback to default path if status doesn't include it
         _logger.LogWarning("[PathMapping] Could not get save path from download client status, using fallback path");
         return Path.Combine(Path.GetTempPath(), "downloads", download.DownloadId);
-    }
-
-    /// <summary>
-    /// Translate remote path to local path using Remote Path Mappings.
-    /// Required when download client uses different path structure than Sportarr.
-    /// Example: Download client reports "/data/usenet/sports/" but Sportarr sees it as "/downloads/sports/".
-    /// </summary>
-    private async Task<string> TranslatePathAsync(string remotePath, string host)
-    {
-        _logger.LogInformation("[PathMapping] Starting path translation for host '{Host}'", host);
-        _logger.LogInformation("[PathMapping] Remote path from download client: '{RemotePath}'", remotePath);
-
-        // Get all path mappings and filter in memory (EF can't translate StringComparison to SQL)
-        // Since there are typically very few remote path mappings, loading all is fine
-        var allMappings = await _db.RemotePathMappings.ToListAsync();
-        _logger.LogInformation("[PathMapping] Total configured mappings in database: {Count}", allMappings.Count);
-
-        // Log all configured mappings for debugging
-        foreach (var m in allMappings)
-        {
-            _logger.LogInformation("[PathMapping] Configured mapping: Host='{Host}', RemotePath='{RemotePath}' → LocalPath='{LocalPath}'",
-                m.Host, m.RemotePath, m.LocalPath);
-        }
-
-        var mappings = allMappings
-            .Where(m => m.Host.Equals(host, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(m => m.RemotePath.Length) // Longest match first (most specific)
-            .ToList();
-
-        _logger.LogInformation("[PathMapping] Mappings matching host '{Host}': {Count}", host, mappings.Count);
-
-        foreach (var mapping in mappings)
-        {
-            // Check if remote path starts with this mapping's remote path
-            var remoteMappingPath = mapping.RemotePath.TrimEnd('/', '\\');
-            var remoteCheckPath = remotePath.Replace('\\', '/').TrimEnd('/');
-            var normalizedMappingPath = remoteMappingPath.Replace('\\', '/');
-
-            _logger.LogInformation("[PathMapping] Checking mapping: Does '{RemoteCheckPath}' start with '{NormalizedMapping}'?",
-                remoteCheckPath, normalizedMappingPath);
-
-            if (remoteCheckPath.StartsWith(normalizedMappingPath, StringComparison.OrdinalIgnoreCase))
-            {
-                // Replace remote path with local path
-                var relativePath = remoteCheckPath.Substring(remoteMappingPath.Length).TrimStart('/');
-
-                // Use forward slashes for path joining to ensure Linux compatibility in Docker
-                // Path.Combine can have issues with mixed separators
-                var localBasePath = mapping.LocalPath.TrimEnd('/', '\\');
-                var localPath = string.IsNullOrEmpty(relativePath)
-                    ? localBasePath
-                    : $"{localBasePath}/{relativePath}";
-
-                _logger.LogInformation("[PathMapping] ✓ MATCH! Remote path mapped: '{Remote}' → '{Local}'", remotePath, localPath);
-                _logger.LogInformation("[PathMapping] Mapping details: RemotePath='{MappingRemote}', LocalPath='{MappingLocal}', RelativePath='{RelativePath}'",
-                    mapping.RemotePath, mapping.LocalPath, relativePath);
-
-                // Verify the translated path exists
-                var pathExists = Directory.Exists(localPath) || File.Exists(localPath);
-                _logger.LogInformation("[PathMapping] Translated path exists: {Exists}", pathExists);
-                if (!pathExists)
-                {
-                    _logger.LogWarning("[PathMapping] WARNING: Translated path does not exist! File may not be ready or mapping may be incorrect.");
-                }
-
-                return localPath;
-            }
-            else
-            {
-                _logger.LogInformation("[PathMapping] ✗ No match for this mapping");
-            }
-        }
-
-        // No mapping found - this is normal if Docker volumes are mapped correctly
-        // Remote Path Mapping is only needed when paths differ between download client and Sportarr
-        _logger.LogWarning("[PathMapping] No matching path mapping found for host '{Host}' and path '{RemotePath}'", host, remotePath);
-        _logger.LogInformation("[PathMapping] Using path as-is (this is fine if paths already match between download client and Sportarr)");
-
-        // Check if the unmapped path exists
-        var unmappedPathExists = Directory.Exists(remotePath) || File.Exists(remotePath);
-        _logger.LogInformation("[PathMapping] Unmapped path exists: {Exists}", unmappedPathExists);
-        if (!unmappedPathExists)
-        {
-            _logger.LogWarning("[PathMapping] WARNING: Path does not exist! You may need to configure a Remote Path Mapping in Settings → Download Clients");
-        }
-
-        return remotePath;
     }
 
     /// <summary>

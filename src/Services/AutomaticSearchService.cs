@@ -1117,9 +1117,16 @@ public class AutomaticSearchService : IAutomaticSearchService
                 }
             }
 
+            // Look up the indexer record first - its assigned download client
+            // (if any) takes precedence over priority/tag-based selection, and
+            // its seed settings are passed along with the grab.
+            var indexerRecord = await _db.Indexers
+                .FirstOrDefaultAsync(i => i.Name == bestRelease.Indexer);
+
             // Get download client for this protocol (with league tag-based filtering)
             var downloadClientLeagueTags = evt.League?.Tags ?? new List<int>();
-            var downloadClient = await GetPreferredDownloadClientAsync(bestRelease.Protocol, downloadClientLeagueTags);
+            var downloadClient = await GetPreferredDownloadClientAsync(
+                bestRelease.Protocol, downloadClientLeagueTags, indexerRecord?.DownloadClientId);
 
             if (downloadClient == null)
             {
@@ -1136,10 +1143,6 @@ public class AutomaticSearchService : IAutomaticSearchService
             // NOTE: We do NOT specify download path - download client uses its own configured directory
             // The category is used to track Sportarr downloads.
             // Root folders are used later during the import process (not here).
-
-            // Look up indexer seed settings for torrent clients
-            var indexerRecord = await _db.Indexers
-                .FirstOrDefaultAsync(i => i.Name == bestRelease.Indexer);
 
             // Resolve the effective category. Per-root override (Phase 4)
             // wins so leagues bound to "fast SSD" can hit one category
@@ -1660,7 +1663,7 @@ public class AutomaticSearchService : IAutomaticSearchService
         }
     }
 
-    private async Task<DownloadClient?> GetPreferredDownloadClientAsync(string protocol, List<int>? leagueTags = null)
+    private async Task<DownloadClient?> GetPreferredDownloadClientAsync(string protocol, List<int>? leagueTags = null, int? indexerAssignedClientId = null)
     {
         // Get client types that support this protocol
         var supportedTypes = DownloadClientService.GetClientTypesForProtocol(protocol);
@@ -1676,6 +1679,13 @@ public class AutomaticSearchService : IAutomaticSearchService
             .Where(dc => dc.Enabled && supportedTypes.Contains(dc.Type))
             .OrderBy(dc => dc.Priority)
             .ToListAsync();
+
+        // The indexer's explicitly assigned client wins over priority/tag selection
+        var assigned = DownloadClientService.PickAssignedClient(clients, indexerAssignedClientId, _logger, "[Automatic Search]");
+        if (assigned != null)
+        {
+            return assigned;
+        }
 
         // Filter by tag matching (untagged clients apply to all leagues)
         if (leagueTags != null && leagueTags.Count > 0)

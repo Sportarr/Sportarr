@@ -1147,6 +1147,12 @@ public class RssSyncService : BackgroundService
             return false;
         }
 
+        // Look up the indexer record first - its assigned download client (if
+        // any) takes precedence over priority/tag-based selection, and its
+        // seed settings are passed along with the grab.
+        var indexerRecord = await db.Indexers
+            .FirstOrDefaultAsync(i => i.Name == release.Indexer, cancellationToken);
+
         // Filter download clients by league tags (untagged clients apply to all leagues)
         var rssLeagueTags = evt.League?.Tags ?? new List<int>();
         var allClients = await db.DownloadClients
@@ -1154,17 +1160,15 @@ public class RssSyncService : BackgroundService
             .OrderBy(dc => dc.Priority)
             .ToListAsync(cancellationToken);
         var tagFilteredClients = allClients.Where(dc => Helpers.TagHelper.TagsMatch(dc.Tags, rssLeagueTags)).ToList();
-        var downloadClient = tagFilteredClients.FirstOrDefault();
+        var downloadClient =
+            DownloadClientService.PickAssignedClient(allClients, indexerRecord?.DownloadClientId, _logger, "[RSS Sync]")
+            ?? tagFilteredClients.FirstOrDefault();
 
         if (downloadClient == null)
         {
             _logger.LogWarning("[RSS Sync] No {Protocol} download client for {Event}", release.Protocol, evt.Title);
             return false;
         }
-
-        // Look up indexer seed settings for torrent clients
-        var indexerRecord = await db.Indexers
-            .FirstOrDefaultAsync(i => i.Name == release.Indexer, cancellationToken);
 
         // Per-root override beats the download client's default category.
         var rssGrabCategory = !string.IsNullOrWhiteSpace(evt.League?.RootFolder?.DefaultDownloadClientCategory)

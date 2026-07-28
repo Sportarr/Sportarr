@@ -60,6 +60,44 @@ public class EventQueryServiceMotorsportTests
     }
 
     [Fact]
+    public void BuildEventQueries_Formula1_AddsCountryNounForAdjectiveGpNames()
+    {
+        var evt = new Event
+        {
+            Title = "Belgian Grand Prix - Race",
+            Sport = "Motorsport",
+            EventDate = new DateTime(2026, 7, 19, 0, 0, 0, DateTimeKind.Utc),
+            League = new League { Name = "Formula 1", Sport = "Motorsport" },
+        };
+
+        var queries = CreateService().BuildEventQueries(evt);
+
+        // Race releases use the country noun ("Formula.1.2026x10.Belgium.Race")
+        // while the event title carries the adjective. Both must be searched -
+        // the adjective query only surfaced qualifying releases (#168).
+        queries.Should().Contain("Formula 1 2026 Belgian");
+        queries.Should().Contain("Formula 1 2026 Belgium");
+        queries.Should().Contain("Formula1 2026 Belgium");
+    }
+
+    [Fact]
+    public void BuildEventQueries_Formula1_NoCountryDuplicateWhenTitleIsAlreadyANoun()
+    {
+        var evt = new Event
+        {
+            Title = "Monaco Grand Prix - Race",
+            Sport = "Motorsport",
+            EventDate = new DateTime(2026, 5, 24, 0, 0, 0, DateTimeKind.Utc),
+            League = new League { Name = "Formula 1", Sport = "Motorsport" },
+        };
+
+        var queries = CreateService().BuildEventQueries(evt);
+
+        // Noun-named GPs have no adjective/noun split - exactly one location query per form.
+        queries.Count(q => q.StartsWith("Formula 1 2026 Monaco")).Should().Be(1);
+    }
+
+    [Fact]
     public void BuildEventQueries_MotoGp_UsesSingleTokenNameOnly()
     {
         var evt = new Event

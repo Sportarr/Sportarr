@@ -129,6 +129,37 @@ Recommended default sync set for an external manager: `5060`, optionally
 plus the Movies categories for indexers known to file sports there. Sportarr
 tolerates over-broad category lists; its matcher filters non-sports results.
 
+## Release push
+
+`POST /api/release/push` accepts a single announced release and runs it
+through the same match, evaluate, and grab decision engine as RSS sync.
+This is the endpoint for IRC announce and RSS watcher tools (autobrr and
+similar) that hand Sportarr releases the moment they appear on a tracker.
+Available since 4.0.1024.
+
+Request body (JSON object; property names are matched case-insensitively):
+
+| Field | Required | Notes |
+|---|---|---|
+| `title` | yes | Full release title |
+| `downloadUrl` / `magnetUrl` | one of | Direct link or magnet; magnet hashes feed blocklist and duplicate-grab tracking |
+| `size` | no | Bytes |
+| `indexer` | no | External indexer identifier, recorded on the grab |
+| `downloadProtocol` / `protocol` | no | `torrent` (default) or `usenet` |
+| `publishDate` | no | RFC 3339; missing means "just published" |
+| `infoUrl` | no | Release info page |
+| `indexerFlags` | no | Numeric bitmask (freeleech=1, halfleech=2, doubleupload=4, internal=8, scene=16, freeleech75=32, freeleech25=64, nuked=128, subtitles=256) |
+
+Success is HTTP 200 with an ARRAY echoing the release; element `[0]`
+carries the decision: `approved` (grabbed), `temporarilyRejected` (held
+for a delay window), `rejected`, and `rejections` (string array of
+reasons). Validation failures are HTTP 400 with an ARRAY of
+`{propertyName, errorMessage, errorCode, attemptedValue, severity}`.
+
+The same handler is also mapped at `POST /api/v3/release/push` for
+Sonarr-compatible pushers; both routes share one request and response
+contract.
+
 ## Library item resolution
 
 For resolving Sportarr library items (leagues/events) from media-server

@@ -316,6 +316,32 @@ public class EventQueryService
     /// (e.g. Formula1.2026.China.Grand.Prix.Qualifying) which do not contain a round number and
     /// are therefore invisible to the primary round query.
     /// </summary>
+    /// <summary>
+    /// Adjective-form Grand Prix names mapped to the country noun release
+    /// groups actually use. "Belgian Grand Prix" ships as
+    /// "Formula.1.2026x10.Belgium.Race", so searching only the title's
+    /// "Belgian" misses the race entirely while still finding qualifying
+    /// releases that happen to use the adjective (#168).
+    /// </summary>
+    private static readonly Dictionary<string, string> GpDemonymToCountry = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "Australian", "Australia" },
+        { "Austrian", "Austria" },
+        { "Belgian", "Belgium" },
+        { "Brazilian", "Brazil" },
+        { "British", "Britain" },
+        { "Canadian", "Canada" },
+        { "Chinese", "China" },
+        { "Dutch", "Netherlands" },
+        { "Hungarian", "Hungary" },
+        { "Italian", "Italy" },
+        { "Japanese", "Japan" },
+        { "Mexican", "Mexico" },
+        { "Saudi Arabian", "Saudi Arabia" },
+        { "Spanish", "Spain" },
+        { "United States", "USA" },
+    };
+
     private void BuildMotorsportQueries(Event evt, string? leagueName, List<string> queries)
     {
         var seriesKey = GetMotorsportSeriesPrefix(leagueName);
@@ -374,6 +400,15 @@ public class EventQueryService
                 if (!string.IsNullOrEmpty(titleWord))
                 {
                     queries.Add($"{prefix} {year} {titleWord}");
+
+                    // Also search the country-noun form of an adjective GP name
+                    // ("Belgian" -> "Belgium") - the two conventions coexist on
+                    // the same indexer and neither matches the other as text.
+                    if (GpDemonymToCountry.TryGetValue(titleWord, out var countryName) &&
+                        !string.Equals(countryName, evt.Location, StringComparison.OrdinalIgnoreCase))
+                    {
+                        queries.Add($"{prefix} {year} {countryName}");
+                    }
                 }
             }
 

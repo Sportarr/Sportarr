@@ -137,6 +137,16 @@ public class League
     public bool Monitored { get; set; } = true;
 
     /// <summary>
+    /// Whether the DVR auto-scheduler may resolve IPTV channels and schedule
+    /// recordings for this league's events. Independent from Monitored so a
+    /// league can stay on indexer-based downloads while never touching IPTV
+    /// (the auto-scheduler falls back to EPG/broadcaster channel matching, so
+    /// simply not mapping a channel doesn't opt a league out). Manual
+    /// recordings are unaffected.
+    /// </summary>
+    public bool EnableDvr { get; set; } = true;
+
+    /// <summary>
     /// How events should be monitored when syncing (All, Future, CurrentSeason, etc.)
     /// </summary>
     public MonitorType MonitorType { get; set; } = MonitorType.Future;

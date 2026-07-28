@@ -1,6 +1,7 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -782,6 +783,21 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 download.ErrorMessage = ex.Message;
             }
         }
+        catch (FileNotReadyException ex)
+        {
+            // The source video file hasn't finished landing on disk - 0 bytes,
+            // or still growing between probes. Typical with a remote seedbox
+            // whose local mirror is synced by an external tool: the client says
+            // completed before the bytes arrive locally. Retry on every poll
+            // without burning the terminal retry budget - failing here would
+            // blocklist a healthy release, and importing would overwrite a good
+            // file at the destination with a placeholder.
+            _logger.LogWarning(
+                "[Enhanced Download Monitor] Source file not ready yet, will retry: {Title} - {Message}",
+                download.Title, ex.Message);
+            download.Status = DownloadStatus.ImportPending;
+            download.ErrorMessage = $"Waiting for file contents to finish transferring: {ex.Message}";
+        }
         catch (DownloadFailedException ex)
         {
             // The download client itself flagged this as failed (e.g.
@@ -1134,10 +1150,14 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     string? scanFolder = null;
                     if (download.IsCompleted && !string.IsNullOrEmpty(download.FilePath))
                     {
-                        if (Directory.Exists(download.FilePath))
-                            scanFolder = download.FilePath;
-                        else if (File.Exists(download.FilePath))
-                            scanFolder = Path.GetDirectoryName(download.FilePath);
+                        using var pathScope = _serviceProvider.CreateScope();
+                        var pathMapping = pathScope.ServiceProvider.GetRequiredService<IRemotePathMappingService>();
+                        var localFilePath = await pathMapping.RemapRemoteToLocalAsync(client.Host, download.FilePath);
+
+                        if (Directory.Exists(localFilePath))
+                            scanFolder = localFilePath;
+                        else if (File.Exists(localFilePath))
+                            scanFolder = Path.GetDirectoryName(localFilePath);
                     }
 
                     if (scanFolder != null)

@@ -152,13 +152,19 @@ public class PendingReleaseReaperService : BackgroundService
             return false;
         }
 
+        // Indexer record first - its assigned download client (if any) takes
+        // precedence over priority/tag-based selection.
+        var indexerRecord = await db.Indexers
+            .FirstOrDefaultAsync(i => i.Name == pending.Indexer, cancellationToken);
+
         var leagueTags = evt.League?.Tags ?? new List<int>();
         var allClients = await db.DownloadClients
             .Where(dc => dc.Enabled && supportedTypes.Contains(dc.Type))
             .OrderBy(dc => dc.Priority)
             .ToListAsync(cancellationToken);
-        var downloadClient = allClients
-            .FirstOrDefault(dc => Helpers.TagHelper.TagsMatch(dc.Tags, leagueTags));
+        var downloadClient =
+            DownloadClientService.PickAssignedClient(allClients, indexerRecord?.DownloadClientId, _logger, "[Pending Release Reaper]")
+            ?? allClients.FirstOrDefault(dc => Helpers.TagHelper.TagsMatch(dc.Tags, leagueTags));
 
         if (downloadClient == null)
         {
@@ -166,9 +172,6 @@ public class PendingReleaseReaperService : BackgroundService
                 pending.Protocol, evt.Title);
             return false;
         }
-
-        var indexerRecord = await db.Indexers
-            .FirstOrDefaultAsync(i => i.Name == pending.Indexer, cancellationToken);
 
         // Per-root override beats the download client's default category.
         var reaperGrabCategory = !string.IsNullOrWhiteSpace(evt.League?.RootFolder?.DefaultDownloadClientCategory)

@@ -61,6 +61,7 @@ interface LeagueDetail {
   country?: string;
   description?: string;
   monitored: boolean;
+  enableDvr?: boolean;
   monitorType?: string;
   qualityProfileId?: number;
   rootFolderId?: number | null;
@@ -564,6 +565,21 @@ export default function LeagueDetailPage() {
     },
     onError: () => {
       toast.error('Failed to update preferred channel');
+    },
+  });
+
+  // Toggle automatic DVR scheduling for this league (independent from monitored)
+  const toggleLeagueDvrMutation = useMutation({
+    mutationFn: async (enableDvr: boolean) => {
+      const response = await apiClient.put(`/leagues/${id}`, { enableDvr });
+      return response.data;
+    },
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['league', id] });
+      toast.success('League DVR scheduling updated');
+    },
+    onError: () => {
+      toast.error('Failed to update league DVR scheduling');
     },
   });
 
@@ -1489,6 +1505,27 @@ export default function LeagueDetailPage() {
                     </span>
                   )}
                 </div>
+
+                {/* Per-league opt-out from the DVR auto-scheduler. Without this,
+                    the scheduler can resolve a channel through EPG/broadcaster
+                    matching even when no channel is mapped, so unmapping alone
+                    doesn't keep a league off IPTV. */}
+                <label className="flex items-start space-x-3 cursor-pointer mb-3 md:mb-4">
+                  <input
+                    type="checkbox"
+                    checked={league?.enableDvr ?? true}
+                    onChange={(e) => toggleLeagueDvrMutation.mutate(e.target.checked)}
+                    disabled={toggleLeagueDvrMutation.isPending}
+                    className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                  />
+                  <div>
+                    <span className="text-xs md:text-sm font-medium text-white">Automatic DVR scheduling</span>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Let the auto-scheduler resolve a channel and record this league's events.
+                      Turn off to keep this league on indexer downloads only. Manual recordings still work.
+                    </p>
+                  </div>
+                </label>
 
                 {dvrChannelsLoading ? (
                   <div className="text-sm text-gray-400">Loading channels...</div>

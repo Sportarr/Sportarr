@@ -588,6 +588,12 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
     if (supportedTypes.Length == 0)
         return Results.BadRequest(new { error = $"Unknown protocol: {grabHistory.Protocol}" });
 
+    // Indexer record up front - the re-grab prefers the original client, then
+    // the indexer's assigned client, then any enabled client for the protocol.
+    var indexerRecord = !string.IsNullOrEmpty(grabHistory.Indexer)
+        ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == grabHistory.Indexer)
+        : null;
+
     // Try to use the original download client if available
     DownloadClient? downloadClient = null;
     if (grabHistory.DownloadClientId.HasValue)
@@ -596,13 +602,16 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             .FirstOrDefaultAsync(dc => dc.Id == grabHistory.DownloadClientId.Value && dc.Enabled);
     }
 
-    // Fallback to any enabled download client for this protocol
+    // Fallback: the indexer's assigned client, then any enabled client for this protocol
     if (downloadClient == null)
     {
-        downloadClient = await db.DownloadClients
+        var eligibleClients = await db.DownloadClients
             .Where(dc => dc.Enabled && supportedTypes.Contains(dc.Type))
             .OrderBy(dc => dc.Priority)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
+        downloadClient =
+            DownloadClientService.PickAssignedClient(eligibleClients, indexerRecord?.DownloadClientId, logger, "[Regrab]")
+            ?? eligibleClients.FirstOrDefault();
     }
 
     if (downloadClient == null)
@@ -610,10 +619,6 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 
     try
     {
-        // Look up indexer seed settings for torrent clients
-        var indexerRecord = !string.IsNullOrEmpty(grabHistory.Indexer)
-            ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == grabHistory.Indexer)
-            : null;
 
         // Attempt to re-grab with seed config from indexer
         var downloadId = await downloadClientService.AddDownloadAsync(
@@ -745,10 +750,19 @@ app.MapPost("/api/grab-history/regrab-missing", async (
             continue;
         }
 
-        var downloadClient = await db.DownloadClients
+        // Indexer record up front - its assigned download client (if any)
+        // takes precedence over priority-based selection.
+        var bulkIndexerRecord = !string.IsNullOrEmpty(grabHistory.Indexer)
+            ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == grabHistory.Indexer)
+            : null;
+
+        var eligibleClients = await db.DownloadClients
             .Where(dc => dc.Enabled && supportedTypes.Contains(dc.Type))
             .OrderBy(dc => dc.Priority)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
+        var downloadClient =
+            DownloadClientService.PickAssignedClient(eligibleClients, bulkIndexerRecord?.DownloadClientId, logger, "[Regrab Missing]")
+            ?? eligibleClients.FirstOrDefault();
 
         if (downloadClient == null)
         {
@@ -759,10 +773,6 @@ app.MapPost("/api/grab-history/regrab-missing", async (
 
         try
         {
-            // Look up indexer seed settings for torrent clients
-            var bulkIndexerRecord = !string.IsNullOrEmpty(grabHistory.Indexer)
-                ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == grabHistory.Indexer)
-                : null;
 
             var downloadId = await downloadClientService.AddDownloadAsync(
                 downloadClient,

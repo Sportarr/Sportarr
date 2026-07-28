@@ -106,6 +106,9 @@ public class DvrAutoSchedulerService : BackgroundService
         var eventsToSchedule = await db.Events
             .Include(e => e.League)
             .Where(e => e.Monitored)
+            // Per-league DVR opt-out: leagues with EnableDvr off never get
+            // auto-scheduled recordings, even when a channel could be resolved.
+            .Where(e => e.League == null || e.League.EnableDvr)
             .Where(e => e.EventDate <= schedulingCutoff)
             // Past events: only backfill ones we haven't already tried -
             // a Failed catchup row means the archive path was exhausted
@@ -270,6 +273,8 @@ public class DvrAutoSchedulerService : BackgroundService
         var eventsWithoutRecordings = await db.Events
             .Include(e => e.League)
             .Where(e => e.Monitored)
+            // Per-league DVR opt-out applies to EPG-matched scheduling too.
+            .Where(e => e.League == null || e.League.EnableDvr)
             .Where(e => e.EventDate > now && e.EventDate <= schedulingCutoff)
             .Where(e => !db.DvrRecordings.Any(r =>
                 r.EventId == e.Id &&

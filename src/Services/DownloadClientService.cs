@@ -237,6 +237,39 @@ public class DownloadClientService : IDownloadClientService
     }
 
     /// <summary>
+    /// Resolves an indexer's explicitly assigned download client against the
+    /// clients eligible for this grab (already filtered to enabled + protocol).
+    /// Returns null when no assignment exists or the assigned client isn't
+    /// eligible right now (disabled, deleted, wrong protocol), so callers fall
+    /// back to their normal priority/tag-based selection. An explicit
+    /// assignment deliberately skips league-tag filtering - it is the more
+    /// specific instruction.
+    /// </summary>
+    public static DownloadClient? PickAssignedClient(
+        IEnumerable<DownloadClient> eligibleClients,
+        int? assignedClientId,
+        ILogger logger,
+        string logPrefix)
+    {
+        if (assignedClientId is not int id)
+        {
+            return null;
+        }
+
+        var assigned = eligibleClients.FirstOrDefault(dc => dc.Id == id);
+        if (assigned == null)
+        {
+            logger.LogWarning(
+                "{Prefix} Indexer's assigned download client (id {Id}) is disabled, deleted, or doesn't support this protocol - using default client selection",
+                logPrefix, id);
+            return null;
+        }
+
+        logger.LogDebug("{Prefix} Using indexer's assigned download client: {Name}", logPrefix, assigned.Name);
+        return assigned;
+    }
+
+    /// <summary>
     /// Test connection to any download client type
     /// </summary>
     public async Task<(bool Success, string Message)> TestConnectionAsync(DownloadClient config)

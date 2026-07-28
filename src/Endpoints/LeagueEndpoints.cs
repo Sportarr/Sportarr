@@ -100,6 +100,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.Country,
         league.Description,
         league.Monitored,
+        league.EnableDvr,
         league.MonitorType,
         league.QualityProfileId,
         league.SearchForMissingEvents,
@@ -516,6 +517,19 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         else
         {
             logger.LogDebug("[LEAGUES] Monitored unchanged: {Value}", league.Monitored);
+        }
+    }
+
+    // Per-league DVR opt-out, independent from Monitored (#204). Only gates
+    // the auto-scheduler - manual recordings stay available either way.
+    if (body.TryGetProperty("enableDvr", out var enableDvrProp) &&
+        (enableDvrProp.ValueKind == JsonValueKind.True || enableDvrProp.ValueKind == JsonValueKind.False))
+    {
+        var newEnableDvr = enableDvrProp.GetBoolean();
+        if (league.EnableDvr != newEnableDvr)
+        {
+            logger.LogInformation("[LEAGUES] EnableDvr changing from {Old} to {New}", league.EnableDvr, newEnableDvr);
+            league.EnableDvr = newEnableDvr;
         }
     }
 

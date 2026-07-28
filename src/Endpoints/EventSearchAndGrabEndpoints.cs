@@ -141,11 +141,21 @@ app.MapPost("/api/release/grab", async (
     var usenetClients = new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet,
                                 DownloadClientType.DecypharrUsenet, DownloadClientType.NZBdav };
 
-    var downloadClient = await db.DownloadClients
+    // Indexer record first - its assigned download client (if any) takes
+    // precedence over priority-based selection, and its seed settings are
+    // passed along with the grab further down.
+    var grabIndexerRecord = !string.IsNullOrEmpty(release.Indexer)
+        ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == release.Indexer)
+        : null;
+
+    var eligibleClients = await db.DownloadClients
         .Where(dc => dc.Enabled)
         .Where(dc => release.Protocol == "Torrent" ? torrentClients.Contains(dc.Type) : usenetClients.Contains(dc.Type))
         .OrderBy(dc => dc.Priority)
-        .FirstOrDefaultAsync();
+        .ToListAsync();
+    var downloadClient =
+        DownloadClientService.PickAssignedClient(eligibleClients, grabIndexerRecord?.DownloadClientId, logger, "[GRAB]")
+        ?? eligibleClients.FirstOrDefault();
 
     if (downloadClient == null)
     {
@@ -188,11 +198,6 @@ app.MapPost("/api/release/grab", async (
         release.DownloadUrl.StartsWith("magnet:") ? "Magnet Link" :
         release.DownloadUrl.EndsWith(".torrent") ? "Torrent File URL" :
         "Unknown/Other");
-
-    // Look up indexer seed settings for torrent clients
-    var grabIndexerRecord = !string.IsNullOrEmpty(release.Indexer)
-        ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == release.Indexer)
-        : null;
 
     // Add download to client (category only, no path) with seed config from indexer
     AddDownloadResult downloadResult;

@@ -216,9 +216,15 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                 }
             }
 
-            // No MinimumResults early-exit: supplementary queries must run so
-            // alternative naming conventions (BILLIE-style F1 location releases)
-            // are reached. The 100-result hard cap below still bounds the work.
+            // No early-exit of any kind: supplementary queries must always run
+            // so alternative naming conventions (BILLIE-style F1 location
+            // releases, country-noun vs adjective GP names) are reached. A
+            // result-count break here silently skipped the remaining variants
+            // whenever the cache or a broad query already held 100+ releases,
+            // which is exactly how the Belgian GP race releases went missing
+            // from manual search while qualifying showed up fine (#168). The
+            // work is already bounded: at most six query variants, each capped
+            // by the indexers themselves, deduplicated by GUID above.
             if (results.Count > 0)
             {
                 logger.LogInformation("[SEARCH] Found {Count} results from query '{Query}' ({Total} total)",
@@ -227,13 +233,6 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             else
             {
                 logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
-            }
-
-            // Hard limit: Stop at 100 total results
-            if (allResults.Count >= 100)
-            {
-                logger.LogInformation("[SEARCH] Reached 100 results limit");
-                break;
             }
         }
 

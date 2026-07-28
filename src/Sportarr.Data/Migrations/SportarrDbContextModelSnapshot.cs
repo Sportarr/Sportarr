@@ -2131,6 +2131,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<int?>("DvrPrePadMinutes")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("EnableDvr")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ExternalId")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT")
