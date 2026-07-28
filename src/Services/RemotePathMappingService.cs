@@ -6,7 +6,7 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Translates download-client-reported paths to local paths using
-/// RemotePathMappings. Mirrors Sonarr's RemotePathMappingService.
+/// RemotePathMappings.
 /// </summary>
 public class RemotePathMappingService : IRemotePathMappingService
 {
@@ -39,7 +39,10 @@ public class RemotePathMappingService : IRemotePathMappingService
             var normalizedRemote = remotePath.Replace('\\', '/').TrimEnd('/');
             var normalizedMapping = remoteBase.Replace('\\', '/');
 
-            if (normalizedRemote.StartsWith(normalizedMapping, StringComparison.OrdinalIgnoreCase))
+            // Match on whole path segments only: a mapping for /data must not
+            // claim /database/file.mkv.
+            if (normalizedRemote.Equals(normalizedMapping, StringComparison.OrdinalIgnoreCase) ||
+                normalizedRemote.StartsWith(normalizedMapping + "/", StringComparison.OrdinalIgnoreCase))
             {
                 var relativePath = normalizedRemote.Substring(remoteBase.Length).TrimStart('/');
                 var localPath = string.IsNullOrEmpty(relativePath)
