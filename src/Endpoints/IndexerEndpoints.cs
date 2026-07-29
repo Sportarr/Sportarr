@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Sportarr.Api.Endpoints;
@@ -125,16 +126,16 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
                         }
                         break;
                     case "seedRatio":
-                        if (double.TryParse(fieldValue, out var seedRatio))
-                        {
-                            indexer.SeedRatio = seedRatio;
-                        }
+                        // Invariant parse: the wire value is always period-decimal
+                        // ("0.5"), which comma-decimal host locales would misread.
+                        // Empty or unparseable clears the value so external managers
+                        // can reconcile a cleared setting instead of drifting forever.
+                        indexer.SeedRatio = double.TryParse(fieldValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var seedRatio)
+                            ? seedRatio
+                            : null;
                         break;
                     case "seedTime":
-                        if (int.TryParse(fieldValue, out var seedTime))
-                        {
-                            indexer.SeedTime = seedTime;
-                        }
+                        indexer.SeedTime = int.TryParse(fieldValue, out var seedTime) ? seedTime : null;
                         break;
                     case "earlyReleaseLimit":
                         // Empty, 0, negative, or non-numeric all persist as null so the
@@ -312,16 +313,16 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                         }
                         break;
                     case "seedRatio":
-                        if (double.TryParse(fieldValue, out var seedRatio))
-                        {
-                            indexer.SeedRatio = seedRatio;
-                        }
+                        // Invariant parse: the wire value is always period-decimal
+                        // ("0.5"), which comma-decimal host locales would misread.
+                        // Empty or unparseable clears the value so external managers
+                        // can reconcile a cleared setting instead of drifting forever.
+                        indexer.SeedRatio = double.TryParse(fieldValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var seedRatio)
+                            ? seedRatio
+                            : null;
                         break;
                     case "seedTime":
-                        if (int.TryParse(fieldValue, out var seedTime))
-                        {
-                            indexer.SeedTime = seedTime;
-                        }
+                        indexer.SeedTime = int.TryParse(fieldValue, out var seedTime) ? seedTime : null;
                         break;
                     case "earlyReleaseLimit":
                         // Empty, 0, negative, or non-numeric all persist as null so the
@@ -756,7 +757,7 @@ app.MapPost("/api/indexer/test", async (
             new { name = "categories", value = string.Join(",", i.Categories) },
             new { name = "animeCategories", value = i.AnimeCategories != null ? string.Join(",", i.AnimeCategories) : "" },
             new { name = "minimumSeeders", value = i.MinimumSeeders.ToString() },
-            new { name = "seedRatio", value = i.SeedRatio?.ToString() ?? "" },
+            new { name = "seedRatio", value = i.SeedRatio?.ToString(CultureInfo.InvariantCulture) ?? "" },
             new { name = "seedTime", value = i.SeedTime?.ToString() ?? "" },
             new { name = "seasonPackSeedTime", value = i.SeasonPackSeedTime?.ToString() ?? "" },
             new { name = "earlyReleaseLimit", value = i.EarlyReleaseLimit?.ToString() ?? "" },

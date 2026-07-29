@@ -235,6 +235,34 @@ Bazarr can manage subtitles for your sports library. Add Sportarr in Bazarr exac
 
 Bazarr reads your leagues and events and searches for subtitles automatically.
 
+## Homepage Dashboard Widget
+
+If you run [Homepage](https://gethomepage.dev) as your dashboard, you can add a Sportarr tile today using its built-in `customapi` widget. Sportarr's `/api/stats` endpoint returns all the counts in a single call:
+
+```yaml
+- Media:
+    - Sportarr:
+        icon: mdi-trophy
+        href: http://your.server:1867
+        widget:
+          type: customapi
+          url: http://your.server:1867/api/stats
+          headers:
+            X-Api-Key: yourapikey
+          mappings:
+            - field: wanted
+              label: Wanted
+              format: number
+            - field: queued
+              label: Queued
+              format: number
+            - field: leagues
+              label: Leagues
+              format: number
+```
+
+Get your API key from Settings > General. The endpoint also exposes `events`, `monitored`, `downloaded`, and `files` if you'd rather show different counts (Homepage displays up to four).
+
 ## Notifications
 
 Sportarr can notify you on grabs, imports, upgrades, and health issues. Configure providers in the Notifications settings:
