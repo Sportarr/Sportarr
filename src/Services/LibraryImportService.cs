@@ -1330,6 +1330,43 @@ public class LibraryImportService
             return 0;
         }
 
+        // ── LEAGUE IDENTITY GATE ────────────────────────────────────────────────
+        // The series-label gate above only fires for library-format filenames,
+        // which name their series ahead of the SxxxxExx token. A raw scene
+        // filename — "BSB.2026.Round06.Oulton.Park.International.Race.One…" —
+        // has no label, so that gate is skipped and nothing else in this method
+        // establishes WHICH series the file belongs to: round, session and year
+        // all agree across every series running the same weekend format.
+        //
+        // ValidateRelease rejects this on the grab side. The import side did not,
+        // so a cross-series file that reached disk by any route (manual copy, a
+        // grab made before the grab-side gate existed, a hardlinked leftover)
+        // could still be matched onto the wrong event and rename itself into the
+        // library. Reuse the same helper so the two sides cannot drift.
+        //
+        // Team sports are exempt: their filenames name the teams rather than the
+        // league ("Lakers.vs.Celtics.2026.03.05" never says "NBA"), and the team
+        // names are themselves the identity signal, checked separately below.
+        //
+        // A caller that already resolved the organization is also exempt: callers
+        // pass searchTitle as either a raw filename OR an already-parsed short
+        // title ("Spain Qualifying"), and the latter legitimately carries no
+        // league name. When organization was resolved and agrees with the league,
+        // identity is established and the title does not need to repeat it.
+        bool organizationEstablishesIdentity =
+            !string.IsNullOrWhiteSpace(organization) && evt.League != null &&
+            ReleaseMatchingService.SeriesLabelMatchesLeague(organization, evt.League);
+
+        if (string.IsNullOrWhiteSpace(seriesLabel) && evt.League != null &&
+            !organizationEstablishesIdentity &&
+            string.IsNullOrWhiteSpace(evt.HomeTeamName) && string.IsNullOrWhiteSpace(evt.AwayTeamName) &&
+            !ReleaseMatchingService.TitleHasLeagueIdentity(searchTitle, eventTitle, evt.League))
+        {
+            logger?.LogDebug("[Match] League identity gate: '{Title}' names neither league '{League}' nor anything distinctive from event '{Event}' - rejecting",
+                searchTitle, evt.League.Name, eventTitle);
+            return 0;
+        }
+
         // ── SPORT GATE ──────────────────────────────────────────────────────────
         // When the filename parser identified the sport, an event from a
         // different sport can never be the right match, no matter how the
