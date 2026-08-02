@@ -990,16 +990,12 @@ public class ReleaseMatchingService
             bool hasIdentityReason = result.MatchReasons.Any(r =>
                 identityReasons.Any(w => r.StartsWith(w, StringComparison.OrdinalIgnoreCase)));
 
-            // Distinctive event words: the event title minus format words
-            // shared across whole sports ("Race", "Qualifying", "Grand
-            // Prix"). What survives ("Chinese", "Hangtown", team names)
-            // actually identifies the event.
-            bool sharesDistinctiveWord = ExtractSignificantWords(normalizedEvent)
-                .Where(w => !w.All(char.IsDigit) && !GenericEventWords.Contains(w))
-                .Any(w => ContainsWholeWord(normalizedRelease, w));
-
-            if (!hasIdentityReason && !sharesDistinctiveWord &&
-                !TitleNamesLeague(release.Title, evt.League))
+            // Identity comes from the league's name/alias in the title or the
+            // event's own distinctive words. Shared with the import-side gate in
+            // LibraryImportService.CalculateMatchConfidence via
+            // TitleHasLeagueIdentity so the two cannot drift apart.
+            if (!hasIdentityReason &&
+                !TitleHasLeagueIdentity(release.Title, evt.Title, evt.League))
             {
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
@@ -1303,7 +1299,7 @@ public class ReleaseMatchingService
     /// Extract significant words (excluding stop words) from a title
     /// Normalizes word numbers to digits for proper matching (Three -> 3)
     /// </summary>
-    private HashSet<string> ExtractSignificantWords(string title)
+    private static HashSet<string> ExtractSignificantWords(string title)
     {
         // First convert word numbers to digits
         var normalizedTitle = ConvertWordNumbersToDigits(title);
@@ -1422,6 +1418,32 @@ public class ReleaseMatchingService
     /// number means nothing across leagues (every motorsport league has an
     /// episode 19).
     /// </summary>
+    /// <summary>
+    /// True when <paramref name="title"/> carries identity for an event in
+    /// <paramref name="league"/> — i.e. it either names the league (or one of its
+    /// aliases) or shares a distinctive word with the event's own title.
+    ///
+    /// Distinctive words are the event title minus format words shared across
+    /// whole sports ("Race", "Qualifying", "Grand Prix"). What survives
+    /// ("Chinese", "Hangtown", team names) actually identifies the event, whereas
+    /// round / session / year agreement are SLOT signals — every series running
+    /// the same weekend format has a Round 2 Race in 2026.
+    ///
+    /// Shared by the grab-side gate in ValidateRelease and the import-side gate in
+    /// LibraryImportService.CalculateMatchConfidence so the two cannot drift apart.
+    /// </summary>
+    public static bool TitleHasLeagueIdentity(string title, string eventTitle, League league)
+    {
+        if (string.IsNullOrWhiteSpace(title) || league == null) return false;
+        if (TitleNamesLeague(title, league)) return true;
+        if (string.IsNullOrWhiteSpace(eventTitle)) return false;
+
+        var normalizedTitle = NormalizeTitle(title);
+        return ExtractSignificantWords(NormalizeTitle(eventTitle))
+            .Where(w => !w.All(char.IsDigit) && !GenericEventWords.Contains(w))
+            .Any(w => ContainsWholeWord(normalizedTitle, w));
+    }
+
     public static bool SeriesLabelMatchesLeague(string seriesLabel, League league)
     {
         if (string.IsNullOrWhiteSpace(seriesLabel) || league == null) return false;
