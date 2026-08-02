@@ -459,7 +459,24 @@ public class SportsFileNameParser
     };
 
     // Date extraction patterns
-    private static readonly Regex DatePattern = new(@"(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})", RegexOptions.Compiled);
+    // The separator run is captured once and back-referenced, so all three fields
+    // must be joined by the SAME separator. Without that, the class matched
+    // independently at each position and a title carrying both a season year and a
+    // date -- "MLB_2026__05.08.2026__Red_Sox_vs_Athletics", which CleanFilename
+    // turns into "MLB 2026  05.08.2026  ..." -- anchored on the LEADING SEASON YEAR
+    // ("2026" + "  ") and then consumed "05" and "08" out of the real date.
+    //
+    // When the stolen pair was day-first with a day of 13-31 the resulting
+    // DateTime threw and the swap-retry below recovered it, so that half looked
+    // fine. When the day was 1-12 it produced a VALID BUT WRONG date -- 5 Aug read
+    // as 8 May -- and returned it silently, with no exception and no log line at
+    // any level. A wrong date is worse than no date here: it drives the +/-3-day
+    // hard rejection in ReleaseMatchingService, so the correct release gets
+    // rejected for its own event and the event stays missing.
+    //
+    // Requiring separator consistency makes that match impossible, and the
+    // DayFirstDatePattern fallback below then reads "05.08.2026" correctly.
+    private static readonly Regex DatePattern = new(@"(?<!\d)(?<year>\d{4})(?<sep>[\.\-\s]+)(?<month>\d{2})\k<sep>(?<day>\d{2})(?!\d)", RegexOptions.Compiled);
     // European day-first dating ("Spain vs Argentina 19.07.2026"). Only
     // consulted when the year-first pattern found nothing; the lookarounds
     // keep the two-digit groups from binding inside longer digit runs.
