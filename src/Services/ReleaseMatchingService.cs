@@ -1787,9 +1787,24 @@ public class ReleaseMatchingService
         var eventLeague = evt.League?.Name?.ToLowerInvariant() ?? "";
         var eventTitle = evt.Title?.ToLowerInvariant() ?? "";
 
+        // Underscore is a WORD character, so the \b anchors every SportIdentifier
+        // relies on never fire beside one: `\bformula[\.\-\s]*e\b` does not match
+        // "…__Formula_E_2026_Round_15_Tokyo_Race…". Indexers that repackage NZBs
+        // emit exactly that shape, and such a release reached an F1 event in
+        // production — the outer NZB name began with the token "Formula1", which
+        // satisfies TitleNamesLeague's compact-alias check, so the league-identity
+        // gate vouched for it while its actual content was Formula E. This guard
+        // was the only layer that could reject it, and it was the layer that could
+        // not see the name.
+        //
+        // Mapping '_' to '.' restores the boundaries for all ~40 patterns at once,
+        // rather than rewriting each one. '.' is already an accepted separator in
+        // every pattern's character class, so this changes nothing else.
+        var normalizedTitle = releaseTitle.Replace('_', '.');
+
         foreach (var (pattern, sport) in SportIdentifiers)
         {
-            if (pattern.IsMatch(releaseTitle))
+            if (pattern.IsMatch(normalizedTitle))
             {
                 // Check if this sport identifier is actually part of the event's own sport/league
                 var sportLower = sport.ToLowerInvariant();
