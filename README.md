@@ -161,6 +161,13 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                 </a>
             </td>
             <td align="center">
+                <a href="https://github.com/nickperkins">
+                    <img src="https://avatars.githubusercontent.com/u/569924?v=4" width="72;" alt="nickperkins"/>
+                    <br />
+                    <sub><b>nickperkins</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/scottrobertson">
                     <img src="https://avatars.githubusercontent.com/u/68361?v=4" width="72;" alt="scottrobertson"/>
                     <br />
@@ -188,6 +195,8 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>Donai82</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/gilesw">
                     <img src="https://avatars.githubusercontent.com/u/201443?v=4" width="72;" alt="gilesw"/>
@@ -195,8 +204,6 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>gilesw</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/hobbithau5">
                     <img src="https://avatars.githubusercontent.com/u/73753815?v=4" width="72;" alt="hobbithau5"/>
@@ -232,20 +239,13 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>lyrova-andy</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/nathanjcollins">
                     <img src="https://avatars.githubusercontent.com/u/53304818?v=4" width="72;" alt="nathanjcollins"/>
                     <br />
                     <sub><b>nathanjcollins</b></sub>
-                </a>
-            </td>
-		</tr>
-		<tr>
-            <td align="center">
-                <a href="https://github.com/nickperkins">
-                    <img src="https://avatars.githubusercontent.com/u/569924?v=4" width="72;" alt="nickperkins"/>
-                    <br />
-                    <sub><b>nickperkins</b></sub>
                 </a>
             </td>
             <td align="center">
