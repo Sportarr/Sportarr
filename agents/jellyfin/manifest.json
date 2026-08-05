@@ -1,6 +1,6 @@
 [
   {
-    "guid": "aeb8dfd3-eb78-4785-9b14-34bfd2dfc4dd",
+    "guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Sportarr",
     "description": "Sports metadata provider for Jellyfin. Fetches rich metadata, posters, banners, and artwork for sports events from Sportarr.",
     "overview": "Automatically enriches your sports library with metadata from Sportarr including event descriptions, air dates, posters, banners, and thumbnails.",
@@ -8,12 +8,12 @@
     "category": "Metadata",
     "versions": [
       {
-        "version": "4.0.1025.1105",
-        "changelog": "See https://github.com/Sportarr/Sportarr/releases/tag/v4.0.1025.1105",
+        "version": "4.1.0.1110",
+        "changelog": "See https://github.com/Sportarr/Sportarr/releases/tag/v4.1.0.1110",
         "targetAbi": "10.10.0.0",
-        "sourceUrl": "https://github.com/Sportarr/Sportarr/releases/download/v4.0.1025.1105/sportarr-jellyfin-plugin_4.0.1025.1105.zip",
-        "checksum": "954be52019631e612b019c497304f763",
-        "timestamp": "2026-07-29T17:29:18Z"
+        "sourceUrl": "https://github.com/Sportarr/Sportarr/releases/download/v4.1.0.1110/sportarr-jellyfin-plugin_4.1.0.1110.zip",
+        "checksum": "0ee9eb1176ec20076b2666d230379af0",
+        "timestamp": "2026-08-05T03:51:00Z"
       }
     ]
   }
