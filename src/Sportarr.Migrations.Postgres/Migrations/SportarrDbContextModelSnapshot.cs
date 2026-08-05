@@ -169,6 +169,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<DateTime>("Queued")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Result")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("Started")
                         .HasColumnType("timestamp with time zone");
 
@@ -708,6 +711,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<int>("EventId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("GrabCategory")
+                        .HasColumnType("text");
 
                     b.Property<int?>("ImportRetryCount")
                         .HasColumnType("integer");
@@ -1446,6 +1452,46 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.ToTable("EventFileHistory");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.FollowedAthlete", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Added")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("LastEventDiscovery")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResolvedTeamExternalId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResolvedTeamName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Sport")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ThumbUrl")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("FollowedAthletes");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.FollowedTeam", b =>
                 {
                     b.Property<int>("Id")
@@ -1512,8 +1558,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<string>("DownloadUrl")
                         .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("text");
 
                     b.Property<int>("EventId")
                         .HasColumnType("integer");
@@ -1526,8 +1571,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<string>("Guid")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("ImportedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2486,11 +2530,6 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<bool>("EventNfo")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("EventNfoFilename")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
                     b.Property<string>("EventPosterFilename")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2511,6 +2550,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("character varying(200)");
 
                     b.Property<bool>("PlayerImages")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowNfo")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Tags")
@@ -2537,15 +2579,15 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                             EventFanartFilename = "fanart.jpg",
                             EventImages = true,
                             EventNfo = true,
-                            EventNfoFilename = "{Event Title}.nfo",
                             EventPosterFilename = "poster.jpg",
                             ImageQuality = 95,
                             LeagueLogos = false,
                             Name = "Kodi/XBMC",
                             PlayerImages = false,
+                            ShowNfo = true,
                             Tags = "[]",
                             Type = 0,
-                            UseEventFolder = true
+                            UseEventFolder = false
                         });
                 });
 
@@ -3319,8 +3361,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<string>("DownloadUrl")
                         .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -3330,8 +3371,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<string>("Guid")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("text");
 
                     b.Property<string>("Indexer")
                         .IsRequired()
@@ -3346,8 +3386,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("InfoUrl")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsPack")
                         .HasColumnType("boolean");
@@ -3384,8 +3423,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<string>("SearchTerms")
                         .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("text");
 
                     b.Property<int?>("Seeders")
                         .HasColumnType("integer");

@@ -50,6 +50,77 @@ public static class SonarrConfigEndpoints
             }));
         });
 
+        // GET /api/v3/config/ui - UI configuration (Sonarr v3 shape). Queue
+        // tools read uiLanguage to confirm English status messages (their
+        // pattern matching depends on it); Sportarr's messages are always
+        // English, so this is static.
+        app.MapGet("/api/v3/config/ui", (ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/config/ui");
+
+            return Results.Ok(new
+            {
+                id = 1,
+                firstDayOfWeek = 0,
+                calendarWeekColumnHeader = "ddd M/D",
+                shortDateFormat = "MMM D YYYY",
+                longDateFormat = "dddd, MMMM D YYYY",
+                timeFormat = "h(:mm)a",
+                showRelativeDates = true,
+                enableColorImpairedMode = false,
+                uiLanguage = 1,
+                theme = "auto"
+            });
+        });
+
+        // GET /api/v3/qualitydefinition - Quality definitions (Sonarr v3
+        // format). Prometheus exporters read quality.name and weight to
+        // label per-quality episode counts. The quality level number doubles
+        // as the weight: definitions are ordered by it and a higher level
+        // means a better quality, which is exactly what Sonarr's weight
+        // conveys.
+        app.MapGet("/api/v3/qualitydefinition", async (SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/qualitydefinition");
+
+            var definitions = await db.QualityDefinitions.OrderBy(q => q.Quality).ToListAsync();
+            return Results.Ok(definitions.Select(d => new
+            {
+                id = d.Id,
+                quality = new { id = d.Quality, name = d.Title, source = "unknown", resolution = 0 },
+                title = d.Title,
+                weight = d.Quality,
+                minSize = d.MinSize,
+                maxSize = d.MaxSize,
+                preferredSize = d.PreferredSize
+            }));
+        });
+
+        // GET /api/v3/tag/detail - Tags with the ids of the series (leagues)
+        // carrying each one (Sonarr v3 format; exporters chart series count
+        // per tag from this).
+        app.MapGet("/api/v3/tag/detail", async (SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/tag/detail");
+
+            var tags = await db.Tags.ToListAsync();
+            var leagueTags = await db.Leagues
+                .Select(l => new { l.Id, l.Tags })
+                .ToListAsync();
+
+            return Results.Ok(tags.Select(t => new
+            {
+                id = t.Id,
+                label = t.Label,
+                seriesIds = leagueTags.Where(l => l.Tags.Contains(t.Id)).Select(l => l.Id).ToArray(),
+                notificationIds = Array.Empty<int>(),
+                restrictionIds = Array.Empty<int>(),
+                importListIds = Array.Empty<int>(),
+                indexerIds = Array.Empty<int>(),
+                downloadClientIds = Array.Empty<int>()
+            }));
+        });
+
         // GET /api/v3/tag - Tags (Sonarr v3 format for Maintainerr)
         app.MapGet("/api/v3/tag", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
@@ -102,6 +173,65 @@ public static class SonarrConfigEndpoints
             await db.SaveChangesAsync();
 
             return Results.Ok(new { id = tag.Id, label = tag.Label });
+        });
+
+        // PUT /api/v3/tag/{id} - Rename a tag (request managers manage their
+        // own tracking tags through this).
+        app.MapPut("/api/v3/tag/{id:int}", async (int id, HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
+            logger.LogDebug("[V3-COMPAT] PUT /api/v3/tag/{Id} - {Json}", id, json);
+
+            string? label;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                label = doc.RootElement.TryGetProperty("label", out var labelElement)
+                    ? labelElement.GetString()
+                    : null;
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON body" });
+            }
+
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return Results.BadRequest(new { error = "Tag label is required" });
+            }
+
+            var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == id);
+            if (tag == null)
+            {
+                return Results.NotFound();
+            }
+
+            tag.Label = label.Trim();
+            await db.SaveChangesAsync();
+
+            return Results.Ok(new { id = tag.Id, label = tag.Label });
+        });
+
+        // GET /api/v3/languageprofile - Legacy Sonarr v3 language profiles.
+        // Sonarr v4 still serves the deprecated list; consumers (request
+        // managers among them) fetch it during setup and expect at least one
+        // entry. Sports broadcasts have no language-profile concept, so a
+        // single static profile satisfies the contract.
+        app.MapGet("/api/v3/languageprofile", (ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/languageprofile");
+            return Results.Ok(new[]
+            {
+                new
+                {
+                    id = 1,
+                    name = "Any",
+                    upgradeAllowed = false,
+                    cutoff = new { id = -1, name = "Any" },
+                    languages = Array.Empty<object>(),
+                }
+            });
         });
 
         // GET /api/v3/importlistexclusion - List import list exclusions (Maintainerr)

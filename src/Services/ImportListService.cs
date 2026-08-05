@@ -47,6 +47,16 @@ public class ImportListService
 
         _logger.LogInformation("[IMPORT LIST] Syncing {Name} (Type: {Type})", importList.Name, importList.ListType);
 
+        // SportarrList doesn't fit the DiscoveredEvent/title-date-matching
+        // pipeline below at all - it adds/monitors leagues (and scopes to
+        // specific teams), the same action as POST /api/leagues, not bare
+        // untethered Event rows. Branch out before the try/switch so it
+        // never enters that pipeline.
+        if (importList.ListType == ImportListType.SportarrList)
+        {
+            return await SyncSportarrListAsync(importList, db, scope.ServiceProvider);
+        }
+
         try
         {
             List<DiscoveredEvent> discoveredEvents = importList.ListType switch
@@ -337,6 +347,249 @@ public class ImportListService
     {
         // Similar to UFC, use configured URL
         return await SyncCalendarFeedAsync(importList);
+    }
+
+    /// <summary>
+    /// Sync a sportarr.net user list: add/monitor the leagues it references,
+    /// scoping to specific teams when the list unambiguously ties them to a
+    /// single league. Reuses LeagueAddService.AddLeagueAsync - the exact
+    /// same path POST /api/leagues drives - so a league added this way
+    /// behaves identically to one a user added by hand (same dedup by
+    /// ExternalId, same root-folder/quality-profile cascade, same
+    /// teamless-sport auto-monitor rules).
+    ///
+    /// Only league and team hub-list items drive any action: Sportarr has
+    /// no "monitor a person/venue" concept, and a bare event item has no
+    /// obvious action either (this mirrors a Trakt list import into Sonarr/
+    /// Radarr, which adds SERIES/MOVIES to monitor, not individual
+    /// episodes). Team items are only applied as MonitoredTeamIds when
+    /// exactly one league item is present in the list - the hub list
+    /// response has no parent-league field on a team item, so scoping a
+    /// team to "the right" league is only unambiguous in that single-league
+    /// case; multi-league lists add every league unscoped (teamless sports
+    /// still auto-monitor fully; team sports get added-but-unmonitored,
+    /// same as a manual add with no team selection).
+    /// </summary>
+    private async Task<(bool Success, string Message, int EventsFound)> SyncSportarrListAsync(
+        ImportList importList, SportarrDbContext db, IServiceProvider scopedProvider)
+    {
+        if (string.IsNullOrWhiteSpace(importList.Url))
+        {
+            return (false, "No sportarr.net list URL configured", 0);
+        }
+
+        var sportsDbClient = scopedProvider.GetRequiredService<SportarrApiClient>();
+        var leagueAddService = scopedProvider.GetRequiredService<LeagueAddService>();
+
+        // Accept either a full https://sportarr.net/lists/{slug} URL (what a
+        // user copy-pastes from their browser) or a bare slug/UUID.
+        var identifier = importList.Url.TrimEnd('/').Split('/').Last();
+
+        var hubList = await sportsDbClient.GetHubListAsync(identifier);
+        if (hubList == null)
+        {
+            var failMsg = $"Could not fetch hub list '{identifier}' - it may be private, deleted, rate-limited, or the hub is unreachable";
+            importList.LastSync = DateTime.UtcNow;
+            importList.LastSyncMessage = failMsg;
+            await db.SaveChangesAsync();
+            return (false, failMsg, 0);
+        }
+
+        // leagueTeams maps each league short_id to the set of team
+        // short_ids that should be monitored under it (empty set = whole
+        // league, unscoped). Two independent sources feed it, run as
+        // separate branches rather than merged - the curated-list branch
+        // is untouched from its previously-verified-working shape.
+        var leagueTeams = new Dictionary<string, HashSet<string>>();
+        int skippedCount;
+
+        if (hubList.IsSmart)
+        {
+            // Smart lists always resolve to entity_type=event items - there
+            // are never explicit league/team items to read. Precise team
+            // scoping comes from the list's own saved criteria (unambiguous
+            // - the owner explicitly picked these teams/leagues when
+            // building the list), not from the computed event items -
+            // folding in event participants' teams would incorrectly pull
+            // in every opponent a filtered team plays (an event always has
+            // two participants).
+            var targetLeagues = hubList.CriteriaLeagueShortIds.Count > 0
+                ? hubList.CriteriaLeagueShortIds
+                : hubList.Items
+                    .Where(i => i.EntityType == "event" && !string.IsNullOrEmpty(i.LeagueShortId))
+                    .Select(i => i.LeagueShortId!)
+                    .Distinct()
+                    .ToList();
+
+            foreach (var leagueShortId in targetLeagues)
+            {
+                leagueTeams[leagueShortId] = new HashSet<string>(hubList.CriteriaTeamShortIds);
+            }
+
+            skippedCount = 0; // every item on a smart list is a resolvable event - nothing to skip
+        }
+        else
+        {
+            // Curated list - unchanged from the original, verified-working
+            // logic. Explicit league items always seed an entry (even with
+            // an empty team set - "just the league, no team scoping").
+            // Standalone team items only fold in when there's exactly one
+            // explicit league item - a bare team item carries no
+            // parent-league reference to resolve which league it belongs
+            // to otherwise.
+            var leagueItems = hubList.Items.Where(i => i.EntityType == "league" && !string.IsNullOrEmpty(i.ShortId)).ToList();
+            var teamItems = hubList.Items.Where(i => i.EntityType == "team" && !string.IsNullOrEmpty(i.ShortId)).ToList();
+            skippedCount = hubList.Items.Count - leagueItems.Count - teamItems.Count;
+
+            foreach (var leagueItem in leagueItems)
+            {
+                leagueTeams[leagueItem.ShortId!] = new HashSet<string>();
+            }
+            if (leagueItems.Count == 1)
+            {
+                foreach (var teamItem in teamItems)
+                {
+                    leagueTeams[leagueItems[0].ShortId!].Add(teamItem.ShortId!);
+                }
+            }
+        }
+
+        if (leagueTeams.Count == 0)
+        {
+            var emptyMsg = skippedCount > 0
+                ? $"'{hubList.Title}' has no leagues that could be resolved to import ({skippedCount} item(s) skipped)"
+                : $"'{hubList.Title}' has no leagues that could be resolved to import";
+            importList.LastSync = DateTime.UtcNow;
+            importList.LastSyncMessage = emptyMsg;
+            await db.SaveChangesAsync();
+            return (true, emptyMsg, 0);
+        }
+
+        // ImportList.RootFolderPath is a string; AddLeagueRequest wants the
+        // RootFolder row's id. Falls back to LeagueAddService's own
+        // single-folder/multi-folder default resolution if the configured
+        // path doesn't match any configured root folder.
+        int? rootFolderId = null;
+        if (!string.IsNullOrWhiteSpace(importList.RootFolderPath))
+        {
+            var rootFolder = await db.RootFolders.FirstOrDefaultAsync(rf => rf.Path == importList.RootFolderPath);
+            rootFolderId = rootFolder?.Id;
+            if (rootFolderId == null)
+            {
+                _logger.LogWarning("[IMPORT LIST] SportarrList '{Name}': configured root folder path '{Path}' not found, falling back to default resolution",
+                    importList.Name, importList.RootFolderPath);
+            }
+        }
+
+        // Pre-fetch every league lookup concurrently (HTTP-only, no DB
+        // writes) - bounded SemaphoreSlim(5), same pattern as
+        // SportarrApiClient.GetAllTeamsForSportsFanoutAsync. The DB write
+        // pass below stays strictly sequential against the single shared
+        // DbContext.
+        using var lookupSemaphore = new SemaphoreSlim(5);
+        var lookupTasks = leagueTeams.Keys.Select(async leagueShortId =>
+        {
+            await lookupSemaphore.WaitAsync();
+            try
+            {
+                return (ShortId: leagueShortId, Lookup: await sportsDbClient.LookupLeagueAsync(leagueShortId));
+            }
+            finally
+            {
+                lookupSemaphore.Release();
+            }
+        });
+        var lookupResults = (await Task.WhenAll(lookupTasks)).ToDictionary(r => r.ShortId, r => r.Lookup);
+
+        int addedCount = 0;
+        int alreadyExistsCount = 0;
+        int failedCount = 0;
+        var unmonitoredTeamNotes = new List<string>();
+
+        foreach (var (leagueShortId, teamShortIds) in leagueTeams)
+        {
+            var leagueItem = hubList.Items.FirstOrDefault(i => i.EntityType == "league" && i.ShortId == leagueShortId);
+            var lookup = lookupResults[leagueShortId];
+            if (lookup == null)
+            {
+                _logger.LogWarning("[IMPORT LIST] SportarrList '{Name}': could not resolve league {ShortId}, skipping",
+                    importList.Name, leagueShortId);
+                failedCount++;
+                continue;
+            }
+
+            var addRequest = new AddLeagueRequest
+            {
+                ExternalId = leagueShortId,
+                Name = leagueItem?.Name ?? lookup.Name,
+                Sport = lookup.Sport,
+                Country = lookup.Country,
+                QualityProfileId = importList.QualityProfileId > 0 ? importList.QualityProfileId : null,
+                RootFolderId = rootFolderId,
+                SearchForMissingEvents = importList.SearchOnAdd,
+                Monitored = importList.MonitorEvents,
+                Tags = importList.Tags,
+                MonitoredTeamIds = teamShortIds.Count > 0 ? teamShortIds.ToList() : null,
+            };
+
+            var result = await leagueAddService.AddLeagueAsync(addRequest);
+            if (result.Success)
+            {
+                addedCount++;
+            }
+            else if (string.Equals(result.ErrorMessage, "League already exists in library", StringComparison.Ordinal))
+            {
+                // Expected on every re-sync after the first - not a failure.
+                // Deliberately NOT auto-mutating an already-imported
+                // league's monitored teams here (see LeagueAddService's
+                // AddLeagueAsync docstring section on this) - an automatic
+                // additive write could resurrect a team the owner manually
+                // unmonitored in-app, since the hub list may still list it.
+                // Instead, surface a read-only diff so the gap is visible
+                // and actionable instead of a silent no-op.
+                alreadyExistsCount++;
+                if (teamShortIds.Count > 0)
+                {
+                    var existingLeague = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == leagueShortId);
+                    if (existingLeague != null)
+                    {
+                        var monitoredTeamExternalIds = await db.LeagueTeams
+                            .Where(lt => lt.LeagueId == existingLeague.Id)
+                            .Join(db.Teams, lt => lt.TeamId, t => t.Id, (lt, t) => t.ExternalId)
+                            .ToListAsync();
+                        var newTeamCount = teamShortIds.Count(id => !monitoredTeamExternalIds.Contains(id));
+                        if (newTeamCount > 0)
+                        {
+                            unmonitoredTeamNotes.Add($"{existingLeague.Name} ({newTeamCount} team(s) not monitored yet)");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogWarning("[IMPORT LIST] SportarrList '{Name}': failed to add league {ShortId}: {Error}",
+                    importList.Name, leagueShortId, result.ErrorMessage);
+                failedCount++;
+            }
+        }
+
+        var summary = $"'{hubList.Title}': added {addedCount}, {alreadyExistsCount} already in library, {failedCount} failed";
+        if (skippedCount > 0)
+        {
+            summary += $", {skippedCount} item(s) skipped (not a league/team)";
+        }
+        if (unmonitoredTeamNotes.Count > 0)
+        {
+            summary += $" ({string.Join("; ", unmonitoredTeamNotes)} on the list aren't monitored yet - edit the league to add them)";
+        }
+
+        importList.LastSync = DateTime.UtcNow;
+        importList.LastSyncMessage = summary;
+        await db.SaveChangesAsync();
+
+        _logger.LogInformation("[IMPORT LIST] SportarrList sync completed: {Message}", summary);
+
+        return (true, summary, addedCount);
     }
 
     #region Helper Methods

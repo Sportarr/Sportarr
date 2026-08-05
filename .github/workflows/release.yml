@@ -375,6 +375,32 @@ jobs:
           cd agents/plex
           zip -r ../../sportarr-plex-legacy-plugin_${{ steps.bump_version.outputs.version_number }}.zip Sportarr-Legacy.bundle
 
+      - name: Build Kodi Addon
+        id: kodi_addon
+        run: |
+          cd agents/kodi
+          BASE_VERSION="${{ steps.bump_version.outputs.base_version }}"
+          CURRENT_YEAR=$(date -u +%Y)
+          # Keep the scraper's own product version in step with Sportarr's
+          # release, same as the Jellyfin/Emby plugins. The repository addon
+          # only needs a version bump when repository.sportarr's own files
+          # change, but bumping it every release is harmless and keeps the
+          # two addon.xml files easy to reason about together.
+          sed -i "s/version=\"[0-9.]*\"$/version=\"${BASE_VERSION}\"/" metadata.tvshows.sportarr/addon.xml
+          sed -i "s/version=\"[0-9.]*\"$/version=\"${BASE_VERSION}\"/" repository.sportarr/addon.xml
+          # Refresh the "Season year" setting's default to the current
+          # calendar year - a real improvement for anyone installing fresh,
+          # though it still drifts for existing installs until they update
+          # the setting themselves (see agents/kodi/README.md's documented
+          # v1 limitation on this).
+          sed -i "s/<default>[0-9]\{4\}<\/default>/<default>${CURRENT_YEAR}<\/default>/" metadata.tvshows.sportarr/resources/settings.xml
+          python3 generate_repo.py
+          # PluginDownloadHelper looks for sportarr-{type}-plugin_*.zip in the
+          # release assets, same convention as the other three agents - point
+          # it at the scraper (the actual addon a user installs), not the
+          # thin repository shim.
+          cp repo/metadata.tvshows.sportarr/metadata.tvshows.sportarr-${BASE_VERSION}.zip ../../sportarr-kodi-plugin_${{ steps.bump_version.outputs.version_number }}.zip
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -392,6 +418,7 @@ jobs:
             sportarr-jellyfin-plugin_${{ steps.bump_version.outputs.version_number }}.zip
             sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip
             sportarr-plex-legacy-plugin_${{ steps.bump_version.outputs.version_number }}.zip
+            sportarr-kodi-plugin_${{ steps.bump_version.outputs.version_number }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -406,6 +433,17 @@ jobs:
             git pull --rebase origin main || true
             git commit -m "chore: Update Jellyfin plugin manifest to ${{ steps.bump_version.outputs.version }} [skip ci]" || true
             git push origin main || echo "Failed to push manifest update - this is non-fatal"
+          fi
+
+      - name: Commit Kodi repository update
+        run: |
+          git add agents/kodi/repo agents/kodi/metadata.tvshows.sportarr/addon.xml agents/kodi/metadata.tvshows.sportarr/resources/settings.xml agents/kodi/repository.sportarr/addon.xml
+          if git diff --staged --quiet; then
+            echo "No Kodi repository changes to commit"
+          else
+            git pull --rebase origin main || true
+            git commit -m "chore: Update Kodi addon repository to ${{ steps.bump_version.outputs.version }} [skip ci]" || true
+            git push origin main || echo "Failed to push Kodi repository update - this is non-fatal"
           fi
 
       # Build framework-dependent (non-self-contained) for Docker

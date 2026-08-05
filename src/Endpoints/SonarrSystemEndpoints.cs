@@ -12,6 +12,15 @@ public static class SonarrSystemEndpoints
 {
     public static IEndpointRouteBuilder MapSonarrSystemEndpoints(this IEndpointRouteBuilder app, string dataPath)
     {
+        // GET /api - Sonarr's version root. Starr-family clients (Homarr's
+        // connection test among them) probe this before anything else and
+        // expect the current API version marker.
+        app.MapGet("/api", (ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api - version root");
+            return Results.Ok(new { current = "v3" });
+        });
+
         // GET /api/v3/system/status - System status (Sonarr v3 API for Prowlarr)
         app.MapGet("/api/v3/system/status", (HttpContext context, ILogger<Program> logger) =>
         {
@@ -30,6 +39,10 @@ public static class SonarrSystemEndpoints
                 // arbitrary user-chosen instance names there.
                 appName = "Sonarr",
                 instanceName = "Sportarr",
+                // Identity marker: a real Sonarr never sends this field, so
+                // consumers that want to confirm they are talking to Sportarr
+                // (without breaking the appName check above) key on it.
+                sportarrVersion = Sportarr.Api.Version.AppVersion,
                 version = Sportarr.Api.Version.AppVersion,
                 buildTime = DateTime.UtcNow,
                 isDebug = false,

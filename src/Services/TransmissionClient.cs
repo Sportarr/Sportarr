@@ -469,6 +469,17 @@ public class TransmissionClient
     /// <summary>
     /// Get torrent status for download monitoring
     /// </summary>
+    /// <remarks>
+    /// A hash still existing in Transmission doesn't mean it's still Sportarr's -
+    /// Transmission is commonly shared across multiple *arr-style apps. Transmission
+    /// has no label/category concept, so - matching GetAllDownloadsByCategoryAsync -
+    /// Sportarr's "category" maps to config.Directory (download_dir). If a torrent's
+    /// download directory was changed away from the configured one (e.g. reassigned
+    /// to another app's managed folder), report it as not found here rather than
+    /// matched by hash alone, so download monitoring stops tracking it instead of
+    /// polling another app's torrent forever - the hash never disappears, only its
+    /// directory does.
+    /// </remarks>
     public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
     {
         try
@@ -477,6 +488,12 @@ public class TransmissionClient
             var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
             if (torrent == null)
                 return null;
+
+            if (!string.IsNullOrWhiteSpace(config.Directory) &&
+                !string.Equals(torrent.DownloadDir, config.Directory, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
 
             var status = torrent.Status switch
             {

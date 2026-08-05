@@ -305,7 +305,16 @@ public class EventChannelResolverService
         }
 
         var matches = new Dictionary<int, EpgProgram>();
-        var channelByTvgId = channelsWithTvg.ToDictionary(c => c.TvgId!, c => c);
+        // Playlists routinely carry the same tvg-id on several channel
+        // entries (SD/HD/FHD variants, regional mirrors), so a plain
+        // ToDictionary throws and kills scheduling for the event every
+        // cycle. First entry wins; the per-channel scoring below already
+        // picks one program per tvg-id anyway.
+        var channelByTvgId = new Dictionary<string, IptvChannel>();
+        foreach (var c in channelsWithTvg)
+        {
+            channelByTvgId.TryAdd(c.TvgId!, c);
+        }
         // Group programs by channel so we pick at most one per channel.
         foreach (var group in programs.GroupBy(p => p.ChannelId))
         {

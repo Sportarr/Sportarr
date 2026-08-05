@@ -1343,7 +1343,7 @@ app.MapGet("/api/leagues/search/{query}", async (string query, SportarrApiClient
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, TaskService taskService, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
+app.MapPost("/api/leagues", async (HttpContext context, LeagueAddService leagueAddService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
 
@@ -1384,247 +1384,32 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, Ta
         return Results.BadRequest(new { error = $"Invalid JSON: {ex.Message}" });
     }
 
-    try
+    // Core add-league logic (dedup, root-folder/quality-profile cascade,
+    // teamless-sport detection, team monitoring setup, initial sync
+    // queueing) lives in LeagueAddService so the SportarrList import list
+    // type can drive the exact same path - see LeagueAddService's own
+    // doc comment.
+    var result = await leagueAddService.AddLeagueAsync(request);
+
+    if (!result.Success)
     {
-        // Convert DTO to League entity
-        var league = request.ToLeague();
-
-        // Enrich league with full details (including images) if missing
-        // The /all/leagues endpoint doesn't include images, so fetch from lookup
-        if (string.IsNullOrEmpty(league.LogoUrl) && !string.IsNullOrEmpty(league.ExternalId))
-        {
-            logger.LogInformation("[LEAGUES] Fetching full league details to get images for: {Name}", league.Name);
-            var fullDetails = await sportsDbClient.LookupLeagueAsync(league.ExternalId);
-            if (fullDetails != null)
-            {
-                league.LogoUrl = fullDetails.LogoUrl;
-                league.BannerUrl = fullDetails.BannerUrl;
-                league.PosterUrl = fullDetails.PosterUrl;
-                league.Description = fullDetails.Description ?? league.Description;
-                league.Website = fullDetails.Website ?? league.Website;
-                logger.LogInformation("[LEAGUES] Enriched league with images - Logo: {HasLogo}, Banner: {HasBanner}, Poster: {HasPoster}",
-                    !string.IsNullOrEmpty(league.LogoUrl), !string.IsNullOrEmpty(league.BannerUrl), !string.IsNullOrEmpty(league.PosterUrl));
-            }
-            else
-            {
-                logger.LogWarning("[LEAGUES] Could not fetch full details for league: {ExternalId}", league.ExternalId);
-            }
-        }
-
-        logger.LogInformation("[LEAGUES] Adding league to database: {Name} ({Sport})", league.Name, league.Sport);
-
-        // Check if league already exists
-        var existing = await db.Leagues
-            .FirstOrDefaultAsync(l => l.ExternalId == league.ExternalId && !string.IsNullOrEmpty(league.ExternalId));
-
-        if (existing != null)
-        {
-            logger.LogWarning("[LEAGUES] League already exists: {Name} (ExternalId: {ExternalId})", league.Name, league.ExternalId);
-            return Results.BadRequest(new { error = "League already exists in library" });
-        }
-
-        // Resolve which RootFolder this league binds to. Explicit selection
-        // wins; if the request didn't include one and exactly one folder is
-        // configured we default to it (single-root setups don't need a
-        // picker). Zero folders configured is a hard error so the user
-        // doesn't end up with a league that can't import. Multiple folders
-        // configured but no selection leaves the column null and the
-        // importer falls back to the free-space heuristic — preserves the
-        // legacy behavior for older clients that don't yet send the field.
-        var allRootFolders = await db.RootFolders.ToListAsync();
-
-        RootFolder? boundFolder = null;
-        if (league.RootFolderId.HasValue)
-        {
-            boundFolder = allRootFolders.FirstOrDefault(rf => rf.Id == league.RootFolderId.Value);
-            if (boundFolder == null)
-            {
-                logger.LogWarning("[LEAGUES] Rejected: rootFolderId={Id} doesn't exist", league.RootFolderId.Value);
-                return Results.BadRequest(new { error = $"Root folder {league.RootFolderId.Value} does not exist." });
-            }
-            // Re-check live accessibility — the persisted Accessible flag was
-            // dropped in Phase 3, but POST happens often enough that we
-            // verify directly here instead of doing a full RefreshLiveState
-            // for a single row.
-            if (!Directory.Exists(boundFolder.Path))
-            {
-                logger.LogWarning("[LEAGUES] Rejected: rootFolderId={Id} ({Path}) is not accessible", boundFolder.Id, boundFolder.Path);
-                return Results.BadRequest(new { error = $"Root folder {boundFolder.Path} is not accessible." });
-            }
-        }
-        else
-        {
-            if (allRootFolders.Count == 0)
-            {
-                logger.LogWarning("[LEAGUES] Rejected: no root folders configured");
-                return Results.BadRequest(new { error = "Configure a root folder under Settings > Media Management before adding a league." });
-            }
-            if (allRootFolders.Count == 1)
-            {
-                league.RootFolderId = allRootFolders[0].Id;
-                boundFolder = allRootFolders[0];
-                logger.LogInformation("[LEAGUES] No root folder selected, defaulting to single configured folder: {Id} ({Path})",
-                    allRootFolders[0].Id, allRootFolders[0].Path);
-            }
-            else
-            {
-                logger.LogInformation("[LEAGUES] No root folder selected and multiple configured — leaving RootFolderId null (legacy free-space fallback at import time)");
-            }
-        }
-
-        // Phase 4 cascade: if the league didn't request an explicit Quality
-        // Profile but its bound root folder has one pinned, copy it down so
-        // the new league inherits the root's pin. The user can still
-        // override per league afterwards via the Edit modal.
-        if (!league.QualityProfileId.HasValue && boundFolder?.DefaultQualityProfileId is int rootDefaultProfile)
-        {
-            league.QualityProfileId = rootDefaultProfile;
-            logger.LogInformation("[LEAGUES] Inherited default Quality Profile {ProfileId} from root folder {RootId}",
-                rootDefaultProfile, boundFolder.Id);
-        }
-
-        // Added timestamp is already set in ToLeague()
-        db.Leagues.Add(league);
-        await db.SaveChangesAsync();
-
-        logger.LogInformation("[LEAGUES] Successfully added league: {Name} with ID {Id}", league.Name, league.Id);
-
-        // Handle monitored teams if specified (for team-based filtering)
-        if (request.MonitoredTeamIds != null && request.MonitoredTeamIds.Any())
-        {
-            logger.LogInformation("[LEAGUES] Processing {Count} monitored teams for league: {Name}",
-                request.MonitoredTeamIds.Count, league.Name);
-
-            foreach (var teamExternalId in request.MonitoredTeamIds)
-            {
-                // Find or create team in database
-                var team = await db.Teams.FirstOrDefaultAsync(t => t.ExternalId == teamExternalId);
-
-                if (team == null)
-                {
-                    // Fetch team details from Sportarr API to populate Team table
-                    var teams = await sportsDbClient.GetLeagueTeamsAsync(league.ExternalId!);
-                    var teamData = teams?.FirstOrDefault(t => t.ExternalId == teamExternalId);
-
-                    if (teamData != null)
-                    {
-                        team = teamData;
-                        team.LeagueId = league.Id;
-                        team.Sport = league.Sport; // Populate from league since API doesn't return it
-                        db.Teams.Add(team);
-                        await db.SaveChangesAsync();
-                        logger.LogInformation("[LEAGUES] Added new team: {TeamName} (ExternalId: {ExternalId})",
-                            team.Name, team.ExternalId);
-                    }
-                    else
-                    {
-                        logger.LogWarning("[LEAGUES] Could not find team with ExternalId: {ExternalId}", teamExternalId);
-                        continue;
-                    }
-                }
-
-                // Create LeagueTeam entry
-                var leagueTeam = new LeagueTeam
-                {
-                    LeagueId = league.Id,
-                    TeamId = team.Id,
-                    Monitored = true
-                };
-
-                db.LeagueTeams.Add(leagueTeam);
-                logger.LogInformation("[LEAGUES] Marked team as monitored: {TeamName} for league: {LeagueName}",
-                    team.Name, league.Name);
-            }
-
-            await db.SaveChangesAsync();
-            logger.LogInformation("[LEAGUES] Successfully configured {Count} monitored teams", request.MonitoredTeamIds.Count);
-        }
-        else
-        {
-            // Check if this is a league type that doesn't require team selection.
-            // Teamless sports (motorsport, golf, darts, climbing, gambling,
-            // badminton, table tennis, snooker, individual tennis, fighting)
-            // auto-monitor without team selection.
-            var isTeamless = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name);
-            var isGolf = league.Sport.Equals("Golf", StringComparison.OrdinalIgnoreCase);
-            var isIndividualTennis = Sportarr.Api.Helpers.TennisLeagueHelper.IsIndividualTennisLeague(league.Sport, league.Name);
-            var isFightingSport = EventPartDetector.IsFightingSport(league.Sport);
-
-            if (!isTeamless)
-            {
-                // Team sports (NBA, NFL, NHL, etc.) require team selection to know which events to sync
-                logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
-                league.Monitored = false;
-
-                await db.SaveChangesAsync();
-
-                return Results.Ok(new {
-                    message = "League added successfully (not monitored - no teams selected)",
-                    leagueId = league.Id,
-                    monitored = false
-                });
-            }
-
-            if (isFightingSport)
-            {
-                logger.LogInformation("[LEAGUES] Fighting sport league detected - team selection not required, will sync all events");
-            }
-
-            if (isGolf)
-            {
-                logger.LogInformation("[LEAGUES] Golf league detected - team selection not required, will sync all events");
-            }
-            else if (isIndividualTennis)
-            {
-                logger.LogInformation("[LEAGUES] Individual tennis league (ATP/WTA) detected - team selection not required, will sync all events");
-            }
-
-            // Motorsport, golf, or individual tennis league - proceed with sync (no team selection needed)
-            var availableSessionTypes = EventPartDetector.GetMotorsportSessionTypes(league.Name);
-            if (availableSessionTypes.Any())
-            {
-                logger.LogInformation("[LEAGUES] Motorsport league with session type support ({Count} available): {SessionTypes}",
-                    availableSessionTypes.Count, request.MonitoredSessionTypes ?? "(all sessions)");
-            }
-            else
-            {
-                logger.LogInformation("[LEAGUES] Motorsport league without session type definitions - will sync all events");
-            }
-        }
-
-        // Populate the newly added league's full event history (past,
-        // present, future) as a tracked TaskService task rather than a
-        // fire-and-forget Task.Run. The task row is what makes the initial
-        // population visible: the footer shows per-season progress and the
-        // league page polls its queries while a RefreshLeague task is
-        // active, so seasons/events stream in without a manual page
-        // reload. Scope "full" maps to fullHistoricalSync=true in
-        // RefreshLeagueAsync — the one-time history walk so library scans
-        // against old files (NBA 2014-2015, etc.) can resolve.
-        //
-        // forceRefresh stays false on this path (RefreshLeagueAsync never
-        // bypasses the upstream cache): sportarr-api owns freshness via
-        // its own TTLs and stale-while-revalidate. Earlier versions
-        // force-refreshed the entire history on every add, which
-        // compounded into the sustained-overload incidents on sportarr.net
-        // during May 2026.
-        logger.LogInformation("[LEAGUES] Queueing initial full historical sync for league: {Name}", league.Name);
-        var initialSyncBody = JsonSerializer.Serialize(new { leagueId = league.Id, scope = "full" });
-        await taskService.QueueTaskAsync($"Deep Sync {league.Name}", "RefreshLeague", priority: 0, body: initialSyncBody);
-
-        // Convert to DTO for frontend response
-        var response = LeagueResponse.FromLeague(league);
-        return Results.Created($"/api/leagues/{league.Id}", response);
+        return result.StatusCode == 400
+            ? Results.BadRequest(new { error = result.ErrorMessage })
+            : Results.Problem(detail: result.ErrorMessage, statusCode: result.StatusCode, title: "Error adding league");
     }
-    catch (Exception ex)
+
+    if (!result.Monitored)
     {
-        logger.LogError(ex, "[LEAGUES] Error adding league: {Name}. Error: {Message}", request?.Name ?? "Unknown", ex.Message);
-        return Results.Problem(
-            detail: ex.Message,
-            statusCode: 500,
-            title: "Error adding league"
-        );
+        return Results.Ok(new
+        {
+            message = "League added successfully (not monitored - no teams selected)",
+            leagueId = result.League!.Id,
+            monitored = false
+        });
     }
+
+    var response = LeagueResponse.FromLeague(result.League!);
+    return Results.Created($"/api/leagues/{result.League!.Id}", response);
 });
 
 // API: Update league

@@ -198,6 +198,7 @@ public class PendingReleaseReaperService : BackgroundService
             Title = pending.Title,
             DownloadId = downloadId,
             DownloadClientId = downloadClient.Id,
+            GrabCategory = reaperGrabCategory,
             Status = DownloadStatus.Queued,
             Quality = pending.Quality,
             Codec = pending.Codec,

@@ -59,7 +59,7 @@ export default function MobileTabBar() {
       children: [
         { label: 'Leagues', path: '/leagues' },
         { label: 'Add League', path: '/add-league/search' },
-        { label: 'Add Team', path: '/add-team/search' },
+        { label: 'Follow', path: '/add-team/search' },
         { label: 'Import', path: '/library-import' },
       ],
     },

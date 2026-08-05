@@ -75,6 +75,9 @@ public class SportarrDbContext : DbContext
     // Followed teams (for cross-league team monitoring)
     public DbSet<FollowedTeam> FollowedTeams => Set<FollowedTeam>();
 
+    // Followed athletes (person-level event monitoring, fighting sports)
+    public DbSet<FollowedAthlete> FollowedAthletes => Set<FollowedAthlete>();
+
     // Backup-restore audit trail: one row per restore operation, capturing
     // what survived the reconciliation pass and what was remapped.
     public DbSet<RestoreReport> RestoreReports => Set<RestoreReport>();
@@ -444,7 +447,6 @@ public class SportarrDbContext : DbContext
         {
             entity.HasKey(m => m.Id);
             entity.Property(m => m.Name).IsRequired().HasMaxLength(200);
-            entity.Property(m => m.EventNfoFilename).HasMaxLength(200);
             entity.Property(m => m.EventPosterFilename).HasMaxLength(200);
             entity.Property(m => m.EventFanartFilename).HasMaxLength(200);
             entity.Property(m => m.Tags).HasConversion(
@@ -466,13 +468,13 @@ public class SportarrDbContext : DbContext
                 Enabled = false,
                 EventNfo = true,
                 EventCardNfo = false,
+                ShowNfo = true,
                 EventImages = true,
                 PlayerImages = false,
                 LeagueLogos = false,
-                EventNfoFilename = "{Event Title}.nfo",
                 EventPosterFilename = "poster.jpg",
                 EventFanartFilename = "fanart.jpg",
-                UseEventFolder = true,
+                UseEventFolder = false,
                 ImageQuality = 95,
                 Tags = new List<int>(),
                 Created = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
@@ -1028,8 +1030,14 @@ public class SportarrDbContext : DbContext
             entity.HasKey(g => g.Id);
             entity.Property(g => g.Title).IsRequired().HasMaxLength(500);
             entity.Property(g => g.Indexer).IsRequired().HasMaxLength(200);
-            entity.Property(g => g.DownloadUrl).IsRequired().HasMaxLength(2000);
-            entity.Property(g => g.Guid).IsRequired().HasMaxLength(500);
+            // DownloadUrl and Guid are unbounded: magnet URIs carry arbitrary
+            // tracker lists (several KB is routine), and many torznab indexers
+            // use the magnet itself as the release guid. A varchar cap here
+            // made the whole grab SaveChanges throw 22001 on Postgres AFTER
+            // the torrent was already accepted by the download client,
+            // orphaning it as an untracked external download.
+            entity.Property(g => g.DownloadUrl).IsRequired();
+            entity.Property(g => g.Guid).IsRequired();
             entity.Property(g => g.Protocol).IsRequired().HasMaxLength(50);
             entity.Property(g => g.TorrentInfoHash).HasMaxLength(100);
             entity.Property(g => g.Quality).HasMaxLength(100);
@@ -1060,10 +1068,13 @@ public class SportarrDbContext : DbContext
             entity.HasKey(r => r.Id);
             entity.Property(r => r.Title).IsRequired().HasMaxLength(500);
             entity.Property(r => r.NormalizedTitle).IsRequired().HasMaxLength(500);
-            entity.Property(r => r.SearchTerms).IsRequired().HasMaxLength(2000);
-            entity.Property(r => r.Guid).IsRequired().HasMaxLength(500);
-            entity.Property(r => r.DownloadUrl).IsRequired().HasMaxLength(2000);
-            entity.Property(r => r.InfoUrl).HasMaxLength(2000);
+            // Unbounded for the same reason as GrabHistory: magnet URIs (and
+            // magnet-as-guid indexers) routinely exceed any fixed cap, and an
+            // overflow here silently drops releases from the RSS cache.
+            entity.Property(r => r.SearchTerms).IsRequired();
+            entity.Property(r => r.Guid).IsRequired();
+            entity.Property(r => r.DownloadUrl).IsRequired();
+            entity.Property(r => r.InfoUrl);
             entity.Property(r => r.Indexer).IsRequired().HasMaxLength(200);
             entity.Property(r => r.Protocol).IsRequired().HasMaxLength(50);
             entity.Property(r => r.TorrentInfoHash).HasMaxLength(100);

@@ -560,8 +560,12 @@ public class EventDvrService
         recording.Event.Quality = recording.Quality ?? "DVR";
         recording.Event.LastUpdate = DateTime.UtcNow;
 
-        // Update recording status to imported
+        // Update recording status to imported. A successful import proves
+        // the file is usable, so drop any stale watchdog/exit error text -
+        // leaving it on an Imported card reads as a failure that never
+        // happened (the log keeps the full history).
         recording.Status = DvrRecordingStatus.Imported;
+        recording.ErrorMessage = null;
         recording.LastUpdated = DateTime.UtcNow;
         recording.ImportedAt = DateTime.UtcNow;
 

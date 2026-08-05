@@ -16,6 +16,9 @@ const SPORT_ICONS: Record<string, string> = {
   'Extreme Sports': '🪂',
   'Field Hockey': '🏑',
   'Fighting': '🥊',
+  // The metadata catalog's sport taxonomy calls American football "Football"
+  // (soccer is always "Soccer"), so the bare name gets the gridiron ball.
+  'Football': '🏈',
   'Gaelic': '🏐',
   'Gambling': '🎰',
   'Golf': '⛳',
@@ -49,7 +52,7 @@ const SPORT_FUZZY_ICONS: Array<[string, string]> = [
   ['muay thai', '🥊'],
   ['wrestling', '🤼'],
   ['sumo', '🤼'],
-  ['football', '⚽'],
+  ['football', '🏈'],
   ['futsal', '⚽'],
   ['arena football', '🏈'],
   ['canadian football', '🏈'],

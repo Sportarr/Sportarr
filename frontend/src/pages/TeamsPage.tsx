@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../api/client';
+import AthletesTab from '../components/AthletesTab';
 import ColumnPicker from '../components/ColumnPicker';
 import CompactTableFrame from '../components/CompactTableFrame';
 import PageHeader from '../components/PageHeader';
@@ -25,11 +26,24 @@ import { applyTableSortFilter, useTableSortFilter } from '../hooks/useTableSortF
 import { getSportIcon } from '../utils/sportIcons';
 import type { DiscoveredLeague, FollowedTeam, QualityProfile, Team } from '../types';
 
+// Keep in sync with TeamLeagueDiscoveryService.SupportedSports (backend
+// gate) - this is the display list, that is the enforcement.
 const SPORT_FILTERS = [
   { id: 'all', name: 'All Sports', icon: '🌍' },
   { id: 'Soccer', name: 'Soccer', icon: '⚽' },
   { id: 'Basketball', name: 'Basketball', icon: '🏀' },
   { id: 'Ice Hockey', name: 'Ice Hockey', icon: '🏒' },
+  { id: 'Football', name: 'Football', icon: '🏈' },
+  { id: 'Baseball', name: 'Baseball', icon: '⚾' },
+  { id: 'Rugby', name: 'Rugby', icon: '🏉' },
+  { id: 'Volleyball', name: 'Volleyball', icon: '🏐' },
+  { id: 'Handball', name: 'Handball', icon: '🤾' },
+  { id: 'Cricket', name: 'Cricket', icon: '🏏' },
+  { id: 'Australian Football', name: 'Australian Football', icon: '🏉' },
+  { id: 'Netball', name: 'Netball', icon: '🏀' },
+  { id: 'Field Hockey', name: 'Field Hockey', icon: '🏑' },
+  { id: 'Lacrosse', name: 'Lacrosse', icon: '🥍' },
+  { id: 'Gaelic', name: 'Gaelic', icon: '🏐' },
 ];
 
 const MONITOR_OPTIONS = [
@@ -90,6 +104,7 @@ export default function TeamsPage() {
     { badge: true, name: true, sport: true, country: true, status: true, actions: true },
     ['name', 'actions']
   );
+  const [activeTab, setActiveTab] = useState<'teams' | 'athletes'>('teams');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
@@ -172,8 +187,11 @@ export default function TeamsPage() {
     let filtered = allTeams;
 
     if (selectedSport !== 'all') {
+      // Exact match, not substring: with more sport filters added, a
+      // substring check would let "Football" match "Australian Football"
+      // teams too (same trap fixed backend-side in the bulk team fetch).
       filtered = filtered.filter((team) =>
-        team.sport?.toLowerCase().includes(selectedSport.toLowerCase())
+        team.sport?.toLowerCase() === selectedSport.toLowerCase()
       );
     }
 
@@ -733,28 +751,50 @@ export default function TeamsPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Add Team"
-        subtitle="Follow teams across multiple leagues. When you follow a team, you can add all their leagues at once."
+        title="Follow"
+        subtitle="Follow teams or athletes and Sportarr adds their leagues and monitors their events for you."
         actions={
-          <button
-            onClick={handleRefreshTeams}
-            disabled={isRefreshing || isLoadingTeams}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
-            title="Refresh teams from API (cached results are used by default)"
-          >
-            <ArrowPathIcon className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          activeTab === 'teams' ? (
+            <button
+              onClick={handleRefreshTeams}
+              disabled={isRefreshing || isLoadingTeams}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Refresh teams from API (cached results are used by default)"
+            >
+              <ArrowPathIcon className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          ) : undefined
         }
       />
 
+      {/* Teams / Athletes tab switch */}
+      <div className="mb-4 flex gap-1 border-b border-gray-800">
+        {([['teams', 'Teams'], ['athletes', 'Athletes']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === key
+                ? 'border-red-600 text-white'
+                : 'border-transparent text-gray-400 hover:text-white'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'athletes' && <AthletesTab qualityProfiles={qualityProfiles ?? []} />}
+
+      {activeTab === 'teams' && (<>
         <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-700/30 rounded-lg p-4 mb-6">
           <p className="text-sm text-gray-300">
-            <span className="font-semibold text-white">Follow Team</span> is currently available for{' '}
-            <span className="text-blue-400">Soccer</span>,{' '}
-            <span className="text-orange-400">Basketball</span>, and{' '}
-            <span className="text-cyan-400">Ice Hockey</span>.
-            {' '}Want support for other sports?{' '}
+            <span className="font-semibold text-white">Follow Team</span> currently supports{' '}
+            <span className="text-blue-400">
+              {SPORT_FILTERS.filter((s) => s.id !== 'all').map((s) => s.name).join(', ')}
+            </span>.
+            {' '}Want support for another sport?{' '}
             <a
               href="https://github.com/Sportarr/Sportarr/issues"
               target="_blank"
@@ -963,6 +1003,7 @@ export default function TeamsPage() {
             {renderExpandedLeagues(expandedTeam.name, expandedTeam.externalId)}
           </div>
         )}
+      </>)}
     </PageShell>
   );
 }

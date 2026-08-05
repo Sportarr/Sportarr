@@ -206,6 +206,35 @@ public class DownloadClientService : IDownloadClientService
     }
 
     /// <summary>
+    /// Get or create a cached Aria2 client instance using IMemoryCache with expiration
+    /// </summary>
+    private Aria2Client GetAria2Client(DownloadClient config)
+    {
+        var key = $"aria2:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new Aria2Client(CreateHttpClient(config.DisableSslCertificateValidation), _loggerFactory.CreateLogger<Aria2Client>());
+        })!;
+    }
+
+    /// <summary>
+    /// Get or create a cached Synology Download Station client instance using
+    /// IMemoryCache with expiration. Shared by both the torrent and usenet
+    /// enum variants - same underlying DSM session/API, only the protocol
+    /// tag attached to results differs (handled at the call sites below).
+    /// </summary>
+    private SynologyDownloadStationClient GetSynologyDownloadStationClient(DownloadClient config)
+    {
+        var key = $"syno:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new SynologyDownloadStationClient(CreateHttpClient(config.DisableSslCertificateValidation), _loggerFactory.CreateLogger<SynologyDownloadStationClient>());
+        })!;
+    }
+
+    /// <summary>
     /// Get download client types that support a specific protocol
     /// </summary>
     /// <param name="protocol">"Torrent" or "Usenet"</param>
@@ -222,7 +251,9 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.RTorrent,
                 DownloadClientType.UTorrent,
                 DownloadClientType.Decypharr,
-                DownloadClientType.TorrentBlackhole
+                DownloadClientType.TorrentBlackhole,
+                DownloadClientType.Aria2,
+                DownloadClientType.SynologyDownloadStation
             },
             "usenet" => new List<DownloadClientType>
             {
@@ -230,7 +261,8 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.NzbGet,
                 DownloadClientType.DecypharrUsenet,
                 DownloadClientType.NZBdav,
-                DownloadClientType.UsenetBlackhole
+                DownloadClientType.UsenetBlackhole,
+                DownloadClientType.SynologyDownloadStationUsenet
             },
             _ => new List<DownloadClientType>() // Unknown protocol returns empty list
         };
@@ -291,11 +323,36 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.DecypharrUsenet => await TestSabnzbdAsync(config), // Decypharr usenet uses SABnzbd API emulation
                 DownloadClientType.NZBdav => await TestSabnzbdAsync(config), // NZBdav uses SABnzbd-compatible API
                 DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => TestBlackhole(config), // throws with a specific message on failure
+                DownloadClientType.Aria2 => await TestAria2Async(config),
+                DownloadClientType.SynologyDownloadStation or DownloadClientType.SynologyDownloadStationUsenet => await TestSynologyDownloadStationAsync(config),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
             if (success)
             {
+                // SABnzbd silently assigns any download whose category isn't
+                // defined in its own Config > Categories to the Default
+                // category (verified against SABnzbd 5.0.4: mode=addfile with
+                // an unknown or differently-cased cat lands as "*"). Catch
+                // that at test time instead of letting every grab quietly
+                // lose its category routing. Matching is case-sensitive
+                // because SABnzbd's is. Only real SABnzbd is checked -
+                // emulators may not implement get_cats, and GetCategoriesAsync
+                // returns null (skip) when the list can't be fetched.
+                if (config.Type == DownloadClientType.Sabnzbd && !string.IsNullOrWhiteSpace(config.Category))
+                {
+                    var sabCategories = await GetSabnzbdClient(config).GetCategoriesAsync(config);
+                    if (sabCategories != null && !sabCategories.Contains(config.Category, StringComparer.Ordinal))
+                    {
+                        _logger.LogWarning(
+                            "[Download Client] SABnzbd has no category named '{Category}' (defined: {Categories})",
+                            config.Category, string.Join(", ", sabCategories));
+                        return (false,
+                            $"Connected, but SABnzbd has no category named \"{config.Category}\" (names are case-sensitive). " +
+                            "Add it in SABnzbd under Config > Categories with a folder, or SABnzbd will silently place every Sportarr download in its Default category.");
+                    }
+                }
+
                 _logger.LogInformation("[Download Client] Connection test successful for {Name}", config.Name);
                 return (true, "Connection successful");
             }
@@ -357,6 +414,8 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToDecypharrUsenetAsync(config, url, category)), // Decypharr usenet only supports addfile mode (not addurl) and requires a specific request format. See https://docs.decypharr.com/guides/usenet/sabnzbd/
                 DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category, expectedName)), // NZBdav uses SABnzbd API but only supports addurl mode (not addfile)
                 DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => await AddToBlackholeAsync(config, url, expectedName),
+                DownloadClientType.Aria2 => WrapLegacyResult(await AddToAria2Async(config, url, category)),
+                DownloadClientType.SynologyDownloadStation or DownloadClientType.SynologyDownloadStationUsenet => WrapLegacyResult(await AddToSynologyDownloadStationAsync(config, url, category)),
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
 
@@ -397,22 +456,37 @@ public class DownloadClientService : IDownloadClientService
     /// <summary>
     /// Get download status from client
     /// </summary>
-    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, string downloadId)
+    /// <summary>
+    /// Get current status for a tracked download.
+    /// </summary>
+    /// <param name="expectedCategory">
+    /// The category this download was actually grabbed under (DownloadQueueItem.GrabCategory),
+    /// null for legacy rows created before that field existed. Clients that support
+    /// category/label scoping compare the live item's current category against this
+    /// (falling back to config.Category when null) and report it as not found on a
+    /// mismatch, so a download reassigned to another app sharing the same client isn't
+    /// tracked forever - the item id never disappears, only its owner does. Using the
+    /// grab-time value rather than the client's live Category avoids false positives for
+    /// downloads grabbed under a per-root-folder category override.
+    /// </param>
+    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, string downloadId, string? expectedCategory = null)
     {
         try
         {
             return config.Type switch
             {
-                DownloadClientType.QBittorrent => await GetQBittorrentStatusAsync(config, downloadId),
+                DownloadClientType.QBittorrent => await GetQBittorrentStatusAsync(config, downloadId, expectedCategory),
                 DownloadClientType.Transmission => await GetTransmissionStatusAsync(config, downloadId),
-                DownloadClientType.Deluge => await GetDelugeStatusAsync(config, downloadId),
-                DownloadClientType.RTorrent => await GetRTorrentStatusAsync(config, downloadId),
-                DownloadClientType.Sabnzbd => await GetSabnzbdStatusAsync(config, downloadId),
-                DownloadClientType.NzbGet => await GetNzbGetStatusAsync(config, downloadId),
-                DownloadClientType.Decypharr => await GetDecypharrStatusAsync(config, downloadId),
-                DownloadClientType.DecypharrUsenet => await GetSabnzbdStatusAsync(config, downloadId), // Decypharr usenet uses SABnzbd API emulation
-                DownloadClientType.NZBdav => await GetSabnzbdStatusAsync(config, downloadId), // NZBdav uses SABnzbd-compatible API
+                DownloadClientType.Deluge => await GetDelugeStatusAsync(config, downloadId, expectedCategory),
+                DownloadClientType.RTorrent => await GetRTorrentStatusAsync(config, downloadId, expectedCategory),
+                DownloadClientType.Sabnzbd => await GetSabnzbdStatusAsync(config, downloadId, expectedCategory),
+                DownloadClientType.NzbGet => await GetNzbGetStatusAsync(config, downloadId, expectedCategory),
+                DownloadClientType.Decypharr => await GetDecypharrStatusAsync(config, downloadId, expectedCategory),
+                DownloadClientType.DecypharrUsenet => await GetSabnzbdStatusAsync(config, downloadId, expectedCategory), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.NZBdav => await GetSabnzbdStatusAsync(config, downloadId, expectedCategory), // NZBdav uses SABnzbd-compatible API
                 DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => GetBlackholeStatus(config, downloadId),
+                DownloadClientType.Aria2 => await GetAria2StatusAsync(config, downloadId),
+                DownloadClientType.SynologyDownloadStation or DownloadClientType.SynologyDownloadStationUsenet => await GetSynologyDownloadStationStatusAsync(config, downloadId, expectedCategory),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
         }
@@ -473,6 +547,8 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.DecypharrUsenet => await RemoveFromSabnzbdAsync(config, downloadId, deleteFiles), // Decypharr usenet uses SABnzbd API emulation
                 DownloadClientType.NZBdav => await RemoveFromSabnzbdAsync(config, downloadId, deleteFiles), // NZBdav uses SABnzbd-compatible API
                 DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => RemoveFromBlackhole(config, downloadId, deleteFiles),
+                DownloadClientType.Aria2 => await RemoveFromAria2Async(config, downloadId, deleteFiles),
+                DownloadClientType.SynologyDownloadStation or DownloadClientType.SynologyDownloadStationUsenet => await RemoveFromSynologyDownloadStationAsync(config, downloadId, deleteFiles),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -542,6 +618,8 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Decypharr => await PauseDecypharrAsync(config, downloadId),
                 DownloadClientType.DecypharrUsenet => await PauseSabnzbdAsync(config, downloadId), // Decypharr usenet uses SABnzbd API emulation
                 DownloadClientType.NZBdav => await PauseSabnzbdAsync(config, downloadId), // NZBdav uses SABnzbd-compatible API
+                DownloadClientType.Aria2 => await PauseAria2Async(config, downloadId),
+                DownloadClientType.SynologyDownloadStation or DownloadClientType.SynologyDownloadStationUsenet => await PauseSynologyDownloadStationAsync(config, downloadId),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -575,6 +653,8 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Decypharr => await ResumeDecypharrAsync(config, downloadId),
                 DownloadClientType.DecypharrUsenet => await ResumeSabnzbdAsync(config, downloadId), // Decypharr usenet uses SABnzbd API emulation
                 DownloadClientType.NZBdav => await ResumeSabnzbdAsync(config, downloadId), // NZBdav uses SABnzbd-compatible API
+                DownloadClientType.Aria2 => await ResumeAria2Async(config, downloadId),
+                DownloadClientType.SynologyDownloadStation or DownloadClientType.SynologyDownloadStationUsenet => await ResumeSynologyDownloadStationAsync(config, downloadId),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -610,6 +690,9 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Decypharr => await GetAllDecypharrDownloadsAsync(config, category),
                 DownloadClientType.DecypharrUsenet => await GetAllSabnzbdDownloadsAsync(config, category),
                 DownloadClientType.NZBdav => await GetAllSabnzbdDownloadsAsync(config, category),
+                DownloadClientType.Aria2 => await GetAllAria2DownloadsAsync(config, category),
+                DownloadClientType.SynologyDownloadStation => await GetAllSynologyDownloadStationDownloadsAsync(config, category, "Torrent"),
+                DownloadClientType.SynologyDownloadStationUsenet => await GetAllSynologyDownloadStationDownloadsAsync(config, category, "Usenet"),
                 _ => new List<ExternalDownloadInfo>()
             };
         }
@@ -1068,10 +1151,10 @@ public class DownloadClientService : IDownloadClientService
         return false;
     }
 
-    private async Task<DownloadClientStatus?> GetQBittorrentStatusAsync(DownloadClient config, string downloadId)
+    private async Task<DownloadClientStatus?> GetQBittorrentStatusAsync(DownloadClient config, string downloadId, string? expectedCategory)
     {
         var client = GetQBittorrentClient(config);
-        return await client.GetTorrentStatusAsync(config, downloadId);
+        return await client.GetTorrentStatusAsync(config, downloadId, expectedCategory);
     }
 
     private async Task<DownloadClientStatus?> GetTransmissionStatusAsync(DownloadClient config, string downloadId)
@@ -1080,30 +1163,30 @@ public class DownloadClientService : IDownloadClientService
         return await client.GetTorrentStatusAsync(config, downloadId);
     }
 
-    private async Task<DownloadClientStatus?> GetDelugeStatusAsync(DownloadClient config, string downloadId)
+    private async Task<DownloadClientStatus?> GetDelugeStatusAsync(DownloadClient config, string downloadId, string? expectedCategory)
     {
         var client = GetDelugeClient(config);
-        return await client.GetTorrentStatusAsync(config, downloadId);
+        return await client.GetTorrentStatusAsync(config, downloadId, expectedCategory);
     }
 
-    private async Task<DownloadClientStatus?> GetRTorrentStatusAsync(DownloadClient config, string downloadId)
+    private async Task<DownloadClientStatus?> GetRTorrentStatusAsync(DownloadClient config, string downloadId, string? expectedCategory)
     {
         var client = GetRTorrentClient(config);
-        return await client.GetTorrentStatusAsync(config, downloadId);
+        return await client.GetTorrentStatusAsync(config, downloadId, expectedCategory);
     }
 
-    private async Task<DownloadClientStatus?> GetSabnzbdStatusAsync(DownloadClient config, string downloadId)
+    private async Task<DownloadClientStatus?> GetSabnzbdStatusAsync(DownloadClient config, string downloadId, string? expectedCategory)
     {
         var client = GetSabnzbdClient(config);
-        return await client.GetDownloadStatusAsync(config, downloadId);
+        return await client.GetDownloadStatusAsync(config, downloadId, expectedCategory);
     }
 
-    private async Task<DownloadClientStatus?> GetNzbGetStatusAsync(DownloadClient config, string downloadId)
+    private async Task<DownloadClientStatus?> GetNzbGetStatusAsync(DownloadClient config, string downloadId, string? expectedCategory)
     {
         var client = GetNzbGetClient(config);
         if (int.TryParse(downloadId, out var nzbId))
         {
-            return await client.GetDownloadStatusAsync(config, nzbId);
+            return await client.GetDownloadStatusAsync(config, nzbId, expectedCategory);
         }
         return null;
     }
@@ -1259,6 +1342,132 @@ public class DownloadClientService : IDownloadClientService
         return await client.FindTorrentByTitleAsync(config, title, category);
     }
 
+    // Aria2 client methods
+
+    private async Task<bool> TestAria2Async(DownloadClient config)
+    {
+        var client = GetAria2Client(config);
+        return await client.TestConnectionAsync(config);
+    }
+
+    private async Task<string?> AddToAria2Async(DownloadClient config, string url, string category)
+    {
+        var client = GetAria2Client(config);
+
+        // Same rationale as Transmission/Deluge: magnets go straight through
+        // (aria2 resolves them itself), but an HTTP .torrent link is fetched
+        // here first rather than handed to aria2.addUri, so a slow/one-time
+        // indexer link isn't fetched a second time by aria2 and a magnet-only
+        // indexer's redirect is caught instead of aria2 trying to follow a
+        // cross-scheme redirect it may not support any better than
+        // Transmission's libcurl does.
+        if (TorrentHashHelper.IsMagnet(url))
+        {
+            return await client.AddUriAsync(config, url, category);
+        }
+
+        var resolved = await TorrentFileResolver.ResolveAsync(url, config.DisableSslCertificateValidation, _httpClientFactory, _logger);
+        if (!resolved.IsSuccess)
+        {
+            _logger.LogError("[Download Client] Failed to resolve torrent for Aria2 from {Url}: {Error}", url, resolved.ErrorMessage);
+            return null;
+        }
+
+        if (resolved.IsMagnetRedirect)
+        {
+            return await client.AddUriAsync(config, resolved.MagnetLink!, category);
+        }
+
+        return await client.AddTorrentAsync(config, resolved.TorrentData!, category);
+    }
+
+    private async Task<DownloadClientStatus?> GetAria2StatusAsync(DownloadClient config, string downloadId)
+    {
+        var client = GetAria2Client(config);
+        return await client.GetTorrentStatusAsync(config, downloadId);
+    }
+
+    private async Task<bool> RemoveFromAria2Async(DownloadClient config, string downloadId, bool deleteFiles)
+    {
+        var client = GetAria2Client(config);
+        return await client.DeleteTorrentAsync(config, downloadId, deleteFiles);
+    }
+
+    private async Task<bool> PauseAria2Async(DownloadClient config, string downloadId)
+    {
+        var client = GetAria2Client(config);
+        return await client.PauseTorrentAsync(config, downloadId);
+    }
+
+    private async Task<bool> ResumeAria2Async(DownloadClient config, string downloadId)
+    {
+        var client = GetAria2Client(config);
+        return await client.ResumeTorrentAsync(config, downloadId);
+    }
+
+    private async Task<List<ExternalDownloadInfo>> GetAllAria2DownloadsAsync(DownloadClient config, string category)
+    {
+        var client = GetAria2Client(config);
+        return await client.GetAllDownloadsByCategoryAsync(config, category);
+    }
+
+    // Synology Download Station client methods (shared by the torrent and
+    // usenet enum variants - same DSM session/API, see SynologyDownloadStationClient's
+    // class comment for why one client class covers both)
+
+    private async Task<bool> TestSynologyDownloadStationAsync(DownloadClient config)
+    {
+        var client = GetSynologyDownloadStationClient(config);
+        return await client.TestConnectionAsync(config);
+    }
+
+    private async Task<string?> AddToSynologyDownloadStationAsync(DownloadClient config, string url, string category)
+    {
+        var client = GetSynologyDownloadStationClient(config);
+
+        // Download Station fetches URLs itself (async, queued as part of the
+        // task) rather than blocking the create call the way Transmission's
+        // embedded libcurl does, so there's no need to pre-fetch a regular
+        // .torrent/.nzb URL the way Transmission/Aria2 do. The one narrow
+        // exception handled explicitly: a magnet-only indexer proxied
+        // through Prowlarr that redirects an https:// URL to a magnet: URI -
+        // DS's fetch behavior for that cross-scheme redirect isn't something
+        // this codebase has verified, so a literal magnet: string (the
+        // common case) still goes straight through, unresolved HTTP links
+        // that happen to redirect to a magnet are a known, narrow gap.
+        return await client.AddTaskAsync(config, url, category);
+    }
+
+    private async Task<DownloadClientStatus?> GetSynologyDownloadStationStatusAsync(DownloadClient config, string downloadId, string? expectedCategory)
+    {
+        var client = GetSynologyDownloadStationClient(config);
+        return await client.GetTaskStatusAsync(config, downloadId, expectedCategory);
+    }
+
+    private async Task<bool> RemoveFromSynologyDownloadStationAsync(DownloadClient config, string downloadId, bool deleteFiles)
+    {
+        var client = GetSynologyDownloadStationClient(config);
+        return await client.DeleteTaskAsync(config, downloadId, deleteFiles);
+    }
+
+    private async Task<bool> PauseSynologyDownloadStationAsync(DownloadClient config, string downloadId)
+    {
+        var client = GetSynologyDownloadStationClient(config);
+        return await client.PauseTaskAsync(config, downloadId);
+    }
+
+    private async Task<bool> ResumeSynologyDownloadStationAsync(DownloadClient config, string downloadId)
+    {
+        var client = GetSynologyDownloadStationClient(config);
+        return await client.ResumeTaskAsync(config, downloadId);
+    }
+
+    private async Task<List<ExternalDownloadInfo>> GetAllSynologyDownloadStationDownloadsAsync(DownloadClient config, string category, string protocol)
+    {
+        var client = GetSynologyDownloadStationClient(config);
+        return await client.GetAllDownloadsByCategoryAsync(config, category, protocol);
+    }
+
     // Decypharr client methods
 
     private async Task<bool> TestDecypharrAsync(DownloadClient config)
@@ -1273,10 +1482,10 @@ public class DownloadClientService : IDownloadClientService
         return await client.AddTorrentWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes);
     }
 
-    private async Task<DownloadClientStatus?> GetDecypharrStatusAsync(DownloadClient config, string downloadId)
+    private async Task<DownloadClientStatus?> GetDecypharrStatusAsync(DownloadClient config, string downloadId, string? expectedCategory)
     {
         var client = GetDecypharrClient(config);
-        return await client.GetTorrentStatusAsync(config, downloadId);
+        return await client.GetTorrentStatusAsync(config, downloadId, expectedCategory);
     }
 
     private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindDecypharrDownloadByTitleAsync(

@@ -17,10 +17,13 @@ public static class FollowedTeamsAndTeamsEndpoints
 // API: Get supported sports for team following
 app.MapGet("/api/followed-teams/supported-sports", () =>
 {
+    var sports = TeamLeagueDiscoveryService.GetSupportedSportsList();
     return Results.Ok(new
     {
-        sports = TeamLeagueDiscoveryService.GetSupportedSportsList(),
-        message = "Follow Team is currently available for Soccer, Basketball, and Ice Hockey. Want support for other sports? Open a GitHub issue or ask on Discord."
+        sports,
+        // Built from the same list the gate enforces so this message can
+        // never drift out of sync with what actually works.
+        message = $"Follow Team is currently available for {string.Join(", ", sports)}. Want support for other sports? Open a GitHub issue or ask on Discord."
     });
 });
 
@@ -496,7 +499,7 @@ app.MapGet("/api/teams/search/{query}", async (string query, SportarrApiClient s
     return Results.Ok(results);
 });
 
-// API: Get all teams for supported sports (Soccer, Basketball, Ice Hockey)
+// API: Get all teams for supported sports (see TeamLeagueDiscoveryService.SupportedSports)
 // Used by the Add Team page to show all teams that can be followed
 app.MapGet("/api/teams/all", async (string? sports, bool? refresh, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
@@ -505,7 +508,7 @@ app.MapGet("/api/teams/all", async (string? sports, bool? refresh, SportarrApiCl
         ? sports.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
         : null;
 
-    var sportsForLog = sportsList != null ? string.Join(", ", sportsList) : "all supported (Soccer, Basketball, Ice Hockey)";
+    var sportsForLog = sportsList != null ? string.Join(", ", sportsList) : "all supported sports";
     logger.LogInformation("[TEAMS ALL] Fetching all teams for sports: {Sports}{Refresh}", sportsForLog, refresh == true ? " (force refresh)" : "");
 
     var results = await sportsDbClient.GetAllTeamsForSportsAsync(sportsList, forceRefresh: refresh == true);

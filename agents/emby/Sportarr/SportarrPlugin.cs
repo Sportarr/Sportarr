@@ -40,7 +40,7 @@ namespace Sportarr
         /// <summary>
         /// Gets the plugin GUID - same as Jellyfin for consistency.
         /// </summary>
-        private readonly Guid id = new Guid("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+        private readonly Guid id = new Guid("c454724d-c383-42f0-8ccd-6e1b93338d82");
 
         /// <summary>
         /// Gets the unique id.

@@ -16,7 +16,10 @@ public enum DownloadClientType
     DecypharrUsenet,
     NZBdav,
     TorrentBlackhole,
-    UsenetBlackhole
+    UsenetBlackhole,
+    Aria2,
+    SynologyDownloadStation,
+    SynologyDownloadStationUsenet
 }
 
 /// <summary>
@@ -168,6 +171,19 @@ public class DownloadQueueItem
     public string? Indexer { get; set; } // Which indexer this came from
     public int? IndexerId { get; set; } // Indexer ID for seed config lookup
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
+
+    /// <summary>
+    /// The download-client category/label this item was actually grabbed under -
+    /// the resolved value (per-root-folder DefaultDownloadClientCategory override,
+    /// or the client's own default) at the moment AddDownloadAsync was called, not
+    /// the client's current configured Category. Download-client polling compares
+    /// the live item's category against this instead of the client's live Category
+    /// setting, so a legitimate download grabbed under a root-folder override isn't
+    /// mistaken for another app's download just because it differs from the
+    /// client's default. Null for rows created before this field existed; status
+    /// polling falls back to the client's current Category for those.
+    /// </summary>
+    public string? GrabCategory { get; set; }
 
     /// <summary>
     /// Counter for tracking consecutive "not found" polls from download client.

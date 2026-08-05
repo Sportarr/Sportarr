@@ -13,16 +13,31 @@ public class TeamLeagueDiscoveryService
     private readonly ILogger<TeamLeagueDiscoveryService> _logger;
 
     /// <summary>
-    /// Sports that support team-based cross-league monitoring.
-    /// These are sports where teams compete across multiple leagues/competitions.
+    /// Sports that support team-based cross-league monitoring. Verified
+    /// against the metadata catalog (2026-07-31): every sport here has real
+    /// home/away team rows on its events (not just a roster association),
+    /// which team-based filtering and league discovery both depend on.
+    /// Deliberately excludes mixed-format buckets (Watersports, Wintersports,
+    /// Esports) where "team" events are inconsistent within the category,
+    /// and anything already covered by LeagueSportRules.IsTeamlessSport.
     /// </summary>
     public static readonly HashSet<string> SupportedSports = new(StringComparer.OrdinalIgnoreCase)
     {
         "Soccer",
-        "Football",           // Alternative name for Soccer in some regions
+        "Football",           // American football in the catalog taxonomy (soccer is always "Soccer")
         "Basketball",
         "Ice Hockey",
-        "Hockey"              // Alternative name for Ice Hockey
+        "Hockey",              // Alternative name for Ice Hockey
+        "Baseball",
+        "Rugby",
+        "Volleyball",
+        "Handball",
+        "Cricket",
+        "Australian Football",
+        "Netball",
+        "Field Hockey",
+        "Lacrosse",
+        "Gaelic"
     };
 
     /// <summary>
@@ -31,15 +46,25 @@ public class TeamLeagueDiscoveryService
     public static bool IsSportSupported(string? sport)
     {
         if (string.IsNullOrEmpty(sport)) return false;
-        return SupportedSports.Any(s => sport.Contains(s, StringComparison.OrdinalIgnoreCase));
+        // Exact membership, not substring: with "Football" in the set a
+        // Contains check would also pass "Australian Football", and "Hockey"
+        // would pass "Field Hockey" - both unsupported team-mode sports.
+        return SupportedSports.Contains(sport.Trim());
     }
 
     /// <summary>
-    /// Get a user-friendly list of supported sports for display.
+    /// Get a user-friendly list of supported sports for display. Skips the
+    /// alternate-name duplicate ("Hockey") so the UI shows one entry per
+    /// sport rather than every internal alias.
     /// </summary>
     public static List<string> GetSupportedSportsList()
     {
-        return new List<string> { "Soccer", "Basketball", "Ice Hockey" };
+        return new List<string>
+        {
+            "Soccer", "Basketball", "Ice Hockey", "Football", "Baseball",
+            "Rugby", "Volleyball", "Handball", "Cricket", "Australian Football",
+            "Netball", "Field Hockey", "Lacrosse", "Gaelic"
+        };
     }
 
     public TeamLeagueDiscoveryService(SportarrApiClient sportsDbClient, ILogger<TeamLeagueDiscoveryService> logger)

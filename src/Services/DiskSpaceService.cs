@@ -399,18 +399,32 @@ public class DiskSpaceService
         return result.ToString();
     }
 
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool GetDiskFreeSpaceEx(
+        string lpDirectoryName,
+        out ulong lpFreeBytesAvailable,
+        out ulong lpTotalNumberOfBytes,
+        out ulong lpTotalNumberOfFreeBytes);
+
     /// <summary>
-    /// Get disk space on Windows using DriveInfo
+    /// Get disk space on Windows via the Win32 GetDiskFreeSpaceEx API. Unlike
+    /// System.IO.DriveInfo, this works for UNC paths (\\server\share) as well
+    /// as drive-letter roots - DriveInfo throws ArgumentException for a UNC
+    /// root, which previously made every network-share root folder report
+    /// 0 GB free/total instead of surfacing an error. RootFolderValidator
+    /// requires Windows users to add network shares as UNC paths rather than
+    /// a mapped drive letter, so this is the common case for them, not an
+    /// edge case.
     /// </summary>
-    private DriveInfo GetWindowsDiskSpace(string path)
+    private (long AvailableFreeSpace, long TotalSize) GetWindowsDiskSpace(string path)
     {
-        var root = Path.GetPathRoot(path);
-        if (string.IsNullOrEmpty(root))
+        if (!GetDiskFreeSpaceEx(path, out var freeBytesAvailable, out var totalBytes, out _))
         {
-            throw new ArgumentException("Cannot determine root for path", nameof(path));
+            var error = Marshal.GetLastWin32Error();
+            throw new IOException($"GetDiskFreeSpaceEx failed for '{path}' with Win32 error {error}");
         }
 
-        return new DriveInfo(root);
+        return ((long)freeBytesAvailable, (long)totalBytes);
     }
 
     /// <summary>

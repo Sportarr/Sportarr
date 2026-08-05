@@ -35,6 +35,17 @@ public static class SystemAgentEndpoints
                     type = "emby",
                     available = true,
                     downloadUrl = "/api/system/agents/emby/download"
+                },
+                new
+                {
+                    name = "Kodi",
+                    type = "kodi",
+                    available = true,
+                    // Not required - Kodi reads Sportarr's local NFO writer output
+                    // natively (Settings > Local Metadata). This is the optional
+                    // dynamic-lookup scraper addon instead.
+                    downloadUrl = "/api/system/agents/kodi/download",
+                    repositoryUrl = "https://raw.githubusercontent.com/Sportarr/Sportarr/main/agents/kodi/repo/addons.xml"
                 }
             };
 
@@ -77,6 +88,19 @@ public static class SystemAgentEndpoints
             }
 
             logger.LogWarning("Could not find Emby plugin asset in GitHub releases, redirecting to releases page");
+            context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
+        });
+
+        app.MapGet("/api/system/agents/kodi/download", async (HttpContext context, IHttpClientFactory httpClientFactory, ILogger<Program> logger) =>
+        {
+            var downloadUrl = await Sportarr.Api.Helpers.PluginDownloadHelper.GetPluginDownloadUrlAsync("kodi", httpClientFactory.CreateClient("GitHub"), logger);
+            if (downloadUrl != null)
+            {
+                context.Response.Redirect(downloadUrl, permanent: false);
+                return;
+            }
+
+            logger.LogWarning("Could not find Kodi addon asset in GitHub releases, redirecting to releases page");
             context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
         });
 

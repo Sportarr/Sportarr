@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<settings>
+  <section id="metadata.tvshows.sportarr">
+    <category id="general" label="30000">
+      <group id="1">
+        <setting id="ServerUrl" type="string" label="30001" help="30002">
+          <level>0</level>
+          <default>https://sportarr.net</default>
+          <control type="edit" format="string"/>
+        </setting>
+        <setting id="CurrentYear" type="integer" label="30003" help="30004">
+          <level>0</level>
+          <default>2026</default>
+          <constraints>
+            <minimum>2000</minimum>
+            <maximum>2100</maximum>
+          </constraints>
+          <control type="spinner" format="integer"/>
+        </setting>
+      </group>
+    </category>
+  </section>
+</settings>

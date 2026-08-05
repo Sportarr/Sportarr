@@ -420,6 +420,71 @@ public static class SonarrEpisodeFileEndpoints
             });
         });
 
+        // PUT /api/v3/episode/monitor - Bulk (un)monitor episodes. Request
+        // managers flip monitoring per episode batch through this instead of
+        // one PUT per episode.
+        app.MapPut("/api/v3/episode/monitor", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
+            logger.LogDebug("[V3-COMPAT] PUT /api/v3/episode/monitor - {Json}", json);
+
+            List<int> episodeIds = new();
+            var monitored = true;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("episodeIds", out var idsElement) && idsElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var idElement in idsElement.EnumerateArray())
+                    {
+                        if (idElement.ValueKind == JsonValueKind.Number)
+                        {
+                            episodeIds.Add(idElement.GetInt32());
+                        }
+                    }
+                }
+                if (root.TryGetProperty("monitored", out var monitoredElement) &&
+                    (monitoredElement.ValueKind == JsonValueKind.True || monitoredElement.ValueKind == JsonValueKind.False))
+                {
+                    monitored = monitoredElement.GetBoolean();
+                }
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON body" });
+            }
+
+            if (episodeIds.Count == 0)
+            {
+                return Results.BadRequest(new { error = "episodeIds is required" });
+            }
+
+            var events = await db.Events
+                .Where(e => episodeIds.Contains(e.Id))
+                .ToListAsync();
+
+            foreach (var eventItem in events)
+            {
+                eventItem.Monitored = monitored;
+            }
+            await db.SaveChangesAsync();
+
+            logger.LogInformation("[V3-COMPAT] Set monitored={Monitored} on {Count} of {Requested} episodes",
+                monitored, events.Count, episodeIds.Count);
+
+            return Results.Ok(events.Select(e => new
+            {
+                id = e.Id,
+                seriesId = e.LeagueId ?? 0,
+                seasonNumber = e.SeasonNumber ?? DateTime.Now.Year,
+                episodeNumber = e.EpisodeNumber ?? 0,
+                title = e.Title,
+                monitored = e.Monitored
+            }));
+        });
+
         return app;
     }
 }

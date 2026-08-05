@@ -247,6 +247,7 @@ const LibraryImportPage: React.FC = () => {
 
   // Import state
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   // File details modal state
@@ -494,13 +495,50 @@ const LibraryImportPage: React.FC = () => {
         requests.forEach(r => { r.importMode = importMode; });
       }
 
+      // The import runs as a background task: file transfers can take
+      // minutes on big files, and holding the HTTP request open that long
+      // got killed by reverse proxies (504) while the import kept running
+      // invisibly. Queue it, then poll the task until it finishes.
       const response = await apiPost('/api/library/import', requests);
 
       if (!response.ok) {
-        throw new Error('Failed to import files');
+        throw new Error('Failed to queue import');
       }
 
-      const result: ImportResult = await response.json();
+      const { taskId } = await response.json();
+      if (!taskId) {
+        throw new Error('Import task was not queued');
+      }
+
+      let result: ImportResult | null = null;
+      // No fixed attempt cap: huge batches legitimately take a long time.
+      // The task reaching a terminal state is the exit condition; a fetch
+      // hiccup just retries on the next tick.
+      for (;;) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        let task: { status: string; progress?: number; message?: string; result?: string } | null = null;
+        try {
+          const taskResponse = await apiGet(`/api/task/${taskId}`);
+          if (!taskResponse.ok) continue;
+          task = await taskResponse.json();
+        } catch {
+          continue;
+        }
+        if (!task) continue;
+
+        if (task.status === 'Completed') {
+          result = task.result ? JSON.parse(task.result) : null;
+          break;
+        }
+        if (task.status === 'Failed' || task.status === 'Cancelled') {
+          throw new Error(task.message || 'Import failed, check the logs');
+        }
+        setImportProgress(task.message || `Importing... ${task.progress ?? 0}%`);
+      }
+
+      if (!result) {
+        throw new Error('Import finished but returned no result');
+      }
       setImportResult(result);
       setCurrentStep('complete');
       // Imported files change event Downloaded states across the app, but
@@ -1036,7 +1074,8 @@ const LibraryImportPage: React.FC = () => {
         <div className="bg-gray-800 rounded-lg p-12 border border-red-900/30 text-center">
           <ArrowPathIcon className="w-16 h-16 mx-auto mb-4 text-green-400 animate-spin" />
           <h2 className="text-xl font-semibold text-white mb-2">Importing...</h2>
-          <p className="text-gray-400">Moving files to library and updating database</p>
+          <p className="text-gray-400">{importProgress || 'Moving files to library and updating database'}</p>
+          <p className="text-gray-500 text-sm mt-2">Large files can take several minutes. It is safe to leave this page; the import continues in the background and also appears under System &gt; Tasks.</p>
         </div>
       )}
 

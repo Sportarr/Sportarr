@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -45,13 +46,34 @@ public static class SonarrQueueEndpoints
                 .Where(dq => dq.Status != DownloadStatus.Imported)
                 .OrderByDescending(dq => dq.Added);
 
-            var totalRecords = await query.CountAsync();
+            // Sonarr also lists in-category downloads it never grabbed itself.
+            // Sportarr tracks those as PendingImports, so unresolved ones join
+            // the queue view as completed/importPending records - that's the
+            // state archive extractors watch for. Ids are offset so they never
+            // collide with DownloadQueue rows.
+            var pendingImports = await db.PendingImports
+                .Include(pi => pi.DownloadClient)
+                .Include(pi => pi.SuggestedEvent)
+                .Where(pi => pi.Status == PendingImportStatus.Pending || pi.Status == PendingImportStatus.Importing)
+                .OrderByDescending(pi => pi.Detected)
+                .ToListAsync();
+
+            var totalRecords = await query.CountAsync() + pendingImports.Count;
             var items = await query
                 .Skip((pageNumber - 1) * effectivePageSize)
                 .Take(effectivePageSize)
                 .ToListAsync();
 
             var records = items.Select(ToQueueRecord).ToList();
+            if (records.Count < effectivePageSize)
+            {
+                var trackedTotal = totalRecords - pendingImports.Count;
+                var pendingSkip = Math.Max(0, (pageNumber - 1) * effectivePageSize - trackedTotal);
+                records.AddRange(pendingImports
+                    .Skip(pendingSkip)
+                    .Take(effectivePageSize - records.Count)
+                    .Select(ToPendingImportRecord));
+            }
 
             return Results.Ok(new
             {
@@ -64,12 +86,160 @@ public static class SonarrQueueEndpoints
             });
         });
 
+        // GET /api/v3/queue/status - Aggregate queue counters (Sonarr v3
+        // shape). Dashboards and exporters poll this instead of paging the
+        // whole queue. Errors/warnings mirror how the queue records classify
+        // Failed status.
+        app.MapGet("/api/v3/queue/status", async (SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/queue/status");
+
+            var pending = await db.DownloadQueue
+                .Where(dq => dq.Status != DownloadStatus.Imported)
+                .Select(dq => dq.Status)
+                .ToListAsync();
+            var pendingImportCount = await db.PendingImports
+                .CountAsync(pi => pi.Status == PendingImportStatus.Pending || pi.Status == PendingImportStatus.Importing);
+
+            var errorCount = pending.Count(s => s == DownloadStatus.Failed);
+            var total = pending.Count + pendingImportCount;
+
+            return Results.Ok(new
+            {
+                totalCount = total,
+                count = total,
+                unknownCount = 0,
+                errors = errorCount > 0,
+                warnings = false,
+                unknownErrors = false,
+                unknownWarnings = false
+            });
+        });
+
+        // DELETE /api/v3/queue/{id} - Sonarr v3 queue removal. Queue-cleanup
+        // tools in the Starr family (stalled-download removers especially)
+        // delete items through this endpoint; it maps Sonarr's parameter
+        // vocabulary onto the same QueueRemovalService the native endpoint
+        // uses. Sonarr defaults mirrored: removeFromClient=true,
+        // blocklist=false, skipRedownload=false, changeCategory=false.
+        app.MapDelete("/api/v3/queue/{id:int}", async (
+            int id,
+            QueueRemovalService queueRemovalService,
+            SportarrDbContext db,
+            DownloadClientService downloadClientService,
+            ILogger<Program> logger,
+            bool removeFromClient = true,
+            bool blocklist = false,
+            bool skipRedownload = false,
+            bool changeCategory = false) =>
+        {
+            logger.LogDebug("[V3-COMPAT] DELETE /api/v3/queue/{Id} removeFromClient={Rfc} blocklist={Bl} skipRedownload={Skip} changeCategory={Cc}",
+                id, removeFromClient, blocklist, skipRedownload, changeCategory);
+
+            if (id >= PendingImportIdOffset)
+            {
+                return await RemovePendingImportAsync(id - PendingImportIdOffset, removeFromClient, db, downloadClientService, logger);
+            }
+
+            var result = await queueRemovalService.RemoveAsync(
+                id,
+                MapRemovalMethod(removeFromClient, changeCategory),
+                MapBlocklistAction(blocklist, skipRedownload));
+
+            return result.StatusCode switch
+            {
+                404 => Results.NotFound(),
+                400 => Results.BadRequest(result.ErrorMessage),
+                _ => Results.NoContent(),
+            };
+        });
+
+        // DELETE /api/v3/queue/bulk - Sonarr v3 bulk removal (body: {"ids": [...]})
+        app.MapDelete("/api/v3/queue/bulk", async (
+            HttpContext context,
+            QueueRemovalService queueRemovalService,
+            SportarrDbContext db,
+            DownloadClientService downloadClientService,
+            ILogger<Program> logger,
+            bool removeFromClient = true,
+            bool blocklist = false,
+            bool skipRedownload = false,
+            bool changeCategory = false) =>
+        {
+            var body = await System.Text.Json.JsonSerializer.DeserializeAsync<BulkQueueDeleteRequest>(
+                context.Request.Body,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (body?.Ids == null || body.Ids.Count == 0)
+            {
+                return Results.BadRequest("ids is required");
+            }
+
+            logger.LogDebug("[V3-COMPAT] DELETE /api/v3/queue/bulk - {Count} ids", body.Ids.Count);
+
+            var removalMethod = MapRemovalMethod(removeFromClient, changeCategory);
+            var blocklistAction = MapBlocklistAction(blocklist, skipRedownload);
+
+            foreach (var id in body.Ids)
+            {
+                if (id >= PendingImportIdOffset)
+                {
+                    await RemovePendingImportAsync(id - PendingImportIdOffset, removeFromClient, db, downloadClientService, logger);
+                    continue;
+                }
+
+                // Missing ids are skipped rather than failing the batch - Sonarr's
+                // bulk delete tolerates queue items that vanished between the
+                // caller's poll and the delete.
+                var result = await queueRemovalService.RemoveAsync(id, removalMethod, blocklistAction);
+                if (!result.Success && result.StatusCode != 404)
+                {
+                    return Results.BadRequest(result.ErrorMessage);
+                }
+            }
+
+            return Results.NoContent();
+        });
+
         return app;
     }
+
+    private sealed class BulkQueueDeleteRequest
+    {
+        public List<int> Ids { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Sonarr expresses removal as flags; the native queue removal speaks in
+    /// methods. changeCategory wins over removeFromClient when both are sent,
+    /// matching Sonarr's own precedence.
+    /// </summary>
+    private static string MapRemovalMethod(bool removeFromClient, bool changeCategory) =>
+        changeCategory ? "changeCategory"
+        : removeFromClient ? "removeFromClient"
+        : "ignoreDownload";
+
+    private static string MapBlocklistAction(bool blocklist, bool skipRedownload) =>
+        !blocklist ? "none"
+        : skipRedownload ? "blocklistOnly"
+        : "blocklistAndSearch";
 
     private static object ToQueueRecord(DownloadQueueItem item)
     {
         var (status, trackedDownloadState, trackedDownloadStatus) = MapStatus(item.Status);
+
+        // Sonarr's stalled queue items carry this exact errorMessage, and
+        // stalled-download removers match on the literal string. Sportarr's
+        // own stall messages vary (peer-wait vs no-progress timeout), so the
+        // wire record translates any Warning-state stall onto Sonarr's
+        // vocabulary while the native API keeps the more specific text.
+        var errorMessage = item.ErrorMessage;
+        if (item.Status == DownloadStatus.Warning &&
+            errorMessage != null &&
+            errorMessage.Contains("stalled", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "The download is stalled with no connections";
+        }
 
         return new
         {
@@ -86,12 +256,104 @@ public static class SonarrQueueEndpoints
             statusMessages = item.StatusMessages.Count > 0
                 ? new[] { new { title = item.Title, messages = item.StatusMessages } }
                 : Array.Empty<object>(),
-            errorMessage = item.ErrorMessage,
+            errorMessage,
             downloadId = item.DownloadId,
             protocol = item.Protocol?.ToLowerInvariant(),
             downloadClient = item.DownloadClient?.Name,
             indexer = item.Indexer,
             added = item.Added.ToString("o"),
+            outputPath = (string?)null,
+        };
+    }
+
+    /// <summary>
+    /// Queue record ids at or above this value are PendingImport rows (external
+    /// in-category downloads) rather than DownloadQueue rows.
+    /// </summary>
+    private const int PendingImportIdOffset = 2_000_000;
+
+    /// <summary>
+    /// Shim-side twin of POST /api/pending-imports/{id}/remove-from-client:
+    /// optionally deletes the download from its client, then hard-deletes the
+    /// PendingImport row behind a Blocklist entry. The blocklist insert is not
+    /// optional - without it the external-download detector re-adds the item
+    /// on its next poll and a queue cleaner's delete becomes a 30-second loop.
+    /// </summary>
+    private static async Task<IResult> RemovePendingImportAsync(
+        int importId,
+        bool removeFromClient,
+        SportarrDbContext db,
+        DownloadClientService downloadClientService,
+        ILogger<Program> logger)
+    {
+        var import = await db.PendingImports
+            .Include(pi => pi.DownloadClient)
+            .FirstOrDefaultAsync(pi => pi.Id == importId);
+
+        if (import is null) return Results.NotFound();
+
+        if (removeFromClient && import.DownloadClient != null && !string.IsNullOrEmpty(import.DownloadId))
+        {
+            try
+            {
+                await downloadClientService.RemoveDownloadAsync(import.DownloadClient, import.DownloadId, deleteFiles: true);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[V3-COMPAT] Failed to remove pending import {Title} from download client, continuing with blocklist insert", import.Title);
+            }
+        }
+
+        db.Blocklist.Add(new BlocklistItem
+        {
+            Title = import.Title,
+            TorrentInfoHash = import.TorrentInfoHash,
+            Protocol = import.Protocol,
+            FilePath = import.FilePath,
+            Reason = BlocklistReason.ManualBlock,
+            Message = "Removed via Sonarr v3 queue delete",
+            BlockedAt = DateTime.UtcNow
+        });
+
+        db.PendingImports.Remove(import);
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[V3-COMPAT] Removed pending import {Title} via queue delete (removeFromClient={Rfc})",
+            import.Title, removeFromClient);
+
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Maps an unresolved PendingImport (external in-category download) onto a
+    /// Sonarr queue record. Always completed/importPending: the bytes are on
+    /// disk, Sportarr just hasn't imported them - exactly the state archive
+    /// extractors act on. The id offset keeps these clear of DownloadQueue ids.
+    /// </summary>
+    private static object ToPendingImportRecord(PendingImport import)
+    {
+        return new
+        {
+            id = import.Id + 2_000_000,
+            seriesId = import.SuggestedEvent?.LeagueId ?? 0,
+            episodeId = import.SuggestedEventId ?? 0,
+            title = import.Title,
+            size = import.Size,
+            sizeleft = 0L,
+            timeleft = (string?)null,
+            status = "completed",
+            trackedDownloadState = "importPending",
+            trackedDownloadStatus = "warning",
+            statusMessages = new[] { new { title = import.Title, messages = new List<string> { "Waiting for import" } } },
+            errorMessage = import.ErrorMessage,
+            downloadId = import.DownloadId,
+            protocol = import.Protocol?.ToLowerInvariant(),
+            downloadClient = import.DownloadClient?.Name,
+            indexer = (string?)null,
+            added = import.Detected.ToString("o"),
+            outputPath = (string?)(Directory.Exists(import.FilePath)
+                ? import.FilePath
+                : Path.GetDirectoryName(import.FilePath)),
         };
     }
 

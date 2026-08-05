@@ -92,6 +92,7 @@ public class FileImportService : IFileImportService
     private readonly NotificationService _notificationService;
     private readonly CustomFormatService _customFormatService;
     private readonly IRemotePathMappingService _pathMappingService;
+    private readonly IMetadataWriterService _metadataWriterService;
     private readonly ILogger<FileImportService> _logger;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
@@ -108,6 +109,7 @@ public class FileImportService : IFileImportService
         NotificationService notificationService,
         CustomFormatService customFormatService,
         IRemotePathMappingService pathMappingService,
+        IMetadataWriterService metadataWriterService,
         ILogger<FileImportService> logger)
     {
         _db = db;
@@ -121,6 +123,7 @@ public class FileImportService : IFileImportService
         _notificationService = notificationService;
         _customFormatService = customFormatService;
         _pathMappingService = pathMappingService;
+        _metadataWriterService = metadataWriterService;
         _logger = logger;
     }
 
@@ -754,6 +757,19 @@ public class FileImportService : IFileImportService
                 _logger.LogWarning(ex, "[Import] Failed to send notifications about import: {Error}", ex.Message);
             }
 
+            // KODI LOCAL METADATA: write the NFO/thumb sidecars for any enabled
+            // Kodi metadata provider. No-op when none are enabled. Never fails
+            // the import - a metadata-write failure is a Kodi-scraping problem,
+            // not an import problem.
+            try
+            {
+                await _metadataWriterService.WriteEventMetadataAsync(eventInfo, eventFile, eventInfo.League);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Import] Failed to write local metadata for '{Title}': {Error}", eventInfo.Title, ex.Message);
+            }
+
             // When this import replaced an older file, tell webhooks / media servers
             // the old file was removed (parity with the manual delete path). Media
             // servers already got refreshed for the new file by OnDownload above, so
@@ -954,7 +970,26 @@ public class FileImportService : IFileImportService
             // exact file, so a parent folder that happens to contain "sample"
             // must not exclude it).
             if (IsVideoFile(path) && !SampleFileFilter.IsSample(Path.GetFileName(path)))
+            {
                 files.Add(path);
+            }
+            else
+            {
+                // The recorded path is a non-video file - the typical case is a
+                // download client reporting an archive as the content path,
+                // which an extractor (Unpackerr and friends) has since unpacked
+                // NEXT TO the archive. Scan the containing job folder so the
+                // extracted video is found, matching how Sonarr's completed
+                // download handling always scans the whole job folder.
+                var parent = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+                {
+                    files.AddRange(SampleFileFilter.FilterSamples(
+                        Directory.GetFiles(parent, "*.*", SearchOption.AllDirectories)
+                            .Where(IsVideoFile),
+                        parent));
+                }
+            }
         }
         else if (Directory.Exists(path))
         {
@@ -2128,34 +2163,29 @@ public class FileImportService : IFileImportService
     /// Clean up download folder after successful import: delete the source file
     /// and its containing folder (the release-specific subfolder inside the category folder).
     /// </summary>
-    private Task CleanupDownloadAsync(string downloadPath, string importedFile)
+    private async Task CleanupDownloadAsync(string downloadPath, string importedFile)
     {
-        // IMPORTANT (data-loss prevention): this method must NEVER delete a directory.
-        //
-        // Removing a download's data is delegated entirely to the download client via
+        // Removing a download's data is delegated to the download client via
         // RemoveDownloadAsync(deleteFiles: true) (see EnhancedDownloadMonitorService), which is
         // scoped to this download's own torrent hash / nzb id and therefore only ever removes
-        // the files that one download owns. A previous implementation here resolved the
-        // download path to a directory and called Directory.Delete(..., recursive: true) on it.
-        // For a single-file torrent saved directly in a shared category/save root (e.g.
-        // /data/torrents/tv), the resolved directory WAS that shared root, so the recursive
-        // delete wiped every other download's files in it. We do not attempt to clean up
-        // folders from here anymore — the client-side removal is the authoritative cleanup.
+        // the files that one download owns. But that delegation has a gap: when the client no
+        // longer knows the download (the user removed it, or qBittorrent's share-limit action
+        // removed the torrent without deleting files), a move-mode import relocates the video
+        // and the folder is orphaned with its metadata leftovers (nfo, screens) forever.
+        //
+        // Directory deletion from here caused real data loss once - a single-file torrent's
+        // path resolved to the shared save root and a recursive delete wiped every other
+        // download in it - so the sweep below is heavily guarded (own directory only, no
+        // protected roots, nothing video remaining, metadata-sized payload). See
+        // DownloadFolderSweeper for the full guard list.
         try
         {
-            // The only safe local action: if a move-mode import left the original source file
-            // behind (e.g. an import that hardlinked rather than moved), delete that single,
-            // explicitly-named file. We never touch its parent directory.
+            // If a move-mode import left the original source file behind (e.g. an import
+            // that hardlinked rather than moved), delete that single, explicitly-named file.
             if (File.Exists(importedFile))
             {
                 File.Delete(importedFile);
                 _logger.LogDebug("[Cleanup] Deleted leftover source file: {File}", importedFile);
-            }
-            else
-            {
-                _logger.LogDebug(
-                    "[Cleanup] No leftover source file to delete; download-client removal will handle any remaining data for: {Path}",
-                    downloadPath);
             }
         }
         catch (Exception ex)
@@ -2163,7 +2193,27 @@ public class FileImportService : IFileImportService
             _logger.LogWarning(ex, "[Cleanup] Failed to delete leftover source file: {File}", importedFile);
         }
 
-        return Task.CompletedTask;
+        try
+        {
+            var rootFolders = await _db.RootFolders.Select(r => r.Path).ToListAsync();
+            var clients = await _db.DownloadClients
+                .Select(c => new { c.Directory, c.BlackholeFolder, c.WatchFolder })
+                .ToListAsync();
+
+            var protectedRoots = new List<string>(rootFolders);
+            foreach (var client in clients)
+            {
+                protectedRoots.Add(client.Directory ?? "");
+                protectedRoots.Add(client.BlackholeFolder ?? "");
+                protectedRoots.Add(client.WatchFolder ?? "");
+            }
+
+            DownloadFolderSweeper.TrySweep(downloadPath, protectedRoots, rootFolders, VideoExtensions, _logger);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Cleanup] Leftover folder sweep failed for: {Path}", downloadPath);
+        }
     }
 
     /// <summary>

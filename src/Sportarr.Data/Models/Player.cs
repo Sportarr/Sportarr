@@ -54,6 +54,21 @@ public class Player
     public Team? Team { get; set; }
 
     /// <summary>
+    /// Current team from the metadata API's roster data (tm- short id).
+    /// JSON-only: powers follow-athlete team resolution, not persisted.
+    /// </summary>
+    [JsonPropertyName("idTeam")]
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? CurrentTeamExternalId { get; set; }
+
+    /// <summary>
+    /// Display name of the current team from the metadata API.
+    /// </summary>
+    [JsonPropertyName("strTeam")]
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? CurrentTeamName { get; set; }
+
+    /// <summary>
     /// Player position (e.g., "Forward", "Quarterback", "Midfielder")
     /// For combat sports: "Fighter"
     /// </summary>

@@ -1,0 +1,26 @@
+# Kodi Media Center language file
+# Addon Name: Sportarr
+# Addon id: metadata.tvshows.sportarr
+# Addon Provider: Sportarr
+msgid ""
+msgstr ""
+
+msgctxt "#30000"
+msgid "General"
+msgstr ""
+
+msgctxt "#30001"
+msgid "Server URL"
+msgstr ""
+
+msgctxt "#30002"
+msgid "Your Sportarr instance, or sportarr.net to use the hosted metadata service. No trailing slash."
+msgstr ""
+
+msgctxt "#30003"
+msgid "Season year"
+msgstr ""
+
+msgctxt "#30004"
+msgid "Sportarr seasons are the calendar year. Set this to the current year so the episode list step looks up the right season; update it each January."
+msgstr ""

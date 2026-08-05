@@ -102,6 +102,35 @@ public class BlackholeDownloadClientTests : IDisposable
             .Should().BeNull();
     }
 
+    [Theory]
+    [InlineData(".nzb")]
+    [InlineData(".torrent")]
+    [InlineData(".magnet")]
+    public void FindWatchFolderMatch_IgnoresSportarrsOwnDropFile(string dropExtension)
+    {
+        // Same-name drop file sitting in the watch folder (e.g. the blackhole
+        // and watch folders are the same directory) must never be reported
+        // as the finished download - it's the input Sportarr wrote, not the
+        // external client's output.
+        File.WriteAllText(Path.Combine(_watchFolder, "Nagoya Basho Day 14" + dropExtension), "not a video");
+
+        BlackholeDownloadClient.FindWatchFolderMatch(_watchFolder, "Nagoya Basho Day 14")
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void FindWatchFolderMatch_PrefersRealOutputOverOwnDropFileInSameFolder()
+    {
+        var dir = Path.Combine(_watchFolder, "Nagoya Basho Day 14");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "sumo.mkv"), "video");
+        File.WriteAllText(Path.Combine(_watchFolder, "Nagoya Basho Day 14.nzb"), "not a video");
+
+        var match = BlackholeDownloadClient.FindWatchFolderMatch(_watchFolder, "Nagoya Basho Day 14");
+
+        match.Should().Be(dir);
+    }
+
     [Fact]
     public void IsStillBeingWritten_TrueForRecentWrites_FalseAfterQuiescence()
     {

@@ -161,12 +161,12 @@ public class IndexerSearchService : IIndexerSearchService
             return new List<ReleaseSearchResult>();
         }
 
-        // Determine which protocols are supported based on available clients
-        var torrentClients = new[] { DownloadClientType.QBittorrent, DownloadClientType.Transmission,
-                                     DownloadClientType.Deluge, DownloadClientType.RTorrent,
-                                     DownloadClientType.UTorrent, DownloadClientType.Decypharr };
-        var usenetClients = new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet,
-                                    DownloadClientType.DecypharrUsenet, DownloadClientType.NZBdav };
+        // Determine which protocols are supported based on available clients.
+        // Use the canonical protocol map - a local copy of these lists went
+        // stale and silently dropped the blackhole types, so blackhole-only
+        // setups were told no client supports their indexer's protocol.
+        var torrentClients = DownloadClientService.GetClientTypesForProtocol("torrent");
+        var usenetClients = DownloadClientService.GetClientTypesForProtocol("usenet");
 
         var hasTorrentClient = downloadClients.Any(dc => torrentClients.Contains(dc));
         var hasUsenetClient = downloadClients.Any(dc => usenetClients.Contains(dc));

@@ -59,9 +59,9 @@ interface BackupSettings {
 
 interface UpdateSettings {
   branch: string;
-  updateAutomatically: boolean;
-  updateMechanism: string;
-  updateScriptPath: string;
+  automatic: boolean;
+  mechanism: string;
+  scriptPath: string;
 }
 
 export default function GeneralSettings({ showAdvanced = false }: GeneralSettingsProps) {
@@ -132,9 +132,9 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
   // Update Settings
   const [updateSettings, setUpdateSettings] = useState<UpdateSettings>({
     branch: 'main',
-    updateAutomatically: false,
-    updateMechanism: 'docker',
-    updateScriptPath: '',
+    automatic: false,
+    mechanism: 'docker',
+    scriptPath: '',
   });
 
   // Load settings from API on mount
@@ -949,9 +949,10 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
 
         <p className="text-gray-400 text-sm mb-4">
           Download metadata agents for your media server. These agents fetch sports metadata (posters, banners, descriptions) from sportarr.net.
+          Kodi is the exception - it reads files Sportarr writes directly (see Settings → Local Metadata), no agent required unless you want dynamic lookups instead.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {/* Plex - New Custom Provider */}
           <div className="p-4 bg-black/30 rounded-lg border border-gray-800 flex flex-col">
             <div className="flex items-center justify-between mb-2">
@@ -1091,6 +1092,59 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
               Download Emby Plugin
             </a>
           </div>
+
+          {/* Kodi Addon */}
+          <div className="p-4 bg-black/30 rounded-lg border border-gray-800 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-white font-medium">Kodi</span>
+            </div>
+            <p className="text-gray-400 text-xs mb-2">
+              <strong className="text-gray-300">Optional</strong> - Kodi reads local .nfo files natively, see Local Metadata below
+            </p>
+            <div className="flex items-center gap-2 mb-3">
+              <code className="flex-1 text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded overflow-hidden text-ellipsis whitespace-nowrap" title="https://raw.githubusercontent.com/Sportarr/Sportarr/main/agents/kodi/repo/">
+                https://raw.githubusercontent.com/Sportarr/Sportarr/main/agents/kodi/repo/
+              </code>
+              <button
+                type="button"
+                onClick={async () => {
+                  const url = 'https://raw.githubusercontent.com/Sportarr/Sportarr/main/agents/kodi/repo/';
+                  try {
+                    await navigator.clipboard.writeText(url);
+                    toast.success('Repository URL copied to clipboard');
+                  } catch {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = url;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    toast.success('Repository URL copied to clipboard');
+                  }
+                }}
+                className="p-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors flex-shrink-0"
+                title="Copy URL"
+              >
+                <ClipboardDocumentIcon className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="text-gray-400 text-xs mb-3 space-y-1 flex-1">
+              <p><strong className="text-gray-300">Setup:</strong></p>
+              <p>1. File manager → Add source → paste URL above</p>
+              <p>2. Install from zip → repository.sportarr</p>
+              <p>3. Install from repository → Sportarr → the scraper addon</p>
+              <p>4. Addon settings: set Server URL and Season year</p>
+            </div>
+            <a
+              href="https://github.com/Sportarr/Sportarr/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors w-fit mt-auto"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+              Download Kodi Addon
+            </a>
+          </div>
         </div>
 
         <p className="text-gray-500 text-xs mt-4">
@@ -1124,8 +1178,8 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={updateSettings.updateAutomatically}
-              onChange={(e) => setUpdateSettings(prev => ({ ...prev, updateAutomatically: e.target.checked }))}
+              checked={updateSettings.automatic}
+              onChange={(e) => setUpdateSettings(prev => ({ ...prev, automatic: e.target.checked }))}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -1139,25 +1193,25 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           <div>
             <label className="block text-white font-medium mb-2">Mechanism</label>
             <select
-              value={updateSettings.updateMechanism}
-              onChange={(e) => setUpdateSettings(prev => ({ ...prev, updateMechanism: e.target.value }))}
+              value={updateSettings.mechanism}
+              onChange={(e) => setUpdateSettings(prev => ({ ...prev, mechanism: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
-              <option value="BuiltIn">Built-in</option>
-              <option value="Script">Script</option>
-              <option value="Docker">Docker</option>
-              <option value="Apt">Apt</option>
-              <option value="External">External</option>
+              <option value="builtin">Built-in</option>
+              <option value="script">Script</option>
+              <option value="docker">Docker</option>
+              <option value="apt">Apt</option>
+              <option value="external">External</option>
             </select>
           </div>
 
-          {updateSettings.updateMechanism === 'Script' && (
+          {updateSettings.mechanism === 'script' && (
             <div>
               <label className="block text-white font-medium mb-2">Script Path</label>
               <input
                 type="text"
-                value={updateSettings.updateScriptPath}
-                onChange={(e) => setUpdateSettings(prev => ({ ...prev, updateScriptPath: e.target.value }))}
+                value={updateSettings.scriptPath}
+                onChange={(e) => setUpdateSettings(prev => ({ ...prev, scriptPath: e.target.value }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 placeholder="/path/to/update/script.sh"
               />

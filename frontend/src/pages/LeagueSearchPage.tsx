@@ -202,6 +202,7 @@ export default function LeagueSearchPage() {
       retentionDays,
       allowHighlights,
       sessionTypeQualityProfiles,
+      enableDvr,
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -221,6 +222,7 @@ export default function LeagueSearchPage() {
       retentionDays?: number;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
+      enableDvr?: boolean;
     }) => {
       // Teamless sports (motorsport, golf, darts, climbing, gambling, individual
       // tennis, badminton, table tennis, snooker) and fighting leagues that
@@ -253,6 +255,7 @@ export default function LeagueSearchPage() {
         monitorPreseason: monitorPreseason ?? false,
         allowHighlights: allowHighlights ?? false,
         retentionDays: retentionDays ?? 0,
+        enableDvr: enableDvr ?? true,
         logoUrl: league.strBadge || league.strLogo,
         bannerUrl: league.strBanner,
         posterUrl: league.strPoster,
@@ -512,6 +515,7 @@ export default function LeagueSearchPage() {
     retentionDays: number,
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
+    enableDvr: boolean,
   ) => {
     const modalData = addModalDataRef.current;
     if (modalData?.editMode && modalData.leagueId) {
@@ -556,7 +560,8 @@ export default function LeagueSearchPage() {
         monitorPreseason,
         retentionDays,
         allowHighlights,
-        sessionTypeQualityProfiles
+        sessionTypeQualityProfiles,
+        enableDvr
       });
     }
   };

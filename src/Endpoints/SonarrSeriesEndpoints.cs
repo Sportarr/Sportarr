@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services;
 using System.Text.Json;
 
 namespace Sportarr.Api.Endpoints;
@@ -57,7 +58,10 @@ public static class SonarrSeriesEndpoints
                 {
                     LeagueId = g.Key.LeagueId!.Value,
                     SeasonNumber = g.Key.SeasonNumber!.Value,
-                    Monitored = g.Any(e => e.Monitored)
+                    Monitored = g.Any(e => e.Monitored),
+                    EventCount = g.Count(),
+                    FileCount = g.Sum(e => e.HasFile ? 1 : 0),
+                    SizeOnDisk = g.Sum(e => e.FileSize ?? 0L)
                 })
                 .ToListAsync();
             var seasonsByLeague = seasonRows
@@ -65,7 +69,21 @@ public static class SonarrSeriesEndpoints
                 .ToDictionary(
                     g => g.Key,
                     g => g.OrderBy(s => s.SeasonNumber)
-                          .Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored })
+                          .Select(s => (object)new
+                          {
+                              seasonNumber = s.SeasonNumber,
+                              monitored = s.Monitored,
+                              statistics = new
+                              {
+                                  episodeCount = s.EventCount,
+                                  totalEpisodeCount = s.EventCount,
+                                  episodeFileCount = s.FileCount,
+                                  sizeOnDisk = s.SizeOnDisk,
+                                  percentOfEpisodes = s.EventCount > 0
+                                      ? Math.Round(100.0 * s.FileCount / s.EventCount, 1)
+                                      : 0.0
+                              }
+                          })
                           .ToArray());
 
             var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
@@ -96,9 +114,25 @@ public static class SonarrSeriesEndpoints
                     images = images.ToArray(),
                     seasons = seasonsByLeague.TryGetValue(league.Id, out var leagueSeasons)
                         ? leagueSeasons
-                        : new object[] { new { seasonNumber = DateTime.Now.Year, monitored = league.Monitored } },
+                        : new object[]
+                        {
+                            new
+                            {
+                                seasonNumber = DateTime.Now.Year,
+                                monitored = league.Monitored,
+                                statistics = new
+                                {
+                                    episodeCount = 0,
+                                    totalEpisodeCount = 0,
+                                    episodeFileCount = 0,
+                                    sizeOnDisk = 0L,
+                                    percentOfEpisodes = 0.0
+                                }
+                            }
+                        },
                     year = DateTime.Now.Year,
                     path = leaguePath,
+                    rootFolderPath = rootPath,
                     qualityProfileId = league.QualityProfileId ?? 1,
                     languageProfileId = 1,
                     seasonFolder = true,
@@ -120,9 +154,14 @@ public static class SonarrSeriesEndpoints
                     ratings = new { votes = 0, value = 0.0 },
                     statistics = new
                     {
+                        seasonCount = seasonsByLeague.TryGetValue(league.Id, out var statSeasons) ? statSeasons.Length : 1,
                         episodeCount = stat?.EventCount ?? 0,
+                        totalEpisodeCount = stat?.EventCount ?? 0,
                         episodeFileCount = stat?.FileCount ?? 0,
-                        sizeOnDisk = stat?.SizeOnDisk ?? 0L
+                        sizeOnDisk = stat?.SizeOnDisk ?? 0L,
+                        percentOfEpisodes = (stat?.EventCount ?? 0) > 0
+                            ? Math.Round(100.0 * (stat?.FileCount ?? 0) / (stat?.EventCount ?? 1), 1)
+                            : 0.0
                     }
                 };
             }).ToList();
@@ -159,7 +198,10 @@ public static class SonarrSeriesEndpoints
                 .Select(g => new
                 {
                     SeasonNumber = g.Key!.Value,
-                    Monitored = g.Any(e => e.Monitored)
+                    Monitored = g.Any(e => e.Monitored),
+                    EventCount = g.Count(),
+                    FileCount = g.Sum(e => e.HasFile ? 1 : 0),
+                    SizeOnDisk = g.Sum(e => e.FileSize ?? 0L)
                 })
                 .OrderBy(s => s.SeasonNumber)
                 .ToListAsync();
@@ -186,10 +228,40 @@ public static class SonarrSeriesEndpoints
                 network = "",
                 images = images.ToArray(),
                 seasons = seasonEntries.Count > 0
-                    ? seasonEntries.Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray()
-                    : new object[] { new { seasonNumber = DateTime.Now.Year, monitored = league.Monitored } },
+                    ? seasonEntries.Select(s => (object)new
+                    {
+                        seasonNumber = s.SeasonNumber,
+                        monitored = s.Monitored,
+                        statistics = new
+                        {
+                            episodeCount = s.EventCount,
+                            totalEpisodeCount = s.EventCount,
+                            episodeFileCount = s.FileCount,
+                            sizeOnDisk = s.SizeOnDisk,
+                            percentOfEpisodes = s.EventCount > 0
+                                ? Math.Round(100.0 * s.FileCount / s.EventCount, 1)
+                                : 0.0
+                        }
+                    }).ToArray()
+                    : new object[]
+                    {
+                        new
+                        {
+                            seasonNumber = DateTime.Now.Year,
+                            monitored = league.Monitored,
+                            statistics = new
+                            {
+                                episodeCount = 0,
+                                totalEpisodeCount = 0,
+                                episodeFileCount = 0,
+                                sizeOnDisk = 0L,
+                                percentOfEpisodes = 0.0
+                            }
+                        }
+                    },
                 year = DateTime.Now.Year,
                 path = leaguePath,
+                rootFolderPath = rootFolder?.Path ?? "/data",
                 qualityProfileId = league.QualityProfileId ?? 1,
                 languageProfileId = 1,
                 seasonFolder = true,
@@ -211,9 +283,14 @@ public static class SonarrSeriesEndpoints
                 ratings = new { votes = 0, value = 0.0 },
                 statistics = new
                 {
+                    seasonCount = seasonEntries.Count > 0 ? seasonEntries.Count : 1,
                     episodeCount = stats?.EventCount ?? 0,
+                    totalEpisodeCount = stats?.EventCount ?? 0,
                     episodeFileCount = stats?.FileCount ?? 0,
-                    sizeOnDisk = stats?.SizeOnDisk ?? 0L
+                    sizeOnDisk = stats?.SizeOnDisk ?? 0L,
+                    percentOfEpisodes = (stats?.EventCount ?? 0) > 0
+                        ? Math.Round(100.0 * (stats?.FileCount ?? 0) / (stats?.EventCount ?? 1), 1)
+                        : 0.0
                 }
             };
 
@@ -365,7 +442,7 @@ public static class SonarrSeriesEndpoints
 
         // GET /api/v3/series/lookup?term= - Title search (Maintainerr matches
         // Plex items to series by title when it has no id to go on).
-        app.MapGet("/api/v3/series/lookup", async (string? term, SportarrDbContext db, ILogger<Program> logger) =>
+        app.MapGet("/api/v3/series/lookup", async (string? term, SportarrDbContext db, SportarrApiClient sportarrApi, ILogger<Program> logger) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/series/lookup - term={Term}", term);
 
@@ -374,28 +451,204 @@ public static class SonarrSeriesEndpoints
                 return Results.Ok(Array.Empty<object>());
             }
 
-            var needle = term.Trim().ToLowerInvariant();
+            // Some Starr clients encode spaces as literal plus signs in the
+            // lookup term (Sonarr tolerates it); league names never contain
+            // one, so normalizing is safe.
+            var trimmed = term.Trim().Replace('+', ' ');
+
+            // Starr-family consumers (the request managers especially) look up
+            // by "tvdb:<id>" before adding. League tvdbIds are the numeric
+            // aliases of their external ids, so resolve those directly - local
+            // library first, metadata catalog second.
+            if (trimmed.StartsWith("tvdb:", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(trimmed.AsSpan(5), out var tvdbAlias))
+            {
+                foreach (var candidate in Helpers.NumericIdAlias.LeagueExternalIdCandidates(tvdbAlias))
+                {
+                    var local = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == candidate);
+                    if (local != null)
+                    {
+                        var localSeasons = await db.Events
+                            .Where(e => e.LeagueId == local.Id && e.SeasonNumber.HasValue)
+                            .GroupBy(e => e.SeasonNumber)
+                            .Select(g => new { SeasonNumber = g.Key!.Value, Monitored = g.Any(e => e.Monitored) })
+                            .OrderBy(s => s.SeasonNumber)
+                            .ToListAsync();
+                        return Results.Ok(new[] { LookupResult(local.Id, local.Name, local.Monitored,
+                            Helpers.NumericIdAlias.FromExternalId(local.ExternalId),
+                            local.QualityProfileId ?? 1, local.Tags.ToArray(), local.Added.Year,
+                            local.Description, local.LogoUrl,
+                            localSeasons.Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray()) });
+                    }
+
+                    var catalogLeague = await sportarrApi.LookupLeagueAsync(candidate);
+                    if (catalogLeague != null)
+                    {
+                        return Results.Ok(new[] { LookupResult(0, catalogLeague.Name, false,
+                            tvdbAlias, 1, Array.Empty<int>(), DateTime.UtcNow.Year,
+                            catalogLeague.Description, catalogLeague.LogoUrl) });
+                    }
+                }
+
+                return Results.Ok(Array.Empty<object>());
+            }
+
+            var needle = trimmed.ToLowerInvariant();
             var leagues = await db.Leagues
                 .Where(l => l.Name.ToLower().Contains(needle))
                 .ToListAsync();
 
-            var results = leagues.Select(league => (object)new
+            var libraryIds = leagues.Select(l => l.Id).ToList();
+            var librarySeasonRows = await db.Events
+                .Where(e => e.LeagueId.HasValue && libraryIds.Contains(e.LeagueId.Value) && e.SeasonNumber.HasValue)
+                .GroupBy(e => new { e.LeagueId, e.SeasonNumber })
+                .Select(g => new { LeagueId = g.Key.LeagueId!.Value, SeasonNumber = g.Key.SeasonNumber!.Value, Monitored = g.Any(e => e.Monitored) })
+                .ToListAsync();
+            var librarySeasons = librarySeasonRows
+                .GroupBy(s => s.LeagueId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(s => s.SeasonNumber)
+                          .Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored })
+                          .ToArray());
+
+            var results = leagues.Select(league => LookupResult(league.Id, league.Name, league.Monitored,
+                Helpers.NumericIdAlias.FromExternalId(league.ExternalId),
+                league.QualityProfileId ?? 1, league.Tags.ToArray(), league.Added.Year,
+                league.Description, league.LogoUrl,
+                librarySeasons.GetValueOrDefault(league.Id))).ToList();
+
+            // Text terms also consult the metadata catalog so a league that
+            // isn't in the library yet can be discovered and then added via
+            // POST /api/v3/series (id 0 marks a lookup-only result, matching
+            // Sonarr's convention for series not yet in the library).
+            var knownExternalIds = leagues
+                .Where(l => !string.IsNullOrEmpty(l.ExternalId))
+                .Select(l => l.ExternalId!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var catalogResults = await sportarrApi.SearchLeagueAsync(trimmed);
+            foreach (var catalogLeague in (catalogResults ?? new List<League>())
+                .Where(c => !string.IsNullOrEmpty(c.ExternalId) && !knownExternalIds.Contains(c.ExternalId!))
+                .Take(10))
             {
-                id = league.Id,
-                title = league.Name,
-                sortTitle = league.Name.ToLowerInvariant(),
-                status = "continuing",
-                monitored = league.Monitored,
-                tvdbId = Helpers.NumericIdAlias.FromExternalId(league.ExternalId),
-                qualityProfileId = league.QualityProfileId ?? 1,
-                seriesType = "standard",
-                titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
-                genres = new[] { "Sports" },
-                tags = league.Tags.ToArray(),
-                year = league.Added.Year
-            }).ToArray();
+                results.Add(LookupResult(0, catalogLeague.Name, false,
+                    Helpers.NumericIdAlias.FromExternalId(catalogLeague.ExternalId),
+                    1, Array.Empty<int>(), DateTime.UtcNow.Year,
+                    catalogLeague.Description, catalogLeague.LogoUrl));
+            }
 
             return Results.Ok(results);
+        });
+
+        // POST /api/v3/series - Add a league through the Sonarr contract.
+        // Request managers look a series up (tvdb:<alias> or text), then POST
+        // it here with the alias tvdbId; the alias resolves back to the
+        // league's external id and the add runs through LeagueAddService -
+        // the exact same path the native POST /api/leagues takes.
+        app.MapPost("/api/v3/series", async (
+            HttpContext context,
+            SportarrDbContext db,
+            SportarrApiClient sportarrApi,
+            LeagueAddService leagueAddService,
+            ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
+
+            int tvdbId = 0;
+            string? title = null;
+            int? qualityProfileId = null;
+            bool monitored = true;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("tvdbId", out var tvdbElement) && tvdbElement.ValueKind == System.Text.Json.JsonValueKind.Number)
+                    tvdbId = tvdbElement.GetInt32();
+                if (root.TryGetProperty("title", out var titleElement))
+                    title = titleElement.GetString();
+                if (root.TryGetProperty("qualityProfileId", out var qpElement) && qpElement.ValueKind == System.Text.Json.JsonValueKind.Number)
+                    qualityProfileId = qpElement.GetInt32();
+                if (root.TryGetProperty("monitored", out var monitoredElement) &&
+                    (monitoredElement.ValueKind == System.Text.Json.JsonValueKind.True || monitoredElement.ValueKind == System.Text.Json.JsonValueKind.False))
+                    monitored = monitoredElement.GetBoolean();
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return Results.BadRequest(new[] { new { errorMessage = "Invalid JSON body" } });
+            }
+
+            logger.LogInformation("[V3-COMPAT] POST /api/v3/series - tvdbId={TvdbId}, title={Title}", tvdbId, title);
+
+            // Resolve the league's external id from the alias, falling back to
+            // a catalog title search when only a title arrived.
+            string? externalId = null;
+            League? catalogLeague = null;
+            foreach (var candidate in Helpers.NumericIdAlias.LeagueExternalIdCandidates(tvdbId))
+            {
+                catalogLeague = await sportarrApi.LookupLeagueAsync(candidate);
+                if (catalogLeague != null)
+                {
+                    externalId = candidate;
+                    break;
+                }
+            }
+
+            if (catalogLeague == null && !string.IsNullOrWhiteSpace(title))
+            {
+                var candidates = await sportarrApi.SearchLeagueAsync(title);
+                catalogLeague = candidates?.FirstOrDefault(c =>
+                    string.Equals(c.Name, title, StringComparison.OrdinalIgnoreCase)) ?? candidates?.FirstOrDefault();
+                externalId = catalogLeague?.ExternalId;
+            }
+
+            if (catalogLeague == null)
+            {
+                return Results.BadRequest(new[] { new { errorMessage = $"No league matches tvdbId {tvdbId} / title '{title}'" } });
+            }
+
+            var existing = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == externalId);
+            if (existing != null)
+            {
+                // Sonarr answers an add of an existing series with a validation
+                // failure; consumers treat it as "already added".
+                return Results.BadRequest(new[] { new { errorMessage = "This series has already been added" } });
+            }
+
+            var addResult = await leagueAddService.AddLeagueAsync(new AddLeagueRequest
+            {
+                ExternalId = externalId,
+                Name = catalogLeague.Name,
+                Sport = catalogLeague.Sport ?? "Unknown",
+                Country = catalogLeague.Country,
+                Description = catalogLeague.Description,
+                Monitored = monitored,
+                QualityProfileId = qualityProfileId,
+            });
+
+            if (!addResult.Success || addResult.League == null)
+            {
+                return Results.BadRequest(new[] { new { errorMessage = addResult.ErrorMessage ?? "Failed to add league" } });
+            }
+
+            var added = addResult.League;
+            return Results.Created($"/api/v3/series/{added.Id}", new
+            {
+                id = added.Id,
+                title = added.Name,
+                sortTitle = added.Name.ToLowerInvariant(),
+                status = "continuing",
+                monitored = added.Monitored,
+                tvdbId = Helpers.NumericIdAlias.FromExternalId(added.ExternalId),
+                qualityProfileId = added.QualityProfileId ?? qualityProfileId ?? 1,
+                seriesType = "standard",
+                titleSlug = added.Name.ToLowerInvariant().Replace(" ", "-"),
+                genres = new[] { "Sports" },
+                tags = Array.Empty<int>(),
+                seasons = Array.Empty<object>(),
+                year = DateTime.UtcNow.Year,
+                added = DateTime.UtcNow.ToString("o"),
+            });
         });
 
         // PUT /api/v3/series/editor - Batch tag add/remove (Maintainerr's
@@ -440,6 +693,113 @@ public static class SonarrSeriesEndpoints
                 logger.LogError(ex, "[V3-COMPAT] Error in series editor");
                 return Results.BadRequest(new { error = ex.Message });
             }
+        });
+
+        // GET /api/v3/history - Paged activity history (Sonarr's shape).
+        // Merges grab history (eventType "grabbed") with import history
+        // (eventType "downloadFolderImported"), newest first. Exporters read
+        // totalRecords; queue tools read per-record sourceTitle/downloadId.
+        // Import ids are offset so the two sources never collide on id.
+        app.MapGet("/api/v3/history", async (
+            SportarrDbContext db,
+            ILogger<Program> logger,
+            int? page,
+            int? pageSize,
+            string? sortKey,
+            string? sortDirection) =>
+        {
+            var pageNumber = page is > 0 ? page.Value : 1;
+            var effectivePageSize = pageSize is > 0 && pageSize.Value <= 500 ? pageSize.Value : 20;
+            var ascending = string.Equals(sortDirection, "ascending", StringComparison.OrdinalIgnoreCase);
+
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/history - page={Page}, pageSize={PageSize}", pageNumber, effectivePageSize);
+
+            var grabTotal = await db.GrabHistory.CountAsync();
+            var importTotal = await db.ImportHistories.CountAsync();
+
+            // Both sources contribute up to the page window's end, then the
+            // merged stream is cut to the requested page. Correct for any
+            // interleaving because each side is already sorted by date.
+            var window = pageNumber * effectivePageSize;
+
+            var grabQuery = ascending
+                ? db.GrabHistory.OrderBy(g => g.GrabbedAt)
+                : db.GrabHistory.OrderByDescending(g => g.GrabbedAt);
+            var grabs = await grabQuery
+                .Take(window)
+                .Select(g => new { g.Id, EventId = (int?)g.EventId, g.Title, g.GrabbedAt, g.DownloadId, g.TorrentInfoHash, g.Indexer, g.Quality })
+                .ToListAsync();
+
+            var importQuery = ascending
+                ? db.ImportHistories.OrderBy(h => h.ImportedAt)
+                : db.ImportHistories.OrderByDescending(h => h.ImportedAt);
+            var imports = await importQuery
+                .Take(window)
+                .Select(h => new { h.Id, h.EventId, h.SourcePath, h.ImportedAt, h.Quality })
+                .ToListAsync();
+
+            var merged =
+                grabs.Select(g => new
+                {
+                    id = g.Id,
+                    episodeId = g.EventId,
+                    seriesId = 0,
+                    sourceTitle = (string?)g.Title,
+                    date = g.GrabbedAt,
+                    eventType = "grabbed",
+                    downloadId = g.TorrentInfoHash ?? g.DownloadId,
+                    quality = g.Quality,
+                    data = (object)new { indexer = g.Indexer, torrentInfoHash = g.TorrentInfoHash }
+                })
+                .Concat(imports.Select(h => new
+                {
+                    id = h.Id + 1_000_000,
+                    episodeId = h.EventId,
+                    seriesId = 0,
+                    sourceTitle = (string?)System.IO.Path.GetFileName(h.SourcePath),
+                    date = h.ImportedAt,
+                    eventType = "downloadFolderImported",
+                    downloadId = (string?)null,
+                    quality = (string?)h.Quality,
+                    data = (object)new { droppedPath = h.SourcePath }
+                }));
+
+            merged = ascending ? merged.OrderBy(r => r.date) : merged.OrderByDescending(r => r.date);
+
+            var records = merged
+                .Skip((pageNumber - 1) * effectivePageSize)
+                .Take(effectivePageSize)
+                .Select(r => new
+                {
+                    r.id,
+                    episodeId = r.episodeId ?? 0,
+                    r.seriesId,
+                    r.sourceTitle,
+                    languages = Array.Empty<object>(),
+                    quality = new
+                    {
+                        quality = new { id = 0, name = r.quality ?? "Unknown", source = "unknown", resolution = 0 },
+                        revision = new { version = 1, real = 0, isRepack = false }
+                    },
+                    customFormats = Array.Empty<object>(),
+                    customFormatScore = 0,
+                    qualityCutoffNotMet = false,
+                    date = r.date.ToString("o"),
+                    r.downloadId,
+                    r.eventType,
+                    r.data
+                })
+                .ToList();
+
+            return Results.Ok(new
+            {
+                page = pageNumber,
+                pageSize = effectivePageSize,
+                sortKey = sortKey ?? "date",
+                sortDirection = ascending ? "ascending" : "descending",
+                totalRecords = grabTotal + importTotal,
+                records,
+            });
         });
 
         // GET /api/v3/history/series?seriesId= - Grab history for a series as
@@ -586,6 +946,7 @@ public static class SonarrSeriesEndpoints
                 seasons = seasonEntries.Select(s => new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray(),
                 tvdbId = externalId,
                 path = leaguePath,
+                rootFolderPath = rootFolder?.Path ?? "/data",
                 qualityProfileId = league.QualityProfileId ?? 1,
                 genres = new[] { "Sports" },
                 added = league.Added.ToString("o")
@@ -596,5 +957,60 @@ public static class SonarrSeriesEndpoints
             logger.LogError(ex, "[V3-COMPAT] Error updating series {Id}", id);
             return Results.BadRequest(new { error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Series-shaped lookup entry. id 0 marks a catalog-only result (not in
+    /// the library yet), matching Sonarr's convention for lookup hits that
+    /// have not been added.
+    /// </summary>
+    private static object LookupResult(
+        int id,
+        string name,
+        bool monitored,
+        int tvdbId,
+        int qualityProfileId,
+        int[] tags,
+        int year,
+        string? overview,
+        string? logoUrl,
+        object[]? seasons = null)
+    {
+        var seasonEntries = seasons ?? Array.Empty<object>();
+        var images = new List<object>();
+        if (!string.IsNullOrEmpty(logoUrl))
+            images.Add(new { coverType = "poster", url = logoUrl, remoteUrl = logoUrl });
+
+        return new
+        {
+            id,
+            title = name,
+            sortTitle = name.ToLowerInvariant(),
+            status = "continuing",
+            overview = overview ?? string.Empty,
+            monitored,
+            tvdbId,
+            tvRageId = 0,
+            tvMazeId = 0,
+            imdbId = string.Empty,
+            network = string.Empty,
+            certification = string.Empty,
+            qualityProfileId,
+            seriesType = "standard",
+            titleSlug = name.ToLowerInvariant().Replace(" ", "-"),
+            cleanTitle = name.ToLowerInvariant().Replace(" ", string.Empty),
+            genres = new[] { "Sports" },
+            images = images.ToArray(),
+            // Sonarr's lookup carries the poster twice: in images and as the
+            // flat remotePoster that request bots render directly.
+            remotePoster = logoUrl ?? string.Empty,
+            seasons = seasonEntries,
+            // Lookup consumers read seasonCount from statistics. In-library
+            // leagues carry their real seasons; catalog-only results report 0
+            // like Sonarr does for series not yet added.
+            statistics = new { seasonCount = seasonEntries.Length, episodeCount = 0, totalEpisodeCount = 0, sizeOnDisk = 0L, percentOfEpisodes = 0.0 },
+            tags,
+            year,
+        };
     }
 }

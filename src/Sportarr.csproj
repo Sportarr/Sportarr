@@ -11,19 +11,40 @@
     <SkipFrontendBuild Condition="'$(SkipFrontendBuild)' == ''">false</SkipFrontendBuild>
   </PropertyGroup>
 
+  <!-- Restore frontend dependencies.
+       Incremental on the lockfile rather than on the mere presence of
+       node_modules. npm writes node_modules/.package-lock.json on every install
+       (npm 7+; this project already requires Node 20, i.e. npm 9+), so it is an
+       accurate record of what is actually installed. MSBuild skips this target
+       while that stamp is newer than package-lock.json, so warm rebuilds cost
+       nothing, but a changed lockfile — dependency bump, branch switch, rebase,
+       or simply pulling main — re-runs `npm ci` instead of being ignored.
+
+       Previously this was `Condition="... AND !Exists('../frontend/node_modules')"`,
+       which runs npm ci exactly once on a clean checkout and then never again,
+       while `npm run build` below still runs every time. The result was a build
+       that silently compiled the frontend against stale dependencies whenever the
+       lockfile moved, with no warning — defeating the reproducibility guarantee
+       that is the whole reason to use `npm ci` over `npm install`. -->
+  <Target Name="RestoreFrontend" Condition="'$(SkipFrontendBuild)' != 'true'"
+          Inputs="../frontend/package-lock.json"
+          Outputs="../frontend/node_modules/.package-lock.json">
+    <Exec Command="npm --version" ContinueOnError="true" StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="NpmRestoreExitCode" />
+    </Exec>
+    <Exec Command="npm ci --quiet" WorkingDirectory="../frontend" Condition="'$(NpmRestoreExitCode)' == '0'" />
+  </Target>
+
   <!-- Automatic Frontend Build - runs before .NET build -->
   <!-- Builds React frontend and copies to wwwroot for serving -->
   <!-- Skip with: dotnet build -p:SkipFrontendBuild=true -->
-  <Target Name="BuildFrontend" BeforeTargets="Build;Publish" Condition="'$(SkipFrontendBuild)' != 'true'">
+  <Target Name="BuildFrontend" BeforeTargets="Build;Publish" DependsOnTargets="RestoreFrontend" Condition="'$(SkipFrontendBuild)' != 'true'">
     <Message Importance="High" Text="Building frontend..." />
 
     <!-- Check if npm is available -->
     <Exec Command="npm --version" ContinueOnError="true" StandardOutputImportance="Low">
       <Output TaskParameter="ExitCode" PropertyName="NpmExitCode" />
     </Exec>
-
-    <!-- Install frontend dependencies if node_modules doesn't exist -->
-    <Exec Command="npm ci --quiet" WorkingDirectory="../frontend" Condition="'$(NpmExitCode)' == '0' AND !Exists('../frontend/node_modules')" />
 
     <!-- Build frontend (outputs to _output/UI) -->
     <Exec Command="npm run build" WorkingDirectory="../frontend" Condition="'$(NpmExitCode)' == '0'" />

@@ -27,7 +27,7 @@ src/
 ├── Startup/                      # Startup orchestration helpers
 │   ├── ServiceCollectionExtensions.cs    # DI registration, split by concern
 │   ├── DatabaseInitializer.cs            # EF migrations + manual schema safety nets
-│   └── AgentInstaller.cs                 # Plex/Jellyfin/Emby agent file deployment
+│   └── AgentInstaller.cs                 # Plex/Jellyfin/Emby/Kodi agent file deployment
 ├── Validation/                   # FluentValidation custom validators (legacy)
 ├── Validators/                   # Request DTO validators (FluentValidation)
 └── Windows/                      # Windows-specific (system tray, console hide)
@@ -35,7 +35,7 @@ src/
 
 ## API versioning
 
-See [docs/API_VERSIONING.md](docs/API_VERSIONING.md) for the full explanation.
+See [docs/API_VERSIONING.md](API_VERSIONING.md) for the full explanation.
 
 | Prefix | Purpose | Where it lives |
 |---|---|---|

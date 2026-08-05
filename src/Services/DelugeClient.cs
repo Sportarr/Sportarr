@@ -409,14 +409,32 @@ public class DelugeClient
     }
 
     /// <summary>
-    /// Get torrent status for download monitoring
+    /// Get torrent status for download monitoring.
     /// </summary>
-    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
+    /// <param name="expectedCategory">
+    /// The category (Deluge's Label plugin) this torrent was actually grabbed under
+    /// (falls back to config.Category when null). A hash still existing in Deluge
+    /// doesn't mean it's still Sportarr's - Deluge is commonly shared across multiple
+    /// *arr-style apps, each scoped to its own label. If the torrent's current label
+    /// doesn't match, it's reported as not found here rather than matched by hash
+    /// alone, so download monitoring stops tracking it instead of polling another
+    /// app's torrent forever - the hash never disappears, only its owner does. A
+    /// blank expected category (no scoping in use, on either side) skips the check
+    /// and preserves the previous hash-only match.
+    /// </param>
+    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash, string? expectedCategory = null)
     {
         var torrent = await GetTorrentAsync(config, hash);
         if (torrent == null)
         {
             _logger.LogWarning("[Deluge] Torrent not found: {Hash}", hash);
+            return null;
+        }
+
+        var categoryToMatch = expectedCategory ?? config.Category;
+        if (!string.IsNullOrWhiteSpace(categoryToMatch) &&
+            !string.Equals(torrent.Label, categoryToMatch, StringComparison.OrdinalIgnoreCase))
+        {
             return null;
         }
 

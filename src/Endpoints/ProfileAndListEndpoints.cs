@@ -216,11 +216,30 @@ app.MapGet("/api/importlist/{id:int}", async (int id, SportarrDbContext db) =>
     return list is not null ? Results.Ok(list) : Results.NotFound();
 });
 
-app.MapPost("/api/importlist", async (ImportList list, SportarrDbContext db) =>
+app.MapPost("/api/importlist", async (ImportList list, SportarrDbContext db, ImportListService importListService) =>
 {
     list.Created = DateTime.UtcNow;
     db.ImportLists.Add(list);
     await db.SaveChangesAsync();
+
+    // Sync immediately rather than waiting for ImportListSyncService's
+    // 6-hour background pass - a newly-added list previously sat
+    // completely idle (LastSync stayed null) until the user manually hit
+    // "Sync Now" or up to 6 hours passed. This matches the "test on save"
+    // convention comparable *arr apps use for list sources; the sync
+    // itself only takes a few hundred ms for a typical list.
+    //
+    // SyncImportListAsync runs against its own DbContext scope (so it can
+    // be called from a background service too), so `list` here doesn't
+    // pick up the LastSync/LastSyncMessage it just wrote - reload before
+    // returning so the response reflects the sync outcome immediately
+    // instead of a stale LastSync=null.
+    if (list.Enabled)
+    {
+        await importListService.SyncImportListAsync(list.Id);
+        await db.Entry(list).ReloadAsync();
+    }
+
     return Results.Created($"/api/importlist/{list.Id}", list);
 });
 
@@ -314,10 +333,10 @@ app.MapPut("/api/metadata/{id:int}", async (int id, MetadataProvider provider, S
     existing.Enabled = provider.Enabled;
     existing.EventNfo = provider.EventNfo;
     existing.EventCardNfo = provider.EventCardNfo;
+    existing.ShowNfo = provider.ShowNfo;
     existing.EventImages = provider.EventImages;
     existing.PlayerImages = provider.PlayerImages;
     existing.LeagueLogos = provider.LeagueLogos;
-    existing.EventNfoFilename = provider.EventNfoFilename;
     existing.EventPosterFilename = provider.EventPosterFilename;
     existing.EventFanartFilename = provider.EventFanartFilename;
     existing.UseEventFolder = provider.UseEventFolder;

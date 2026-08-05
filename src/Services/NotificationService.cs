@@ -81,11 +81,17 @@ public class NotificationService : INotificationService
                     "Email" => await SendEmailAsync(config, title, message),
                     "Apprise" => await SendAppriseAsync(config, title, message),
                     "Ntfy" => await SendNtfyAsync(config, title, message),
+                    "Gotify" => await SendGotifyAsync(config, title, message),
+                    "Join" => await SendJoinAsync(config, title, message),
+                    "Mattermost" => await SendMattermostAsync(config, title, message),
+                    "Pushbullet" => await SendPushbulletAsync(config, title, message),
+                    "SimplePush" => await SendSimplePushAsync(config, title, message),
                     "CustomScript" => RunCustomScript(config, title, message, trigger, metadata),
                     // Media server library refresh notifications
                     "Plex" => await RefreshPlexLibraryAsync(config, filePath),
                     "Jellyfin" => await RefreshJellyfinLibraryAsync(config, filePath),
                     "Emby" => await RefreshEmbyLibraryAsync(config, filePath),
+                    "Kodi" => await SendKodiAsync(config, title, message, trigger, filePath),
                     _ => false
                 };
 
@@ -129,6 +135,15 @@ public class NotificationService : INotificationService
                 return await TestCustomScriptAsync(config);
             }
 
+            // Kodi doesn't fit the apiKey-based TestMediaServerConnectionAsync
+            // path (it authenticates with Basic auth, not an API key) and a
+            // "test" should be a cheap connectivity probe, not a full
+            // scan/clean/popup - so it gets its own dedicated test path too.
+            if (notification.Implementation == "Kodi")
+            {
+                return await TestKodiConnectionAsync(config);
+            }
+
             var success = notification.Implementation switch
             {
                 "Discord" => await SendDiscordAsync(config, "Test Notification", "This is a test notification from Sportarr."),
@@ -139,6 +154,11 @@ public class NotificationService : INotificationService
                 "Email" => await SendEmailAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Apprise" => await SendAppriseAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Ntfy" => await SendNtfyAsync(config, "Test Notification", "This is a test notification from Sportarr."),
+                "Gotify" => await SendGotifyAsync(config, "Test Notification", "This is a test notification from Sportarr."),
+                "Join" => await SendJoinAsync(config, "Test Notification", "This is a test notification from Sportarr."),
+                "Mattermost" => await SendMattermostAsync(config, "Test Notification", "This is a test notification from Sportarr."),
+                "Pushbullet" => await SendPushbulletAsync(config, "Test Notification", "This is a test notification from Sportarr."),
+                "SimplePush" => await SendSimplePushAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 // CustomScript is handled above via TestCustomScriptAsync
                 _ => false
             };
@@ -1314,6 +1334,403 @@ public class NotificationService : INotificationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Emby] Error refreshing library");
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region Gotify
+
+    private async Task<bool> SendGotifyAsync(Dictionary<string, JsonElement> config, string title, string message)
+    {
+        var serverUrl = GetConfigString(config, "gotifyServerUrl").TrimEnd('/');
+        var appToken = GetConfigString(config, "gotifyAppToken");
+
+        if (string.IsNullOrEmpty(serverUrl) || string.IsNullOrEmpty(appToken))
+        {
+            _logger.LogWarning("[Gotify] Server URL or app token not configured");
+            return false;
+        }
+
+        var priority = GetConfigInt(config, "gotifyPriority", 5);
+        var payload = new { title, message, priority };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{serverUrl}/message?token={Uri.EscapeDataString(appToken)}")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+
+        using var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("[Gotify] Notify failed: {Status} {Body}", response.StatusCode, responseBody);
+        }
+        return response.IsSuccessStatusCode;
+    }
+
+    #endregion
+
+    #region Join
+
+    /// <summary>
+    /// Join (joaoapps) push. A bare GET with the API key and device id as
+    /// query params - no request body, matching Join's own API shape.
+    /// Empty deviceId means "all of the user's devices" per Join's API.
+    /// </summary>
+    private async Task<bool> SendJoinAsync(Dictionary<string, JsonElement> config, string title, string message)
+    {
+        var apiKey = GetConfigString(config, "joinApiKey");
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("[Join] API key not configured");
+            return false;
+        }
+
+        var deviceId = GetConfigString(config, "joinDeviceId");
+        var url = $"https://joinjoaomgcd.appspot.com/_ah/api/messaging/v1/sendPush" +
+            $"?apikey={Uri.EscapeDataString(apiKey)}" +
+            $"&title={Uri.EscapeDataString(title)}" +
+            $"&text={Uri.EscapeDataString(message)}";
+        if (!string.IsNullOrEmpty(deviceId))
+        {
+            url += $"&deviceId={Uri.EscapeDataString(deviceId)}";
+        }
+
+        using var response = await _httpClient.GetAsync(url);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("[Join] Notify failed: {Status} {Body}", response.StatusCode, responseBody);
+            return false;
+        }
+
+        // Join returns 200 with a JSON body carrying its own success flag
+        // even on a bad API key, so a 200 alone isn't proof of delivery.
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.False)
+        {
+            var errorMessage = doc.RootElement.TryGetProperty("errorMessage", out var err) ? err.GetString() : "unknown error";
+            _logger.LogWarning("[Join] Notify rejected: {Error}", errorMessage);
+            return false;
+        }
+
+        return true;
+    }
+
+    #endregion
+
+    #region Mattermost
+
+    private async Task<bool> SendMattermostAsync(Dictionary<string, JsonElement> config, string title, string message)
+    {
+        var webhook = GetConfigString(config, "mattermostWebhook");
+        var username = GetConfigString(config, "username", "Sportarr");
+        var channel = GetConfigString(config, "channel");
+
+        if (string.IsNullOrEmpty(webhook))
+        {
+            _logger.LogWarning("[Mattermost] Webhook URL not configured");
+            return false;
+        }
+
+        var payload = new Dictionary<string, object>
+        {
+            ["username"] = username,
+            ["text"] = $"**{title}**\n{message}"
+        };
+
+        if (!string.IsNullOrEmpty(channel))
+        {
+            payload["channel"] = channel;
+        }
+
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PostAsync(webhook, content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("[Mattermost] Notify failed: {Status} {Body}", response.StatusCode, responseBody);
+        }
+        return response.IsSuccessStatusCode;
+    }
+
+    #endregion
+
+    #region Pushbullet
+
+    private async Task<bool> SendPushbulletAsync(Dictionary<string, JsonElement> config, string title, string message)
+    {
+        var apiKey = GetConfigString(config, "pushbulletApiKey");
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("[Pushbullet] API key not configured");
+            return false;
+        }
+
+        var deviceIden = GetConfigString(config, "pushbulletDeviceIden");
+        var payload = new Dictionary<string, object>
+        {
+            ["type"] = "note",
+            ["title"] = title,
+            ["body"] = message
+        };
+        if (!string.IsNullOrEmpty(deviceIden))
+        {
+            payload["device_iden"] = deviceIden;
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.pushbullet.com/v2/pushes")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Access-Token", apiKey);
+
+        using var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("[Pushbullet] Notify failed: {Status} {Body}", response.StatusCode, responseBody);
+        }
+        return response.IsSuccessStatusCode;
+    }
+
+    #endregion
+
+    #region SimplePush
+
+    private async Task<bool> SendSimplePushAsync(Dictionary<string, JsonElement> config, string title, string message)
+    {
+        var apiKey = GetConfigString(config, "simplePushApiKey");
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("[SimplePush] API key not configured");
+            return false;
+        }
+
+        var formData = new List<KeyValuePair<string, string>>
+        {
+            new("key", apiKey),
+            new("title", title),
+            new("msg", message)
+        };
+
+        var content = new FormUrlEncodedContent(formData);
+        using var response = await _httpClient.PostAsync("https://api.simplepush.io/send", content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("[SimplePush] Notify failed: {Status} {Body}", response.StatusCode, responseBody);
+        }
+        return response.IsSuccessStatusCode;
+    }
+
+    #endregion
+
+    #region Kodi
+
+    /// <summary>
+    /// Kodi Connect: GUI popup + VideoLibrary.Scan/Clean over Kodi's JSON-RPC
+    /// API. Mirrors Sonarr/Radarr's "Connect > Kodi" exactly, including the
+    /// gotchas: "Always Update" means "don't check if a video is playing
+    /// first," not "force a full rescan," and VideoLibrary.Clean has no
+    /// path-scoped form in Kodi's API - it always sweeps the whole library.
+    /// </summary>
+    private async Task<bool> SendKodiAsync(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, string? filePath)
+    {
+        var host = GetConfigString(config, "host");
+        if (string.IsNullOrEmpty(host))
+        {
+            _logger.LogWarning("[Kodi] Host not configured");
+            return false;
+        }
+
+        var (client, baseUrl) = BuildKodiClient(config, host);
+        var overallSuccess = true;
+
+        // Sonarr/Radarr never pop the GUI notification for a rename (silent
+        // library update only) - match that so a rename doesn't spam a
+        // notification popup on every renamer run.
+        var notify = trigger != NotificationTrigger.OnRename
+            && (!config.TryGetValue("notify", out var nv) || nv.ValueKind != JsonValueKind.False);
+        if (notify)
+        {
+            var displayTime = Math.Max(GetConfigInt(config, "displayTime", 5), 2);
+            overallSuccess &= await CallKodiJsonRpcAsync(client, baseUrl, "GUI.ShowNotification", new
+            {
+                title,
+                message,
+                displaytime = displayTime * 1000
+            });
+        }
+
+        var isLibraryTrigger = trigger is NotificationTrigger.OnDownload or NotificationTrigger.OnUpgrade
+            or NotificationTrigger.OnRename or NotificationTrigger.OnEventFileDelete or NotificationTrigger.OnEventFileDeleteForUpgrade;
+
+        // Absent means ENABLED, matching the Plex/Jellyfin/Emby refreshers'
+        // "absence = enabled" convention (issue #21's "test works but
+        // nothing refreshes" applies here just the same).
+        var updateLibrary = !config.TryGetValue("updateLibrary", out var ul) || ul.ValueKind != JsonValueKind.False;
+
+        if (isLibraryTrigger && updateLibrary)
+        {
+            var alwaysUpdate = IsTriggerEnabled(config, "alwaysUpdate");
+            var videoPlaying = !alwaysUpdate && await IsKodiPlayingVideoAsync(client, baseUrl);
+
+            if (videoPlaying)
+            {
+                _logger.LogDebug("[Kodi] A video is playing and Always Update is off, skipping scan/clean this cycle");
+            }
+            else
+            {
+                var mappedPath = ApplyPathMapping(filePath, config);
+                var scanDir = string.IsNullOrEmpty(mappedPath) ? null : Path.GetDirectoryName(mappedPath.Replace('\\', '/'));
+
+                object scanParams = string.IsNullOrEmpty(scanDir) ? new { } : new { directory = scanDir };
+                overallSuccess &= await CallKodiJsonRpcAsync(client, baseUrl, "VideoLibrary.Scan", scanParams);
+
+                if (IsTriggerEnabled(config, "cleanLibrary"))
+                {
+                    _logger.LogInformation("[Kodi] Running VideoLibrary.Clean - Kodi's API has no path-scoped clean, this sweeps the whole library");
+                    overallSuccess &= await CallKodiJsonRpcAsync(client, baseUrl, "VideoLibrary.Clean", new { });
+                }
+            }
+        }
+
+        return overallSuccess;
+    }
+
+    private async Task<(bool Success, string Message)> TestKodiConnectionAsync(Dictionary<string, JsonElement> config)
+    {
+        var host = GetConfigString(config, "host");
+        if (string.IsNullOrEmpty(host))
+        {
+            return (false, "Kodi host not configured");
+        }
+
+        var (client, baseUrl) = BuildKodiClient(config, host);
+
+        try
+        {
+            using var response = await client.SendAsync(BuildKodiJsonRpcRequest(baseUrl, "JSONRPC.Version", null));
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return (false, "Authentication failed - check the username and password");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return (false, $"Connection failed: {response.StatusCode}. Confirm 'Allow remote control via HTTP' is enabled in Kodi under Settings > Services > Control.");
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("result", out var result) &&
+                result.TryGetProperty("version", out var version) &&
+                version.TryGetProperty("major", out var major) &&
+                version.TryGetProperty("minor", out var minor))
+            {
+                return (true, $"Connected to Kodi (JSON-RPC v{major.GetInt32()}.{minor.GetInt32()})");
+            }
+
+            return (true, "Connected to Kodi");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return (false, $"Could not reach Kodi at {host} - {ex.Message}. Confirm 'Allow remote control via HTTP' is enabled in Kodi under Settings > Services > Control.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Kodi] Error testing connection");
+            return (false, $"Error: {ex.Message}");
+        }
+    }
+
+    private (HttpClient Client, string BaseUrl) BuildKodiClient(Dictionary<string, JsonElement> config, string host)
+    {
+        var port = GetConfigInt(config, "kodiPort", 8080);
+        var urlBase = GetConfigString(config, "kodiUrlBase", "/jsonrpc");
+        if (!urlBase.StartsWith('/')) urlBase = "/" + urlBase;
+        var useSsl = IsTriggerEnabled(config, "useSsl");
+        var baseUrl = $"{(useSsl ? "https" : "http")}://{host}:{port}{urlBase}";
+
+        var client = _httpClientFactory.CreateClient();
+        var username = GetConfigString(config, "username");
+        var password = GetConfigString(config, "password");
+        if (!string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(password))
+        {
+            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        }
+
+        return (client, baseUrl);
+    }
+
+    private static HttpRequestMessage BuildKodiJsonRpcRequest(string url, string method, object? jsonRpcParams)
+    {
+        return new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                method,
+                @params = jsonRpcParams,
+                id = 1
+            }), Encoding.UTF8, "application/json")
+        };
+    }
+
+    private async Task<bool> CallKodiJsonRpcAsync(HttpClient client, string url, string method, object jsonRpcParams)
+    {
+        try
+        {
+            using var response = await client.SendAsync(BuildKodiJsonRpcRequest(url, method, jsonRpcParams));
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("[Kodi] {Method} failed: {Status} {Body}", method, response.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Kodi] {Method} failed", method);
+            return false;
+        }
+    }
+
+    private async Task<bool> IsKodiPlayingVideoAsync(HttpClient client, string url)
+    {
+        try
+        {
+            using var response = await client.SendAsync(BuildKodiJsonRpcRequest(url, "Player.GetActivePlayers", null));
+            if (!response.IsSuccessStatusCode) return false;
+
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            foreach (var player in result.EnumerateArray())
+            {
+                if (player.TryGetProperty("type", out var type) && type.GetString() == "video")
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Kodi] Could not check active players, proceeding with scan/clean");
             return false;
         }
     }

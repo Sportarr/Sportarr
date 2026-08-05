@@ -105,6 +105,33 @@ public static class SystemUpdatesEndpoint
                 {
                     var tagName = release.GetProperty("tag_name").GetString() ?? "";
                     var version = tagName.TrimStart('v');
+
+                    // Rolling-tag releases (the "dev" prerelease is re-published
+                    // on every dev push) carry no version in the tag, which made
+                    // the check report "Latest Version: dev" and a permanent
+                    // false update. The real build number is in the asset names
+                    // (Sportarr-win-x64-4.0.1024.706-dev.zip) - resolve it from
+                    // there, falling back to the release body.
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(version, @"^\d+(\.\d+)+$"))
+                    {
+                        string? resolved = null;
+                        if (release.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var asset in assets.EnumerateArray())
+                            {
+                                var assetName = asset.GetProperty("name").GetString() ?? "";
+                                var m = System.Text.RegularExpressions.Regex.Match(assetName, @"\d+\.\d+\.\d+(\.\d+)?");
+                                if (m.Success) { resolved = m.Value; break; }
+                            }
+                        }
+                        if (resolved == null)
+                        {
+                            var bodyMatch = System.Text.RegularExpressions.Regex.Match(
+                                release.GetProperty("body").GetString() ?? "", @"\d+\.\d+\.\d+(\.\d+)?");
+                            if (bodyMatch.Success) resolved = bodyMatch.Value;
+                        }
+                        if (resolved != null) version = resolved;
+                    }
                     var publishedAt = release.GetProperty("published_at").GetString() ?? DateTime.UtcNow.ToString();
                     var body = release.GetProperty("body").GetString() ?? "";
                     var htmlUrl = release.GetProperty("html_url").GetString() ?? "";
@@ -170,7 +197,21 @@ public static class SystemUpdatesEndpoint
                     var currentParts = currentVersion.Split('.');
                     var currentBase = currentParts.Length >= 3 ? $"{currentParts[0]}.{currentParts[1]}.{currentParts[2]}" : currentVersion;
 
-                    updateAvailable = latestVersion != currentBase && latestVersion != currentVersion;
+                    // Numeric comparison when both sides parse: "newer" is what
+                    // makes an update, not merely "different" - a rolling dev
+                    // build equal to the running version is up to date, and a
+                    // user running ahead of the last published build must not
+                    // be told to "update" backwards.
+                    if (System.Version.TryParse(latestVersion, out var latestParsed) &&
+                        (System.Version.TryParse(currentVersion, out var currentParsed) ||
+                         System.Version.TryParse(currentBase, out currentParsed)))
+                    {
+                        updateAvailable = latestParsed > currentParsed;
+                    }
+                    else
+                    {
+                        updateAvailable = latestVersion != currentBase && latestVersion != currentVersion;
+                    }
                 }
 
                 logger.LogInformation("[UPDATES] Current: {Current}, Latest: {Latest}, Available: {Available}",

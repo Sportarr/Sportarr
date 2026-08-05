@@ -25,16 +25,33 @@ public static class LibraryEndpoints
             }
         });
 
-        app.MapPost("/api/library/import", async (LibraryImportService service, List<FileImportRequest> requests) =>
+        // Queues the import as a background task and returns immediately.
+        // The transfers and ffprobe inspection used to run inline in this
+        // request; multi-gigabyte copies routinely outlived reverse-proxy
+        // timeouts and users saw 504s while the import kept running
+        // invisibly. The UI polls /api/task/{id}; the task's result column
+        // carries the same ImportResult shape the inline response used to.
+        app.MapPost("/api/library/import", async (TaskService taskService, List<FileImportRequest> requests) =>
         {
             try
             {
-                var result = await service.ImportFilesAsync(requests);
-                return Results.Ok(result);
+                if (requests.Count == 0)
+                {
+                    return Results.BadRequest(new { error = "No files to import" });
+                }
+
+                var body = System.Text.Json.JsonSerializer.Serialize(requests);
+                var task = await taskService.QueueTaskAsync(
+                    $"Library Import ({requests.Count} file{(requests.Count == 1 ? "" : "s")})",
+                    "LibraryImport",
+                    priority: 5,
+                    body: body);
+
+                return Results.Accepted($"/api/task/{task.Id}", new { taskId = task.Id });
             }
             catch (Exception ex)
             {
-                return Results.Problem($"Failed to import files: {ex.Message}");
+                return Results.Problem($"Failed to queue import: {ex.Message}");
             }
         });
 

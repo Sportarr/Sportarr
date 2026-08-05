@@ -87,9 +87,9 @@ public class DecypharrClient
     /// Get torrent status from Decypharr
     /// Note: Decypharr may change download IDs as it processes torrents through debrid services
     /// </summary>
-    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
+    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash, string? expectedCategory = null)
     {
-        return await _qbClient.GetTorrentStatusAsync(config, hash);
+        return await _qbClient.GetTorrentStatusAsync(config, hash, expectedCategory);
     }
 
     /// <summary>

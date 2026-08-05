@@ -115,5 +115,14 @@ public enum ImportListType
     /// <summary>
     /// Custom script/webhook
     /// </summary>
-    CustomScript = 5
+    CustomScript = 5,
+
+    /// <summary>
+    /// A sportarr.net user list (leagues/teams a hub account curated) - adds
+    /// and monitors the referenced leagues, scoping to specific teams when
+    /// the list also includes team items for that league. Unlike every
+    /// other type here, this does not go through the DiscoveredEvent/title
+    /// -matching pipeline at all - see ImportListService.SyncSportarrListAsync.
+    /// </summary>
+    SportarrList = 6
 }

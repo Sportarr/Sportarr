@@ -577,13 +577,12 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
         return Results.BadRequest(new { error = $"Please wait {waitTime.Minutes} minutes before re-grabbing again" });
     }
 
-    // Find a suitable download client
-    var supportedTypes = grabHistory.Protocol switch
-    {
-        "Usenet" => new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet, DownloadClientType.DecypharrUsenet, DownloadClientType.NZBdav },
-        "Torrent" => new[] { DownloadClientType.QBittorrent, DownloadClientType.Transmission, DownloadClientType.Deluge, DownloadClientType.RTorrent, DownloadClientType.UTorrent, DownloadClientType.Decypharr },
-        _ => Array.Empty<DownloadClientType>()
-    };
+    // Find a suitable download client. Uses the canonical
+    // DownloadClientService.GetClientTypesForProtocol map, not a local list -
+    // a local copy here previously went stale and was missing
+    // TorrentBlackhole/UsenetBlackhole, so blackhole-only setups couldn't
+    // re-grab from history even though the client worked everywhere else.
+    var supportedTypes = DownloadClientService.GetClientTypesForProtocol(grabHistory.Protocol).ToArray();
 
     if (supportedTypes.Length == 0)
         return Results.BadRequest(new { error = $"Unknown protocol: {grabHistory.Protocol}" });
@@ -663,6 +662,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             Title = grabHistory.Title,
             DownloadId = downloadId,
             DownloadClientId = downloadClient.Id,
+            GrabCategory = downloadClient.Category,
             Status = DownloadStatus.Queued,
             Quality = grabHistory.Quality,
             Codec = grabHistory.Codec,
@@ -735,13 +735,9 @@ app.MapPost("/api/grab-history/regrab-missing", async (
 
     foreach (var grabHistory in missingGrabs)
     {
-        // Find a suitable download client
-        var supportedTypes = grabHistory.Protocol switch
-        {
-            "Usenet" => new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet, DownloadClientType.DecypharrUsenet, DownloadClientType.NZBdav },
-            "Torrent" => new[] { DownloadClientType.QBittorrent, DownloadClientType.Transmission, DownloadClientType.Deluge, DownloadClientType.RTorrent, DownloadClientType.UTorrent, DownloadClientType.Decypharr },
-            _ => Array.Empty<DownloadClientType>()
-        };
+        // Find a suitable download client (canonical map, see the single
+        // re-grab endpoint above for why this can't be a local list).
+        var supportedTypes = DownloadClientService.GetClientTypesForProtocol(grabHistory.Protocol).ToArray();
 
         if (supportedTypes.Length == 0)
         {
@@ -799,6 +795,7 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 Title = grabHistory.Title,
                 DownloadId = downloadId,
                 DownloadClientId = downloadClient.Id,
+                GrabCategory = downloadClient.Category,
                 Status = DownloadStatus.Queued,
                 Quality = grabHistory.Quality,
                 Codec = grabHistory.Codec,

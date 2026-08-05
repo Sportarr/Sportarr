@@ -42,6 +42,17 @@ public static class BlackholeDownloadClient
     };
 
     /// <summary>
+    /// Extensions Sportarr itself writes into the blackhole folder when
+    /// dropping a release for the external client to pick up. If the watch
+    /// folder is the same directory (or the client leaves the source file
+    /// alongside its output), this file's name will match the download id
+    /// by construction - it must never be mistaken for the client's
+    /// finished output, or import fails trying to find video inside a
+    /// .nzb/.torrent file.
+    /// </summary>
+    private static readonly string[] DropFileExtensions = { ".nzb", ".torrent", ".magnet" };
+
+    /// <summary>
     /// Make a release title safe to use as a file name (and blackhole download id).
     /// </summary>
     public static string SanitizeFileName(string name)
@@ -129,6 +140,7 @@ public static class BlackholeDownloadClient
         {
             var name = Path.GetFileName(entry);
             if (name.StartsWith('.')) continue; // hidden files, .DS_Store, etc.
+            if (DropFileExtensions.Any(ext => name.EndsWith(ext, StringComparison.OrdinalIgnoreCase))) continue;
 
             // For files, match on the name without extensions; a partial marker
             // like "x.mkv.part" still matches its download (completion is

@@ -310,14 +310,14 @@ function AgendaSection({
                   key={event.id}
                   event={event}
                   timezone={timezone}
-                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); }}
                 />
               ) : (
                 <SpaciousAgendaEventCard
                   key={event.id}
                   event={event}
                   timezone={timezone}
-                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); }}
                 />
               )
             ))}
@@ -340,14 +340,14 @@ function AgendaSection({
                   key={event.id}
                   event={event}
                   timezone={timezone}
-                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); }}
                 />
               ) : (
                 <SpaciousAgendaEventCard
                   key={event.id}
                   event={event}
                   timezone={timezone}
-                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+                  onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); }}
                 />
               )
             ))}
@@ -806,7 +806,7 @@ export default function CalendarPage() {
                                     timezone={timezone}
                                     onClick={() => {
                                       if (event.leagueId) {
-                                        navigate(`/leagues/${event.leagueId}`);
+                                        navigate(`/leagues/${event.leagueId}?event=${event.id}`);
                                       }
                                     }}
                                   />

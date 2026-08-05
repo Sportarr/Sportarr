@@ -196,3 +196,4 @@ src/nul
 # Static assets like icons should remain, but compiled JS/CSS should not
 src/wwwroot/assets/
 src/wwwroot/index.html
+site/

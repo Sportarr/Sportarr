@@ -1,6 +1,6 @@
 [
   {
-    "guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "guid": "aeb8dfd3-eb78-4785-9b14-34bfd2dfc4dd",
     "name": "Sportarr",
     "description": "Sports metadata provider for Jellyfin. Fetches rich metadata, posters, banners, and artwork for sports events from Sportarr.",
     "overview": "Automatically enriches your sports library with metadata from Sportarr including event descriptions, air dates, posters, banners, and thumbnails.",

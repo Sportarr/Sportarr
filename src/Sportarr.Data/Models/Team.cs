@@ -115,6 +115,28 @@ public class Team
     private string? _badgeUrl;
 
     /// <summary>
+    /// Write-only alias: the metadata API's current team endpoints (bulk
+    /// /all/teams and /search/team) emit the badge as "strBadge", not the
+    /// v1-era "strTeamBadge" this model was written against. Without the
+    /// alias every team deserialized badgeless and the Add Team page fell
+    /// back to sport-ball placeholders for all ~14k teams. Never serialized
+    /// (getter stays null) so responses keep the single strTeamBadge field
+    /// the frontend reads.
+    /// </summary>
+    [JsonPropertyName("strBadge")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? BadgeUrlAlias
+    {
+        get => null;
+        set
+        {
+            if (!string.IsNullOrEmpty(value))
+                _badgeUrl = ImageUrlNormalizer.Normalize(value);
+        }
+    }
+
+    /// <summary>
     /// Team jersey/kit image URL
     /// </summary>
     [JsonPropertyName("strTeamJersey")]

@@ -32,7 +32,7 @@ public interface IDownloadClientService
     /// <summary>
     /// Get status of a specific download
     /// </summary>
-    Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient client, string downloadId);
+    Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient client, string downloadId, string? expectedCategory = null);
 
     /// <summary>
     /// Remove a download from the client

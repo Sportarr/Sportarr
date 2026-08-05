@@ -2,7 +2,7 @@
 
 <p>
   <a href="https://github.com/Sportarr/Sportarr/blob/main/COPYRIGHT.md"><img src="https://img.shields.io/badge/license-GPL--v3-green?style=flat" alt="License"></a>
-  <a href="https://discord.gg/YjHVWGWjjG"><img src="https://img.shields.io/badge/discord-join-7289da?style=flat&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/YjHVWGWjjG"><img src="https://img.shields.io/discord/1427430309653123105?style=flat&logo=discord&logoColor=white&label=discord&color=7289da" alt="Discord online"></a>
 </p>
 
 <img src="./Logo/512.png" width="200" alt="Sportarr">
@@ -14,6 +14,7 @@
 <p>
   <a href="https://sportarr.net"><img src="https://img.shields.io/badge/website-sportarr.net-blue?style=flat" alt="Website"></a>
   <a href="https://hub.docker.com/r/sportarr/sportarr"><img src="https://img.shields.io/badge/docker-sportarr%2Fsportarr-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker"></a>
+  <a href="https://hub.docker.com/r/sportarr/sportarr"><img src="https://img.shields.io/docker/pulls/sportarr/sportarr?style=flat&logo=docker&logoColor=white&label=pulls&color=2496ED" alt="Docker pulls"></a>
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-orange?style=flat" alt="Architecture">
   <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/github/v/release/Sportarr/Sportarr?style=flat&label=release&color=blueviolet" alt="Latest release"></a>
   <a href="https://github.com/Sportarr/Sportarr/stargazers"><img src="https://img.shields.io/github/stars/Sportarr/Sportarr?style=flat&color=yellow" alt="Stars"></a>
@@ -57,7 +58,7 @@ services:
       - TZ=America/New_York
     volumes:
       - /path/to/sportarr/config:/config
-      - /path/to/sports:/data
+      - /path/to/data:/data
     ports:
       - 1867:1867
     restart: unless-stopped
@@ -90,11 +91,11 @@ Everything lives on the wiki at **[wiki.sportarr.net](https://wiki.sportarr.net)
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=Sportarr%2FSportarr&type=date&legend=top-left">
+<a href="https://www.star-history.com/#Sportarr/Sportarr&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Sportarr/Sportarr&type=date&theme=dark&legend=top-left&sealed_token=loM7FRYSXaXqn9lTcTishVtPaTcjxXer6HbzwSQ3Dg7QDKXGmTOsc2xoEc01aDr8vEZFTXyRc76fxgdckzJKpxH84MmDWLWNUY83aEa7xcK5XjOUWMvzqd353S9mqCK4hQ3R7kdhDXZBpI-gBTpD8cQCUEzOq-hFCBEVqXOUz9S9tuaN677TBZ8q0QT2" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Sportarr/Sportarr&type=date&legend=top-left&sealed_token=loM7FRYSXaXqn9lTcTishVtPaTcjxXer6HbzwSQ3Dg7QDKXGmTOsc2xoEc01aDr8vEZFTXyRc76fxgdckzJKpxH84MmDWLWNUY83aEa7xcK5XjOUWMvzqd353S9mqCK4hQ3R7kdhDXZBpI-gBTpD8cQCUEzOq-hFCBEVqXOUz9S9tuaN677TBZ8q0QT2" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Sportarr/Sportarr&type=date&legend=top-left&sealed_token=loM7FRYSXaXqn9lTcTishVtPaTcjxXer6HbzwSQ3Dg7QDKXGmTOsc2xoEc01aDr8vEZFTXyRc76fxgdckzJKpxH84MmDWLWNUY83aEa7xcK5XjOUWMvzqd353S9mqCK4hQ3R7kdhDXZBpI-gBTpD8cQCUEzOq-hFCBEVqXOUz9S9tuaN677TBZ8q0QT2" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Sportarr/Sportarr&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Sportarr/Sportarr&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Sportarr/Sportarr&type=Date" />
  </picture>
 </a>
 

@@ -785,7 +785,9 @@ public class QBittorrentClient
                 DownloadId = t.Hash,
                 Title = t.Name,
                 Category = t.Category,
-                FilePath = t.SavePath,
+                // ContentPath points at the actual file/folder; SavePath is
+                // just the containing directory (and differs on debrid mounts).
+                FilePath = !string.IsNullOrEmpty(t.ContentPath) ? t.ContentPath : t.SavePath,
                 Size = t.Size,
                 IsCompleted = isCompleted,
                 Protocol = "Torrent",
@@ -921,11 +923,29 @@ public class QBittorrentClient
     /// Get torrent status for download monitoring.
     /// Maps qBittorrent states to Sportarr status.
     /// </summary>
-    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
+    /// <param name="expectedCategory">
+    /// The category this torrent was actually grabbed under (falls back to
+    /// config.Category when null). A hash still existing in qBittorrent doesn't
+    /// mean it's still Sportarr's - qBittorrent is commonly shared across multiple
+    /// *arr-style apps, each scoped to its own category. If the torrent's current
+    /// category doesn't match, it's reported as not found here rather than matched
+    /// by hash alone, so download monitoring stops tracking it instead of polling
+    /// another app's torrent forever - the hash never disappears, only its owner
+    /// does. A blank expected category (no scoping in use, on either side) skips
+    /// the check and preserves the previous hash-only match.
+    /// </param>
+    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash, string? expectedCategory = null)
     {
         var torrent = await GetTorrentAsync(config, hash);
         if (torrent == null)
             return null;
+
+        var categoryToMatch = expectedCategory ?? config.Category;
+        if (!string.IsNullOrWhiteSpace(categoryToMatch) &&
+            !torrent.Category.Equals(categoryToMatch, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
 
         // Get the actual output path (uses ContentPath or constructs from files)
         var outputPath = await GetTorrentOutputPathAsync(config, torrent);
@@ -1603,6 +1623,11 @@ public class QBittorrentTorrent
     public long Eta { get; set; } // Estimated time remaining in seconds (can be 8640000 for infinity)
     public long DlSpeed { get; set; } // Download speed in bytes/s
     public long UpSpeed { get; set; } // Upload speed in bytes/s
+
+    // qBittorrent emits snake_case for these; without the explicit names the
+    // web-defaults case-insensitive matching still misses them (underscore vs
+    // none) and they silently deserialize to defaults.
+    [System.Text.Json.Serialization.JsonPropertyName("save_path")]
     public string SavePath { get; set; } = "";
 
     /// <summary>
@@ -1616,7 +1641,11 @@ public class QBittorrentTorrent
 
     public double Ratio { get; set; } // Upload/download ratio
     public string Category { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonPropertyName("added_on")]
     public long AddedOn { get; set; } // Unix timestamp
+
+    [System.Text.Json.Serialization.JsonPropertyName("completed_on")]
     public long CompletedOn { get; set; } // Unix timestamp
 }
 

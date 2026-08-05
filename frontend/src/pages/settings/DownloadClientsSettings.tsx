@@ -67,7 +67,10 @@ const clientTypeMap: Record<string, number> = {
   'DecypharrUsenet': 8,
   'NZBdav': 9,
   'TorrentBlackhole': 10,
-  'UsenetBlackhole': 11
+  'UsenetBlackhole': 11,
+  'Aria2': 12,
+  'SynologyDownloadStation': 13,
+  'SynologyDownloadStationUsenet': 14
 };
 
 const clientTypeNameMap: Record<number, string> = {
@@ -82,7 +85,10 @@ const clientTypeNameMap: Record<number, string> = {
   8: 'DecypharrUsenet',
   9: 'NZBdav',
   10: 'TorrentBlackhole',
-  11: 'UsenetBlackhole'
+  11: 'UsenetBlackhole',
+  12: 'Aria2',
+  13: 'SynologyDownloadStation',
+  14: 'SynologyDownloadStationUsenet'
 };
 
 // Blackhole clients have no API connection - they exchange files via folders
@@ -90,7 +96,7 @@ const isBlackholeType = (type: number | undefined): boolean => type === 10 || ty
 
 // Determine protocol based on type
 const getProtocol = (type: number): 'usenet' | 'torrent' => {
-  const protocol = (type === 5 || type === 6 || type === 8 || type === 9 || type === 11) ? 'usenet' : 'torrent';
+  const protocol = (type === 5 || type === 6 || type === 8 || type === 9 || type === 11 || type === 14) ? 'usenet' : 'torrent';
   console.log(`[DEBUG] getProtocol: type=${type}, protocol=${protocol}, type===5: ${type === 5}, type===6: ${type === 6}, type===8: ${type === 8}, type===9: ${type === 9}`);
   return protocol;
 };
@@ -160,6 +166,30 @@ const downloadClientTemplates: ClientTemplate[] = [
     description: 'Feature-rich torrent client',
     defaultPort: 9091,
     fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'Aria2',
+    implementation: 'Aria2',
+    protocol: 'torrent',
+    description: 'Lightweight, JSON-RPC controlled download utility',
+    defaultPort: 6800,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'category', 'directory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'Synology Download Station',
+    implementation: 'SynologyDownloadStation',
+    protocol: 'torrent',
+    description: 'Torrent downloads via a Synology NAS',
+    defaultPort: 5000,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'Synology Download Station (Usenet)',
+    implementation: 'SynologyDownloadStationUsenet',
+    protocol: 'usenet',
+    description: 'NZB downloads via a Synology NAS',
+    defaultPort: 5000,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Decypharr',

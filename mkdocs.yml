@@ -1,0 +1,100 @@
+site_name: Sportarr Wiki
+site_url: https://wiki.sportarr.net
+site_description: Documentation for Sportarr, the sports PVR for Usenet and torrents
+repo_url: https://github.com/Sportarr/Sportarr
+repo_name: Sportarr/Sportarr
+edit_uri: edit/dev/docs/
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
+  palette:
+    scheme: slate
+    primary: custom
+    accent: custom
+  font:
+    text: Barlow
+    code: IBM Plex Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - search.suggest
+    - search.highlight
+    - content.action.edit
+    - content.code.copy
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/solid/globe
+      link: https://sportarr.net
+      name: sportarr.net
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/YjHVWGWjjG
+    - icon: fontawesome/brands/github
+      link: https://github.com/Sportarr/Sportarr
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/sportarr/sportarr
+  generator: false
+
+plugins:
+  - search
+  - swagger-ui-tag:
+      dark_scheme_name: slate
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Initial Setup: getting-started/initial-setup.md
+      - Database: getting-started/database.md
+  - Integrations:
+      - Prowlarr: integrations/prowlarr.md
+      - Bazarr: integrations/bazarr.md
+      - Maintainerr: integrations/maintainerr.md
+      - Homepage: integrations/homepage.md
+      - autobrr: integrations/autobrr.md
+      - DockSTARTer: integrations/dockstarter.md
+      - Media Servers: integrations/media-servers.md
+      - Kodi: integrations/kodi.md
+  - Features:
+      - Following Teams & Athletes: features/following.md
+      - Download Clients: features/download-clients.md
+      - Notifications: features/notifications.md
+      - File Naming: features/file-naming.md
+      - IPTV DVR (Alpha): features/iptv-dvr.md
+  - Troubleshooting: troubleshooting.md
+  - API:
+      - Application API: APPLICATION_API.md
+      - Metadata API Explorer: api-explorer.md
+      - External IDs: EXTERNAL_IDS.md
+      - API Versioning: API_VERSIONING.md
+      - Native API Reference: api.md
+      - Plex Metadata Provider: plex-metadata-provider-api.md
+      - Release Naming: RELEASE_NAMING.md
+  - Development:
+      - Building from Source: development/building.md
+      - Architecture: ARCHITECTURE.md

@@ -10,13 +10,16 @@ namespace Sportarr.Api.Services;
 public class DelayProfileService
 {
     private readonly SportarrDbContext _db;
+    private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly ILogger<DelayProfileService> _logger;
 
     public DelayProfileService(
         SportarrDbContext db,
+        ReleaseEvaluator releaseEvaluator,
         ILogger<DelayProfileService> logger)
     {
         _db = db;
+        _releaseEvaluator = releaseEvaluator;
         _logger = logger;
     }
 
@@ -170,20 +173,28 @@ public class DelayProfileService
             return null;
         }
 
-        // Build allowed qualities set from profile
+        // Allowed-quality names, for the diagnostic warning below. Includes
+        // enabled children of allowed groups so the log reflects what the
+        // profile actually permits.
         var allowedQualities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        var allowedItems = qualityProfile.Items
-            .Where(q => q.Allowed)
-            .ToList();
-
-        foreach (var item in allowedItems)
+        foreach (var item in qualityProfile.Items.Where(q => q.Allowed))
         {
             allowedQualities.Add(item.Name);
+            if (item.IsGroup && item.Items != null)
+            {
+                foreach (var child in item.Items)
+                {
+                    allowedQualities.Add(child.Name);
+                }
+            }
         }
 
-        // Filter releases by allowed qualities using QualityParser for proper group matching
-        // This handles cases like "WEBDL-1080p" matching profile item "WEB 1080p"
+        // Filter releases through the SAME evaluator the initial release
+        // evaluation uses. Re-implementing the check here with only
+        // top-level profile item names silently rejected enabled CHILDREN
+        // of allowed groups (e.g. HDTV-1080p nested under an allowed
+        // Bluray-1080p group), so auto search approved a release and the
+        // delay profile then threw it away.
         var qualityFiltered = availableReleases.Where(r =>
         {
             if (string.IsNullOrEmpty(r.Quality))
@@ -191,21 +202,8 @@ public class DelayProfileService
                 return true; // Include unknown quality (will get lowest rank)
             }
 
-            // Parse the release quality to get a QualityDefinition
             var parsedQuality = QualityParser.ParseQuality(r.Title);
-
-            // Check against each allowed quality item using proper matching
-            foreach (var item in allowedItems)
-            {
-                // Use QualityParser's matching which handles quality groups
-                // e.g., "WEB 1080p" matches "WEBDL-1080p" and "WEBRip-1080p"
-                if (QualityParser.MatchesProfileItem(parsedQuality.Quality, item.Name))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return _releaseEvaluator.IsQualityAllowed(parsedQuality.Quality, qualityProfile);
         }).ToList();
 
         if (!qualityFiltered.Any())

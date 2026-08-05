@@ -1,0 +1,57 @@
+backend:
+  name: github
+  repo: Sportarr/Sportarr
+  branch: dev
+  base_url: https://sportarr.net
+  auth_endpoint: api/decap/auth
+
+publish_mode: simple
+media_folder: docs/images
+public_folder: ../images
+
+collections:
+  - name: pages
+    label: Top-level Pages
+    folder: docs
+    extension: md
+    format: yaml-frontmatter
+    create: false
+    fields:
+      - { name: body, label: Body, widget: markdown }
+    filter: { field: title, value: null }
+
+  - name: getting-started
+    label: Getting Started
+    folder: docs/getting-started
+    extension: md
+    format: yaml-frontmatter
+    create: true
+    fields:
+      - { name: body, label: Body, widget: markdown }
+
+  - name: integrations
+    label: Integrations
+    folder: docs/integrations
+    extension: md
+    format: yaml-frontmatter
+    create: true
+    fields:
+      - { name: body, label: Body, widget: markdown }
+
+  - name: features
+    label: Features
+    folder: docs/features
+    extension: md
+    format: yaml-frontmatter
+    create: true
+    fields:
+      - { name: body, label: Body, widget: markdown }
+
+  - name: development
+    label: Development
+    folder: docs/development
+    extension: md
+    format: yaml-frontmatter
+    create: true
+    fields:
+      - { name: body, label: Body, widget: markdown }

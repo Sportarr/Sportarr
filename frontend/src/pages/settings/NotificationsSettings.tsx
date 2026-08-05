@@ -50,6 +50,20 @@ interface Notification {
   ntfyPriority?: string;
   ntfyTags?: string;
   ntfyClickUrl?: string;
+  // Gotify-specific fields
+  gotifyServerUrl?: string;
+  gotifyAppToken?: string;
+  gotifyPriority?: number;
+  // Join-specific fields
+  joinApiKey?: string;
+  joinDeviceId?: string;
+  // Mattermost-specific field (reuses username, channel)
+  mattermostWebhook?: string;
+  // Pushbullet-specific fields
+  pushbulletApiKey?: string;
+  pushbulletDeviceIden?: string;
+  // SimplePush-specific field
+  simplePushApiKey?: string;
   channel?: string;
   username?: string;
   server?: string;
@@ -74,6 +88,13 @@ interface Notification {
   librarySectionName?: string; // Display name of selected library
   pathMapFrom?: string;    // Path mapping: Sportarr path
   pathMapTo?: string;      // Path mapping: Media server path
+  // Kodi-specific fields
+  kodiPort?: number;       // Kodi JSON-RPC port (default 8080)
+  kodiUrlBase?: string;    // Kodi JSON-RPC path (default /jsonrpc)
+  displayTime?: number;    // Kodi GUI notification display time, seconds
+  notify?: boolean;        // Show a GUI notification popup in Kodi
+  cleanLibrary?: boolean;  // Run VideoLibrary.Clean after update (whole-library, Kodi has no path-scoped clean)
+  alwaysUpdate?: boolean;  // Skip the "is a video playing" check before scanning/cleaning
   // Advanced
   includeHealthWarnings?: boolean;
   tags?: number[];
@@ -148,6 +169,41 @@ const notificationTemplates: NotificationTemplate[] = [
     fields: ['ntfyServerUrl', 'ntfyTopic', 'ntfyAccessToken', 'username', 'password', 'ntfyPriority', 'ntfyTags', 'ntfyClickUrl', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   },
   {
+    name: 'Gotify',
+    implementation: 'Gotify',
+    description: 'Push notifications via a self-hosted Gotify server',
+    icon: '📮',
+    fields: ['gotifyServerUrl', 'gotifyAppToken', 'gotifyPriority', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
+    name: 'Join',
+    implementation: 'Join',
+    description: 'Push notifications to Android devices via Join (joaoapps)',
+    icon: '📱',
+    fields: ['joinApiKey', 'joinDeviceId', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
+    name: 'Mattermost',
+    implementation: 'Mattermost',
+    description: 'Send notifications to a self-hosted Mattermost channel',
+    icon: '💠',
+    fields: ['mattermostWebhook', 'username', 'channel', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
+    name: 'Pushbullet',
+    implementation: 'Pushbullet',
+    description: 'Push notifications via Pushbullet',
+    icon: '🚀',
+    fields: ['pushbulletApiKey', 'pushbulletDeviceIden', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
+    name: 'SimplePush',
+    implementation: 'SimplePush',
+    description: 'Push notifications via SimplePush',
+    icon: '✉️',
+    fields: ['simplePushApiKey', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
     name: 'Custom Script',
     implementation: 'CustomScript',
     description: 'Run a script on events with details passed as SPORTARR_* environment variables',
@@ -175,6 +231,13 @@ const notificationTemplates: NotificationTemplate[] = [
     description: 'Refresh Emby library when files are imported or deleted',
     icon: '📺',
     fields: ['host', 'apiKey', 'updateLibrary', 'usePartialScan', 'pathMapFrom', 'pathMapTo', 'onDownload', 'onUpgrade', 'onRename', 'onEventFileDelete']
+  },
+  {
+    name: 'Kodi (XBMC)',
+    implementation: 'Kodi',
+    description: 'GUI notifications and library refresh via JSON-RPC. Kodi reads local NFO files natively, no plugin needed.',
+    icon: '🎯',
+    fields: ['host', 'username', 'password', 'pathMapFrom', 'pathMapTo', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventFileDelete', 'onEventFileDeleteForUpgrade', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   }
 ];
 
@@ -245,17 +308,18 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
       // Media server connections exist to refresh the library, so those
       // toggles start ON. Without explicit values the saved config used to
       // omit them and the refresh never fired (issue #21).
-      updateLibrary: isMediaServer(template.implementation) ? true : undefined,
+      updateLibrary: isMediaServer(template.implementation) || template.implementation === 'Kodi' ? true : undefined,
       usePartialScan: isMediaServer(template.implementation) ? true : undefined,
       onGrab: true,
       onDownload: true,
-      onUpgrade: false,
-      onRename: false,
+      onUpgrade: template.implementation === 'Kodi' ? true : false,
+      onRename: template.implementation === 'Kodi' ? true : false,
       onHealthIssue: true,
       onApplicationUpdate: false,
       onRecordingCompleted: true,
       onRecordingFailed: true,
       onRecordingStarted: false,
+      onEventFileDelete: template.implementation === 'Kodi' ? true : undefined,
       includeHealthWarnings: false,
       useSsl: template.implementation === 'Email',
       port: template.implementation === 'Email' ? 587 : undefined,
@@ -264,6 +328,13 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
       sound: template.implementation === 'Pushover' ? 'pushover' : undefined,
       retry: template.implementation === 'Pushover' ? 60 : undefined,
       expire: template.implementation === 'Pushover' ? 3600 : undefined,
+      // Kodi defaults
+      kodiPort: template.implementation === 'Kodi' ? 8080 : undefined,
+      kodiUrlBase: template.implementation === 'Kodi' ? '/jsonrpc' : undefined,
+      displayTime: template.implementation === 'Kodi' ? 5 : undefined,
+      notify: template.implementation === 'Kodi' ? true : undefined,
+      cleanLibrary: template.implementation === 'Kodi' ? false : undefined,
+      alwaysUpdate: template.implementation === 'Kodi' ? false : undefined,
       tags: []
     });
   };
@@ -934,6 +1005,124 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                       </div>
                     )}
 
+                    {selectedTemplate?.fields.includes('gotifyServerUrl') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Server URL *</label>
+                        <input
+                          type="text"
+                          value={formData.gotifyServerUrl || ''}
+                          onChange={(e) => handleFormChange('gotifyServerUrl', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="https://gotify.example.com"
+                        />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('gotifyAppToken') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">App Token *</label>
+                        <input
+                          type="password"
+                          value={formData.gotifyAppToken || ''}
+                          onChange={(e) => handleFormChange('gotifyAppToken', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Created under Apps in your Gotify server</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('gotifyPriority') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Priority</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          value={formData.gotifyPriority ?? 5}
+                          onChange={(e) => handleFormChange('gotifyPriority', parseInt(e.target.value))}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('joinApiKey') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">API Key *</label>
+                        <input
+                          type="password"
+                          value={formData.joinApiKey || ''}
+                          onChange={(e) => handleFormChange('joinApiKey', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">From the Join app's API settings</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('joinDeviceId') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Device ID</label>
+                        <input
+                          type="text"
+                          value={formData.joinDeviceId || ''}
+                          onChange={(e) => handleFormChange('joinDeviceId', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Leave blank to send to all of your devices</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('mattermostWebhook') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Webhook URL *</label>
+                        <input
+                          type="text"
+                          value={formData.mattermostWebhook || ''}
+                          onChange={(e) => handleFormChange('mattermostWebhook', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="https://mattermost.example.com/hooks/xxxxxxxx"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Incoming webhook URL from your Mattermost integration settings</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('pushbulletApiKey') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">API Key *</label>
+                        <input
+                          type="password"
+                          value={formData.pushbulletApiKey || ''}
+                          onChange={(e) => handleFormChange('pushbulletApiKey', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Access Token from your Pushbullet account settings</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('pushbulletDeviceIden') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Device</label>
+                        <input
+                          type="text"
+                          value={formData.pushbulletDeviceIden || ''}
+                          onChange={(e) => handleFormChange('pushbulletDeviceIden', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Optional device_iden to target one device. Leave blank to push to all devices.</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('simplePushApiKey') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">API Key *</label>
+                        <input
+                          type="password"
+                          value={formData.simplePushApiKey || ''}
+                          onChange={(e) => handleFormChange('simplePushApiKey', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                      </div>
+                    )}
+
                     {selectedTemplate?.fields.includes('scriptPath') && (
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">Script Path *</label>
@@ -1166,7 +1355,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                       </div>
                     )}
 
-                    {/* Media Server Fields (Plex, Jellyfin, Emby) */}
+                    {/* Media Server Fields (Plex, Jellyfin, Emby, Kodi) */}
                     {selectedTemplate?.fields.includes('host') && (
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">Host *</label>
@@ -1175,14 +1364,126 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                           value={formData.host || ''}
                           onChange={(e) => handleFormChange('host', e.target.value)}
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                          placeholder={selectedTemplate?.implementation === 'Plex' ? 'http://localhost:32400' : 'http://localhost:8096'}
+                          placeholder={
+                            selectedTemplate?.implementation === 'Plex' ? 'http://localhost:32400'
+                            : selectedTemplate?.implementation === 'Kodi' ? 'localhost or 192.168.1.50'
+                            : 'http://localhost:8096'
+                          }
                         />
                         <p className="text-xs text-gray-500 mt-1">
                           {selectedTemplate?.implementation === 'Plex'
                             ? 'Plex server URL (usually http://localhost:32400 or your server IP)'
+                            : selectedTemplate?.implementation === 'Kodi'
+                            ? "Kodi's hostname or IP address, without a scheme or port (those are set below)."
                             : `${selectedTemplate?.implementation} server URL (usually http://localhost:8096)`
                           }
                         </p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.implementation === 'Kodi' && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Port</label>
+                            <input
+                              type="number"
+                              value={formData.kodiPort ?? 8080}
+                              onChange={(e) => handleFormChange('kodiPort', parseInt(e.target.value))}
+                              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                              placeholder="8080"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">URL Base</label>
+                            <input
+                              type="text"
+                              value={formData.kodiUrlBase ?? '/jsonrpc'}
+                              onChange={(e) => handleFormChange('kodiUrlBase', e.target.value)}
+                              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                              placeholder="/jsonrpc"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 -mt-2">
+                          In Kodi, go to Settings &gt; Services &gt; Control and turn on "Allow remote control via HTTP" - otherwise Kodi won't respond here.
+                        </p>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Notification Display Time (seconds)</label>
+                          <input
+                            type="number"
+                            min={2}
+                            value={formData.displayTime ?? 5}
+                            onChange={(e) => handleFormChange('displayTime', parseInt(e.target.value))}
+                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          />
+                        </div>
+
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.useSsl ?? false}
+                            onChange={(e) => handleFormChange('useSsl', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-300">Use SSL</span>
+                            <p className="text-xs text-gray-500">Kodi's built-in webserver rarely speaks HTTPS directly - only enable this if something is proxying it.</p>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.notify ?? true}
+                            onChange={(e) => handleFormChange('notify', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-300">GUI Notification</span>
+                            <p className="text-xs text-gray-500">Show a popup on screen in Kodi</p>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.updateLibrary ?? true}
+                            onChange={(e) => handleFormChange('updateLibrary', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-300">Update Library</span>
+                            <p className="text-xs text-gray-500">Scan the affected folder in Kodi when files are imported</p>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.cleanLibrary ?? false}
+                            onChange={(e) => handleFormChange('cleanLibrary', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-300">Clean Library</span>
+                            <p className="text-xs text-gray-500">Kodi has no way to clean just one folder - this always sweeps your whole library, so it can be slow</p>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.alwaysUpdate ?? false}
+                            onChange={(e) => handleFormChange('alwaysUpdate', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-300">Always Update</span>
+                            <p className="text-xs text-gray-500">By default Sportarr skips the scan/clean while something is playing in Kodi - turn this on to update anyway</p>
+                          </div>
+                        </label>
                       </div>
                     )}
 

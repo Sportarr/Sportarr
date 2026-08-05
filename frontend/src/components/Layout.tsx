@@ -99,7 +99,7 @@ export default function Layout() {
       children: [
         { label: 'Leagues', path: '/leagues' },
         { label: 'Add League', path: '/add-league/search' },
-        { label: 'Add Team', path: '/add-team/search' },
+        { label: 'Follow', path: '/add-team/search' },
         { label: 'Import', path: '/library-import' },
       ],
     },
@@ -129,6 +129,7 @@ export default function Layout() {
         { label: 'Import Lists', path: '/settings/importlists' },
         { label: 'Download Clients', path: '/settings/downloadclients' },
         { label: 'Notifications', path: '/settings/notifications' },
+        { label: 'Local Metadata', path: '/settings/metadata' },
         { label: 'General', path: '/settings/general' },
         { label: 'UI', path: '/settings/ui' },
         { label: 'Tags', path: '/settings/tags' },

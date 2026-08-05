@@ -159,6 +159,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime>("Queued")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Result")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("Started")
                         .HasColumnType("TEXT");
 
@@ -684,6 +687,9 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<int>("EventId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("GrabCategory")
+                        .HasColumnType("TEXT");
 
                     b.Property<int?>("ImportRetryCount")
                         .HasColumnType("INTEGER");
@@ -1406,6 +1412,44 @@ namespace Sportarr.Api.Migrations
                     b.ToTable("EventFileHistory");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.FollowedAthlete", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Added")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastEventDiscovery")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResolvedTeamExternalId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResolvedTeamName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sport")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ThumbUrl")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("FollowedAthletes");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.FollowedTeam", b =>
                 {
                     b.Property<int>("Id")
@@ -1468,7 +1512,6 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<string>("DownloadUrl")
                         .IsRequired()
-                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<int>("EventId")
@@ -1482,7 +1525,6 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<string>("Guid")
                         .IsRequired()
-                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("ImportedAt")
@@ -2420,11 +2462,6 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("EventNfo")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("EventNfoFilename")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("EventPosterFilename")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2445,6 +2482,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("PlayerImages")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ShowNfo")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Tags")
@@ -2471,15 +2511,15 @@ namespace Sportarr.Api.Migrations
                             EventFanartFilename = "fanart.jpg",
                             EventImages = true,
                             EventNfo = true,
-                            EventNfoFilename = "{Event Title}.nfo",
                             EventPosterFilename = "poster.jpg",
                             ImageQuality = 95,
                             LeagueLogos = false,
                             Name = "Kodi/XBMC",
                             PlayerImages = false,
+                            ShowNfo = true,
                             Tags = "[]",
                             Type = 0,
-                            UseEventFolder = true
+                            UseEventFolder = false
                         });
                 });
 
@@ -3237,7 +3277,6 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<string>("DownloadUrl")
                         .IsRequired()
-                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("ExpiresAt")
@@ -3248,7 +3287,6 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<string>("Guid")
                         .IsRequired()
-                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Indexer")
@@ -3264,7 +3302,6 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("InfoUrl")
-                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsPack")
@@ -3302,7 +3339,6 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<string>("SearchTerms")
                         .IsRequired()
-                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("Seeders")

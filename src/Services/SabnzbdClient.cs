@@ -68,6 +68,37 @@ public class SabnzbdClient
     }
 
     /// <summary>
+    /// List the categories defined in SABnzbd (Config > Categories).
+    /// Returns null when they can't be queried (unreachable, auth failure,
+    /// or a SABnzbd-compatible emulator without get_cats support) so the
+    /// caller can skip validation rather than fail it.
+    /// </summary>
+    public async Task<List<string>?> GetCategoriesAsync(DownloadClient config)
+    {
+        try
+        {
+            var response = await SendApiRequestAsync(config, "?mode=get_cats&output=json");
+            if (response == null)
+                return null;
+
+            using var doc = JsonDocument.Parse(response);
+            if (!doc.RootElement.TryGetProperty("categories", out var cats) || cats.ValueKind != JsonValueKind.Array)
+                return null;
+
+            return cats.EnumerateArray()
+                .Select(c => c.GetString())
+                .Where(c => !string.IsNullOrEmpty(c))
+                .Select(c => c!)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[SABnzbd] get_cats query failed; skipping category validation");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Add NZB from URL - fetches NZB content and uploads to SABnzbd
     /// Uses raw byte handling to preserve encoding (ISO-8859-1 NZB files)
     /// Falls back to addurl mode if fetch fails or content is invalid
@@ -552,6 +583,37 @@ public class SabnzbdClient
     }
 
     /// <summary>
+    /// Get history entries for one specific nzo_id. Unlike the windowed
+    /// fetch below, this cannot miss an old entry when the history is
+    /// large. Returns null on transport failure, an empty list when the
+    /// id is genuinely not in history.
+    /// </summary>
+    public async Task<List<SabnzbdHistoryItem>?> GetHistoryByNzoIdAsync(DownloadClient config, string nzoId)
+    {
+        try
+        {
+            var response = await SendApiRequestAsync(config, $"?mode=history&nzo_ids={nzoId}&output=json");
+
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("history", out var history) &&
+                    history.TryGetProperty("slots", out var slots))
+                {
+                    return JsonSerializer.Deserialize<List<SabnzbdHistoryItem>>(slots.GetRawText());
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SABnzbd] Error getting history by nzo_ids");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Get history (with expanded limit for better progress tracking)
     /// </summary>
     public async Task<List<SabnzbdHistoryItem>?> GetHistoryAsync(DownloadClient config)
@@ -686,12 +748,25 @@ public class SabnzbdClient
     }
 
     /// <summary>
-    /// Get download status for monitoring (optimized with nzo_id filtering)
+    /// Get download status for monitoring (optimized with nzo_id filtering).
     /// </summary>
-    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, string nzoId)
+    /// <param name="expectedCategory">
+    /// The category this item was actually grabbed under (falls back to
+    /// config.Category when null). An nzo_id still existing in SABnzbd doesn't mean
+    /// it's still Sportarr's - SABnzbd is commonly shared across multiple *arr-style
+    /// apps, each scoped to its own category. If an item's category doesn't match,
+    /// it's reported as not found here rather than matched by nzo_id alone, so
+    /// download monitoring stops tracking it instead of polling another app's
+    /// download forever - the nzo_id never disappears, only its owner does. A blank
+    /// expected category (no scoping in use, on either side) skips the check and
+    /// preserves the previous nzo_id-only match.
+    /// </param>
+    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, string nzoId, string? expectedCategory = null)
     {
         try
         {
+            var categoryToMatch = expectedCategory ?? config.Category;
+
             _logger.LogDebug("[SABnzbd] GetDownloadStatusAsync: Looking for NZO ID: {NzoId}", nzoId);
 
             // OPTIMIZATION: Use SABnzbd's nzo_ids parameter to query specific download
@@ -707,10 +782,11 @@ public class SabnzbdClient
 
             // FALLBACK: If filtered query returns nothing, try full queue
             // This helps diagnose if the issue is filtering or if download isn't in queue at all
+            List<SabnzbdItem>? fullQueue = null;
             if (queueItem == null)
             {
                 _logger.LogDebug("[SABnzbd] Not found in filtered queue, checking full queue...");
-                var fullQueue = await GetQueueAsync(config);
+                fullQueue = await GetQueueAsync(config);
                 _logger.LogDebug("[SABnzbd] Full queue contains {Count} items", fullQueue?.Count ?? 0);
 
                 if (fullQueue != null && fullQueue.Count > 0)
@@ -723,6 +799,32 @@ public class SabnzbdClient
                         _logger.LogWarning("[SABnzbd] Found in full queue but NOT in filtered queue - possible SABnzbd API issue");
                     }
                 }
+            }
+
+            // Both queue lookups returning null means the API calls FAILED
+            // (timeout, connection refused, SABnzbd busy under a large
+            // queue) - not that the download is gone. Returning null here
+            // feeds the monitor's missing-from-client counter, and ten
+            // slow polls in a row used to mass-remove a perfectly healthy
+            // queue. Hold the item in its current state instead.
+            if (queueItem == null && queue == null && fullQueue == null)
+            {
+                _logger.LogWarning("[SABnzbd] Queue lookups failed (client unreachable or busy); holding {NzoId} instead of reporting it missing", nzoId);
+                return new DownloadClientStatus
+                {
+                    Status = "downloading",
+                    Progress = 0,
+                    Downloaded = 0,
+                    Size = 0,
+                    TimeRemaining = null,
+                    SavePath = null
+                };
+            }
+
+            if (queueItem != null && !string.IsNullOrWhiteSpace(categoryToMatch) &&
+                !string.Equals(queueItem.category, categoryToMatch, StringComparison.OrdinalIgnoreCase))
+            {
+                queueItem = null;
             }
 
             if (queueItem != null)
@@ -771,10 +873,28 @@ public class SabnzbdClient
                 };
             }
 
-            // If not in queue, check history
-            var history = await GetHistoryAsync(config);
+            // If not in queue, check history. Filter by nzo_id first so the
+            // lookup cannot fall outside the windowed fetch - with a large
+            // batch on the go, a completed-but-not-yet-imported download can
+            // sit beyond the last 100 history slots, and the windowed fetch
+            // alone made it look deleted.
+            var history = await GetHistoryByNzoIdAsync(config, nzoId);
+            if (history == null || history.Count == 0)
+            {
+                var windowed = await GetHistoryAsync(config);
+                if (windowed != null)
+                {
+                    history = history == null ? windowed : history.Concat(windowed).ToList();
+                }
+            }
             _logger.LogDebug("[SABnzbd] History contains {Count} items", history?.Count ?? 0);
             var historyItem = history?.FirstOrDefault(h => string.Equals(h.nzo_id, nzoId, StringComparison.OrdinalIgnoreCase));
+
+            if (historyItem != null && !string.IsNullOrWhiteSpace(categoryToMatch) &&
+                !string.Equals(historyItem.category, categoryToMatch, StringComparison.OrdinalIgnoreCase))
+            {
+                historyItem = null;
+            }
 
             if (historyItem != null)
             {
@@ -922,6 +1042,23 @@ public class SabnzbdClient
                     TimeRemaining = null,
                     SavePath = historyItem.storage,
                     ErrorMessage = errorMessage
+                };
+            }
+
+            // History lookups erroring out (null, not an empty list) means we
+            // could not actually check - same transport-failure rule as the
+            // queue above: hold rather than report missing.
+            if (history == null)
+            {
+                _logger.LogWarning("[SABnzbd] History lookups failed (client unreachable or busy); holding {NzoId} instead of reporting it missing", nzoId);
+                return new DownloadClientStatus
+                {
+                    Status = "downloading",
+                    Progress = 0,
+                    Downloaded = 0,
+                    Size = 0,
+                    TimeRemaining = null,
+                    SavePath = null
                 };
             }
 

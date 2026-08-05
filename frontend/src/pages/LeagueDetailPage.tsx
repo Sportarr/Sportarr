@@ -138,6 +138,7 @@ interface EventDetail {
   quality?: string;
   qualityProfileId?: number;
   images: string[];
+  thumbUrl?: string;
   added: string;
   lastUpdate?: string;
   homeScore?: string;
@@ -333,6 +334,52 @@ export default function LeagueDetailPage() {
         : false;
     },
   });
+
+  // Deep link from the calendar: /leagues/:id?event=<id> expands that
+  // event's season, scrolls its row into view, and pulses a highlight so
+  // the click lands on the exact event instead of the top of the league.
+  const [highlightedEventId, setHighlightedEventId] = useState<number | null>(null);
+  const deepLinkedEventRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const param = new URLSearchParams(location.search).get('event');
+    if (!param || events.length === 0) return;
+    if (deepLinkedEventRef.current === param) return;
+    const target = events.find(e => e.id === Number(param));
+    if (!target) return;
+    deepLinkedEventRef.current = param;
+
+    const season = target.season || 'Unknown';
+    setExpandedSeasons(prev => {
+      const next = new Set(prev);
+      next.add(season);
+      return next;
+    });
+
+    // Old seasons with no library activity hide behind "Show all seasons"
+    // (mirrors the defaultVisibleSeasons filter, which is computed after
+    // the loading returns and can't be referenced from up here).
+    const startYear = parseInt(season.split('-')[0]);
+    const seasonHasActivity = events.some(e => (e.season || 'Unknown') === season && (e.hasFile || e.monitored));
+    if (!Number.isNaN(startYear) && startYear < new Date().getFullYear() - 5 && !seasonHasActivity) {
+      setShowAllSeasons(true);
+    }
+
+    const status = target.status?.toUpperCase();
+    if (status === 'CANCELLED' || status === 'CANCELED' || status === 'POSTPONED') {
+      setShowCancelled(true);
+    }
+
+    setHighlightedEventId(target.id);
+    const scroll = window.setTimeout(() => {
+      document.getElementById(`event-row-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+    const clear = window.setTimeout(() => setHighlightedEventId(null), 4000);
+    return () => {
+      window.clearTimeout(scroll);
+      window.clearTimeout(clear);
+    };
+  }, [location.search, events]);
 
   // Fetch quality profiles
   const { data: qualityProfiles = [] } = useQuery({
@@ -1969,7 +2016,11 @@ export default function LeagueDetailPage() {
                             const hasParts = config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event);
 
                             return (
-                              <div key={event.id}>
+                              <div
+                                key={event.id}
+                                id={`event-row-${event.id}`}
+                                className={highlightedEventId === event.id ? 'rounded bg-red-900/30 ring-1 ring-red-500/60 transition-colors duration-700' : 'transition-colors duration-700'}
+                              >
                                 {/* Responsive compact row.
                                     Desktop (sm+): single horizontal line with
                                     fixed-width columns aligned to the header.
@@ -2005,16 +2056,19 @@ export default function LeagueDetailPage() {
                                       : ''}
                                   </span>
 
-                                  {/* Thumbnail */}
-                                  {event.images && event.images.length > 0 ? (
+                                  {/* Thumbnail - prefer the 16:9 event still over
+                                      the poster: posters are 2:3 and crop badly
+                                      in a wide slot, and TSDB has a thumb for
+                                      almost every event */}
+                                  {(event.thumbUrl || (event.images && event.images.length > 0)) ? (
                                     <img
-                                      src={event.images[0]}
+                                      src={event.thumbUrl || event.images[0]}
                                       alt=""
-                                      className="w-6 h-6 rounded object-cover flex-shrink-0 bg-gray-800"
+                                      className="w-10 h-6 rounded object-cover flex-shrink-0 bg-gray-800"
                                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                     />
                                   ) : (
-                                    <div className="w-6 h-6 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
+                                    <div className="w-10 h-6 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
                                       <FilmIcon className="w-3.5 h-3.5 text-gray-600" />
                                     </div>
                                   )}
@@ -2243,7 +2297,11 @@ export default function LeagueDetailPage() {
                 const isPast = eventDate < new Date();
 
                 return (
-                  <div key={event.id} className="hover:bg-gray-800/50 transition-colors">
+                  <div
+                    key={event.id}
+                    id={`event-row-${event.id}`}
+                    className={`hover:bg-gray-800/50 transition-colors ${highlightedEventId === event.id ? 'bg-red-900/30 ring-1 ring-red-500/60' : ''}`}
+                  >
                     {/* Event Row */}
                     <div className="p-3 md:p-4 md:flex md:items-start md:gap-4">
                       <div className="flex-1 min-w-0">
@@ -2267,19 +2325,21 @@ export default function LeagueDetailPage() {
                           )}
                         </button>
 
-                        {/* Event Thumbnail */}
-                        {event.images && event.images.length > 0 ? (
+                        {/* Event Thumbnail - prefer the 16:9 event still over the
+                            poster so nothing gets cropped; TSDB carries a thumb
+                            for almost every event while posters are sparser */}
+                        {(event.thumbUrl || (event.images && event.images.length > 0)) ? (
                           <img
-                            src={event.images[0]}
+                            src={event.thumbUrl || event.images[0]}
                             alt={event.title}
-                            className="w-9 h-9 md:w-11 md:h-11 rounded object-cover flex-shrink-0 bg-gray-800"
+                            className="w-16 h-9 md:w-[4.9rem] md:h-11 rounded object-cover flex-shrink-0 bg-gray-800"
                             onError={(e) => {
                               // Hide broken images
                               (e.target as HTMLImageElement).style.display = 'none';
                             }}
                           />
                         ) : (
-                          <div className="w-9 h-9 md:w-11 md:h-11 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
+                          <div className="w-16 h-9 md:w-[4.9rem] md:h-11 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
                             <FilmIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-600" />
                           </div>
                         )}

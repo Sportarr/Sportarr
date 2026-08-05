@@ -8,7 +8,7 @@ namespace Sportarr.Api;
 /// App Version scheme: MAJOR.MINOR.PATCH.BUILD (4-part).
 /// Format is the Radarr-v4 versioning style (e.g., 4.0.82.140) which Prowlarr
 /// uses to gate compatibility — Prowlarr requires minimum version 4.0.4 for
-/// Radarr v4 contract support, so MAJOR.MINOR is pinned to 4.0.
+/// Radarr v4 contract support, so MAJOR stays at 4.
 /// PATCH increments with each release. BUILD is set by CI/CD, defaults to 0
 /// for local builds.
 /// </summary>
@@ -16,7 +16,7 @@ public static class Version
 {
     // Application version - base 3-part version (set manually)
     // Starting at 4.0.5 (migrated from 4.0.4.9 4-part versioning)
-    public const string AppVersion = "4.0.1025";
+    public const string AppVersion = "4.1.-1";
 
     // API version - stays at 1.0.0 for API stability
     public const string ApiVersion = "1.0.0";

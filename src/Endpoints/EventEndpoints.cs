@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Interfaces;
 using System.Text.Json;
 using Sportarr.Api.Validators;
 
@@ -291,7 +292,8 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     ILogger<Program> logger,
     ConfigService configService,
     AutomaticSearchService searchService,
-    NotificationService notificationService) =>
+    NotificationService notificationService,
+    IMetadataWriterService metadataWriterService) =>
 {
     var evt = await db.Events
         .Include(e => e.Files)
@@ -389,6 +391,15 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     // on the rescan and removes it (when "empty trash after scan" is enabled).
     await NotifyFileDeletedAsync(notificationService, logger, evt, file.FilePath);
 
+    try
+    {
+        await metadataWriterService.DeleteEventMetadataAsync(file);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "[FILES] Failed to delete local metadata sidecars for: {FilePath}", file.FilePath);
+    }
+
     // Handle blocklist action if specified
     if (blocklistAction == "blocklistAndSearch" || blocklistAction == "blocklistOnly")
     {
@@ -485,7 +496,8 @@ app.MapDelete("/api/events/{id:int}/files", async (
     ILogger<Program> logger,
     ConfigService configService,
     AutomaticSearchService searchService,
-    NotificationService notificationService) =>
+    NotificationService notificationService,
+    IMetadataWriterService metadataWriterService) =>
 {
     var evt = await db.Events
         .Include(e => e.Files)
@@ -545,6 +557,15 @@ app.MapDelete("/api/events/{id:int}/files", async (
                 logger.LogError(ex, "[FILES] Failed to delete file: {FilePath}", file.FilePath);
                 failedToDelete++;
             }
+        }
+
+        try
+        {
+            await metadataWriterService.DeleteEventMetadataAsync(file);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[FILES] Failed to delete local metadata sidecars for: {FilePath}", file.FilePath);
         }
     }
 

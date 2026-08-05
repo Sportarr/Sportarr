@@ -59,6 +59,14 @@ public class AppTask
     public string? Message { get; set; }
 
     /// <summary>
+    /// Structured result payload (JSON) for tasks whose caller polls for an
+    /// outcome richer than the Message line - e.g. the async library import
+    /// stores its full per-file ImportResult here. Unbounded TEXT on both
+    /// providers; null for tasks with no structured result.
+    /// </summary>
+    public string? Result { get; set; }
+
+    /// <summary>
     /// Progress percentage (0-100, null if not applicable)
     /// </summary>
     public int? Progress { get; set; }

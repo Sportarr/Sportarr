@@ -125,6 +125,22 @@ public class Event
     public League? League { get; set; }
 
     /// <summary>
+    /// League external id (lg- short id) as emitted on metadata API event
+    /// rows. JSON-only: lets consumers of cross-league event lists (the
+    /// follow-athlete discovery) group by league without a local League row.
+    /// </summary>
+    [JsonPropertyName("idLeague")]
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? LeagueExternalId { get; set; }
+
+    /// <summary>
+    /// League display name as emitted on metadata API event rows. JSON-only.
+    /// </summary>
+    [JsonPropertyName("strLeague")]
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? ApiLeagueName { get; set; }
+
+    /// <summary>
     /// Home team external ID from Sportarr API API
     /// Used for team-based filtering during event sync
     /// </summary>
@@ -518,6 +534,14 @@ public class EventResponse
     public string? Quality { get; set; }
     public int? QualityProfileId { get; set; }
     public List<string> Images { get; set; } = new();
+
+    /// <summary>
+    /// 16:9 event still (strThumb). Kept as its own field so list views can
+    /// prefer it over the poster: posters are 2:3 and get badly cropped in
+    /// wide/square slots, and TheSportsDB carries a thumb for almost every
+    /// event while posters are much sparser.
+    /// </summary>
+    public string? ThumbUrl { get; set; }
     public DateTime Added { get; set; }
     public DateTime? LastUpdate { get; set; }
     public string? HomeScore { get; set; }
@@ -584,6 +608,12 @@ public class EventResponse
             Quality = evt.Quality,
             QualityProfileId = evt.QualityProfileId,
             Images = evt.Images,
+            // The entity's ThumbUrl only carries a value on API-deserialized
+            // objects (it is not a DB column); for library events the thumb
+            // lives in Images, where the metadata API embeds the image kind
+            // in the filename (thumbnail_/poster_/banner_/fanart_).
+            ThumbUrl = evt.ThumbUrl
+                ?? evt.Images?.FirstOrDefault(u => u != null && u.Contains("thumb", StringComparison.OrdinalIgnoreCase)),
             Added = evt.Added,
             LastUpdate = evt.LastUpdate,
             HomeScore = evt.HomeScore,

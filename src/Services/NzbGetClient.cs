@@ -518,15 +518,34 @@ public class NzbGetClient
     }
 
     /// <summary>
-    /// Get download status for monitoring
+    /// Get download status for monitoring.
     /// </summary>
-    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, int nzbId)
+    /// <param name="expectedCategory">
+    /// The category this item was actually grabbed under (falls back to
+    /// config.Category when null). An NZBID still existing in NZBGet doesn't mean
+    /// it's still Sportarr's - NZBGet is commonly shared across multiple *arr-style
+    /// apps, each scoped to its own category. If an item's category doesn't match,
+    /// it's reported as not found here rather than matched by NZBID alone, so
+    /// download monitoring stops tracking it instead of polling another app's
+    /// download forever - the NZBID never disappears, only its owner does. A blank
+    /// expected category (no scoping in use, on either side) skips the check and
+    /// preserves the previous NZBID-only match.
+    /// </param>
+    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, int nzbId, string? expectedCategory = null)
     {
         try
         {
+            var categoryToMatch = expectedCategory ?? config.Category;
+
             // First check active queue
             var queue = await GetListAsync(config);
             var queueItem = queue?.FirstOrDefault(q => q.NZBID == nzbId);
+
+            if (queueItem != null && !string.IsNullOrWhiteSpace(categoryToMatch) &&
+                !string.Equals(queueItem.Category, categoryToMatch, StringComparison.OrdinalIgnoreCase))
+            {
+                queueItem = null;
+            }
 
             if (queueItem != null)
             {
@@ -558,6 +577,12 @@ public class NzbGetClient
             // If not in queue, check history
             var history = await GetHistoryAsync(config);
             var historyItem = history?.FirstOrDefault(h => h.NZBID == nzbId);
+
+            if (historyItem != null && !string.IsNullOrWhiteSpace(categoryToMatch) &&
+                !string.Equals(historyItem.Category, categoryToMatch, StringComparison.OrdinalIgnoreCase))
+            {
+                historyItem = null;
+            }
 
             if (historyItem != null)
             {

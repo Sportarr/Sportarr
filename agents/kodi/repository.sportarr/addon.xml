@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="repository.sportarr"
+       name="Sportarr Repository"
+       version="1.0.0"
+       provider-name="Sportarr">
+  <extension point="xbmc.addon.repository" name="Sportarr Repository">
+    <dir>
+      <info compressed="false">https://raw.githubusercontent.com/Sportarr/Sportarr/main/agents/kodi/repo/addons.xml</info>
+      <checksum>https://raw.githubusercontent.com/Sportarr/Sportarr/main/agents/kodi/repo/addons.xml.md5</checksum>
+      <datadir zip="true">https://raw.githubusercontent.com/Sportarr/Sportarr/main/agents/kodi/repo</datadir>
+    </dir>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Sportarr's official Kodi addon repository</summary>
+    <description lang="en_GB">
+      Install this to get the Sportarr sports metadata scraper and receive
+      updates to it automatically. Add this repository's zip via Kodi's file
+      manager (Install from zip), then install "Sportarr" from
+      Add-ons, Install from repository, Sportarr Repository.
+    </description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Sportarr/Sportarr</source>
+    <website>https://sportarr.net</website>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  </extension>
+</addon>

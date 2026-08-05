@@ -91,6 +91,14 @@ public static class ServiceCollectionExtensions
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
             });
 
+        // League/event poster and fanart downloads for the local Kodi NFO writer.
+        services.AddHttpClient("MetadataImageClient")
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
+            });
+
         // GitHub API lookups (update checks, plugin release downloads).
         services.AddHttpClient("GitHub")
             .ConfigureHttpClient(client =>
@@ -320,6 +328,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddSportarrIndexing(this IServiceCollection services)
     {
         services.AddScoped<DownloadClientService>();
+        services.AddScoped<QueueRemovalService>();
         services.AddScoped<IndexerStatusService>();
         services.AddScoped<IndexerSearchService>();
         services.AddScoped<ReleaseMatchingService>();
@@ -353,12 +362,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ImportMatchingService>();
         services.AddScoped<LibraryImportService>();
         services.AddScoped<ImportListService>();
+        services.AddScoped<LeagueAddService>();
         services.AddScoped<ProvideImportItemService>();
         services.AddScoped<EventQueryService>();
         services.AddScoped<LeagueEventSyncService>();
         services.AddScoped<TeamLeagueDiscoveryService>();
         services.AddScoped<PackImportService>();
         services.AddScoped<LeagueMoveService>();
+        services.AddScoped<IMetadataWriterService, MetadataWriterService>();
 
         return services;
     }
@@ -484,7 +495,14 @@ public static class ServiceCollectionExtensions
             {
                 // Default migrations assembly (Sportarr.Data, where SportarrDbContext and
                 // the SQLite migration history both live) - no override needed.
-                options.UseSqlite($"Data Source={dbPath}");
+                // Default Timeout maps to SQLite's busy handler: a writer that
+                // meets a locked database waits up to this long for the lock
+                // instead of failing instantly with 'database is locked'. WAL
+                // (set at startup) removes most reader/writer contention; this
+                // covers the writer-vs-writer case that remains, e.g. a sync
+                // committing thousands of rows while the DVR or task queue
+                // needs a status write.
+                options.UseSqlite($"Data Source={dbPath};Default Timeout=30");
             }
         }
 

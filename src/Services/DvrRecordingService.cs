@@ -472,8 +472,27 @@ public class DvrRecordingService
             return new RecordingResult { Success = false, Error = "Channel not found" };
         }
 
-        // Generate output path
-        var outputPath = await GenerateOutputPathAsync(recording);
+        // Generate output path. Fails when a configured DVR Recording Path is
+        // inaccessible - surface that as a failed recording with the reason,
+        // same shape as the disk-space gate below, instead of letting the
+        // exception ride up into the scheduler.
+        string outputPath;
+        try
+        {
+            outputPath = await GenerateOutputPathAsync(recording);
+        }
+        catch (InvalidOperationException pathEx)
+        {
+            recording.Status = DvrRecordingStatus.Failed;
+            recording.ErrorMessage = pathEx.Message;
+            recording.LastUpdated = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            _logger.LogError("[DVR] Refusing to start recording {Id}: {Reason}", recordingId, pathEx.Message);
+            await NotifyRecordingFailedAsync(recording, pathEx.Message);
+
+            return new RecordingResult { Success = false, Error = pathEx.Message };
+        }
         recording.OutputPath = outputPath;
 
         // Disk-space gate. GenerateOutputPathAsync already picked the
@@ -718,7 +737,7 @@ public class DvrRecordingService
             var duration = (int)Math.Max(1, (now - started).TotalSeconds);
             recording.DurationSeconds = duration;
             recording.AverageBitrate = (fileSize * 8) / duration;
-            await _db.SaveChangesAsync();
+            await PersistRecordingStatusAsync(recording, "completed");
 
             _logger.LogInformation("[DVR] Recording {Id}: recorder exited at the end of its window; finalized as completed ({Size} bytes)",
                 recordingId, fileSize);
@@ -734,7 +753,7 @@ public class DvrRecordingService
         recording.Status = DvrRecordingStatus.Failed;
         recording.ErrorMessage = $"Recorder exited unexpectedly (code {exitCode})" +
             (string.IsNullOrEmpty(errorSummary) ? "" : $": {errorSummary}");
-        await _db.SaveChangesAsync();
+        await PersistRecordingStatusAsync(recording, "failed");
 
         _logger.LogWarning("[DVR] Recording {Id}: recorder exited mid-window (code {Code}); marked Failed", recordingId, exitCode);
         CleanupWorthlessPartial(recording);
@@ -748,6 +767,36 @@ public class DvrRecordingService
         await NotifyRecordingFailedAsync(recording,
             $"The stream died mid-recording ({recording.ErrorMessage}).",
             rotatedId);
+    }
+
+    /// <summary>
+    /// Persist a recording's terminal status with retries. The recorder's
+    /// exit callback is the only writer of the Completed transition; when a
+    /// busy database throws a transient 'database is locked' here and the
+    /// write is dropped, the row stays Recording, the watchdog later
+    /// declares the (finished) recording failed, and users see a completed
+    /// import wearing a watchdog error. Same shape as the task queue's
+    /// terminal-status retry: EF keeps pending changes across a failed
+    /// SaveChanges, so retrying the same context is safe.
+    /// </summary>
+    private async Task PersistRecordingStatusAsync(DvrRecording recording, string transition)
+    {
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            try
+            {
+                await _db.SaveChangesAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[DVR] {Transition} status write failed for recording {Id} (attempt {Attempt}/5)",
+                    transition, recording.Id, attempt);
+                if (attempt == 5) throw;
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt));
+            }
+        }
     }
 
     /// <summary>
@@ -1234,20 +1283,47 @@ public class DvrRecordingService
         var config = await _configService.GetConfigAsync();
         var settings = await GetMediaManagementSettingsAsync();
 
-        // Get root folder (same logic as FileImportService). Root folders live
-        // in the RootFolders table, loaded + live-state-refreshed here.
-        var rootFolders = await RootFolderLoader.LoadAsync(_db, _diskSpaceService);
-        var rootFolder = rootFolders
-            .Where(rf => rf.Accessible)
-            .OrderByDescending(rf => rf.FreeSpace)
-            .FirstOrDefault();
-
-        var basePath = rootFolder?.Path ?? Path.Combine(AppContext.BaseDirectory, "recordings");
-        if (rootFolder == null)
+        // An explicitly configured DVR recording path always wins - it exists
+        // precisely so raw captures can be isolated from the media library.
+        // If it is unusable, FAIL the recording with a clear error instead of
+        // silently falling back into a Media Management root: a silent
+        // fallback drops raw captures into the production library, which is
+        // worse than no recording. Only when no DVR path is configured does
+        // the root-folder selection below apply.
+        var configuredDvrPath = (config.DvrRecordingPath ?? string.Empty).Trim();
+        string basePath;
+        if (!string.IsNullOrEmpty(configuredDvrPath))
         {
-            _logger.LogWarning(
-                "[DVR] No accessible root folder configured; recording to the application directory ({Path}). In Docker this lives INSIDE the container and is invisible on the host - add a root folder under Settings > Media Management to record somewhere durable.",
-                basePath);
+            try
+            {
+                Directory.CreateDirectory(configuredDvrPath);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"The configured DVR Recording Path '{configuredDvrPath}' is not accessible ({ex.Message}). " +
+                    "Fix the path in Settings > IPTV/DVR or clear it to record into a Media Management root folder.",
+                    ex);
+            }
+            basePath = configuredDvrPath;
+        }
+        else
+        {
+            // Get root folder (same logic as FileImportService). Root folders live
+            // in the RootFolders table, loaded + live-state-refreshed here.
+            var rootFolders = await RootFolderLoader.LoadAsync(_db, _diskSpaceService);
+            var rootFolder = rootFolders
+                .Where(rf => rf.Accessible)
+                .OrderByDescending(rf => rf.FreeSpace)
+                .FirstOrDefault();
+
+            basePath = rootFolder?.Path ?? Path.Combine(AppContext.BaseDirectory, "recordings");
+            if (rootFolder == null)
+            {
+                _logger.LogWarning(
+                    "[DVR] No accessible root folder configured; recording to the application directory ({Path}). In Docker this lives INSIDE the container and is invisible on the host - add a root folder under Settings > Media Management to record somewhere durable.",
+                    basePath);
+            }
         }
 
         // Get container format

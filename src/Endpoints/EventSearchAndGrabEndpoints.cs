@@ -132,14 +132,15 @@ app.MapPost("/api/release/grab", async (
         return Results.NotFound(new { success = false, message = "Event not found" });
     }
 
-    // Get enabled download client matching the release protocol
-    // Torrent releases need torrent clients (qBittorrent, Transmission, etc.)
-    // Usenet releases need usenet clients (SABnzbd, NZBGet, etc.)
-    var torrentClients = new[] { DownloadClientType.QBittorrent, DownloadClientType.Transmission,
-                                 DownloadClientType.Deluge, DownloadClientType.RTorrent,
-                                 DownloadClientType.UTorrent, DownloadClientType.Decypharr };
-    var usenetClients = new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet,
-                                DownloadClientType.DecypharrUsenet, DownloadClientType.NZBdav };
+    // Get enabled download client matching the release protocol. Uses the
+    // canonical DownloadClientService.GetClientTypesForProtocol map rather
+    // than a local list - a local copy here previously went stale and was
+    // missing TorrentBlackhole/UsenetBlackhole, so blackhole-only setups
+    // could search and auto-grab fine (AutomaticSearchService already used
+    // the canonical map) but got "No enabled Usenet download client
+    // configured" on a manual Action > Download despite the client testing
+    // successfully and appearing enabled.
+    var eligibleClientTypes = DownloadClientService.GetClientTypesForProtocol(release.Protocol);
 
     // Indexer record first - its assigned download client (if any) takes
     // precedence over priority-based selection, and its seed settings are
@@ -150,7 +151,7 @@ app.MapPost("/api/release/grab", async (
 
     var eligibleClients = await db.DownloadClients
         .Where(dc => dc.Enabled)
-        .Where(dc => release.Protocol == "Torrent" ? torrentClients.Contains(dc.Type) : usenetClients.Contains(dc.Type))
+        .Where(dc => eligibleClientTypes.Contains(dc.Type))
         .OrderBy(dc => dc.Priority)
         .ToListAsync();
     var downloadClient =
@@ -300,6 +301,7 @@ app.MapPost("/api/release/grab", async (
             Title = release.Title,
             DownloadId = downloadId,
             DownloadClientId = downloadClient.Id,
+            GrabCategory = grabCategory,
             Status = DownloadStatus.Queued,
             Quality = release.Quality,
             Codec = release.Codec,
@@ -349,7 +351,44 @@ app.MapPost("/api/release/grab", async (
     };
     db.GrabHistory.Add(grabHistory);
 
-    await db.SaveChangesAsync();
+    // The torrent/NZB is ALREADY in the download client at this point. If
+    // persistence fails and we bail, the client keeps downloading while
+    // Sportarr has no record of it - the monitor then flags our own grab as
+    // an external download, automatic import never fires, and post-import
+    // client cleanup is skipped. The queue rows are what completion
+    // tracking and import hang off, so on failure retry without the
+    // GrabHistory row (re-grab cross-referencing is a nice-to-have; the
+    // association is not). Only give up if the queue rows themselves
+    // cannot be saved.
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (Exception saveEx)
+    {
+        logger.LogError(saveEx,
+            "[GRAB] Failed to persist queue + history for download {DownloadId} - retrying without the history row",
+            downloadId);
+        db.Entry(grabHistory).State = EntityState.Detached;
+        try
+        {
+            await db.SaveChangesAsync();
+            logger.LogWarning(
+                "[GRAB] Queue item(s) for download {DownloadId} saved without grab history - re-grab cross-referencing is unavailable for this grab",
+                downloadId);
+        }
+        catch (Exception retryEx)
+        {
+            logger.LogCritical(retryEx,
+                "[GRAB] Could not persist ANY tracking for download {DownloadId} ({Title}) - it is active in {ClientName} but Sportarr is not tracking it. Remove it from the client manually or import it manually on completion.",
+                downloadId, release.Title, downloadClient.Name);
+            return Results.Problem(
+                title: "Download added but not tracked",
+                detail: $"The release was added to {downloadClient.Name} (id {downloadId}) but Sportarr could not save its tracking records: {retryEx.Message}. " +
+                        "The download will complete but will not auto-import; remove it from the client or import it manually.",
+                statusCode: 500);
+        }
+    }
 
     // Use the first queue item for status tracking
     var primaryQueueItem = queueItems.First();

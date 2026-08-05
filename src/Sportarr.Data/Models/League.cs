@@ -379,6 +379,16 @@ public class AddLeagueRequest
     public bool Monitored { get; set; } = true;
 
     /// <summary>
+    /// Whether the DVR auto-scheduler may resolve IPTV channels and schedule
+    /// recordings for this league at creation time (see League.EnableDvr for
+    /// the full rationale - independent from Monitored, closes #204 for
+    /// leagues added with IPTV already turned off rather than only via a
+    /// later edit). Defaults to true so existing add-league behavior is
+    /// unchanged unless the caller explicitly opts out.
+    /// </summary>
+    public bool EnableDvr { get; set; } = true;
+
+    /// <summary>
     /// How events should be monitored (All, Future, CurrentSeason, LatestSeason, etc.)
     /// </summary>
     public MonitorType MonitorType { get; set; } = MonitorType.Future;
@@ -478,6 +488,7 @@ public class AddLeagueRequest
             Country = Country,
             Description = Description,
             Monitored = Monitored,
+            EnableDvr = EnableDvr,
             MonitorType = MonitorType,
             QualityProfileId = QualityProfileId,
             RootFolderId = RootFolderId,

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Sportarr.Api.Constants;
 using Sportarr.Api.Data;
@@ -616,6 +617,30 @@ AgentInstaller.Install(dataPath, isWindowsPlatform);
 
 // Configure middleware pipeline
 
+// Trust X-Forwarded-* headers from the reverse proxy in front of the app
+// (nginx, Traefik, Caddy, etc.) so Request.Scheme/Request.Host reflect what
+// the browser actually connected to instead of the plain-HTTP hop Kestrel
+// sees internally. Must run before anything that reads Scheme or the remote
+// IP - notably before authentication (Secure-cookie decisions) and before
+// the UrlBase/asset-rewriting block below.
+//
+// KnownNetworks/KnownProxies are cleared rather than left at ASP.NET Core's
+// loopback-only default: a Dockerized deployment's proxy almost always
+// reaches the app from a different container IP on the compose network, not
+// 127.0.0.1, so the default would silently ignore every forwarded header.
+// This mirrors how the rest of the arr ecosystem handles it - the app is
+// expected to sit behind exactly one proxy the user themselves configured,
+// not to be directly internet-exposed.
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor
+        | ForwardedHeaders.XForwardedProto
+        | ForwardedHeaders.XForwardedHost
+};
+forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
 // URL Base support for reverse proxy setups (e.g., /sportarr).
 // Must be configured early in the pipeline, before routing.
 //
@@ -755,40 +780,43 @@ app.Use(async (context, next) =>
             var configService = context.RequestServices.GetRequiredService<Sportarr.Api.Services.ConfigService>();
             var config = await configService.GetConfigAsync();
             var urlBase = configuredUrlBase;
+
+            // Inject the full window.Sportarr object before the first script tag,
+            // regardless of whether a URL base is configured. axios.create() in the
+            // frontend reads urlBase + apiRoot at module-load time, and the X-Api-Key
+            // interceptor reads apiKey per request. Previously this was only injected
+            // when urlBase was non-empty, so the common case (blank URL base, a
+            // (sub)domain running at its own root) left window.Sportarr undefined
+            // until /initialize.json resolved, racing the first React Query refetch
+            // and returning auth-less requests that get rejected mid-render. Mirror
+            // the /initialize.json shape so the client has a complete object before
+            // any import evaluates. System.Text.Json's default HTML-safe encoder
+            // escapes angle brackets, so embedding the serialized object inside a
+            // script tag cannot be closed early by a value containing a literal
+            // closing tag.
+            // Same rule as /initialize.json: never embed the master API key in the
+            // page for an unauthenticated caller when UI auth is enabled.
+            var db = context.RequestServices.GetRequiredService<SportarrDbContext>();
+            var exposeApiKey = await ShouldExposeApiKeyAsync(context, db);
+            var initialState = new
+            {
+                apiRoot = "",
+                apiKey = exposeApiKey ? config.ApiKey : "",
+                release = Sportarr.Api.Version.GetFullVersion(),
+                version = Sportarr.Api.Version.GetFullVersion(),
+                instanceName = "Sportarr",
+                theme = "auto",
+                branch = "main",
+                analytics = false,
+                urlBase = urlBase,
+                isProduction = !app.Environment.IsDevelopment()
+            };
+            var initialStateJson = JsonSerializer.Serialize(initialState);
+            var urlBaseScript = $"<script>window.Sportarr = {initialStateJson};</script>";
+            html = html.Replace("<script", urlBaseScript + "<script");
+
             if (!string.IsNullOrEmpty(urlBase))
             {
-                // Inject the full window.Sportarr object before the first script tag.
-                // axios.create() in the frontend reads urlBase + apiRoot at module-load
-                // time, and the X-Api-Key interceptor reads apiKey per request. Setting
-                // only urlBase here leaves the rest undefined until /initialize.json
-                // resolves, racing the first React Query refetch and returning auth-less
-                // requests that get rejected mid-render. Mirror the /initialize.json
-                // shape so the client has a complete object before any import evaluates.
-                // System.Text.Json's default HTML-safe encoder escapes angle
-                // brackets, so embedding the serialized object inside a script
-                // tag cannot be closed early by a value containing a literal
-                // closing tag.
-                // Same rule as /initialize.json: never embed the master API key in the
-                // page for an unauthenticated caller when UI auth is enabled.
-                var db = context.RequestServices.GetRequiredService<SportarrDbContext>();
-                var exposeApiKey = await ShouldExposeApiKeyAsync(context, db);
-                var initialState = new
-                {
-                    apiRoot = "",
-                    apiKey = exposeApiKey ? config.ApiKey : "",
-                    release = Sportarr.Api.Version.GetFullVersion(),
-                    version = Sportarr.Api.Version.GetFullVersion(),
-                    instanceName = "Sportarr",
-                    theme = "auto",
-                    branch = "main",
-                    analytics = false,
-                    urlBase = urlBase,
-                    isProduction = !app.Environment.IsDevelopment()
-                };
-                var initialStateJson = JsonSerializer.Serialize(initialState);
-                var urlBaseScript = $"<script>window.Sportarr = {initialStateJson};</script>";
-                html = html.Replace("<script", urlBaseScript + "<script");
-
                 // Rewrite asset paths to include urlBase
                 // /assets/ -> /sportarr/assets/
                 // /logo.svg -> /sportarr/logo.svg
@@ -1104,6 +1132,7 @@ app.MapHdHomeRunEndpoints();
 app.MapManualEventSearchEndpoints();
 app.MapLeagueEndpoints();
 app.MapFollowedTeamsAndTeamsEndpoints();
+app.MapFollowedAthletesEndpoints();
 app.MapEventSearchAndGrabEndpoints();
 app.MapSearchAndCalendarEndpoints();
 
@@ -1121,6 +1150,7 @@ app.MapSonarrConfigEndpoints();
 app.MapSonarrIndexerEndpoints();
 app.MapSonarrDownloadClientEndpoint();
 app.MapSonarrQueueEndpoints();
+app.MapSonarrWantedEndpoint();
 app.MapSonarrReleasePushEndpoint();
 
 // Sonarr-compatible SignalR hub. Bazarr opens a SignalR connection here and

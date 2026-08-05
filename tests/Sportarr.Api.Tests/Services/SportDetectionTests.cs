@@ -51,6 +51,7 @@ public class SportDetectionTests
             null,
             null,
             new CustomFormatService(_fileParser),
+            null,
             null);
     }
 

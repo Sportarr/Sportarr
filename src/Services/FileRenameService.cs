@@ -1,6 +1,7 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -18,6 +19,7 @@ public class FileRenameService
     private readonly DiskSpaceService _diskSpaceService;
     private readonly CustomFormatService _customFormatService;
     private readonly NotificationService _notificationService;
+    private readonly IMetadataWriterService _metadataWriterService;
 
     // Formats loaded once per scoped instance so per-file token building
     // doesn't re-query on every file of a bulk rename.
@@ -30,7 +32,8 @@ public class FileRenameService
         ILogger<FileRenameService> logger,
         DiskSpaceService diskSpaceService,
         CustomFormatService customFormatService,
-        NotificationService notificationService)
+        NotificationService notificationService,
+        IMetadataWriterService metadataWriterService)
     {
         _db = db;
         _fileNamingService = fileNamingService;
@@ -39,6 +42,7 @@ public class FileRenameService
         _diskSpaceService = diskSpaceService;
         _customFormatService = customFormatService;
         _notificationService = notificationService;
+        _metadataWriterService = metadataWriterService;
     }
 
     /// <summary>
@@ -406,6 +410,17 @@ public class FileRenameService
             SelfMoveTracker.Register(currentPath, expectedPath);
             File.Move(currentPath, expectedPath);
             file.FilePath = expectedPath;
+
+            // Kodi matches an NFO to its video by basename - move the sidecars
+            // with the file now, don't wait for the next sync to regenerate them.
+            try
+            {
+                await _metadataWriterService.RenameEventMetadataAsync(currentPath, expectedPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[File Rename] Failed to move local metadata sidecars: {Current} -> {Expected}", currentPath, expectedPath);
+            }
 
             // Clean up empty source directory if settings allow
             var currentDir = Path.GetDirectoryName(currentPath);

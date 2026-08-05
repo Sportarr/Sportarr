@@ -32,6 +32,7 @@ const IndexersSettings = lazy(() => import('./pages/settings/IndexersSettings'))
 const ImportListsSettings = lazy(() => import('./pages/settings/ImportListsSettings'));
 const DownloadClientsSettings = lazy(() => import('./pages/settings/DownloadClientsSettings'));
 const NotificationsSettings = lazy(() => import('./pages/settings/NotificationsSettings'));
+const MetadataProvidersSettings = lazy(() => import('./pages/settings/MetadataProvidersSettings'));
 const GeneralSettings = lazy(() => import('./pages/settings/GeneralSettings'));
 const UISettings = lazy(() => import('./pages/settings/UISettings'));
 const TagsSettings = lazy(() => import('./pages/settings/TagsSettings'));
@@ -212,6 +213,7 @@ function App() {
             <Route path="settings/importlists" element={<ImportListsSettings />} />
             <Route path="settings/downloadclients" element={<DownloadClientsSettings />} />
             <Route path="settings/notifications" element={<NotificationsSettings />} />
+            <Route path="settings/metadata" element={<MetadataProvidersSettings />} />
             <Route path="settings/general" element={<GeneralSettings />} />
             <Route path="settings/ui" element={<UISettings />} />
             <Route path="settings/tags" element={<TagsSettings />} />

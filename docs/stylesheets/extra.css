@@ -1,0 +1,249 @@
+/* Sportarr wiki theme: matches the sportarr.net family look
+   (dark gray-900/gray-800 surfaces, red-600 accent, sharp hairline-bordered
+   panels — same type family and card language as the marketing site). */
+
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&display=swap');
+
+:root {
+  --md-primary-fg-color: #dc2626;
+  --md-primary-fg-color--light: #ef4444;
+  --md-primary-fg-color--dark: #b91c1c;
+  --md-accent-fg-color: #f87171;
+  --sportarr-border: #374151;      /* gray-700 */
+  --sportarr-panel: #1f2937;       /* gray-800 */
+  --sportarr-panel-hover: #273449;
+}
+
+[data-md-color-scheme="slate"] {
+  /* Tailwind gray scale used across sportarr.net and the app */
+  --md-default-bg-color: #111827;            /* gray-900 */
+  --md-default-fg-color: #f9fafb;
+  --md-default-fg-color--light: #d1d5db;     /* gray-300 */
+  --md-default-fg-color--lighter: #9ca3af;   /* gray-400 */
+  --md-default-fg-color--lightest: #6b7280;  /* gray-500 */
+  --md-code-bg-color: #1f2937;               /* gray-800 */
+  --md-code-fg-color: #e5e7eb;
+  --md-typeset-a-color: #f87171;             /* red-400 links like the site */
+  --md-footer-bg-color: #0b0f19;
+  --md-footer-bg-color--dark: #0b0f19;
+}
+
+/* ---------------------------------------------------------------------------
+   Header + tabs: mirror the marketing header (gray-900, blur, thin border)
+--------------------------------------------------------------------------- */
+
+[data-md-color-scheme="slate"] .md-header {
+  background-color: rgba(17, 24, 39, 0.9);
+  border-bottom: 1px solid var(--sportarr-border);
+  backdrop-filter: blur(8px);
+  box-shadow: none;
+}
+
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: rgba(17, 24, 39, 0.9);
+  border-bottom: 1px solid var(--sportarr-border);
+  backdrop-filter: blur(8px);
+}
+
+/* Tabs behave like the site nav: muted by default, white on hover,
+   red underline on the active section — same mono-uppercase treatment
+   as the marketing header's nav links */
+.md-tabs__link {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-weight: 500;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.md-tabs__link:hover {
+  opacity: 1;
+}
+
+.md-tabs__item--active .md-tabs__link,
+.md-tabs__link--active {
+  opacity: 1;
+  color: #f87171;
+  position: relative;
+}
+
+.md-tabs__item--active .md-tabs__link::after,
+.md-tabs__link--active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.55rem;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #f87171, #dc2626);
+}
+
+/* ---------------------------------------------------------------------------
+   Sidebar: clear hierarchy - bold section parents, indented children on a
+   rail, rounded hover pills, red pill on the active page
+--------------------------------------------------------------------------- */
+
+@media screen and (min-width: 76.25em) {
+  .md-nav--primary .md-nav__link {
+    border-radius: 0;
+    padding: 0.28rem 0.55rem;
+    margin: 0.05rem 0;
+    transition: background-color 0.12s, color 0.12s;
+  }
+
+  .md-nav--primary .md-nav__link:hover {
+    background-color: var(--sportarr-panel);
+  }
+
+  /* Collapsible group parents read as headers */
+  .md-nav--primary .md-nav__item--nested > .md-nav__link {
+    font-weight: 700;
+    color: var(--md-default-fg-color);
+  }
+
+  /* Children hang off a rail so ownership is obvious */
+  .md-nav--primary .md-nav__item--nested .md-nav {
+    margin-left: 0.55rem;
+    padding-left: 0.35rem;
+    border-left: 1px solid var(--sportarr-border);
+  }
+
+  /* Active page: red pill + accent edge */
+  .md-nav--primary .md-nav__link--active,
+  .md-nav--primary .md-nav__link--active:hover {
+    background-color: rgba(220, 38, 38, 0.14);
+    color: #f87171;
+    font-weight: 600;
+    box-shadow: inset 2px 0 0 #dc2626;
+  }
+}
+
+/* Chevrons pick up the accent on hover */
+.md-nav__link:hover .md-nav__icon {
+  color: #f87171;
+}
+
+/* Right-hand TOC: active anchor gets the accent edge too */
+.md-nav--secondary .md-nav__link--active {
+  color: #f87171;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   Typography + content
+--------------------------------------------------------------------------- */
+
+/* Display type, same face as the marketing site's headlines. Solid white
+   with a red accent word (set per-page via {: .accent }), not a gradient
+   clip — matches the flatter, sharper look the rest of the site moved to. */
+.md-typeset h1 {
+  font-family: 'Barlow Condensed', system-ui, sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.md-typeset h2,
+.md-typeset h3 {
+  font-family: 'Barlow Condensed', system-ui, sans-serif;
+  font-weight: 700;
+}
+
+/* Screenshots read as UI panels, not floating bitmaps — hairline border,
+   no soft corner radius */
+.md-typeset img {
+  border-radius: 0;
+  border: 1px solid var(--sportarr-border);
+}
+
+/* Cards and code blocks on gray-800 like the site's panels */
+[data-md-color-scheme="slate"] .md-typeset pre > code {
+  background-color: var(--sportarr-panel);
+  border: 1px solid var(--sportarr-border);
+  border-radius: 0;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .admonition,
+[data-md-color-scheme="slate"] .md-typeset details {
+  background-color: var(--sportarr-panel);
+  border-color: var(--sportarr-border);
+  border-radius: 0;
+}
+
+/* Grid cards: panel background, red hairline on hover, no lift/shadow */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="slate"] .md-typeset .grid > .card {
+  background-color: var(--sportarr-panel);
+  border: 1px solid var(--sportarr-border);
+  border-radius: 0;
+  transition: border-color 0.15s;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover,
+[data-md-color-scheme="slate"] .md-typeset .grid > .card:hover {
+  border-color: #dc2626;
+}
+
+.md-typeset .grid.cards > ul > li > hr {
+  border-color: var(--sportarr-border);
+}
+
+/* Card lead icons in the accent red */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards .twemoji,
+.md-typeset .grid.cards .twemoji {
+  color: #f87171;
+}
+
+/* Buttons match the site's red primary buttons */
+.md-typeset .md-button {
+  border-radius: 0;
+}
+
+.md-typeset .md-button--primary {
+  background-color: #dc2626;
+  border-color: #dc2626;
+}
+
+.md-typeset .md-button--primary:hover {
+  background-color: #b91c1c;
+  border-color: #b91c1c;
+}
+
+/* Search field on dark */
+[data-md-color-scheme="slate"] .md-search__form {
+  background-color: var(--sportarr-panel);
+  border-radius: 0;
+}
+
+/* Keep table styling in the family */
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) {
+  background-color: var(--sportarr-panel);
+  border: 1px solid var(--sportarr-border);
+  border-radius: 0;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background-color: #111827;
+}
+
+/* Slim dark scrollbars to finish the app-like feel */
+[data-md-color-scheme="slate"] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+  border-radius: 4px;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-thumb:hover {
+  background-color: #6b7280;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-track {
+  background-color: transparent;
+}

@@ -175,118 +175,17 @@ app.MapDelete("/api/queue/{id:int}", async (
     int id,
     string removalMethod,
     string blocklistAction,
-    SportarrDbContext db,
-    DownloadClientService downloadClientService,
-    SearchQueueService searchQueueService,
-    ILogger<Program> logger) =>
+    QueueRemovalService queueRemovalService) =>
 {
-    var item = await db.DownloadQueue
-        .Include(dq => dq.DownloadClient)
-        .Include(dq => dq.Event)
-        .FirstOrDefaultAsync(dq => dq.Id == id);
-
-    if (item is null) return Results.NotFound();
-
-    // Handle removal method.
-    if (item.DownloadClient != null)
+    var result = await queueRemovalService.RemoveAsync(id, removalMethod, blocklistAction);
+    return result.StatusCode switch
     {
-        switch (removalMethod)
-        {
-            case "removeFromClient":
-                // Remove download and files from download client
-                await downloadClientService.RemoveDownloadAsync(item.DownloadClient, item.DownloadId, deleteFiles: true);
-                break;
-
-            case "changeCategory":
-                // Change to post-import category (only for completed downloads with PostImportCategory set)
-                if (!string.IsNullOrEmpty(item.DownloadClient.PostImportCategory))
-                {
-                    await downloadClientService.ChangeCategoryAsync(
-                        item.DownloadClient,
-                        item.DownloadId,
-                        item.DownloadClient.PostImportCategory);
-                }
-                break;
-
-            case "ignoreDownload":
-                // Just remove from queue, don't touch download client
-                break;
-
-            default:
-                return Results.BadRequest($"Invalid removal method: {removalMethod}");
-        }
-    }
-
-    // Handle blocklist action.
-    // Supports both torrent (by hash) and Usenet (by title+indexer).
-    switch (blocklistAction)
-    {
-        case "blocklistAndSearch":
-        case "blocklistOnly":
-            // Check for existing blocklist entry
-            BlocklistItem? existingBlock = null;
-            if (!string.IsNullOrEmpty(item.TorrentInfoHash))
-            {
-                existingBlock = await db.Blocklist
-                    .FirstOrDefaultAsync(b => b.TorrentInfoHash == item.TorrentInfoHash);
-            }
-            else
-            {
-                // No hash to match on (usenet, or a torrent whose infohash was
-                // never captured): dedupe by title+indexer. A protocol filter
-                // here let hashless torrents re-add the same entry repeatedly.
-                existingBlock = await db.Blocklist
-                    .FirstOrDefaultAsync(b => b.Title == item.Title &&
-                                             b.Indexer == (item.Indexer ?? "Unknown"));
-            }
-
-            if (existingBlock == null)
-            {
-                var blocklistItem = new BlocklistItem
-                {
-                    EventId = item.EventId,
-                    Title = item.Title,
-                    TorrentInfoHash = item.TorrentInfoHash, // null for Usenet
-                    Indexer = item.Indexer ?? "Unknown",
-                    Protocol = item.Protocol ?? (string.IsNullOrEmpty(item.TorrentInfoHash) ? "Usenet" : "Torrent"),
-                    Reason = BlocklistReason.ManualBlock,
-                    Message = blocklistAction == "blocklistAndSearch" ? "Manually removed and blocklisted" : "Manually blocklisted",
-                    BlockedAt = DateTime.UtcNow
-                };
-                db.Blocklist.Add(blocklistItem);
-                logger.LogInformation("[QUEUE] Added to blocklist: {Title} ({Protocol})", item.Title, blocklistItem.Protocol);
-            }
-
-            // Queue automatic search for replacement if requested (uses its own scope)
-            if (blocklistAction == "blocklistAndSearch")
-            {
-                _ = searchQueueService.QueueSearchAsync(item.EventId, part: null, isManualSearch: false);
-            }
-            break;
-
-        case "none":
-            // No blocklist action
-            break;
-
-        default:
-            return Results.BadRequest($"Invalid blocklist action: {blocklistAction}");
-    }
-
-    // Remove from queue
-    // First, delete any import history records that reference this queue item (foreign key constraint)
-    var importHistories = await db.ImportHistories
-        .Where(h => h.DownloadQueueItemId == item.Id)
-        .ToListAsync();
-
-    if (importHistories.Any())
-    {
-        db.ImportHistories.RemoveRange(importHistories);
-    }
-
-    db.DownloadQueue.Remove(item);
-    await db.SaveChangesAsync();
-    return Results.NoContent();
+        404 => Results.NotFound(),
+        400 => Results.BadRequest(result.ErrorMessage),
+        _ => Results.NoContent(),
+    };
 });
+
 
 // API: Queue Operations - Pause Download
 app.MapPost("/api/queue/{id:int}/pause", async (int id, SportarrDbContext db, DownloadClientService downloadClientService) =>

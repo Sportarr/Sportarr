@@ -550,18 +550,27 @@ public class EventQueryService
         // matchup IS the whole title and there's no card number to fall
         // back on).
         string? surnameQuery = null;
+        string? reversedSurnameQuery = null;
         if (EventPartDetector.TryExtractFighterSurnames(title, out var surnameA, out var surnameB))
         {
             surnameQuery = $"{surnameA} vs {surnameB}";
+            // Billing order isn't stable across sources: promoters, databases,
+            // and release groups disagree on who leads the marquee (boxing
+            // especially - "Usyk vs Fury" and "Fury vs Usyk" both circulate).
+            // Same failure class as the reversed team-sport pairing: an
+            // ordered-substring tracker search misses the flipped form.
+            reversedSurnameQuery = $"{surnameB} vs {surnameA}";
         }
 
         if (primaryQuery != null)
         {
             // Primary: "UFC 299" or "ONE Friday Fights 150"
             queries.Add(primaryQuery);
-            // Supplementary: the headline matchup by surname
+            // Supplementary: the headline matchup by surname, both orders
             if (surnameQuery != null)
                 queries.Add(surnameQuery);
+            if (reversedSurnameQuery != null)
+                queries.Add(reversedSurnameQuery);
             // Fallback: "UFC 2026"
             if (!string.IsNullOrEmpty(org))
                 queries.Add($"{org} {brandingYear}");
@@ -573,6 +582,8 @@ public class EventQueryService
             // it leads; the normalized full title stays as a fallback.
             if (surnameQuery != null)
                 queries.Add(surnameQuery);
+            if (reversedSurnameQuery != null)
+                queries.Add(reversedSurnameQuery);
             queries.Add(NormalizeEventTitle(title));
             var orgMatch = Regex.Match(title, @"^(UFC|Bellator|PFL|ONE|Boxing)", RegexOptions.IgnoreCase);
             if (orgMatch.Success)
@@ -595,6 +606,40 @@ public class EventQueryService
         if (string.IsNullOrEmpty(leaguePrefix))
         {
             queries.Add(NormalizeEventTitle(evt.Title));
+
+            // Some indexers (college sports rip groups especially) title releases in
+            // broadcast order rather than the schedule's home/away designation, e.g.
+            // "Old Dominion vs South Florida" for a game Sportarr's own data calls
+            // "South Florida vs Old Dominion". A literal-title-only query never
+            // matches those, so add the reversed pairing as a fallback query.
+            //
+            // Team names come from the denormalized name columns first: sync
+            // writes those for every event, while the HomeTeam/AwayTeam
+            // navigations require linked Team rows that many leagues (college
+            // sports especially - the very case this fallback exists for)
+            // never get. The canonical "Home vs Away" title is the last resort
+            // when both are absent.
+            var homeName = evt.HomeTeamName ?? evt.HomeTeam?.Name;
+            var awayName = evt.AwayTeamName ?? evt.AwayTeam?.Name;
+            string? reversed = null;
+            if (!string.IsNullOrWhiteSpace(homeName) && !string.IsNullOrWhiteSpace(awayName))
+            {
+                reversed = $"{awayName} vs {homeName}";
+            }
+            else
+            {
+                var parts = evt.Title?.Split(" vs ", 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (parts is { Length: 2 })
+                {
+                    reversed = $"{parts[1]} vs {parts[0]}";
+                }
+            }
+
+            if (reversed != null && !queries.Contains(reversed, StringComparer.OrdinalIgnoreCase))
+            {
+                queries.Add(reversed);
+            }
+
             AddTeamAliasQueries(evt, leagueName, year, queries);
             return;
         }

@@ -1,6 +1,7 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -13,6 +14,7 @@ public class LeagueEventSyncService
     private readonly SportarrDbContext _db;
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly FileRenameService _fileRenameService;
+    private readonly IMetadataWriterService _metadataWriterService;
     private readonly ILogger<LeagueEventSyncService> _logger;
 
     // Track seasons that need episode renumbering due to date changes
@@ -22,11 +24,13 @@ public class LeagueEventSyncService
         SportarrDbContext db,
         SportarrApiClient sportarrApiClient,
         FileRenameService fileRenameService,
+        IMetadataWriterService metadataWriterService,
         ILogger<LeagueEventSyncService> logger)
     {
         _db = db;
         _sportarrApiClient = sportarrApiClient;
         _fileRenameService = fileRenameService;
+        _metadataWriterService = metadataWriterService;
         _logger = logger;
     }
 
@@ -935,6 +939,27 @@ public class LeagueEventSyncService
         // per league sync; best-effort - season art must never fail the sync.
         await SyncSeasonPostersAsync(league, cancellationToken);
 
+        // Followed-athlete monitoring: after the season writes, force-monitor
+        // any event in this league that a followed athlete appears on. Runs
+        // as a post-pass rather than inside the per-event creation so new
+        // bookings (a fighter added to a future card) get picked up on
+        // every refresh, for existing rows as well as new ones. Best-effort:
+        // athlete monitoring must never fail the sync.
+        await ApplyFollowedAthleteMonitoringAsync(league, cancellationToken);
+
+        // Kodi local metadata: refresh tvshow.nfo / poster / banner at the
+        // league root. No-op when no Kodi metadata provider is enabled.
+        // Best-effort like the season-poster/athlete passes above - a
+        // metadata-write failure must never fail the sync.
+        try
+        {
+            await _metadataWriterService.WriteLeagueMetadataAsync(league);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[League Event Sync] Failed to write local league metadata for '{League}'", league.Name);
+        }
+
         result.Success = true;
         result.Message = $"Synced {result.NewCount} new events, updated {result.UpdatedCount} events, skipped {result.SkippedCount} duplicates";
         _logger.LogInformation("[League Event Sync] Completed: {Message}", result.Message);
@@ -965,6 +990,64 @@ public class LeagueEventSyncService
     /// deployed yet) log a warning and leave existing rows untouched, so the
     /// metadata endpoints simply keep serving whatever art they already have.
     /// </summary>
+    /// <summary>
+    /// Force-monitor events a followed athlete appears on. The metadata API
+    /// carries person-level participation for fighting sports, so the
+    /// athlete's event list (by external id) is the authoritative "their
+    /// fights" set. Only flips Monitored on, never off - unfollowing an
+    /// athlete leaves their events monitored until the user says otherwise,
+    /// matching how unfollowing a team behaves.
+    /// </summary>
+    private async Task ApplyFollowedAthleteMonitoringAsync(League league, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var athletes = await _db.FollowedAthletes.ToListAsync(cancellationToken);
+            if (!athletes.Any())
+                return;
+
+            var athleteEventIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var athlete in athletes)
+            {
+                var events = await _sportarrApiClient.GetPlayerEventsAsync(athlete.ExternalId);
+                if (events == null)
+                    continue;
+                foreach (var e in events)
+                {
+                    if (!string.IsNullOrEmpty(e.ExternalId))
+                        athleteEventIds.Add(e.ExternalId);
+                }
+            }
+
+            if (!athleteEventIds.Any())
+                return;
+
+            var toMonitor = await _db.Events
+                .Where(e => e.LeagueId == league.Id
+                    && !e.Monitored
+                    && e.ExternalId != null
+                    && athleteEventIds.Contains(e.ExternalId))
+                .ToListAsync(cancellationToken);
+
+            if (!toMonitor.Any())
+                return;
+
+            foreach (var e in toMonitor)
+            {
+                e.Monitored = true;
+            }
+            await _db.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "[League Event Sync] Followed-athlete monitoring: monitored {Count} events in {League} for {Athletes} followed athletes",
+                toMonitor.Count, league.Name, athletes.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[League Event Sync] Followed-athlete monitoring pass failed for {League}", league.Name);
+        }
+    }
+
     private async Task SyncSeasonPostersAsync(League league, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(league.ExternalId)) return;

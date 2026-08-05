@@ -260,7 +260,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 {
                     var clientStatus = await downloadClientService.GetDownloadStatusAsync(
                         download.DownloadClient,
-                        download.DownloadId);
+                        download.DownloadId,
+                        download.GrabCategory);
 
                     var clientReportsFailure = clientStatus != null &&
                         string.Equals(clientStatus.Status, "failed", StringComparison.OrdinalIgnoreCase);
@@ -332,7 +333,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // Query download client for current status
         var status = await downloadClientService.GetDownloadStatusAsync(
             download.DownloadClient,
-            download.DownloadId);
+            download.DownloadId,
+            download.GrabCategory);
 
         if (status == null)
         {
@@ -344,7 +346,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
             var (titleMatchStatus, newDownloadId) = await downloadClientService.FindDownloadByTitleAsync(
                 download.DownloadClient,
                 download.Title,
-                download.DownloadClient.Category);
+                download.GrabCategory ?? download.DownloadClient.Category);
 
             if (titleMatchStatus != null && newDownloadId != null)
             {
@@ -382,6 +384,19 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
                 if (download.MissingFromClientCount >= 10)
                 {
+                    // Final safety gate before the destructive step: confirm the
+                    // client itself is answering. Ten consecutive nulls can also
+                    // mean five minutes of timeouts from an overloaded client
+                    // (a SABnzbd instance chewing through a big batch, say), and
+                    // removing on that evidence wiped whole healthy queues.
+                    var (reachable, _) = await downloadClientService.TestConnectionAsync(download.DownloadClient);
+                    if (!reachable)
+                    {
+                        _logger.LogWarning("[Enhanced Download Monitor] Download missing for {Count} checks but client {Client} is unreachable; deferring removal: {Title}",
+                            download.MissingFromClientCount, download.DownloadClient.Name, download.Title);
+                        return;
+                    }
+
                     // After 10 consecutive checks (e.g. ~5 minutes at 30s poll interval), remove from queue.
                     // Downloads removed from the client are removed from the queue.
                     _logger.LogWarning("[Enhanced Download Monitor] Download not found in client for {Count} consecutive checks, removing from queue: {Title} (DownloadId: {DownloadId})",
@@ -680,7 +695,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     if (indexer != null && (indexer.SeedRatio.HasValue || indexer.SeedTime.HasValue))
                     {
                         var status = await downloadClientService.GetDownloadStatusAsync(
-                            download.DownloadClient, download.DownloadId);
+                            download.DownloadClient, download.DownloadId, download.GrabCategory);
 
                         if (status != null && !HasReachedSeedLimit(status, indexer))
                         {
@@ -990,14 +1005,23 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 .ToListAsync(cancellationToken),
             StringComparer.OrdinalIgnoreCase);
 
-        // 3. Grab history (Sportarr-initiated downloads that have been imported and removed from queue)
-        var grabbedDownloadIds = new HashSet<string>(
-            await db.GrabHistory
-                .Where(g => g.DownloadId != null)
-                .Select(g => g.DownloadId!)
-                .Distinct()
-                .ToListAsync(cancellationToken),
-            StringComparer.OrdinalIgnoreCase);
+        // 3. Grab history (Sportarr-initiated downloads), keyed to the LATEST
+        // grab per download id WITH its import state. The download client is
+        // the authority on whether a download exists; import history is the
+        // authority on its outcome. A grab that was imported must never be
+        // re-detected (finished jobs stay in the client's history forever),
+        // but a grab that never imported and still sits in the client is a
+        // download Sportarr lost track of (crash, removed queue row) and gets
+        // re-adopted into the queue below instead of being ignored.
+        var grabsByDownloadId = new Dictionary<string, GrabHistory>(StringComparer.OrdinalIgnoreCase);
+        foreach (var grab in await db.GrabHistory
+                     .AsNoTracking()
+                     .Where(g => g.DownloadId != null)
+                     .OrderBy(g => g.GrabbedAt)
+                     .ToListAsync(cancellationToken))
+        {
+            grabsByDownloadId[grab.DownloadId!] = grab; // later grabs win
+        }
 
         // Hash-based fallback dedup. Real-Debrid uncached downloads can return
         // a different DownloadId from Decypharr at grab-time vs poll-time (the
@@ -1103,10 +1127,73 @@ public class EnhancedDownloadMonitorService : BackgroundService
                             download.Title, download.DownloadId);
                         continue;
                     }
-                    if (grabbedDownloadIds.Contains(download.DownloadId))
+                    if (grabsByDownloadId.TryGetValue(download.DownloadId, out var grab))
                     {
-                        _logger.LogDebug("[Enhanced Download Monitor] Skipping '{Title}' (id {Id}) — Sportarr-grabbed (in GrabHistory)",
-                            download.Title, download.DownloadId);
+                        if (grab.WasImported)
+                        {
+                            _logger.LogDebug("[Enhanced Download Monitor] Skipping '{Title}' (id {Id}) — Sportarr-grabbed and already imported",
+                                download.Title, download.DownloadId);
+                            continue;
+                        }
+
+                        if ((!string.IsNullOrEmpty(download.TorrentInfoHash) && blocklistedHashes.Contains(download.TorrentInfoHash)) ||
+                            blocklistedTitles.Contains(download.Title))
+                        {
+                            _logger.LogDebug("[Enhanced Download Monitor] Skipping '{Title}' (id {Id}) — Sportarr-grabbed but blocklisted",
+                                download.Title, download.DownloadId);
+                            continue;
+                        }
+
+                        // Grabbed, never imported, no queue row, yet still present in
+                        // the client's category: Sportarr lost track of this download
+                        // (crash, wrongly removed queue entry). Re-adopt it into the
+                        // queue from the grab metadata so the normal monitor pipeline
+                        // resumes it — progress tracking if still downloading, the
+                        // completed-but-not-imported import path if finished. Without
+                        // this, a lost grab sat in the client forever, invisible.
+                        var eventExists = await db.Events.AnyAsync(e => e.Id == grab.EventId, cancellationToken);
+                        if (!eventExists)
+                        {
+                            _logger.LogDebug("[Enhanced Download Monitor] Not re-adopting '{Title}' (id {Id}) — its event {EventId} no longer exists",
+                                download.Title, download.DownloadId, grab.EventId);
+                            continue;
+                        }
+
+                        var readopted = new DownloadQueueItem
+                        {
+                            EventId = grab.EventId,
+                            Title = grab.Title,
+                            DownloadId = download.DownloadId,
+                            DownloadClientId = client.Id,
+                            GrabCategory = client.Category,
+                            Status = DownloadStatus.Queued,
+                            Quality = grab.Quality,
+                            Codec = grab.Codec,
+                            Source = grab.Source,
+                            Size = download.Size > 0 ? download.Size : grab.Size,
+                            Downloaded = 0,
+                            Progress = 0,
+                            Indexer = grab.Indexer,
+                            IndexerId = grab.IndexerId,
+                            Protocol = grab.Protocol,
+                            TorrentInfoHash = grab.TorrentInfoHash ?? download.TorrentInfoHash,
+                            RetryCount = 0,
+                            LastUpdate = DateTime.UtcNow,
+                            QualityScore = grab.QualityScore,
+                            CustomFormatScore = grab.CustomFormatScore,
+                            Part = grab.PartName
+                        };
+
+                        db.DownloadQueue.Add(readopted);
+                        await db.SaveChangesAsync(cancellationToken);
+
+                        knownDownloadIds.Add(download.DownloadId);
+                        if (!string.IsNullOrEmpty(download.TorrentInfoHash))
+                            knownHashes.Add(download.TorrentInfoHash);
+
+                        _logger.LogInformation(
+                            "[Enhanced Download Monitor] Re-adopted lost grab '{Title}' (id {Id}) from '{Client}' — grabbed but never imported and still present in the client",
+                            grab.Title, download.DownloadId, client.Name);
                         continue;
                     }
 

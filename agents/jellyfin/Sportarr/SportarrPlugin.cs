@@ -32,7 +32,7 @@ namespace Jellyfin.Plugin.Sportarr
         /// <summary>
         /// Gets the plugin GUID.
         /// </summary>
-        public override Guid Id => new Guid("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+        public override Guid Id => new Guid("aeb8dfd3-eb78-4785-9b14-34bfd2dfc4dd");
 
         /// <summary>
         /// Gets the plugin description.

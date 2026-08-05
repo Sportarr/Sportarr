@@ -572,16 +572,22 @@ public class ReleaseMatchingService
                 result.Confidence += 25;
                 result.MatchReasons.Add("Date matches exactly");
             }
-            else if (daysDiff <= 3)
+            else if (!isTeamSport && daysDiff <= 3)
             {
+                // The 3-day grace only applies to non-team events (weekly
+                // shows, cards whose broadcast date drifts from the listed
+                // date). Team sports cannot afford it: playoff series games
+                // between the SAME two teams run every 2-3 days (Finals
+                // Game 4 on June 10, Game 5 on June 13), so a 3-day window
+                // lets every neighboring game of the series through.
                 result.Confidence += 15;
                 result.MatchReasons.Add($"Date within {daysDiff:F0} days");
             }
             else
             {
-                // Date is more than 3 days off — this is a different event/episode
+                // Date is off — this is a different event/episode
                 // WWE Raw from March 9 is NOT the same as Raw from March 2
-                // NBA game from March 15 is NOT the same game as March 2
+                // NBA Finals Game 4 (June 10) is NOT Game 5 (June 13)
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
                 result.Rejections.Add($"Date mismatch: release is {parseResult.EventDate.Value:yyyy-MM-dd}, event is {eventDate:yyyy-MM-dd} ({daysDiff:F0} days off)");
@@ -990,16 +996,12 @@ public class ReleaseMatchingService
             bool hasIdentityReason = result.MatchReasons.Any(r =>
                 identityReasons.Any(w => r.StartsWith(w, StringComparison.OrdinalIgnoreCase)));
 
-            // Distinctive event words: the event title minus format words
-            // shared across whole sports ("Race", "Qualifying", "Grand
-            // Prix"). What survives ("Chinese", "Hangtown", team names)
-            // actually identifies the event.
-            bool sharesDistinctiveWord = ExtractSignificantWords(normalizedEvent)
-                .Where(w => !w.All(char.IsDigit) && !GenericEventWords.Contains(w))
-                .Any(w => ContainsWholeWord(normalizedRelease, w));
-
-            if (!hasIdentityReason && !sharesDistinctiveWord &&
-                !TitleNamesLeague(release.Title, evt.League))
+            // Identity comes from the league's name/alias in the title or the
+            // event's own distinctive words. Shared with the import-side gate in
+            // LibraryImportService.CalculateMatchConfidence via
+            // TitleHasLeagueIdentity so the two cannot drift apart.
+            if (!hasIdentityReason &&
+                !TitleHasLeagueIdentity(release.Title, evt.Title, evt.League))
             {
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
@@ -1303,7 +1305,7 @@ public class ReleaseMatchingService
     /// Extract significant words (excluding stop words) from a title
     /// Normalizes word numbers to digits for proper matching (Three -> 3)
     /// </summary>
-    private HashSet<string> ExtractSignificantWords(string title)
+    private static HashSet<string> ExtractSignificantWords(string title)
     {
         // First convert word numbers to digits
         var normalizedTitle = ConvertWordNumbersToDigits(title);
@@ -1422,6 +1424,32 @@ public class ReleaseMatchingService
     /// number means nothing across leagues (every motorsport league has an
     /// episode 19).
     /// </summary>
+    /// <summary>
+    /// True when <paramref name="title"/> carries identity for an event in
+    /// <paramref name="league"/> — i.e. it either names the league (or one of its
+    /// aliases) or shares a distinctive word with the event's own title.
+    ///
+    /// Distinctive words are the event title minus format words shared across
+    /// whole sports ("Race", "Qualifying", "Grand Prix"). What survives
+    /// ("Chinese", "Hangtown", team names) actually identifies the event, whereas
+    /// round / session / year agreement are SLOT signals — every series running
+    /// the same weekend format has a Round 2 Race in 2026.
+    ///
+    /// Shared by the grab-side gate in ValidateRelease and the import-side gate in
+    /// LibraryImportService.CalculateMatchConfidence so the two cannot drift apart.
+    /// </summary>
+    public static bool TitleHasLeagueIdentity(string title, string eventTitle, League league)
+    {
+        if (string.IsNullOrWhiteSpace(title) || league == null) return false;
+        if (TitleNamesLeague(title, league)) return true;
+        if (string.IsNullOrWhiteSpace(eventTitle)) return false;
+
+        var normalizedTitle = NormalizeTitle(title);
+        return ExtractSignificantWords(NormalizeTitle(eventTitle))
+            .Where(w => !w.All(char.IsDigit) && !GenericEventWords.Contains(w))
+            .Any(w => ContainsWholeWord(normalizedTitle, w));
+    }
+
     public static bool SeriesLabelMatchesLeague(string seriesLabel, League league)
     {
         if (string.IsNullOrWhiteSpace(seriesLabel) || league == null) return false;
@@ -1765,9 +1793,24 @@ public class ReleaseMatchingService
         var eventLeague = evt.League?.Name?.ToLowerInvariant() ?? "";
         var eventTitle = evt.Title?.ToLowerInvariant() ?? "";
 
+        // Underscore is a WORD character, so the \b anchors every SportIdentifier
+        // relies on never fire beside one: `\bformula[\.\-\s]*e\b` does not match
+        // "…__Formula_E_2026_Round_15_Tokyo_Race…". Indexers that repackage NZBs
+        // emit exactly that shape, and such a release reached an F1 event in
+        // production — the outer NZB name began with the token "Formula1", which
+        // satisfies TitleNamesLeague's compact-alias check, so the league-identity
+        // gate vouched for it while its actual content was Formula E. This guard
+        // was the only layer that could reject it, and it was the layer that could
+        // not see the name.
+        //
+        // Mapping '_' to '.' restores the boundaries for all ~40 patterns at once,
+        // rather than rewriting each one. '.' is already an accepted separator in
+        // every pattern's character class, so this changes nothing else.
+        var normalizedTitle = releaseTitle.Replace('_', '.');
+
         foreach (var (pattern, sport) in SportIdentifiers)
         {
-            if (pattern.IsMatch(releaseTitle))
+            if (pattern.IsMatch(normalizedTitle))
             {
                 // Check if this sport identifier is actually part of the event's own sport/league
                 var sportLower = sport.ToLowerInvariant();

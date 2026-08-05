@@ -87,6 +87,26 @@ public class TaskService : ITaskService
 
                     if (runningTask != null)
                     {
+                        // A Running row with no registered cancellation token
+                        // belongs to no in-flight execution in this process
+                        // (tokens are registered before the row is marked
+                        // Running and removed only after its terminal status
+                        // persists). It is an orphan — e.g. the terminal
+                        // write lost a 'database is locked' fight — and left
+                        // alone it wedges the queue until a restart.
+                        if (!_cancellationTokens.ContainsKey(runningTask.Id))
+                        {
+                            _logger.LogWarning(
+                                "[TASK] Recovering orphaned running task: {Name} (ID: {TaskId}) — no in-process execution owns it",
+                                runningTask.Name, runningTask.Id);
+                            runningTask.Status = Models.TaskStatus.Failed;
+                            runningTask.Ended = DateTime.UtcNow;
+                            runningTask.Duration = runningTask.Ended - runningTask.Started;
+                            runningTask.Message = "Recovered: task had no running execution (interrupted terminal status write)";
+                            await db.SaveChangesAsync();
+                            continue;
+                        }
+
                         _logger.LogDebug("[TASK] Task already running: {Name}", runningTask.Name);
                         return;
                     }
@@ -178,13 +198,65 @@ public class TaskService : ITaskService
         }
         finally
         {
-            await db.SaveChangesAsync();
+            await PersistTerminalStatusAsync(db, task);
             _cancellationTokens.TryRemove(taskId, out _);
 
             // Don't recursively kick the queue here — the outer ProcessQueueAsync
             // loop is still holding _taskLock and will pick up the next queued
             // task on its next iteration. A re-entrant call would only see the
             // held lock and bail, leaving the queue stuck (the bug this fixes).
+        }
+    }
+
+    /// <summary>
+    /// Persist a task's terminal status with retries. This write must not be
+    /// allowed to fail quietly: if the row stays Running, ProcessQueueAsync
+    /// refuses to start anything else and the whole queue wedges until a
+    /// restart. A busy database (e.g. a full-history sync just committed a
+    /// multi-thousand-row transaction) can throw transient 'database is
+    /// locked' here — retry on the same context first (EF keeps the pending
+    /// changes across a failed SaveChanges), then fall back to a direct
+    /// UPDATE on a fresh context that depends on nothing tracked.
+    /// </summary>
+    private async Task PersistTerminalStatusAsync(SportarrDbContext db, AppTask task)
+    {
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            try
+            {
+                await db.SaveChangesAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[TASK] Terminal status write failed for task {TaskId} (attempt {Attempt}/5)",
+                    task.Id, attempt);
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt));
+            }
+        }
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var freshDb = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+            await freshDb.Tasks
+                .Where(t => t.Id == task.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.Status, task.Status)
+                    .SetProperty(t => t.Ended, task.Ended)
+                    .SetProperty(t => t.Duration, task.Duration)
+                    .SetProperty(t => t.Progress, task.Progress)
+                    .SetProperty(t => t.Message, task.Message)
+                    .SetProperty(t => t.Exception, task.Exception));
+            _logger.LogInformation(
+                "[TASK] Terminal status for task {TaskId} persisted via fallback update", task.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[TASK] Could not persist terminal status for task {TaskId}; the queue's orphan recovery will reclaim it",
+                task.Id);
         }
     }
 
@@ -223,6 +295,10 @@ public class TaskService : ITaskService
 
             case "RefreshLeague":
                 await RefreshLeagueAsync(task, cancellationToken);
+                break;
+
+            case "LibraryImport":
+                await LibraryImportAsync(task, cancellationToken);
                 break;
 
             default:
@@ -884,6 +960,78 @@ public class TaskService : ITaskService
     /// other in-flight tasks. The task body is expected to be a JSON
     /// object of shape {"leagueId": int, "scope": "current"|"full"}.
     /// </summary>
+    /// <summary>
+    /// Library import as a background task. The import endpoint used to run
+    /// file transfers and ffprobe inline in the HTTP request; multi-gigabyte
+    /// copies routinely outlived reverse-proxy timeouts and users got 504s
+    /// while the import kept running invisibly. The endpoint now queues this
+    /// task and the UI polls /api/task/{id}; the full per-file ImportResult
+    /// lands in the task's Result column when done.
+    /// </summary>
+    private async Task LibraryImportAsync(AppTask task, CancellationToken cancellationToken)
+    {
+        List<FileImportRequest> requests;
+        try
+        {
+            requests = System.Text.Json.JsonSerializer.Deserialize<List<FileImportRequest>>(
+                task.Body ?? "[]",
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TASK] LibraryImport task {TaskId} has invalid body", task.Id);
+            throw;
+        }
+
+        if (requests.Count == 0)
+        {
+            throw new InvalidOperationException("Library import task has no file requests");
+        }
+
+        // Short-lived scope per progress write, same rationale as the league
+        // refresh task above.
+        Func<int, string, Task> onProgress = async (pct, msg) =>
+        {
+            try
+            {
+                using var s = _scopeFactory.CreateScope();
+                var d = s.ServiceProvider.GetRequiredService<SportarrDbContext>();
+                var dbTask = await d.Tasks.FindAsync(task.Id);
+                if (dbTask != null)
+                {
+                    dbTask.Progress = pct;
+                    dbTask.Message = msg;
+                    await d.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[TASK] Failed to write progress for import task {TaskId}", task.Id);
+            }
+        };
+
+        await onProgress(1, $"Importing 0/{requests.Count} files");
+
+        using var scope = _scopeFactory.CreateScope();
+        var importService = scope.ServiceProvider.GetRequiredService<LibraryImportService>();
+
+        var result = await importService.ImportFilesAsync(requests, async (done, total) =>
+        {
+            var pct = Math.Clamp((int)(done * 100.0 / Math.Max(1, total)), 1, 99);
+            await onProgress(pct, $"Importing {done}/{total} files");
+        });
+
+        // Set the structured result on the runner's tracked entity - the
+        // terminal-status save that follows this method persists it. Camel
+        // case so the polling frontend parses it exactly like the old inline
+        // response body.
+        task.Result = System.Text.Json.JsonSerializer.Serialize(result,
+            new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            });
+    }
+
     private async Task RefreshLeagueAsync(AppTask task, CancellationToken cancellationToken)
     {
         int leagueId;

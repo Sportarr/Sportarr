@@ -69,6 +69,22 @@ namespace Jellyfin.Plugin.Sportarr
                 return result;
             }
 
+            // Jellyfin's core filename parser runs before any provider and can
+            // derive season/episode from patterns Sportarr never writes - a bare
+            // four-digit number like the "2026" in "NFL.2025-2026.W17..." parses
+            // as S20E26. Sportarr seasons are years, so a season that cannot be
+            // a year means the filename does not follow the naming scheme, and
+            // blind-matching those numbers returns a confidently wrong event
+            // (that scene name landed on a game from 2000). Leave the episode
+            // unidentified instead so the misparse is visible and fixable.
+            if (info.ParentIndexNumber.Value is < 1900 or > 2100)
+            {
+                _logger.LogWarning(
+                    "[Sportarr] Season {Season} is not a year - '{Path}' does not follow the Sportarr naming scheme (League - SyyyyEnn - Title); skipping match to avoid wrong metadata",
+                    info.ParentIndexNumber, info.Path);
+                return result;
+            }
+
             try
             {
                 var client = _httpClientFactory.CreateClient();

@@ -52,6 +52,20 @@ public static class DatabaseInitializer
         }
         Console.WriteLine("[Sportarr] Database lock check passed");
 
+        // WAL journal mode (persistent - stored in the database file, so this
+        // is a one-time switch per install). The default rollback journal
+        // serializes every reader behind the writer, so one long write
+        // transaction (a full-history league sync inserts thousands of events
+        // in a single SaveChanges) starves concurrent connections into
+        // 'database is locked' failures - including the task queue's own
+        // status writes, which is how a finished sync could stay pinned at
+        // 92% "Running" and wedge the queue until a restart. Under WAL,
+        // readers proceed during writes and writers queue briefly instead of
+        // erroring. Safe to run here: the lock preflight above just proved we
+        // are the only process on the file.
+        db.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
+        Console.WriteLine("[Sportarr] SQLite journal mode set to WAL");
+
         var canConnect = await db.Database.CanConnectAsync();
         var hasMigrationHistory = canConnect && (await db.Database.GetAppliedMigrationsAsync()).Any();
 
@@ -782,6 +796,26 @@ public static class DatabaseInitializer
         catch (Exception ex)
         {
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadQueue.IndexerId column: {ex.Message}");
+        }
+
+        // Ensure GrabCategory column exists in DownloadQueue table (backwards compatibility fix)
+        // This column was added so download-client status polling compares against the
+        // category actually used at grab time, not just the client's current default
+        try
+        {
+            var checkGrabCategoryColumnSql = "SELECT COUNT(*) FROM pragma_table_info('DownloadQueue') WHERE name='GrabCategory'";
+            var grabCategoryColumnExists = db.Database.SqlQueryRaw<int>(checkGrabCategoryColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (grabCategoryColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] DownloadQueue.GrabCategory column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE DownloadQueue ADD COLUMN GrabCategory TEXT NULL");
+                Console.WriteLine("[Sportarr] DownloadQueue.GrabCategory column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadQueue.GrabCategory column: {ex.Message}");
         }
 
         // Remove deprecated UseSymlinks column from MediaManagementSettings if it exists
@@ -2401,6 +2435,8 @@ public static class DatabaseInitializer
         EnsureColumn(db, "DownloadClients", "SaveMagnetFiles", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DownloadClients", "ReadOnly", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DownloadClients", "PostImportMode", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "MetadataProviders", "ShowNfo", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumn(db, "Tasks", "Result", "TEXT NULL");
 
         RelaxLegacyRootFolderColumns(db);
     }

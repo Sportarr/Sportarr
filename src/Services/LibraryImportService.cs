@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -33,6 +34,7 @@ public class LibraryImportService
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly DiskSpaceService _diskSpaceService;
     private readonly NotificationService _notificationService;
+    private readonly IMetadataWriterService _metadataWriterService;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
@@ -47,7 +49,8 @@ public class LibraryImportService
         SportarrApiClient sportarrApiClient,
         DiskSpaceService diskSpaceService,
         CustomFormatService customFormatService,
-        NotificationService notificationService)
+        NotificationService notificationService,
+        IMetadataWriterService metadataWriterService)
     {
         _db = db;
         _logger = logger;
@@ -60,6 +63,7 @@ public class LibraryImportService
         _diskSpaceService = diskSpaceService;
         _customFormatService = customFormatService;
         _notificationService = notificationService;
+        _metadataWriterService = metadataWriterService;
     }
 
     /// <summary>
@@ -337,14 +341,17 @@ public class LibraryImportService
     /// <summary>
     /// Import matched files into library - moves/copies/hardlinks files to library folder
     /// </summary>
-    public async Task<ImportResult> ImportFilesAsync(List<FileImportRequest> requests)
+    public async Task<ImportResult> ImportFilesAsync(
+        List<FileImportRequest> requests,
+        Func<int, int, Task>? onProgress = null)
     {
         var result = new ImportResult();
+        var processed = 0;
 
         // Successful imports queued for OnDownload notifications after the
         // batch save, so media-server connections (Plex/Jellyfin/Emby)
         // refresh for manual imports exactly like automatic ones.
-        var notifyQueue = new List<(Event Evt, string Path, string Quality)>();
+        var notifyQueue = new List<(Event Evt, string Path, string Quality, EventFile File)>();
 
         // Get media management settings for file transfer
         var settings = await GetMediaManagementSettingsAsync();
@@ -352,6 +359,11 @@ public class LibraryImportService
 
         foreach (var request in requests)
         {
+            if (onProgress != null)
+            {
+                try { await onProgress(processed, requests.Count); } catch { /* progress must never abort the import */ }
+            }
+            processed++;
             try
             {
                 if (!File.Exists(request.FilePath))
@@ -462,6 +474,8 @@ public class LibraryImportService
 
                         // Part name/number already determined above before TransferFileToLibraryAsync
 
+                        EventFile linkedFile;
+                        EventFile? newlyAdded = null;
                         if (existingFileRecord != null)
                         {
                             // Update existing EventFile record (re-import)
@@ -472,6 +486,7 @@ public class LibraryImportService
                             existingFileRecord.PartNumber = partNumber;
                             existingFileRecord.LastVerified = DateTime.UtcNow;
                             existingFileRecord.Exists = true;
+                            linkedFile = existingFileRecord;
 
                             _logger.LogInformation("Re-imported file to existing event: {EventTitle} -> {FilePath} (Part: {PartName})",
                                 existingEvent.Title, destinationPath, partName ?? "N/A");
@@ -482,8 +497,7 @@ public class LibraryImportService
                             // holds (the source path was checked above, but the destination path
                             // can differ, and one file must map to exactly one EventFile row).
                             // Without this, the import would create a duplicate episode.
-                            var existingByDest = await _db.EventFiles
-                                .FirstOrDefaultAsync(f => f.FilePath == destinationPath);
+                            var existingByDest = await FindEventFileByPathAsync(destinationPath);
 
                             if (existingByDest != null)
                             {
@@ -494,6 +508,7 @@ public class LibraryImportService
                                 existingByDest.PartNumber = partNumber;
                                 existingByDest.LastVerified = DateTime.UtcNow;
                                 existingByDest.Exists = true;
+                                linkedFile = existingByDest;
 
                                 _logger.LogInformation("Re-linked existing file record to event: {EventTitle} -> {FilePath} (Part: {PartName})",
                                     existingEvent.Title, destinationPath, partName ?? "N/A");
@@ -523,15 +538,29 @@ public class LibraryImportService
                                     Exists = true
                                 };
                                 _db.EventFiles.Add(eventFile);
+                                linkedFile = eventFile;
+                                newlyAdded = eventFile;
 
                                 _logger.LogInformation("Imported file to existing event: {EventTitle} -> {FilePath} (Part: {PartName})",
                                     existingEvent.Title, destinationPath, partName ?? "N/A");
                             }
                         }
 
+                        // Persist per file so one bad file cannot fail the whole
+                        // batch save at the end, and so the row exists before any
+                        // concurrent disk scan sees the freshly moved file.
+                        if (newlyAdded != null)
+                        {
+                            linkedFile = await SaveImportedFileAsync(newlyAdded);
+                        }
+                        else
+                        {
+                            await _db.SaveChangesAsync();
+                        }
+
                         result.Imported.Add(destinationPath);
                         notifyQueue.Add((existingEvent, destinationPath,
-                            request.Quality ?? _fileParser.BuildQualityString(parsedInfo)));
+                            request.Quality ?? _fileParser.BuildQualityString(parsedInfo), linkedFile));
                     }
                     else
                     {
@@ -613,31 +642,57 @@ public class LibraryImportService
                     newEvent.FilePath = destinationPath;
                     newEvent.HasFile = true;
 
-                    // Create EventFile record (part info already determined above).
-                    // User-supplied overrides take precedence over parser values.
-                    var eventFile = new EventFile
+                    // The create-new path needs the same destination-path guard as
+                    // the existing-event path: another file earlier in this batch
+                    // (or a concurrent scan during a slow transfer) may already own
+                    // a row for this path, and a second insert violates the unique
+                    // FilePath index.
+                    var fileAtDestination = await FindEventFileByPathAsync(destinationPath);
+                    EventFile eventFile;
+                    if (fileAtDestination != null)
                     {
-                        EventId = newEvent.Id,
-                        FilePath = destinationPath,
-                        Size = sourceFileSize,
-                        Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
-                        Codec = request.Codec ?? parsedInfo.VideoCodec,
-                        Source = request.Source ?? parsedInfo.Source,
-                        ReleaseGroup = request.ReleaseGroup ?? parsedInfo.ReleaseGroup,
-                        OriginalTitle = request.OriginalTitle,
-                        Languages = request.Languages ?? new List<string>(),
-                        IndexerFlags = request.IndexerFlags,
-                        PartName = partName,
-                        PartNumber = partNumber,
-                        Added = DateTime.UtcNow,
-                        LastVerified = DateTime.UtcNow,
-                        Exists = true
-                    };
-                    _db.EventFiles.Add(eventFile);
+                        fileAtDestination.EventId = newEvent.Id;
+                        fileAtDestination.Size = sourceFileSize;
+                        fileAtDestination.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
+                        fileAtDestination.PartName = partName;
+                        fileAtDestination.PartNumber = partNumber;
+                        fileAtDestination.LastVerified = DateTime.UtcNow;
+                        fileAtDestination.Exists = true;
+                        eventFile = fileAtDestination;
+                        await _db.SaveChangesAsync();
+
+                        _logger.LogInformation("Re-linked existing file record to new event: {EventTitle} -> {FilePath} (Part: {PartName})",
+                            newEvent.Title, destinationPath, partName ?? "N/A");
+                    }
+                    else
+                    {
+                        // Create EventFile record (part info already determined above).
+                        // User-supplied overrides take precedence over parser values.
+                        eventFile = new EventFile
+                        {
+                            EventId = newEvent.Id,
+                            FilePath = destinationPath,
+                            Size = sourceFileSize,
+                            Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
+                            Codec = request.Codec ?? parsedInfo.VideoCodec,
+                            Source = request.Source ?? parsedInfo.Source,
+                            ReleaseGroup = request.ReleaseGroup ?? parsedInfo.ReleaseGroup,
+                            OriginalTitle = request.OriginalTitle,
+                            Languages = request.Languages ?? new List<string>(),
+                            IndexerFlags = request.IndexerFlags,
+                            PartName = partName,
+                            PartNumber = partNumber,
+                            Added = DateTime.UtcNow,
+                            LastVerified = DateTime.UtcNow,
+                            Exists = true
+                        };
+                        _db.EventFiles.Add(eventFile);
+                        eventFile = await SaveImportedFileAsync(eventFile);
+                    }
 
                     result.Created.Add(destinationPath);
                     notifyQueue.Add((newEvent, destinationPath,
-                        request.Quality ?? _fileParser.BuildQualityString(parsedInfo)));
+                        request.Quality ?? _fileParser.BuildQualityString(parsedInfo), eventFile));
                     _logger.LogInformation("Created new event from file: {EventTitle} -> {FilePath} (Part: {PartName})",
                         newEvent.Title, destinationPath, partName ?? "N/A");
                 }
@@ -648,6 +703,16 @@ public class LibraryImportService
             }
             catch (Exception ex)
             {
+                // Discard this file's pending changes so a failed file cannot
+                // poison the saves of every file after it in the batch.
+                foreach (var entry in _db.ChangeTracker.Entries()
+                    .Where(e => e.State is EntityState.Added or EntityState.Modified).ToList())
+                {
+                    entry.State = entry.State == EntityState.Added
+                        ? EntityState.Detached
+                        : EntityState.Unchanged;
+                }
+
                 _logger.LogError(ex, "Failed to import file: {FilePath}", request.FilePath);
                 result.Failed.Add(request.FilePath);
                 result.Errors.Add($"{Path.GetFileName(request.FilePath)}: {ex.Message}");
@@ -660,7 +725,7 @@ public class LibraryImportService
         // notifications as automatic imports. Previously only the
         // download-queue path notified, so wizard-imported files never
         // triggered a media-server library refresh until a manual scan.
-        foreach (var (evt, path, quality) in notifyQueue)
+        foreach (var (evt, path, quality, file) in notifyQueue)
         {
             try
             {
@@ -683,6 +748,15 @@ public class LibraryImportService
             {
                 _logger.LogWarning(ex, "[Import] Failed to send notification for manual import: {Path}", path);
             }
+
+            try
+            {
+                await _metadataWriterService.WriteEventMetadataAsync(evt, file, evt.League);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Import] Failed to write local metadata for manual import: {Path}", path);
+            }
         }
 
         _logger.LogInformation(
@@ -695,6 +769,51 @@ public class LibraryImportService
     /// <summary>
     /// Transfer file to library folder with proper naming
     /// </summary>
+    /// <summary>
+    /// Finds the EventFile owning a path, including rows added earlier in the
+    /// current batch that are not yet saved. The DB-only lookup this replaces
+    /// let two files in one batch claim the same destination path and blow up
+    /// the unique FilePath index at save time.
+    /// </summary>
+    private async Task<EventFile?> FindEventFileByPathAsync(string path)
+    {
+        return _db.EventFiles.Local.FirstOrDefault(f => f.FilePath == path)
+            ?? await _db.EventFiles.FirstOrDefaultAsync(f => f.FilePath == path);
+    }
+
+    /// <summary>
+    /// Saves a freshly added EventFile row. When another writer created a row
+    /// for the same path between our lookup and the save (a disk scan racing a
+    /// slow transfer is the realistic case), the pending insert is merged into
+    /// the winning row instead of failing the file on the unique index.
+    /// </summary>
+    private async Task<EventFile> SaveImportedFileAsync(EventFile pending)
+    {
+        try
+        {
+            await _db.SaveChangesAsync();
+            return pending;
+        }
+        catch (DbUpdateException ex) when (
+            ex.InnerException?.Message.Contains("EventFiles.FilePath") == true)
+        {
+            _db.Entry(pending).State = EntityState.Detached;
+            var winner = await _db.EventFiles.FirstAsync(f => f.FilePath == pending.FilePath);
+            winner.EventId = pending.EventId;
+            winner.Size = pending.Size;
+            winner.Quality = pending.Quality;
+            winner.PartName = pending.PartName;
+            winner.PartNumber = pending.PartNumber;
+            winner.LastVerified = DateTime.UtcNow;
+            winner.Exists = true;
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation("[Import] Merged import into the existing file record for {Path} (another writer created it first)",
+                pending.FilePath);
+            return winner;
+        }
+    }
+
     private async Task<string> TransferFileToLibraryAsync(
         string sourcePath,
         Event eventInfo,
@@ -1327,6 +1446,43 @@ public class LibraryImportService
         {
             logger?.LogDebug("[Match] Series label gate: file names series '{Label}', event '{Event}' is in league '{League}' - rejecting",
                 seriesLabel, eventTitle, evt.League.Name);
+            return 0;
+        }
+
+        // ── LEAGUE IDENTITY GATE ────────────────────────────────────────────────
+        // The series-label gate above only fires for library-format filenames,
+        // which name their series ahead of the SxxxxExx token. A raw scene
+        // filename — "BSB.2026.Round06.Oulton.Park.International.Race.One…" —
+        // has no label, so that gate is skipped and nothing else in this method
+        // establishes WHICH series the file belongs to: round, session and year
+        // all agree across every series running the same weekend format.
+        //
+        // ValidateRelease rejects this on the grab side. The import side did not,
+        // so a cross-series file that reached disk by any route (manual copy, a
+        // grab made before the grab-side gate existed, a hardlinked leftover)
+        // could still be matched onto the wrong event and rename itself into the
+        // library. Reuse the same helper so the two sides cannot drift.
+        //
+        // Team sports are exempt: their filenames name the teams rather than the
+        // league ("Lakers.vs.Celtics.2026.03.05" never says "NBA"), and the team
+        // names are themselves the identity signal, checked separately below.
+        //
+        // A caller that already resolved the organization is also exempt: callers
+        // pass searchTitle as either a raw filename OR an already-parsed short
+        // title ("Spain Qualifying"), and the latter legitimately carries no
+        // league name. When organization was resolved and agrees with the league,
+        // identity is established and the title does not need to repeat it.
+        bool organizationEstablishesIdentity =
+            !string.IsNullOrWhiteSpace(organization) && evt.League != null &&
+            ReleaseMatchingService.SeriesLabelMatchesLeague(organization, evt.League);
+
+        if (string.IsNullOrWhiteSpace(seriesLabel) && evt.League != null &&
+            !organizationEstablishesIdentity &&
+            string.IsNullOrWhiteSpace(evt.HomeTeamName) && string.IsNullOrWhiteSpace(evt.AwayTeamName) &&
+            !ReleaseMatchingService.TitleHasLeagueIdentity(searchTitle, eventTitle, evt.League))
+        {
+            logger?.LogDebug("[Match] League identity gate: '{Title}' names neither league '{League}' nor anything distinctive from event '{Event}' - rejecting",
+                searchTitle, evt.League.Name, eventTitle);
             return 0;
         }
 

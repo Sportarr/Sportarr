@@ -56,13 +56,16 @@ public static class SonarrCalendarEndpoint
                 if (includeSeries == true && e.League != null)
                 {
                     var leaguePath = Path.Combine(rootPath, e.League.Name.Replace(" ", "-"));
+                    // remoteUrl must always accompany url: calendar consumers
+                    // (Homarr's zod schema among them) require it as a string
+                    // on every image entry.
                     var images = new List<object>();
                     if (!string.IsNullOrEmpty(e.League.LogoUrl))
-                        images.Add(new { coverType = "poster", url = e.League.LogoUrl });
+                        images.Add(new { coverType = "poster", url = e.League.LogoUrl, remoteUrl = e.League.LogoUrl });
                     if (!string.IsNullOrEmpty(e.League.BannerUrl))
-                        images.Add(new { coverType = "banner", url = e.League.BannerUrl });
+                        images.Add(new { coverType = "banner", url = e.League.BannerUrl, remoteUrl = e.League.BannerUrl });
                     if (!string.IsNullOrEmpty(e.League.PosterUrl))
-                        images.Add(new { coverType = "fanart", url = e.League.PosterUrl });
+                        images.Add(new { coverType = "fanart", url = e.League.PosterUrl, remoteUrl = e.League.PosterUrl });
 
                     var leagueExternalId = Helpers.NumericIdAlias.FromExternalId(e.League.ExternalId);
                     seriesObj = new
@@ -119,6 +122,15 @@ public static class SonarrCalendarEndpoint
                     };
                 }
 
+                // Episode-level images (Sonarr sends stills when
+                // includeEpisodeImages is set; consumers expect the array to
+                // exist either way). The event thumbnail is the natural still.
+                var episodeImages = new List<object>();
+                if (!string.IsNullOrEmpty(e.ThumbUrl))
+                    episodeImages.Add(new { coverType = "screenshot", url = e.ThumbUrl, remoteUrl = e.ThumbUrl });
+                else if (!string.IsNullOrEmpty(e.PosterUrl))
+                    episodeImages.Add(new { coverType = "screenshot", url = e.PosterUrl, remoteUrl = e.PosterUrl });
+
                 return new
                 {
                     id = e.Id,
@@ -136,6 +148,7 @@ public static class SonarrCalendarEndpoint
                     absoluteEpisodeNumber = e.EpisodeNumber ?? 0,
                     unverifiedSceneNumbering = false,
                     grabbed = false,
+                    images = episodeImages.ToArray(),
                     series = seriesObj,
                     episodeFile = episodeFileObj
                 };

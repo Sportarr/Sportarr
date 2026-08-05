@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Interfaces;
 using FluentAssertions;
 using Moq;
 
@@ -38,6 +39,7 @@ public class EventRetentionServiceTests : IDisposable
         services.AddSingleton<IHttpClientFactory>(Mock.Of<IHttpClientFactory>());
         services.AddSingleton(new HttpClient());
         services.AddScoped<NotificationService>();
+        services.AddScoped<IMetadataWriterService, MetadataWriterService>();
 
         _provider = services.BuildServiceProvider();
     }

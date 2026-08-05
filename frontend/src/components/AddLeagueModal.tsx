@@ -78,7 +78,8 @@ interface AddLeagueModalProps {
     monitorPreseason: boolean,
     retentionDays: number,
     allowHighlights: boolean,
-    sessionTypeQualityProfiles: string | null
+    sessionTypeQualityProfiles: string | null,
+    enableDvr: boolean
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -96,6 +97,13 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitorPlayoffs, setMonitorPlayoffs] = useState(false);
   const [monitorPreseason, setMonitorPreseason] = useState(false);
   const [allowHighlights, setAllowHighlights] = useState(false);
+  // Add-only (#204): whether the DVR auto-scheduler may touch this league at
+  // all, including its EPG/broadcaster-matching fallback. Editing an
+  // existing league's setting happens on the league detail page's own DVR
+  // toggle, which is the source of truth once added - this only sets the
+  // starting value so users who already know they want a league on
+  // indexers-only don't have to visit a second screen right after adding it.
+  const [enableDvr, setEnableDvr] = useState(true);
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [retentionDays, setRetentionDays] = useState(0);
   const [rootFolderId, setRootFolderId] = useState<number | null>(null);
@@ -647,7 +655,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       monitorPreseason,
       retentionDays,
       allowHighlights,
-      sessionTypeQualityString
+      sessionTypeQualityString,
+      enableDvr
     );
   };
 
@@ -1187,6 +1196,31 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       </div>
                     </label>
                   </div>
+
+                  {/* Enable IPTV DVR — add-only, see enableDvr state comment.
+                      Editing this after add happens on the league page's own
+                      DVR section. */}
+                  {!editMode && (
+                    <div className="mb-4">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableDvr}
+                          onChange={(e) => setEnableDvr(e.target.checked)}
+                          className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-white">Enable IPTV DVR</div>
+                          <div className="text-xs text-gray-400">
+                            Allow the DVR auto-scheduler to resolve channels and record this league's
+                            events, including through EPG/broadcaster matching with no channel manually
+                            mapped. Turn off to keep this league on indexer downloads only - it stays
+                            monitored either way. Editable later from the league page.
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  )}
 
                   {/* Monitor Parts (Fighting Sports - shown in monitoring options) */}
                   {showPartsSelection && (

@@ -157,26 +157,27 @@ public class DvrWatchdogService : BackgroundService
                 }
 
                 _logger.LogWarning(
-                    "[DVR Watchdog] Recording {Id} is in Recording state but no live FFmpeg process is tracked; marking Failed",
+                    "[DVR Watchdog] Recording {Id} is in Recording state but no live FFmpeg process is tracked; reconciling",
                     row.Id);
-                row.Status = DvrRecordingStatus.Failed;
-                row.ActualEnd = now;
-                row.ErrorMessage = (row.ErrorMessage ?? "") +
-                    "Watchdog: FFmpeg process was not running while DB indicated active recording.";
                 _lastSize.Remove(row.Id);
-                dvrService.CleanupWorthlessPartial(row);
 
-                // While the window is still open a different channel can
-                // pick up the rest of the event - rotate instead of just
-                // burying the failure.
-                int? rotatedId = null;
-                if (now < row.ScheduledEnd.AddMinutes(row.PostPadding))
+                // Delegate to the recorder-exit handler instead of
+                // hard-failing: it finalizes as Completed when the exit
+                // landed at the natural end of the window with data on
+                // disk (the common case when the exit callback's status
+                // write was lost to a busy database or an app restart),
+                // and otherwise marks Failed with fallback rotation -
+                // exactly what this branch used to duplicate by hand,
+                // minus the completed-recording-wearing-an-error outcome.
+                try
                 {
-                    try { rotatedId = await dvrService.TryRescheduleOnFallbackAsync(row, "watchdog: recorder process not running"); }
-                    catch (Exception ex) { _logger.LogError(ex, "[DVR Watchdog] Fallback rotation failed for recording {Id}", row.Id); }
+                    await dvrService.HandleRecorderExitAsync(row.Id, 0,
+                        "watchdog: recorder process was not tracked");
                 }
-                await dvrService.NotifyRecordingFailedAsync(row,
-                    "The recorder process was not running while the recording was marked active.", rotatedId);
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[DVR Watchdog] Reconciliation failed for recording {Id}", row.Id);
+                }
                 continue;
             }
 

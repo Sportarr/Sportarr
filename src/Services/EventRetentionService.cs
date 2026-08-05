@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Services;
 
@@ -69,6 +70,7 @@ public class EventRetentionService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
+        var metadataWriterService = scope.ServiceProvider.GetRequiredService<IMetadataWriterService>();
 
         var config = await configService.GetConfigAsync();
 
@@ -161,6 +163,15 @@ public class EventRetentionService : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "[Event Retention] Failed to delete file: {FilePath}", file.FilePath);
+                }
+
+                try
+                {
+                    await metadataWriterService.DeleteEventMetadataAsync(file);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Event Retention] Failed to delete local metadata sidecars for: {FilePath}", file.FilePath);
                 }
             }
 

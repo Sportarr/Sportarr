@@ -149,6 +149,53 @@ public class SportarrApiClient
         }
     }
 
+    /// <summary>
+    /// Fetch a published sportarr.net user list by slug or UUID, for the
+    /// SportarrList import list type. Lives at the hub root
+    /// (/api/public/v1/lists/...), not under the v2/json base - same
+    /// root-rewrite pattern as GetEventCastAsync above. Returns null on any
+    /// failure (not found, hub unreachable, private list) - the caller logs
+    /// a sync failure message rather than throwing.
+    /// </summary>
+    public async Task<HubList?> GetHubListAsync(string identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+            return null;
+        try
+        {
+            var root = _apiBaseUrl.Replace("/api/v2/json", string.Empty).TrimEnd('/');
+            var url = $"{root}/api/public/v1/lists/{Uri.EscapeDataString(identifier)}";
+
+            using var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    // Distinct from "not found/private/unreachable" - this is
+                    // a transient hub-side throttle, not a broken list. The
+                    // next scheduled sync (or a manual retry) will succeed
+                    // once the window clears; no backoff scheduling needed
+                    // here since the periodic sync interval already spaces
+                    // requests out.
+                    _logger.LogWarning("[SportarrAPI] Hub list '{Identifier}' rate limited (429) - will retry next sync", identifier);
+                }
+                else
+                {
+                    _logger.LogWarning("[SportarrAPI] Hub list '{Identifier}' returned {Status}", identifier, (int)response.StatusCode);
+                }
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<HubList>(json, _jsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[SportarrAPI] Failed to fetch hub list '{Identifier}'", identifier);
+            return null;
+        }
+    }
+
     #region Search Endpoints
 
     /// <summary>
@@ -386,6 +433,32 @@ public class SportarrApiClient
     /// <summary>
     /// Get next 10 events for a team
     /// </summary>
+    /// <summary>
+    /// Get every event a player appears on (person-level participation,
+    /// fighting sports). Flat data envelope, oldest first, capped at 500
+    /// upstream. Powers the follow-athlete flow.
+    /// </summary>
+    public async Task<List<Event>?> GetPlayerEventsAsync(string playerId)
+    {
+        try
+        {
+            var url = $"{_apiBaseUrl}/schedule/all/player/{Uri.EscapeDataString(playerId)}";
+            using var response = await _httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Event>>(json, _jsonOptions);
+            var events = result?.Data;
+            ApplyBroadcastDateFallback(events);
+            return events;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SportarrAPI] Failed to get events for player: {PlayerId}", playerId);
+            return null;
+        }
+    }
+
     public async Task<List<Event>?> GetTeamNext10Async(string teamId)
     {
         try
@@ -463,6 +536,15 @@ public class SportarrApiClient
         try
         {
             var url = $"{_apiBaseUrl}/list/seasons/{Uri.EscapeDataString(leagueId)}";
+            if (forceRefresh)
+            {
+                // The no-cache request header below only reaches the origin;
+                // the CDN edge in front of sportarr.net ignores request-side
+                // cache directives and would keep serving its cached copy for
+                // the response's full max-age. A unique query param changes
+                // the cache key, so the request genuinely reaches the origin.
+                url += $"?cb={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+            }
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             if (forceRefresh)
             {
@@ -561,6 +643,17 @@ public class SportarrApiClient
         try
         {
             var url = $"{_apiBaseUrl}/schedule/league/{Uri.EscapeDataString(leagueId)}/{Uri.EscapeDataString(season)}";
+            if (forceRefresh)
+            {
+                // The no-cache request header below only reaches the origin;
+                // the CDN edge in front of sportarr.net ignores request-side
+                // cache directives and would keep serving its cached copy for
+                // the response's full max-age (observed: a changes-feed-
+                // triggered refresh pulling a stale 9-event season while the
+                // origin already served the full 321). A unique query param
+                // changes the cache key, so the request reaches the origin.
+                url += $"?cb={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+            }
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             if (forceRefresh)
             {
@@ -888,7 +981,7 @@ public class SportarrApiClient
     }
 
     /// <summary>
-    /// Get all teams for supported sports (Soccer, Basketball, Ice Hockey).
+    /// Get all teams for supported sports (see TeamLeagueDiscoveryService.SupportedSports).
     /// Fetches teams from all leagues in these sports and deduplicates by team ExternalId.
     /// This is used for the "Add Team" page cross-league team following feature.
     ///
@@ -902,7 +995,12 @@ public class SportarrApiClient
     /// <returns>List of unique teams across all leagues in the specified sports</returns>
     public async Task<List<Team>?> GetAllTeamsForSportsAsync(IEnumerable<string>? sports = null, bool forceRefresh = false)
     {
-        var supportedSports = sports?.OrderBy(s => s).ToList() ?? new List<string> { "Basketball", "Ice Hockey", "Soccer" };
+        // Default to the full follow-team sport list (single source of truth
+        // in TeamLeagueDiscoveryService) rather than a separate hardcoded
+        // subset here, so a sport added there is immediately browsable on
+        // the Add Team page without a second edit.
+        var supportedSports = sports?.OrderBy(s => s).ToList()
+            ?? TeamLeagueDiscoveryService.GetSupportedSportsList().OrderBy(s => s).ToList();
         var cacheKey = $"all-teams:{string.Join(",", supportedSports)}";
 
         // Return cached result if available and not forcing refresh
@@ -972,10 +1070,16 @@ public class SportarrApiClient
             teams = new List<Team>();
         }
 
+        // The upstream sport filter substring-matches, so asking for
+        // "Football" also returns Australian Football teams. Keep only
+        // exact sport matches for the requested set.
+        var requested = new HashSet<string>(supportedSports, StringComparer.OrdinalIgnoreCase);
+
         // Deduplicate by ExternalId (teams can appear in multiple
         // leagues; kept for parity with the per-league aggregator).
         var uniqueTeams = teams
             .Where(t => !string.IsNullOrEmpty(t.ExternalId))
+            .Where(t => !string.IsNullOrEmpty(t.Sport) && requested.Contains(t.Sport.Trim()))
             .GroupBy(t => t.ExternalId)
             .Select(g => g.First())
             .OrderBy(t => t.Sport)

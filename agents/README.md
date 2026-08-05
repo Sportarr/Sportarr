@@ -116,6 +116,14 @@ Uses the same metadata API. See [emby/README.md](emby/README.md).
 > All three can point at **sportarr.net** or at your **own Sportarr instance**
 > by setting the API URL in the agent/plugin settings.
 
+### Kodi
+
+Unlike the three above, Kodi needs **no addon** - it reads local `.nfo` files
+and artwork directly, which Sportarr can write for you (Settings → Local
+Metadata in the app). A real scraper addon also exists for anyone who wants
+Kodi to look events up dynamically instead: `kodi/metadata.tvshows.sportarr/`,
+distributed via `kodi/repository.sportarr/`. See [kodi/README.md](kodi/README.md).
+
 ## Verify it works
 
 1. Place one correctly-named file in `{Series}/Season {year}/`, or let the

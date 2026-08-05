@@ -1201,6 +1201,7 @@ public class RssSyncService : BackgroundService
             Title = release.Title,
             DownloadId = downloadId,
             DownloadClientId = downloadClient.Id,
+            GrabCategory = rssGrabCategory,
             Status = DownloadStatus.Queued,
             Quality = release.Quality,
             Codec = release.Codec,

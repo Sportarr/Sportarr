@@ -1,0 +1,114 @@
+<scraper content="tvshows">
+
+  <!--
+    Classic Kodi XML scraper contract (stable since XBMC, documented at
+    kodi.wiki/view/Scraper). Every function below regex-extracts fields out
+    of Sportarr's own /api/metadata/agents/* JSON responses (the same
+    routes the Plex/Jellyfin/Emby agents call - see MetadataAgentEndpoints.cs
+    in the main Sportarr repo) rather than scraping HTML, since the field
+    order in that JSON is controlled by Sportarr itself and stable.
+
+    ServerUrl is filled in by resources/settings.xml (default
+    https://sportarr.net, overridable to a self-hosted instance) - Kodi
+    substitutes $INFO[ServerUrl] from the addon's own settings at run time.
+  -->
+
+  <CreateSearchUrl dest="3">
+    <RegExp input="$$1" output="&lt;url&gt;$INFO[ServerUrl]/api/metadata/agents/search?title=\1&lt;/url&gt;">
+      <expression noclean="1" urlencode="1">(.*)</expression>
+    </RegExp>
+  </CreateSearchUrl>
+
+  <GetSearchResults dest="8">
+    <RegExp input="$$8" output="&lt;results&gt;\1&lt;/results&gt;">
+      <expression repeat="yes">
+        <![CDATA["id"\s*:\s*"([^"]*)"\s*,\s*"title"\s*:\s*"([^"]*)"\s*,\s*"year"\s*:\s*(\d+|null)]]>
+      </expression>
+    </RegExp>
+  </GetSearchResults>
+
+  <!--
+    Kodi builds each <entity> from the CreateSearchUrl output automatically
+    for a search result list; this addon instead emits complete <entity>
+    blocks directly so id/title/year map exactly to Sportarr's league.
+    GetSearchResults above intentionally reuses the raw capture groups as
+    the <entity> body via the RegExp output template.
+  -->
+
+  <GetDetails dest="8">
+    <RegExp input="$$8" output="&lt;details&gt;\1&lt;/details&gt;">
+      <expression noclean="1"><![CDATA[([\s\S]*)]]></expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;title&gt;\1&lt;/title&gt;">
+      <expression>"title"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;plot&gt;\1&lt;/plot&gt;">
+      <expression>"summary"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;genre&gt;\1&lt;/genre&gt;">
+      <expression>"sport"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;year&gt;\1&lt;/year&gt;">
+      <expression>"year"\s*:\s*(\d+)</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;thumb aspect=&quot;poster&quot;&gt;\1&lt;/thumb&gt;">
+      <expression>"poster_url"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;thumb aspect=&quot;banner&quot;&gt;\1&lt;/thumb&gt;">
+      <expression>"banner_url"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;id&gt;\1&lt;/id&gt;">
+      <expression>"id"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <!--
+      Points the episode-list step at the CURRENT calendar year's season.
+      Sportarr's season number IS the year, so this always resolves to the
+      season a live sport is actually in. Known v1 limitation: only the
+      current season is scraped this way - full historical-season backfill
+      needs either a future multi-season addon update or Sportarr's own
+      local NFO writer (Settings > Local Metadata), which has no such limit.
+    -->
+    <RegExp input="$$1" output="&lt;episodeguide&gt;&lt;url&gt;$INFO[ServerUrl]/api/metadata/agents/series/\1/season/$INFO[CurrentYear]/episodes&lt;/url&gt;&lt;/episodeguide&gt;">
+      <expression>"id"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+  </GetDetails>
+
+  <GetEpisodeList dest="8">
+    <RegExp input="$$8" output="&lt;episodeguide&gt;\1&lt;/episodeguide&gt;">
+      <expression repeat="yes">
+        <![CDATA["id"\s*:\s*"([^"]*)"\s*,\s*"title"\s*:\s*"([^"]*)".*?"season_number"\s*:\s*(\d+|null).*?"episode_number"\s*:\s*(\d+|null)]]>
+      </expression>
+    </RegExp>
+  </GetEpisodeList>
+
+  <GetEpisodeDetails dest="8">
+    <RegExp input="$$8" output="&lt;details&gt;\1&lt;/details&gt;">
+      <expression noclean="1"><![CDATA[([\s\S]*)]]></expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;title&gt;\1&lt;/title&gt;">
+      <expression>"title"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;season&gt;\1&lt;/season&gt;">
+      <expression>"season_number"\s*:\s*(\d+)</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;episode&gt;\1&lt;/episode&gt;">
+      <expression>"episode_number"\s*:\s*(\d+)</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;aired&gt;\1&lt;/aired&gt;">
+      <expression>"air_date"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;plot&gt;\1&lt;/plot&gt;">
+      <expression>"summary"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+    <RegExp input="$$1" output="&lt;thumb&gt;\1&lt;/thumb&gt;">
+      <expression>"thumb_url"\s*:\s*"([^"]*)"</expression>
+    </RegExp>
+  </GetEpisodeDetails>
+
+  <NfoUrl dest="3">
+    <RegExp input="$$1" output="&lt;url&gt;\1&lt;/url&gt;">
+      <expression>(https?://[^\s&lt;]+)</expression>
+    </RegExp>
+  </NfoUrl>
+
+</scraper>

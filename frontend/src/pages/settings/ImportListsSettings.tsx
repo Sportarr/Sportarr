@@ -46,6 +46,7 @@ const IMPORT_LIST_TYPES = [
   { value: 2, label: 'Calendar/iCal', description: 'iCalendar (.ics) feed with event schedules' },
   { value: 3, label: 'Custom API', description: 'JSON API endpoint returning event data' },
   { value: 4, label: 'Custom Script', description: 'Custom script or webhook for event discovery' },
+  { value: 6, label: 'Sportarr List', description: 'A sportarr.net list URL - adds and monitors the leagues (and teams) it references' },
 ];
 
 export default function ImportListsSettings({ showAdvanced = false }: ImportListsSettingsProps) {
@@ -58,6 +59,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [syncingId, setSyncingId] = useState<number | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<ImportList>({
     name: '',
@@ -103,6 +105,15 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
         : await apiPost(url, formData);
 
       if (response.ok) {
+        // On create, the backend now syncs immediately (rather than
+        // waiting up to 6 hours for the background pass) and returns the
+        // list with lastSyncMessage already populated - surface it right
+        // away instead of leaving the user to guess whether anything
+        // happened.
+        if (!editingList) {
+          const created = await response.json();
+          if (created.lastSyncMessage) setSyncMessage(created.lastSyncMessage);
+        }
         await loadData();
         setShowAddModal(false);
         setEditingList(null);
@@ -127,8 +138,11 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
 
   const handleSync = async (id: number) => {
     setSyncingId(id);
+    setSyncMessage(null);
     try {
       const response = await apiPost(`/api/importlist/${id}/sync`, {});
+      const result = await response.json().catch(() => null);
+      if (result?.message) setSyncMessage(result.message);
       if (response.ok) {
         await loadData();
       }
@@ -197,6 +211,15 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
 
       <div className="max-w-6xl mx-auto px-6">
 
+      {syncMessage && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-blue-900/30 bg-blue-900/10 px-4 py-3 text-sm text-blue-300">
+          <span>{syncMessage}</span>
+          <button onClick={() => setSyncMessage(null)} className="flex-shrink-0 text-blue-400 hover:text-white">
+            <XMarkIcon className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Import Lists Table */}
       <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
@@ -256,6 +279,11 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-400">
                       {list.lastSync ? new Date(list.lastSync).toLocaleDateString() : 'Never'}
+                      {list.lastSyncMessage && (
+                        <p className="mt-0.5 max-w-xs truncate text-xs text-gray-500" title={list.lastSyncMessage}>
+                          {list.lastSyncMessage}
+                        </p>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-end space-x-2">

@@ -1189,6 +1189,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 Title = bestRelease.Title,
                 DownloadId = downloadId,
                 DownloadClientId = downloadClient.Id,
+                GrabCategory = grabCategory,
                 Status = DownloadStatus.Queued,
                 Quality = bestRelease.Quality,
                 Codec = bestRelease.Codec,
@@ -1290,7 +1291,25 @@ public class AutomaticSearchService : IAutomaticSearchService
             };
             _db.GrabHistory.Add(grabHistory);
 
-            await _db.SaveChangesAsync();
+            // Same compensation as the manual grab endpoint: the download is
+            // already in the client, so a persistence failure here must not
+            // orphan it as an "external" download. Queue tracking is what
+            // import hangs off; retry without the history row before giving up.
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (Exception saveEx)
+            {
+                _logger.LogError(saveEx,
+                    "[Automatic Search] Failed to persist queue + history for download {DownloadId} - retrying without the history row",
+                    downloadId);
+                _db.Entry(grabHistory).State = EntityState.Detached;
+                await _db.SaveChangesAsync();
+                _logger.LogWarning(
+                    "[Automatic Search] Queue item for download {DownloadId} saved without grab history - re-grab cross-referencing is unavailable for this grab",
+                    downloadId);
+            }
 
             // Immediately check download status so it appears in the Activity
             // page with real-time status without waiting for the next poll.

@@ -459,11 +459,36 @@ public class SportsFileNameParser
     };
 
     // Date extraction patterns
-    private static readonly Regex DatePattern = new(@"(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})", RegexOptions.Compiled);
+    // The separator run is captured once and back-referenced, so all three fields
+    // must be joined by the SAME separator. Without that, the class matched
+    // independently at each position and a title carrying both a season year and a
+    // date -- "MLB_2026__05.08.2026__Red_Sox_vs_Athletics", which CleanFilename
+    // turns into "MLB 2026  05.08.2026  ..." -- anchored on the LEADING SEASON YEAR
+    // ("2026" + "  ") and then consumed "05" and "08" out of the real date.
+    //
+    // When the stolen pair was day-first with a day of 13-31 the resulting
+    // DateTime threw and the swap-retry below recovered it, so that half looked
+    // fine. When the day was 1-12 it produced a VALID BUT WRONG date -- 5 Aug read
+    // as 8 May -- and returned it silently, with no exception and no log line at
+    // any level. A wrong date is worse than no date here: it drives the +/-3-day
+    // hard rejection in ReleaseMatchingService, so the correct release gets
+    // rejected for its own event and the event stays missing.
+    //
+    // Requiring separator consistency makes that match impossible, and the
+    // DayFirstDatePattern fallback below then reads "05.08.2026" correctly.
+    private static readonly Regex DatePattern = new(@"(?<!\d)(?<year>\d{4})(?<sep>[\.\-\s]+)(?<month>\d{2})\k<sep>(?<day>\d{2})(?!\d)", RegexOptions.Compiled);
     // European day-first dating ("Spain vs Argentina 19.07.2026"). Only
     // consulted when the year-first pattern found nothing; the lookarounds
     // keep the two-digit groups from binding inside longer digit runs.
     private static readonly Regex DayFirstDatePattern = new(@"(?<!\d)(?<day>\d{2})[\.\-\s](?<month>\d{2})[\.\-\s](?<year>20[12]\d)(?!\d)", RegexOptions.Compiled);
+    // Trailing day-month pair with the year elsewhere in the title
+    // ("NBA Finals 2026 Knicks vs Spurs Game 5 13 06 1080p..."). The pair is
+    // only trusted when it sits directly before the quality/source token (or
+    // the end of the name) - that position is where date stamps live in this
+    // release style, while pairs elsewhere ("Round 13 06 Austria") are noise.
+    private static readonly Regex TrailingDayMonthPattern = new(
+        @"(?<!\d)(?<day>\d{2})[\.\s_-](?<month>\d{2})(?=[\.\s_-]+(?:\d{3,4}p|WEB|HDTV|SDTV|Blu|x26[45]|[Hh]\.?26[45])|[\.\s_-]*$)",
+        RegexOptions.Compiled);
     private static readonly Regex YearOnlyPattern = new(@"\b(?<year>20[12]\d)\b", RegexOptions.Compiled);
     // Season span pattern for multi-year seasons: "2025-2026", "2025/2026", "2025-26"
     // (hyphen/slash separator, full or short end year), or "2025.2026" (dot separator,
@@ -725,6 +750,52 @@ public class SportsFileNameParser
                             _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
                                 filename, cleanName);
                         }
+                    }
+                }
+            }
+        }
+
+        // Salvage a trailing day-month stamp when the year sits elsewhere in
+        // the title. Sportscult-style names ("NBA Finals 2026 New York Knicks
+        // vs San Antonio Spurs Game 5 13 06 1080pEN60fps ABC") carry a full
+        // date, but neither adjacent-date pattern can bind it because the
+        // year is detached. Without this, every game of a playoff series
+        // parses identically (both teams + year) and the matcher cannot tell
+        // Game 5 from Game 4. Day-first is the convention for this style;
+        // a first group over 12 with a small second group is the American
+        // order leaking in, so swap.
+        if (result.EventDate == null && result.EventYear.HasValue)
+        {
+            var trailingMatch = TrailingDayMonthPattern.Match(cleanName);
+            if (trailingMatch.Success &&
+                int.TryParse(trailingMatch.Groups["day"].Value, out var tDay) &&
+                int.TryParse(trailingMatch.Groups["month"].Value, out var tMonth))
+            {
+                if (tMonth > 12 && tDay <= 12)
+                {
+                    (tDay, tMonth) = (tMonth, tDay);
+                }
+
+                if (tMonth is >= 1 and <= 12 && tDay is >= 1 and <= 31)
+                {
+                    // Cross-year seasons: a span like "2025-2026" leaves
+                    // EventYear at the start year, but Jan-Jun fixtures belong
+                    // to the end-year half of the season.
+                    var tYear = result.EventYear.Value;
+                    if (result.SeasonYearEnd.HasValue && tMonth <= 6)
+                    {
+                        tYear = result.SeasonYearEnd.Value;
+                    }
+
+                    try
+                    {
+                        result.EventDate = new DateTime(tYear, tMonth, tDay);
+                        _logger.LogDebug("[SportsFileNameParser] Extracted trailing day-month date {Date} from '{Filename}'",
+                            result.EventDate.Value.ToString("yyyy-MM-dd"), filename);
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        // Impossible pair (e.g. 31 02) - keep the year-only signal.
                     }
                 }
             }

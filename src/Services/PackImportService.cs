@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -22,6 +23,7 @@ public class PackImportService
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly ILogger<PackImportService> _logger;
     private readonly NotificationService _notificationService;
+    private readonly IMetadataWriterService _metadataWriterService;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
@@ -34,7 +36,8 @@ public class PackImportService
         ReleaseEvaluator releaseEvaluator,
         SportarrApiClient sportarrApiClient,
         ILogger<PackImportService> logger,
-        NotificationService notificationService)
+        NotificationService notificationService,
+        IMetadataWriterService metadataWriterService)
     {
         _db = db;
         _parser = parser;
@@ -45,6 +48,7 @@ public class PackImportService
         _sportarrApiClient = sportarrApiClient;
         _logger = logger;
         _notificationService = notificationService;
+        _metadataWriterService = metadataWriterService;
     }
 
     /// <summary>
@@ -863,6 +867,15 @@ public class PackImportService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Pack Import] Failed to send notification for {FileName}", fileName);
+        }
+
+        try
+        {
+            await _metadataWriterService.WriteEventMetadataAsync(eventInfo, eventFile, eventInfo.League);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Pack Import] Failed to write local metadata for {FileName}", fileName);
         }
     }
 

@@ -108,6 +108,20 @@ namespace Sportarr.Providers
                 return result;
             }
 
+            // Emby's core filename parser runs before any provider and can
+            // derive season/episode from patterns Sportarr never writes - a
+            // bare four-digit number like the "2026" in "NFL.2025-2026.W17..."
+            // parses as S20E26. Sportarr seasons are years, so a season that
+            // cannot be a year means the filename does not follow the naming
+            // scheme; blind-matching those numbers returns a confidently wrong
+            // event. Leave the episode unidentified instead so the misparse is
+            // visible and fixable.
+            if (info.ParentIndexNumber.Value < 1900 || info.ParentIndexNumber.Value > 2100)
+            {
+                _logger.Warn($"[Sportarr] Season {info.ParentIndexNumber} is not a year - filename does not follow the Sportarr naming scheme (League - SyyyyEnn - Title); skipping match to avoid wrong metadata");
+                return result;
+            }
+
             try
             {
                 // Resolve a single event via /match instead of pulling the
