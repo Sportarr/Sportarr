@@ -78,6 +78,7 @@ public class NotificationService : INotificationService
                     "Pushover" => await SendPushoverAsync(config, title, message),
                     "Slack" => await SendSlackAsync(config, title, message),
                     "Webhook" => await SendWebhookAsync(config, title, message, trigger, metadata),
+                    "Notifiarr" => await SendNotifiarrAsync(config, title, message, trigger, metadata),
                     "Email" => await SendEmailAsync(config, title, message),
                     "Apprise" => await SendAppriseAsync(config, title, message),
                     "Ntfy" => await SendNtfyAsync(config, title, message),
@@ -151,6 +152,7 @@ public class NotificationService : INotificationService
                 "Pushover" => await SendPushoverAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Slack" => await SendSlackAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Webhook" => await SendWebhookAsync(config, "Test Notification", "This is a test notification from Sportarr.", NotificationTrigger.Test, null),
+                "Notifiarr" => await SendNotifiarrAsync(config, "Test Notification", "This is a test notification from Sportarr.", NotificationTrigger.Test, null),
                 "Email" => await SendEmailAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Apprise" => await SendAppriseAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Ntfy" => await SendNtfyAsync(config, "Test Notification", "This is a test notification from Sportarr."),
@@ -901,6 +903,74 @@ public class NotificationService : INotificationService
         }
 
         return payload;
+    }
+
+    #endregion
+
+    #region Notifiarr
+
+    // notifiarr.com doesn't have a dedicated /api/v1/notification/sportarr
+    // route live yet (per their dev, that's the eventual target once this
+    // native connection type is reviewed) - this points at their existing
+    // /test endpoint in the meantime so real payloads reach a safe,
+    // confirmed-working route instead of a 404. Swap to the real
+    // notification/sportarr path the moment they confirm it's live.
+    private const string NotifiarrEndpoint = "https://notifiarr.com/api/v1/notification/test?event=sportarr";
+
+    /// <summary>
+    /// Sends events directly to notifiarr.com, no Notifiarr client relay required.
+    /// Reuses the same superset payload shape the Webhook provider builds so
+    /// their backend gets consistent, fully-populated event data regardless
+    /// of which connection type a user configures.
+    /// </summary>
+    private async Task<bool> SendNotifiarrAsync(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, Dictionary<string, object>? metadata)
+    {
+        var apiKey = GetConfigString(config, "apiKey");
+
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("[Notifiarr] API key not configured");
+            return false;
+        }
+
+        var payload = BuildWebhookPayload(title, message, trigger, metadata);
+        var payloadJson = JsonSerializer.Serialize(payload);
+
+        _logger.LogInformation("[Notifiarr] Sending POST to {Url} (trigger: {Trigger})", NotifiarrEndpoint, trigger);
+        _logger.LogDebug("[Notifiarr] Payload: {Payload}", payloadJson);
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, NotifiarrEndpoint)
+        {
+            Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+        };
+        requestMessage.Headers.TryAddWithoutValidation("X-Api-Key", apiKey);
+
+        try
+        {
+            using var response = await _httpClient.SendAsync(requestMessage);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("[Notifiarr] Success: {StatusCode} {Reason}", (int)response.StatusCode, response.ReasonPhrase);
+                _logger.LogDebug("[Notifiarr] Response body: {Body}", responseBody);
+                return true;
+            }
+
+            _logger.LogWarning("[Notifiarr] Failed: {StatusCode} {Reason}", (int)response.StatusCode, response.ReasonPhrase);
+            _logger.LogWarning("[Notifiarr] Response body: {Body}", responseBody);
+            return false;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[Notifiarr] HTTP request failed: {Message}", ex.Message);
+            return false;
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "[Notifiarr] Request timed out");
+            return false;
+        }
     }
 
     #endregion
