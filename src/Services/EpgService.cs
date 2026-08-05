@@ -237,6 +237,19 @@ public class EpgService
         {
             _logger.LogError(ex, "[EPG] Failed to sync EPG source: {Id}", source.Id);
 
+            // The failed SaveChangesAsync above (e.g. issue #221's Postgres
+            // varchar overflow) leaves every newly-added EpgChannel/
+            // EpgProgram still tracked in the Added state. Saving again
+            // without clearing them just retries the same failed insert and
+            // throws again, so source.LastError never actually persists.
+            // Detach everything added-but-unsaved; source itself was
+            // already tracked as Unchanged/Modified, not Added, so it's
+            // unaffected and the LastError update still goes through.
+            foreach (var entry in _db.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+
             source.LastError = ex.Message;
             await _db.SaveChangesAsync();
 

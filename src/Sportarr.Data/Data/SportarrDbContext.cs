@@ -1270,7 +1270,11 @@ public class SportarrDbContext : DbContext
             entity.HasKey(p => p.Id);
             entity.Property(p => p.ChannelId).IsRequired().HasMaxLength(200);
             entity.Property(p => p.Title).IsRequired().HasMaxLength(500);
-            entity.Property(p => p.Description).HasMaxLength(2000);
+            // Unbounded: real-world XMLTV <desc> values routinely exceed
+            // 2000 characters (issue #221) and there's no natural upper
+            // bound worth enforcing - unlike Title/Category/IconUrl, which
+            // reflect actual short-field conventions.
+            entity.Property(p => p.Description);
             entity.Property(p => p.Category).HasMaxLength(200);
             entity.Property(p => p.IconUrl).HasMaxLength(1000);
             entity.HasOne(p => p.EpgSource)
