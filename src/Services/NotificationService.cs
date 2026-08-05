@@ -818,6 +818,7 @@ public class NotificationService : INotificationService
         [NotificationTrigger.OnRename] = "Rename",
         [NotificationTrigger.OnEventFileDelete] = "EpisodeFileDelete",
         [NotificationTrigger.OnEventFileDeleteForUpgrade] = "EpisodeFileDelete",
+        [NotificationTrigger.OnEventAdded] = "SeriesAdd",
         [NotificationTrigger.OnEventDelete] = "SeriesDelete",
         [NotificationTrigger.OnHealthIssue] = "Health",
         [NotificationTrigger.OnHealthRestored] = "Health",

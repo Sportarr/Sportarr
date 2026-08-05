@@ -40,17 +40,20 @@ public class LeagueAddService
     private readonly SportarrDbContext _db;
     private readonly TaskService _taskService;
     private readonly SportarrApiClient _sportsDbClient;
+    private readonly NotificationService _notificationService;
     private readonly ILogger<LeagueAddService> _logger;
 
     public LeagueAddService(
         SportarrDbContext db,
         TaskService taskService,
         SportarrApiClient sportsDbClient,
+        NotificationService notificationService,
         ILogger<LeagueAddService> logger)
     {
         _db = db;
         _taskService = taskService;
         _sportsDbClient = sportsDbClient;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -160,6 +163,25 @@ public class LeagueAddService
             await _db.SaveChangesAsync();
 
             _logger.LogInformation("[LEAGUES] Successfully added league: {Name} with ID {Id}", league.Name, league.Id);
+
+            try
+            {
+                await _notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnEventAdded,
+                    $"League Added: {league.Name}",
+                    $"Sport: {league.Sport}\nMonitored: {league.Monitored}",
+                    new Dictionary<string, object>
+                    {
+                        { "eventTitle", league.Name },
+                        { "league", league.Name },
+                        { "sport", league.Sport },
+                    },
+                    league.Tags);
+            }
+            catch (Exception notifyEx)
+            {
+                _logger.LogWarning(notifyEx, "[LEAGUES] Failed to send league-added notification");
+            }
 
             // Handle monitored teams if specified (for team-based filtering).
             // Guarded against teamless sports even when a caller passed
