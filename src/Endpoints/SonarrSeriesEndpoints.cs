@@ -836,6 +836,79 @@ public static class SonarrSeriesEndpoints
             return Results.Ok(history);
         });
 
+
+        // POST /api/v3/seasonPass - Bulk-monitor many leagues at once
+        // (Sonarr's "season pass" flow). Toggles League.Monitored per id and,
+        // when monitoringOptions.monitor is provided, maps it onto the same
+        // MonitorType Sportarr's own league settings use.
+        app.MapPost("/api/v3/seasonPass", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
+            logger.LogInformation("[V3-COMPAT] POST /api/v3/seasonPass - {Json}", json);
+
+            JsonDocument doc;
+            try
+            {
+                doc = JsonDocument.Parse(json);
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON body" });
+            }
+
+            using (doc)
+            {
+                var root = doc.RootElement;
+
+                MonitorType? monitorType = null;
+                if (root.TryGetProperty("monitoringOptions", out var options)
+                    && options.TryGetProperty("monitor", out var monitorEl))
+                {
+                    monitorType = monitorEl.GetString() switch
+                    {
+                        "all" => MonitorType.All,
+                        "future" => MonitorType.Future,
+                        "existing" => MonitorType.CurrentSeason,
+                        "latestSeason" => MonitorType.NextSeason,
+                        "missing" => MonitorType.Recent,
+                        _ => (MonitorType?)null,
+                    };
+                }
+
+                if (root.TryGetProperty("series", out var seriesEl) && seriesEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var entry in seriesEl.EnumerateArray())
+                    {
+                        if (!entry.TryGetProperty("id", out var idEl))
+                        {
+                            continue;
+                        }
+
+                        var league = await db.Leagues.FindAsync(idEl.GetInt32());
+                        if (league == null)
+                        {
+                            continue;
+                        }
+
+                        if (entry.TryGetProperty("monitored", out var monitoredEl))
+                        {
+                            league.Monitored = monitoredEl.GetBoolean();
+                        }
+
+                        if (monitorType.HasValue)
+                        {
+                            league.MonitorType = monitorType.Value;
+                        }
+                    }
+
+                    await db.SaveChangesAsync();
+                }
+            }
+
+            return Results.Ok(new { });
+        });
+
         return app;
     }
 

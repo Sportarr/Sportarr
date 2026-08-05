@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
 using System.Runtime.InteropServices;
 
 namespace Sportarr.Api.Endpoints;
@@ -110,6 +111,30 @@ public static class SonarrSystemEndpoints
             return Results.Ok(entries);
         });
 
+        // GET /api/v3/system/backup - Backup file listing (Sonarr v3 format).
+        // Wraps the same BackupService the native /api/system/backup page
+        // uses; golift.io/starr's GetBackupFilesContext hits this exact
+        // path, so this is what makes Notifiarr's (and any other Starr-tool)
+        // backup/corruption-check features work against Sportarr instead of
+        // 404ing. IDs are synthesized (list position) since BackupInfo has
+        // none - nothing downstream writes them back.
+        app.MapGet("/api/v3/system/backup", async (BackupService backupService, ILogger<Program> logger) =>
+        {
+            logger.LogDebug("[V3-COMPAT] GET /api/v3/system/backup");
+
+            var backups = await backupService.GetBackupsAsync();
+            return Results.Ok(backups.Select((b, i) => new
+            {
+                id = i + 1,
+                name = b.Name,
+                path = $"/api/system/backup/download/{b.Name}",
+                type = "manual",
+                time = b.CreatedAt,
+                size = b.Size
+            }));
+        });
+
         return app;
+
     }
 }
