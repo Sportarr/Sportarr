@@ -81,6 +81,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         UseHardlinks = config.UseHardlinks,
         ImportExtraFiles = config.ImportExtraFiles,
         ExtraFileExtensions = config.ExtraFileExtensions,
+        DownloadClientWorkingFolders = config.DownloadClientWorkingFolders,
         // UserRejectedExtensions is paired with the FailDownloads
         // policy on indexers — surfaced under Importing in the UI.
         UserRejectedExtensions = dbMediaSettings?.UserRejectedExtensions,
@@ -437,6 +438,9 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             config.UseHardlinks = mediaManagementSettings.UseHardlinks;
             config.ImportExtraFiles = mediaManagementSettings.ImportExtraFiles;
             config.ExtraFileExtensions = mediaManagementSettings.ExtraFileExtensions;
+            config.DownloadClientWorkingFolders = string.IsNullOrWhiteSpace(mediaManagementSettings.DownloadClientWorkingFolders)
+                ? "_UNPACK_,_FAILED_"
+                : mediaManagementSettings.DownloadClientWorkingFolders.Trim();
             config.ChangeFileDate = mediaManagementSettings.ChangeFileDate;
             config.RecycleBin = mediaManagementSettings.RecycleBin;
             config.RecycleBinCleanup = mediaManagementSettings.RecycleBinCleanup;

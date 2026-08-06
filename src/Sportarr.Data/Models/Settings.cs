@@ -245,6 +245,18 @@ public class MediaManagementSettings
     public string ExtraFileExtensions { get; set; } = "srt,nfo";
 
     /// <summary>
+    /// Comma-separated folder name markers a download client uses for
+    /// in-progress items (qBittorrent's defaults are _UNPACK_/_FAILED_;
+    /// Deluge/rTorrent use different conventions). FileImportService skips
+    /// any folder matching one of these during import scanning so
+    /// in-progress downloads aren't picked up as complete.
+    /// Stored in config.xml (Config.DownloadClientWorkingFolders); NotMapped
+    /// keeps it on the media-management JSON contract without a schema change.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string DownloadClientWorkingFolders { get; set; } = "_UNPACK_,_FAILED_";
+
+    /// <summary>
     /// Comma-separated list of file extensions the user wants to count
     /// against an indexer's FailDownloads=UserDefinedExtensions policy.
     /// e.g. ".nfo, .url, txt". Leave blank to disable the user-defined

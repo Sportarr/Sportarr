@@ -62,6 +62,7 @@ interface MediaManagementSettingsData {
   importExtraFiles: boolean;
   extraFileExtensions: string;
   userRejectedExtensions: string;
+  downloadClientWorkingFolders: string;
   changeFileDate: string;
   recycleBin: string;
   recycleBinCleanup: number;
@@ -132,6 +133,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     importExtraFiles: false,
     extraFileExtensions: 'srt,nfo',
     userRejectedExtensions: '',
+    downloadClientWorkingFolders: '_UNPACK_,_FAILED_',
     changeFileDate: 'None',
     recycleBin: '',
     recycleBinCleanup: 7,
@@ -1138,6 +1140,26 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
 
           {showAdvanced && (
             <>
+              <div>
+                <label className="block text-white font-medium mb-2">Download Client Working Folders</label>
+                <input
+                  type="text"
+                  value={settings.downloadClientWorkingFolders}
+                  onChange={(e) => updateSetting('downloadClientWorkingFolders', e.target.value)}
+                  placeholder="_UNPACK_,_FAILED_"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                />
+                <p className="text-sm text-gray-400 mt-1">
+                  Comma-separated folder name markers your download client uses for in-progress
+                  items. Skipped during import scanning so partial downloads aren't picked up as
+                  complete. qBittorrent's defaults are shown; change this if your client (Deluge,
+                  rTorrent, etc) uses different marker names.
+                </p>
+                <span className="inline-block mt-1 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
+                  Advanced
+                </span>
+              </div>
+
               <label className="flex items-start space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
