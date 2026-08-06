@@ -40,12 +40,21 @@ interface Tag {
   label: string;
 }
 
+// Values mirror the backend ImportListType enum exactly (Sportarr.Data/Models/ImportList.cs).
+// Previously several of these were off by one or two ordinals (a dropdown-vs-enum
+// alignment bug), so picking "Custom API" silently persisted UFCSchedule and picking
+// "Custom Script" silently persisted BellatorSchedule - see the fixed FINDINGS.md entry
+// for the incident. CustomScript (5) is intentionally omitted here: it has zero sync
+// implementation on the backend (a pure stub that always finds nothing), and shipping a
+// selectable option with no working behavior behind it isn't something Sonarr/Radarr's
+// own Import Lists page would do either - a list type only appears in their dropdowns
+// once it actually syncs something.
 const IMPORT_LIST_TYPES = [
   { value: 0, label: 'RSS Feed', description: 'RSS/Atom feed with event listings' },
-  { value: 1, label: 'Sportarr API', description: 'Automatic event discovery from Sportarr API' },
+  { value: 1, label: 'Custom API', description: 'JSON API endpoint returning event data (Tapology, Sherdog, etc.)' },
   { value: 2, label: 'Calendar/iCal', description: 'iCalendar (.ics) feed with event schedules' },
-  { value: 3, label: 'Custom API', description: 'JSON API endpoint returning event data' },
-  { value: 4, label: 'Custom Script', description: 'Custom script or webhook for event discovery' },
+  { value: 3, label: 'UFC Schedule', description: 'UFC schedule feed (iCal/RSS) - same sync engine as Calendar/iCal, labeled separately for clarity when managing multiple sport feeds' },
+  { value: 4, label: 'Bellator Schedule', description: 'Bellator schedule feed (iCal/RSS) - same sync engine as Calendar/iCal, labeled separately for clarity when managing multiple sport feeds' },
   { value: 6, label: 'Sportarr List', description: 'A sportarr.net list URL - adds and monitors the leagues (and teams) it references' },
 ];
 
