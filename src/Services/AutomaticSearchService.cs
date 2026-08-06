@@ -1447,6 +1447,22 @@ public class AutomaticSearchService : IAutomaticSearchService
 
         _logger.LogInformation("[Automatic Search] Found {Count} monitored events (from monitored leagues) to search", events.Count);
 
+        // Preload the active download-queue keys for all candidate events in one
+        // query, instead of an AnyAsync per part inside the loop below (previously
+        // hundreds to low-thousands of individual queries for a large library with
+        // multi-part events).
+        var eventIds = events.Select(e => e.Id).ToList();
+        var activeQueueKeys = (await _db.DownloadQueue
+            .Where(d => eventIds.Contains(d.EventId) &&
+                (d.Status == DownloadStatus.Queued ||
+                 d.Status == DownloadStatus.Downloading ||
+                 d.Status == DownloadStatus.Completed ||
+                 d.Status == DownloadStatus.Importing))
+            .Select(d => new { d.EventId, d.Part })
+            .ToListAsync())
+            .Select(d => (d.EventId, d.Part))
+            .ToHashSet();
+
         // Build list of search targets (event + optional part)
         // For multi-part fighting events, expand into individual part searches
         var searchTargets = new List<(int EventId, string? Part, string Description)>();
@@ -1513,13 +1529,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                     }
 
                     // Check if already in download queue (part-aware)
-                    var alreadyQueued = await _db.DownloadQueue
-                        .AnyAsync(d => d.EventId == evt.Id &&
-                                      d.Part == part.Name &&
-                                      (d.Status == DownloadStatus.Queued ||
-                                       d.Status == DownloadStatus.Downloading ||
-                                       d.Status == DownloadStatus.Completed ||
-                                       d.Status == DownloadStatus.Importing));
+                    var alreadyQueued = activeQueueKeys.Contains((evt.Id, part.Name));
 
                     if (alreadyQueued)
                     {
@@ -1537,13 +1547,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 if (!evt.HasFile)
                 {
                     // Check if already in download queue (full event, Part = null)
-                    var alreadyQueued = await _db.DownloadQueue
-                        .AnyAsync(d => d.EventId == evt.Id &&
-                                      d.Part == null &&
-                                      (d.Status == DownloadStatus.Queued ||
-                                       d.Status == DownloadStatus.Downloading ||
-                                       d.Status == DownloadStatus.Completed ||
-                                       d.Status == DownloadStatus.Importing));
+                    var alreadyQueued = activeQueueKeys.Contains((evt.Id, (string?)null));
 
                     if (alreadyQueued)
                     {
