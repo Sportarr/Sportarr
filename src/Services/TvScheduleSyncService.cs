@@ -208,16 +208,30 @@ public class TvScheduleSyncService : BackgroundService
                     _logger.LogDebug("[TV Schedule] Found {Count} TV schedules for {Date}",
                         tvSchedules.Count, dateStr);
 
-                    // Match TV schedules to existing monitored events
+                    // Match TV schedules to existing monitored events. Batch-load every
+                    // candidate event for this day in one query instead of a per-item
+                    // lookup (previously one round trip per schedule entry, repeated for
+                    // each of the 7 days checked).
+                    var scheduleExternalIds = tvSchedules
+                        .Select(s => s.EventId)
+                        .Where(id => !string.IsNullOrEmpty(id))
+                        .Distinct()
+                        .ToList();
+                    // GroupBy tolerates a duplicate ExternalId across events (the column has
+                    // no unique constraint) by keeping one match per id, same as the old
+                    // FirstOrDefaultAsync per-item lookup it replaces.
+                    var eventsByExternalId = (await db.Events
+                        .Where(e => scheduleExternalIds.Contains(e.ExternalId) && e.Monitored)
+                        .ToListAsync(cancellationToken))
+                        .GroupBy(e => e.ExternalId!)
+                        .ToDictionary(g => g.Key, g => g.First());
+
                     foreach (var schedule in tvSchedules)
                     {
                         if (string.IsNullOrEmpty(schedule.EventId))
                             continue;
 
-                        var matchingEvent = await db.Events
-                            .FirstOrDefaultAsync(e => e.ExternalId == schedule.EventId && e.Monitored, cancellationToken);
-
-                        if (matchingEvent != null)
+                        if (eventsByExternalId.TryGetValue(schedule.EventId, out var matchingEvent))
                         {
                             var broadcast = BuildBroadcastString(schedule);
                             if (!string.IsNullOrEmpty(broadcast) && matchingEvent.Broadcast != broadcast)
