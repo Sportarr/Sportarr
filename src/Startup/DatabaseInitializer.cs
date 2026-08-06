@@ -1278,6 +1278,42 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify SeasonPosters table: {ex.Message}");
         }
 
+        // Ensure FollowedAthletes table exists (per-user athlete follows,
+        // resolved to a TSDB team for event discovery). Same shape as the
+        // SeasonPosters/ChannelTeamMappings safety nets above - a legacy
+        // EnsureCreated()-era SQLite install that goes through the migration
+        // seed-catch-up path would otherwise mark AddFollowedAthletes as
+        // "applied" with the table never actually created.
+        try
+        {
+            var checkFollowedAthletesSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='FollowedAthletes'";
+            var followedAthletesExists = db.Database.SqlQueryRaw<int>(checkFollowedAthletesSql).AsEnumerable().FirstOrDefault();
+
+            if (followedAthletesExists == 0)
+            {
+                Console.WriteLine("[Sportarr] FollowedAthletes table missing - creating it now...");
+
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""FollowedAthletes"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""ExternalId"" TEXT NOT NULL,
+                        ""Name"" TEXT NOT NULL,
+                        ""Sport"" TEXT NOT NULL,
+                        ""ThumbUrl"" TEXT NULL,
+                        ""Added"" TEXT NOT NULL,
+                        ""LastEventDiscovery"" TEXT NULL,
+                        ""ResolvedTeamExternalId"" TEXT NULL,
+                        ""ResolvedTeamName"" TEXT NULL
+                    )");
+
+                Console.WriteLine("[Sportarr] FollowedAthletes table created successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify FollowedAthletes table: {ex.Message}");
+        }
+
         // Ensure ChannelTeamMappings table exists (per-team DVR channel
         // preference, checked by the resolver before the league mapping).
         try
