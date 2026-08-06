@@ -45,11 +45,9 @@ public enum TorrentInitialState
 }
 
 /// <summary>
-/// Queue position to request when a grab is added to a download client that
-/// supports it (currently qBittorrent). Mirrors Sonarr's RecentTvPriority/
-/// OlderTvPriority split - a numeric scale isn't worth the complexity when
-/// the only thing any client actually exposes is "move to the front" vs
-/// "leave it wherever it landed".
+/// Binary queue position - the only scale qBittorrent, Deluge, Transmission
+/// (and Vuze, which speaks the Transmission RPC) actually expose: move to
+/// the front of the queue, or leave it wherever it landed.
 /// </summary>
 public enum DownloadPriority
 {
@@ -58,6 +56,37 @@ public enum DownloadPriority
 
     /// <summary>Move the torrent to the front of the queue right after adding it.</summary>
     First = 1
+}
+
+/// <summary>rTorrent's 4-level queue priority (d.priority.set).</summary>
+public enum RTorrentQueuePriority
+{
+    VeryLow = 0,
+    Low = 1,
+    Normal = 2,
+    High = 3
+}
+
+/// <summary>SABnzbd's queue priority scale (mode=queue&amp;name=priority).</summary>
+public enum SabnzbdQueuePriority
+{
+    Default = -100,
+    Paused = -2,
+    Low = -1,
+    Normal = 0,
+    High = 1,
+    Force = 2
+}
+
+/// <summary>NZBGet's queue priority scale (editqueue GroupSetPriority).</summary>
+public enum NzbGetQueuePriority
+{
+    VeryLow = -100,
+    Low = -50,
+    Normal = 0,
+    High = 50,
+    VeryHigh = 100,
+    Force = 900
 }
 
 /// <summary>
@@ -87,13 +116,20 @@ public class DownloadClient
 
     /// <summary>
     /// Queue priority for events that aired within the last 14 days - matches
-    /// Sonarr's "recent episode" window. Only applied for clients whose API
-    /// actually exposes a queue position (qBittorrent today).
+    /// Sonarr's "recent episode" window. Stored as a raw int rather than one
+    /// shared enum because each client type's real API exposes a different
+    /// scale: qBittorrent/Deluge/Transmission/Vuze are binary
+    /// (<see cref="DownloadPriority"/>), rTorrent has 4 levels
+    /// (<see cref="RTorrentQueuePriority"/>), and the usenet clients have
+    /// their own graded scales (<see cref="SabnzbdQueuePriority"/>,
+    /// <see cref="NzbGetQueuePriority"/>). The dispatch in
+    /// DownloadClientService.ApplyQueuePriorityAsync interprets this value
+    /// according to config.Type.
     /// </summary>
-    public DownloadPriority RecentPriority { get; set; } = DownloadPriority.Last;
+    public int RecentPriority { get; set; } = 0;
 
-    /// <summary>Queue priority for events older than the 14-day recent window.</summary>
-    public DownloadPriority OlderPriority { get; set; } = DownloadPriority.Last;
+    /// <summary>Queue priority for events older than the 14-day recent window. See <see cref="RecentPriority"/>.</summary>
+    public int OlderPriority { get; set; } = 0;
 
     // Per-client removal settings
     // Allows users with both Usenet and Torrents to configure them separately

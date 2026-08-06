@@ -198,21 +198,18 @@ public class PendingReleaseReaperService : BackgroundService
         var isRecentReaperEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
         var requestedReaperPriority = isRecentReaperEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
 
-        if (requestedReaperPriority == DownloadPriority.First)
+        try
         {
-            try
+            var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedReaperPriority);
+            if (!prioritySet)
             {
-                var prioritySet = await downloadClientService.SetTopPriorityAsync(downloadClient, downloadId);
-                if (!prioritySet)
-                {
-                    _logger.LogWarning("[Pending Release Reaper] Failed to set top queue priority for {DownloadId} on {Client}",
-                        downloadId, downloadClient.Name);
-                }
+                _logger.LogWarning("[Pending Release Reaper] Failed to set queue priority for {DownloadId} on {Client}",
+                    downloadId, downloadClient.Name);
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Pending Release Reaper] Error setting queue priority for {DownloadId}", downloadId);
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Pending Release Reaper] Error setting queue priority for {DownloadId}", downloadId);
         }
 
         db.DownloadQueue.Add(new DownloadQueueItem

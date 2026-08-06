@@ -663,21 +663,18 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             var isRecentRegrabEvent = grabHistory.Event.EventDate >= DateTime.UtcNow.AddDays(-14);
             var requestedRegrabPriority = isRecentRegrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
 
-            if (requestedRegrabPriority == DownloadPriority.First)
+            try
             {
-                try
+                var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedRegrabPriority);
+                if (!prioritySet)
                 {
-                    var prioritySet = await downloadClientService.SetTopPriorityAsync(downloadClient, downloadId);
-                    if (!prioritySet)
-                    {
-                        logger.LogWarning("[Regrab] Failed to set top queue priority for {DownloadId} on {Client}",
-                            downloadId, downloadClient.Name);
-                    }
+                    logger.LogWarning("[Regrab] Failed to set queue priority for {DownloadId} on {Client}",
+                        downloadId, downloadClient.Name);
                 }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "[Regrab] Error setting queue priority for {DownloadId}", downloadId);
-                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[Regrab] Error setting queue priority for {DownloadId}", downloadId);
             }
         }
 
@@ -822,21 +819,18 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 var isRecentBulkRegrabEvent = grabHistory.Event.EventDate >= DateTime.UtcNow.AddDays(-14);
                 var requestedBulkRegrabPriority = isRecentBulkRegrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
 
-                if (requestedBulkRegrabPriority == DownloadPriority.First)
+                try
                 {
-                    try
+                    var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedBulkRegrabPriority);
+                    if (!prioritySet)
                     {
-                        var prioritySet = await downloadClientService.SetTopPriorityAsync(downloadClient, downloadId);
-                        if (!prioritySet)
-                        {
-                            logger.LogWarning("[Regrab Missing] Failed to set top queue priority for {DownloadId} on {Client}",
-                                downloadId, downloadClient.Name);
-                        }
+                        logger.LogWarning("[Regrab Missing] Failed to set queue priority for {DownloadId} on {Client}",
+                            downloadId, downloadClient.Name);
                     }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "[Regrab Missing] Error setting queue priority for {DownloadId}", downloadId);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[Regrab Missing] Error setting queue priority for {DownloadId}", downloadId);
                 }
             }
 

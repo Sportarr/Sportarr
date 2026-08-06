@@ -263,21 +263,18 @@ app.MapPost("/api/release/grab", async (
     var isRecentGrabEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
     var requestedGrabPriority = isRecentGrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
 
-    if (requestedGrabPriority == DownloadPriority.First)
+    try
     {
-        try
+        var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedGrabPriority);
+        if (!prioritySet)
         {
-            var prioritySet = await downloadClientService.SetTopPriorityAsync(downloadClient, downloadId);
-            if (!prioritySet)
-            {
-                logger.LogWarning("[GRAB] Failed to set top queue priority for {DownloadId} on {Client}",
-                    downloadId, downloadClient.Name);
-            }
+            logger.LogWarning("[GRAB] Failed to set queue priority for {DownloadId} on {Client}",
+                downloadId, downloadClient.Name);
         }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "[GRAB] Error setting queue priority for {DownloadId}", downloadId);
-        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "[GRAB] Error setting queue priority for {DownloadId}", downloadId);
     }
 
     // Track download in database

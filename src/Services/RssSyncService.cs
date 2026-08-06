@@ -1201,21 +1201,18 @@ public class RssSyncService : BackgroundService
         var isRecentRssEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
         var requestedRssPriority = isRecentRssEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
 
-        if (requestedRssPriority == DownloadPriority.First)
+        try
         {
-            try
+            var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedRssPriority);
+            if (!prioritySet)
             {
-                var prioritySet = await downloadClientService.SetTopPriorityAsync(downloadClient, downloadId);
-                if (!prioritySet)
-                {
-                    _logger.LogWarning("[RSS Sync] Failed to set top queue priority for {DownloadId} on {Client}",
-                        downloadId, downloadClient.Name);
-                }
+                _logger.LogWarning("[RSS Sync] Failed to set queue priority for {DownloadId} on {Client}",
+                    downloadId, downloadClient.Name);
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[RSS Sync] Error setting queue priority for {DownloadId}", downloadId);
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[RSS Sync] Error setting queue priority for {DownloadId}", downloadId);
         }
 
         // Add to download queue

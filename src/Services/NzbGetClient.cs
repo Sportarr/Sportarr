@@ -518,6 +518,29 @@ public class NzbGetClient
     }
 
     /// <summary>
+    /// Set a queue item's priority via editqueue's GroupSetPriority command
+    /// (recent/older event queue priority, issue #220). Uses the same
+    /// Offset/EditText argument shape as PauseDownloadAsync/ResumeDownloadAsync
+    /// above - NZBGet's GroupSetPriority reads the priority value from the
+    /// EditText (3rd) argument. Scale: NzbGetQueuePriority (VeryLow=-100 ..
+    /// Force=900).
+    /// </summary>
+    public async Task<bool> SetPriorityAsync(DownloadClient config, int nzbId, int priority)
+    {
+        try
+        {
+            var response = await SendJsonRpcRequestAsync(config, "editqueue",
+                new object[] { "GroupSetPriority", 0, priority.ToString(), new[] { nzbId } });
+            return response != null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[NZBGet] Error setting priority for {NzbId}", nzbId);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Get download status for monitoring.
     /// </summary>
     /// <param name="expectedCategory">

@@ -31,8 +31,8 @@ interface DownloadClient {
   sequentialDownload?: boolean; // Download pieces in order (useful for debrid services like Decypharr)
   firstAndLastFirst?: boolean; // Prioritize first and last pieces (for quick video preview)
   initialState?: number; // Initial state when torrent is added: 0=Started, 1=ForceStarted, 2=Stopped
-  recentPriority?: number; // Queue priority for events aired in the last 14 days: 0=Last, 1=First
-  olderPriority?: number; // Queue priority for events older than 14 days: 0=Last, 1=First
+  recentPriority?: number; // Queue priority for events aired in the last 14 days - scale depends on client type, see QUEUE_PRIORITY_OPTIONS
+  olderPriority?: number; // Queue priority for events older than 14 days - scale depends on client type, see QUEUE_PRIORITY_OPTIONS
   removeCompletedDownloads?: boolean; // Remove successful downloads from client after import (per-client setting)
   removeFailedDownloads?: boolean; // Remove failed downloads from client
   postImportMode?: number; // How imports transfer files: 0=Auto (seeding-aware), 1=Copy, 2=Hardlink, 3=Symlink, 4=Move
@@ -112,6 +112,40 @@ type ClientTemplate = {
   fields: string[];
 };
 
+// Queue priority scale by client implementation - mirrors each client's real
+// API (see DownloadClientService.ApplyQueuePriorityAsync on the backend).
+// qBittorrent/Deluge/Transmission/Vuze only expose "move to top of queue vs
+// leave it wherever it landed"; rTorrent and the usenet clients have their
+// own graded scales.
+const QUEUE_PRIORITY_OPTIONS: Record<string, { value: number; label: string }[]> = {
+  qBittorrent: [{ value: 0, label: 'Last' }, { value: 1, label: 'First' }],
+  Deluge: [{ value: 0, label: 'Last' }, { value: 1, label: 'First' }],
+  Transmission: [{ value: 0, label: 'Last' }, { value: 1, label: 'First' }],
+  Vuze: [{ value: 0, label: 'Last' }, { value: 1, label: 'First' }],
+  rTorrent: [
+    { value: 0, label: 'Very Low' },
+    { value: 1, label: 'Low' },
+    { value: 2, label: 'Normal' },
+    { value: 3, label: 'High' }
+  ],
+  SABnzbd: [
+    { value: -100, label: 'Default' },
+    { value: -2, label: 'Paused' },
+    { value: -1, label: 'Low' },
+    { value: 0, label: 'Normal' },
+    { value: 1, label: 'High' },
+    { value: 2, label: 'Force' }
+  ],
+  NZBGet: [
+    { value: -100, label: 'Very Low' },
+    { value: -50, label: 'Low' },
+    { value: 0, label: 'Normal' },
+    { value: 50, label: 'High' },
+    { value: 100, label: 'Very High' },
+    { value: 900, label: 'Force' }
+  ]
+};
+
 const downloadClientTemplates: ClientTemplate[] = [
   {
     name: 'SABnzbd',
@@ -119,7 +153,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'usenet',
     description: 'Open source binary newsreader',
     defaultPort: 8080,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'username', 'password', 'category', 'directory', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'username', 'password', 'category', 'directory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'NZBGet',
@@ -127,7 +161,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'usenet',
     description: 'Efficient Usenet downloader',
     defaultPort: 6789,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'qBittorrent',
@@ -143,7 +177,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Fast and easy torrent client',
     defaultPort: 9091,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Deluge',
@@ -151,7 +185,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Lightweight torrent client',
     defaultPort: 8112,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'directory', 'postImportCategory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'rTorrent',
@@ -159,7 +193,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Command-line torrent client',
     defaultPort: 8080,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Vuze',
@@ -167,7 +201,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Feature-rich torrent client',
     defaultPort: 9091,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Aria2',
@@ -1525,40 +1559,45 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                     </div>
                   </div>
 
-                  {/* Recent/Older Event Queue Priority (qBittorrent only) */}
-                  {selectedTemplate?.fields.includes('recentPriority') && (
-                    <div className="space-y-4">
-                      <h4 className="text-lg font-semibold text-white">Queue Priority</h4>
-                      <p className="text-sm text-gray-400 mb-2">
-                        Where a grab lands in the client's download queue. "Recent" means the event
-                        aired within the last 14 days; anything older uses the second setting.
-                      </p>
+                  {/* Recent/Older Event Queue Priority */}
+                  {selectedTemplate?.fields.includes('recentPriority') && (() => {
+                    const priorityOptions = QUEUE_PRIORITY_OPTIONS[selectedTemplate.implementation] ?? QUEUE_PRIORITY_OPTIONS.qBittorrent;
+                    return (
+                      <div className="space-y-4">
+                        <h4 className="text-lg font-semibold text-white">Queue Priority</h4>
+                        <p className="text-sm text-gray-400 mb-2">
+                          Where a grab lands in the client's download queue. "Recent" means the event
+                          aired within the last 14 days; anything older uses the second setting.
+                        </p>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Recent Events</label>
-                        <select
-                          value={formData.recentPriority ?? 0}
-                          onChange={(e) => handleFormChange('recentPriority', parseInt(e.target.value))}
-                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                        >
-                          <option value={0}>Last</option>
-                          <option value={1}>First</option>
-                        </select>
-                      </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Recent Events</label>
+                          <select
+                            value={formData.recentPriority ?? 0}
+                            onChange={(e) => handleFormChange('recentPriority', parseInt(e.target.value))}
+                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          >
+                            {priorityOptions.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Older Events</label>
-                        <select
-                          value={formData.olderPriority ?? 0}
-                          onChange={(e) => handleFormChange('olderPriority', parseInt(e.target.value))}
-                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                        >
-                          <option value={0}>Last</option>
-                          <option value={1}>First</option>
-                        </select>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Older Events</label>
+                          <select
+                            value={formData.olderPriority ?? 0}
+                            onChange={(e) => handleFormChange('olderPriority', parseInt(e.target.value))}
+                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          >
+                            {priorityOptions.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Initial State (torrent clients only) */}
                   {selectedTemplate?.fields.includes('initialState') && (
