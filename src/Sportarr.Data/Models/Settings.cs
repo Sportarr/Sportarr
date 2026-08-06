@@ -483,4 +483,13 @@ public class Notification
 
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Outcome of the most recent send (real trigger or manual Test), so the
+    /// NotificationTestFailed health check can flag it. Null means never
+    /// attempted yet - not flagged, distinct from a known failure.
+    /// </summary>
+    public bool? LastNotificationSucceeded { get; set; }
+    public string? LastNotificationError { get; set; }
+    public DateTime? LastNotificationAt { get; set; }
 }

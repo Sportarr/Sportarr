@@ -2625,6 +2625,15 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastNotificationAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastNotificationError")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("LastNotificationSucceeded")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)

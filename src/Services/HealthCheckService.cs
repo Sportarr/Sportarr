@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -14,19 +15,25 @@ public class HealthCheckService
     private readonly DownloadClientService _downloadClientService;
     private readonly ConfigService _configService;
     private readonly DiskSpaceService _diskSpaceService;
+    private readonly SportarrApiClient _sportarrApiClient;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public HealthCheckService(
         SportarrDbContext db,
         ILogger<HealthCheckService> logger,
         DownloadClientService downloadClientService,
         ConfigService configService,
-        DiskSpaceService diskSpaceService)
+        DiskSpaceService diskSpaceService,
+        SportarrApiClient sportarrApiClient,
+        IHttpClientFactory httpClientFactory)
     {
         _db = db;
         _logger = logger;
         _downloadClientService = downloadClientService;
         _configService = configService;
         _diskSpaceService = diskSpaceService;
+        _sportarrApiClient = sportarrApiClient;
+        _httpClientFactory = httpClientFactory;
     }
 
     /// <summary>
@@ -45,6 +52,10 @@ public class HealthCheckService
             results.AddRange(await CheckDiskSpaceAsync());
             results.AddRange(await CheckAuthenticationAsync());
             results.AddRange(await CheckOrphanedEventsAsync());
+            results.AddRange(await CheckUpdateAvailableAsync());
+            results.AddRange(await CheckDatabaseMigrationNeededAsync());
+            results.AddRange(await CheckMetadataApiAsync());
+            results.AddRange(await CheckNotificationsAsync());
 
             // If no issues found, add OK result
             if (!results.Any())
@@ -335,6 +346,147 @@ public class HealthCheckService
                 Level = HealthCheckLevel.Notice,
                 Message = $"{orphanedCount} event(s) marked as having files but have no file path",
                 Details = "These events may have been imported incorrectly or their files were deleted"
+            });
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Check GitHub for a newer release than the running version. Mirrors
+    /// Sonarr/Radarr's update-available health check. Any failure to reach
+    /// GitHub is silently skipped - an update-check outage isn't itself a
+    /// health problem worth surfacing (that's what MetadataApiUnavailable
+    /// and general connectivity checks are for).
+    /// </summary>
+    private async Task<List<HealthCheckResult>> CheckUpdateAvailableAsync()
+    {
+        var results = new List<HealthCheckResult>();
+
+        try
+        {
+            var httpClient = _httpClientFactory.CreateClient("TrashGuides"); // GitHub-friendly User-Agent already configured
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases/latest", cts.Token);
+            if (!response.IsSuccessStatusCode)
+                return results;
+
+            var json = await response.Content.ReadAsStringAsync(cts.Token);
+            var release = JsonSerializer.Deserialize<JsonElement>(json);
+            var tagName = release.TryGetProperty("tag_name", out var tagProp) ? tagProp.GetString() : null;
+            var latestVersionText = tagName?.TrimStart('v', 'V');
+
+            if (!string.IsNullOrEmpty(latestVersionText) &&
+                System.Version.TryParse(NormalizeToThreePart(latestVersionText), out var latest) &&
+                System.Version.TryParse(NormalizeToThreePart(Sportarr.Api.Version.AppVersion), out var current) &&
+                latest > current)
+            {
+                results.Add(new HealthCheckResult
+                {
+                    Type = HealthCheckType.UpdateAvailable,
+                    Level = HealthCheckLevel.Notice,
+                    Message = $"A new version of Sportarr is available: {latestVersionText}",
+                    Details = $"You are running {Sportarr.Api.Version.AppVersion}. Update by pulling the latest Docker image or downloading the latest release from GitHub."
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Update check against GitHub failed - skipping, not a health issue on its own");
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// A release's tag (e.g. "4.2") or the app's base version (e.g. "4.1.0")
+    /// may not have exactly 3 parts - System.Version requires at least 2 and
+    /// treats missing parts as -1, which breaks comparison. Pad to 3.
+    /// </summary>
+    private static string NormalizeToThreePart(string versionText)
+    {
+        var parts = versionText.Split('.');
+        return parts.Length >= 3 ? string.Join('.', parts[..3]) : string.Join('.', parts.Concat(Enumerable.Repeat("0", 3 - parts.Length)));
+    }
+
+    /// <summary>
+    /// Check for pending EF Core migrations. Sportarr applies migrations
+    /// automatically at startup (DatabaseInitializer), so this only fires
+    /// if the schema is behind what the running code expects - e.g. a
+    /// migration failed silently, or the DB was swapped out from under a
+    /// running instance.
+    /// </summary>
+    private async Task<List<HealthCheckResult>> CheckDatabaseMigrationNeededAsync()
+    {
+        var results = new List<HealthCheckResult>();
+
+        try
+        {
+            var pending = (await _db.Database.GetPendingMigrationsAsync()).ToList();
+            if (pending.Count > 0)
+            {
+                results.Add(new HealthCheckResult
+                {
+                    Type = HealthCheckType.DatabaseMigrationNeeded,
+                    Level = HealthCheckLevel.Error,
+                    Message = $"{pending.Count} database migration(s) pending",
+                    Details = $"The database schema is behind what this version of Sportarr expects ({string.Join(", ", pending.Take(3))}" +
+                              (pending.Count > 3 ? ", ..." : "") + "). Restart Sportarr to apply them, or check the startup logs if this persists."
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not determine pending migration state");
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Check connectivity to sportarr.net (or a configured custom metadata
+    /// API URL). League/event metadata sync depends on this being reachable.
+    /// </summary>
+    private async Task<List<HealthCheckResult>> CheckMetadataApiAsync()
+    {
+        var results = new List<HealthCheckResult>();
+
+        var (reachable, error) = await _sportarrApiClient.PingAsync();
+        if (!reachable)
+        {
+            results.Add(new HealthCheckResult
+            {
+                Type = HealthCheckType.MetadataApiUnavailable,
+                Level = HealthCheckLevel.Warning,
+                Message = "Cannot reach the metadata API",
+                Details = $"Sportarr's metadata source is unreachable: {error}. League and event data sync will be delayed until connectivity is restored."
+            });
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Surface enabled notifications whose most recent send (real trigger or
+    /// manual Test) failed. Never-attempted notifications aren't flagged -
+    /// only a known failure is.
+    /// </summary>
+    private async Task<List<HealthCheckResult>> CheckNotificationsAsync()
+    {
+        var results = new List<HealthCheckResult>();
+
+        var failing = await _db.Notifications
+            .Where(n => n.Enabled && n.LastNotificationSucceeded == false)
+            .ToListAsync();
+
+        foreach (var notification in failing)
+        {
+            results.Add(new HealthCheckResult
+            {
+                Type = HealthCheckType.NotificationTestFailed,
+                Level = HealthCheckLevel.Warning,
+                Message = $"Notification failed: {notification.Name}",
+                Details = notification.LastNotificationError ?? $"The last attempt to send via {notification.Implementation} failed. Check the configuration and use Test to verify."
             });
         }
 

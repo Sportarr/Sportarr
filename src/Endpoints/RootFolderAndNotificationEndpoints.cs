@@ -372,6 +372,7 @@ app.MapPost("/api/notification/{id:int}/test", async (int id, SportarrDbContext 
     if (notification is null) return Results.NotFound();
 
     var (success, message) = await notificationService.TestNotificationAsync(notification);
+    await db.SaveChangesAsync();
 
     return success
         ? Results.Ok(new { success = true, message })

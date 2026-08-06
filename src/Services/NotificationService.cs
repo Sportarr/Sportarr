@@ -96,6 +96,10 @@ public class NotificationService : INotificationService
                     _ => false
                 };
 
+                notification.LastNotificationSucceeded = success;
+                notification.LastNotificationError = success ? null : $"Failed to send {trigger} notification via {notification.Implementation}";
+                notification.LastNotificationAt = DateTime.UtcNow;
+
                 if (success)
                 {
                     _logger.LogDebug("Sent {Trigger} notification via {Implementation}: {Title}", trigger, notification.Implementation, title);
@@ -107,15 +111,37 @@ public class NotificationService : INotificationService
             }
             catch (Exception ex)
             {
+                notification.LastNotificationSucceeded = false;
+                notification.LastNotificationError = ex.Message;
+                notification.LastNotificationAt = DateTime.UtcNow;
                 _logger.LogError(ex, "Error sending notification via {Implementation}", notification.Implementation);
             }
         }
+
+        // Single save for the whole batch - every notification object above
+        // came from this same tracked db context.
+        await db.SaveChangesAsync();
     }
 
     /// <summary>
-    /// Test a notification configuration
+    /// Test a notification configuration. Records the outcome onto the
+    /// entity (LastNotificationSucceeded/Error/At) so the NotificationTestFailed
+    /// health check can surface it - callers with a tracked, saved entity
+    /// (the by-id test endpoint) persist this; the unsaved test-before-save
+    /// endpoint just discards the mutation along with the throwaway object.
     /// </summary>
     public async Task<(bool Success, string Message)> TestNotificationAsync(Notification notification)
+    {
+        var (success, resultMessage) = await TestNotificationCoreAsync(notification);
+
+        notification.LastNotificationSucceeded = success;
+        notification.LastNotificationError = success ? null : resultMessage;
+        notification.LastNotificationAt = DateTime.UtcNow;
+
+        return (success, resultMessage);
+    }
+
+    private async Task<(bool Success, string Message)> TestNotificationCoreAsync(Notification notification)
     {
         try
         {
