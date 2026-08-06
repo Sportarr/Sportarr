@@ -13,7 +13,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DiskScanService> _logger;
-    private const int ScanIntervalMinutes = 60; // Scan every hour
+    private const int ScanIntervalMinutes = 60; // Fallback if config can't be read; normally overridden by Config.DiskScanIntervalMinutes
 
     // Semaphore used as an async-friendly trigger. Initialized to 0 so the
     // first WaitAsync inside ExecuteAsync blocks until either the interval
@@ -86,13 +86,28 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                 _logger.LogError(ex, "Error during disk scan");
             }
 
+            // Read fresh each cycle so a config change takes effect on the
+            // next tick without an app restart.
+            var scanIntervalMinutes = ScanIntervalMinutes;
+            try
+            {
+                using var intervalScope = _serviceProvider.CreateScope();
+                var configService = intervalScope.ServiceProvider.GetRequiredService<ConfigService>();
+                var config = await configService.GetConfigAsync();
+                scanIntervalMinutes = Math.Max(5, config.DiskScanIntervalMinutes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read disk scan interval from config, using default");
+            }
+
             // Wait for next scan or manual trigger. WaitAsync returns true when
             // TriggerScanNow released the semaphore (manual trigger), false when
             // the timeout elapses (regular cadence). Either is fine — we just
             // loop back to scan. OperationCanceledException = host shutdown.
             try
             {
-                await _scanTrigger.WaitAsync(TimeSpan.FromMinutes(ScanIntervalMinutes), stoppingToken);
+                await _scanTrigger.WaitAsync(TimeSpan.FromMinutes(scanIntervalMinutes), stoppingToken);
             }
             catch (OperationCanceledException)
             {

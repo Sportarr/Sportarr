@@ -328,7 +328,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
           backlogSearchIntervalMinutes: data.backlogSearchIntervalMinutes ?? 360,
           backlogSearchMaxConcurrent: data.backlogSearchMaxConcurrent ?? 3,
           backlogSearchMaxAgeDays: data.backlogSearchMaxAgeDays ?? 365,
-          autoSearchRetryBackoffMinutes: data.autoSearchRetryBackoffMinutes ?? '30,60,120,240,480'
+          autoSearchRetryBackoffMinutes: data.autoSearchRetryBackoffMinutes ?? '30,60,120,240,480',
+          downloadMonitorPollSeconds: data.downloadMonitorPollSeconds ?? 30,
+          diskScanIntervalMinutes: data.diskScanIntervalMinutes ?? 60
         };
 
         setEnableCompletedDownloadHandling(loadedSettings.enableCompletedDownloadHandling);
@@ -345,6 +347,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         setBacklogSearchMaxConcurrent(loadedSettings.backlogSearchMaxConcurrent);
         setBacklogSearchMaxAgeDays(loadedSettings.backlogSearchMaxAgeDays);
         setAutoSearchRetryBackoffMinutes(loadedSettings.autoSearchRetryBackoffMinutes);
+        setDownloadMonitorPollSeconds(loadedSettings.downloadMonitorPollSeconds);
+        setDiskScanIntervalMinutes(loadedSettings.diskScanIntervalMinutes);
 
         initialSettings.current = loadedSettings;
         setHasUnsavedChanges(false);
@@ -380,6 +384,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         backlogSearchMaxConcurrent: Math.max(1, backlogSearchMaxConcurrent),
         backlogSearchMaxAgeDays: Math.max(0, backlogSearchMaxAgeDays),
         autoSearchRetryBackoffMinutes,
+        downloadMonitorPollSeconds: Math.max(5, downloadMonitorPollSeconds),
+        diskScanIntervalMinutes: Math.max(5, diskScanIntervalMinutes),
       };
 
       // Save to API
@@ -400,7 +406,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         backlogSearchIntervalMinutes,
         backlogSearchMaxConcurrent,
         backlogSearchMaxAgeDays,
-        autoSearchRetryBackoffMinutes
+        autoSearchRetryBackoffMinutes,
+        downloadMonitorPollSeconds,
+        diskScanIntervalMinutes
       };
       setHasUnsavedChanges(false);
     } catch (error) {
@@ -435,6 +443,10 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const [backlogSearchMaxAgeDays, setBacklogSearchMaxAgeDays] = useState(365);
   const [autoSearchRetryBackoffMinutes, setAutoSearchRetryBackoffMinutes] = useState("30,60,120,240,480");
 
+  // Background service cadence knobs
+  const [downloadMonitorPollSeconds, setDownloadMonitorPollSeconds] = useState(30);
+  const [diskScanIntervalMinutes, setDiskScanIntervalMinutes] = useState(60);
+
   // Save state
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -453,6 +465,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     backlogSearchMaxConcurrent: number;
     backlogSearchMaxAgeDays: number;
     autoSearchRetryBackoffMinutes: string;
+    downloadMonitorPollSeconds: number;
+    diskScanIntervalMinutes: number;
   } | null>(null);
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
@@ -472,7 +486,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       backlogSearchIntervalMinutes,
       backlogSearchMaxConcurrent,
       backlogSearchMaxAgeDays,
-      autoSearchRetryBackoffMinutes
+      autoSearchRetryBackoffMinutes,
+      downloadMonitorPollSeconds,
+      diskScanIntervalMinutes
     };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
@@ -480,7 +496,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       removeFailedDownloadsGlobal, redownloadFailedEvents, redownloadFailedFromInteractiveSearch,
       maxDownloadQueueSize, searchSleepDuration,
       backlogSearchEnabled, backlogSearchIntervalMinutes, backlogSearchMaxConcurrent,
-      backlogSearchMaxAgeDays, autoSearchRetryBackoffMinutes]);
+      backlogSearchMaxAgeDays, autoSearchRetryBackoffMinutes,
+      downloadMonitorPollSeconds, diskScanIntervalMinutes]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
@@ -1158,6 +1175,53 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                 per retry attempt (the last value repeats for further retries). Applies to automatic
                 and backlog search.
               </p>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-800 pt-4 mt-4">
+            <h4 className="text-white font-medium mb-1">Background Service Intervals</h4>
+            <p className="text-xs text-gray-500 mb-4">
+              How often unrelated background services poll or scan. Both take effect within a couple
+              minutes of saving, no restart needed.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-white font-medium mb-2">Download Monitor Poll Interval</label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    value={downloadMonitorPollSeconds}
+                    onChange={(e) => setDownloadMonitorPollSeconds(Number(e.target.value))}
+                    className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    min="5"
+                  />
+                  <span className="text-gray-400">seconds</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  How often to poll every configured download client for progress and completed downloads.
+                  Widen this if a debrid service or download client has tight API rate limits.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-white font-medium mb-2">Disk Scan Interval</label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    value={diskScanIntervalMinutes}
+                    onChange={(e) => setDiskScanIntervalMinutes(Number(e.target.value))}
+                    className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    min="5"
+                  />
+                  <span className="text-gray-400">minutes</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  How often to walk every root folder to verify files still exist and discover new ones
+                  dropped in outside the import flow. Widen this for slow network storage (NFS/SMB) with
+                  many root folders. A manual scan can still be triggered on demand regardless.
+                </p>
+              </div>
             </div>
           </div>
 

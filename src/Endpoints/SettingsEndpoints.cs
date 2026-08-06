@@ -225,6 +225,11 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         BacklogSearchMaxAgeDays = config.BacklogSearchMaxAgeDays,
         AutoSearchRetryBackoffMinutes = config.AutoSearchRetryBackoffMinutes,
 
+        // Background-service cadence knobs
+        DownloadMonitorPollSeconds = config.DownloadMonitorPollSeconds,
+        DiskScanIntervalMinutes = config.DiskScanIntervalMinutes,
+        IndexerHttpTimeoutSeconds = config.IndexerHttpTimeoutSeconds,
+
         // Development Settings (hidden)
         DevelopmentSettings = System.Text.Json.JsonSerializer.Serialize(new DevelopmentSettings
         {
@@ -499,6 +504,11 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         config.AutoSearchRetryBackoffMinutes = string.IsNullOrWhiteSpace(updatedSettings.AutoSearchRetryBackoffMinutes)
             ? "30,60,120,240,480"
             : updatedSettings.AutoSearchRetryBackoffMinutes.Trim();
+
+        // Background-service cadence knobs
+        config.DownloadMonitorPollSeconds = Math.Max(5, updatedSettings.DownloadMonitorPollSeconds);
+        config.DiskScanIntervalMinutes = Math.Max(5, updatedSettings.DiskScanIntervalMinutes);
+        config.IndexerHttpTimeoutSeconds = Math.Max(5, updatedSettings.IndexerHttpTimeoutSeconds);
 
         // Development Settings (hidden)
         if (developmentSettings != null)

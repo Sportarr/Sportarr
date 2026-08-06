@@ -19,7 +19,6 @@ public class EnhancedDownloadMonitorService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<EnhancedDownloadMonitorService> _logger;
-    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(30);
     private readonly TimeSpan _stalledTimeout = TimeSpan.FromMinutes(10); // Default stalled timeout
 
     // Hard cap on import retries. After this many failed import attempts the
@@ -47,7 +46,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("[Enhanced Download Monitor] Service started - Poll interval: {Interval}s", _pollInterval.TotalSeconds);
+        _logger.LogInformation("[Enhanced Download Monitor] Service started");
 
         // Wait before starting to allow app to fully initialize
         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
@@ -104,7 +103,23 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 _logger.LogError(ex, "[Enhanced Download Monitor] Error detecting external downloads");
             }
 
-            await Task.Delay(_pollInterval, stoppingToken);
+            // Read fresh each cycle so a config change takes effect on the
+            // next tick without an app restart, matching the pattern
+            // BacklogSearchService already uses for its own interval.
+            var pollSeconds = 30;
+            try
+            {
+                using var pollScope = _serviceProvider.CreateScope();
+                var configService = pollScope.ServiceProvider.GetRequiredService<ConfigService>();
+                var config = await configService.GetConfigAsync();
+                pollSeconds = Math.Max(5, config.DownloadMonitorPollSeconds);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Enhanced Download Monitor] Failed to read poll interval from config, using default");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(pollSeconds), stoppingToken);
         }
 
         _logger.LogInformation("[Enhanced Download Monitor] Service stopped");

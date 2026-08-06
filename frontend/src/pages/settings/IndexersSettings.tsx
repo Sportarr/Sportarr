@@ -231,9 +231,10 @@ export default function IndexersSettings() {
   const [minimumAge, setMinimumAge] = useState(0);
   const [maxRssReleasesPerIndexer, setMaxRssReleasesPerIndexer] = useState(500);
   const [rssReleaseAgeLimit, setRssReleaseAgeLimit] = useState(14);
+  const [indexerHttpTimeoutSeconds, setIndexerHttpTimeoutSeconds] = useState(30);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number; maxRssReleasesPerIndexer: number; rssReleaseAgeLimit: number} | null>(null);
+  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number; maxRssReleasesPerIndexer: number; rssReleaseAgeLimit: number; indexerHttpTimeoutSeconds: number} | null>(null);
   useUnsavedChanges(hasUnsavedChanges);
 
   // Download clients drive the per-indexer override dropdown below.
@@ -279,7 +280,8 @@ export default function IndexersSettings() {
           searchCacheDuration: data.searchCacheDuration ?? 120,
           minimumAge: data.indexerMinimumAgeMinutes ?? 0,
           maxRssReleasesPerIndexer: data.maxRssReleasesPerIndexer ?? 500,
-          rssReleaseAgeLimit: data.rssReleaseAgeLimit ?? 14
+          rssReleaseAgeLimit: data.rssReleaseAgeLimit ?? 14,
+          indexerHttpTimeoutSeconds: data.indexerHttpTimeoutSeconds ?? 30
         };
 
         setRetention(loadedSettings.retention);
@@ -289,6 +291,7 @@ export default function IndexersSettings() {
         setMinimumAge(loadedSettings.minimumAge);
         setMaxRssReleasesPerIndexer(loadedSettings.maxRssReleasesPerIndexer);
         setRssReleaseAgeLimit(loadedSettings.rssReleaseAgeLimit);
+        setIndexerHttpTimeoutSeconds(loadedSettings.indexerHttpTimeoutSeconds);
         initialSettings.current = loadedSettings;
         setHasUnsavedChanges(false);
       }
@@ -300,10 +303,10 @@ export default function IndexersSettings() {
   // Detect changes
   useEffect(() => {
     if (!initialSettings.current) return;
-    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit };
+    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit, indexerHttpTimeoutSeconds };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
-  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit]);
+  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit, indexerHttpTimeoutSeconds]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
@@ -327,13 +330,14 @@ export default function IndexersSettings() {
         indexerMinimumAgeMinutes: Math.max(0, minimumAge),
         maxRssReleasesPerIndexer: Math.max(1, maxRssReleasesPerIndexer),
         rssReleaseAgeLimit: Math.max(0, rssReleaseAgeLimit),
+        indexerHttpTimeoutSeconds: Math.max(5, indexerHttpTimeoutSeconds),
       };
 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
 
       // Update initial settings and reset unsaved changes flag
-      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit };
+      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit, indexerHttpTimeoutSeconds };
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save indexer settings:', error);
@@ -1619,6 +1623,25 @@ export default function IndexersSettings() {
                 How long to cache raw indexer results in memory. Cached results are re-matched against each event,
                 reducing API calls when searching: multi-part events (UFC Prelims/Main Card share cache),
                 same-year events (all NFL 2025 games share cache). Use the "Refresh" button to bypass cache.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-white font-medium mb-2">Indexer HTTP Timeout</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={indexerHttpTimeoutSeconds}
+                  onChange={(e) => setIndexerHttpTimeoutSeconds(Number(e.target.value))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="5"
+                />
+                <span className="text-gray-400">seconds</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                How long to wait for a response from any indexer before giving up. Raise this if a private
+                tracker behind Cloudflare/FlareSolverr or a slow Usenet indexer needs more than the default
+                30 seconds. Applies to all indexers; takes effect within a couple minutes, no restart needed.
               </p>
             </div>
           </div>

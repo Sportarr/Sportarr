@@ -148,9 +148,27 @@ public static class ServiceCollectionExtensions
                     {
                         Console.WriteLine($"[Indexer] Retry {retryCount} after {timespan.TotalSeconds}s due to {outcome.Exception?.Message ?? outcome.Result.StatusCode.ToString()}");
                     }))
-            .ConfigureHttpClient(client =>
+            .ConfigureHttpClient((sp, client) =>
             {
-                client.Timeout = TimeSpan.FromSeconds(30);
+                // Config.IndexerHttpTimeoutSeconds, read fresh on every client
+                // creation (the (IServiceProvider, HttpClient) overload runs each
+                // time HttpClientFactory rotates a handler, not just once at
+                // startup), so a private tracker behind Cloudflare/FlareSolverr or
+                // a slow Usenet indexer can be given more than the 30s default
+                // without an app restart. Blocking here is safe: this callback
+                // runs outside any request's SynchronizationContext.
+                var timeoutSeconds = 30;
+                try
+                {
+                    var configService = sp.GetRequiredService<ConfigService>();
+                    var config = configService.GetConfigAsync().GetAwaiter().GetResult();
+                    timeoutSeconds = Math.Max(5, config.IndexerHttpTimeoutSeconds);
+                }
+                catch
+                {
+                    // Config not readable yet (very early startup) - keep the default.
+                }
+                client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
             });
 

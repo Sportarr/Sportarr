@@ -83,6 +83,16 @@ public class AppSettings
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string AutoSearchRetryBackoffMinutes { get; set; } = "30,60,120,240,480";
 
+    // Background-service cadence knobs previously hardcoded with no config
+    // path at all (Config.DownloadMonitorPollSeconds/DiskScanIntervalMinutes/
+    // IndexerHttpTimeoutSeconds). NotMapped, config.xml-backed.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int DownloadMonitorPollSeconds { get; set; } = 30;
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int DiskScanIntervalMinutes { get; set; } = 60;
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int IndexerHttpTimeoutSeconds { get; set; } = 30;
+
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
 }
 
