@@ -20,7 +20,7 @@ interface ImportList {
   searchOnAdd: boolean;
   tags: number[];
   minimumDaysBeforeEvent: number;
-  organizationFilter?: string;
+  leagueFilter?: string;
   lastSync?: string;
   lastSyncMessage?: string;
 }
@@ -479,8 +479,8 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
                     </label>
                     <input
                       type="text"
-                      value={formData.organizationFilter || ''}
-                      onChange={(e) => setFormData({ ...formData, organizationFilter: e.target.value })}
+                      value={formData.leagueFilter || ''}
+                      onChange={(e) => setFormData({ ...formData, leagueFilter: e.target.value })}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                       placeholder="e.g., Motorsport, Fighting Sports, Football"
                     />
