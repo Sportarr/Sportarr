@@ -730,6 +730,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("Indexer")
                         .HasColumnType("text");
 
+                    b.Property<string>("IndexerFlags")
+                        .HasColumnType("text");
+
                     b.Property<int?>("IndexerId")
                         .HasColumnType("integer");
 

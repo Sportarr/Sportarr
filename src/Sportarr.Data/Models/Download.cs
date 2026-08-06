@@ -235,6 +235,17 @@ public class DownloadQueueItem
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
 
     /// <summary>
+    /// Indexer flags carried over from the release that was grabbed (e.g.
+    /// "freeleech", "internal", "scene"), so Custom Format IndexerFlag
+    /// conditions can be re-evaluated consistently at rename/import time.
+    /// Only populated when the queue item was created directly from a
+    /// searched release (manual/automatic search, RSS auto-grab) - null for
+    /// re-adopted, reaper-recovered, or manually-imported items where no
+    /// original release selection exists.
+    /// </summary>
+    public string? IndexerFlags { get; set; }
+
+    /// <summary>
     /// The download-client category/label this item was actually grabbed under -
     /// the resolved value (per-root-folder DefaultDownloadClientCategory override,
     /// or the client's own default) at the moment AddDownloadAsync was called, not

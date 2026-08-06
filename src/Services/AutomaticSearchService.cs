@@ -1217,6 +1217,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 Codec = bestRelease.Codec,
                 Source = bestRelease.Source,
                 Size = bestRelease.Size,
+                IndexerFlags = bestRelease.IndexerFlags,
                 Downloaded = 0,
                 Progress = 0,
                 Indexer = bestRelease.Indexer,

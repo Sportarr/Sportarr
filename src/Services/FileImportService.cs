@@ -385,7 +385,7 @@ public class FileImportService : IFileImportService
                 ? download.Quality
                 : _parser.BuildQualityString(parsed);
 
-            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile, download.Part, qualityString);
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile, download.Part, qualityString, download.IndexerFlags);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
             var config = await _configService.GetConfigAsync();
@@ -1096,7 +1096,8 @@ public class FileImportService : IFileImportService
         string rootFolder,
         string sourceFile,
         string? queueItemPart = null,
-        string? downloadQuality = null)
+        string? downloadQuality = null,
+        string? indexerFlags = null)
     {
         var destinationPath = rootFolder;
 
@@ -1198,8 +1199,11 @@ public class FileImportService : IFileImportService
 
             // {Custom Formats} token: match against the real source
             // filename, which carries the release's quality/format tags.
+            // Size/IndexerFlags are threaded through so this agrees with the
+            // grab-time evaluator instead of always seeing 0 bytes/no flags.
             tokens.CustomFormats = _customFormatService.BuildRenameToken(
-                Path.GetFileName(sourceFile), await _db.CustomFormats.ToListAsync());
+                Path.GetFileName(sourceFile), await _db.CustomFormats.ToListAsync(),
+                GetFileSizeResolvingSymlinks(sourceFile), indexerFlags);
 
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }

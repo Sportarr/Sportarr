@@ -327,6 +327,7 @@ app.MapPost("/api/release/grab", async (
             Codec = release.Codec,
             Source = release.Source,
             Size = release.Size,
+            IndexerFlags = release.IndexerFlags,
             Downloaded = 0,
             Progress = 0,
             Indexer = release.Indexer,

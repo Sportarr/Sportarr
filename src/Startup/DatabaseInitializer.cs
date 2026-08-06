@@ -2475,6 +2475,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "DownloadClients", "OlderPriority", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "MetadataProviders", "ShowNfo", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumn(db, "Tasks", "Result", "TEXT NULL");
+        EnsureColumn(db, "DownloadQueue", "IndexerFlags", "TEXT");
 
         RelaxLegacyRootFolderColumns(db);
     }

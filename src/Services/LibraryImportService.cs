@@ -937,8 +937,10 @@ public class LibraryImportService
                 Part = partSuffix
             };
 
+            // No grabbed release to source IndexerFlags from here - this path
+            // imports pre-existing files found on disk, not an active download.
             tokens.CustomFormats = _customFormatService.BuildRenameToken(
-                Path.GetFileName(sourcePath), await _db.CustomFormats.ToListAsync());
+                Path.GetFileName(sourcePath), await _db.CustomFormats.ToListAsync(), sourceFileInfo.Length);
 
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
@@ -1804,6 +1806,10 @@ public class LibraryImportService
                 Episode = episodeNumber.ToString("00"),
                 Part = string.Empty
             };
+            // Preview-only: no resolved file on disk and no grabbed release at
+            // this point, so Size/IndexerFlag conditions can't be evaluated
+            // here (same as before - this only affects the destination preview
+            // shown while picking a file, not the actual import).
             tokens.CustomFormats = _customFormatService.BuildRenameToken(
                 originalFileName, await _db.CustomFormats.ToListAsync());
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);

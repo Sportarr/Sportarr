@@ -1,3 +1,4 @@
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -716,6 +717,7 @@ public class ReleaseEvaluator
             "Size" => EvaluateSizeSpec(release, spec),
             "QualityModifier" => EvaluateQualityModifierSpec(release, spec),
             "IndexerFlag" => EvaluateIndexerFlagSpec(release, spec),
+            "ReleaseType" => EvaluateReleaseTypeSpec(release, spec),
             _ => false
         };
 
@@ -1083,6 +1085,22 @@ public class ReleaseEvaluator
         }
 
         return release.IndexerFlags.Contains(value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Evaluate ReleaseType specification (single event vs. multi-event pack)
+    /// </summary>
+    private bool EvaluateReleaseTypeSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        var value = GetFieldValue(spec, "value");
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        if (!Enum.TryParse<ReleaseType>(value, ignoreCase: true, out var expectedType))
+            return false;
+
+        var detected = ReleaseTypeDetector.Detect(release.Title, release.SportarrLeagueId, release.SportarrEventId);
+        return detected == expectedType;
     }
 
     /// <summary>

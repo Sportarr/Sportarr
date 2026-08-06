@@ -53,7 +53,7 @@ public class FileRenameService
     {
         _formatsCache ??= await _db.CustomFormats.ToListAsync();
         var matchTitle = file.OriginalTitle ?? Path.GetFileName(file.FilePath) ?? string.Empty;
-        return _customFormatService.BuildRenameToken(matchTitle, _formatsCache);
+        return _customFormatService.BuildRenameToken(matchTitle, _formatsCache, file.Size, file.IndexerFlags);
     }
 
     /// <summary>
