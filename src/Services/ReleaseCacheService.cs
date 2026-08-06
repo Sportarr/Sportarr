@@ -56,13 +56,15 @@ public class ReleaseCacheService
             .Select(g => g.First())
             .ToList();
 
-        // Get all existing GUIDs in one query for efficiency
+        // Preload the full existing rows (not just GUIDs) in one query, since
+        // the loop below needs to update Seeders/Leechers/ExpiresAt on a match
+        // - re-querying per already-known GUID was one extra round trip per
+        // already-cached release on every indexer search/RSS cache write.
+        // Guid has a unique index, so ToDictionaryAsync is safe here.
         var incomingGuids = uniqueReleases.Select(r => r.Guid).ToList();
-        var existingGuidsList = await _db.ReleaseCache
+        var existingByGuid = await _db.ReleaseCache
             .Where(r => incomingGuids.Contains(r.Guid))
-            .Select(r => r.Guid)
-            .ToListAsync(cancellationToken);
-        var existingGuids = new HashSet<string>(existingGuidsList);
+            .ToDictionaryAsync(r => r.Guid, cancellationToken);
 
         // Track GUIDs we're adding in this batch to avoid duplicates within the batch
         var addedGuids = new HashSet<string>();
@@ -72,18 +74,13 @@ public class ReleaseCacheService
             try
             {
                 // Skip if already in database
-                if (existingGuids.Contains(release.Guid))
+                if (existingByGuid.TryGetValue(release.Guid, out var existing))
                 {
                     // Update existing entry (refresh TTL and update seeder count)
-                    var existing = await _db.ReleaseCache
-                        .FirstOrDefaultAsync(r => r.Guid == release.Guid, cancellationToken);
-                    if (existing != null)
-                    {
-                        existing.Seeders = release.Seeders;
-                        existing.Leechers = release.Leechers;
-                        existing.ExpiresAt = DateTime.UtcNow.Add(DefaultCacheTtl);
-                        updatedCount++;
-                    }
+                    existing.Seeders = release.Seeders;
+                    existing.Leechers = release.Leechers;
+                    existing.ExpiresAt = DateTime.UtcNow.Add(DefaultCacheTtl);
+                    updatedCount++;
                     continue;
                 }
 
