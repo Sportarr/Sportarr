@@ -1,0 +1,54 @@
+name: Star History
+
+# Regenerates the README's star history chart as a static, self-hosted SVG.
+#
+# GitHub restricts the stargazers-with-timestamps endpoint to a repo's own
+# admins/collaborators now, so the third-party live badge that used to be
+# embedded here (api.star-history.com/svg) renders blank for outside
+# viewers. This workflow runs inside the repo's own Actions run, where the
+# automatic GITHUB_TOKEN already has that access, fetches the real
+# stargazer timeline itself (.github/scripts/generate_star_history.py, no
+# external service), and commits the rendered chart. Deliberately not using
+# a third-party marketplace action for this - the generation step only
+# needs read access to run, and the commit is done with our own script and
+# the same PAT the contributors workflow already uses to push to a
+# protected branch, so no outside action ever holds write access to the
+# repo. Refreshes on a daily schedule, on demand, and right after someone
+# stars the repo.
+on:
+  schedule:
+    - cron: "0 7 * * *" # daily 07:00 UTC
+  watch:
+    types: [started]
+  workflow_dispatch:
+
+concurrency:
+  group: star-history
+  cancel-in-progress: true
+
+jobs:
+  star-history:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # PAT (same one the release/contributors workflows use) so the
+          # commit below can land on the default branch directly.
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Generate star history chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/generate_star_history.py
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet assets/star-history; then
+            echo "Star history chart unchanged"
+            exit 0
+          fi
+          git config user.name "Sportarr"
+          git config user.email "sportarr@users.noreply.github.com"
+          git add assets/star-history
+          git commit -m "chore: update star history chart [skip ci]"
+          git push
