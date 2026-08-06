@@ -60,6 +60,29 @@ public class AppSettings
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public int EpgRefreshHours { get; set; } = 48;
 
+    // RSS fetch tuning (Config.MaxRssReleasesPerIndexer/RssReleaseAgeLimit).
+    // NotMapped, config.xml-backed.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int MaxRssReleasesPerIndexer { get; set; } = 500;
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int RssReleaseAgeLimit { get; set; } = 14;
+
+    // Backlog search pass tuning (Config.BacklogSearch*). NotMapped,
+    // config.xml-backed.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool BacklogSearchEnabled { get; set; } = true;
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int BacklogSearchIntervalMinutes { get; set; } = 360;
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int BacklogSearchMaxConcurrent { get; set; } = 3;
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int BacklogSearchMaxAgeDays { get; set; } = 365;
+
+    // Comma-separated retry backoff minutes for automatic search (Config.
+    // AutoSearchRetryBackoffMinutes). NotMapped, config.xml-backed.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string AutoSearchRetryBackoffMinutes { get; set; } = "30,60,120,240,480";
+
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
 }
 
@@ -255,6 +278,16 @@ public class MediaManagementSettings
     /// </summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string DownloadClientWorkingFolders { get; set; } = "_UNPACK_,_FAILED_";
+
+    /// <summary>
+    /// Grace period (days) before a missing EventFile row or a stale,
+    /// unclaimed PendingImport is hard-deleted. 0 = never auto-delete.
+    /// Stored in config.xml (Config.EventFileMissingDeleteAfterDays);
+    /// NotMapped keeps it on the media-management JSON contract without a
+    /// schema change.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int EventFileMissingDeleteAfterDays { get; set; } = 30;
 
     /// <summary>
     /// Comma-separated list of file extensions the user wants to count

@@ -323,7 +323,12 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
           stalledDownloadTimeoutMinutes: data.stalledDownloadTimeoutMinutes ?? 60,
           removeFailedDownloadsGlobal: data.removeFailedDownloads ?? true,
           maxDownloadQueueSize: data.maxDownloadQueueSize ?? -1,
-          searchSleepDuration: data.searchSleepDuration ?? 900
+          searchSleepDuration: data.searchSleepDuration ?? 900,
+          backlogSearchEnabled: data.backlogSearchEnabled ?? true,
+          backlogSearchIntervalMinutes: data.backlogSearchIntervalMinutes ?? 360,
+          backlogSearchMaxConcurrent: data.backlogSearchMaxConcurrent ?? 3,
+          backlogSearchMaxAgeDays: data.backlogSearchMaxAgeDays ?? 365,
+          autoSearchRetryBackoffMinutes: data.autoSearchRetryBackoffMinutes ?? '30,60,120,240,480'
         };
 
         setEnableCompletedDownloadHandling(loadedSettings.enableCompletedDownloadHandling);
@@ -335,6 +340,11 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         setRemoveFailedDownloadsGlobal(loadedSettings.removeFailedDownloadsGlobal);
         setMaxDownloadQueueSize(loadedSettings.maxDownloadQueueSize);
         setSearchSleepDuration(loadedSettings.searchSleepDuration);
+        setBacklogSearchEnabled(loadedSettings.backlogSearchEnabled);
+        setBacklogSearchIntervalMinutes(loadedSettings.backlogSearchIntervalMinutes);
+        setBacklogSearchMaxConcurrent(loadedSettings.backlogSearchMaxConcurrent);
+        setBacklogSearchMaxAgeDays(loadedSettings.backlogSearchMaxAgeDays);
+        setAutoSearchRetryBackoffMinutes(loadedSettings.autoSearchRetryBackoffMinutes);
 
         initialSettings.current = loadedSettings;
         setHasUnsavedChanges(false);
@@ -365,6 +375,11 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         removeFailedDownloads: removeFailedDownloadsGlobal,
         maxDownloadQueueSize,
         searchSleepDuration,
+        backlogSearchEnabled,
+        backlogSearchIntervalMinutes: Math.max(15, backlogSearchIntervalMinutes),
+        backlogSearchMaxConcurrent: Math.max(1, backlogSearchMaxConcurrent),
+        backlogSearchMaxAgeDays: Math.max(0, backlogSearchMaxAgeDays),
+        autoSearchRetryBackoffMinutes,
       };
 
       // Save to API
@@ -380,7 +395,12 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         redownloadFailedFromInteractiveSearch,
         stalledDownloadTimeoutMinutes,
         maxDownloadQueueSize,
-        searchSleepDuration
+        searchSleepDuration,
+        backlogSearchEnabled,
+        backlogSearchIntervalMinutes,
+        backlogSearchMaxConcurrent,
+        backlogSearchMaxAgeDays,
+        autoSearchRetryBackoffMinutes
       };
       setHasUnsavedChanges(false);
     } catch (error) {
@@ -408,6 +428,13 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const [maxDownloadQueueSize, setMaxDownloadQueueSize] = useState(-1); // -1 = no limit
   const [searchSleepDuration, setSearchSleepDuration] = useState(900); // seconds
 
+  // Backlog search pass tuning
+  const [backlogSearchEnabled, setBacklogSearchEnabled] = useState(true);
+  const [backlogSearchIntervalMinutes, setBacklogSearchIntervalMinutes] = useState(360);
+  const [backlogSearchMaxConcurrent, setBacklogSearchMaxConcurrent] = useState(3);
+  const [backlogSearchMaxAgeDays, setBacklogSearchMaxAgeDays] = useState(365);
+  const [autoSearchRetryBackoffMinutes, setAutoSearchRetryBackoffMinutes] = useState("30,60,120,240,480");
+
   // Save state
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -421,6 +448,11 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     stalledDownloadTimeoutMinutes: number;
     maxDownloadQueueSize: number;
     searchSleepDuration: number;
+    backlogSearchEnabled: boolean;
+    backlogSearchIntervalMinutes: number;
+    backlogSearchMaxConcurrent: number;
+    backlogSearchMaxAgeDays: number;
+    autoSearchRetryBackoffMinutes: string;
   } | null>(null);
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
@@ -435,13 +467,20 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       redownloadFailedEvents,
       redownloadFailedFromInteractiveSearch,
       maxDownloadQueueSize,
-      searchSleepDuration
+      searchSleepDuration,
+      backlogSearchEnabled,
+      backlogSearchIntervalMinutes,
+      backlogSearchMaxConcurrent,
+      backlogSearchMaxAgeDays,
+      autoSearchRetryBackoffMinutes
     };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
   }, [enableCompletedDownloadHandling, removeCompletedDownloadsGlobal, checkForFinishedDownloads,
       removeFailedDownloadsGlobal, redownloadFailedEvents, redownloadFailedFromInteractiveSearch,
-      maxDownloadQueueSize, searchSleepDuration]);
+      maxDownloadQueueSize, searchSleepDuration,
+      backlogSearchEnabled, backlogSearchIntervalMinutes, backlogSearchMaxConcurrent,
+      backlogSearchMaxAgeDays, autoSearchRetryBackoffMinutes]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
@@ -1029,6 +1068,97 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
             <p className="text-xs text-gray-500 mt-1">
               Pause automatic searches when download queue exceeds this size. Set to -1 to disable (no limit).
             </p>
+          </div>
+
+          <div className="border-t border-gray-800 pt-4 mt-4">
+            <h4 className="text-white font-medium mb-1">Backlog Search</h4>
+            <p className="text-xs text-gray-500 mb-4">
+              Periodic pass that searches for missing/monitored events outside the normal RSS
+              and interactive search paths.
+            </p>
+
+            <label className="flex items-start space-x-3 cursor-pointer mb-4">
+              <input
+                type="checkbox"
+                checked={backlogSearchEnabled}
+                onChange={(e) => setBacklogSearchEnabled(e.target.checked)}
+                className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+              />
+              <div>
+                <span className="text-white font-medium">Enable Backlog Search</span>
+                <p className="text-sm text-gray-400 mt-1">
+                  Periodically search for missing monitored events in the background.
+                </p>
+              </div>
+            </label>
+
+            {backlogSearchEnabled && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-white font-medium mb-2">Backlog Search Interval</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      value={backlogSearchIntervalMinutes}
+                      onChange={(e) => setBacklogSearchIntervalMinutes(Number(e.target.value))}
+                      className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                      min="15"
+                    />
+                    <span className="text-gray-400">minutes</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Time between backlog search passes. Minimum 15 minutes.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-white font-medium mb-2">Backlog Search Max Concurrent</label>
+                  <input
+                    type="number"
+                    value={backlogSearchMaxConcurrent}
+                    onChange={(e) => setBacklogSearchMaxConcurrent(Number(e.target.value))}
+                    className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    min="1"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Maximum events searched concurrently during a backlog pass, so indexers aren't hammered.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-white font-medium mb-2">Backlog Search Max Age</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      value={backlogSearchMaxAgeDays}
+                      onChange={(e) => setBacklogSearchMaxAgeDays(Number(e.target.value))}
+                      className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                      min="0"
+                    />
+                    <span className="text-gray-400">days</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Skip events older than this on a backlog pass. Set to 0 for no cap.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <label className="block text-white font-medium mb-2">Automatic Search Retry Backoff</label>
+              <input
+                type="text"
+                value={autoSearchRetryBackoffMinutes}
+                onChange={(e) => setAutoSearchRetryBackoffMinutes(e.target.value)}
+                placeholder="30,60,120,240,480"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Comma-separated minutes to wait before retrying a recently-failed download, one value
+                per retry attempt (the last value repeats for further retries). Applies to automatic
+                and backlog search.
+              </p>
+            </div>
           </div>
 
         </div>

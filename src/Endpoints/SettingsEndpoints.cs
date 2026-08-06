@@ -82,6 +82,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         ImportExtraFiles = config.ImportExtraFiles,
         ExtraFileExtensions = config.ExtraFileExtensions,
         DownloadClientWorkingFolders = config.DownloadClientWorkingFolders,
+        EventFileMissingDeleteAfterDays = config.EventFileMissingDeleteAfterDays,
         // UserRejectedExtensions is paired with the FailDownloads
         // policy on indexers — surfaced under Importing in the UI.
         UserRejectedExtensions = dbMediaSettings?.UserRejectedExtensions,
@@ -214,6 +215,15 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         IndexerMinimumAgeMinutes = config.IndexerMinimumAgeMinutes,
         IptvPlaylistRefreshHours = config.IptvPlaylistRefreshHours,
         EpgRefreshHours = config.EpgRefreshHours,
+        MaxRssReleasesPerIndexer = config.MaxRssReleasesPerIndexer,
+        RssReleaseAgeLimit = config.RssReleaseAgeLimit,
+
+        // Backlog search pass tuning
+        BacklogSearchEnabled = config.BacklogSearchEnabled,
+        BacklogSearchIntervalMinutes = config.BacklogSearchIntervalMinutes,
+        BacklogSearchMaxConcurrent = config.BacklogSearchMaxConcurrent,
+        BacklogSearchMaxAgeDays = config.BacklogSearchMaxAgeDays,
+        AutoSearchRetryBackoffMinutes = config.AutoSearchRetryBackoffMinutes,
 
         // Development Settings (hidden)
         DevelopmentSettings = System.Text.Json.JsonSerializer.Serialize(new DevelopmentSettings
@@ -444,6 +454,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             config.ChangeFileDate = mediaManagementSettings.ChangeFileDate;
             config.RecycleBin = mediaManagementSettings.RecycleBin;
             config.RecycleBinCleanup = mediaManagementSettings.RecycleBinCleanup;
+            config.EventFileMissingDeleteAfterDays = Math.Max(0, mediaManagementSettings.EventFileMissingDeleteAfterDays); // 0 = never auto-delete
             config.SetPermissions = mediaManagementSettings.SetPermissions;
             config.ChmodFolder = mediaManagementSettings.ChmodFolder;
             config.ChownGroup = mediaManagementSettings.ChownGroup;
@@ -477,6 +488,17 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         config.IndexerMinimumAgeMinutes = Math.Max(0, updatedSettings.IndexerMinimumAgeMinutes); // Clamp at 0 (no negative delays)
         config.IptvPlaylistRefreshHours = Math.Max(0, updatedSettings.IptvPlaylistRefreshHours); // 0 = disabled
         config.EpgRefreshHours = Math.Max(0, updatedSettings.EpgRefreshHours); // 0 = disabled
+        config.MaxRssReleasesPerIndexer = Math.Max(1, updatedSettings.MaxRssReleasesPerIndexer);
+        config.RssReleaseAgeLimit = Math.Max(0, updatedSettings.RssReleaseAgeLimit); // 0 = no age limit
+
+        // Backlog search pass tuning
+        config.BacklogSearchEnabled = updatedSettings.BacklogSearchEnabled;
+        config.BacklogSearchIntervalMinutes = Math.Max(15, updatedSettings.BacklogSearchIntervalMinutes); // BacklogSearchService clamps the same way
+        config.BacklogSearchMaxConcurrent = Math.Max(1, updatedSettings.BacklogSearchMaxConcurrent);
+        config.BacklogSearchMaxAgeDays = Math.Max(0, updatedSettings.BacklogSearchMaxAgeDays); // 0 = no cap
+        config.AutoSearchRetryBackoffMinutes = string.IsNullOrWhiteSpace(updatedSettings.AutoSearchRetryBackoffMinutes)
+            ? "30,60,120,240,480"
+            : updatedSettings.AutoSearchRetryBackoffMinutes.Trim();
 
         // Development Settings (hidden)
         if (developmentSettings != null)

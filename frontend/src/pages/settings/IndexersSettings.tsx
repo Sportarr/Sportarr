@@ -229,9 +229,11 @@ export default function IndexersSettings() {
   const [preferIndexerFlags, setPreferIndexerFlags] = useState(true);
   const [searchCacheDuration, setSearchCacheDuration] = useState(120);
   const [minimumAge, setMinimumAge] = useState(0);
+  const [maxRssReleasesPerIndexer, setMaxRssReleasesPerIndexer] = useState(500);
+  const [rssReleaseAgeLimit, setRssReleaseAgeLimit] = useState(14);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number} | null>(null);
+  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number; maxRssReleasesPerIndexer: number; rssReleaseAgeLimit: number} | null>(null);
   useUnsavedChanges(hasUnsavedChanges);
 
   // Download clients drive the per-indexer override dropdown below.
@@ -275,7 +277,9 @@ export default function IndexersSettings() {
           rssSyncInterval: data.rssSyncInterval ?? 60,
           preferIndexerFlags: data.preferIndexerFlags ?? true,
           searchCacheDuration: data.searchCacheDuration ?? 120,
-          minimumAge: data.indexerMinimumAgeMinutes ?? 0
+          minimumAge: data.indexerMinimumAgeMinutes ?? 0,
+          maxRssReleasesPerIndexer: data.maxRssReleasesPerIndexer ?? 500,
+          rssReleaseAgeLimit: data.rssReleaseAgeLimit ?? 14
         };
 
         setRetention(loadedSettings.retention);
@@ -283,6 +287,8 @@ export default function IndexersSettings() {
         setPreferIndexerFlags(loadedSettings.preferIndexerFlags);
         setSearchCacheDuration(loadedSettings.searchCacheDuration);
         setMinimumAge(loadedSettings.minimumAge);
+        setMaxRssReleasesPerIndexer(loadedSettings.maxRssReleasesPerIndexer);
+        setRssReleaseAgeLimit(loadedSettings.rssReleaseAgeLimit);
         initialSettings.current = loadedSettings;
         setHasUnsavedChanges(false);
       }
@@ -294,10 +300,10 @@ export default function IndexersSettings() {
   // Detect changes
   useEffect(() => {
     if (!initialSettings.current) return;
-    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge };
+    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
-  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge]);
+  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
@@ -319,13 +325,15 @@ export default function IndexersSettings() {
         preferIndexerFlags,
         searchCacheDuration: Math.max(10, searchCacheDuration), // Enforce minimum of 10 seconds
         indexerMinimumAgeMinutes: Math.max(0, minimumAge),
+        maxRssReleasesPerIndexer: Math.max(1, maxRssReleasesPerIndexer),
+        rssReleaseAgeLimit: Math.max(0, rssReleaseAgeLimit),
       };
 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
 
       // Update initial settings and reset unsaved changes flag
-      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge };
+      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit };
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save indexer settings:', error);
@@ -1525,6 +1533,40 @@ export default function IndexersSettings() {
               </div>
               <p className="text-sm text-gray-400 mt-1">
                 How often Sportarr will sync with indexers. Minimum 10 minutes.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-white font-medium mb-2">Max RSS Releases Per Indexer</label>
+              <input
+                type="number"
+                value={maxRssReleasesPerIndexer}
+                onChange={(e) => setMaxRssReleasesPerIndexer(Number(e.target.value))}
+                className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                min="1"
+              />
+              <p className="text-sm text-gray-400 mt-1">
+                Maximum releases to fetch from each indexer's RSS feed per sync. Raise this if a
+                busy indexer's feed is deep enough that recent releases fall off the page before
+                RSS Sync runs.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-white font-medium mb-2">RSS Release Age Limit</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={rssReleaseAgeLimit}
+                  onChange={(e) => setRssReleaseAgeLimit(Number(e.target.value))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="0"
+                />
+                <span className="text-gray-400">days</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                Only consider RSS releases posted within this many days. Sports releases are
+                time-sensitive, so old RSS entries are ignored. Set to 0 to disable the window.
               </p>
             </div>
 

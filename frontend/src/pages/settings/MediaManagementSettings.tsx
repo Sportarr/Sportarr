@@ -66,6 +66,7 @@ interface MediaManagementSettingsData {
   changeFileDate: string;
   recycleBin: string;
   recycleBinCleanup: number;
+  eventFileMissingDeleteAfterDays: number;
   setPermissions: boolean;
   chmodFolder: string;
   chownGroup: string;
@@ -137,6 +138,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     changeFileDate: 'None',
     recycleBin: '',
     recycleBinCleanup: 7,
+    eventFileMissingDeleteAfterDays: 30,
     setPermissions: false,
     chmodFolder: '755',
     chownGroup: '',
@@ -1262,6 +1264,26 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                 </p>
               </div>
             )}
+
+            <div>
+              <label className="block text-white font-medium mb-2">Missing File Deletion Grace Period</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={settings.eventFileMissingDeleteAfterDays}
+                  onChange={(e) => updateSetting('eventFileMissingDeleteAfterDays', Number(e.target.value))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="0"
+                />
+                <span className="text-gray-400">days</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                When a tracked file has been continuously missing from disk for this many days
+                (mount outage, manual deletion), Sportarr permanently removes its database record
+                instead of continuing to track it. Also applies to stale, unclaimed pending
+                imports. Set to 0 to never auto-delete.
+              </p>
+            </div>
 
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
