@@ -92,13 +92,28 @@ public class ImportListService
             int addedCount = 0;
             int updatedCount = 0;
 
+            // Preload every existing event whose date falls anywhere in the
+            // discovered set's date range in one sargable query, instead of a
+            // FirstOrDefaultAsync per discovered event (the old e.EventDate.Date
+            // predicate also wasn't sargable against the EventDate index). Matched
+            // in-memory by (Title, calendar date) - GroupBy+First tolerates two
+            // events sharing a title/date instead of throwing like ToDictionary would.
+            var existingByKey = new Dictionary<(string Title, DateOnly Date), Event>();
+            if (discoveredEvents.Count > 0)
+            {
+                var rangeStart = discoveredEvents.Min(e => e.EventDate.Date);
+                var rangeEndExclusive = discoveredEvents.Max(e => e.EventDate.Date).AddDays(1);
+                existingByKey = (await db.Events
+                    .Where(e => e.EventDate >= rangeStart && e.EventDate < rangeEndExclusive)
+                    .ToListAsync())
+                    .GroupBy(e => (e.Title, DateOnly.FromDateTime(e.EventDate)))
+                    .ToDictionary(g => g.Key, g => g.First());
+            }
+
             foreach (var discovered in discoveredEvents)
             {
                 // Check if event already exists (by title and date)
-                var existing = await db.Events
-                    .FirstOrDefaultAsync(e =>
-                        e.Title == discovered.Title &&
-                        e.EventDate.Date == discovered.EventDate.Date);
+                existingByKey.TryGetValue((discovered.Title, DateOnly.FromDateTime(discovered.EventDate)), out var existing);
 
                 if (existing == null)
                 {
