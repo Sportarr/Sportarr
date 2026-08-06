@@ -2435,6 +2435,8 @@ public static class DatabaseInitializer
         EnsureColumn(db, "DownloadClients", "SaveMagnetFiles", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DownloadClients", "ReadOnly", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DownloadClients", "PostImportMode", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "DownloadClients", "RecentPriority", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "DownloadClients", "OlderPriority", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "MetadataProviders", "ShowNfo", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumn(db, "Tasks", "Result", "TEXT NULL");
 

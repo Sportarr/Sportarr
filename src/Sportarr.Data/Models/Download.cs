@@ -45,6 +45,22 @@ public enum TorrentInitialState
 }
 
 /// <summary>
+/// Queue position to request when a grab is added to a download client that
+/// supports it (currently qBittorrent). Mirrors Sonarr's RecentTvPriority/
+/// OlderTvPriority split - a numeric scale isn't worth the complexity when
+/// the only thing any client actually exposes is "move to the front" vs
+/// "leave it wherever it landed".
+/// </summary>
+public enum DownloadPriority
+{
+    /// <summary>Leave the torrent wherever the client queued it (default).</summary>
+    Last = 0,
+
+    /// <summary>Move the torrent to the front of the queue right after adding it.</summary>
+    First = 1
+}
+
+/// <summary>
 /// Download client configuration
 /// </summary>
 public class DownloadClient
@@ -68,6 +84,16 @@ public class DownloadClient
     public bool SequentialDownload { get; set; } = false; // Download pieces in order (useful for debrid services like Decypharr)
     public bool FirstAndLastFirst { get; set; } = false; // Prioritize first and last pieces (for quick video preview)
     public TorrentInitialState InitialState { get; set; } = TorrentInitialState.Started; // Initial state when torrent is added (Started, ForceStarted, Stopped)
+
+    /// <summary>
+    /// Queue priority for events that aired within the last 14 days - matches
+    /// Sonarr's "recent episode" window. Only applied for clients whose API
+    /// actually exposes a queue position (qBittorrent today).
+    /// </summary>
+    public DownloadPriority RecentPriority { get; set; } = DownloadPriority.Last;
+
+    /// <summary>Queue priority for events older than the 14-day recent window.</summary>
+    public DownloadPriority OlderPriority { get; set; } = DownloadPriority.Last;
 
     // Per-client removal settings
     // Allows users with both Usenet and Torrents to configure them separately

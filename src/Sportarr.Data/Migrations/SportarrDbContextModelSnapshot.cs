@@ -599,6 +599,9 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("OlderPriority")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Password")
                         .HasColumnType("TEXT");
 
@@ -615,6 +618,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("ReadOnly")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RecentPriority")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("RemoveCompletedDownloads")

@@ -1179,6 +1179,31 @@ public class AutomaticSearchService : IAutomaticSearchService
             _logger.LogInformation("[Automatic Search] Added to download client: {Client} (ID: {DownloadId})",
                 downloadClient.Name, downloadId);
 
+            // Recent/older event queue priority (issue #220), matching Sonarr's
+            // RecentTvPriority/OlderTvPriority split: "recent" is the same
+            // 14-day window Sonarr uses for episodes. Only takes effect for
+            // client types that support a queue position (qBittorrent today) -
+            // SetTopPriorityAsync is a silent no-op everywhere else.
+            var isRecentEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
+            var requestedPriority = isRecentEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+            if (requestedPriority == DownloadPriority.First)
+            {
+                try
+                {
+                    var prioritySet = await _downloadClientService.SetTopPriorityAsync(downloadClient, downloadId);
+                    if (!prioritySet)
+                    {
+                        _logger.LogWarning("[Automatic Search] Failed to set top queue priority for {DownloadId} on {Client}",
+                            downloadId, downloadClient.Name);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Automatic Search] Error setting queue priority for {DownloadId}", downloadId);
+                }
+            }
+
             // UNIVERSAL: Add to download queue tracking (event-level, no fight card subdivisions)
             // If this is a retry, increment the retry count from the previous failed download
             var retryCount = recentFailedDownload != null ? (recentFailedDownload.RetryCount ?? 0) + 1 : 0;

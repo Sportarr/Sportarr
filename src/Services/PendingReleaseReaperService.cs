@@ -192,6 +192,29 @@ public class PendingReleaseReaperService : BackgroundService
             return false;
         }
 
+        // Recent/older event queue priority (issue #220) - same logic as the
+        // other grab paths, duplicated here since the reaper grabs
+        // independently instead of going through AutomaticSearchService.
+        var isRecentReaperEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
+        var requestedReaperPriority = isRecentReaperEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+        if (requestedReaperPriority == DownloadPriority.First)
+        {
+            try
+            {
+                var prioritySet = await downloadClientService.SetTopPriorityAsync(downloadClient, downloadId);
+                if (!prioritySet)
+                {
+                    _logger.LogWarning("[Pending Release Reaper] Failed to set top queue priority for {DownloadId} on {Client}",
+                        downloadId, downloadClient.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Pending Release Reaper] Error setting queue priority for {DownloadId}", downloadId);
+            }
+        }
+
         db.DownloadQueue.Add(new DownloadQueueItem
         {
             EventId = evt.Id,

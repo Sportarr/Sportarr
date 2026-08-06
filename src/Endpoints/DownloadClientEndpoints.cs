@@ -97,6 +97,8 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.SequentialDownload = updatedClient.SequentialDownload;
     client.FirstAndLastFirst = updatedClient.FirstAndLastFirst;
     client.InitialState = updatedClient.InitialState;
+    client.RecentPriority = updatedClient.RecentPriority;
+    client.OlderPriority = updatedClient.OlderPriority;
     client.RemoveCompletedDownloads = updatedClient.RemoveCompletedDownloads;
     client.RemoveFailedDownloads = updatedClient.RemoveFailedDownloads;
     client.PostImportMode = updatedClient.PostImportMode;

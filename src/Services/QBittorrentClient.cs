@@ -1056,6 +1056,38 @@ public class QBittorrentClient
     }
 
     /// <summary>
+    /// Move torrent to the front of qBittorrent's download queue. The
+    /// WebUI API route is torrents/topPrio (no trailing "rity") - this
+    /// endpoint name has been stable since qBittorrent's earliest WebAPI
+    /// versions, unlike pause/resume, so no legacy fallback is needed here.
+    /// </summary>
+    public async Task<bool> MoveToTopPriorityAsync(DownloadClient config, string hash)
+    {
+        try
+        {
+            var baseUrl = GetBaseUrl(config);
+
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
+            {
+                return false;
+            }
+
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("hashes", hash)
+            });
+
+            using var response = await GetHttpClient(config).PostAsync($"{baseUrl}/api/v2/torrents/topPrio", content);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Error moving torrent to top priority: {Hash}", hash);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Set force start state for torrent (bypasses queue limits)
     /// </summary>
     public async Task<bool> SetForceStartAsync(DownloadClient config, string hash, bool value)

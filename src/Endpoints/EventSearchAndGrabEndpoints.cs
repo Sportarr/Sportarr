@@ -257,6 +257,29 @@ app.MapPost("/api/release/grab", async (
     logger.LogInformation("[GRAB] Download added to client successfully!");
     logger.LogInformation("[GRAB] Download ID (Hash): {DownloadId}", downloadId);
 
+    // Recent/older event queue priority (issue #220) - same logic as the
+    // automatic-search and RSS-sync grab paths, duplicated here since manual
+    // grabs from the UI go through this endpoint instead.
+    var isRecentGrabEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
+    var requestedGrabPriority = isRecentGrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+    if (requestedGrabPriority == DownloadPriority.First)
+    {
+        try
+        {
+            var prioritySet = await downloadClientService.SetTopPriorityAsync(downloadClient, downloadId);
+            if (!prioritySet)
+            {
+                logger.LogWarning("[GRAB] Failed to set top queue priority for {DownloadId} on {Client}",
+                    downloadId, downloadClient.Name);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[GRAB] Error setting queue priority for {DownloadId}", downloadId);
+        }
+    }
+
     // Track download in database
     logger.LogInformation("[GRAB] Creating download queue item in database...");
 

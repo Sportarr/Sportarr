@@ -31,6 +31,8 @@ interface DownloadClient {
   sequentialDownload?: boolean; // Download pieces in order (useful for debrid services like Decypharr)
   firstAndLastFirst?: boolean; // Prioritize first and last pieces (for quick video preview)
   initialState?: number; // Initial state when torrent is added: 0=Started, 1=ForceStarted, 2=Stopped
+  recentPriority?: number; // Queue priority for events aired in the last 14 days: 0=Last, 1=First
+  olderPriority?: number; // Queue priority for events older than 14 days: 0=Last, 1=First
   removeCompletedDownloads?: boolean; // Remove successful downloads from client after import (per-client setting)
   removeFailedDownloads?: boolean; // Remove failed downloads from client
   postImportMode?: number; // How imports transfer files: 0=Auto (seeding-aware), 1=Copy, 2=Hardlink, 3=Symlink, 4=Move
@@ -117,7 +119,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'usenet',
     description: 'Open source binary newsreader',
     defaultPort: 8080,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'username', 'password', 'category', 'directory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'username', 'password', 'category', 'directory', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'NZBGet',
@@ -125,7 +127,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'usenet',
     description: 'Efficient Usenet downloader',
     defaultPort: 6789,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'qBittorrent',
@@ -149,7 +151,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Lightweight torrent client',
     defaultPort: 8112,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'directory', 'postImportCategory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'rTorrent',
@@ -165,7 +167,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Feature-rich torrent client',
     defaultPort: 9091,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Aria2',
@@ -1522,6 +1524,41 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                       </p>
                     </div>
                   </div>
+
+                  {/* Recent/Older Event Queue Priority (qBittorrent only) */}
+                  {selectedTemplate?.fields.includes('recentPriority') && (
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-semibold text-white">Queue Priority</h4>
+                      <p className="text-sm text-gray-400 mb-2">
+                        Where a grab lands in the client's download queue. "Recent" means the event
+                        aired within the last 14 days; anything older uses the second setting.
+                      </p>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Recent Events</label>
+                        <select
+                          value={formData.recentPriority ?? 0}
+                          onChange={(e) => handleFormChange('recentPriority', parseInt(e.target.value))}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        >
+                          <option value={0}>Last</option>
+                          <option value={1}>First</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Older Events</label>
+                        <select
+                          value={formData.olderPriority ?? 0}
+                          onChange={(e) => handleFormChange('olderPriority', parseInt(e.target.value))}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        >
+                          <option value={0}>Last</option>
+                          <option value={1}>First</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Initial State (torrent clients only) */}
                   {selectedTemplate?.fields.includes('initialState') && (

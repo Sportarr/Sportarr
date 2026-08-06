@@ -633,6 +633,30 @@ public class DownloadClientService : IDownloadClientService
     }
 
     /// <summary>
+    /// Move a download to the front of its client's queue, for the
+    /// recent/older event priority setting (issue #220). Only qBittorrent
+    /// exposes a queue position today - other client types are a silent
+    /// no-op rather than an error, since asking for a priority the client
+    /// doesn't support isn't a failure, it just doesn't do anything yet.
+    /// </summary>
+    public async Task<bool> SetTopPriorityAsync(DownloadClient config, string downloadId)
+    {
+        try
+        {
+            return config.Type switch
+            {
+                DownloadClientType.QBittorrent => await GetQBittorrentClient(config).MoveToTopPriorityAsync(config, downloadId),
+                _ => true
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Download Client] Error setting top priority: {Message}", ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Resume download in client
     /// </summary>
     public async Task<bool> ResumeDownloadAsync(DownloadClient config, string downloadId)
