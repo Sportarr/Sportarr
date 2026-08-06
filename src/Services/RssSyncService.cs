@@ -1302,7 +1302,25 @@ public class RssSyncService : BackgroundService
         };
         db.GrabHistory.Add(grabHistory);
 
-        await db.SaveChangesAsync(cancellationToken);
+        // Same compensation as the manual grab endpoint and AutomaticSearchService:
+        // the download is already in the client, so a persistence failure here
+        // must not orphan it as an "external" download. Queue tracking is what
+        // import hangs off; retry without the history row before giving up.
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception saveEx)
+        {
+            _logger.LogError(saveEx,
+                "[RSS Sync] Failed to persist queue + history for download {DownloadId} - retrying without the history row",
+                downloadId);
+            db.Entry(grabHistory).State = EntityState.Detached;
+            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogWarning(
+                "[RSS Sync] Queue item for download {DownloadId} saved without grab history - re-grab cross-referencing is unavailable for this grab",
+                downloadId);
+        }
 
         return true;
     }
