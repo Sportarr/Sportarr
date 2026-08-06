@@ -128,6 +128,12 @@ public class LeagueEventSyncService
         // Determine current season for MonitorType filtering
         var currentSeason = DateTime.UtcNow.Year.ToString();
 
+        // MonitorType.LatestSeason default: "no authoritative season list
+        // available" degrades to the same behavior as CurrentSeason (honest
+        // fallback, not a fabricated value) - overwritten below once
+        // fullHubSeasons is populated from the API.
+        var latestSeasonWithData = currentSeason;
+
         // Check for team-based filtering
         // Note: Disable team-based filtering for certain sports where events don't have home/away teams:
         // - Fighting (UFC, Boxing, MMA): "teams" are weight classes, not fight participants
@@ -195,6 +201,14 @@ public class LeagueEventSyncService
                     .Select(s => s.StrSeason!)
                     .ToList();
                 fullHubSeasons = allSeasons.ToList();
+
+                // The most recent season the hub actually reports data for,
+                // capped at the current calendar year - during an off-season
+                // gap (next season not listed yet, or listed with no events)
+                // this correctly stays on last season instead of jumping to
+                // an empty "current" one. See SeasonStringFormatter for why.
+                latestSeasonWithData = SeasonStringFormatter.GetLatestSeasonNotAfter(allSeasons, DateTime.UtcNow.Year)
+                    ?? currentSeason;
 
                 if (fullHistoricalSync)
                 {
@@ -433,7 +447,7 @@ public class LeagueEventSyncService
             {
                 try
                 {
-                    ProcessEvent(apiEvent, league, result, currentSeason, apiEpisodeMap,
+                    ProcessEvent(apiEvent, league, result, currentSeason, latestSeasonWithData, apiEpisodeMap,
                         existingByExternalId, teamsByExternalId, scheduledRecordingsByEventId,
                         localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes);
                 }
@@ -1383,7 +1397,7 @@ public class LeagueEventSyncService
     /// Process a single event from Sportarr API API
     /// </summary>
     /// <param name="apiEpisodeMap">Episode numbers from sportarr.net API (ExternalId -> EpisodeNumber). If null, falls back to local calculation.</param>
-    private void ProcessEvent(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason,
+    private void ProcessEvent(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason, string latestSeasonWithData,
         Dictionary<string, int>? apiEpisodeMap,
         Dictionary<string, Event> existingByExternalId,
         Dictionary<string, Team> teamsByExternalId,
@@ -1793,7 +1807,7 @@ public class LeagueEventSyncService
             // For motorsports, also check if the event matches the monitored session types
             // For UFC-style fighting leagues, also check if the event matches monitored event types
             Monitored = league.Monitored
-                && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason,
+                && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
                     apiEvent.Round, apiEvent.Title, cupStageSizes)
                 && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
                 && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes),
@@ -1864,7 +1878,7 @@ public class LeagueEventSyncService
     /// <summary>
     /// Determines if an event should be monitored based on the league's MonitorType setting
     /// </summary>
-    private static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason,
+    private static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason, string latestSeasonWithData,
         string? round, string? title, IReadOnlySet<int> cupStageSizes)
     {
         var now = DateTime.UtcNow;
@@ -1874,7 +1888,11 @@ public class LeagueEventSyncService
             MonitorType.All => true,
             MonitorType.Future => eventDate > now,
             MonitorType.CurrentSeason => eventSeason == currentSeason,
-            MonitorType.LatestSeason => eventSeason == currentSeason, // Same as CurrentSeason for now
+            // Distinct from CurrentSeason: the most recent season the hub
+            // actually has data for, which during an off-season gap (next
+            // season not listed/empty yet) stays on last season instead of
+            // matching nothing. See SeasonStringFormatter.GetLatestSeasonNotAfter.
+            MonitorType.LatestSeason => eventSeason == latestSeasonWithData,
             MonitorType.NextSeason => !string.IsNullOrEmpty(eventSeason) &&
                                       int.TryParse(eventSeason.Split('-')[0], out var year) &&
                                       year == now.Year + 1,

@@ -1176,6 +1176,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         championship game without following the whole league.
                       </p>
                     )}
+                    {monitorType === 'LatestSeason' && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        Monitors the most recent season with real event data. Unlike "Current
+                        Season Only", this stays on last season during an off-season gap instead
+                        of switching to an empty upcoming season the moment the calendar year rolls
+                        over.
+                      </p>
+                    )}
                   </div>
 
                   {/* Allow Highlights */}
