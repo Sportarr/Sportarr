@@ -29,6 +29,9 @@ interface Indexer {
   minimumSeeders?: number;
   seedRatio?: number;
   seedTime?: number;
+  queryLimit?: number;
+  grabLimit?: number;
+  requestDelayMs?: number;
   seasonPackSeedTime?: number;
   earlyReleaseLimit?: number;
   additionalParameters?: string;
@@ -156,6 +159,9 @@ export default function IndexersSettings() {
       const minimumSeeders = getField('minimumSeeders') as string || '1';
       const seedRatio = getField('seedRatio') as string;
       const seedTime = getField('seedTime') as string;
+      const queryLimit = getField('queryLimit') as string;
+      const grabLimit = getField('grabLimit') as string;
+      const requestDelayMs = getField('requestDelayMs') as string;
       const seasonPackSeedTime = getField('seasonPackSeedTime') as string;
       const earlyReleaseLimit = getField('earlyReleaseLimit') as string;
       const additionalParameters = getField('additionalParameters') as string;
@@ -192,6 +198,9 @@ export default function IndexersSettings() {
         minimumSeeders: parseInt(minimumSeeders, 10),
         seedRatio: seedRatio ? parseFloat(seedRatio) : undefined,
         seedTime: seedTime ? parseInt(seedTime, 10) : undefined,
+        queryLimit: queryLimit ? parseInt(queryLimit, 10) : undefined,
+        grabLimit: grabLimit ? parseInt(grabLimit, 10) : undefined,
+        requestDelayMs: requestDelayMs ? parseInt(requestDelayMs, 10) : undefined,
         seasonPackSeedTime: seasonPackSeedTime ? parseInt(seasonPackSeedTime, 10) : undefined,
         earlyReleaseLimit: earlyReleaseLimit ? parseInt(earlyReleaseLimit, 10) : undefined,
         additionalParameters: additionalParameters || undefined,
@@ -484,6 +493,17 @@ export default function IndexersSettings() {
     if (indexer.seedTime !== undefined) {
       fields.push({ name: 'seedTime', value: String(indexer.seedTime) });
     }
+    // Always send queryLimit/grabLimit so the backend can clear them
+    // (null = unlimited) when the user empties the field.
+    fields.push({
+      name: 'queryLimit',
+      value: indexer.queryLimit !== undefined ? String(indexer.queryLimit) : '',
+    });
+    fields.push({
+      name: 'grabLimit',
+      value: indexer.grabLimit !== undefined ? String(indexer.grabLimit) : '',
+    });
+    fields.push({ name: 'requestDelayMs', value: String(indexer.requestDelayMs ?? 0) });
     if (indexer.seasonPackSeedTime !== undefined) {
       fields.push({ name: 'seasonPackSeedTime', value: String(indexer.seasonPackSeedTime) });
     }
@@ -1051,6 +1071,64 @@ export default function IndexersSettings() {
               />
               <p className="text-xs text-gray-500 mt-1">
                 Additional Newznab/Torznab parameters
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Query Limit (per hour)</label>
+              <input
+                type="number"
+                value={formData.queryLimit ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    handleFormChange('queryLimit', undefined);
+                  } else {
+                    const parsed = parseInt(raw, 10);
+                    handleFormChange('queryLimit', Number.isNaN(parsed) ? undefined : parsed);
+                  }
+                }}
+                min="0"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Maximum search/RSS queries against this indexer per hour. Leave blank for unlimited.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Grab Limit (per hour)</label>
+              <input
+                type="number"
+                value={formData.grabLimit ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    handleFormChange('grabLimit', undefined);
+                  } else {
+                    const parsed = parseInt(raw, 10);
+                    handleFormChange('grabLimit', Number.isNaN(parsed) ? undefined : parsed);
+                  }
+                }}
+                min="0"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Maximum grabs from this indexer per hour. Leave blank for unlimited.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Request Delay (ms)</label>
+              <input
+                type="number"
+                value={formData.requestDelayMs || 0}
+                onChange={(e) => handleFormChange('requestDelayMs', parseInt(e.target.value, 10) || 0)}
+                min="0"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Minimum delay between requests to this indexer. 0 = no delay.
               </p>
             </div>
 
