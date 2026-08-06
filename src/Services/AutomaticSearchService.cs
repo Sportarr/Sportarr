@@ -1327,10 +1327,31 @@ public class AutomaticSearchService : IAutomaticSearchService
                     "[Automatic Search] Failed to persist queue + history for download {DownloadId} - retrying without the history row",
                     downloadId);
                 _db.Entry(grabHistory).State = EntityState.Detached;
-                await _db.SaveChangesAsync();
-                _logger.LogWarning(
-                    "[Automatic Search] Queue item for download {DownloadId} saved without grab history - re-grab cross-referencing is unavailable for this grab",
-                    downloadId);
+                try
+                {
+                    await _db.SaveChangesAsync();
+                    _logger.LogWarning(
+                        "[Automatic Search] Queue item for download {DownloadId} saved without grab history - re-grab cross-referencing is unavailable for this grab",
+                        downloadId);
+                }
+                catch (Exception retryEx)
+                {
+                    // Same last-resort compensation as the manual grab endpoint:
+                    // the download is already active in the client but neither
+                    // save attempt persisted, so Sportarr has zero tracking
+                    // record of it. Surface this distinctly instead of letting
+                    // it fall through to the generic outer catch below, which
+                    // would report the same "Error: ..." shape as any other
+                    // failure and give no indication the download is still
+                    // live and untracked.
+                    _logger.LogCritical(retryEx,
+                        "[Automatic Search] Could not persist ANY tracking for download {DownloadId} ({Title}) - it is active in {ClientName} but Sportarr is not tracking it. Remove it from the client manually or import it manually on completion.",
+                        downloadId, evt.Title, downloadClient.Name);
+                    result.Success = false;
+                    result.Message = $"Download added to {downloadClient.Name} (id {downloadId}) but Sportarr could not save its tracking records: {retryEx.Message}. " +
+                        "The download will complete but will not auto-import; remove it from the client or import it manually.";
+                    return result;
+                }
             }
 
             // Immediately check download status so it appears in the Activity
