@@ -68,6 +68,36 @@ Optional query parameters:
 
 The exports respect your channel settings: hidden channels are excluded and only enabled channels are included. Subscription URLs are shown in **Settings > IPTV Sources** under "External App Subscription URLs".
 
+## Use Sportarr as a network tuner (Plex/Jellyfin/Emby Live TV)
+
+Sportarr can also emulate a [SiliconDust HDHomeRun](https://www.silicondust.com/) network tuner. Instead of exporting a playlist for a third-party IPTV app, this lets Plex, Jellyfin, or Emby add Sportarr directly as a Live TV tuner and pull your enabled, sports-tagged IPTV channels as its channel lineup. This is always on - there's no setting to enable it, and it requires no additional configuration beyond having IPTV channels enabled under **Settings > IPTV Channels**.
+
+Downstream players tune channels through Sportarr's own stream proxy, so the same channel enable/disable and favorites settings that control the M3U/EPG export above also control what shows up as a tuner channel.
+
+### Plex
+
+Plex's tuner setup screen relies on network discovery (SSDP), which Sportarr does not broadcast. Add it manually instead:
+
+1. Go to **Settings > Live TV & DVR > Set Up Plex DVR**
+2. If Plex doesn't auto-discover a tuner, choose the option to enter one manually and enter your Sportarr host and port, e.g. `your-server:1867`
+3. Plex fetches the channel lineup and guide data from Sportarr the same way it would from a real HDHomeRun device
+
+### Jellyfin
+
+1. Go to **Dashboard > Live TV > Tuner Devices > Add**
+2. Choose **HDHomeRun** as the tuner type
+3. Enter the URL: `http://your-server:1867`
+
+### Emby
+
+1. Go to **Live TV > Setup > Tuner Devices > Add**
+2. Choose **HDHomeRun** as the tuner type
+3. Enter the IP address or URL of your Sportarr instance
+
+### How it works
+
+Sportarr implements the three endpoints the HDHomeRun HTTP API requires (`/discover.json`, `/lineup.json`, `/lineup_status.json`) plus `/device.xml` for Plex's manual-add fallback, all served unauthenticated on the main Sportarr port like a real tuner. No separate service or port is involved.
+
 ## Known limitations
 
 - Recording quality depends entirely on your IPTV source

@@ -116,6 +116,36 @@ http://localhost:1867/api
 | GET | `/api/system/health` | Health checks |
 | GET | `/api/stats` | Application stats |
 
+### IPTV / DVR / EPG
+
+See [IPTV DVR Recording](features/iptv-dvr.md) for the full feature walkthrough. Key endpoints:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/iptv/sources` | List IPTV sources (M3U/Xtream Codes) |
+| POST | `/api/iptv/sources` | Add IPTV source |
+| GET | `/api/iptv/channels` | List imported channels |
+| GET | `/api/iptv/filtered.m3u` | Filtered M3U playlist for external IPTV apps |
+| GET | `/api/iptv/filtered.xml` | Filtered EPG (XMLTV) for external IPTV apps |
+| GET | `/api/iptv/stream/{channelId}` | Proxy a channel's live stream |
+| GET | `/api/dvr/recordings` | List DVR recordings |
+| GET | `/api/dvr/active` | Currently recording |
+| POST | `/api/dvr/events/{eventId}/schedule` | Schedule a recording for an event |
+| GET | `/api/dvr/settings` | DVR configuration |
+| GET | `/api/epg/guide` | EPG grid data (channels + programs) |
+| GET | `/api/epg/sources` | List XMLTV EPG sources |
+
+#### HDHomeRun tuner emulation
+
+Sportarr emulates a [SiliconDust HDHomeRun](https://www.silicondust.com/) network tuner so Plex/Jellyfin/Emby Live TV can add it directly - see [Use Sportarr as a network tuner](features/iptv-dvr.md#use-sportarr-as-a-network-tuner-plexjellyfinemby-live-tv). Unlike every other endpoint in this reference, these are served unauthenticated at the **server root**, not under `/api`, to match the real HDHomeRun HTTP API:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/discover.json` | Device manifest (model, tuner count, BaseURL) |
+| GET | `/lineup.json` | Channel lineup |
+| GET | `/lineup_status.json` | Tuner status |
+| GET | `/device.xml` | UPnP device description (Plex manual-add fallback) |
+
 ## Sonarr v3 Compatibility
 
 Sportarr implements Sonarr v3 API endpoints to enable integration with:
