@@ -549,6 +549,11 @@ public class FileImportService : IFileImportService
                 _logger.LogDebug("Created directory: {Directory}", destDir);
             }
 
+            // The upgrade check above has now either passed or found no existing
+            // file at all, so it's safe to clear anything stale still sitting at
+            // the destination path before the transfer runs.
+            ClearExistingDestinationFile(destinationPath);
+
             // Move or copy file (old file already deleted above if this is an upgrade)
             // Read-only blackhole clients import by copy so the external downloader
             // keeps seeding from the watch folder.
@@ -1232,23 +1237,35 @@ public class FileImportService : IFileImportService
         // imports from download client folders, not from the library itself.
         // The same-path check is only needed in LibraryImportService for manual re-imports.
 
-        // If destination file already exists, delete it.
-        // Never create numbered duplicates like (1), (2).
-        if (File.Exists(destinationPath))
-        {
-            _logger.LogWarning("[Import] Destination file already exists, deleting: {Path}", destinationPath);
-            try
-            {
-                File.Delete(destinationPath);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Import] Failed to delete existing file at destination: {Path}", destinationPath);
-                throw new Exception($"Cannot import: destination file exists and could not be deleted: {destinationPath}");
-            }
-        }
-
+        // Deliberately no filesystem mutation here - this method only computes
+        // a path. Clearing a pre-existing file at that path has to wait until
+        // after the upgrade check decides the import is actually going ahead
+        // (see ClearExistingDestinationFile), otherwise a rejected "not an
+        // upgrade" import can still delete whatever file was already there.
         return destinationPath;
+    }
+
+    /// <summary>
+    /// Removes a stale file already sitting at the computed destination path so the transfer
+    /// step doesn't fail with "file already exists". Never create numbered duplicates like (1), (2).
+    /// Must only be called once the import is committed (after the upgrade check passes) - see
+    /// the comment in BuildDestinationPath.
+    /// </summary>
+    private void ClearExistingDestinationFile(string destinationPath)
+    {
+        if (!File.Exists(destinationPath))
+            return;
+
+        _logger.LogWarning("[Import] Destination file already exists, deleting: {Path}", destinationPath);
+        try
+        {
+            File.Delete(destinationPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Import] Failed to delete existing file at destination: {Path}", destinationPath);
+            throw new Exception($"Cannot import: destination file exists and could not be deleted: {destinationPath}");
+        }
     }
 
     /// <summary>

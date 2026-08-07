@@ -136,11 +136,15 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
     // deliberately do not (thousands of events per initial sync).
     try
     {
+        var leagueName = evt.LeagueId.HasValue
+            ? await db.Leagues.Where(l => l.Id == evt.LeagueId.Value).Select(l => l.Name).FirstOrDefaultAsync()
+            : null;
+
         await notificationService.SendNotificationAsync(
             NotificationTrigger.OnEventAdded,
             $"Event added: {evt.Title}",
             $"Date: {evt.EventDate:yyyy-MM-dd HH:mm} UTC\nSport: {evt.Sport ?? "Unknown"}",
-            new NotificationEventData { EventId = evt.Id, EventExternalId = evt.ExternalId, EventTitle = evt.Title ?? "", Sport = evt.Sport });
+            new NotificationEventData { EventId = evt.Id, EventExternalId = evt.ExternalId, EventTitle = evt.Title ?? "", League = leagueName, Sport = evt.Sport });
     }
     catch { /* notification failure never fails the add */ }
 
