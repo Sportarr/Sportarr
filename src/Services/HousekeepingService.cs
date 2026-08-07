@@ -94,10 +94,10 @@ public class HousekeepingService : BackgroundService
                     NotificationTrigger.OnApplicationUpdate,
                     $"Sportarr updated to {current}",
                     $"Previous version: {previous}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "previousVersion", previous },
-                        { "newVersion", current },
+                        PreviousVersion = previous,
+                        NewVersion = current,
                     });
             }
 

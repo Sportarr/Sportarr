@@ -244,13 +244,17 @@ public class PendingReleaseReaperService : BackgroundService
                 NotificationTrigger.OnGrab,
                 $"Grabbed: {pending.Title}",
                 $"Event: {evt.Title}\nQuality: {pending.Quality ?? "Unknown"}\nIndexer: {pending.Indexer}\nSize: {pending.Size / 1024.0 / 1024.0 / 1024.0:F2} GB\nReleased from delay profile hold.",
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "eventId", evt.Id },
-                    { "eventTitle", evt.Title ?? "" },
-                    { "indexer", pending.Indexer ?? "" },
-                    { "quality", pending.Quality ?? "" },
-                    { "downloadId", downloadId },
+                    EventId = evt.Id,
+                    EventExternalId = evt.ExternalId,
+                    EventTitle = evt.Title ?? "",
+                    League = evt.League?.Name,
+                    Sport = evt.Sport,
+                    Indexer = pending.Indexer ?? "",
+                    Quality = pending.Quality ?? "",
+                    Size = pending.Size,
+                    DownloadId = downloadId,
                 },
                 evt.League?.Tags);
         }

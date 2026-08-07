@@ -1240,13 +1240,17 @@ public class AutomaticSearchService : IAutomaticSearchService
                     NotificationTrigger.OnGrab,
                     $"Grabbed: {bestRelease.Title}",
                     $"Event: {evt.Title}\nQuality: {bestRelease.Quality ?? "Unknown"}\nIndexer: {bestRelease.Indexer}\nSize: {bestRelease.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventId", eventId },
-                        { "eventTitle", evt.Title ?? "" },
-                        { "indexer", bestRelease.Indexer },
-                        { "quality", bestRelease.Quality ?? "" },
-                        { "downloadId", downloadId },
+                        EventId = eventId,
+                        EventExternalId = evt.ExternalId,
+                        EventTitle = evt.Title ?? "",
+                        League = evt.League?.Name,
+                        Sport = evt.Sport,
+                        Indexer = bestRelease.Indexer,
+                        Quality = bestRelease.Quality ?? "",
+                        Size = bestRelease.Size,
+                        DownloadId = downloadId,
                     },
                     evt.League?.Tags);
             }

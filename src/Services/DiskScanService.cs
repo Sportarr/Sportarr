@@ -865,7 +865,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                     NotificationTrigger.OnManualInteractionRequired,
                     $"{discoveredCount} file(s) awaiting manual import",
                     "Untracked files were discovered on disk and queued for review under Activity.",
-                    new Dictionary<string, object> { { "pendingCount", discoveredCount } });
+                    new NotificationEventData { PendingCount = discoveredCount });
             }
             catch (Exception ex)
             {

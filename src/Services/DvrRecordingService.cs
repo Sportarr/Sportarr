@@ -80,12 +80,14 @@ public class DvrRecordingService
         try
         {
             await _notificationService.SendNotificationAsync(trigger, title, message,
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "recordingId", recording.Id },
-                    { "recordingTitle", recording.Title },
-                    { "channelId", recording.ChannelId },
-                    { "eventId", recording.EventId ?? 0 },
+                    RecordingId = recording.Id,
+                    RecordingTitle = recording.Title,
+                    ChannelId = recording.ChannelId,
+                    // Null (omitted from the wire payload), not a fake 0,
+                    // when this recording has no linked library event.
+                    EventId = recording.EventId,
                 });
         }
         catch (Exception ex)

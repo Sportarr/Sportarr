@@ -84,10 +84,10 @@ public class HealthCheckMonitorService : BackgroundService
                     NotificationTrigger.OnHealthIssue,
                     $"Health issue: {issue.Type}",
                     issue.Message + (string.IsNullOrEmpty(issue.Details) ? "" : $"\n{issue.Details}"),
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "type", issue.Type.ToString() },
-                        { "level", issue.Level.ToString() },
+                        HealthType = issue.Type.ToString(),
+                        HealthLevel = issue.Level.ToString(),
                     });
             }
             catch (Exception ex)
@@ -104,8 +104,7 @@ public class HealthCheckMonitorService : BackgroundService
                 await notificationService.SendNotificationAsync(
                     NotificationTrigger.OnHealthRestored,
                     "Health restored",
-                    "All previously reported health issues have cleared.",
-                    new Dictionary<string, object>());
+                    "All previously reported health issues have cleared.");
             }
             catch (Exception ex)
             {

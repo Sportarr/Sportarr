@@ -170,11 +170,11 @@ public class LeagueAddService
                     NotificationTrigger.OnEventAdded,
                     $"League Added: {league.Name}",
                     $"Sport: {league.Sport}\nMonitored: {league.Monitored}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventTitle", league.Name },
-                        { "league", league.Name },
-                        { "sport", league.Sport },
+                        EventTitle = league.Name,
+                        League = league.Name,
+                        Sport = league.Sport,
                     },
                     league.Tags);
             }

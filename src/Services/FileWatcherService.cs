@@ -529,10 +529,10 @@ public class FileWatcherService : BackgroundService
                     NotificationTrigger.OnManualInteractionRequired,
                     $"Manual import required: {fileInfo.Name}",
                     $"A new file appeared in the library folders and could not be matched automatically (confidence {confidence}%). Review it under Activity.",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "filePath", filePath },
-                        { "confidence", confidence },
+                        FilePath = filePath,
+                        Confidence = confidence,
                     });
             }
             catch (Exception notifyEx)

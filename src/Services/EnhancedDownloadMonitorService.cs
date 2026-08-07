@@ -1368,11 +1368,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
                                 NotificationTrigger.OnManualInteractionRequired,
                                 $"Manual import required: {download.Title}",
                                 $"An external download finished in {client.Name} and could not be matched automatically (confidence {confidence}%). Review it under Activity.",
-                                new Dictionary<string, object>
+                                new NotificationEventData
                                 {
-                                    { "downloadTitle", download.Title },
-                                    { "client", client.Name },
-                                    { "confidence", confidence },
+                                    DownloadTitle = download.Title,
+                                    DownloadClientName = client.Name,
+                                    Confidence = confidence,
                                 });
                         }
                         catch (Exception notifyEx)

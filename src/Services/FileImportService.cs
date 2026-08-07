@@ -739,15 +739,21 @@ public class FileImportService : IFileImportService
                     isUpgradeImport ? NotificationTrigger.OnUpgrade : NotificationTrigger.OnDownload,
                     $"{(isUpgradeImport ? "Upgraded" : "Imported")}: {eventInfo.Title}",
                     $"File: {Path.GetFileName(destinationPath)}\nQuality: {qualityString}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventId", eventInfo.Id },
-                        { "eventTitle", eventInfo.Title ?? "" },
-                        { "league", eventInfo.League?.Name ?? "" },
-                        { "sport", eventInfo.Sport ?? "" },
-                        { "filePath", destinationPath },
-                        { "quality", qualityString },
-                        { "size", actualFileSize }
+                        EventId = eventInfo.Id,
+                        EventExternalId = eventInfo.ExternalId,
+                        EventTitle = eventInfo.Title ?? "",
+                        League = eventInfo.League?.Name,
+                        Sport = eventInfo.Sport,
+                        FilePath = destinationPath,
+                        Quality = qualityString,
+                        Size = actualFileSize,
+                        // Correlates this Download/Upgrade back to the Grab
+                        // that produced it - the two previously shared no id.
+                        Indexer = download.Indexer,
+                        DownloadId = download.DownloadId,
+                        IsUpgrade = isUpgradeImport
                     },
                     eventInfo.League?.Tags);
             }
@@ -782,13 +788,14 @@ public class FileImportService : IFileImportService
                         NotificationTrigger.OnEventFileDeleteForUpgrade,
                         $"Deleted for upgrade: {eventInfo.Title}",
                         $"Old file: {Path.GetFileName(upgradedOldFilePath)}",
-                        new Dictionary<string, object>
+                        new NotificationEventData
                         {
-                            { "eventId", eventInfo.Id },
-                            { "eventTitle", eventInfo.Title ?? "" },
-                            { "league", eventInfo.League?.Name ?? "" },
-                            { "sport", eventInfo.Sport ?? "" },
-                            { "filePath", upgradedOldFilePath }
+                            EventId = eventInfo.Id,
+                            EventExternalId = eventInfo.ExternalId,
+                            EventTitle = eventInfo.Title ?? "",
+                            League = eventInfo.League?.Name,
+                            Sport = eventInfo.Sport,
+                            FilePath = upgradedOldFilePath
                         },
                         eventInfo.League?.Tags);
                 }

@@ -757,14 +757,16 @@ public class LibraryImportService
                     NotificationTrigger.OnDownload,
                     $"Imported: {evt.Title}",
                     $"File: {Path.GetFileName(path)}\nQuality: {quality}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventId", evt.Id },
-                        { "eventTitle", evt.Title ?? "" },
-                        { "league", evt.League?.Name ?? "" },
-                        { "sport", evt.Sport ?? "" },
-                        { "filePath", path },
-                        { "quality", quality }
+                        EventId = evt.Id,
+                        EventExternalId = evt.ExternalId,
+                        EventTitle = evt.Title ?? "",
+                        League = evt.League?.Name,
+                        Sport = evt.Sport,
+                        FilePath = path,
+                        Quality = quality,
+                        Size = file.Size
                     },
                     evt.League?.Tags);
             }

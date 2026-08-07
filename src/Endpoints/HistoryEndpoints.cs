@@ -557,6 +557,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 {
     var grabHistory = await db.GrabHistory
         .Include(g => g.Event)
+            .ThenInclude(e => e!.League)
         .FirstOrDefaultAsync(g => g.Id == id);
 
     if (grabHistory is null)
@@ -637,12 +638,19 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
                     NotificationTrigger.OnGrab,
                     $"Grabbed: {grabHistory.Title}",
                     $"Re-grab from history\nIndexer: {grabHistory.Indexer ?? "Unknown"}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventId", grabHistory.EventId },
-                        { "indexer", grabHistory.Indexer ?? "" },
-                        { "downloadId", downloadId },
-                    });
+                        EventId = grabHistory.EventId,
+                        EventExternalId = grabHistory.Event?.ExternalId,
+                        EventTitle = grabHistory.Event?.Title ?? "",
+                        League = grabHistory.Event?.League?.Name,
+                        Sport = grabHistory.Event?.Sport,
+                        Indexer = grabHistory.Indexer ?? "",
+                        Quality = grabHistory.Quality ?? "",
+                        Size = grabHistory.Size,
+                        DownloadId = downloadId,
+                    },
+                    grabHistory.Event?.League?.Tags);
             }
             catch { /* notification failure never fails the regrab */ }
         }

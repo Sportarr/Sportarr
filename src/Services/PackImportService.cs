@@ -853,14 +853,16 @@ public class PackImportService
                 NotificationTrigger.OnDownload,
                 $"Imported: {eventInfo.Title}",
                 $"File: {fileName}\nQuality: {eventInfo.Quality}",
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "eventId", eventInfo.Id },
-                    { "eventTitle", eventInfo.Title ?? "" },
-                    { "league", eventInfo.League?.Name ?? "" },
-                    { "sport", eventInfo.Sport ?? "" },
-                    { "filePath", destinationPath },
-                    { "quality", eventInfo.Quality ?? "" }
+                    EventId = eventInfo.Id,
+                    EventExternalId = eventInfo.ExternalId,
+                    EventTitle = eventInfo.Title ?? "",
+                    League = eventInfo.League?.Name,
+                    Sport = eventInfo.Sport,
+                    FilePath = destinationPath,
+                    Quality = eventInfo.Quality ?? "",
+                    Size = fileInfo.Length
                 },
                 eventInfo.League?.Tags);
         }

@@ -140,7 +140,7 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
             NotificationTrigger.OnEventAdded,
             $"Event added: {evt.Title}",
             $"Date: {evt.EventDate:yyyy-MM-dd HH:mm} UTC\nSport: {evt.Sport ?? "Unknown"}",
-            new Dictionary<string, object> { { "eventId", evt.Id }, { "eventTitle", evt.Title ?? "" } });
+            new NotificationEventData { EventId = evt.Id, EventExternalId = evt.ExternalId, EventTitle = evt.Title ?? "", Sport = evt.Sport });
     }
     catch { /* notification failure never fails the add */ }
 
@@ -238,6 +238,7 @@ app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db, Notif
     if (evt is null) return Results.NotFound();
 
     var deletedTitle = evt.Title;
+    var deletedExternalId = evt.ExternalId;
     db.Events.Remove(evt);
     await db.SaveChangesAsync();
 
@@ -247,7 +248,7 @@ app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db, Notif
             NotificationTrigger.OnEventDelete,
             $"Event deleted: {deletedTitle}",
             $"The event was removed from the library.",
-            new Dictionary<string, object> { { "eventId", id }, { "eventTitle", deletedTitle ?? "" } });
+            new NotificationEventData { EventId = id, EventExternalId = deletedExternalId, EventTitle = deletedTitle ?? "" });
     }
     catch { /* notification failure never fails the delete */ }
 
@@ -755,13 +756,14 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
                 string.IsNullOrEmpty(filePath)
                     ? $"Files removed for {evt.Title}"
                     : $"File: {Path.GetFileName(filePath)}",
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "eventId", evt.Id },
-                    { "eventTitle", evt.Title ?? "" },
-                    { "league", evt.League?.Name ?? "" },
-                    { "sport", evt.Sport ?? "" },
-                    { "filePath", filePath ?? "" }
+                    EventId = evt.Id,
+                    EventExternalId = evt.ExternalId,
+                    EventTitle = evt.Title ?? "",
+                    League = evt.League?.Name,
+                    Sport = evt.Sport,
+                    FilePath = filePath
                 },
                 evt.League?.Tags);
         }

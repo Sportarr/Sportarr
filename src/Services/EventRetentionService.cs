@@ -198,13 +198,14 @@ public class EventRetentionService : BackgroundService
                         NotificationTrigger.OnEventFileDelete,
                         $"Deleted: {evt.Title}",
                         $"Removed by league retention policy ({retentionDays} days)",
-                        new Dictionary<string, object>
+                        new NotificationEventData
                         {
-                            { "eventId", evt.Id },
-                            { "eventTitle", evt.Title ?? "" },
-                            { "league", evt.League?.Name ?? "" },
-                            { "sport", evt.Sport ?? "" },
-                            { "filePath", representativeDeletedPath ?? "" }
+                            EventId = evt.Id,
+                            EventExternalId = evt.ExternalId,
+                            EventTitle = evt.Title ?? "",
+                            League = evt.League?.Name,
+                            Sport = evt.Sport,
+                            FilePath = representativeDeletedPath
                         },
                         evt.League?.Tags);
                 }

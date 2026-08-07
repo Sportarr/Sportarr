@@ -1251,13 +1251,17 @@ public class RssSyncService : BackgroundService
                 NotificationTrigger.OnGrab,
                 $"Grabbed: {release.Title}",
                 $"Event: {evt.Title}\nQuality: {release.Quality ?? "Unknown"}\nIndexer: {release.Indexer}\nSize: {release.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "eventId", evt.Id },
-                    { "eventTitle", evt.Title ?? "" },
-                    { "indexer", release.Indexer },
-                    { "quality", release.Quality ?? "" },
-                    { "downloadId", downloadId },
+                    EventId = evt.Id,
+                    EventExternalId = evt.ExternalId,
+                    EventTitle = evt.Title ?? "",
+                    League = evt.League?.Name,
+                    Sport = evt.Sport,
+                    Indexer = release.Indexer,
+                    Quality = release.Quality ?? "",
+                    Size = release.Size,
+                    DownloadId = downloadId,
                 },
                 evt.League?.Tags);
         }

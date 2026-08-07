@@ -310,17 +310,13 @@ public class FileRenameService
     {
         try
         {
-            var metadata = new Dictionary<string, object> { { "renamedCount", count } };
-            if (!string.IsNullOrEmpty(scanPath))
-            {
-                metadata["seriesPath"] = scanPath;
-            }
+            var data = new NotificationEventData { RenamedCount = count, SeriesPath = scanPath };
 
             await _notificationService.SendNotificationAsync(
                 NotificationTrigger.OnRename,
                 $"Renamed {count} file(s)",
                 $"Scope: {scopeDescription}",
-                metadata,
+                data,
                 leagueTags);
         }
         catch (Exception ex)
