@@ -306,19 +306,27 @@ public class EventChannelResolverService
 
         var matches = new Dictionary<int, EpgProgram>();
         // Playlists routinely carry the same tvg-id on several channel
-        // entries (SD/HD/FHD variants, regional mirrors), so a plain
-        // ToDictionary throws and kills scheduling for the event every
-        // cycle. First entry wins; the per-channel scoring below already
-        // picks one program per tvg-id anyway.
-        var channelByTvgId = new Dictionary<string, IptvChannel>();
+        // entries (SD/HD/FHD variants, regional mirrors). Every one of
+        // those channels airs the same programming, so every one of them
+        // needs to be credited with the match - crediting only a single
+        // arbitrary representative meant the resolver's final channel
+        // choice quietly depended on DB row order instead of any real
+        // signal, and could end up preferring a dead/broken duplicate
+        // over a working one whenever it happened to load first.
+        var channelsByTvgId = new Dictionary<string, List<IptvChannel>>();
         foreach (var c in channelsWithTvg)
         {
-            channelByTvgId.TryAdd(c.TvgId!, c);
+            if (!channelsByTvgId.TryGetValue(c.TvgId!, out var group))
+            {
+                group = new List<IptvChannel>();
+                channelsByTvgId[c.TvgId!] = group;
+            }
+            group.Add(c);
         }
-        // Group programs by channel so we pick at most one per channel.
+        // Group programs by channel so we pick at most one program per tvg-id.
         foreach (var group in programs.GroupBy(p => p.ChannelId))
         {
-            if (!channelByTvgId.TryGetValue(group.Key, out var ch)) continue;
+            if (!channelsByTvgId.TryGetValue(group.Key, out var candidateChannels)) continue;
             EpgProgram? best = null;
             int bestScore = 0;
             foreach (var p in group)
@@ -336,7 +344,11 @@ public class EventChannelResolverService
                     bestScore = score;
                 }
             }
-            if (best != null) matches[ch.Id] = best;
+            if (best != null)
+            {
+                foreach (var ch in candidateChannels)
+                    matches[ch.Id] = best;
+            }
         }
         return matches;
     }
