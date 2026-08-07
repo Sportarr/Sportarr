@@ -87,6 +87,7 @@ app.MapPost("/api/release/grab", async (
     SportarrDbContext db,
     DownloadClientService downloadClientService,
     ConfigService configService,
+    NotificationService notificationService,
     ILogger<Program> logger) =>
 {
     // Parse the request body which contains both release and eventId
@@ -409,6 +410,41 @@ app.MapPost("/api/release/grab", async (
                         "The download will complete but will not auto-import; remove it from the client or import it manually.",
                 statusCode: 500);
         }
+    }
+
+    // Interactive/manual grabs from the search UI never fired OnGrab at all -
+    // only the automatic-search, RSS-sync, and pending-release-reaper paths
+    // did. Sonarr/Radarr fire Grab for both automatic and interactive-search
+    // grabs, so integrations built against that contract (e.g. Notifiarr)
+    // never saw a Grab payload for anything a user grabbed by hand. One
+    // notification per event in the pack, matching how each event gets its
+    // own Download/Upgrade notification later at import time.
+    try
+    {
+        foreach (var packEvent in packEvents)
+        {
+            await notificationService.SendNotificationAsync(
+                NotificationTrigger.OnGrab,
+                $"Grabbed: {release.Title}",
+                $"Event: {packEvent.Title}\nQuality: {release.Quality ?? "Unknown"}\nIndexer: {release.Indexer}\nSize: {release.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
+                new NotificationEventData
+                {
+                    EventId = packEvent.Id,
+                    EventExternalId = packEvent.ExternalId,
+                    EventTitle = packEvent.Title ?? "",
+                    League = packEvent.League?.Name,
+                    Sport = packEvent.Sport,
+                    Indexer = release.Indexer,
+                    Quality = release.Quality ?? "",
+                    Size = release.Size,
+                    DownloadId = downloadId,
+                },
+                packEvent.League?.Tags);
+        }
+    }
+    catch (Exception notifyEx)
+    {
+        logger.LogWarning(notifyEx, "[GRAB] Failed to send grab notification");
     }
 
     // Use the first queue item for status tracking
