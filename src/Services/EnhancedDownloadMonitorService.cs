@@ -681,7 +681,19 @@ public class EnhancedDownloadMonitorService : BackgroundService
             download.Status = DownloadStatus.Importing;
 
             // Import the download
-            await fileImportService.ImportDownloadAsync(download);
+            var importResult = await fileImportService.ImportDownloadAsync(download);
+
+            // A null result means ImportDownloadAsync rejected the import (e.g. "not an
+            // upgrade") without throwing - it has already set Status/ErrorMessage and
+            // saved. Overwriting that with Imported here would hide a real rejection
+            // behind a false success log, and removing the download from its client
+            // below would delete a release that was never actually imported.
+            if (importResult == null)
+            {
+                _logger.LogInformation("[Enhanced Download Monitor] Import rejected, not treating as success: {Title} - {Reason}",
+                    download.Title, download.ErrorMessage);
+                return;
+            }
 
             download.Status = DownloadStatus.Imported;
             download.ImportedAt = DateTime.UtcNow;

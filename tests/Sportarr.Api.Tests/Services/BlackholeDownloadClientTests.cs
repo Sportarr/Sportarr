@@ -94,6 +94,29 @@ public class BlackholeDownloadClientTests : IDisposable
     }
 
     [Fact]
+    public void FindWatchFolderMatch_PrefersExactMatchOverFuzzyCrossMatchFromSiblingRelease()
+    {
+        // Two parts of the same fight card generate near-identical titles -
+        // only the part name and the release-id suffix differ - so each
+        // one's real output also clears the fuzzy token-majority threshold
+        // against the OTHER part's download id. When both have already
+        // landed in the watch folder, the exact/prefix match for the id
+        // being searched for must win over the fuzzy cross-match, not
+        // whichever the directory listing happens to enumerate first.
+        var prelimsId = "UFC.336.Prelims.WEBDL.720p.RlsD1";
+        var mainCardId = "UFC.336.Main.Card.WEBDL.720p.RlsD2";
+
+        File.WriteAllText(Path.Combine(_watchFolder, prelimsId + ".mkv"), "video");
+        File.WriteAllText(Path.Combine(_watchFolder, mainCardId + ".mkv"), "video");
+
+        var prelimsMatch = BlackholeDownloadClient.FindWatchFolderMatch(_watchFolder, prelimsId);
+        var mainCardMatch = BlackholeDownloadClient.FindWatchFolderMatch(_watchFolder, mainCardId);
+
+        prelimsMatch.Should().Be(Path.Combine(_watchFolder, prelimsId + ".mkv"));
+        mainCardMatch.Should().Be(Path.Combine(_watchFolder, mainCardId + ".mkv"));
+    }
+
+    [Fact]
     public void FindWatchFolderMatch_ReturnsNullWhenNothingMatches()
     {
         File.WriteAllText(Path.Combine(_watchFolder, "unrelated.mkv"), "video");
