@@ -123,7 +123,7 @@ export default function LeagueSearchPage() {
 
     // Filter by search query
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.trim().toLowerCase();
       filtered = filtered.filter(league =>
         (league.strLeague ?? '').toLowerCase().includes(query) ||
         league.strLeagueAlternate?.toLowerCase().includes(query) ||
