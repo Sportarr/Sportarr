@@ -531,7 +531,7 @@ public class FileWatcherService : BackgroundService
                     $"A new file appeared in the library folders and could not be matched automatically (confidence {confidence}%). Review it under Activity.",
                     new NotificationEventData
                     {
-                        FilePath = filePath,
+                        File = new NotificationFileData { Path = filePath },
                         Confidence = confidence,
                     });
             }

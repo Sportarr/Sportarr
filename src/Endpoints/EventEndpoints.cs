@@ -390,7 +390,8 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     // they can drop the now-missing item — the same partial scan the import fires,
     // just pointed at the deleted file's folder. Plex notices the file is missing
     // on the rescan and removes it (when "empty trash after scan" is enabled).
-    await NotifyFileDeletedAsync(notificationService, logger, evt, file.FilePath);
+    await NotifyFileDeletedAsync(notificationService, logger, evt, file.FilePath,
+        new List<NotificationFileData> { new() { Path = file.FilePath, Quality = file.Quality, Size = file.Size } });
 
     try
     {
@@ -521,12 +522,16 @@ app.MapDelete("/api/events/{id:int}/files", async (
         .Distinct()
         .ToList();
 
-    // Capture one file path before deletion so we can point the media-server
-    // rescan at the event's folder afterwards (all parts share a folder, so a
-    // single representative path is enough to make Plex re-check it).
-    var representativeDeletedPath = evt.Files
-        .Select(f => f.FilePath)
-        .FirstOrDefault(p => !string.IsNullOrEmpty(p));
+    // Capture every file's path/quality/size before deletion - both to point
+    // the media-server rescan at the event's folder afterwards (all parts
+    // share a folder, so any one path works for that) and so the webhook's
+    // DeletedFiles carries the real per-file data, not just one representative
+    // guess, so consumers can show total recovered space across all parts.
+    var deletedFilesData = evt.Files
+        .Where(f => !string.IsNullOrEmpty(f.FilePath))
+        .Select(f => new NotificationFileData { Path = f.FilePath, Quality = f.Quality, Size = f.Size })
+        .ToList();
+    var representativeDeletedPath = deletedFilesData.FirstOrDefault()?.Path;
 
     var config = await configService.GetConfigAsync();
     var recycleBinPath = config.RecycleBin;
@@ -582,7 +587,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
     await db.SaveChangesAsync();
 
     // Tell media servers / webhooks the files are gone (see single-file delete).
-    await NotifyFileDeletedAsync(notificationService, logger, evt, representativeDeletedPath);
+    await NotifyFileDeletedAsync(notificationService, logger, evt, representativeDeletedPath, deletedFilesData);
 
     // Handle blocklist action if specified
     if (blocklistAction == "blocklistAndSearch" || blocklistAction == "blocklistOnly")
@@ -746,7 +751,8 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
         NotificationService notificationService,
         ILogger logger,
         Event evt,
-        string? filePath)
+        string? filePath,
+        List<NotificationFileData>? deletedFiles = null)
     {
         try
         {
@@ -763,7 +769,9 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
                     EventTitle = evt.Title ?? "",
                     League = evt.League?.Name,
                     Sport = evt.Sport,
-                    FilePath = filePath
+                    DeletedFiles = deletedFiles ?? (!string.IsNullOrEmpty(filePath)
+                        ? new List<NotificationFileData> { new() { Path = filePath } }
+                        : null)
                 },
                 evt.League?.Tags);
         }

@@ -63,11 +63,11 @@ public class NotificationService : INotificationService
                     continue;
 
                 // Media server connections (Plex/Jellyfin/Emby) need a path
-                // for partial scans. Imports carry FilePath; renames carry
+                // for partial scans. Imports carry File.Path; renames carry
                 // SeriesPath (the common folder of the renamed files) -
                 // accept either so a rename triggers a folder scan instead
                 // of falling back to a full library refresh.
-                var filePath = !string.IsNullOrEmpty(data?.FilePath) ? data.FilePath : data?.SeriesPath;
+                var filePath = !string.IsNullOrEmpty(data?.File?.Path) ? data!.File!.Path : data?.SeriesPath;
 
                 var success = notification.Implementation switch
                 {
@@ -865,13 +865,13 @@ public class NotificationService : INotificationService
     };
 
     /// <summary>
-    /// Builds the webhook payload. It is a superset: the standard eventType plus nested "series"
-    /// and "episodeFile" objects that path-driven consumers (e.g. Autoscan, which scans
-    /// path.Dir(path.Join(series.path, episodeFile.relativePath))) require, alongside Sportarr's
-    /// own flat fields for anyone reading those directly. Consumers ignore fields they don't
-    /// recognise, so this single shape works everywhere without a per-connection toggle. The
-    /// nested series/episodeFile objects are derived here, once, from the flat fields below -
-    /// never independently set - so they can't drift from what they mirror.
+    /// Builds the webhook payload, mirroring Sonarr's real webhook shape (WebhookSeries/
+    /// WebhookRelease/WebhookEpisodeFile/DeletedFiles) rather than a flat field list - direct
+    /// feedback from an integration partner who builds against both. Series/Release/EpisodeFile/
+    /// DeletedFiles are derived here, once, from NotificationEventData's flat producer-facing
+    /// fields - never independently set - so they can't drift from what they mirror. Consumers
+    /// ignore objects they don't recognise, so this single shape works everywhere without a
+    /// per-connection toggle.
     /// </summary>
     internal static WebhookPayload BuildWebhookPayload(
         string title, string message, NotificationTrigger trigger, NotificationEventData? data, string instanceName)
@@ -885,18 +885,8 @@ public class NotificationService : INotificationService
             Message = message,
             ApplicationUrl = "",
             InstanceName = instanceName,
-            EventId = data?.EventId,
-            EventExternalId = data?.EventExternalId,
-            EventTitle = data?.EventTitle,
-            League = data?.League,
-            Sport = data?.Sport,
-            Quality = data?.Quality,
-            Size = data?.Size,
-            Indexer = data?.Indexer,
             DownloadId = data?.DownloadId,
             IsUpgrade = data?.IsUpgrade,
-            FilePath = data?.FilePath,
-            SeriesPath = data?.SeriesPath,
             RenamedCount = data?.RenamedCount,
             HealthType = data?.HealthType,
             HealthLevel = data?.HealthLevel,
@@ -911,36 +901,63 @@ public class NotificationService : INotificationService
             ChannelId = data?.ChannelId
         };
 
-        // Rename events carry the covering directory directly (there's no
-        // single file to derive it from): consumers like Autoscan rescan
-        // series.path on Rename, mirroring Sonarr's webhook.
-        if (!string.IsNullOrEmpty(data?.SeriesPath))
+        // Series: event/league/sport identity, whenever this trigger concerns a specific
+        // event (or a rename batch, which has no single event but does have a covering
+        // directory). Path comes from whichever file this event is actually about - Rename
+        // supplies its covering directory directly since there's no single file to derive
+        // it from.
+        if (data != null && (data.EventId != null || data.EventTitle != null || !string.IsNullOrEmpty(data.SeriesPath)))
         {
+            var seriesPath = data.SeriesPath
+                ?? (data.File != null ? Path.GetDirectoryName(data.File.Path) : null)
+                ?? (data.DeletedFiles is { Count: > 0 } ? Path.GetDirectoryName(data.DeletedFiles[0].Path) : null);
+
             payload.Series = new WebhookSeriesInfo
             {
-                Path = data.SeriesPath,
-                Title = data.EventTitle ?? ""
+                Id = data.EventId,
+                ExternalId = data.EventExternalId,
+                Title = data.EventTitle ?? "",
+                Path = seriesPath,
+                League = data.League,
+                Sport = data.Sport
             };
         }
-        // Add the nested objects the ecosystem expects, derived from the imported file path.
-        else if (!string.IsNullOrEmpty(data?.FilePath))
+
+        // Release: Grab only - the release's own claimed quality/size, no file exists yet.
+        if (data?.Indexer != null || data?.Quality != null)
         {
-            payload.Series = new WebhookSeriesInfo
+            payload.Release = new WebhookReleaseInfo
             {
-                Path = Path.GetDirectoryName(data.FilePath) ?? "",
-                Title = data.EventTitle ?? ""
-            };
-            payload.EpisodeFile = new WebhookEpisodeFileInfo
-            {
-                RelativePath = Path.GetFileName(data.FilePath),
-                Path = data.FilePath
+                Quality = data?.Quality,
+                Indexer = data?.Indexer,
+                Size = data?.Size
             };
         }
-        else if (data?.EventTitle != null)
+
+        // EpisodeFile: Download/Upgrade only - the newly imported file.
+        if (data?.File != null)
         {
-            // No file path (e.g. a series-level delete) — still emit series so consumers have
-            // a title to log and a path field, even if empty.
-            payload.Series = new WebhookSeriesInfo { Title = data.EventTitle };
+            payload.EpisodeFile = new WebhookFileInfo
+            {
+                RelativePath = Path.GetFileName(data.File.Path),
+                Path = data.File.Path,
+                Quality = data.File.Quality,
+                Size = data.File.Size
+            };
+        }
+
+        // DeletedFiles: Upgrade's replaced file(s), or a pure delete's removed file(s) -
+        // same field either way, so consumers handle "this stopped existing" one way
+        // regardless of which trigger produced it.
+        if (data?.DeletedFiles is { Count: > 0 } deletedFiles)
+        {
+            payload.DeletedFiles = deletedFiles.Select(f => new WebhookFileInfo
+            {
+                RelativePath = Path.GetFileName(f.Path),
+                Path = f.Path,
+                Quality = f.Quality,
+                Size = f.Size
+            }).ToList();
         }
 
         return payload;

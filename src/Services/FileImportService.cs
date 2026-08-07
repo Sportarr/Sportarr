@@ -746,14 +746,15 @@ public class FileImportService : IFileImportService
                         EventTitle = eventInfo.Title ?? "",
                         League = eventInfo.League?.Name,
                         Sport = eventInfo.Sport,
-                        FilePath = destinationPath,
-                        Quality = qualityString,
-                        Size = actualFileSize,
+                        File = new NotificationFileData { Path = destinationPath, Quality = qualityString, Size = actualFileSize },
                         // Correlates this Download/Upgrade back to the Grab
                         // that produced it - the two previously shared no id.
                         Indexer = download.Indexer,
                         DownloadId = download.DownloadId,
-                        IsUpgrade = isUpgradeImport
+                        IsUpgrade = isUpgradeImport,
+                        DeletedFiles = isUpgradeImport && upgradedFile != null
+                            ? new List<NotificationFileData> { new() { Path = upgradedFile.FilePath, Quality = upgradedFile.Quality, Size = upgradedFile.Size } }
+                            : null
                     },
                     eventInfo.League?.Tags);
             }
@@ -795,7 +796,10 @@ public class FileImportService : IFileImportService
                             EventTitle = eventInfo.Title ?? "",
                             League = eventInfo.League?.Name,
                             Sport = eventInfo.Sport,
-                            FilePath = upgradedOldFilePath
+                            DeletedFiles = new List<NotificationFileData>
+                            {
+                                new() { Path = upgradedOldFilePath, Quality = upgradedFile?.Quality, Size = upgradedFile?.Size }
+                            }
                         },
                         eventInfo.League?.Tags);
                 }

@@ -764,9 +764,7 @@ public class LibraryImportService
                         EventTitle = evt.Title ?? "",
                         League = evt.League?.Name,
                         Sport = evt.Sport,
-                        FilePath = path,
-                        Quality = quality,
-                        Size = file.Size
+                        File = new NotificationFileData { Path = path, Quality = quality, Size = file.Size }
                     },
                     evt.League?.Tags);
             }

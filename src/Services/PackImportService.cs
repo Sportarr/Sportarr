@@ -860,9 +860,7 @@ public class PackImportService
                     EventTitle = eventInfo.Title ?? "",
                     League = eventInfo.League?.Name,
                     Sport = eventInfo.Sport,
-                    FilePath = destinationPath,
-                    Quality = eventInfo.Quality ?? "",
-                    Size = fileInfo.Length
+                    File = new NotificationFileData { Path = destinationPath, Quality = eventInfo.Quality, Size = fileInfo.Length }
                 },
                 eventInfo.League?.Tags);
         }
