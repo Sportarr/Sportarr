@@ -73,6 +73,7 @@ public class MediaFileParser
             parsed.VideoCodec = probed.VideoCodec;
         if (string.IsNullOrEmpty(parsed.AudioCodec) && !string.IsNullOrEmpty(probed.AudioCodec))
             parsed.AudioCodec = probed.AudioCodec;
+        parsed.Duration = probed.Duration;
 
         // Embedded SPORTARR tag (docs/RELEASE_NAMING.md): the id lives in the
         // file itself, so it survives renames that destroy every filename

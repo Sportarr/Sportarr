@@ -106,6 +106,11 @@ public class Config
     public bool DeleteEmptyFolders { get; set; } = false;
     public bool SkipFreeSpaceCheck { get; set; } = false;
     public int MinimumFreeSpace { get; set; } = 100;
+    // 0 = disabled. Rejects a candidate import whose probed video duration
+    // is under this many minutes - catches sample/trailer clips a download
+    // client's post-processing left behind (e.g. an un-extracted archive's
+    // preview file that otherwise name-matches an event well enough to import).
+    public int MinimumImportDurationMinutes { get; set; } = 0;
     public bool UseHardlinks { get; set; } = true;
     public bool ImportExtraFiles { get; set; } = false;
     public string ExtraFileExtensions { get; set; } = "srt,nfo";

@@ -153,6 +153,21 @@ public class LibraryImportService
                     // file but produces accurate Quality on first scan.
                     var parsedInfo = await _fileParser.ParseWithInspectionAsync(filename, filePath);
 
+                    // SampleFileFilter above only catches samples with a literal
+                    // "sample" token in the path. A download client's incomplete
+                    // post-processing (e.g. an un-extracted archive) can leave a
+                    // short preview clip named just like the real release, with
+                    // nothing in the path to flag it - only ffprobe's actual
+                    // duration gives that away.
+                    if (settings.MinimumImportDurationMinutes > 0 && parsedInfo.Duration.HasValue &&
+                        parsedInfo.Duration.Value.TotalMinutes < settings.MinimumImportDurationMinutes)
+                    {
+                        _logger.LogInformation(
+                            "[LibraryImport] Skipping {File}: {Minutes:F1} minutes long, below the configured minimum of {Threshold} minutes",
+                            filePath, parsedInfo.Duration.Value.TotalMinutes, settings.MinimumImportDurationMinutes);
+                        continue;
+                    }
+
                     // Use sports parser if it has high confidence
                     var eventTitle = sportsResult.Confidence >= 60 && !string.IsNullOrEmpty(sportsResult.EventTitle)
                         ? sportsResult.EventTitle

@@ -55,6 +55,7 @@ interface MediaManagementSettingsData {
   reorganizeFolders: boolean;
   skipFreeSpaceCheck: boolean;
   minimumFreeSpace: number;
+  minimumImportDurationMinutes: number;
   useHardlinks: boolean;
   // copyFiles was retired: imports are seeding-aware and per-client
   // Post-Import Behavior covers the always-preserve use case. Old installs
@@ -130,6 +131,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     reorganizeFolders: false,
     skipFreeSpaceCheck: false,
     minimumFreeSpace: 100,
+    minimumImportDurationMinutes: 0,
     useHardlinks: true,
     importExtraFiles: false,
     extraFileExtensions: 'srt,nfo',
@@ -1200,6 +1202,27 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                   </span>
                 </div>
               )}
+
+              <div>
+                <label className="block text-white font-medium mb-2">Minimum Import Duration</label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    value={settings.minimumImportDurationMinutes}
+                    onChange={(e) => updateSetting('minimumImportDurationMinutes', Number(e.target.value))}
+                    className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  />
+                  <span className="text-gray-400">minutes</span>
+                </div>
+                <p className="text-sm text-gray-400 mt-1">
+                  Skip importing a video file shorter than this. Catches sample or trailer
+                  clips a download client leaves behind that would otherwise match an event
+                  by name. 0 disables the check.
+                </p>
+                <span className="inline-block mt-1 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
+                  Advanced
+                </span>
+              </div>
             </>
           )}
         </div>

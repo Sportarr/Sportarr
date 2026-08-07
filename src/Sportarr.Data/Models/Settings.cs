@@ -273,6 +273,12 @@ public class MediaManagementSettings
     public bool CopyFiles { get; set; } = false;
     public bool SkipFreeSpaceCheck { get; set; } = false;
     public long MinimumFreeSpace { get; set; } = 100;
+
+    // Stored in config.xml (Config.MinimumImportDurationMinutes); NotMapped
+    // keeps it on the media-management JSON contract without a schema change.
+    // 0 = disabled.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int MinimumImportDurationMinutes { get; set; } = 0;
     public bool UseHardlinks { get; set; } = true;
     public bool ImportExtraFiles { get; set; } = false;
     public string ExtraFileExtensions { get; set; } = "srt,nfo";
@@ -443,6 +449,10 @@ public class ParsedFileInfo
     /// <summary>Canonical league id ("lg-XXXXXX"), the pack-release
     /// equivalent of <see cref="SportarrEventId"/>.</summary>
     public string? SportarrLeagueId { get; set; }
+
+    /// <summary>Media duration from ffprobe, or null when unavailable
+    /// (no inspector run, or ffprobe couldn't determine it).</summary>
+    public TimeSpan? Duration { get; set; }
 }
 
 // File naming tokens and their replacements

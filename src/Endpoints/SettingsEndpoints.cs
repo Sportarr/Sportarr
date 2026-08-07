@@ -78,6 +78,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         UnmonitorDeletedEvents = dbMediaSettings?.UnmonitorDeletedEvents ?? false,
         SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
         MinimumFreeSpace = config.MinimumFreeSpace,
+        MinimumImportDurationMinutes = config.MinimumImportDurationMinutes,
         UseHardlinks = config.UseHardlinks,
         ImportExtraFiles = config.ImportExtraFiles,
         ExtraFileExtensions = config.ExtraFileExtensions,
@@ -450,6 +451,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             config.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
             config.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
             config.MinimumFreeSpace = (int)mediaManagementSettings.MinimumFreeSpace;
+            config.MinimumImportDurationMinutes = Math.Max(0, mediaManagementSettings.MinimumImportDurationMinutes);
             config.UseHardlinks = mediaManagementSettings.UseHardlinks;
             config.ImportExtraFiles = mediaManagementSettings.ImportExtraFiles;
             config.ExtraFileExtensions = mediaManagementSettings.ExtraFileExtensions;

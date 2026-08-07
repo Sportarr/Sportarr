@@ -372,6 +372,19 @@ public class FileImportService : IFileImportService
             // original release-title quality) still wins downstream when present.
             var parsed = await _parser.ParseWithInspectionAsync(Path.GetFileName(sourceFile), sourceFile);
 
+            // A download client's post-processing can leave a short sample/
+            // trailer clip sitting in the completed folder (e.g. an
+            // un-extracted archive's preview file) that otherwise
+            // name-matches an event well enough to import. Duration comes
+            // from ffprobe, not the filename, so this only fires when the
+            // inspector could actually measure it - unset never blocks.
+            if (settings.MinimumImportDurationMinutes > 0 && parsed.Duration.HasValue &&
+                parsed.Duration.Value.TotalMinutes < settings.MinimumImportDurationMinutes)
+            {
+                throw new Exception(
+                    $"Video file is only {parsed.Duration.Value.TotalMinutes:F1} minutes long, below the configured minimum of {settings.MinimumImportDurationMinutes} minutes: {sourceFile}");
+            }
+
             // Build destination path (use actual file size for debrid symlink compatibility)
             // Pass download.Quality to preserve quality info from original release title (not re-parsed from downloaded filename)
             var rootFolders = await RootFolderLoader.LoadAsync(_db, _diskSpaceService);
