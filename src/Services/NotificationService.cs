@@ -34,13 +34,55 @@ public class NotificationService : INotificationService
         _httpClientFactory = httpClientFactory;
     }
 
+    private async Task PublishStreamEventsAsync(NotificationTrigger trigger, NotificationEventData? data)
+    {
+        var stream = _serviceProvider.GetService<EventStreamService>();
+        if (stream == null) return;
+
+        switch (trigger)
+        {
+            case NotificationTrigger.OnEventAdded when data?.EventId != null:
+                await stream.PublishAsync("event", "added", data.EventId, data.EventExternalId);
+                break;
+            case NotificationTrigger.OnEventDelete when data?.EventId != null:
+                await stream.PublishAsync("event", "removed", data.EventId, data.EventExternalId);
+                break;
+            case NotificationTrigger.OnRename when data?.EventId != null:
+                await stream.PublishAsync("event", "updated", data.EventId, data.EventExternalId);
+                break;
+            case NotificationTrigger.OnDownload:
+            case NotificationTrigger.OnUpgrade:
+                if (data?.File != null)
+                {
+                    await stream.PublishAsync("file", "imported", data.EventId, data.EventExternalId, path: data.File.Path);
+                }
+                break;
+            case NotificationTrigger.OnEventFileDelete:
+            case NotificationTrigger.OnEventFileDeleteForUpgrade:
+                if (data?.DeletedFiles is { Count: > 0 })
+                {
+                    foreach (var file in data.DeletedFiles)
+                    {
+                        await stream.PublishAsync("file", "removed", data.EventId, data.EventExternalId, path: file.Path);
+                    }
+                }
+                else if (data?.File != null)
+                {
+                    await stream.PublishAsync("file", "removed", data.EventId, data.EventExternalId, path: data.File.Path);
+                }
+                break;
+        }
+    }
+
     /// <summary>
     /// Send a notification through all enabled notification providers that match the trigger
     /// </summary>
-    public async Task SendNotificationAsync(NotificationTrigger trigger, string title, string message, Dictionary<string, object>? metadata = null, List<int>? leagueTags = null)
+    public async Task SendNotificationAsync(NotificationTrigger trigger, string title, string message, NotificationEventData? data = null, List<int>? leagueTags = null)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+        var instanceName = (await configService.GetConfigAsync()).InstanceName;
 
         var notifications = await db.Notifications.Where(n => n.Enabled).ToListAsync();
 
@@ -49,6 +91,22 @@ public class NotificationService : INotificationService
         {
             notifications = notifications.Where(n => Helpers.TagHelper.TagsMatch(n.Tags, leagueTags)).ToList();
         }
+
+        // Resolve the event's TheSportsDB id once per dispatch so webhook
+        // payloads can carry it. Call sites do not need to thread it.
+        if (data?.EventId != null && data.TsdbId == null)
+        {
+            data.TsdbId = await db.Events.AsNoTracking()
+                .Where(e => e.Id == data.EventId.Value)
+                .Select(e => e.TsdbId)
+                .FirstOrDefaultAsync();
+        }
+
+        // The SSE feed observes the same dispatch points the providers
+        // do, but fires regardless of configured notifications. Sync
+        // publishes its own add/update/remove batch, so only the paths
+        // sync never touches map here.
+        await PublishStreamEventsAsync(trigger, data);
 
         foreach (var notification in notifications)
         {
@@ -61,15 +119,11 @@ public class NotificationService : INotificationService
                     continue;
 
                 // Media server connections (Plex/Jellyfin/Emby) need a path
-                // from metadata for partial scans. Imports carry filePath;
-                // renames carry seriesPath (the common folder of the renamed
-                // files) - accept either so a rename triggers a folder scan
-                // instead of falling back to a full library refresh.
-                var filePath = metadata?.TryGetValue("filePath", out var fp) == true ? fp?.ToString() : null;
-                if (string.IsNullOrEmpty(filePath) && metadata?.TryGetValue("seriesPath", out var sp) == true)
-                {
-                    filePath = sp?.ToString();
-                }
+                // for partial scans. Imports carry File.Path; renames carry
+                // SeriesPath (the common folder of the renamed files) -
+                // accept either so a rename triggers a folder scan instead
+                // of falling back to a full library refresh.
+                var filePath = !string.IsNullOrEmpty(data?.File?.Path) ? data!.File!.Path : data?.SeriesPath;
 
                 var success = notification.Implementation switch
                 {
@@ -77,7 +131,8 @@ public class NotificationService : INotificationService
                     "Telegram" => await SendTelegramAsync(config, title, message),
                     "Pushover" => await SendPushoverAsync(config, title, message),
                     "Slack" => await SendSlackAsync(config, title, message),
-                    "Webhook" => await SendWebhookAsync(config, title, message, trigger, metadata),
+                    "Webhook" => await SendWebhookAsync(config, title, message, trigger, data, instanceName),
+                    "Notifiarr" => await SendNotifiarrAsync(config, title, message, trigger, data, instanceName),
                     "Email" => await SendEmailAsync(config, title, message),
                     "Apprise" => await SendAppriseAsync(config, title, message),
                     "Ntfy" => await SendNtfyAsync(config, title, message),
@@ -86,7 +141,7 @@ public class NotificationService : INotificationService
                     "Mattermost" => await SendMattermostAsync(config, title, message),
                     "Pushbullet" => await SendPushbulletAsync(config, title, message),
                     "SimplePush" => await SendSimplePushAsync(config, title, message),
-                    "CustomScript" => RunCustomScript(config, title, message, trigger, metadata),
+                    "CustomScript" => RunCustomScript(config, title, message, trigger, data),
                     // Media server library refresh notifications
                     "Plex" => await RefreshPlexLibraryAsync(config, filePath),
                     "Jellyfin" => await RefreshJellyfinLibraryAsync(config, filePath),
@@ -94,6 +149,10 @@ public class NotificationService : INotificationService
                     "Kodi" => await SendKodiAsync(config, title, message, trigger, filePath),
                     _ => false
                 };
+
+                notification.LastNotificationSucceeded = success;
+                notification.LastNotificationError = success ? null : $"Failed to send {trigger} notification via {notification.Implementation}";
+                notification.LastNotificationAt = DateTime.UtcNow;
 
                 if (success)
                 {
@@ -106,15 +165,37 @@ public class NotificationService : INotificationService
             }
             catch (Exception ex)
             {
+                notification.LastNotificationSucceeded = false;
+                notification.LastNotificationError = ex.Message;
+                notification.LastNotificationAt = DateTime.UtcNow;
                 _logger.LogError(ex, "Error sending notification via {Implementation}", notification.Implementation);
             }
         }
+
+        // Single save for the whole batch - every notification object above
+        // came from this same tracked db context.
+        await db.SaveChangesAsync();
     }
 
     /// <summary>
-    /// Test a notification configuration
+    /// Test a notification configuration. Records the outcome onto the
+    /// entity (LastNotificationSucceeded/Error/At) so the NotificationTestFailed
+    /// health check can surface it - callers with a tracked, saved entity
+    /// (the by-id test endpoint) persist this; the unsaved test-before-save
+    /// endpoint just discards the mutation along with the throwaway object.
     /// </summary>
     public async Task<(bool Success, string Message)> TestNotificationAsync(Notification notification)
+    {
+        var (success, resultMessage) = await TestNotificationCoreAsync(notification);
+
+        notification.LastNotificationSucceeded = success;
+        notification.LastNotificationError = success ? null : resultMessage;
+        notification.LastNotificationAt = DateTime.UtcNow;
+
+        return (success, resultMessage);
+    }
+
+    private async Task<(bool Success, string Message)> TestNotificationCoreAsync(Notification notification)
     {
         try
         {
@@ -150,7 +231,8 @@ public class NotificationService : INotificationService
                 "Telegram" => await SendTelegramAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Pushover" => await SendPushoverAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Slack" => await SendSlackAsync(config, "Test Notification", "This is a test notification from Sportarr."),
-                "Webhook" => await SendWebhookAsync(config, "Test Notification", "This is a test notification from Sportarr.", NotificationTrigger.Test, null),
+                "Webhook" => await SendWebhookAsync(config, "Test Notification", "This is a test notification from Sportarr.", NotificationTrigger.Test, null, "Sportarr"),
+                "Notifiarr" => await SendNotifiarrAsync(config, "Test Notification", "This is a test notification from Sportarr.", NotificationTrigger.Test, null, "Sportarr"),
                 "Email" => await SendEmailAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Apprise" => await SendAppriseAsync(config, "Test Notification", "This is a test notification from Sportarr."),
                 "Ntfy" => await SendNtfyAsync(config, "Test Notification", "This is a test notification from Sportarr."),
@@ -308,7 +390,7 @@ public class NotificationService : INotificationService
     /// can't inject arguments. Fire-and-forget with a 10-minute ceiling so
     /// a hung script never blocks the notification loop.
     /// </summary>
-    private bool RunCustomScript(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, Dictionary<string, object>? metadata)
+    private bool RunCustomScript(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, NotificationEventData? data)
     {
         var scriptPath = GetConfigString(config, "scriptPath");
         if (string.IsNullOrEmpty(scriptPath))
@@ -322,7 +404,7 @@ public class NotificationService : INotificationService
             return false;
         }
 
-        var psi = BuildCustomScriptStartInfo(config, scriptPath, title, message, trigger, metadata);
+        var psi = BuildCustomScriptStartInfo(config, scriptPath, title, message, trigger, data);
 
         _ = Task.Run(async () =>
         {
@@ -376,7 +458,7 @@ public class NotificationService : INotificationService
         string title,
         string message,
         NotificationTrigger trigger,
-        Dictionary<string, object>? metadata)
+        NotificationEventData? data)
     {
         var psi = new ProcessStartInfo
         {
@@ -399,9 +481,9 @@ public class NotificationService : INotificationService
         psi.Environment["SPORTARR_EVENT_TYPE"] = trigger.ToString();
         psi.Environment["SPORTARR_TITLE"] = title;
         psi.Environment["SPORTARR_MESSAGE"] = message;
-        if (metadata != null)
+        if (data != null)
         {
-            foreach (var (key, value) in metadata)
+            foreach (var (key, value) in data.ToDictionary())
             {
                 psi.Environment[$"SPORTARR_{key.ToUpperInvariant()}"] = value?.ToString() ?? "";
             }
@@ -715,7 +797,7 @@ public class NotificationService : INotificationService
 
     #region Webhook
 
-    private async Task<bool> SendWebhookAsync(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, Dictionary<string, object>? metadata)
+    private async Task<bool> SendWebhookAsync(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, NotificationEventData? data, string instanceName)
     {
         var webhook = GetConfigString(config, "webhook");
 
@@ -725,7 +807,7 @@ public class NotificationService : INotificationService
             return false;
         }
 
-        var payload = BuildWebhookPayload(title, message, trigger, metadata);
+        var payload = BuildWebhookPayload(title, message, trigger, data, instanceName);
 
         // Build request with configurable method (POST or PUT)
         var method = GetConfigString(config, "method", "POST").ToUpperInvariant();
@@ -733,7 +815,7 @@ public class NotificationService : INotificationService
 
         _logger.LogInformation("[Webhook] Sending {Method} to {Url} (trigger: {Trigger})", method, webhook, trigger);
 
-        var payloadJson = JsonSerializer.Serialize(payload);
+        var payloadJson = JsonSerializer.Serialize(payload, WebhookJsonOptions);
         _logger.LogDebug("[Webhook] Payload: {Payload}", payloadJson);
 
         var requestMessage = new HttpRequestMessage(httpMethod, webhook)
@@ -816,6 +898,7 @@ public class NotificationService : INotificationService
         [NotificationTrigger.OnRename] = "Rename",
         [NotificationTrigger.OnEventFileDelete] = "EpisodeFileDelete",
         [NotificationTrigger.OnEventFileDeleteForUpgrade] = "EpisodeFileDelete",
+        [NotificationTrigger.OnEventAdded] = "SeriesAdd",
         [NotificationTrigger.OnEventDelete] = "SeriesDelete",
         [NotificationTrigger.OnHealthIssue] = "Health",
         [NotificationTrigger.OnHealthRestored] = "Health",
@@ -827,80 +910,182 @@ public class NotificationService : INotificationService
         [NotificationTrigger.Test] = "Test"
     };
 
+    // camelCase to match the wire format every existing consumer already
+    // parses (EventId -> "eventId", FilePath -> "filePath", ...); nulls
+    // omitted so a given event type's JSON only carries fields that apply
+    // to it instead of a full field list padded with nulls.
+    internal static readonly JsonSerializerOptions WebhookJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     /// <summary>
-    /// Builds the webhook payload. It is a superset: the standard eventType plus nested "series"
-    /// and "episodeFile" objects that path-driven consumers (e.g. Autoscan, which scans
-    /// path.Dir(path.Join(series.path, episodeFile.relativePath))) require, alongside Sportarr's
-    /// own flat metadata keys for anyone reading those directly. Consumers ignore fields they
-    /// don't recognise, so this single shape works everywhere without a per-connection toggle.
+    /// Builds the webhook payload, mirroring Sonarr's real webhook shape (WebhookSeries/
+    /// WebhookRelease/WebhookEpisodeFile/DeletedFiles) rather than a flat field list - direct
+    /// feedback from an integration partner who builds against both. Series/Release/EpisodeFile/
+    /// DeletedFiles are derived here, once, from NotificationEventData's flat producer-facing
+    /// fields - never independently set - so they can't drift from what they mirror. Consumers
+    /// ignore objects they don't recognise, so this single shape works everywhere without a
+    /// per-connection toggle.
     /// </summary>
-    private static Dictionary<string, object> BuildWebhookPayload(
-        string title, string message, NotificationTrigger trigger, Dictionary<string, object>? metadata)
+    internal static WebhookPayload BuildWebhookPayload(
+        string title, string message, NotificationTrigger trigger, NotificationEventData? data, string instanceName)
     {
         var eventType = WebhookEventTypeMap.TryGetValue(trigger, out var mapped) ? mapped : trigger.ToString();
 
-        var payload = new Dictionary<string, object>
+        var payload = new WebhookPayload
         {
-            ["eventType"] = eventType,
-            ["title"] = title,
-            ["message"] = message,
-            ["applicationUrl"] = "",
-            ["instanceName"] = "Sportarr"
+            EventType = eventType,
+            Title = title,
+            Message = message,
+            ApplicationUrl = "",
+            InstanceName = instanceName,
+            DownloadId = data?.DownloadId,
+            IsUpgrade = data?.IsUpgrade,
+            RenamedCount = data?.RenamedCount,
+            HealthType = data?.HealthType,
+            HealthLevel = data?.HealthLevel,
+            PreviousVersion = data?.PreviousVersion,
+            NewVersion = data?.NewVersion,
+            DownloadTitle = data?.DownloadTitle,
+            DownloadClientName = data?.DownloadClientName,
+            Confidence = data?.Confidence,
+            PendingCount = data?.PendingCount,
+            RecordingId = data?.RecordingId,
+            RecordingTitle = data?.RecordingTitle,
+            ChannelId = data?.ChannelId
         };
 
-        // Carry every Sportarr-specific metadata key as a top-level field (filePath, league,
-        // sport, quality, ...) so existing consumers of the flat payload keep working.
-        if (metadata != null)
+        // Series: event/league/sport identity, whenever this trigger concerns a specific
+        // event (or a rename batch, which has no single event but does have a covering
+        // directory). Path comes from whichever file this event is actually about - Rename
+        // supplies its covering directory directly since there's no single file to derive
+        // it from.
+        if (data != null && (data.EventId != null || data.EventTitle != null || !string.IsNullOrEmpty(data.SeriesPath)))
         {
-            foreach (var kvp in metadata)
+            var seriesPath = data.SeriesPath
+                ?? (data.File != null ? Path.GetDirectoryName(data.File.Path) : null)
+                ?? (data.DeletedFiles is { Count: > 0 } ? Path.GetDirectoryName(data.DeletedFiles[0].Path) : null);
+
+            payload.Series = new WebhookSeriesInfo
             {
-                payload[kvp.Key] = kvp.Value;
-            }
+                Id = data.EventId,
+                ExternalId = data.EventExternalId,
+                TsdbId = data.TsdbId,
+                Title = data.EventTitle ?? "",
+                Path = seriesPath,
+                League = data.League,
+                Sport = data.Sport
+            };
         }
 
-        var filePath = metadata != null && metadata.TryGetValue("filePath", out var fp)
-            ? fp?.ToString()
-            : null;
-        var eventTitle = metadata != null && metadata.TryGetValue("eventTitle", out var et)
-            ? et?.ToString()
-            : null;
-        var seriesPath = metadata != null && metadata.TryGetValue("seriesPath", out var sp)
-            ? sp?.ToString()
-            : null;
+        // Release: Grab only - the release's own claimed quality/size, no file exists yet.
+        if (data?.Indexer != null || data?.Quality != null)
+        {
+            payload.Release = new WebhookReleaseInfo
+            {
+                Quality = data?.Quality,
+                Indexer = data?.Indexer,
+                Size = data?.Size
+            };
+        }
 
-        // Rename events carry the covering directory directly (there's no
-        // single file to derive it from): consumers like Autoscan rescan
-        // series.path on Rename, mirroring Sonarr's webhook.
-        if (!string.IsNullOrEmpty(seriesPath))
+        // EpisodeFile: Download/Upgrade only - the newly imported file.
+        if (data?.File != null)
         {
-            payload["series"] = new Dictionary<string, object>
+            payload.EpisodeFile = new WebhookFileInfo
             {
-                ["path"] = seriesPath,
-                ["title"] = eventTitle ?? ""
+                RelativePath = Path.GetFileName(data.File.Path),
+                Path = data.File.Path,
+                Quality = data.File.Quality,
+                Size = data.File.Size
             };
         }
-        // Add the nested objects the ecosystem expects, derived from the imported file path.
-        else if (!string.IsNullOrEmpty(filePath))
+
+        // DeletedFiles: Upgrade's replaced file(s), or a pure delete's removed file(s) -
+        // same field either way, so consumers handle "this stopped existing" one way
+        // regardless of which trigger produced it.
+        if (data?.DeletedFiles is { Count: > 0 } deletedFiles)
         {
-            payload["series"] = new Dictionary<string, object>
+            payload.DeletedFiles = deletedFiles.Select(f => new WebhookFileInfo
             {
-                ["path"] = Path.GetDirectoryName(filePath) ?? "",
-                ["title"] = eventTitle ?? ""
-            };
-            payload["episodeFile"] = new Dictionary<string, object>
-            {
-                ["relativePath"] = Path.GetFileName(filePath),
-                ["path"] = filePath
-            };
-        }
-        else if (eventTitle != null)
-        {
-            // No file path (e.g. a series-level delete) — still emit series so consumers have
-            // a title to log and a path field, even if empty.
-            payload["series"] = new Dictionary<string, object> { ["title"] = eventTitle };
+                RelativePath = Path.GetFileName(f.Path),
+                Path = f.Path,
+                Quality = f.Quality,
+                Size = f.Size
+            }).ToList();
         }
 
         return payload;
+    }
+
+    #endregion
+
+    #region Notifiarr
+
+    // notifiarr.com doesn't have a dedicated /api/v1/notification/sportarr
+    // route live yet (per their dev, that's the eventual target once this
+    // native connection type is reviewed) - this points at their existing
+    // /test endpoint in the meantime so real payloads reach a safe,
+    // confirmed-working route instead of a 404. Swap to the real
+    // notification/sportarr path the moment they confirm it's live.
+    private const string NotifiarrEndpoint = "https://notifiarr.com/api/v1/notification/test?event=sportarr";
+
+    /// <summary>
+    /// Sends events directly to notifiarr.com, no Notifiarr client relay required.
+    /// Reuses the same superset payload shape the Webhook provider builds so
+    /// their backend gets consistent, fully-populated event data regardless
+    /// of which connection type a user configures.
+    /// </summary>
+    private async Task<bool> SendNotifiarrAsync(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, NotificationEventData? data, string instanceName)
+    {
+        var apiKey = GetConfigString(config, "apiKey");
+
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("[Notifiarr] API key not configured");
+            return false;
+        }
+
+        var payload = BuildWebhookPayload(title, message, trigger, data, instanceName);
+        var payloadJson = JsonSerializer.Serialize(payload, WebhookJsonOptions);
+
+        _logger.LogInformation("[Notifiarr] Sending POST to {Url} (trigger: {Trigger})", NotifiarrEndpoint, trigger);
+        _logger.LogDebug("[Notifiarr] Payload: {Payload}", payloadJson);
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, NotifiarrEndpoint)
+        {
+            Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+        };
+        requestMessage.Headers.TryAddWithoutValidation("X-Api-Key", apiKey);
+
+        try
+        {
+            using var response = await _httpClient.SendAsync(requestMessage);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("[Notifiarr] Success: {StatusCode} {Reason}", (int)response.StatusCode, response.ReasonPhrase);
+                _logger.LogDebug("[Notifiarr] Response body: {Body}", responseBody);
+                return true;
+            }
+
+            _logger.LogWarning("[Notifiarr] Failed: {StatusCode} {Reason}", (int)response.StatusCode, response.ReasonPhrase);
+            _logger.LogWarning("[Notifiarr] Response body: {Body}", responseBody);
+            return false;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[Notifiarr] HTTP request failed: {Message}", ex.Message);
+            return false;
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "[Notifiarr] Request timed out");
+            return false;
+        }
     }
 
     #endregion

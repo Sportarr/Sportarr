@@ -58,6 +58,7 @@ public class HousekeepingService : BackgroundService
         CleanRecycleBin(config);
         await PruneDvrRecordingsAsync(db, config, ct);
         await PruneSystemEventsAsync(db, ct);
+        await PruneStreamEventsAsync(db, ct);
     }
 
     private bool _versionChecked;
@@ -94,10 +95,10 @@ public class HousekeepingService : BackgroundService
                     NotificationTrigger.OnApplicationUpdate,
                     $"Sportarr updated to {current}",
                     $"Previous version: {previous}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "previousVersion", previous },
-                        { "newVersion", current },
+                        PreviousVersion = previous,
+                        NewVersion = current,
                     });
             }
 
@@ -290,6 +291,26 @@ public class HousekeepingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Housekeeping] System event pruning failed");
+        }
+    }
+
+    private async Task PruneStreamEventsAsync(SportarrDbContext db, CancellationToken ct)
+    {
+        try
+        {
+            // 7 days bounds the SSE catch-up window: a consumer offline
+            // longer than that must full-resync anyway.
+            var cutoff = DateTime.UtcNow.AddDays(-7);
+            var deleted = await db.StreamEvents
+                .Where(e => e.Timestamp < cutoff)
+                .ExecuteDeleteAsync(ct);
+
+            if (deleted > 0)
+                _logger.LogInformation("[Housekeeping] Pruned {Count} stream events older than 7 days", deleted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Housekeeping] Stream event pruning failed");
         }
     }
 }

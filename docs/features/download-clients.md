@@ -2,7 +2,7 @@
 
 **Usenet:** SABnzbd, NZBGet, NZBdav
 
-**Torrents:** qBittorrent, Transmission, Deluge, rTorrent, uTorrent, Aria2
+**Torrents:** qBittorrent, Transmission, Deluge, rTorrent, Vuze, Aria2
 
 **Synology Download Station:** add it once for torrents and, separately, once more for usenet if you want both - Download Station handles either from the same NAS, but Sportarr tracks them as two connections since they're configured independently.
 

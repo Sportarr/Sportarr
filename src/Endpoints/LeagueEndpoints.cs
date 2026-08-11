@@ -47,28 +47,36 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
         .ToListAsync();
 
     var now = DateTime.UtcNow;
+    var leagueIds = leagues.Select(l => (int?)l.Id).ToList();
 
-    // Calculate stats for each league
-    var response = new List<LeagueResponse>();
-    foreach (var league in leagues)
+    // Single aggregate query replaces the old per-league loop (previously
+    // 4x CountAsync + 1x AnyAsync per league - 200-250 round trips for a
+    // 40-50 league library on every load of the main library view).
+    var statsByLeague = await db.Events
+        .Where(e => e.LeagueId != null && leagueIds.Contains(e.LeagueId.Value))
+        .GroupBy(e => e.LeagueId!.Value)
+        .Select(g => new
+        {
+            LeagueId = g.Key,
+            EventCount = g.Count(),
+            MonitoredEventCount = g.Count(e => e.Monitored),
+            FileCount = g.Count(e => e.HasFile),
+            DownloadedMonitoredCount = g.Count(e => e.Monitored && e.HasFile),
+            HasFutureEvents = g.Any(e => e.Monitored && e.EventDate > now)
+        })
+        .ToDictionaryAsync(s => s.LeagueId);
+
+    var response = leagues.Select(league =>
     {
-        // Get total events for this league
-        var eventCount = await db.Events.CountAsync(e => e.LeagueId == league.Id);
-
-        // Get monitored events count
-        var monitoredEventCount = await db.Events.CountAsync(e => e.LeagueId == league.Id && e.Monitored);
-
-        // Get downloaded events count (events with files)
-        var fileCount = await db.Events.CountAsync(e => e.LeagueId == league.Id && e.HasFile);
-
-        // Get monitored events that have been downloaded (for progress calculation)
-        var downloadedMonitoredCount = await db.Events.CountAsync(e => e.LeagueId == league.Id && e.Monitored && e.HasFile);
-
-        // Check if league has future monitored events (for "continuing" status)
-        var hasFutureEvents = await db.Events.AnyAsync(e => e.LeagueId == league.Id && e.Monitored && e.EventDate > now);
-
-        response.Add(LeagueResponse.FromLeague(league, eventCount, monitoredEventCount, fileCount, downloadedMonitoredCount, hasFutureEvents));
-    }
+        statsByLeague.TryGetValue(league.Id, out var stats);
+        return LeagueResponse.FromLeague(
+            league,
+            stats?.EventCount ?? 0,
+            stats?.MonitoredEventCount ?? 0,
+            stats?.FileCount ?? 0,
+            stats?.DownloadedMonitoredCount ?? 0,
+            stats?.HasFutureEvents ?? false);
+    }).ToList();
 
     return Results.Ok(response);
 });

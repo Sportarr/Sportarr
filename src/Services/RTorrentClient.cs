@@ -256,6 +256,30 @@ public class RTorrentClient
     }
 
     /// <summary>
+    /// Set a torrent's queue priority (recent/older event queue priority,
+    /// issue #220). Scale: RTorrentQueuePriority (VeryLow=0, Low=1, Normal=2,
+    /// High=3). Sonarr sets this at load time via a trailing d.priority.set
+    /// command; Sportarr's AddTorrentWithHashAsync already confirms the hash
+    /// before returning, so this applies it as a normal post-add call like
+    /// the other torrent clients instead of threading it through the load
+    /// command.
+    /// </summary>
+    public async Task<bool> SetPriorityAsync(DownloadClient config, string hash, int priority)
+    {
+        try
+        {
+            ConfigureClient(config);
+            var response = await SendXmlRpcRequestAsync(config, "d.priority.set", new object[] { hash, priority });
+            return response != null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[rTorrent] Error setting priority for {Hash}", hash);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Move a torrent to a category (the free-form custom1 label, rTorrent's
     /// category equivalent) for the post-import category move. Labels are
     /// free-form, so there's no separate "create" step; an empty category
@@ -540,13 +564,15 @@ public class RTorrentClient
     }
 
     // Most rTorrent params are strings, but load.raw / load.raw_start needs the raw
-    // .torrent bytes sent as an XML-RPC <base64> value. Serialize byte[] accordingly
-    // and fall back to <string> for everything else.
+    // .torrent bytes sent as an XML-RPC <base64> value, and d.priority.set expects
+    // a real integer (<i4>) rather than a numeric string. Fall back to <string>
+    // for everything else.
     private static XElement BuildXmlRpcValue(object p)
     {
         return p switch
         {
             byte[] bytes => new XElement("base64", Convert.ToBase64String(bytes)),
+            int i => new XElement("i4", i),
             _ => new XElement("string", p)
         };
     }

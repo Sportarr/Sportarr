@@ -20,11 +20,17 @@ public class EventQueryService
     /// <summary>
     /// Build a search query from a custom template.
     /// Supports tokens: {League}, {Year}, {Month}, {Day}, {Round}, {Round:00}, {Round:0}, {Week}, {EventTitle},
-    /// {HomeTeam}, {AwayTeam}, {vs}, {Season}, {Part}, {EventType}
+    /// {EventName}, {Stage}, {Stage:00}, {Stage:0}, {HomeTeam}, {AwayTeam}, {vs}, {Season}, {Part}, {EventType}
     ///
     /// Round format options:
     /// - {Round} or {Round:00} - Zero-padded to 2 digits (e.g., "01", "22") - default for compatibility
     /// - {Round:0} - No padding (e.g., "1", "22")
+    ///
+    /// {Stage} is the stage number of a stage race, read from the title
+    /// ("Tour de France Stage 16" gives "16"). It is empty when the title
+    /// names no stage. Use it to search in another language, for example
+    /// "{EventName} {Year} Etappe {Stage} German". {Stage} does not pad by
+    /// default because release names write "Stage.16", not "Stage.016".
     ///
     /// {Part} is the part being searched (Prelims, Main Card, ...) and empty
     /// for a whole-event search. {EventType} is the detected fighting event
@@ -81,6 +87,14 @@ public class EventQueryService
             result = result.Replace("{Round}", round, StringComparison.OrdinalIgnoreCase);
         }
 
+        // Stage number of a stage race. Round holds a season-wide event
+        // index for these leagues, so it can not name a single stage.
+        var stage = ExtractStageNumber(evt.Title);
+        var stageText = stage?.ToString() ?? "";
+        result = result.Replace("{Stage:00}", stage?.ToString("D2") ?? "", StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{Stage:0}", stageText, StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{Stage}", stageText, StringComparison.OrdinalIgnoreCase);
+
         // Week number (for team sports)
         var weekNumber = GetWeekNumber(evt);
         result = result.Replace("{Week}", weekNumber?.ToString() ?? "", StringComparison.OrdinalIgnoreCase);
@@ -88,10 +102,12 @@ public class EventQueryService
         // Event title (raw)
         result = result.Replace("{EventTitle}", evt.Title ?? "", StringComparison.OrdinalIgnoreCase);
 
-        // Event name with the trailing fighter matchup stripped.
-        // Useful for fighting sports where indexer releases name the card
-        // ("ONE Friday Fights 150") but not the fighters ("Kompetch vs Attachai").
-        result = result.Replace("{EventName}", StripFightersFromTitle(evt.Title ?? ""), StringComparison.OrdinalIgnoreCase);
+        // Event name with the trailing fighter matchup or stage number
+        // stripped. Fighting releases name the card ("ONE Friday Fights 150")
+        // but not the fighters. Stage-race releases name the race in the
+        // user's own language, so the English "Stage 16" suffix must go.
+        result = result.Replace("{EventName}",
+            StripStageFromTitle(StripFightersFromTitle(evt.Title ?? "")), StringComparison.OrdinalIgnoreCase);
 
         // Team names
         result = result.Replace("{HomeTeam}", homeTeamName ?? evt.HomeTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
@@ -1077,6 +1093,38 @@ public class EventQueryService
         // collapsed to "Lakers".
         var prefixWordCount = prefix.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
         return prefixWordCount >= 2 ? prefix : title.Trim();
+    }
+
+    // Trailing stage designator of a stage race, for example
+    // "Tour de France Stage 16". "Etappe" and "Leg" cover the same idea in
+    // other feeds. "Round" is excluded on purpose: golf and motorsport
+    // titles use it, and {Round} already serves them.
+    private static readonly Regex StageSuffixPattern = new(
+        @"\s+(?:Stage|Etappe|Leg)\s*(\d{1,3})\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Read the stage number from a stage-race title. Returns null when the
+    /// title names no stage.
+    /// </summary>
+    public static int? ExtractStageNumber(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return null;
+
+        var match = StageSuffixPattern.Match(title);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var stage) ? stage : null;
+    }
+
+    /// <summary>
+    /// Remove the trailing stage designator from a stage-race title, so
+    /// "Tour de France Stage 16" becomes "Tour de France". The caller can
+    /// then name the stage in its own language.
+    /// </summary>
+    public static string StripStageFromTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return title ?? string.Empty;
+
+        return StageSuffixPattern.Replace(title, string.Empty).Trim();
     }
 
     private string NormalizeEventTitle(string title)

@@ -96,16 +96,13 @@ public class Event
 
     /// <summary>
     /// TheSportsDB cross-reference id when one exists for this
-    /// canonical row. Populated only on inbound API responses; never
-    /// persisted to the DB. Used during sync to migrate legacy rows
-    /// whose stored ExternalId still holds the TheSportsDB id from
-    /// before the short_id-primary flip — LeagueEventSyncService
-    /// falls back to matching by TsdbId, then rewrites ExternalId
-    /// to the new short_id so the next sync matches on the primary
-    /// path directly.
+    /// canonical row. Arrives on inbound API responses and is
+    /// persisted on sync since 2026-08-10, so consumers such as the
+    /// webhook payload can carry it. Also still used during sync to
+    /// migrate legacy rows whose stored ExternalId held the
+    /// TheSportsDB id from before the short_id-primary flip.
     /// </summary>
     [JsonPropertyName("tsdbId")]
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string? TsdbId { get; set; }
 
     [JsonPropertyName("strEvent")]

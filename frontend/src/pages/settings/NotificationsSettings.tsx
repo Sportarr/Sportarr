@@ -141,6 +141,13 @@ const notificationTemplates: NotificationTemplate[] = [
     fields: ['webhook', 'method', 'username', 'password', 'headers', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onEventFileDelete', 'onEventFileDeleteForUpgrade', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
   },
   {
+    name: 'Notifiarr',
+    implementation: 'Notifiarr',
+    description: 'Send events directly to notifiarr.com for Discord notifications, no separate client needed',
+    icon: '🔔',
+    fields: ['apiKey', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onEventFileDelete', 'onEventFileDeleteForUpgrade', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed']
+  },
+  {
     name: 'Pushover',
     implementation: 'Pushover',
     description: 'Send push notifications via Pushover',

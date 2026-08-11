@@ -45,6 +45,51 @@ public enum TorrentInitialState
 }
 
 /// <summary>
+/// Binary queue position - the only scale qBittorrent, Deluge, Transmission
+/// (and Vuze, which speaks the Transmission RPC) actually expose: move to
+/// the front of the queue, or leave it wherever it landed.
+/// </summary>
+public enum DownloadPriority
+{
+    /// <summary>Leave the torrent wherever the client queued it (default).</summary>
+    Last = 0,
+
+    /// <summary>Move the torrent to the front of the queue right after adding it.</summary>
+    First = 1
+}
+
+/// <summary>rTorrent's 4-level queue priority (d.priority.set).</summary>
+public enum RTorrentQueuePriority
+{
+    VeryLow = 0,
+    Low = 1,
+    Normal = 2,
+    High = 3
+}
+
+/// <summary>SABnzbd's queue priority scale (mode=queue&amp;name=priority).</summary>
+public enum SabnzbdQueuePriority
+{
+    Default = -100,
+    Paused = -2,
+    Low = -1,
+    Normal = 0,
+    High = 1,
+    Force = 2
+}
+
+/// <summary>NZBGet's queue priority scale (editqueue GroupSetPriority).</summary>
+public enum NzbGetQueuePriority
+{
+    VeryLow = -100,
+    Low = -50,
+    Normal = 0,
+    High = 50,
+    VeryHigh = 100,
+    Force = 900
+}
+
+/// <summary>
 /// Download client configuration
 /// </summary>
 public class DownloadClient
@@ -68,6 +113,23 @@ public class DownloadClient
     public bool SequentialDownload { get; set; } = false; // Download pieces in order (useful for debrid services like Decypharr)
     public bool FirstAndLastFirst { get; set; } = false; // Prioritize first and last pieces (for quick video preview)
     public TorrentInitialState InitialState { get; set; } = TorrentInitialState.Started; // Initial state when torrent is added (Started, ForceStarted, Stopped)
+
+    /// <summary>
+    /// Queue priority for events that aired within the last 14 days - matches
+    /// Sonarr's "recent episode" window. Stored as a raw int rather than one
+    /// shared enum because each client type's real API exposes a different
+    /// scale: qBittorrent/Deluge/Transmission/Vuze are binary
+    /// (<see cref="DownloadPriority"/>), rTorrent has 4 levels
+    /// (<see cref="RTorrentQueuePriority"/>), and the usenet clients have
+    /// their own graded scales (<see cref="SabnzbdQueuePriority"/>,
+    /// <see cref="NzbGetQueuePriority"/>). The dispatch in
+    /// DownloadClientService.ApplyQueuePriorityAsync interprets this value
+    /// according to config.Type.
+    /// </summary>
+    public int RecentPriority { get; set; } = 0;
+
+    /// <summary>Queue priority for events older than the 14-day recent window. See <see cref="RecentPriority"/>.</summary>
+    public int OlderPriority { get; set; } = 0;
 
     // Per-client removal settings
     // Allows users with both Usenet and Torrents to configure them separately
@@ -171,6 +233,17 @@ public class DownloadQueueItem
     public string? Indexer { get; set; } // Which indexer this came from
     public int? IndexerId { get; set; } // Indexer ID for seed config lookup
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
+
+    /// <summary>
+    /// Indexer flags carried over from the release that was grabbed (e.g.
+    /// "freeleech", "internal", "scene"), so Custom Format IndexerFlag
+    /// conditions can be re-evaluated consistently at rename/import time.
+    /// Only populated when the queue item was created directly from a
+    /// searched release (manual/automatic search, RSS auto-grab) - null for
+    /// re-adopted, reaper-recovered, or manually-imported items where no
+    /// original release selection exists.
+    /// </summary>
+    public string? IndexerFlags { get; set; }
 
     /// <summary>
     /// The download-client category/label this item was actually grabbed under -

@@ -748,6 +748,25 @@ public class SabnzbdClient
     }
 
     /// <summary>
+    /// Set a queue item's priority (recent/older event queue priority, issue
+    /// #220). Scale: SabnzbdQueuePriority (Default=-100, Paused=-2, Low=-1,
+    /// Normal=0, High=1, Force=2).
+    /// </summary>
+    public async Task<bool> SetPriorityAsync(DownloadClient config, string nzoId, int priority)
+    {
+        try
+        {
+            var response = await SendApiRequestAsync(config, $"?mode=queue&name=priority&value={nzoId}&value2={priority}&output=json");
+            return response != null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SABnzbd] Error setting priority for {NzoId}", nzoId);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Get download status for monitoring (optimized with nzo_id filtering).
     /// </summary>
     /// <param name="expectedCategory">

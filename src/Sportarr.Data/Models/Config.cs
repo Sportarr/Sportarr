@@ -106,6 +106,11 @@ public class Config
     public bool DeleteEmptyFolders { get; set; } = false;
     public bool SkipFreeSpaceCheck { get; set; } = false;
     public int MinimumFreeSpace { get; set; } = 100;
+    // 0 = disabled. Rejects a candidate import whose probed video duration
+    // is under this many minutes - catches sample/trailer clips a download
+    // client's post-processing left behind (e.g. an un-extracted archive's
+    // preview file that otherwise name-matches an event well enough to import).
+    public int MinimumImportDurationMinutes { get; set; } = 0;
     public bool UseHardlinks { get; set; } = true;
     public bool ImportExtraFiles { get; set; } = false;
     public string ExtraFileExtensions { get; set; } = "srt,nfo";
@@ -151,6 +156,15 @@ public class Config
     public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags (Freeleech, Scene, etc.)
 
     /// <summary>
+    /// Minutes between full disk scan passes (DiskScanService). Default 60
+    /// (hourly). Widen this for slow network storage (NFS/SMB) with many
+    /// root folders, where a full library walk every hour is unnecessary
+    /// churn. A manual scan can still be triggered on demand regardless of
+    /// this interval.
+    /// </summary>
+    public int DiskScanIntervalMinutes { get; set; } = 60;
+
+    /// <summary>
     /// RETIRED: event retention moved to League.RetentionDays (per-league).
     /// These two stay only so the retention service can read an existing
     /// install's old global opt-in once and seed it onto every league, after
@@ -163,6 +177,14 @@ public class Config
     // Queue Threshold Settings (Huntarr-style)
     // Pause searching when download queue exceeds threshold to prevent overloading
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit, otherwise pause when queue exceeds this
+
+    /// <summary>
+    /// Seconds between EnhancedDownloadMonitorService polls of every
+    /// configured download client. Default 30. A user hitting a debrid
+    /// service or download client with tight API rate limits can widen this
+    /// to back off.
+    /// </summary>
+    public int DownloadMonitorPollSeconds { get; set; } = 30;
     // OBSOLETE: never wired to a service. The "automatic search cycle" cadence is
     // now BacklogSearchIntervalMinutes (hardcoded default 6h). Field retained so
     // existing config.xml files don't blow up on deserialization; do not read.
@@ -177,6 +199,17 @@ public class Config
     public int RssSyncInterval { get; set; } = 15; // minutes between RSS sync cycles (default 15, min 10, max 120)
     public int MaxRssReleasesPerIndexer { get; set; } = 500; // max releases to fetch per indexer RSS feed (increased from 100 to avoid missing releases)
     public int RssReleaseAgeLimit { get; set; } = 14; // days - only consider releases posted within this window (sports releases are time-sensitive)
+
+    /// <summary>
+    /// HTTP request timeout (seconds) for the shared IndexerClient used by
+    /// every configured indexer. Default 30. A private tracker behind
+    /// Cloudflare/FlareSolverr or a slow Usenet indexer needing longer than
+    /// 30s otherwise has every search fail with no way to configure around
+    /// it. Read fresh on every IndexerClient creation (HttpClientFactory
+    /// rotates handlers periodically), so a change here is picked up without
+    /// an app restart, just not necessarily on the very next request.
+    /// </summary>
+    public int IndexerHttpTimeoutSeconds { get; set; } = 30;
 
     // IPTV / EPG auto-refresh (IptvEpgRefreshService). Playlists rot as
     // providers rotate channels and guide data ages out fast, so both are
@@ -225,6 +258,9 @@ public class Config
     public string DownloadPropersAndRepacks { get; set; } = "preferAndUpgrade"; // preferAndUpgrade | doNotUpgrade | doNotPrefer
     public bool DvrOvertimeGuardEnabled { get; set; } = true; // Keep recording past the scheduled end while livescore says the event is still in progress
     public int DvrOvertimeMaxExtensionMinutes { get; set; } = 120; // Ceiling on total overtime extension per recording (0 = disabled)
+    public bool DvrReresolveChannelsEnabled { get; set; } = true; // Move a scheduled recording to a better channel when new EPG data arrives
+    public int DvrReresolveLockMinutes { get; set; } = 45; // Stop changing the channel this many minutes before the recording starts
+    public int DvrReresolveMinImprovement { get; set; } = 10; // Confidence points a rival channel must beat the current one by
 
     /// <summary>
     /// What happens when scheduling a new recording would push an

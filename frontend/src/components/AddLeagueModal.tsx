@@ -667,9 +667,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     { token: '{Day}', description: 'Day (2 digits)' },
     { token: '{Round}', description: 'Round number (zero-padded, e.g., 01)' },
     { token: '{Round:0}', description: 'Round number (no padding, e.g., 1)' },
+    { token: '{Stage}', description: 'Stage number of a stage race (no padding, e.g. 16); empty when the title names no stage' },
+    { token: '{Stage:00}', description: 'Stage number, zero-padded (e.g., 16 becomes 16, 1 becomes 01)' },
     { token: '{Week}', description: 'Week number' },
     { token: '{EventTitle}', description: 'Event title (raw)' },
-    { token: '{EventName}', description: 'Event title with fighter matchup stripped (e.g. "ONE Friday Fights 150")' },
+    { token: '{EventName}', description: 'Event title with fighter matchup or stage number stripped (e.g. "Tour de France")' },
     { token: '{HomeTeam}', description: 'Home team' },
     { token: '{AwayTeam}', description: 'Away team' },
     { token: '{Season}', description: 'Season' },
@@ -1174,6 +1176,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         Monitors only special events across all seasons, using the Special events
                         toggles (finals, playoffs, preseason). Great for collecting every
                         championship game without following the whole league.
+                      </p>
+                    )}
+                    {monitorType === 'LatestSeason' && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        Monitors the most recent season with real event data. Unlike "Current
+                        Season Only", this stays on last season during an off-season gap instead
+                        of switching to an empty upcoming season the moment the calendar year rolls
+                        over.
                       </p>
                     )}
                   </div>

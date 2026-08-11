@@ -46,8 +46,11 @@ app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext d
     db.CustomFormats.Add(format);
     await db.SaveChangesAsync();
 
-    // Add the new format to all existing quality profiles with score 0
-    var profiles = await db.QualityProfiles.Include(p => p.FormatItems).ToListAsync();
+    // Add the new format to all existing quality profiles with score 0.
+    // No .Include() here: FormatItems is a JSON-value-converted column
+    // (SportarrDbContext.cs), not a real navigation, so it loads with the
+    // entity automatically - Include() on it throws at query-compile time.
+    var profiles = await db.QualityProfiles.ToListAsync();
     foreach (var profile in profiles)
     {
         if (!profile.FormatItems.Any(fi => fi.FormatId == format.Id))
@@ -232,8 +235,10 @@ app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbC
         db.CustomFormats.Add(format);
         await db.SaveChangesAsync();
 
-        // Add the imported format to all existing quality profiles
-        var profiles = await db.QualityProfiles.Include(p => p.FormatItems).ToListAsync();
+        // Add the imported format to all existing quality profiles.
+        // No .Include() here: FormatItems is a JSON-value-converted column,
+        // not a real navigation - see the /api/customformat POST handler above.
+        var profiles = await db.QualityProfiles.ToListAsync();
         foreach (var profile in profiles)
         {
             if (!profile.FormatItems.Any(fi => fi.FormatId == format.Id))

@@ -59,13 +59,17 @@ public static class SonarrCalendarEndpoint
                     // remoteUrl must always accompany url: calendar consumers
                     // (Homarr's zod schema among them) require it as a string
                     // on every image entry.
+                    // coverType must describe what the image IS, not fill
+                    // slots: consumers pick by type priority (poster first),
+                    // so a logo labeled "poster" wins over real posters and
+                    // renders a badly-fitted logo in poster-shaped UI.
                     var images = new List<object>();
-                    if (!string.IsNullOrEmpty(e.League.LogoUrl))
-                        images.Add(new { coverType = "poster", url = e.League.LogoUrl, remoteUrl = e.League.LogoUrl });
+                    if (!string.IsNullOrEmpty(e.League.PosterUrl))
+                        images.Add(new { coverType = "poster", url = e.League.PosterUrl, remoteUrl = e.League.PosterUrl });
                     if (!string.IsNullOrEmpty(e.League.BannerUrl))
                         images.Add(new { coverType = "banner", url = e.League.BannerUrl, remoteUrl = e.League.BannerUrl });
-                    if (!string.IsNullOrEmpty(e.League.PosterUrl))
-                        images.Add(new { coverType = "fanart", url = e.League.PosterUrl, remoteUrl = e.League.PosterUrl });
+                    if (!string.IsNullOrEmpty(e.League.LogoUrl))
+                        images.Add(new { coverType = "clearlogo", url = e.League.LogoUrl, remoteUrl = e.League.LogoUrl });
 
                     var leagueExternalId = Helpers.NumericIdAlias.FromExternalId(e.League.ExternalId);
                     seriesObj = new
@@ -125,11 +129,21 @@ public static class SonarrCalendarEndpoint
                 // Episode-level images (Sonarr sends stills when
                 // includeEpisodeImages is set; consumers expect the array to
                 // exist either way). The event thumbnail is the natural still.
+                // PosterUrl/ThumbUrl only carry values on API-deserialized
+                // objects (both are entity.Ignore'd, not DB columns). For
+                // DB-loaded events the URLs live in Images, where the
+                // metadata API embeds the image kind in the filename
+                // (poster_/thumbnail_/banner_/fanart_) - same fallback as
+                // EventResponse.FromEvent.
+                var eventPoster = e.PosterUrl
+                    ?? e.Images?.FirstOrDefault(u => u != null && u.Contains("poster", StringComparison.OrdinalIgnoreCase));
+                var eventThumb = e.ThumbUrl
+                    ?? e.Images?.FirstOrDefault(u => u != null && u.Contains("thumb", StringComparison.OrdinalIgnoreCase));
                 var episodeImages = new List<object>();
-                if (!string.IsNullOrEmpty(e.ThumbUrl))
-                    episodeImages.Add(new { coverType = "screenshot", url = e.ThumbUrl, remoteUrl = e.ThumbUrl });
-                else if (!string.IsNullOrEmpty(e.PosterUrl))
-                    episodeImages.Add(new { coverType = "screenshot", url = e.PosterUrl, remoteUrl = e.PosterUrl });
+                if (!string.IsNullOrEmpty(eventPoster))
+                    episodeImages.Add(new { coverType = "poster", url = eventPoster, remoteUrl = eventPoster });
+                if (!string.IsNullOrEmpty(eventThumb))
+                    episodeImages.Add(new { coverType = "screenshot", url = eventThumb, remoteUrl = eventThumb });
 
                 return new
                 {

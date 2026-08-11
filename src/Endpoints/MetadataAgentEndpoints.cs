@@ -347,7 +347,15 @@ public static class MetadataAgentEndpoints
         id = e.ExternalId,
         title = e.Title,
         summary = e.Description,
-        thumb_url = e.Images != null ? e.Images.FirstOrDefault() : null,
+        // The metadata API embeds the image kind in the filename
+        // (thumbnail_/poster_/banner_/fanart_) - Images is comma-split into
+        // a list with no guaranteed order, so picking FirstOrDefault()
+        // returned whichever kind happened to sync first instead of the
+        // actual thumbnail. Match the same thumb-detection EventResponse
+        // already uses, falling back to the first image so agents still
+        // get something when no image is explicitly tagged "thumb".
+        thumb_url = e.Images?.FirstOrDefault(u => u != null && u.Contains("thumb", StringComparison.OrdinalIgnoreCase))
+            ?? e.Images?.FirstOrDefault(),
         air_date = e.EventDate.ToString("yyyy-MM-dd"),
         broadcast_date = e.BroadcastDate?.ToString("yyyy-MM-dd"),
         season_number = e.SeasonNumber,

@@ -56,6 +56,9 @@ interface DvrSettings {
   postRecordingCommand: string;
   overtimeGuardEnabled: boolean;
   overtimeMaxExtensionMinutes: number;
+  reresolveChannelsEnabled: boolean;
+  reresolveLockMinutes: number;
+  reresolveMinImprovement: number;
   enableReconnect: boolean;
   maxReconnectAttempts: number;
   reconnectDelaySeconds: number;
@@ -166,6 +169,9 @@ const defaultDvrSettings: DvrSettings = {
   postRecordingCommand: '',
   overtimeGuardEnabled: true,
   overtimeMaxExtensionMinutes: 120,
+  reresolveChannelsEnabled: true,
+  reresolveLockMinutes: 45,
+  reresolveMinImprovement: 10,
   enableReconnect: true,
   maxReconnectAttempts: 5,
   reconnectDelaySeconds: 5,
@@ -887,6 +893,52 @@ export default function DvrSettingsPage() {
                       />
                       <p className="text-xs text-gray-500 mt-1">Ceiling on total extension per recording</p>
                     </div>
+                  )}
+                  <div className="md:col-span-2">
+                    <label className="flex items-start space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dvrSettings.reresolveChannelsEnabled}
+                        onChange={(e) => handleSettingsChange('reresolveChannelsEnabled', e.target.checked)}
+                        className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                      />
+                      <div>
+                        <span className="text-white font-medium">Re-resolve Channels on New EPG Data</span>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Recordings scheduled far ahead use a league channel mapping, because the EPG does not
+                          cover the date yet. When the EPG later gains an exact match on a better channel,
+                          move the existing recording to it. Recordings in progress are never changed.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                  {dvrSettings.reresolveChannelsEnabled && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Channel Lock (Minutes Before Start)</label>
+                        <input
+                          type="number"
+                          min={5}
+                          max={720}
+                          value={dvrSettings.reresolveLockMinutes}
+                          onChange={(e) => handleSettingsChange('reresolveLockMinutes', parseInt(e.target.value) || 45)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Stop changing the channel this long before the recording starts</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Minimum Confidence Gain</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={dvrSettings.reresolveMinImprovement}
+                          onChange={(e) => handleSettingsChange('reresolveMinImprovement', parseInt(e.target.value) || 10)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Points a rival channel must beat the current one by, to avoid churn</p>
+                      </div>
+                    </>
                   )}
                 </div>
                 {/* Available Hardware Info */}

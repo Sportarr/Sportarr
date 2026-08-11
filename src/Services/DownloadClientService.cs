@@ -633,6 +633,61 @@ public class DownloadClientService : IDownloadClientService
     }
 
     /// <summary>
+    /// Apply the recent/older event queue priority (issue #220) to a just-added
+    /// download. <paramref name="priority"/> is the raw DownloadClient.RecentPriority
+    /// or OlderPriority value, interpreted per client type since each one exposes a
+    /// different real scale (see the enums on DownloadClient's priority properties):
+    /// qBittorrent/Deluge/Transmission/Vuze are binary (only "First" triggers a
+    /// move-to-top call - "Last" is the queue's default landing spot, so no call is
+    /// needed), rTorrent and the usenet clients have graded scales and are always
+    /// called since any value including their own "Normal" is meaningful to send.
+    /// Client types with no queue concept (blackhole, debrid, etc.) are a silent
+    /// no-op rather than an error - asking for a priority the client doesn't
+    /// support isn't a failure, it just doesn't do anything.
+    /// </summary>
+    public async Task<bool> ApplyQueuePriorityAsync(DownloadClient config, string downloadId, int priority)
+    {
+        try
+        {
+            switch (config.Type)
+            {
+                case DownloadClientType.QBittorrent:
+                    return priority != (int)DownloadPriority.First
+                        || await GetQBittorrentClient(config).MoveToTopPriorityAsync(config, downloadId);
+
+                case DownloadClientType.Deluge:
+                    return priority != (int)DownloadPriority.First
+                        || await GetDelugeClient(config).MoveTorrentToTopAsync(config, downloadId);
+
+                case DownloadClientType.Transmission:
+                    return priority != (int)DownloadPriority.First
+                        || await GetTransmissionClient(config).MoveTorrentToTopAsync(config, downloadId);
+
+                case DownloadClientType.RTorrent:
+                    return priority == (int)RTorrentQueuePriority.Normal
+                        || await GetRTorrentClient(config).SetPriorityAsync(config, downloadId, priority);
+
+                case DownloadClientType.Sabnzbd:
+                    return priority == (int)SabnzbdQueuePriority.Normal
+                        || await GetSabnzbdClient(config).SetPriorityAsync(config, downloadId, priority);
+
+                case DownloadClientType.NzbGet:
+                    return priority == (int)NzbGetQueuePriority.Normal
+                        || (int.TryParse(downloadId, out var nzbId)
+                            && await GetNzbGetClient(config).SetPriorityAsync(config, nzbId, priority));
+
+                default:
+                    return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Download Client] Error applying queue priority: {Message}", ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Resume download in client
     /// </summary>
     public async Task<bool> ResumeDownloadAsync(DownloadClient config, string downloadId)

@@ -196,6 +196,26 @@ public class SportarrApiClient
         }
     }
 
+    /// <summary>
+    /// Lightweight connectivity check for the MetadataApiUnavailable health
+    /// check. Any HTTP response (even a 4xx) counts as reachable - this
+    /// checks connectivity, not whether "ping" resolves to a real league.
+    /// </summary>
+    public async Task<(bool Reachable, string? Error)> PingAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var url = $"{_apiBaseUrl}/search/league/ping";
+            using var response = await _httpClient.GetAsync(url, cts.Token);
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     #region Search Endpoints
 
     /// <summary>

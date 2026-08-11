@@ -79,13 +79,32 @@ public class DvrRecordingService
     {
         try
         {
+            // Load the linked event on demand when a caller's query didn't already
+            // include it. Callers vary (some Include it, some use FindAsync), so this
+            // keeps every recording notification path able to send series identity
+            // instead of only whichever ones happened to eager-load it.
+            if (recording.EventId.HasValue && recording.Event == null)
+            {
+                await _db.Entry(recording).Reference(r => r.Event).LoadAsync();
+            }
+            if (recording.Event?.LeagueId.HasValue == true && recording.Event.League == null)
+            {
+                await _db.Entry(recording.Event).Reference(e => e.League).LoadAsync();
+            }
+
             await _notificationService.SendNotificationAsync(trigger, title, message,
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "recordingId", recording.Id },
-                    { "recordingTitle", recording.Title },
-                    { "channelId", recording.ChannelId },
-                    { "eventId", recording.EventId ?? 0 },
+                    RecordingId = recording.Id,
+                    RecordingTitle = recording.Title,
+                    ChannelId = recording.ChannelId,
+                    // Null (omitted from the wire payload), not a fake 0,
+                    // when this recording has no linked library event.
+                    EventId = recording.EventId,
+                    EventExternalId = recording.Event?.ExternalId,
+                    EventTitle = recording.Event?.Title,
+                    League = recording.Event?.League?.Name,
+                    Sport = recording.Event?.Sport,
                 });
         }
         catch (Exception ex)

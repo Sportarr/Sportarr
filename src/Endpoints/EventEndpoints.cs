@@ -136,11 +136,15 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
     // deliberately do not (thousands of events per initial sync).
     try
     {
+        var leagueName = evt.LeagueId.HasValue
+            ? await db.Leagues.Where(l => l.Id == evt.LeagueId.Value).Select(l => l.Name).FirstOrDefaultAsync()
+            : null;
+
         await notificationService.SendNotificationAsync(
             NotificationTrigger.OnEventAdded,
             $"Event added: {evt.Title}",
             $"Date: {evt.EventDate:yyyy-MM-dd HH:mm} UTC\nSport: {evt.Sport ?? "Unknown"}",
-            new Dictionary<string, object> { { "eventId", evt.Id }, { "eventTitle", evt.Title ?? "" } });
+            new NotificationEventData { EventId = evt.Id, EventExternalId = evt.ExternalId, EventTitle = evt.Title ?? "", League = leagueName, Sport = evt.Sport });
     }
     catch { /* notification failure never fails the add */ }
 
@@ -238,6 +242,14 @@ app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db, Notif
     if (evt is null) return Results.NotFound();
 
     var deletedTitle = evt.Title;
+    var deletedExternalId = evt.ExternalId;
+    // Snapshot before Remove: the dispatch-time TsdbId lookup cannot
+    // see a row that no longer exists.
+    var deletedTsdbId = evt.TsdbId;
+    var deletedSport = evt.Sport;
+    var deletedLeagueName = evt.LeagueId.HasValue
+        ? await db.Leagues.Where(l => l.Id == evt.LeagueId.Value).Select(l => l.Name).FirstOrDefaultAsync()
+        : null;
     db.Events.Remove(evt);
     await db.SaveChangesAsync();
 
@@ -247,7 +259,15 @@ app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db, Notif
             NotificationTrigger.OnEventDelete,
             $"Event deleted: {deletedTitle}",
             $"The event was removed from the library.",
-            new Dictionary<string, object> { { "eventId", id }, { "eventTitle", deletedTitle ?? "" } });
+            new NotificationEventData
+            {
+                EventId = id,
+                EventExternalId = deletedExternalId,
+                TsdbId = deletedTsdbId,
+                EventTitle = deletedTitle ?? "",
+                League = deletedLeagueName,
+                Sport = deletedSport,
+            });
     }
     catch { /* notification failure never fails the delete */ }
 
@@ -389,7 +409,8 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     // they can drop the now-missing item — the same partial scan the import fires,
     // just pointed at the deleted file's folder. Plex notices the file is missing
     // on the rescan and removes it (when "empty trash after scan" is enabled).
-    await NotifyFileDeletedAsync(notificationService, logger, evt, file.FilePath);
+    await NotifyFileDeletedAsync(notificationService, logger, evt, file.FilePath,
+        new List<NotificationFileData> { new() { Path = file.FilePath, Quality = file.Quality, Size = file.Size } });
 
     try
     {
@@ -520,12 +541,16 @@ app.MapDelete("/api/events/{id:int}/files", async (
         .Distinct()
         .ToList();
 
-    // Capture one file path before deletion so we can point the media-server
-    // rescan at the event's folder afterwards (all parts share a folder, so a
-    // single representative path is enough to make Plex re-check it).
-    var representativeDeletedPath = evt.Files
-        .Select(f => f.FilePath)
-        .FirstOrDefault(p => !string.IsNullOrEmpty(p));
+    // Capture every file's path/quality/size before deletion - both to point
+    // the media-server rescan at the event's folder afterwards (all parts
+    // share a folder, so any one path works for that) and so the webhook's
+    // DeletedFiles carries the real per-file data, not just one representative
+    // guess, so consumers can show total recovered space across all parts.
+    var deletedFilesData = evt.Files
+        .Where(f => !string.IsNullOrEmpty(f.FilePath))
+        .Select(f => new NotificationFileData { Path = f.FilePath, Quality = f.Quality, Size = f.Size })
+        .ToList();
+    var representativeDeletedPath = deletedFilesData.FirstOrDefault()?.Path;
 
     var config = await configService.GetConfigAsync();
     var recycleBinPath = config.RecycleBin;
@@ -581,7 +606,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
     await db.SaveChangesAsync();
 
     // Tell media servers / webhooks the files are gone (see single-file delete).
-    await NotifyFileDeletedAsync(notificationService, logger, evt, representativeDeletedPath);
+    await NotifyFileDeletedAsync(notificationService, logger, evt, representativeDeletedPath, deletedFilesData);
 
     // Handle blocklist action if specified
     if (blocklistAction == "blocklistAndSearch" || blocklistAction == "blocklistOnly")
@@ -745,7 +770,8 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
         NotificationService notificationService,
         ILogger logger,
         Event evt,
-        string? filePath)
+        string? filePath,
+        List<NotificationFileData>? deletedFiles = null)
     {
         try
         {
@@ -755,13 +781,16 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
                 string.IsNullOrEmpty(filePath)
                     ? $"Files removed for {evt.Title}"
                     : $"File: {Path.GetFileName(filePath)}",
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "eventId", evt.Id },
-                    { "eventTitle", evt.Title ?? "" },
-                    { "league", evt.League?.Name ?? "" },
-                    { "sport", evt.Sport ?? "" },
-                    { "filePath", filePath ?? "" }
+                    EventId = evt.Id,
+                    EventExternalId = evt.ExternalId,
+                    EventTitle = evt.Title ?? "",
+                    League = evt.League?.Name,
+                    Sport = evt.Sport,
+                    DeletedFiles = deletedFiles ?? (!string.IsNullOrEmpty(filePath)
+                        ? new List<NotificationFileData> { new() { Path = filePath } }
+                        : null)
                 },
                 evt.League?.Tags);
         }

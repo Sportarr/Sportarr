@@ -14,12 +14,12 @@ public interface INotificationService
     /// <param name="trigger">The trigger type (OnGrab, OnDownload, etc.)</param>
     /// <param name="title">Notification title</param>
     /// <param name="message">Notification message</param>
-    /// <param name="metadata">Optional metadata for the notification</param>
+    /// <param name="data">Optional structured event data for the notification</param>
     Task SendNotificationAsync(
         NotificationTrigger trigger,
         string title,
         string message,
-        Dictionary<string, object>? metadata = null,
+        NotificationEventData? data = null,
         List<int>? leagueTags = null);
 
     /// <summary>

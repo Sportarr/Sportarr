@@ -29,6 +29,9 @@ interface Indexer {
   minimumSeeders?: number;
   seedRatio?: number;
   seedTime?: number;
+  queryLimit?: number;
+  grabLimit?: number;
+  requestDelayMs?: number;
   seasonPackSeedTime?: number;
   earlyReleaseLimit?: number;
   additionalParameters?: string;
@@ -156,6 +159,9 @@ export default function IndexersSettings() {
       const minimumSeeders = getField('minimumSeeders') as string || '1';
       const seedRatio = getField('seedRatio') as string;
       const seedTime = getField('seedTime') as string;
+      const queryLimit = getField('queryLimit') as string;
+      const grabLimit = getField('grabLimit') as string;
+      const requestDelayMs = getField('requestDelayMs') as string;
       const seasonPackSeedTime = getField('seasonPackSeedTime') as string;
       const earlyReleaseLimit = getField('earlyReleaseLimit') as string;
       const additionalParameters = getField('additionalParameters') as string;
@@ -192,6 +198,9 @@ export default function IndexersSettings() {
         minimumSeeders: parseInt(minimumSeeders, 10),
         seedRatio: seedRatio ? parseFloat(seedRatio) : undefined,
         seedTime: seedTime ? parseInt(seedTime, 10) : undefined,
+        queryLimit: queryLimit ? parseInt(queryLimit, 10) : undefined,
+        grabLimit: grabLimit ? parseInt(grabLimit, 10) : undefined,
+        requestDelayMs: requestDelayMs ? parseInt(requestDelayMs, 10) : undefined,
         seasonPackSeedTime: seasonPackSeedTime ? parseInt(seasonPackSeedTime, 10) : undefined,
         earlyReleaseLimit: earlyReleaseLimit ? parseInt(earlyReleaseLimit, 10) : undefined,
         additionalParameters: additionalParameters || undefined,
@@ -220,9 +229,12 @@ export default function IndexersSettings() {
   const [preferIndexerFlags, setPreferIndexerFlags] = useState(true);
   const [searchCacheDuration, setSearchCacheDuration] = useState(120);
   const [minimumAge, setMinimumAge] = useState(0);
+  const [maxRssReleasesPerIndexer, setMaxRssReleasesPerIndexer] = useState(500);
+  const [rssReleaseAgeLimit, setRssReleaseAgeLimit] = useState(14);
+  const [indexerHttpTimeoutSeconds, setIndexerHttpTimeoutSeconds] = useState(30);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number} | null>(null);
+  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number; maxRssReleasesPerIndexer: number; rssReleaseAgeLimit: number; indexerHttpTimeoutSeconds: number} | null>(null);
   useUnsavedChanges(hasUnsavedChanges);
 
   // Download clients drive the per-indexer override dropdown below.
@@ -266,7 +278,10 @@ export default function IndexersSettings() {
           rssSyncInterval: data.rssSyncInterval ?? 60,
           preferIndexerFlags: data.preferIndexerFlags ?? true,
           searchCacheDuration: data.searchCacheDuration ?? 120,
-          minimumAge: data.indexerMinimumAgeMinutes ?? 0
+          minimumAge: data.indexerMinimumAgeMinutes ?? 0,
+          maxRssReleasesPerIndexer: data.maxRssReleasesPerIndexer ?? 500,
+          rssReleaseAgeLimit: data.rssReleaseAgeLimit ?? 14,
+          indexerHttpTimeoutSeconds: data.indexerHttpTimeoutSeconds ?? 30
         };
 
         setRetention(loadedSettings.retention);
@@ -274,6 +289,9 @@ export default function IndexersSettings() {
         setPreferIndexerFlags(loadedSettings.preferIndexerFlags);
         setSearchCacheDuration(loadedSettings.searchCacheDuration);
         setMinimumAge(loadedSettings.minimumAge);
+        setMaxRssReleasesPerIndexer(loadedSettings.maxRssReleasesPerIndexer);
+        setRssReleaseAgeLimit(loadedSettings.rssReleaseAgeLimit);
+        setIndexerHttpTimeoutSeconds(loadedSettings.indexerHttpTimeoutSeconds);
         initialSettings.current = loadedSettings;
         setHasUnsavedChanges(false);
       }
@@ -285,10 +303,10 @@ export default function IndexersSettings() {
   // Detect changes
   useEffect(() => {
     if (!initialSettings.current) return;
-    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge };
+    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit, indexerHttpTimeoutSeconds };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
-  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge]);
+  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit, indexerHttpTimeoutSeconds]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
@@ -310,13 +328,16 @@ export default function IndexersSettings() {
         preferIndexerFlags,
         searchCacheDuration: Math.max(10, searchCacheDuration), // Enforce minimum of 10 seconds
         indexerMinimumAgeMinutes: Math.max(0, minimumAge),
+        maxRssReleasesPerIndexer: Math.max(1, maxRssReleasesPerIndexer),
+        rssReleaseAgeLimit: Math.max(0, rssReleaseAgeLimit),
+        indexerHttpTimeoutSeconds: Math.max(5, indexerHttpTimeoutSeconds),
       };
 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
 
       // Update initial settings and reset unsaved changes flag
-      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge };
+      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit, indexerHttpTimeoutSeconds };
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save indexer settings:', error);
@@ -484,6 +505,17 @@ export default function IndexersSettings() {
     if (indexer.seedTime !== undefined) {
       fields.push({ name: 'seedTime', value: String(indexer.seedTime) });
     }
+    // Always send queryLimit/grabLimit so the backend can clear them
+    // (null = unlimited) when the user empties the field.
+    fields.push({
+      name: 'queryLimit',
+      value: indexer.queryLimit !== undefined ? String(indexer.queryLimit) : '',
+    });
+    fields.push({
+      name: 'grabLimit',
+      value: indexer.grabLimit !== undefined ? String(indexer.grabLimit) : '',
+    });
+    fields.push({ name: 'requestDelayMs', value: String(indexer.requestDelayMs ?? 0) });
     if (indexer.seasonPackSeedTime !== undefined) {
       fields.push({ name: 'seasonPackSeedTime', value: String(indexer.seasonPackSeedTime) });
     }
@@ -1055,6 +1087,64 @@ export default function IndexersSettings() {
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Query Limit (per hour)</label>
+              <input
+                type="number"
+                value={formData.queryLimit ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    handleFormChange('queryLimit', undefined);
+                  } else {
+                    const parsed = parseInt(raw, 10);
+                    handleFormChange('queryLimit', Number.isNaN(parsed) ? undefined : parsed);
+                  }
+                }}
+                min="0"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Maximum search/RSS queries against this indexer per hour. Leave blank for unlimited.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Grab Limit (per hour)</label>
+              <input
+                type="number"
+                value={formData.grabLimit ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    handleFormChange('grabLimit', undefined);
+                  } else {
+                    const parsed = parseInt(raw, 10);
+                    handleFormChange('grabLimit', Number.isNaN(parsed) ? undefined : parsed);
+                  }
+                }}
+                min="0"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Maximum grabs from this indexer per hour. Leave blank for unlimited.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Request Delay (ms)</label>
+              <input
+                type="number"
+                value={formData.requestDelayMs || 0}
+                onChange={(e) => handleFormChange('requestDelayMs', parseInt(e.target.value, 10) || 0)}
+                min="0"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Minimum delay between requests to this indexer. 0 = no delay.
+              </p>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Multi Languages</label>
               <input
                 type="text"
@@ -1451,6 +1541,40 @@ export default function IndexersSettings() {
             </div>
 
             <div>
+              <label className="block text-white font-medium mb-2">Max RSS Releases Per Indexer</label>
+              <input
+                type="number"
+                value={maxRssReleasesPerIndexer}
+                onChange={(e) => setMaxRssReleasesPerIndexer(Number(e.target.value))}
+                className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                min="1"
+              />
+              <p className="text-sm text-gray-400 mt-1">
+                Maximum releases to fetch from each indexer's RSS feed per sync. Raise this if a
+                busy indexer's feed is deep enough that recent releases fall off the page before
+                RSS Sync runs.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-white font-medium mb-2">RSS Release Age Limit</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={rssReleaseAgeLimit}
+                  onChange={(e) => setRssReleaseAgeLimit(Number(e.target.value))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="0"
+                />
+                <span className="text-gray-400">days</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                Only consider RSS releases posted within this many days. Sports releases are
+                time-sensitive, so old RSS entries are ignored. Set to 0 to disable the window.
+              </p>
+            </div>
+
+            <div>
               <label className="block text-white font-medium mb-2">Minimum Age</label>
               <div className="flex items-center space-x-2">
                 <input
@@ -1499,6 +1623,25 @@ export default function IndexersSettings() {
                 How long to cache raw indexer results in memory. Cached results are re-matched against each event,
                 reducing API calls when searching: multi-part events (UFC Prelims/Main Card share cache),
                 same-year events (all NFL 2025 games share cache). Use the "Refresh" button to bypass cache.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-white font-medium mb-2">Indexer HTTP Timeout</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={indexerHttpTimeoutSeconds}
+                  onChange={(e) => setIndexerHttpTimeoutSeconds(Number(e.target.value))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="5"
+                />
+                <span className="text-gray-400">seconds</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                How long to wait for a response from any indexer before giving up. Raise this if a private
+                tracker behind Cloudflare/FlareSolverr or a slow Usenet indexer needs more than the default
+                30 seconds. Applies to all indexers; takes effect within a couple minutes, no restart needed.
               </p>
             </div>
           </div>

@@ -87,6 +87,7 @@ app.MapPost("/api/release/grab", async (
     SportarrDbContext db,
     DownloadClientService downloadClientService,
     ConfigService configService,
+    NotificationService notificationService,
     ILogger<Program> logger) =>
 {
     // Parse the request body which contains both release and eventId
@@ -257,6 +258,26 @@ app.MapPost("/api/release/grab", async (
     logger.LogInformation("[GRAB] Download added to client successfully!");
     logger.LogInformation("[GRAB] Download ID (Hash): {DownloadId}", downloadId);
 
+    // Recent/older event queue priority (issue #220) - same logic as the
+    // automatic-search and RSS-sync grab paths, duplicated here since manual
+    // grabs from the UI go through this endpoint instead.
+    var isRecentGrabEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
+    var requestedGrabPriority = isRecentGrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+    try
+    {
+        var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedGrabPriority);
+        if (!prioritySet)
+        {
+            logger.LogWarning("[GRAB] Failed to set queue priority for {DownloadId} on {Client}",
+                downloadId, downloadClient.Name);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "[GRAB] Error setting queue priority for {DownloadId}", downloadId);
+    }
+
     // Track download in database
     logger.LogInformation("[GRAB] Creating download queue item in database...");
 
@@ -307,6 +328,7 @@ app.MapPost("/api/release/grab", async (
             Codec = release.Codec,
             Source = release.Source,
             Size = release.Size,
+            IndexerFlags = release.IndexerFlags,
             Downloaded = 0,
             Progress = 0,
             Indexer = release.Indexer,
@@ -388,6 +410,41 @@ app.MapPost("/api/release/grab", async (
                         "The download will complete but will not auto-import; remove it from the client or import it manually.",
                 statusCode: 500);
         }
+    }
+
+    // Interactive/manual grabs from the search UI never fired OnGrab at all -
+    // only the automatic-search, RSS-sync, and pending-release-reaper paths
+    // did. Sonarr/Radarr fire Grab for both automatic and interactive-search
+    // grabs, so integrations built against that contract (e.g. Notifiarr)
+    // never saw a Grab payload for anything a user grabbed by hand. One
+    // notification per event in the pack, matching how each event gets its
+    // own Download/Upgrade notification later at import time.
+    try
+    {
+        foreach (var packEvent in packEvents)
+        {
+            await notificationService.SendNotificationAsync(
+                NotificationTrigger.OnGrab,
+                $"Grabbed: {release.Title}",
+                $"Event: {packEvent.Title}\nQuality: {release.Quality ?? "Unknown"}\nIndexer: {release.Indexer}\nSize: {release.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
+                new NotificationEventData
+                {
+                    EventId = packEvent.Id,
+                    EventExternalId = packEvent.ExternalId,
+                    EventTitle = packEvent.Title ?? "",
+                    League = packEvent.League?.Name,
+                    Sport = packEvent.Sport,
+                    Indexer = release.Indexer,
+                    Quality = release.Quality ?? "",
+                    Size = release.Size,
+                    DownloadId = downloadId,
+                },
+                packEvent.League?.Tags);
+        }
+    }
+    catch (Exception notifyEx)
+    {
+        logger.LogWarning(notifyEx, "[GRAB] Failed to send grab notification");
     }
 
     // Use the first queue item for status tracking

@@ -19,7 +19,6 @@ public class EnhancedDownloadMonitorService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<EnhancedDownloadMonitorService> _logger;
-    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(30);
     private readonly TimeSpan _stalledTimeout = TimeSpan.FromMinutes(10); // Default stalled timeout
 
     // Hard cap on import retries. After this many failed import attempts the
@@ -47,7 +46,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("[Enhanced Download Monitor] Service started - Poll interval: {Interval}s", _pollInterval.TotalSeconds);
+        _logger.LogInformation("[Enhanced Download Monitor] Service started");
 
         // Wait before starting to allow app to fully initialize
         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
@@ -104,7 +103,23 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 _logger.LogError(ex, "[Enhanced Download Monitor] Error detecting external downloads");
             }
 
-            await Task.Delay(_pollInterval, stoppingToken);
+            // Read fresh each cycle so a config change takes effect on the
+            // next tick without an app restart, matching the pattern
+            // BacklogSearchService already uses for its own interval.
+            var pollSeconds = 30;
+            try
+            {
+                using var pollScope = _serviceProvider.CreateScope();
+                var configService = pollScope.ServiceProvider.GetRequiredService<ConfigService>();
+                var config = await configService.GetConfigAsync();
+                pollSeconds = Math.Max(5, config.DownloadMonitorPollSeconds);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Enhanced Download Monitor] Failed to read poll interval from config, using default");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(pollSeconds), stoppingToken);
         }
 
         _logger.LogInformation("[Enhanced Download Monitor] Service stopped");
@@ -666,7 +681,19 @@ public class EnhancedDownloadMonitorService : BackgroundService
             download.Status = DownloadStatus.Importing;
 
             // Import the download
-            await fileImportService.ImportDownloadAsync(download);
+            var importResult = await fileImportService.ImportDownloadAsync(download);
+
+            // A null result means ImportDownloadAsync rejected the import (e.g. "not an
+            // upgrade") without throwing - it has already set Status/ErrorMessage and
+            // saved. Overwriting that with Imported here would hide a real rejection
+            // behind a false success log, and removing the download from its client
+            // below would delete a release that was never actually imported.
+            if (importResult == null)
+            {
+                _logger.LogInformation("[Enhanced Download Monitor] Import rejected, not treating as success: {Title} - {Reason}",
+                    download.Title, download.ErrorMessage);
+                return;
+            }
 
             download.Status = DownloadStatus.Imported;
             download.ImportedAt = DateTime.UtcNow;
@@ -1353,11 +1380,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
                                 NotificationTrigger.OnManualInteractionRequired,
                                 $"Manual import required: {download.Title}",
                                 $"An external download finished in {client.Name} and could not be matched automatically (confidence {confidence}%). Review it under Activity.",
-                                new Dictionary<string, object>
+                                new NotificationEventData
                                 {
-                                    { "downloadTitle", download.Title },
-                                    { "client", client.Name },
-                                    { "confidence", confidence },
+                                    DownloadTitle = download.Title,
+                                    DownloadClientName = client.Name,
+                                    Confidence = confidence,
                                 });
                         }
                         catch (Exception notifyEx)
@@ -1369,7 +1396,14 @@ public class EnhancedDownloadMonitorService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "[Enhanced Download Monitor] Error checking external downloads for client: {Client}", client.Name);
+                // Warning, not Debug: Debug is filtered out by default, so a
+                // persistently failing client (bad auth, timeout, malformed
+                // response) would silently stop having its external downloads
+                // detected with zero trace in default logs and no user-visible
+                // signal. Matches CLAUDE.md's own logging convention (Warning =
+                // recoverable problem, one client's poll failing doesn't abort
+                // the others).
+                _logger.LogWarning(ex, "[Enhanced Download Monitor] Error checking external downloads for client: {Client}", client.Name);
             }
         }
 

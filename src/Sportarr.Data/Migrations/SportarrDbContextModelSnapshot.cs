@@ -599,6 +599,9 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("OlderPriority")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Password")
                         .HasColumnType("TEXT");
 
@@ -615,6 +618,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("ReadOnly")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RecentPriority")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("RemoveCompletedDownloads")
@@ -698,6 +704,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Indexer")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IndexerFlags")
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("IndexerId")
@@ -1049,7 +1058,6 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("EndTime")
@@ -1270,6 +1278,10 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strEvent");
+
+                    b.Property<string>("TsdbId")
+                        .HasColumnType("TEXT")
+                        .HasAnnotation("Relational:JsonPropertyName", "tsdbId");
 
                     b.Property<string>("Venue")
                         .HasColumnType("TEXT")
@@ -2547,6 +2559,15 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("LastNotificationAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastNotificationError")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("LastNotificationSucceeded")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -3575,6 +3596,40 @@ namespace Sportarr.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("SeasonPosters");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.StreamEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("EventId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ExternalId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("LeagueId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StreamEvents");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.SystemEvent", b =>

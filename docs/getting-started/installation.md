@@ -91,4 +91,94 @@ $env:Sportarr__DataPath = "C:\ProgramData\Sportarr"
 
 Priority order: command-line `-data` argument, then the environment variable, then the default `./data`.
 
+## Run at startup
+
+Docker installs restart on their own through the `restart: unless-stopped`
+policy in the compose example above. For bare-metal installs, set it up per
+platform:
+
+### Windows
+
+The installer (`Sportarr-Setup.exe`) offers two options for this:
+
+- **Start Sportarr when Windows starts** (checked by default) adds a Startup
+  shortcut that launches Sportarr in the system tray when you log in.
+- **Install as Windows Service** runs Sportarr in the background from boot,
+  before anyone logs in. Pick this for a headless server or a machine other
+  people also use.
+
+Already installed without the option you want? Re-run the installer and tick
+it. Your data directory and settings are kept.
+
+Using the portable zip instead? Create the service yourself from an
+elevated prompt:
+
+```powershell
+sc create Sportarr binPath= "\"C:\Sportarr\Sportarr.exe\" --service" start= auto
+sc start Sportarr
+```
+
+Or press Win+R, run `shell:startup`, and drop in a shortcut to
+`Sportarr.exe --tray` for the tray-at-login behavior.
+
+### Linux
+
+Create a systemd unit:
+
+```ini
+# /etc/systemd/system/sportarr.service
+[Unit]
+Description=Sportarr
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=sportarr
+ExecStart=/opt/sportarr/Sportarr -data /var/lib/sportarr
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable it:
+
+```bash
+sudo systemctl enable --now sportarr
+```
+
+### macOS
+
+Create a launchd agent at `~/Library/LaunchAgents/net.sportarr.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>net.sportarr</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/Sportarr/Sportarr</string>
+        <string>-data</string>
+        <string>/Users/YOURNAME/.sportarr</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+</dict>
+</plist>
+```
+
+Then load it:
+
+```bash
+launchctl load ~/Library/LaunchAgents/net.sportarr.plist
+```
+
 Next step: the [Initial Setup](initial-setup.md) walkthrough.

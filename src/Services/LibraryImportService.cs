@@ -69,7 +69,7 @@ public class LibraryImportService
     /// <summary>
     /// Scan a folder for video files
     /// </summary>
-    public async Task<LibraryScanResult> ScanFolderAsync(string folderPath, bool includeSubfolders = true)
+    public async Task<LibraryScanResult> ScanFolderAsync(string folderPath, bool includeSubfolders = true, Func<int, int, Task>? onProgress = null)
     {
         var result = new LibraryScanResult
         {
@@ -111,9 +111,30 @@ public class LibraryImportService
                     .ToListAsync(),
                 StringComparer.OrdinalIgnoreCase);
 
+            // Preload every Event/EventFile whose FilePath falls under this scanned
+            // folder in two queries total, instead of two FirstOrDefaultAsync calls
+            // per file inside the loop below (previously 2 round trips per file, on
+            // top of the ffprobe inspection cost, for every file under a potentially
+            // large root folder). Scoped by folder prefix rather than an IN-list of
+            // every discovered file path, since a full library scan can easily exceed
+            // SQLite's 999 host-parameter limit.
+            var eventByFilePath = (await _db.Events
+                .Where(e => e.FilePath != null && e.FilePath.StartsWith(folderPath))
+                .ToListAsync())
+                .GroupBy(e => e.FilePath!)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var eventFileByFilePath = (await _db.EventFiles
+                .Include(ef => ef.Event)
+                .Where(ef => ef.FilePath.StartsWith(folderPath))
+                .ToListAsync())
+                .GroupBy(ef => ef.FilePath)
+                .ToDictionary(g => g.Key, g => g.First());
+
             // Track event IDs claimed by earlier files in this batch so two files can't match the same event
             var claimedEventIds = new HashSet<int>();
 
+            var processedFileCount = 0;
             foreach (var filePath in files)
             {
                 if (ignoredPaths.Contains(filePath))
@@ -131,6 +152,21 @@ public class LibraryImportService
                     // give us a Resolution+Source pair. Costs ~50-200ms per uninformative
                     // file but produces accurate Quality on first scan.
                     var parsedInfo = await _fileParser.ParseWithInspectionAsync(filename, filePath);
+
+                    // SampleFileFilter above only catches samples with a literal
+                    // "sample" token in the path. A download client's incomplete
+                    // post-processing (e.g. an un-extracted archive) can leave a
+                    // short preview clip named just like the real release, with
+                    // nothing in the path to flag it - only ffprobe's actual
+                    // duration gives that away.
+                    if (settings.MinimumImportDurationMinutes > 0 && parsedInfo.Duration.HasValue &&
+                        parsedInfo.Duration.Value.TotalMinutes < settings.MinimumImportDurationMinutes)
+                    {
+                        _logger.LogInformation(
+                            "[LibraryImport] Skipping {File}: {Minutes:F1} minutes long, below the configured minimum of {Threshold} minutes",
+                            filePath, parsedInfo.Duration.Value.TotalMinutes, settings.MinimumImportDurationMinutes);
+                        continue;
+                    }
 
                     // Use sports parser if it has high confidence
                     var eventTitle = sportsResult.Confidence >= 60 && !string.IsNullOrEmpty(sportsResult.EventTitle)
@@ -166,15 +202,12 @@ public class LibraryImportService
                     // merely contain pt+digits (Egypt2026).
                     var isPartFile = System.Text.RegularExpressions.Regex.IsMatch(filename, @"(?<![a-zA-Z])pt\d+\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-                    // Check if file is already in library
-                    // First check Event.FilePath (main file path)
-                    var existingEvent = await _db.Events
-                        .FirstOrDefaultAsync(e => e.FilePath == filePath);
-
-                    // Also check EventFiles table (for multi-part episodes and re-imports)
-                    var existingEventFile = await _db.EventFiles
-                        .Include(ef => ef.Event)
-                        .FirstOrDefaultAsync(ef => ef.FilePath == filePath);
+                    // Check if file is already in library - dictionary lookups against
+                    // the preloaded maps below instead of two FirstOrDefaultAsync calls
+                    // per file (previously 2 round trips per file, on top of the ffprobe
+                    // inspection cost, for every file under the scanned folder).
+                    eventByFilePath.TryGetValue(filePath, out var existingEvent);
+                    eventFileByFilePath.TryGetValue(filePath, out var existingEventFile);
 
                     if (existingEvent != null || existingEventFile != null)
                     {
@@ -322,6 +355,12 @@ public class LibraryImportService
                 {
                     _logger.LogWarning(ex, "Failed to process file: {FilePath}", filePath);
                     result.Errors.Add($"Failed to process {Path.GetFileName(filePath)}: {ex.Message}");
+                }
+
+                processedFileCount++;
+                if (onProgress != null)
+                {
+                    await onProgress(processedFileCount, files.Count);
                 }
             }
 
@@ -733,14 +772,14 @@ public class LibraryImportService
                     NotificationTrigger.OnDownload,
                     $"Imported: {evt.Title}",
                     $"File: {Path.GetFileName(path)}\nQuality: {quality}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventId", evt.Id },
-                        { "eventTitle", evt.Title ?? "" },
-                        { "league", evt.League?.Name ?? "" },
-                        { "sport", evt.Sport ?? "" },
-                        { "filePath", path },
-                        { "quality", quality }
+                        EventId = evt.Id,
+                        EventExternalId = evt.ExternalId,
+                        EventTitle = evt.Title ?? "",
+                        League = evt.League?.Name,
+                        Sport = evt.Sport,
+                        File = new NotificationFileData { Path = path, Quality = quality, Size = file.Size }
                     },
                     evt.League?.Tags);
             }
@@ -913,8 +952,10 @@ public class LibraryImportService
                 Part = partSuffix
             };
 
+            // No grabbed release to source IndexerFlags from here - this path
+            // imports pre-existing files found on disk, not an active download.
             tokens.CustomFormats = _customFormatService.BuildRenameToken(
-                Path.GetFileName(sourcePath), await _db.CustomFormats.ToListAsync());
+                Path.GetFileName(sourcePath), await _db.CustomFormats.ToListAsync(), sourceFileInfo.Length);
 
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
@@ -1780,6 +1821,10 @@ public class LibraryImportService
                 Episode = episodeNumber.ToString("00"),
                 Part = string.Empty
             };
+            // Preview-only: no resolved file on disk and no grabbed release at
+            // this point, so Size/IndexerFlag conditions can't be evaluated
+            // here (same as before - this only affects the destination preview
+            // shown while picking a file, not the actual import).
             tokens.CustomFormats = _customFormatService.BuildRenameToken(
                 originalFileName, await _db.CustomFormats.ToListAsync());
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);

@@ -249,6 +249,7 @@ const LibraryImportPage: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [scanProgress, setScanProgress] = useState<string | null>(null);
 
   // File details modal state
   const [showFileDetailsModal, setShowFileDetailsModal] = useState(false);
@@ -277,20 +278,55 @@ const LibraryImportPage: React.FC = () => {
     setScanning(true);
     setScanError(null);
     setScanResult(null);
+    setScanProgress(null);
     setSelectedFiles(new Set());
     setFileEventMappings(new Map());
 
     try {
+      // The scan runs as a background task: a large root folder's ffprobe
+      // pass can take minutes and was outliving reverse-proxy timeouts
+      // while the scan kept running invisibly. Queue it, then poll the
+      // task until it finishes (same pattern as the import step below).
       const response = await apiPost(
         `/api/library/scan?folderPath=${encodeURIComponent(folderPath)}&includeSubfolders=${includeSubfolders}`,
         {}
       );
 
       if (!response.ok) {
-        throw new Error('Failed to scan folder');
+        throw new Error('Failed to queue scan');
       }
 
-      const result: ScanResult = await response.json();
+      const { taskId } = await response.json();
+      if (!taskId) {
+        throw new Error('Scan task was not queued');
+      }
+
+      let result: ScanResult | null = null;
+      for (;;) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        let task: { status: string; progress?: number; message?: string; result?: string } | null = null;
+        try {
+          const taskResponse = await apiGet(`/api/task/${taskId}`);
+          if (!taskResponse.ok) continue;
+          task = await taskResponse.json();
+        } catch {
+          continue;
+        }
+        if (!task) continue;
+
+        if (task.status === 'Completed') {
+          result = task.result ? JSON.parse(task.result) : null;
+          break;
+        }
+        if (task.status === 'Failed' || task.status === 'Cancelled') {
+          throw new Error(task.message || 'Scan failed, check the logs');
+        }
+        setScanProgress(task.message || `Scanning... ${task.progress ?? 0}%`);
+      }
+
+      if (!result) {
+        throw new Error('Scan finished but returned no result');
+      }
 
       // Present files in a stable, human order: numeric-aware path sort so
       // sequences like ...02.FP2 / ...03.Quali / ...04.Race read in
@@ -777,7 +813,7 @@ const LibraryImportPage: React.FC = () => {
         <div className="bg-gray-800 rounded-lg p-12 border border-red-900/30 text-center">
           <ArrowPathIcon className="w-16 h-16 mx-auto mb-4 text-red-400 animate-spin" />
           <h2 className="text-xl font-semibold text-white mb-2">Scanning...</h2>
-          <p className="text-gray-400">Analyzing video files and matching to events</p>
+          <p className="text-gray-400">{scanProgress || 'Analyzing video files and matching to events'}</p>
         </div>
       )}
 

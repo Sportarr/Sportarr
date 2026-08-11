@@ -137,6 +137,18 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
                     case "seedTime":
                         indexer.SeedTime = int.TryParse(fieldValue, out var seedTime) ? seedTime : null;
                         break;
+                    case "queryLimit":
+                        // Empty or non-numeric clears the cap (null = unlimited).
+                        indexer.QueryLimit = int.TryParse(fieldValue, out var queryLimit) ? queryLimit : null;
+                        break;
+                    case "grabLimit":
+                        indexer.GrabLimit = int.TryParse(fieldValue, out var grabLimit) ? grabLimit : null;
+                        break;
+                    case "requestDelayMs":
+                        indexer.RequestDelayMs = int.TryParse(fieldValue, out var requestDelayMs) && requestDelayMs > 0
+                            ? requestDelayMs
+                            : 0;
+                        break;
                     case "earlyReleaseLimit":
                         // Empty, 0, negative, or non-numeric all persist as null so the
                         // matcher's opt-in check stays off. Only a positive int enables it.
@@ -323,6 +335,18 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                         break;
                     case "seedTime":
                         indexer.SeedTime = int.TryParse(fieldValue, out var seedTime) ? seedTime : null;
+                        break;
+                    case "queryLimit":
+                        // Empty or non-numeric clears the cap (null = unlimited).
+                        indexer.QueryLimit = int.TryParse(fieldValue, out var queryLimit) ? queryLimit : null;
+                        break;
+                    case "grabLimit":
+                        indexer.GrabLimit = int.TryParse(fieldValue, out var grabLimit) ? grabLimit : null;
+                        break;
+                    case "requestDelayMs":
+                        indexer.RequestDelayMs = int.TryParse(fieldValue, out var requestDelayMs) && requestDelayMs > 0
+                            ? requestDelayMs
+                            : 0;
                         break;
                     case "earlyReleaseLimit":
                         // Empty, 0, negative, or non-numeric all persist as null so the
@@ -759,6 +783,9 @@ app.MapPost("/api/indexer/test", async (
             new { name = "minimumSeeders", value = i.MinimumSeeders.ToString() },
             new { name = "seedRatio", value = i.SeedRatio?.ToString(CultureInfo.InvariantCulture) ?? "" },
             new { name = "seedTime", value = i.SeedTime?.ToString() ?? "" },
+            new { name = "queryLimit", value = i.QueryLimit?.ToString() ?? "" },
+            new { name = "grabLimit", value = i.GrabLimit?.ToString() ?? "" },
+            new { name = "requestDelayMs", value = i.RequestDelayMs.ToString() },
             new { name = "seasonPackSeedTime", value = i.SeasonPackSeedTime?.ToString() ?? "" },
             new { name = "earlyReleaseLimit", value = i.EarlyReleaseLimit?.ToString() ?? "" },
             new { name = "additionalParameters", value = i.AdditionalParameters ?? "" },
@@ -797,6 +824,9 @@ app.MapPost("/api/indexer/test", async (
             new { name = "minimumSeeders", value = "1" },
             new { name = "seedRatio", value = "" },
             new { name = "seedTime", value = "" },
+            new { name = "queryLimit", value = "" },
+            new { name = "grabLimit", value = "" },
+            new { name = "requestDelayMs", value = "0" },
             new { name = "seasonPackSeedTime", value = "" },
             new { name = "additionalParameters", value = "" },
             new { name = "rejectBlocklistedTorrentHashes", value = "false" }

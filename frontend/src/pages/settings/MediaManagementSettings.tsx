@@ -55,6 +55,7 @@ interface MediaManagementSettingsData {
   reorganizeFolders: boolean;
   skipFreeSpaceCheck: boolean;
   minimumFreeSpace: number;
+  minimumImportDurationMinutes: number;
   useHardlinks: boolean;
   // copyFiles was retired: imports are seeding-aware and per-client
   // Post-Import Behavior covers the always-preserve use case. Old installs
@@ -62,9 +63,11 @@ interface MediaManagementSettingsData {
   importExtraFiles: boolean;
   extraFileExtensions: string;
   userRejectedExtensions: string;
+  downloadClientWorkingFolders: string;
   changeFileDate: string;
   recycleBin: string;
   recycleBinCleanup: number;
+  eventFileMissingDeleteAfterDays: number;
   setPermissions: boolean;
   chmodFolder: string;
   chownGroup: string;
@@ -128,13 +131,16 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     reorganizeFolders: false,
     skipFreeSpaceCheck: false,
     minimumFreeSpace: 100,
+    minimumImportDurationMinutes: 0,
     useHardlinks: true,
     importExtraFiles: false,
     extraFileExtensions: 'srt,nfo',
     userRejectedExtensions: '',
+    downloadClientWorkingFolders: '_UNPACK_,_FAILED_',
     changeFileDate: 'None',
     recycleBin: '',
     recycleBinCleanup: 7,
+    eventFileMissingDeleteAfterDays: 30,
     setPermissions: false,
     chmodFolder: '755',
     chownGroup: '',
@@ -1138,6 +1144,26 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
 
           {showAdvanced && (
             <>
+              <div>
+                <label className="block text-white font-medium mb-2">Download Client Working Folders</label>
+                <input
+                  type="text"
+                  value={settings.downloadClientWorkingFolders}
+                  onChange={(e) => updateSetting('downloadClientWorkingFolders', e.target.value)}
+                  placeholder="_UNPACK_,_FAILED_"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                />
+                <p className="text-sm text-gray-400 mt-1">
+                  Comma-separated folder name markers your download client uses for in-progress
+                  items. Skipped during import scanning so partial downloads aren't picked up as
+                  complete. qBittorrent's defaults are shown; change this if your client (Deluge,
+                  rTorrent, etc) uses different marker names.
+                </p>
+                <span className="inline-block mt-1 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
+                  Advanced
+                </span>
+              </div>
+
               <label className="flex items-start space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -1176,6 +1202,27 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                   </span>
                 </div>
               )}
+
+              <div>
+                <label className="block text-white font-medium mb-2">Minimum Import Duration</label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    value={settings.minimumImportDurationMinutes}
+                    onChange={(e) => updateSetting('minimumImportDurationMinutes', Number(e.target.value))}
+                    className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  />
+                  <span className="text-gray-400">minutes</span>
+                </div>
+                <p className="text-sm text-gray-400 mt-1">
+                  Skip importing a video file shorter than this. Catches sample or trailer
+                  clips a download client leaves behind that would otherwise match an event
+                  by name. 0 disables the check.
+                </p>
+                <span className="inline-block mt-1 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
+                  Advanced
+                </span>
+              </div>
             </>
           )}
         </div>
@@ -1240,6 +1287,26 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                 </p>
               </div>
             )}
+
+            <div>
+              <label className="block text-white font-medium mb-2">Missing File Deletion Grace Period</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={settings.eventFileMissingDeleteAfterDays}
+                  onChange={(e) => updateSetting('eventFileMissingDeleteAfterDays', Number(e.target.value))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="0"
+                />
+                <span className="text-gray-400">days</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                When a tracked file has been continuously missing from disk for this many days
+                (mount outage, manual deletion), Sportarr permanently removes its database record
+                instead of continuing to track it. Also applies to stale, unclaimed pending
+                imports. Set to 0 to never auto-delete.
+              </p>
+            </div>
 
             <label className="flex items-start space-x-3 cursor-pointer">
               <input

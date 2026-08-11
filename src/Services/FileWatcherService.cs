@@ -525,14 +525,39 @@ public class FileWatcherService : BackgroundService
             try
             {
                 var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
+
+                // A file dropped straight into the library folder never went through a
+                // grab, so there's no release/indexer to report - only fill in the
+                // suggested event's identity when the auto-match found one.
+                string? eventTitle = null;
+                string? eventExternalId = null;
+                string? league = null;
+                string? sport = null;
+                if (suggestedEventId.HasValue)
+                {
+                    var suggestedEvent = await db.Events
+                        .Include(e => e.League)
+                        .FirstOrDefaultAsync(e => e.Id == suggestedEventId.Value);
+                    eventTitle = suggestedEvent?.Title;
+                    eventExternalId = suggestedEvent?.ExternalId;
+                    league = suggestedEvent?.League?.Name;
+                    sport = suggestedEvent?.Sport;
+                }
+
                 await notificationService.SendNotificationAsync(
                     NotificationTrigger.OnManualInteractionRequired,
                     $"Manual import required: {fileInfo.Name}",
                     $"A new file appeared in the library folders and could not be matched automatically (confidence {confidence}%). Review it under Activity.",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "filePath", filePath },
-                        { "confidence", confidence },
+                        DownloadId = pendingImport.DownloadId,
+                        EventId = suggestedEventId,
+                        EventExternalId = eventExternalId,
+                        EventTitle = eventTitle,
+                        League = league,
+                        Sport = sport,
+                        File = new NotificationFileData { Path = filePath, Quality = quality, Size = fileInfo.Length },
+                        Confidence = confidence,
                     });
             }
             catch (Exception notifyEx)

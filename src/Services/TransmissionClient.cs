@@ -396,6 +396,16 @@ public class TransmissionClient
     }
 
     /// <summary>
+    /// Move a torrent to the front of Transmission's download queue
+    /// (recent/older event queue priority, issue #220). Also covers Vuze,
+    /// which speaks the Transmission RPC protocol via TransmissionBase.
+    /// </summary>
+    public async Task<bool> MoveTorrentToTopAsync(DownloadClient config, string hash)
+    {
+        return await ControlTorrentAsync(config, "queue-move-top", hash);
+    }
+
+    /// <summary>
     /// List all torrents matching a category (download directory) for external download detection.
     /// Transmission has no native category concept — Sportarr's "category" maps to <see cref="DownloadClient.Directory"/>,
     /// so external detection filters torrents by their download directory. If no directory is configured,

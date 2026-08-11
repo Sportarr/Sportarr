@@ -1278,6 +1278,42 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify SeasonPosters table: {ex.Message}");
         }
 
+        // Ensure FollowedAthletes table exists (per-user athlete follows,
+        // resolved to a TSDB team for event discovery). Same shape as the
+        // SeasonPosters/ChannelTeamMappings safety nets above - a legacy
+        // EnsureCreated()-era SQLite install that goes through the migration
+        // seed-catch-up path would otherwise mark AddFollowedAthletes as
+        // "applied" with the table never actually created.
+        try
+        {
+            var checkFollowedAthletesSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='FollowedAthletes'";
+            var followedAthletesExists = db.Database.SqlQueryRaw<int>(checkFollowedAthletesSql).AsEnumerable().FirstOrDefault();
+
+            if (followedAthletesExists == 0)
+            {
+                Console.WriteLine("[Sportarr] FollowedAthletes table missing - creating it now...");
+
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""FollowedAthletes"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""ExternalId"" TEXT NOT NULL,
+                        ""Name"" TEXT NOT NULL,
+                        ""Sport"" TEXT NOT NULL,
+                        ""ThumbUrl"" TEXT NULL,
+                        ""Added"" TEXT NOT NULL,
+                        ""LastEventDiscovery"" TEXT NULL,
+                        ""ResolvedTeamExternalId"" TEXT NULL,
+                        ""ResolvedTeamName"" TEXT NULL
+                    )");
+
+                Console.WriteLine("[Sportarr] FollowedAthletes table created successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify FollowedAthletes table: {ex.Message}");
+        }
+
         // Ensure ChannelTeamMappings table exists (per-team DVR channel
         // preference, checked by the resolver before the league mapping).
         try
@@ -2435,8 +2471,15 @@ public static class DatabaseInitializer
         EnsureColumn(db, "DownloadClients", "SaveMagnetFiles", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DownloadClients", "ReadOnly", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DownloadClients", "PostImportMode", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "DownloadClients", "RecentPriority", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "DownloadClients", "OlderPriority", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "MetadataProviders", "ShowNfo", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumn(db, "Tasks", "Result", "TEXT NULL");
+        EnsureColumn(db, "DownloadQueue", "IndexerFlags", "TEXT");
+        EnsureColumn(db, "Notifications", "LastNotificationSucceeded", "INTEGER NULL");
+        EnsureColumn(db, "Notifications", "LastNotificationError", "TEXT NULL");
+        EnsureColumn(db, "Notifications", "LastNotificationAt", "TEXT NULL");
+        EnsureColumn(db, "Events", "TsdbId", "TEXT NULL");
 
         RelaxLegacyRootFolderColumns(db);
     }

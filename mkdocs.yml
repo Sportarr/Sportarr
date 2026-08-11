@@ -72,14 +72,28 @@ nav:
       - Initial Setup: getting-started/initial-setup.md
       - Database: getting-started/database.md
   - Integrations:
-      - Prowlarr: integrations/prowlarr.md
-      - Bazarr: integrations/bazarr.md
-      - Maintainerr: integrations/maintainerr.md
-      - Homepage: integrations/homepage.md
+      - Aria2: integrations/aria2.md
       - autobrr: integrations/autobrr.md
+      - Bazarr: integrations/bazarr.md
+      - Blackhole: integrations/blackhole.md
+      - Decypharr: integrations/decypharr.md
+      - Deluge: integrations/deluge.md
       - DockSTARTer: integrations/dockstarter.md
-      - Media Servers: integrations/media-servers.md
+      - Emby: integrations/emby.md
+      - Homepage: integrations/homepage.md
+      - Jellyfin: integrations/jellyfin.md
       - Kodi: integrations/kodi.md
+      - Maintainerr: integrations/maintainerr.md
+      - NZBdav: integrations/nzbdav.md
+      - NZBGet: integrations/nzbget.md
+      - Plex: integrations/plex.md
+      - Prowlarr: integrations/prowlarr.md
+      - qBittorrent: integrations/qbittorrent.md
+      - rTorrent: integrations/rtorrent.md
+      - SABnzbd: integrations/sabnzbd.md
+      - Synology Download Station: integrations/download-station.md
+      - Transmission: integrations/transmission.md
+      - Vuze: integrations/vuze.md
   - Features:
       - Following Teams & Athletes: features/following.md
       - Download Clients: features/download-clients.md
@@ -93,6 +107,7 @@ nav:
       - External IDs: EXTERNAL_IDS.md
       - API Versioning: API_VERSIONING.md
       - Native API Reference: api.md
+      - Integration API (stable contract): development/integration-api.md
       - Plex Metadata Provider: plex-metadata-provider-api.md
       - Release Naming: RELEASE_NAMING.md
   - Development:

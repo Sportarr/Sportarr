@@ -1194,6 +1194,27 @@ public class RssSyncService : BackgroundService
             return false;
         }
 
+        // Recent/older event queue priority (issue #220) - same logic as the
+        // automatic-search grab path, duplicated here because RSS sync and
+        // release-push (autobrr et al) grab through this function instead,
+        // not AutomaticSearchService.
+        var isRecentRssEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
+        var requestedRssPriority = isRecentRssEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+        try
+        {
+            var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedRssPriority);
+            if (!prioritySet)
+            {
+                _logger.LogWarning("[RSS Sync] Failed to set queue priority for {DownloadId} on {Client}",
+                    downloadId, downloadClient.Name);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[RSS Sync] Error setting queue priority for {DownloadId}", downloadId);
+        }
+
         // Add to download queue
         var queueItem = new DownloadQueueItem
         {
@@ -1207,6 +1228,7 @@ public class RssSyncService : BackgroundService
             Codec = release.Codec,
             Source = release.Source,
             Size = release.Size,
+            IndexerFlags = release.IndexerFlags,
             Downloaded = 0,
             Progress = 0,
             Indexer = release.Indexer,
@@ -1229,13 +1251,17 @@ public class RssSyncService : BackgroundService
                 NotificationTrigger.OnGrab,
                 $"Grabbed: {release.Title}",
                 $"Event: {evt.Title}\nQuality: {release.Quality ?? "Unknown"}\nIndexer: {release.Indexer}\nSize: {release.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "eventId", evt.Id },
-                    { "eventTitle", evt.Title ?? "" },
-                    { "indexer", release.Indexer },
-                    { "quality", release.Quality ?? "" },
-                    { "downloadId", downloadId },
+                    EventId = evt.Id,
+                    EventExternalId = evt.ExternalId,
+                    EventTitle = evt.Title ?? "",
+                    League = evt.League?.Name,
+                    Sport = evt.Sport,
+                    Indexer = release.Indexer,
+                    Quality = release.Quality ?? "",
+                    Size = release.Size,
+                    DownloadId = downloadId,
                 },
                 evt.League?.Tags);
         }
@@ -1281,7 +1307,25 @@ public class RssSyncService : BackgroundService
         };
         db.GrabHistory.Add(grabHistory);
 
-        await db.SaveChangesAsync(cancellationToken);
+        // Same compensation as the manual grab endpoint and AutomaticSearchService:
+        // the download is already in the client, so a persistence failure here
+        // must not orphan it as an "external" download. Queue tracking is what
+        // import hangs off; retry without the history row before giving up.
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception saveEx)
+        {
+            _logger.LogError(saveEx,
+                "[RSS Sync] Failed to persist queue + history for download {DownloadId} - retrying without the history row",
+                downloadId);
+            db.Entry(grabHistory).State = EntityState.Detached;
+            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogWarning(
+                "[RSS Sync] Queue item for download {DownloadId} saved without grab history - re-grab cross-referencing is unavailable for this grab",
+                downloadId);
+        }
 
         return true;
     }

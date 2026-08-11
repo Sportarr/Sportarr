@@ -148,9 +148,27 @@ public static class ServiceCollectionExtensions
                     {
                         Console.WriteLine($"[Indexer] Retry {retryCount} after {timespan.TotalSeconds}s due to {outcome.Exception?.Message ?? outcome.Result.StatusCode.ToString()}");
                     }))
-            .ConfigureHttpClient(client =>
+            .ConfigureHttpClient((sp, client) =>
             {
-                client.Timeout = TimeSpan.FromSeconds(30);
+                // Config.IndexerHttpTimeoutSeconds, read fresh on every client
+                // creation (the (IServiceProvider, HttpClient) overload runs each
+                // time HttpClientFactory rotates a handler, not just once at
+                // startup), so a private tracker behind Cloudflare/FlareSolverr or
+                // a slow Usenet indexer can be given more than the 30s default
+                // without an app restart. Blocking here is safe: this callback
+                // runs outside any request's SynchronizationContext.
+                var timeoutSeconds = 30;
+                try
+                {
+                    var configService = sp.GetRequiredService<ConfigService>();
+                    var config = configService.GetConfigAsync().GetAwaiter().GetResult();
+                    timeoutSeconds = Math.Max(5, config.IndexerHttpTimeoutSeconds);
+                }
+                catch
+                {
+                    // Config not readable yet (very early startup) - keep the default.
+                }
+                client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
             });
 
@@ -312,6 +330,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<HealthCheckService>();
         services.AddScoped<BackupService>();
         services.AddScoped<NotificationService>();
+        // Singleton: holds the live SSE subscriber channels.
+        services.AddSingleton<EventStreamService>();
         // Backup-restore reconciliation stack. PathRemap + LibraryRescan
         // are scoped so they pick up a fresh DbContext per request (the
         // db file gets replaced during restore so reusing a singleton
@@ -444,6 +464,11 @@ public static class ServiceCollectionExtensions
         // Reconciles DvrRecording.Status against actual ffmpeg state -
         // catches crashes, app restarts, frozen upstream sources.
         services.AddHostedService<DvrWatchdogService>();
+
+        // Moves a scheduled recording to a better channel when later EPG
+        // data beats the league mapping that first scheduled it.
+        services.AddSingleton<DvrChannelReresolveService>();
+        services.AddHostedService(sp => sp.GetRequiredService<DvrChannelReresolveService>());
 
         // Downloads finished events from the provider's catchup/timeshift
         // archive (Method=Catchup rows) - the post-air counterpart to the

@@ -89,22 +89,41 @@ public static class BlackholeDownloadClient
     /// most of the id's tokens appear in the entry name, which covers clients
     /// that use the torrent's internal name instead of the dropped file name.
     /// </summary>
-    public static bool IsNameMatch(string entryName, string downloadId)
+    public static bool IsNameMatch(string entryName, string downloadId) => MatchScore(entryName, downloadId) >= 0;
+
+    /// <summary>
+    /// How well an entry name matches a download id: a strong match (exact or
+    /// prefix) always outranks a fuzzy token-majority match, and among fuzzy
+    /// matches a higher token count wins. -1 means no match at all.
+    ///
+    /// This ranking (rather than IsNameMatch's plain yes/no) matters because
+    /// two multi-part releases for the same event (e.g. "... Prelims ...
+    /// RlsD1" and "... Main Card ... RlsD2") share most of their tokens by
+    /// construction, so each one's real watch-folder output can also clear
+    /// the fuzzy threshold against the OTHER download's id. Picking the
+    /// highest-scoring candidate instead of the first one a directory listing
+    /// happens to enumerate means a download's own exact/prefix match always
+    /// wins over a same-card sibling's fuzzy cross-match whenever both
+    /// entries already exist. It does not (and structurally can't, from this
+    /// id-only comparison alone) prevent the narrower race where only the
+    /// sibling's output has landed yet and this download's hasn't.
+    /// </summary>
+    private static int MatchScore(string entryName, string downloadId)
     {
         var entryNorm = NormalizeForMatch(entryName);
         var idNorm = NormalizeForMatch(downloadId);
-        if (entryNorm.Length == 0 || idNorm.Length == 0) return false;
+        if (entryNorm.Length == 0 || idNorm.Length == 0) return -1;
 
         if (entryNorm == idNorm || entryNorm.StartsWith(idNorm) || idNorm.StartsWith(entryNorm))
         {
-            return true;
+            return int.MaxValue;
         }
 
         var tokens = TokenizeForMatch(downloadId);
-        if (tokens.Count == 0) return false;
+        if (tokens.Count == 0) return -1;
 
         var matched = tokens.Count(t => entryNorm.Contains(t));
-        return matched >= Math.Ceiling(tokens.Count * 0.6);
+        return matched >= Math.Ceiling(tokens.Count * 0.6) ? matched : -1;
     }
 
     private static List<string> TokenizeForMatch(string value)
@@ -136,6 +155,13 @@ public static class BlackholeDownloadClient
     {
         if (!Directory.Exists(watchFolder)) return null;
 
+        // Score every candidate and keep the best rather than stopping at the
+        // first one that clears the fuzzy threshold - see MatchScore for why
+        // that matters when two near-identical sibling releases are both
+        // sitting in the watch folder at once.
+        string? bestMatch = null;
+        var bestScore = -1;
+
         foreach (var entry in Directory.EnumerateFileSystemEntries(watchFolder))
         {
             var name = Path.GetFileName(entry);
@@ -152,13 +178,15 @@ public static class BlackholeDownloadClient
                 stem = Path.GetFileNameWithoutExtension(stem);
             }
 
-            if (IsNameMatch(stem, downloadId))
+            var score = MatchScore(stem, downloadId);
+            if (score > bestScore)
             {
-                return entry;
+                bestScore = score;
+                bestMatch = entry;
             }
         }
 
-        return null;
+        return bestScore >= 0 ? bestMatch : null;
     }
 
     private static bool HasIncompleteExtension(string name)

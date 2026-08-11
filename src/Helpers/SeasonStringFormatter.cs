@@ -70,6 +70,48 @@ public static class SeasonStringFormatter
         _ => year.ToString(),
     };
 
+    private static readonly Regex LeadingYearRe = new(@"^\d{4}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Extracts the leading 4-digit year from a season string, regardless of
+    /// format (all five documented shapes start with the year). Null if the
+    /// string doesn't start with one.
+    /// </summary>
+    public static int? GetLeadingYear(string season)
+    {
+        if (string.IsNullOrWhiteSpace(season))
+            return null;
+
+        var match = LeadingYearRe.Match(season.Trim());
+        return match.Success ? int.Parse(match.Value) : null;
+    }
+
+    /// <summary>
+    /// The season with the highest leading year that isn't later than
+    /// <paramref name="maxYear"/> - i.e. "the most recent season we actually
+    /// have data for", distinct from "the season matching the calendar
+    /// year right now". During an off-season gap (the hub hasn't listed
+    /// next season yet, or it has no events scheduled), this correctly
+    /// stays on last season instead of jumping to an empty "current" one.
+    /// Falls back to the single highest season overall if every listed
+    /// season is somehow after maxYear. Null if the input is empty.
+    /// </summary>
+    public static string? GetLatestSeasonNotAfter(IEnumerable<string> seasons, int maxYear)
+    {
+        var withYears = seasons
+            .Select(s => (Season: s, Year: GetLeadingYear(s)))
+            .Where(x => x.Year.HasValue)
+            .ToList();
+
+        if (withYears.Count == 0)
+            return null;
+
+        var notAfter = withYears.Where(x => x.Year!.Value <= maxYear).ToList();
+        var pool = notAfter.Count > 0 ? notAfter : withYears;
+
+        return pool.OrderByDescending(x => x.Year!.Value).First().Season;
+    }
+
     private static SeasonFormat DetectFormat(IEnumerable<string> seasons)
     {
         var counts = new Dictionary<SeasonFormat, int>();

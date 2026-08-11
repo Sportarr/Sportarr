@@ -11,17 +11,27 @@ public static class LibraryEndpoints
 {
     public static IEndpointRouteBuilder MapLibraryEndpoints(this IEndpointRouteBuilder app)
     {
-        // API: Library Import - Scan filesystem for existing event files
-        app.MapPost("/api/library/scan", async (LibraryImportService service, string folderPath, bool includeSubfolders = true) =>
+        // API: Library Import - Scan filesystem for existing event files.
+        // Queued as a background task and polled, same rationale as
+        // /api/library/import below: a large root folder's ffprobe pass can
+        // run for minutes and was outliving reverse-proxy timeouts while the
+        // scan kept running invisibly.
+        app.MapPost("/api/library/scan", async (TaskService taskService, string folderPath, bool includeSubfolders = true) =>
         {
             try
             {
-                var result = await service.ScanFolderAsync(folderPath, includeSubfolders);
-                return Results.Ok(result);
+                var body = System.Text.Json.JsonSerializer.Serialize(new { folderPath, includeSubfolders });
+                var task = await taskService.QueueTaskAsync(
+                    $"Library Scan ({folderPath})",
+                    "LibraryScan",
+                    priority: 5,
+                    body: body);
+
+                return Results.Accepted($"/api/task/{task.Id}", new { taskId = task.Id });
             }
             catch (Exception ex)
             {
-                return Results.Problem($"Failed to scan folder: {ex.Message}");
+                return Results.Problem($"Failed to queue scan: {ex.Message}");
             }
         });
 

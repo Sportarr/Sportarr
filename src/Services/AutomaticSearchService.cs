@@ -1179,6 +1179,28 @@ public class AutomaticSearchService : IAutomaticSearchService
             _logger.LogInformation("[Automatic Search] Added to download client: {Client} (ID: {DownloadId})",
                 downloadClient.Name, downloadId);
 
+            // Recent/older event queue priority (issue #220), matching Sonarr's
+            // RecentTvPriority/OlderTvPriority split: "recent" is the same
+            // 14-day window Sonarr uses for episodes. ApplyQueuePriorityAsync
+            // interprets the raw value per client type and is a silent no-op
+            // for client types with no queue concept.
+            var isRecentEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
+            var requestedPriority = isRecentEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+            try
+            {
+                var prioritySet = await _downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedPriority);
+                if (!prioritySet)
+                {
+                    _logger.LogWarning("[Automatic Search] Failed to set queue priority for {DownloadId} on {Client}",
+                        downloadId, downloadClient.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Automatic Search] Error setting queue priority for {DownloadId}", downloadId);
+            }
+
             // UNIVERSAL: Add to download queue tracking (event-level, no fight card subdivisions)
             // If this is a retry, increment the retry count from the previous failed download
             var retryCount = recentFailedDownload != null ? (recentFailedDownload.RetryCount ?? 0) + 1 : 0;
@@ -1195,6 +1217,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 Codec = bestRelease.Codec,
                 Source = bestRelease.Source,
                 Size = bestRelease.Size,
+                IndexerFlags = bestRelease.IndexerFlags,
                 Downloaded = 0,
                 Progress = 0,
                 Indexer = bestRelease.Indexer,
@@ -1217,13 +1240,17 @@ public class AutomaticSearchService : IAutomaticSearchService
                     NotificationTrigger.OnGrab,
                     $"Grabbed: {bestRelease.Title}",
                     $"Event: {evt.Title}\nQuality: {bestRelease.Quality ?? "Unknown"}\nIndexer: {bestRelease.Indexer}\nSize: {bestRelease.Size / 1024.0 / 1024.0 / 1024.0:F2} GB",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventId", eventId },
-                        { "eventTitle", evt.Title ?? "" },
-                        { "indexer", bestRelease.Indexer },
-                        { "quality", bestRelease.Quality ?? "" },
-                        { "downloadId", downloadId },
+                        EventId = eventId,
+                        EventExternalId = evt.ExternalId,
+                        EventTitle = evt.Title ?? "",
+                        League = evt.League?.Name,
+                        Sport = evt.Sport,
+                        Indexer = bestRelease.Indexer,
+                        Quality = bestRelease.Quality ?? "",
+                        Size = bestRelease.Size,
+                        DownloadId = downloadId,
                     },
                     evt.League?.Tags);
             }
@@ -1305,10 +1332,31 @@ public class AutomaticSearchService : IAutomaticSearchService
                     "[Automatic Search] Failed to persist queue + history for download {DownloadId} - retrying without the history row",
                     downloadId);
                 _db.Entry(grabHistory).State = EntityState.Detached;
-                await _db.SaveChangesAsync();
-                _logger.LogWarning(
-                    "[Automatic Search] Queue item for download {DownloadId} saved without grab history - re-grab cross-referencing is unavailable for this grab",
-                    downloadId);
+                try
+                {
+                    await _db.SaveChangesAsync();
+                    _logger.LogWarning(
+                        "[Automatic Search] Queue item for download {DownloadId} saved without grab history - re-grab cross-referencing is unavailable for this grab",
+                        downloadId);
+                }
+                catch (Exception retryEx)
+                {
+                    // Same last-resort compensation as the manual grab endpoint:
+                    // the download is already active in the client but neither
+                    // save attempt persisted, so Sportarr has zero tracking
+                    // record of it. Surface this distinctly instead of letting
+                    // it fall through to the generic outer catch below, which
+                    // would report the same "Error: ..." shape as any other
+                    // failure and give no indication the download is still
+                    // live and untracked.
+                    _logger.LogCritical(retryEx,
+                        "[Automatic Search] Could not persist ANY tracking for download {DownloadId} ({Title}) - it is active in {ClientName} but Sportarr is not tracking it. Remove it from the client manually or import it manually on completion.",
+                        downloadId, evt.Title, downloadClient.Name);
+                    result.Success = false;
+                    result.Message = $"Download added to {downloadClient.Name} (id {downloadId}) but Sportarr could not save its tracking records: {retryEx.Message}. " +
+                        "The download will complete but will not auto-import; remove it from the client or import it manually.";
+                    return result;
+                }
             }
 
             // Immediately check download status so it appears in the Activity
@@ -1425,6 +1473,22 @@ public class AutomaticSearchService : IAutomaticSearchService
 
         _logger.LogInformation("[Automatic Search] Found {Count} monitored events (from monitored leagues) to search", events.Count);
 
+        // Preload the active download-queue keys for all candidate events in one
+        // query, instead of an AnyAsync per part inside the loop below (previously
+        // hundreds to low-thousands of individual queries for a large library with
+        // multi-part events).
+        var eventIds = events.Select(e => e.Id).ToList();
+        var activeQueueKeys = (await _db.DownloadQueue
+            .Where(d => eventIds.Contains(d.EventId) &&
+                (d.Status == DownloadStatus.Queued ||
+                 d.Status == DownloadStatus.Downloading ||
+                 d.Status == DownloadStatus.Completed ||
+                 d.Status == DownloadStatus.Importing))
+            .Select(d => new { d.EventId, d.Part })
+            .ToListAsync())
+            .Select(d => (d.EventId, d.Part))
+            .ToHashSet();
+
         // Build list of search targets (event + optional part)
         // For multi-part fighting events, expand into individual part searches
         var searchTargets = new List<(int EventId, string? Part, string Description)>();
@@ -1491,13 +1555,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                     }
 
                     // Check if already in download queue (part-aware)
-                    var alreadyQueued = await _db.DownloadQueue
-                        .AnyAsync(d => d.EventId == evt.Id &&
-                                      d.Part == part.Name &&
-                                      (d.Status == DownloadStatus.Queued ||
-                                       d.Status == DownloadStatus.Downloading ||
-                                       d.Status == DownloadStatus.Completed ||
-                                       d.Status == DownloadStatus.Importing));
+                    var alreadyQueued = activeQueueKeys.Contains((evt.Id, part.Name));
 
                     if (alreadyQueued)
                     {
@@ -1515,13 +1573,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 if (!evt.HasFile)
                 {
                     // Check if already in download queue (full event, Part = null)
-                    var alreadyQueued = await _db.DownloadQueue
-                        .AnyAsync(d => d.EventId == evt.Id &&
-                                      d.Part == null &&
-                                      (d.Status == DownloadStatus.Queued ||
-                                       d.Status == DownloadStatus.Downloading ||
-                                       d.Status == DownloadStatus.Completed ||
-                                       d.Status == DownloadStatus.Importing));
+                    var alreadyQueued = activeQueueKeys.Contains((evt.Id, (string?)null));
 
                     if (alreadyQueued)
                     {

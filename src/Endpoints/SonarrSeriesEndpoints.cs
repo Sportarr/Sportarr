@@ -96,12 +96,12 @@ public static class SonarrSeriesEndpoints
                 var externalId = Helpers.NumericIdAlias.FromExternalId(league.ExternalId);
 
                 var images = new List<object>();
-                if (!string.IsNullOrEmpty(league.LogoUrl))
-                    images.Add(new { coverType = "poster", url = league.LogoUrl });
+                if (!string.IsNullOrEmpty(league.PosterUrl))
+                    images.Add(new { coverType = "poster", url = league.PosterUrl });
                 if (!string.IsNullOrEmpty(league.BannerUrl))
                     images.Add(new { coverType = "banner", url = league.BannerUrl });
-                if (!string.IsNullOrEmpty(league.PosterUrl))
-                    images.Add(new { coverType = "fanart", url = league.PosterUrl });
+                if (!string.IsNullOrEmpty(league.LogoUrl))
+                    images.Add(new { coverType = "clearlogo", url = league.LogoUrl });
 
                 return new
                 {
@@ -211,12 +211,12 @@ public static class SonarrSeriesEndpoints
             var externalId = Helpers.NumericIdAlias.FromExternalId(league.ExternalId);
 
             var images = new List<object>();
-            if (!string.IsNullOrEmpty(league.LogoUrl))
-                images.Add(new { coverType = "poster", url = league.LogoUrl });
+            if (!string.IsNullOrEmpty(league.PosterUrl))
+                images.Add(new { coverType = "poster", url = league.PosterUrl });
             if (!string.IsNullOrEmpty(league.BannerUrl))
                 images.Add(new { coverType = "banner", url = league.BannerUrl });
-            if (!string.IsNullOrEmpty(league.PosterUrl))
-                images.Add(new { coverType = "fanart", url = league.PosterUrl });
+            if (!string.IsNullOrEmpty(league.LogoUrl))
+                images.Add(new { coverType = "clearlogo", url = league.LogoUrl });
 
             var series = new
             {
@@ -477,7 +477,7 @@ public static class SonarrSeriesEndpoints
                         return Results.Ok(new[] { LookupResult(local.Id, local.Name, local.Monitored,
                             Helpers.NumericIdAlias.FromExternalId(local.ExternalId),
                             local.QualityProfileId ?? 1, local.Tags.ToArray(), local.Added.Year,
-                            local.Description, local.LogoUrl,
+                            local.Description, local.LogoUrl, local.PosterUrl,
                             localSeasons.Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray()) });
                     }
 
@@ -486,7 +486,7 @@ public static class SonarrSeriesEndpoints
                     {
                         return Results.Ok(new[] { LookupResult(0, catalogLeague.Name, false,
                             tvdbAlias, 1, Array.Empty<int>(), DateTime.UtcNow.Year,
-                            catalogLeague.Description, catalogLeague.LogoUrl) });
+                            catalogLeague.Description, catalogLeague.LogoUrl, catalogLeague.PosterUrl) });
                     }
                 }
 
@@ -515,7 +515,7 @@ public static class SonarrSeriesEndpoints
             var results = leagues.Select(league => LookupResult(league.Id, league.Name, league.Monitored,
                 Helpers.NumericIdAlias.FromExternalId(league.ExternalId),
                 league.QualityProfileId ?? 1, league.Tags.ToArray(), league.Added.Year,
-                league.Description, league.LogoUrl,
+                league.Description, league.LogoUrl, league.PosterUrl,
                 librarySeasons.GetValueOrDefault(league.Id))).ToList();
 
             // Text terms also consult the metadata catalog so a league that
@@ -534,7 +534,7 @@ public static class SonarrSeriesEndpoints
                 results.Add(LookupResult(0, catalogLeague.Name, false,
                     Helpers.NumericIdAlias.FromExternalId(catalogLeague.ExternalId),
                     1, Array.Empty<int>(), DateTime.UtcNow.Year,
-                    catalogLeague.Description, catalogLeague.LogoUrl));
+                    catalogLeague.Description, catalogLeague.LogoUrl, catalogLeague.PosterUrl));
             }
 
             return Results.Ok(results);
@@ -836,6 +836,79 @@ public static class SonarrSeriesEndpoints
             return Results.Ok(history);
         });
 
+
+        // POST /api/v3/seasonPass - Bulk-monitor many leagues at once
+        // (Sonarr's "season pass" flow). Toggles League.Monitored per id and,
+        // when monitoringOptions.monitor is provided, maps it onto the same
+        // MonitorType Sportarr's own league settings use.
+        app.MapPost("/api/v3/seasonPass", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            var json = await reader.ReadToEndAsync();
+            logger.LogInformation("[V3-COMPAT] POST /api/v3/seasonPass - {Json}", json);
+
+            JsonDocument doc;
+            try
+            {
+                doc = JsonDocument.Parse(json);
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON body" });
+            }
+
+            using (doc)
+            {
+                var root = doc.RootElement;
+
+                MonitorType? monitorType = null;
+                if (root.TryGetProperty("monitoringOptions", out var options)
+                    && options.TryGetProperty("monitor", out var monitorEl))
+                {
+                    monitorType = monitorEl.GetString() switch
+                    {
+                        "all" => MonitorType.All,
+                        "future" => MonitorType.Future,
+                        "existing" => MonitorType.CurrentSeason,
+                        "latestSeason" => MonitorType.NextSeason,
+                        "missing" => MonitorType.Recent,
+                        _ => (MonitorType?)null,
+                    };
+                }
+
+                if (root.TryGetProperty("series", out var seriesEl) && seriesEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var entry in seriesEl.EnumerateArray())
+                    {
+                        if (!entry.TryGetProperty("id", out var idEl))
+                        {
+                            continue;
+                        }
+
+                        var league = await db.Leagues.FindAsync(idEl.GetInt32());
+                        if (league == null)
+                        {
+                            continue;
+                        }
+
+                        if (entry.TryGetProperty("monitored", out var monitoredEl))
+                        {
+                            league.Monitored = monitoredEl.GetBoolean();
+                        }
+
+                        if (monitorType.HasValue)
+                        {
+                            league.MonitorType = monitorType.Value;
+                        }
+                    }
+
+                    await db.SaveChangesAsync();
+                }
+            }
+
+            return Results.Ok(new { });
+        });
+
         return app;
     }
 
@@ -974,12 +1047,15 @@ public static class SonarrSeriesEndpoints
         int year,
         string? overview,
         string? logoUrl,
+        string? posterUrl = null,
         object[]? seasons = null)
     {
         var seasonEntries = seasons ?? Array.Empty<object>();
         var images = new List<object>();
+        if (!string.IsNullOrEmpty(posterUrl))
+            images.Add(new { coverType = "poster", url = posterUrl, remoteUrl = posterUrl });
         if (!string.IsNullOrEmpty(logoUrl))
-            images.Add(new { coverType = "poster", url = logoUrl, remoteUrl = logoUrl });
+            images.Add(new { coverType = "clearlogo", url = logoUrl, remoteUrl = logoUrl });
 
         return new
         {
@@ -1003,7 +1079,7 @@ public static class SonarrSeriesEndpoints
             images = images.ToArray(),
             // Sonarr's lookup carries the poster twice: in images and as the
             // flat remotePoster that request bots render directly.
-            remotePoster = logoUrl ?? string.Empty,
+            remotePoster = posterUrl ?? logoUrl ?? string.Empty,
             seasons = seasonEntries,
             // Lookup consumers read seasonCount from statistics. In-library
             // leagues carry their real seasons; catalog-only results report 0

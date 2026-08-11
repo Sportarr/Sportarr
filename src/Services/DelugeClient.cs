@@ -409,6 +409,33 @@ public class DelugeClient
     }
 
     /// <summary>
+    /// Move a torrent to the front of Deluge's download queue (recent/older
+    /// event queue priority, issue #220). Reuses the exact core.queue_top
+    /// call shape already proven working in AddTorrentInternalAsync's
+    /// ForceStarted handling above.
+    /// </summary>
+    public async Task<bool> MoveTorrentToTopAsync(DownloadClient config, string hash)
+    {
+        try
+        {
+            ConfigureClient(config);
+
+            if (!await LoginAsync(config))
+            {
+                return false;
+            }
+
+            var response = await SendRpcRequestAsync(config, "core.queue_top", new object[] { new[] { hash } });
+            return response != null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Deluge] Error moving torrent to top of queue: {Hash}", hash);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Get torrent status for download monitoring.
     /// </summary>
     /// <param name="expectedCategory">

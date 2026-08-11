@@ -25,13 +25,56 @@ public class LeagueEventSyncService
         SportarrApiClient sportarrApiClient,
         FileRenameService fileRenameService,
         IMetadataWriterService metadataWriterService,
+        EventStreamService eventStream,
         ILogger<LeagueEventSyncService> logger)
     {
         _db = db;
         _sportarrApiClient = sportarrApiClient;
         _fileRenameService = fileRenameService;
         _metadataWriterService = metadataWriterService;
+        _eventStream = eventStream;
         _logger = logger;
+    }
+
+    private readonly EventStreamService _eventStream;
+
+    // Adds and updates hold entity refs because a new event has no Id
+    // until the per-season SaveChanges; removals capture their ids at
+    // removal time. Both flush through FlushStreamAsync after a save.
+    private readonly List<(Event Entity, string Action)> _pendingStream = new();
+    private readonly List<StreamEvent> _pendingRemovals = new();
+
+    private async Task FlushStreamAsync()
+    {
+        if (_pendingStream.Count == 0 && _pendingRemovals.Count == 0) return;
+        var batch = new List<StreamEvent>(_pendingStream.Count + _pendingRemovals.Count);
+        foreach (var (entity, action) in _pendingStream)
+        {
+            batch.Add(new StreamEvent
+            {
+                ResourceType = "event",
+                Action = action,
+                EventId = entity.Id,
+                ExternalId = entity.ExternalId,
+                LeagueId = entity.LeagueId,
+            });
+        }
+        batch.AddRange(_pendingRemovals);
+        _pendingStream.Clear();
+        _pendingRemovals.Clear();
+        await _eventStream.PublishBatchAsync(batch);
+    }
+
+    private void CaptureRemoval(Event evt)
+    {
+        _pendingRemovals.Add(new StreamEvent
+        {
+            ResourceType = "event",
+            Action = "removed",
+            EventId = evt.Id,
+            ExternalId = evt.ExternalId,
+            LeagueId = evt.LeagueId,
+        });
     }
 
     /// <summary>
@@ -128,6 +171,12 @@ public class LeagueEventSyncService
         // Determine current season for MonitorType filtering
         var currentSeason = DateTime.UtcNow.Year.ToString();
 
+        // MonitorType.LatestSeason default: "no authoritative season list
+        // available" degrades to the same behavior as CurrentSeason (honest
+        // fallback, not a fabricated value) - overwritten below once
+        // fullHubSeasons is populated from the API.
+        var latestSeasonWithData = currentSeason;
+
         // Check for team-based filtering
         // Note: Disable team-based filtering for certain sports where events don't have home/away teams:
         // - Fighting (UFC, Boxing, MMA): "teams" are weight classes, not fight participants
@@ -195,6 +244,14 @@ public class LeagueEventSyncService
                     .Select(s => s.StrSeason!)
                     .ToList();
                 fullHubSeasons = allSeasons.ToList();
+
+                // The most recent season the hub actually reports data for,
+                // capped at the current calendar year - during an off-season
+                // gap (next season not listed yet, or listed with no events)
+                // this correctly stays on last season instead of jumping to
+                // an empty "current" one. See SeasonStringFormatter for why.
+                latestSeasonWithData = SeasonStringFormatter.GetLatestSeasonNotAfter(allSeasons, DateTime.UtcNow.Year)
+                    ?? currentSeason;
 
                 if (fullHistoricalSync)
                 {
@@ -433,7 +490,7 @@ public class LeagueEventSyncService
             {
                 try
                 {
-                    ProcessEvent(apiEvent, league, result, currentSeason, apiEpisodeMap,
+                    ProcessEvent(apiEvent, league, result, currentSeason, latestSeasonWithData, apiEpisodeMap,
                         existingByExternalId, teamsByExternalId, scheduledRecordingsByEventId,
                         localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes);
                 }
@@ -681,6 +738,7 @@ public class LeagueEventSyncService
                         _logger.LogDebug("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) - no longer in API schedule",
                             orphan.Title, season);
                     }
+                    CaptureRemoval(orphan);
                     _db.Events.Remove(orphan);
                 }
 
@@ -751,6 +809,7 @@ public class LeagueEventSyncService
                             continue;
                         }
 
+                        CaptureRemoval(stray);
                         _db.Events.Remove(stray);
                         strayRemovedCount++;
                         _logger.LogDebug("[League Event Sync] Removed out-of-filter event '{Title}' (S{Season}) - not a monitored team's game and no specials bypass applies",
@@ -768,6 +827,7 @@ public class LeagueEventSyncService
 
             // Save changes after each season (batch save)
             await _db.SaveChangesAsync();
+            await FlushStreamAsync();
 
             var seasonEventsProcessed = (result.NewCount + result.UpdatedCount) - seasonStartCount;
             var seasonRemovals = orphanedEvents.Count;
@@ -861,6 +921,7 @@ public class LeagueEventSyncService
                                 stale.Title, stale.Season, stale.Files.Count);
                             _db.EventFiles.RemoveRange(stale.Files);
                         }
+                        CaptureRemoval(stale);
                         _db.Events.Remove(stale);
                         removedFromStaleSeasons++;
                     }
@@ -877,6 +938,7 @@ public class LeagueEventSyncService
         // Update league's last sync timestamp
         league.LastUpdate = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await FlushStreamAsync();
 
         if (onProgress != null)
         {
@@ -1383,7 +1445,7 @@ public class LeagueEventSyncService
     /// Process a single event from Sportarr API API
     /// </summary>
     /// <param name="apiEpisodeMap">Episode numbers from sportarr.net API (ExternalId -> EpisodeNumber). If null, falls back to local calculation.</param>
-    private void ProcessEvent(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason,
+    private void ProcessEvent(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason, string latestSeasonWithData,
         Dictionary<string, int>? apiEpisodeMap,
         Dictionary<string, Event> existingByExternalId,
         Dictionary<string, Team> teamsByExternalId,
@@ -1562,6 +1624,13 @@ public class LeagueEventSyncService
                 }
             }
 
+            // TheSportsDB cross-reference (webhook payloads carry it)
+            if (!string.IsNullOrEmpty(apiEvent.TsdbId) && existingEvent.TsdbId != apiEvent.TsdbId)
+            {
+                existingEvent.TsdbId = apiEvent.TsdbId;
+                needsUpdate = true;
+            }
+
             // Event Title (triggers file rename if changed)
             if (existingEvent.Title != apiEvent.Title)
             {
@@ -1712,6 +1781,7 @@ public class LeagueEventSyncService
             if (needsUpdate)
             {
                 existingEvent.LastUpdate = DateTime.UtcNow;
+                _pendingStream.Add((existingEvent, "updated"));
                 result.UpdatedCount++;
                 _logger.LogInformation("[League Event Sync] Updated event: {EventTitle}{DateNote}{TitleNote}{EpisodeNote}",
                     apiEvent.Title,
@@ -1757,6 +1827,7 @@ public class LeagueEventSyncService
         var newEvent = new Event
         {
             ExternalId = apiEvent.ExternalId,
+            TsdbId = apiEvent.TsdbId,
             Title = apiEvent.Title,
             Sport = apiEvent.Sport,
             LeagueId = league.Id,
@@ -1793,7 +1864,7 @@ public class LeagueEventSyncService
             // For motorsports, also check if the event matches the monitored session types
             // For UFC-style fighting leagues, also check if the event matches monitored event types
             Monitored = league.Monitored
-                && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason,
+                && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
                     apiEvent.Round, apiEvent.Title, cupStageSizes)
                 && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
                 && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes),
@@ -1825,6 +1896,7 @@ public class LeagueEventSyncService
             // still waiting on the per-season SaveChanges.
             existingByExternalId.TryAdd(newEvent.ExternalId!, newEvent);
         }
+        _pendingStream.Add((newEvent, "added"));
         result.NewCount++;
 
         _logger.LogDebug("[League Event Sync] Added event: {EventTitle} on {EventDate}",
@@ -1864,7 +1936,7 @@ public class LeagueEventSyncService
     /// <summary>
     /// Determines if an event should be monitored based on the league's MonitorType setting
     /// </summary>
-    private static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason,
+    private static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason, string latestSeasonWithData,
         string? round, string? title, IReadOnlySet<int> cupStageSizes)
     {
         var now = DateTime.UtcNow;
@@ -1874,7 +1946,11 @@ public class LeagueEventSyncService
             MonitorType.All => true,
             MonitorType.Future => eventDate > now,
             MonitorType.CurrentSeason => eventSeason == currentSeason,
-            MonitorType.LatestSeason => eventSeason == currentSeason, // Same as CurrentSeason for now
+            // Distinct from CurrentSeason: the most recent season the hub
+            // actually has data for, which during an off-season gap (next
+            // season not listed/empty yet) stays on last season instead of
+            // matching nothing. See SeasonStringFormatter.GetLatestSeasonNotAfter.
+            MonitorType.LatestSeason => eventSeason == latestSeasonWithData,
             MonitorType.NextSeason => !string.IsNullOrEmpty(eventSeason) &&
                                       int.TryParse(eventSeason.Split('-')[0], out var year) &&
                                       year == now.Year + 1,

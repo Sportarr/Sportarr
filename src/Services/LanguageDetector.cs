@@ -24,8 +24,10 @@ public static class LanguageDetector
         ("Dutch", new Regex(@"\b(DUTCH|NL|NLD|FLEMISH)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
         ("Finnish", new Regex(@"\b(FINNISH|FIN|FI)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
         ("French", new Regex(@"\b(FRENCH|FRE|FR|TRUEFRENCH|VFF|VFQ|VF2|VOSTFR)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
-        // Note: Removed "DL" - too ambiguous, conflicts with WEB-DL
-        ("German", new Regex(@"\b(GERMAN|GER|DE|DEUTSCH)\b(?![\.\-]?SUB)", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+        // Note: Removed "DL" - too ambiguous, conflicts with WEB-DL.
+        // Note: Removed bare "DE" - collides with the French word "de" in
+        // titles like "Tour De France". Real German scene tags are GERMAN/GER/DEUTSCH.
+        ("German", new Regex(@"\b(GERMAN|GER|DEUTSCH)\b(?![\.\-]?SUB)", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
         ("Greek", new Regex(@"\b(GREEK|GRE|GR)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
         ("Hebrew", new Regex(@"\b(HEBREW|HEB|HE)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
         ("Hindi", new Regex(@"\b(HINDI|HIN|HI)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),

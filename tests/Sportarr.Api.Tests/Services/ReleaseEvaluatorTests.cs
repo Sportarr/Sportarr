@@ -249,6 +249,66 @@ public class ReleaseEvaluatorTests
         evaluation.TotalScore.Should().Be(evaluation.QualityScore + 80);
     }
 
+    [Theory]
+    [InlineData("NFL.2024.Week.10.Chiefs.vs.Bills.1080p.WEB.H264", "SingleEvent", true)]
+    [InlineData("NFL.2024.Week.10.Chiefs.vs.Bills.1080p.WEB.H264", "Pack", false)]
+    [InlineData("NFL.2024.Week.10.PACK.1080p.WEB.H264", "Pack", true)]
+    [InlineData("NFL.2024.Week.10.PACK.1080p.WEB.H264", "SingleEvent", false)]
+    public void EvaluateRelease_ShouldMatchReleaseTypeCondition(string title, string conditionValue, bool shouldMatch)
+    {
+        // Arrange
+        var release = new ReleaseSearchResult
+        {
+            Title = title,
+            Guid = "test-guid",
+            DownloadUrl = "http://test.com/download",
+            Indexer = "TestIndexer",
+            Size = 1024 * 1024 * 1024
+        };
+
+        var customFormats = new List<CustomFormat>
+        {
+            new CustomFormat
+            {
+                Id = 1,
+                Name = "Release Type Test",
+                Specifications = new List<FormatSpecification>
+                {
+                    new FormatSpecification
+                    {
+                        Name = "Release Type",
+                        Implementation = "ReleaseType",
+                        Required = false,
+                        Negate = false,
+                        Fields = new Dictionary<string, object> { { "value", conditionValue } }
+                    }
+                }
+            }
+        };
+
+        var profile = new QualityProfile
+        {
+            Name = "Test Profile",
+            FormatItems = new List<ProfileFormatItem>
+            {
+                new ProfileFormatItem { FormatId = 1, Score = 25 }
+            }
+        };
+
+        // Act - through the real public entrypoint AutomaticSearchService/RssSyncService use
+        var evaluation = _evaluator.EvaluateRelease(release, profile, customFormats);
+
+        // Assert
+        if (shouldMatch)
+        {
+            evaluation.MatchedFormats.Should().Contain(f => f.Name == "Release Type Test");
+        }
+        else
+        {
+            evaluation.MatchedFormats.Should().NotContain(f => f.Name == "Release Type Test");
+        }
+    }
+
     [Fact]
     public void EvaluateRelease_ShouldNotMatchNegatedSpecification()
     {
@@ -469,5 +529,58 @@ public class ReleaseEvaluatorTests
         evaluation.QualityScore.Should().Be(540); // 1080p
         evaluation.CustomFormatScore.Should().Be(50);
         evaluation.TotalScore.Should().Be(590);
+    }
+
+    [Theory]
+    [InlineData("NFL.2024.Week.10.Chiefs.vs.Bills.1080p.WEB.H264", "SingleEvent", 25)]
+    [InlineData("NFL.2024.Week.10.PACK.1080p.WEB.H264", "SingleEvent", 0)]
+    [InlineData("NFL.2024.Week.10.PACK.1080p.WEB.H264", "Pack", 25)]
+    [InlineData("NFL.2024.Week.10.Chiefs.vs.Bills.1080p.WEB.H264", "Pack", 0)]
+    public void EvaluateRelease_ShouldScoreReleaseTypeCustomFormat(string title, string expectedType, int expectedScore)
+    {
+        // Arrange
+        var release = new ReleaseSearchResult
+        {
+            Title = title,
+            Guid = "test-guid",
+            DownloadUrl = "http://test.com/download",
+            Indexer = "TestIndexer",
+            Size = 1024 * 1024 * 1024
+        };
+
+        var customFormats = new List<CustomFormat>
+        {
+            new CustomFormat
+            {
+                Id = 1,
+                Name = "ReleaseType-" + expectedType,
+                Specifications = new List<FormatSpecification>
+                {
+                    new FormatSpecification
+                    {
+                        Name = "Release Type",
+                        Implementation = "ReleaseType",
+                        Required = false,
+                        Negate = false,
+                        Fields = new Dictionary<string, object> { { "value", expectedType } }
+                    }
+                }
+            }
+        };
+
+        var profile = new QualityProfile
+        {
+            Name = "Test",
+            FormatItems = new List<ProfileFormatItem>
+            {
+                new ProfileFormatItem { FormatId = 1, Score = 25 }
+            }
+        };
+
+        // Act
+        var evaluation = _evaluator.EvaluateRelease(release, profile, customFormats);
+
+        // Assert
+        evaluation.CustomFormatScore.Should().Be(expectedScore);
     }
 }

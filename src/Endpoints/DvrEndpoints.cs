@@ -318,6 +318,21 @@ app.MapPost("/api/dvr/schedule-upcoming", async (DvrAutoSchedulerService dvrAuto
     });
 });
 
+// Re-resolve the channel on scheduled recordings, without waiting for the
+// next background pass.
+app.MapPost("/api/dvr/reresolve-channels", async (DvrChannelReresolveService reresolveService) =>
+{
+    var moved = await reresolveService.RunPassAsync();
+    return Results.Ok(new
+    {
+        success = true,
+        recordingsMoved = moved,
+        message = moved == 0
+            ? "No scheduled recording had a better channel available"
+            : $"Moved {moved} scheduled recording(s) to a better channel"
+    });
+});
+
 // Import all completed DVR recordings
 app.MapPost("/api/dvr/import-completed", async (EventDvrService eventDvrService) =>
 {
@@ -468,6 +483,9 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         postRecordingCommand = config.DvrPostRecordingCommand,
         overtimeGuardEnabled = config.DvrOvertimeGuardEnabled,
         overtimeMaxExtensionMinutes = config.DvrOvertimeMaxExtensionMinutes,
+        reresolveChannelsEnabled = config.DvrReresolveChannelsEnabled,
+        reresolveLockMinutes = config.DvrReresolveLockMinutes,
+        reresolveMinImprovement = config.DvrReresolveMinImprovement,
         enableReconnect = config.DvrEnableReconnect,
         maxReconnectAttempts = config.DvrMaxReconnectAttempts,
         reconnectDelaySeconds = config.DvrReconnectDelaySeconds,
@@ -540,6 +558,17 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
 
     if (settings.TryGetProperty("overtimeMaxExtensionMinutes", out var overtimeMaxExtensionMinutes))
         config.DvrOvertimeMaxExtensionMinutes = Math.Clamp(overtimeMaxExtensionMinutes.GetInt32(), 0, 360);
+
+    if (settings.TryGetProperty("reresolveChannelsEnabled", out var reresolveEnabled))
+        config.DvrReresolveChannelsEnabled = reresolveEnabled.GetBoolean();
+    if (settings.TryGetProperty("reresolveLockMinutes", out var reresolveLock))
+        // Floor of 5 minutes. The channel must settle before the recorder
+        // opens the stream.
+        config.DvrReresolveLockMinutes = Math.Clamp(reresolveLock.GetInt32(), 5, 720);
+    if (settings.TryGetProperty("reresolveMinImprovement", out var reresolveMargin))
+        // Floor of 1 point. A zero margin lets two equal channels swap on
+        // every pass.
+        config.DvrReresolveMinImprovement = Math.Clamp(reresolveMargin.GetInt32(), 1, 50);
     if (settings.TryGetProperty("enableReconnect", out var enableReconnect))
         config.DvrEnableReconnect = enableReconnect.GetBoolean();
     if (settings.TryGetProperty("maxReconnectAttempts", out var maxReconnect))

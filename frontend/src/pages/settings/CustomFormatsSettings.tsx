@@ -743,6 +743,25 @@ export default function CustomFormatsSettings({ showAdvanced = false, embedded =
                     </div>
                   </div>
                 </>
+              ) : conditionForm.implementation === 'ReleaseType' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Release Type</label>
+                  <select
+                    value={conditionForm.fields.value || 'SingleEvent'}
+                    onChange={(e) => setConditionForm({
+                      ...conditionForm,
+                      fields: { value: e.target.value }
+                    })}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  >
+                    <option value="SingleEvent">Single Event</option>
+                    <option value="Pack">Pack (multiple events bundled)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Detected from the release title (PACK/COMPLETE/Matchday markers, or a Week/Round number
+                    without a single "vs" matchup) and, when present, the Sportarr league-vs-event id tag.
+                  </p>
+                </div>
               ) : (
                 <>
                   <div>

@@ -301,6 +301,10 @@ public class TaskService : ITaskService
                 await LibraryImportAsync(task, cancellationToken);
                 break;
 
+            case "LibraryScan":
+                await LibraryScanAsync(task, cancellationToken);
+                break;
+
             default:
                 _logger.LogWarning("[TASK] Unknown command: {CommandName}", task.CommandName);
                 await SimulateWorkAsync(task, cancellationToken);
@@ -1025,6 +1029,66 @@ public class TaskService : ITaskService
         // terminal-status save that follows this method persists it. Camel
         // case so the polling frontend parses it exactly like the old inline
         // response body.
+        task.Result = System.Text.Json.JsonSerializer.Serialize(result,
+            new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            });
+    }
+
+    private async Task LibraryScanAsync(AppTask task, CancellationToken cancellationToken)
+    {
+        string folderPath;
+        bool includeSubfolders;
+        try
+        {
+            var body = System.Text.Json.JsonDocument.Parse(task.Body ?? "{}").RootElement;
+            folderPath = body.GetProperty("folderPath").GetString() ?? "";
+            includeSubfolders = !body.TryGetProperty("includeSubfolders", out var inc) || inc.GetBoolean();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TASK] LibraryScan task {TaskId} has invalid body", task.Id);
+            throw;
+        }
+
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            throw new InvalidOperationException("Library scan task has no folder path");
+        }
+
+        // Short-lived scope per progress write, same rationale as the
+        // library import task above.
+        Func<int, int, Task> onProgress = async (done, total) =>
+        {
+            try
+            {
+                using var s = _scopeFactory.CreateScope();
+                var d = s.ServiceProvider.GetRequiredService<SportarrDbContext>();
+                var dbTask = await d.Tasks.FindAsync(task.Id);
+                if (dbTask != null)
+                {
+                    dbTask.Progress = Math.Clamp((int)(done * 100.0 / Math.Max(1, total)), 1, 99);
+                    dbTask.Message = $"Scanning {done}/{total} files";
+                    await d.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[TASK] Failed to write progress for scan task {TaskId}", task.Id);
+            }
+        };
+
+        await onProgress(0, 1);
+
+        using var scope = _scopeFactory.CreateScope();
+        var importService = scope.ServiceProvider.GetRequiredService<LibraryImportService>();
+
+        var result = await importService.ScanFolderAsync(folderPath, includeSubfolders, onProgress);
+
+        // Same rationale as LibraryImportAsync above: the result column
+        // carries the same LibraryScanResult shape the old inline response
+        // body used, so the polling frontend parses it identically.
         task.Result = System.Text.Json.JsonSerializer.Serialize(result,
             new System.Text.Json.JsonSerializerOptions
             {

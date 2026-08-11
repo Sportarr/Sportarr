@@ -24,7 +24,7 @@ export function applyTableSortFilter<T>(
       return;
     }
 
-    const normalizedValue = value.toLowerCase();
+    const normalizedValue = value.trim().toLowerCase();
     result = result.filter((item) =>
       fieldExtractor(col, item).toLowerCase().includes(normalizedValue)
     );

@@ -372,6 +372,19 @@ public class FileImportService : IFileImportService
             // original release-title quality) still wins downstream when present.
             var parsed = await _parser.ParseWithInspectionAsync(Path.GetFileName(sourceFile), sourceFile);
 
+            // A download client's post-processing can leave a short sample/
+            // trailer clip sitting in the completed folder (e.g. an
+            // un-extracted archive's preview file) that otherwise
+            // name-matches an event well enough to import. Duration comes
+            // from ffprobe, not the filename, so this only fires when the
+            // inspector could actually measure it - unset never blocks.
+            if (settings.MinimumImportDurationMinutes > 0 && parsed.Duration.HasValue &&
+                parsed.Duration.Value.TotalMinutes < settings.MinimumImportDurationMinutes)
+            {
+                throw new Exception(
+                    $"Video file is only {parsed.Duration.Value.TotalMinutes:F1} minutes long, below the configured minimum of {settings.MinimumImportDurationMinutes} minutes: {sourceFile}");
+            }
+
             // Build destination path (use actual file size for debrid symlink compatibility)
             // Pass download.Quality to preserve quality info from original release title (not re-parsed from downloaded filename)
             var rootFolders = await RootFolderLoader.LoadAsync(_db, _diskSpaceService);
@@ -385,7 +398,7 @@ public class FileImportService : IFileImportService
                 ? download.Quality
                 : _parser.BuildQualityString(parsed);
 
-            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile, download.Part, qualityString);
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile, download.Part, qualityString, download.IndexerFlags);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
             var config = await _configService.GetConfigAsync();
@@ -548,6 +561,11 @@ public class FileImportService : IFileImportService
                 Directory.CreateDirectory(destDir!);
                 _logger.LogDebug("Created directory: {Directory}", destDir);
             }
+
+            // The upgrade check above has now either passed or found no existing
+            // file at all, so it's safe to clear anything stale still sitting at
+            // the destination path before the transfer runs.
+            ClearExistingDestinationFile(destinationPath);
 
             // Move or copy file (old file already deleted above if this is an upgrade)
             // Read-only blackhole clients import by copy so the external downloader
@@ -739,15 +757,22 @@ public class FileImportService : IFileImportService
                     isUpgradeImport ? NotificationTrigger.OnUpgrade : NotificationTrigger.OnDownload,
                     $"{(isUpgradeImport ? "Upgraded" : "Imported")}: {eventInfo.Title}",
                     $"File: {Path.GetFileName(destinationPath)}\nQuality: {qualityString}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventId", eventInfo.Id },
-                        { "eventTitle", eventInfo.Title ?? "" },
-                        { "league", eventInfo.League?.Name ?? "" },
-                        { "sport", eventInfo.Sport ?? "" },
-                        { "filePath", destinationPath },
-                        { "quality", qualityString },
-                        { "size", actualFileSize }
+                        EventId = eventInfo.Id,
+                        EventExternalId = eventInfo.ExternalId,
+                        EventTitle = eventInfo.Title ?? "",
+                        League = eventInfo.League?.Name,
+                        Sport = eventInfo.Sport,
+                        File = new NotificationFileData { Path = destinationPath, Quality = qualityString, Size = actualFileSize },
+                        // Correlates this Download/Upgrade back to the Grab
+                        // that produced it - the two previously shared no id.
+                        Indexer = download.Indexer,
+                        DownloadId = download.DownloadId,
+                        IsUpgrade = isUpgradeImport,
+                        DeletedFiles = isUpgradeImport && upgradedFile != null
+                            ? new List<NotificationFileData> { new() { Path = upgradedFile.FilePath, Quality = upgradedFile.Quality, Size = upgradedFile.Size } }
+                            : null
                     },
                     eventInfo.League?.Tags);
             }
@@ -782,13 +807,17 @@ public class FileImportService : IFileImportService
                         NotificationTrigger.OnEventFileDeleteForUpgrade,
                         $"Deleted for upgrade: {eventInfo.Title}",
                         $"Old file: {Path.GetFileName(upgradedOldFilePath)}",
-                        new Dictionary<string, object>
+                        new NotificationEventData
                         {
-                            { "eventId", eventInfo.Id },
-                            { "eventTitle", eventInfo.Title ?? "" },
-                            { "league", eventInfo.League?.Name ?? "" },
-                            { "sport", eventInfo.Sport ?? "" },
-                            { "filePath", upgradedOldFilePath }
+                            EventId = eventInfo.Id,
+                            EventExternalId = eventInfo.ExternalId,
+                            EventTitle = eventInfo.Title ?? "",
+                            League = eventInfo.League?.Name,
+                            Sport = eventInfo.Sport,
+                            DeletedFiles = new List<NotificationFileData>
+                            {
+                                new() { Path = upgradedOldFilePath, Quality = upgradedFile?.Quality, Size = upgradedFile?.Size }
+                            }
                         },
                         eventInfo.League?.Tags);
                 }
@@ -1096,7 +1125,8 @@ public class FileImportService : IFileImportService
         string rootFolder,
         string sourceFile,
         string? queueItemPart = null,
-        string? downloadQuality = null)
+        string? downloadQuality = null,
+        string? indexerFlags = null)
     {
         var destinationPath = rootFolder;
 
@@ -1198,8 +1228,11 @@ public class FileImportService : IFileImportService
 
             // {Custom Formats} token: match against the real source
             // filename, which carries the release's quality/format tags.
+            // Size/IndexerFlags are threaded through so this agrees with the
+            // grab-time evaluator instead of always seeing 0 bytes/no flags.
             tokens.CustomFormats = _customFormatService.BuildRenameToken(
-                Path.GetFileName(sourceFile), await _db.CustomFormats.ToListAsync());
+                Path.GetFileName(sourceFile), await _db.CustomFormats.ToListAsync(),
+                GetFileSizeResolvingSymlinks(sourceFile), indexerFlags);
 
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension, settings.ReplaceIllegalCharacters);
         }
@@ -1217,23 +1250,35 @@ public class FileImportService : IFileImportService
         // imports from download client folders, not from the library itself.
         // The same-path check is only needed in LibraryImportService for manual re-imports.
 
-        // If destination file already exists, delete it.
-        // Never create numbered duplicates like (1), (2).
-        if (File.Exists(destinationPath))
-        {
-            _logger.LogWarning("[Import] Destination file already exists, deleting: {Path}", destinationPath);
-            try
-            {
-                File.Delete(destinationPath);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Import] Failed to delete existing file at destination: {Path}", destinationPath);
-                throw new Exception($"Cannot import: destination file exists and could not be deleted: {destinationPath}");
-            }
-        }
-
+        // Deliberately no filesystem mutation here - this method only computes
+        // a path. Clearing a pre-existing file at that path has to wait until
+        // after the upgrade check decides the import is actually going ahead
+        // (see ClearExistingDestinationFile), otherwise a rejected "not an
+        // upgrade" import can still delete whatever file was already there.
         return destinationPath;
+    }
+
+    /// <summary>
+    /// Removes a stale file already sitting at the computed destination path so the transfer
+    /// step doesn't fail with "file already exists". Never create numbered duplicates like (1), (2).
+    /// Must only be called once the import is committed (after the upgrade check passes) - see
+    /// the comment in BuildDestinationPath.
+    /// </summary>
+    private void ClearExistingDestinationFile(string destinationPath)
+    {
+        if (!File.Exists(destinationPath))
+            return;
+
+        _logger.LogWarning("[Import] Destination file already exists, deleting: {Path}", destinationPath);
+        try
+        {
+            File.Delete(destinationPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Import] Failed to delete existing file at destination: {Path}", destinationPath);
+            throw new Exception($"Cannot import: destination file exists and could not be deleted: {destinationPath}");
+        }
     }
 
     /// <summary>

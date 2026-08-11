@@ -163,7 +163,7 @@ export default function LeaguesPage() {
     const name = league.name ?? '';
     if (isInternalLeagueName(name)) return false;
     const matchesSport = selectedSport === 'all' || league.sport === selectedSport;
-    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = name.toLowerCase().includes(searchQuery.trim().toLowerCase());
     return matchesSport && matchesSearch;
   }) || []).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 

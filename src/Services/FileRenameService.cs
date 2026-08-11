@@ -53,7 +53,7 @@ public class FileRenameService
     {
         _formatsCache ??= await _db.CustomFormats.ToListAsync();
         var matchTitle = file.OriginalTitle ?? Path.GetFileName(file.FilePath) ?? string.Empty;
-        return _customFormatService.BuildRenameToken(matchTitle, _formatsCache);
+        return _customFormatService.BuildRenameToken(matchTitle, _formatsCache, file.Size, file.IndexerFlags);
     }
 
     /// <summary>
@@ -293,7 +293,9 @@ public class FileRenameService
                 var scanPath = CommonDirectory(evt.Files
                     .Where(f => f.Exists && !string.IsNullOrEmpty(f.FilePath))
                     .Select(f => Path.GetDirectoryName(f.FilePath)));
-                await NotifyRenamedAsync(renamedCount, evt.Title ?? $"event {eventId}", evt.League?.Tags, scanPath);
+                await NotifyRenamedAsync(renamedCount, evt.Title ?? $"event {eventId}", evt.League?.Tags, scanPath,
+                    eventId: evt.Id, eventExternalId: evt.ExternalId, eventTitle: evt.Title,
+                    league: evt.League?.Name, sport: evt.Sport);
             }
         }
 
@@ -306,21 +308,29 @@ public class FileRenameService
     /// covers the renamed files (webhook consumers like Autoscan rescan it,
     /// mirroring how Sonarr's Rename webhook carries series.path).
     /// </summary>
-    private async Task NotifyRenamedAsync(int count, string scopeDescription, List<int>? leagueTags = null, string? scanPath = null)
+    private async Task NotifyRenamedAsync(
+        int count, string scopeDescription, List<int>? leagueTags = null, string? scanPath = null,
+        int? eventId = null, string? eventExternalId = null, string? eventTitle = null,
+        string? league = null, string? sport = null)
     {
         try
         {
-            var metadata = new Dictionary<string, object> { { "renamedCount", count } };
-            if (!string.IsNullOrEmpty(scanPath))
+            var data = new NotificationEventData
             {
-                metadata["seriesPath"] = scanPath;
-            }
+                RenamedCount = count,
+                SeriesPath = scanPath,
+                EventId = eventId,
+                EventExternalId = eventExternalId,
+                EventTitle = eventTitle,
+                League = league,
+                Sport = sport,
+            };
 
             await _notificationService.SendNotificationAsync(
                 NotificationTrigger.OnRename,
                 $"Renamed {count} file(s)",
                 $"Scope: {scopeDescription}",
-                metadata,
+                data,
                 leagueTags);
         }
         catch (Exception ex)
@@ -693,7 +703,8 @@ public class FileRenameService
 
             var seasonLeague = await _db.Leagues.FindAsync(leagueId);
             await NotifyRenamedAsync(totalRenamed, $"{seasonLeague?.Name ?? $"league {leagueId}"} season {season}",
-                seasonLeague?.Tags, CommonDirectory(renamedDirs));
+                seasonLeague?.Tags, CommonDirectory(renamedDirs),
+                league: seasonLeague?.Name, sport: seasonLeague?.Sport);
         }
 
         return totalRenamed;
@@ -892,7 +903,8 @@ public class FileRenameService
                 .SelectMany(e => e.Files)
                 .Where(f => f.Exists && !string.IsNullOrEmpty(f.FilePath))
                 .Select(f => Path.GetDirectoryName(f.FilePath)));
-            await NotifyRenamedAsync(totalRenamed, league?.Name ?? $"league {leagueId}", league?.Tags, scanPath);
+            await NotifyRenamedAsync(totalRenamed, league?.Name ?? $"league {leagueId}", league?.Tags, scanPath,
+                league: league?.Name, sport: league?.Sport);
         }
 
         return totalRenamed;

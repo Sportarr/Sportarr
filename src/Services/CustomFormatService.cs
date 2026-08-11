@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Text.Json;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -47,13 +48,13 @@ public class CustomFormatService
     /// the formats that match the release title AND are flagged
     /// IncludeCustomFormatWhenRenaming.
     /// </summary>
-    public string BuildRenameToken(string releaseTitle, List<CustomFormat> customFormats)
+    public string BuildRenameToken(string releaseTitle, List<CustomFormat> customFormats, long sizeInBytes = 0, string? indexerFlags = null)
     {
         if (string.IsNullOrWhiteSpace(releaseTitle) || customFormats.Count == 0)
             return string.Empty;
 
         return string.Join(" ", customFormats
-            .Where(f => f.IncludeCustomFormatWhenRenaming && MatchesFormat(releaseTitle, f))
+            .Where(f => f.IncludeCustomFormatWhenRenaming && MatchesFormat(releaseTitle, f, sizeInBytes, indexerFlags))
             .Select(f => f.Name));
     }
 
@@ -61,7 +62,7 @@ public class CustomFormatService
     /// Checks if a release matches all specifications in a custom format
     /// All specifications must match (AND logic)
     /// </summary>
-    public bool MatchesFormat(string releaseTitle, CustomFormat format)
+    public bool MatchesFormat(string releaseTitle, CustomFormat format, long sizeInBytes = 0, string? indexerFlags = null)
     {
         if (!format.Specifications.Any())
         {
@@ -74,7 +75,7 @@ public class CustomFormatService
         // All specifications must match
         foreach (var spec in format.Specifications)
         {
-            var matches = EvaluateSpecification(spec, releaseTitle, parsed);
+            var matches = EvaluateSpecification(spec, releaseTitle, parsed, sizeInBytes, indexerFlags);
 
             // Apply negation
             if (spec.Negate)
@@ -101,20 +102,82 @@ public class CustomFormatService
     /// <summary>
     /// Evaluates a single specification against a release
     /// </summary>
-    private bool EvaluateSpecification(FormatSpecification spec, string releaseTitle, ParsedFileInfo parsed)
+    private bool EvaluateSpecification(FormatSpecification spec, string releaseTitle, ParsedFileInfo parsed, long sizeInBytes, string? indexerFlags)
     {
         return spec.Implementation switch
         {
             "ReleaseTitle" => EvaluateReleaseTitle(spec, releaseTitle),
             "Source" => EvaluateSource(spec, parsed),
             "Resolution" => EvaluateResolution(spec, parsed),
-            "Size" => EvaluateSize(spec, 0), // Size needs to be passed in
+            "Size" => EvaluateSize(spec, sizeInBytes),
             "ReleaseGroup" => EvaluateReleaseGroup(spec, parsed),
             "Language" => EvaluateLanguage(spec, parsed),
-            "IndexerFlag" => false, // Not implemented yet
-            "ReleaseType" => false, // Not implemented yet
+            "IndexerFlag" => EvaluateIndexerFlag(spec, indexerFlags),
+            "ReleaseType" => EvaluateReleaseType(spec, releaseTitle, parsed),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Mirrors ReleaseEvaluator.EvaluateIndexerFlagSpec exactly so grab-time and
+    /// rename/import-time evaluation of the same release agree.
+    /// </summary>
+    private bool EvaluateIndexerFlag(FormatSpecification spec, string? indexerFlags)
+    {
+        if (!spec.Fields.ContainsKey("value"))
+        {
+            return false;
+        }
+
+        var value = spec.Fields["value"]?.ToString();
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(indexerFlags))
+        {
+            return false;
+        }
+
+        if (int.TryParse(value, out var flagId))
+        {
+            var flagName = flagId switch
+            {
+                1 => "freeleech",
+                2 => "halfleech",
+                4 => "doubleupload",
+                8 => "internal",
+                16 => "scene",
+                32 => "freeleech75",
+                64 => "freeleech25",
+                _ => null
+            };
+
+            if (flagName == null)
+                return false;
+
+            return indexerFlags.Contains(flagName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return indexerFlags.Contains(value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool EvaluateReleaseType(FormatSpecification spec, string releaseTitle, ParsedFileInfo parsed)
+    {
+        if (!spec.Fields.ContainsKey("value"))
+        {
+            return false;
+        }
+
+        var value = spec.Fields["value"]?.ToString();
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        if (!Enum.TryParse<ReleaseType>(value, ignoreCase: true, out var expectedType))
+        {
+            return false;
+        }
+
+        var detected = ReleaseTypeDetector.Detect(releaseTitle, parsed.SportarrLeagueId, parsed.SportarrEventId);
+        return detected == expectedType;
     }
 
     private bool EvaluateReleaseTitle(FormatSpecification spec, string releaseTitle)

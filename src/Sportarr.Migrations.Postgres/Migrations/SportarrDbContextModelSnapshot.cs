@@ -621,6 +621,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int>("OlderPriority")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Password")
                         .HasColumnType("text");
 
@@ -638,6 +641,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<bool>("ReadOnly")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("RecentPriority")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("RemoveCompletedDownloads")
                         .HasColumnType("boolean");
@@ -722,6 +728,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Indexer")
+                        .HasColumnType("text");
+
+                    b.Property<string>("IndexerFlags")
                         .HasColumnType("text");
 
                     b.Property<int?>("IndexerId")
@@ -1081,8 +1090,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("character varying(200)");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("EndTime")
                         .HasColumnType("timestamp with time zone");
@@ -1306,6 +1314,10 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasAnnotation("Relational:JsonPropertyName", "strEvent");
+
+                    b.Property<string>("TsdbId")
+                        .HasColumnType("text")
+                        .HasAnnotation("Relational:JsonPropertyName", "tsdbId");
 
                     b.Property<string>("Venue")
                         .HasColumnType("text")
@@ -2617,6 +2629,15 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastNotificationAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastNotificationError")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("LastNotificationSucceeded")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -3669,6 +3690,42 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .IsUnique();
 
                     b.ToTable("SeasonPosters");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.StreamEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("EventId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ExternalId")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("LeagueId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Path")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StreamEvents");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.SystemEvent", b =>

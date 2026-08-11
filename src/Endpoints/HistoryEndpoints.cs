@@ -557,6 +557,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 {
     var grabHistory = await db.GrabHistory
         .Include(g => g.Event)
+            .ThenInclude(e => e!.League)
         .FirstOrDefaultAsync(g => g.Id == id);
 
     if (grabHistory is null)
@@ -637,12 +638,19 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
                     NotificationTrigger.OnGrab,
                     $"Grabbed: {grabHistory.Title}",
                     $"Re-grab from history\nIndexer: {grabHistory.Indexer ?? "Unknown"}",
-                    new Dictionary<string, object>
+                    new NotificationEventData
                     {
-                        { "eventId", grabHistory.EventId },
-                        { "indexer", grabHistory.Indexer ?? "" },
-                        { "downloadId", downloadId },
-                    });
+                        EventId = grabHistory.EventId,
+                        EventExternalId = grabHistory.Event?.ExternalId,
+                        EventTitle = grabHistory.Event?.Title ?? "",
+                        League = grabHistory.Event?.League?.Name,
+                        Sport = grabHistory.Event?.Sport,
+                        Indexer = grabHistory.Indexer ?? "",
+                        Quality = grabHistory.Quality ?? "",
+                        Size = grabHistory.Size,
+                        DownloadId = downloadId,
+                    },
+                    grabHistory.Event?.League?.Tags);
             }
             catch { /* notification failure never fails the regrab */ }
         }
@@ -653,6 +661,29 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             grabHistory.RegrabCount++;
             await db.SaveChangesAsync();
             return Results.BadRequest(new { error = "Failed to add to download client" });
+        }
+
+        // Recent/older event queue priority (issue #220) - same logic as the
+        // other grab paths, duplicated here since re-grabbing from history
+        // goes through this endpoint instead.
+        if (grabHistory.Event != null)
+        {
+            var isRecentRegrabEvent = grabHistory.Event.EventDate >= DateTime.UtcNow.AddDays(-14);
+            var requestedRegrabPriority = isRecentRegrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+            try
+            {
+                var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedRegrabPriority);
+                if (!prioritySet)
+                {
+                    logger.LogWarning("[Regrab] Failed to set queue priority for {DownloadId} on {Client}",
+                        downloadId, downloadClient.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[Regrab] Error setting queue priority for {DownloadId}", downloadId);
+            }
         }
 
         // Create new queue item
@@ -720,6 +751,7 @@ app.MapPost("/api/grab-history/regrab-missing", async (
     // Find all grabs where file was imported but is now missing
     // Exclude superseded grabs - only re-grab the most recent version for each event+part
     var missingGrabs = await db.GrabHistory
+        .Include(g => g.Event)
         .Where(g => g.WasImported && !g.FileExists && !g.Superseded && !string.IsNullOrEmpty(g.DownloadUrl))
         .Where(g => !g.LastRegrabAttempt.HasValue || g.LastRegrabAttempt < DateTime.UtcNow.AddMinutes(-5))
         .OrderByDescending(g => g.GrabbedAt)
@@ -786,6 +818,28 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 grabHistory.LastRegrabAttempt = DateTime.UtcNow;
                 grabHistory.RegrabCount++;
                 continue;
+            }
+
+            // Recent/older event queue priority (issue #220), same as every
+            // other grab path.
+            if (grabHistory.Event != null)
+            {
+                var isRecentBulkRegrabEvent = grabHistory.Event.EventDate >= DateTime.UtcNow.AddDays(-14);
+                var requestedBulkRegrabPriority = isRecentBulkRegrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+                try
+                {
+                    var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedBulkRegrabPriority);
+                    if (!prioritySet)
+                    {
+                        logger.LogWarning("[Regrab Missing] Failed to set queue priority for {DownloadId} on {Client}",
+                            downloadId, downloadClient.Name);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[Regrab Missing] Error setting queue priority for {DownloadId}", downloadId);
+                }
             }
 
             // Create new queue item

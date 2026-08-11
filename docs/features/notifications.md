@@ -9,4 +9,4 @@ Sportarr can notify you on grabs, imports, upgrades, and health issues. Configur
 - **ntfy**, self-hosted or ntfy.sh
 - **Apprise**, one endpoint covering 90+ services
 - **Custom scripts** that run any executable on events, with event details passed as environment variables
-- **Plex**, **Jellyfin**, **Emby**, and **Kodi** library-refresh connections - see [Media Servers](../integrations/media-servers.md) and [Kodi](../integrations/kodi.md)
+- **Plex**, **Jellyfin**, **Emby**, and **Kodi** library-refresh connections - see [Plex](../integrations/plex.md), [Jellyfin](../integrations/jellyfin.md), [Emby](../integrations/emby.md), and [Kodi](../integrations/kodi.md)

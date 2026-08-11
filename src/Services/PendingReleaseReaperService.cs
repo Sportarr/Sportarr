@@ -192,6 +192,26 @@ public class PendingReleaseReaperService : BackgroundService
             return false;
         }
 
+        // Recent/older event queue priority (issue #220) - same logic as the
+        // other grab paths, duplicated here since the reaper grabs
+        // independently instead of going through AutomaticSearchService.
+        var isRecentReaperEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
+        var requestedReaperPriority = isRecentReaperEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+        try
+        {
+            var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedReaperPriority);
+            if (!prioritySet)
+            {
+                _logger.LogWarning("[Pending Release Reaper] Failed to set queue priority for {DownloadId} on {Client}",
+                    downloadId, downloadClient.Name);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Pending Release Reaper] Error setting queue priority for {DownloadId}", downloadId);
+        }
+
         db.DownloadQueue.Add(new DownloadQueueItem
         {
             EventId = evt.Id,
@@ -224,13 +244,17 @@ public class PendingReleaseReaperService : BackgroundService
                 NotificationTrigger.OnGrab,
                 $"Grabbed: {pending.Title}",
                 $"Event: {evt.Title}\nQuality: {pending.Quality ?? "Unknown"}\nIndexer: {pending.Indexer}\nSize: {pending.Size / 1024.0 / 1024.0 / 1024.0:F2} GB\nReleased from delay profile hold.",
-                new Dictionary<string, object>
+                new NotificationEventData
                 {
-                    { "eventId", evt.Id },
-                    { "eventTitle", evt.Title ?? "" },
-                    { "indexer", pending.Indexer ?? "" },
-                    { "quality", pending.Quality ?? "" },
-                    { "downloadId", downloadId },
+                    EventId = evt.Id,
+                    EventExternalId = evt.ExternalId,
+                    EventTitle = evt.Title ?? "",
+                    League = evt.League?.Name,
+                    Sport = evt.Sport,
+                    Indexer = pending.Indexer ?? "",
+                    Quality = pending.Quality ?? "",
+                    Size = pending.Size,
+                    DownloadId = downloadId,
                 },
                 evt.League?.Tags);
         }

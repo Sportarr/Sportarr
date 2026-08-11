@@ -164,6 +164,20 @@ public class MediaFileInspector
                 }
             }
 
+            TimeSpan? duration = null;
+            if (root.TryGetProperty("format", out var formatForDuration) &&
+                formatForDuration.TryGetProperty("duration", out var durationProp))
+            {
+                var durationStr = durationProp.ValueKind == JsonValueKind.String
+                    ? durationProp.GetString()
+                    : durationProp.ValueKind == JsonValueKind.Number ? durationProp.GetRawText() : null;
+                if (double.TryParse(durationStr, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var seconds) && seconds > 0)
+                {
+                    duration = TimeSpan.FromSeconds(seconds);
+                }
+            }
+
             // Map ffprobe codec_name to Sportarr's verbose codec form
             videoCodec = NormalizeVideoCodec(videoCodec);
             audioCodec = NormalizeAudioCodec(audioCodec);
@@ -186,7 +200,8 @@ public class MediaFileInspector
                 VideoCodec = videoCodec,
                 AudioCodec = audioCodec,
                 Languages = languages,
-                SportarrId = sportarrId
+                SportarrId = sportarrId,
+                Duration = duration
             };
         }
         catch (Exception ex)
@@ -281,6 +296,11 @@ public class MediaFileInspection
     public string? VideoCodec { get; set; }
     public string? AudioCodec { get; set; }
     public List<string> Languages { get; set; } = new();
+
+    /// <summary>Media duration read from ffprobe's format.duration, or null
+    /// when ffprobe couldn't determine it. Used to reject sample/trailer
+    /// clips a download client's post-processing left behind.</summary>
+    public TimeSpan? Duration { get; set; }
 
     /// <summary>Canonical sportarr id ("ev-XXXXXXX"/"lg-XXXXXX") read from the
     /// file's embedded SPORTARR global tag, or null when absent/invalid.
