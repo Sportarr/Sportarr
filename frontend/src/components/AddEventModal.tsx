@@ -235,7 +235,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
+        <div className="fixed inset-0 overflow-hidden">
           <div className="flex min-h-full items-center justify-center p-4 text-center">
             <Transition.Child
               as={Fragment}
@@ -246,7 +246,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900 to-black border border-red-900/30 text-left align-middle shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-4xl transform max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl bg-gradient-to-br from-gray-900 to-black border border-red-900/30 text-left align-middle shadow-xl transition-all">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-red-900/30">
                   <Dialog.Title as="h3" className="text-2xl font-bold text-white flex items-center">

@@ -695,6 +695,17 @@ public class FileWatcherService : BackgroundService
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
+            // An upgrade deletes the old file itself and imports the new one
+            // straight after. Reacting to that deletion would mark the event as
+            // having no file and save it, and a consumer reading in the gap
+            // sees an event that briefly owns nothing.
+            var suppression = scope.ServiceProvider.GetRequiredService<ImportFileSuppressionService>();
+            if (suppression.IsSuppressed(filePath))
+            {
+                _logger.LogDebug("[File Watcher] Ignoring our own deletion during import: {Path}", filePath);
+                return;
+            }
+
             // Check EventFiles table
             var eventFile = await db.EventFiles.FirstOrDefaultAsync(ef => ef.FilePath == filePath);
             if (eventFile != null)

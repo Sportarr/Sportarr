@@ -118,7 +118,7 @@ export default function ReassignEventFileModal({
           <div className="fixed inset-0 bg-black/80" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
+        <div className="fixed inset-0 overflow-hidden">
           <div className="flex min-h-full items-center justify-center p-4">
             <Transition.Child
               as={Fragment}
@@ -129,7 +129,7 @@ export default function ReassignEventFileModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-2xl transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-blue-900/30 text-left shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-2xl transform max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg bg-gradient-to-br from-gray-900 to-black border border-blue-900/30 text-left shadow-xl transition-all">
                 <div className="p-4 md:p-6">
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">

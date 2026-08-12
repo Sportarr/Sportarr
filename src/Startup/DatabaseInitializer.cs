@@ -1690,6 +1690,70 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify GrabHistory.DownloadId column: {ex.Message}");
         }
 
+        // Ensure AudioCodec exists in EventFiles. Codec holds the video codec,
+        // and a consumer scoring a subtitle against a release compares both.
+        try
+        {
+            var checkEfAudioSql = "SELECT COUNT(*) FROM pragma_table_info('EventFiles') WHERE name='AudioCodec'";
+            var efAudioExists = db.Database.SqlQueryRaw<int>(checkEfAudioSql).AsEnumerable().FirstOrDefault();
+
+            if (efAudioExists == 0)
+            {
+                Console.WriteLine("[Sportarr] EventFiles.AudioCodec column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE EventFiles ADD COLUMN AudioCodec TEXT");
+                Console.WriteLine("[Sportarr] EventFiles.AudioCodec column added");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles.AudioCodec column: {ex.Message}");
+        }
+
+        // Ensure ReleaseTitle exists in EventFiles. It holds the scene release
+        // name, and only when a real grab produced the file.
+        // Deliberately NOT backfilled from OriginalTitle. That column holds a
+        // filename or an event title on most import paths, and a subtitle
+        // provider given one of those searches for a release that never
+        // existed. Null is the useful answer.
+        try
+        {
+            var checkEfReleaseSql = "SELECT COUNT(*) FROM pragma_table_info('EventFiles') WHERE name='ReleaseTitle'";
+            var efReleaseExists = db.Database.SqlQueryRaw<int>(checkEfReleaseSql).AsEnumerable().FirstOrDefault();
+
+            if (efReleaseExists == 0)
+            {
+                Console.WriteLine("[Sportarr] EventFiles.ReleaseTitle column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE EventFiles ADD COLUMN ReleaseTitle TEXT");
+                Console.WriteLine("[Sportarr] EventFiles.ReleaseTitle column added");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles.ReleaseTitle column: {ex.Message}");
+        }
+
+        // Ensure DestinationPath exists in GrabHistory. It records which file a
+        // grab produced, so a history row deletes only its own file.
+        // Deliberately NOT backfilled. A guessed path here would delete the
+        // wrong file, which is the very bug this column fixes. Rows from before
+        // this column simply offer no delete.
+        try
+        {
+            var checkGhDestSql = "SELECT COUNT(*) FROM pragma_table_info('GrabHistory') WHERE name='DestinationPath'";
+            var ghDestExists = db.Database.SqlQueryRaw<int>(checkGhDestSql).AsEnumerable().FirstOrDefault();
+
+            if (ghDestExists == 0)
+            {
+                Console.WriteLine("[Sportarr] GrabHistory.DestinationPath column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE GrabHistory ADD COLUMN DestinationPath TEXT");
+                Console.WriteLine("[Sportarr] GrabHistory.DestinationPath column added");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify GrabHistory.DestinationPath column: {ex.Message}");
+        }
+
         // Recalculate QualityScore for all EventFiles and DownloadQueueItems
         // Previous scoring used inverted profile-index logic (SDTV scored higher than 1080p)
         // Now uses deterministic resolution + source scoring

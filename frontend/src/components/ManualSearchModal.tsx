@@ -821,7 +821,7 @@ export default function ManualSearchModal({
           <div className="fixed inset-0 bg-black/80" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
+        <div className="fixed inset-0 overflow-hidden">
           <div className="flex min-h-full items-center justify-center p-2">
             <Transition.Child
               as={Fragment}
@@ -832,7 +832,7 @@ export default function ManualSearchModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-[98vw] max-w-none mx-2 md:mx-4 transform rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
+              <Dialog.Panel className="w-[98vw] max-w-none mx-2 md:mx-4 transform max-h-[calc(100vh-1rem)] overflow-y-auto rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
                 {/* Header with Tabs */}
                 <div className="relative bg-gradient-to-r from-gray-900 via-red-950/20 to-gray-900 border-b border-red-900/30">
                   <div className="px-3 md:px-6 py-3 md:py-4 flex items-center justify-between">

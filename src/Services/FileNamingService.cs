@@ -302,6 +302,27 @@ public class FileNamingService
     }
 
     /// <summary>
+    /// <summary>
+    /// The folder a league's files live in, relative to its root folder.
+    /// Returns empty when league folders are turned off, because then every
+    /// league shares the root and none of them has a folder of its own.
+    /// Integrations that key a library on one unique path per league cannot
+    /// work in that state.
+    /// </summary>
+    public string BuildLeagueFolderName(MediaManagementSettings settings, League league)
+    {
+        if (!settings.CreateLeagueFolders || string.IsNullOrWhiteSpace(settings.LeagueFolderFormat))
+            return string.Empty;
+
+        var folder = settings.LeagueFolderFormat
+            .Replace("{Series}", league.Name ?? string.Empty)
+            .Replace("{League}", league.Name ?? string.Empty)
+            .Replace("{Sport}", league.Sport ?? string.Empty);
+
+        return CleanFileName(folder, settings.ReplaceIllegalCharacters);
+    }
+
+    /// <summary>
     /// Remove invalid characters from filename. When replaceIllegalCharacters
     /// is true (the Replace Illegal Characters setting, default) each invalid
     /// character becomes a space; when false they are removed outright.

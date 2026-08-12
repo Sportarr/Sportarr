@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -661,7 +662,7 @@ public class SabnzbdClient
         if (queue != null)
         {
             foreach (var item in queue.Where(q =>
-                q.category.Equals(category, StringComparison.OrdinalIgnoreCase)))
+                q.CategoryName.Equals(category, StringComparison.OrdinalIgnoreCase)))
             {
                 if (seenIds.Add(item.nzo_id))
                 {
@@ -841,7 +842,7 @@ public class SabnzbdClient
             }
 
             if (queueItem != null && !string.IsNullOrWhiteSpace(categoryToMatch) &&
-                !string.Equals(queueItem.category, categoryToMatch, StringComparison.OrdinalIgnoreCase))
+                !string.Equals(queueItem.CategoryName, categoryToMatch, StringComparison.OrdinalIgnoreCase))
             {
                 queueItem = null;
             }
@@ -1581,7 +1582,14 @@ public class SabnzbdItem
     public string mbleft { get; set; } = "0";
     public string percentage { get; set; } = "";
     public string timeleft { get; set; } = "";
+    // SABnzbd names this field "cat" on the queue but "category" in the
+    // history. Bind both, because a queue item that binds neither looks
+    // uncategorised and silently drops out of every category filter.
+    public string cat { get; set; } = "";
     public string category { get; set; } = "";
+
+    [JsonIgnore]
+    public string CategoryName => !string.IsNullOrEmpty(cat) ? cat : category;
 }
 
 /// <summary>

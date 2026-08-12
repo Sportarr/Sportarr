@@ -1017,7 +1017,7 @@ export default function StreamPlayerModal({
           <div className="fixed inset-0 bg-black/90" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
+        <div className="fixed inset-0 overflow-hidden">
           <div className="flex min-h-full items-center justify-center p-4">
             <Transition.Child
               as={Fragment}
@@ -1028,7 +1028,7 @@ export default function StreamPlayerModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-5xl transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-5xl transform max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-xl transition-all">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-red-900/30">
                   <div className="flex items-center gap-3 min-w-0">

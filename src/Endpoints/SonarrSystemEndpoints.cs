@@ -23,7 +23,7 @@ public static class SonarrSystemEndpoints
         });
 
         // GET /api/v3/system/status - System status (Sonarr v3 API for Prowlarr)
-        app.MapGet("/api/v3/system/status", (HttpContext context, ILogger<Program> logger) =>
+        app.MapGet("/api/v3/system/status", async (HttpContext context, ConfigService configService, ILogger<Program> logger) =>
         {
             // Prowlarr polls this endpoint on a cadence for connectivity checks.
             // Request-logging middleware already records every inbound HTTP call at
@@ -60,7 +60,10 @@ public static class SonarrSystemEndpoints
                 isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
                 isDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
                 mode = "console",
-                branch = "main",
+                // The update channel the install actually follows. This was
+                // pinned to main, so a dev install reported itself as main
+                // and looked like the update had not applied.
+                branch = (await configService.GetConfigAsync()).Branch.ToLowerInvariant(),
                 authentication = "forms",
                 sqliteVersion = "3.0",
                 urlBase = "",

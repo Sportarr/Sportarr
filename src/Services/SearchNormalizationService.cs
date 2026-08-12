@@ -26,7 +26,7 @@ public static class SearchNormalizationService
         { "Abu Dhabi", new[] { "AbuDhabi", "Yas Marina", "Fight Island", "UFC Fight Island" } },
         { "Monte Carlo", new[] { "Monaco", "Monegasque" } },
         { "Spielberg", new[] { "Austria", "Austrian" } },
-        { "Silverstone", new[] { "British", "Britain", "UK", "Great Britain" } },
+        { "Silverstone", new[] { "British", "Britain", "UK", "Great Britain", "United Kingdom" } },
         { "Monza", new[] { "Italy", "Italian" } },
         { "Spa", new[] { "Belgium", "Belgian", "Spa-Francorchamps" } },
         { "Suzuka", new[] { "Japan", "Japanese" } },
@@ -83,7 +83,11 @@ public static class SearchNormalizationService
         { "Argentinian", new[] { "Argentina", "Termas de Rio Hondo" } },
 
         // Europe
-        { "British", new[] { "Britain", "UK", "Great Britain", "Silverstone" } },
+        { "British", new[] { "Britain", "UK", "Great Britain", "United Kingdom", "Silverstone" } },
+        // MotoGP rounds arrive titled "United Kingdom" while the releases
+        // for them say "Great Britain", so this needs its own entry rather
+        // than only appearing as an alias of the others.
+        { "United Kingdom", new[] { "British", "Britain", "UK", "Great Britain", "Silverstone" } },
         { "Italian", new[] { "Italy", "Monza", "Imola", "Mugello" } },
         { "Spanish", new[] { "Spain", "Barcelona", "Catalunya" } },
         { "French", new[] { "France", "Le Mans" } },

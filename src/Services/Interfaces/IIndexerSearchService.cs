@@ -31,12 +31,13 @@ public interface IIndexerSearchService
         List<int>? leagueTags = null,
         List<SkippedIndexer>? skippedIndexers = null,
         bool allowHighlights = false,
-        string? sportarrId = null);
+        string? sportarrId = null,
+        bool useCategoryFilter = true);
 
     /// <summary>
     /// Search a single indexer
     /// </summary>
-    Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 10000, string? sportarrId = null);
+    Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 10000, string? sportarrId = null, bool useCategoryFilter = true);
 
     /// <summary>
     /// Select the best release from search results

@@ -135,6 +135,8 @@ interface GrabHistoryItem {
   wasImported: boolean;
   importedAt?: string;
   fileExists: boolean;
+  eventFileId?: number | null;
+  destinationPath?: string | null;
   lastRegrabAttempt?: string;
   regrabCount: number;
   hasDownloadUrl: boolean;
@@ -515,13 +517,16 @@ export default function ActivityPage() {
     }
   };
 
-  // Delete the event's file(s) from disk. The history row stays so the
-  // release can be re-grabbed later; its status flips to Missing.
+  // Delete ONLY the file this row produced. It used to delete every file the
+  // event held, so deleting a 720p row removed the 4K file the user actually
+  // had. eventFileId is resolved from the row's own destination path, so a
+  // row that no longer owns a file offers no button at all.
   const handleDeleteFile = async (item: GrabHistoryItem) => {
-    if (!item.eventId) return;
-    if (!confirm(`Delete the file(s) for "${item.eventTitle || item.title}" from disk? The entry stays in History so you can re-grab it later.`)) return;
+    if (!item.eventId || item.eventFileId == null) return;
+    const fileName = item.destinationPath?.split('/').pop() || item.title;
+    if (!confirm(`Delete "${fileName}" from disk? Only this file is removed. The entry stays in History so you can re-grab it later.`)) return;
     try {
-      await apiClient.delete(`/events/${item.eventId}/files`);
+      await apiClient.delete(`/events/${item.eventId}/files/${item.eventFileId}`);
       loadGrabHistory();
     } catch (error: any) {
       console.error('Failed to delete file:', error);
@@ -2484,11 +2489,11 @@ export default function ActivityPage() {
                                     {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
                                   </button>
                                 )}
-                                {item.fileExists && item.eventId != null && (
+                                {item.fileExists && item.eventId != null && item.eventFileId != null && (
                                   <button
                                     onClick={() => handleDeleteFile(item)}
                                     className={BUTTON_ICON_DESTRUCTIVE}
-                                    title="Delete file from disk (entry stays for re-grabbing)"
+                                    title="Delete this file from disk (entry stays for re-grabbing)"
                                   >
                                     <TrashIcon className="w-4 h-4" />
                                   </button>
@@ -2552,11 +2557,11 @@ export default function ActivityPage() {
                                 Re-grab
                               </button>
                             )}
-                            {item.fileExists && item.eventId != null && (
+                            {item.fileExists && item.eventId != null && item.eventFileId != null && (
                               <button
                                 onClick={() => handleDeleteFile(item)}
                                 className={BUTTON_ICON_DESTRUCTIVE}
-                                title="Delete file from disk (entry stays for re-grabbing)"
+                                title="Delete this file from disk (entry stays for re-grabbing)"
                               >
                                 <TrashIcon className="w-4 h-4" />
                               </button>

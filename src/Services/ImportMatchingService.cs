@@ -480,14 +480,28 @@ public class ImportMatchingService
     /// </summary>
     public async Task<List<ImportSuggestion>> GetAllPossibleMatchesAsync(string title)
     {
+        // Manual review has to see the same candidates the automatic matcher
+        // weighs. Parsing with the generic parser alone dropped the sport,
+        // the championship, the round, and the session, so a name like
+        // "BSB 2026 Round01 Oulton Park Race One" was ranked on its title
+        // text alone and could suggest events from another championship.
+        var sportsResult = _sportsParser.Parse(title);
         var parsed = _parser.Parse(title);
-        var events = await FindEventMatchesAsync(parsed.EventTitle, null);
+
+        var eventTitle = sportsResult.Confidence >= 60 && !string.IsNullOrEmpty(sportsResult.EventTitle)
+            ? sportsResult.EventTitle
+            : parsed.EventTitle;
+
+        var detectedPart = _partDetector.DetectPart(title, sportsResult.Sport ?? "Fighting")?.SegmentName;
+
+        var events = await FindEventMatchesAsync(
+            eventTitle, detectedPart, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);
 
         var suggestions = new List<ImportSuggestion>();
 
         foreach (var evt in events)
         {
-            var confidence = CalculateMatchConfidence(parsed.EventTitle, evt.Title, null, evt);
+            var confidence = CalculateMatchConfidence(eventTitle, evt.Title, detectedPart, evt, sportsResult);
 
             suggestions.Add(new ImportSuggestion
             {
@@ -496,7 +510,10 @@ public class ImportMatchingService
                 League = evt.League?.Name,
                 Season = evt.Season,
                 EventDate = evt.EventDate,
-                Confidence = confidence
+                Part = detectedPart,
+                Confidence = confidence,
+                ParsedSport = sportsResult.Sport,
+                ParsedOrganization = sportsResult.Organization
             });
         }
 

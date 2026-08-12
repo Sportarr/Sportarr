@@ -229,7 +229,7 @@ public class TorznabClient
     /// exact id lookup (docs/RELEASE_NAMING.md). Indexers that don't
     /// advertise it are never sent the param.
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 10000, string? sportarrId = null)
+    public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 10000, string? sportarrId = null, bool useCategoryFilter = true)
     {
         // Build parameters with category filtering
         var parameters = new Dictionary<string, string>
@@ -249,8 +249,11 @@ public class TorznabClient
             }
         }
 
-        // Add category filter - use configured categories or default sport categories
-        var categories = GetEffectiveCategories(config);
+        // Add category filter - use configured categories or default sport categories.
+        // An interactive search opts out: the user asked for this event by hand, and
+        // trackers file sports under TV, movies, or anything else, so a category list
+        // silently hides a valid release instead of ranking it lower.
+        var categories = useCategoryFilter ? GetEffectiveCategories(config) : new List<string>();
         if (categories.Any())
         {
             parameters["cat"] = string.Join(",", categories);

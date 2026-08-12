@@ -272,7 +272,7 @@ export default function FileDetailsModal({
           <div className="fixed inset-0 bg-black/70" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
+        <div className="fixed inset-0 overflow-hidden">
           <div className="flex min-h-full items-center justify-center p-4">
             <Transition.Child
               as={React.Fragment}
@@ -283,7 +283,7 @@ export default function FileDetailsModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-2xl transform overflow-hidden rounded-xl bg-gray-900 border border-gray-700 shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-2xl transform max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl bg-gray-900 border border-gray-700 shadow-xl transition-all">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
                   <Dialog.Title className="text-lg font-semibold text-white">

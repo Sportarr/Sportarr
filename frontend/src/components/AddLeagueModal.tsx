@@ -765,7 +765,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
           <div className="fixed inset-0 bg-black/80" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
+        {/* The panel scrolls, not this container. Headless UI closes the
+            dialog when a pointerdown lands outside the panel, and Firefox
+            sends one for the container's own scrollbar. Scrolling here let a
+            drag on that scrollbar shut the modal before the user could save. */}
+        <div className="fixed inset-0 overflow-hidden">
           <div className="flex min-h-full items-center justify-center p-4 text-center">
             <Transition.Child
               as={Fragment}
@@ -776,7 +780,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-4xl mx-2 md:mx-4 transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 text-left align-middle shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-4xl mx-2 md:mx-4 transform max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 text-left align-middle shadow-xl transition-all">
                 {/* Header */}
                 <div className="border-b border-red-900/30 p-4 md:p-6">
                   <div className="flex items-start justify-between">

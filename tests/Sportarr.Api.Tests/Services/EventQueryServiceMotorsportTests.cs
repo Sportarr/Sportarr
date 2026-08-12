@@ -114,4 +114,61 @@ public class EventQueryServiceMotorsportTests
         queries.Should().Contain("MotoGP 2026");
         queries.Should().NotContain(q => q.Contains("Moto GP"));
     }
+    private static Event MotoGpEvent(string? round = "9", string? location = null) => new()
+    {
+        Title = "Italian Grand Prix Race",
+        Sport = "Motorsport",
+        EventDate = new DateTime(2026, 6, 14, 0, 0, 0, DateTimeKind.Utc),
+        Round = round,
+        Location = location,
+        League = new League { Name = "MotoGP", Sport = "Motorsport" },
+    };
+
+    [Fact]
+    public void BuildEventQueries_MotoGP_IncludesDemonymAndCountryVariants()
+    {
+        var queries = CreateService().BuildEventQueries(MotoGpEvent());
+
+        // Location queries used to be Formula 1 only, so a release named
+        // "motogp.2026.italy..." was only reachable through the broad season
+        // query, which an indexer can cap or bury (#230).
+        queries.Should().Contain("MotoGP 2026 Italian");
+        queries.Should().Contain("MotoGP 2026 Italy");
+    }
+
+    [Fact]
+    public void BuildEventQueries_MotoGP_KeepsRoundQueryAheadOfBroadFallback()
+    {
+        var queries = CreateService().BuildEventQueries(MotoGpEvent());
+
+        queries.Should().Contain("MotoGP 2026 Round09");
+        queries.IndexOf("MotoGP 2026 Round09")
+            .Should().BeLessThan(queries.IndexOf("MotoGP 2026"),
+                "the targeted round query has to run before the broad season fallback");
+    }
+
+    [Fact]
+    public void BuildEventQueries_MotoGP_UsesVenueWhenSet()
+    {
+        var queries = CreateService().BuildEventQueries(MotoGpEvent(location: "Mugello"));
+
+        queries.Should().Contain("MotoGP 2026 Mugello");
+    }
+
+    [Fact]
+    public void BuildEventQueries_SeriesWithoutLocationOrGrandPrix_AddsNoEmptyQueries()
+    {
+        var evt = new Event
+        {
+            Title = "Daytona 500",
+            Sport = "Motorsport",
+            EventDate = new DateTime(2026, 2, 15, 0, 0, 0, DateTimeKind.Utc),
+            League = new League { Name = "NASCAR", Sport = "Motorsport" },
+        };
+
+        var queries = CreateService().BuildEventQueries(evt);
+
+        queries.Should().OnlyContain(q => !string.IsNullOrWhiteSpace(q));
+        queries.Should().NotContain(q => q.EndsWith("2026 "));
+    }
 }

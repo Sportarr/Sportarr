@@ -464,6 +464,26 @@ public class EventFile
     public string? OriginalTitle { get; set; }
 
     /// <summary>
+    /// Audio codec, e.g. "AC-3", "E-AC-3", "AAC". Read from the file by the
+    /// probe. Kept apart from Codec, which is the VIDEO codec, because a
+    /// consumer scoring a subtitle against a release compares both.
+    /// </summary>
+    public string? AudioCodec { get; set; }
+
+    /// <summary>
+    /// The scene release name, set ONLY when this file came from a real grab.
+    /// Null for manual imports, library imports and DVR recordings, because
+    /// none of those has a release name.
+    ///
+    /// OriginalTitle cannot serve this purpose. It is always populated, but
+    /// depending on the import path it holds a filename or an event title, and
+    /// a subtitle provider given one of those searches for a release that never
+    /// existed. Null is the useful answer there, since a consumer can then fall
+    /// back to matching on the file hash.
+    /// </summary>
+    public string? ReleaseTitle { get; set; }
+
+    /// <summary>
     /// Release group extracted from the original filename (e.g., "MWR", "FLUX", "NTb")
     /// Used for file renaming with {Release Group} token
     /// </summary>
@@ -719,9 +739,13 @@ public class EventFileResponse
     public int QualityScore { get; set; }
     public int CustomFormatScore { get; set; }
     public string? Codec { get; set; }
+    /// <summary>Audio codec, read from the file. Codec above is the video codec.</summary>
+    public string? AudioCodec { get; set; }
     public string? Source { get; set; }
     public string? ReleaseGroup { get; set; }
     public string? OriginalTitle { get; set; }
+    /// <summary>Scene release name, null unless this file came from a real grab.</summary>
+    public string? ReleaseTitle { get; set; }
     public List<string> Languages { get; set; } = new();
     public string? IndexerFlags { get; set; }
     public string? PartName { get; set; }
@@ -742,9 +766,11 @@ public class EventFileResponse
             QualityScore = file.QualityScore,
             CustomFormatScore = file.CustomFormatScore,
             Codec = file.Codec,
+            AudioCodec = file.AudioCodec,
             Source = file.Source,
             ReleaseGroup = file.ReleaseGroup,
             OriginalTitle = file.OriginalTitle,
+            ReleaseTitle = file.ReleaseTitle,
             Languages = file.Languages ?? new List<string>(),
             IndexerFlags = file.IndexerFlags,
             PartName = file.PartName,

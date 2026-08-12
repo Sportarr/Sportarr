@@ -621,6 +621,44 @@ public class EnhancedDownloadMonitorService : BackgroundService
     }
 
     /// <summary>
+    /// Delete the job folder the download client left behind, but only when it
+    /// holds no files at all.
+    ///
+    /// Import moves the video out, then the client deletes what it still tracks
+    /// and leaves the directory. Sonarr leaves these too, so this goes a step
+    /// further than the app we are compared to. It deletes ONLY an empty
+    /// directory, never a library root, and it refuses anything it cannot
+    /// prove is empty, because the cost of being wrong here is a user's media.
+    /// </summary>
+    private async Task TryRemoveEmptyCompletedFolderAsync(string? folder, string title, SportarrDbContext? db)
+    {
+        if (string.IsNullOrWhiteSpace(folder))
+            return;
+
+        try
+        {
+            var rootFolders = db != null
+                ? await db.RootFolders.Select(r => r.Path).ToListAsync()
+                : new List<string>();
+
+            if (!LeftoverFolderPolicy.MayRemove(folder, rootFolders, out var full) || full == null)
+            {
+                _logger.LogDebug("[Enhanced Download Monitor] Leaving the leftover folder alone for {Title}: {Folder}", title, folder);
+                return;
+            }
+
+            // Recursive only clears empty subdirectories; the policy above
+            // proved there is nothing else left.
+            Directory.Delete(full, recursive: true);
+            _logger.LogInformation("[Enhanced Download Monitor] Removed the empty folder left behind for {Title}: {Folder}", title, full);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Enhanced Download Monitor] Could not remove the leftover folder for {Title}", title);
+        }
+    }
+
+    /// <summary>
     /// Check if a torrent has reached its seed limits (ratio and/or time) from the indexer settings.
     /// Returns true if all configured limits are met, or if no limits are configured.
     /// </summary>
@@ -740,6 +778,21 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     }
                 }
 
+                // Ask the client where the job landed BEFORE removing it. Once
+                // the job is gone from history the path is gone with it, and
+                // that path is the only safe way to find the folder to tidy up.
+                string? completedFolder = null;
+                try
+                {
+                    var statusForPath = await downloadClientService.GetDownloadStatusAsync(
+                        download.DownloadClient, download.DownloadId, download.GrabCategory);
+                    completedFolder = statusForPath?.SavePath;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[Enhanced Download Monitor] Could not read the completed path for {Title}", download.Title);
+                }
+
                 try
                 {
                     await downloadClientService.RemoveDownloadAsync(
@@ -752,6 +805,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     // behind" support thread turns on, and at Debug the
                     // default log couldn't answer it in either direction.
                     _logger.LogInformation("[Enhanced Download Monitor] Removed completed download and its files from client: {Title}", download.Title);
+
+                    await TryRemoveEmptyCompletedFolderAsync(completedFolder, download.Title, db);
                 }
                 catch (Exception ex)
                 {
@@ -859,25 +914,24 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
         catch (Exception ex)
         {
-            download.ImportRetryCount = (download.ImportRetryCount ?? 0) + 1;
-
-            // Check if this is a path accessibility issue (file not ready yet)
-            var isPathError = ex.Message.Contains("not found") ||
-                             ex.Message.Contains("not accessible") ||
-                             ex.Message.Contains("does not exist");
-
-            if (isPathError)
+            if (DownloadFailurePolicy.IsPathNotReadyError(ex.Message))
             {
-                // For path accessibility issues, keep retrying indefinitely
-                // The file might just be delayed (still extracting, moving, etc.)
-                _logger.LogWarning("[Enhanced Download Monitor] Import path not accessible (attempt {Count}): {Title} - Will retry on next poll",
-                    download.ImportRetryCount, download.Title);
+                // A path that has not appeared yet is a wait, not a failure, so it
+                // must not spend the terminal retry budget. Counting these made the
+                // guard at the top of this method fail the row on its third poll,
+                // which broke every delayed mount, external mover, and rsync setup
+                // that took longer than that. Same rule as FileNotReadyException.
+                _logger.LogWarning(
+                    "[Enhanced Download Monitor] Import path not accessible, will retry: {Title} - {Message}",
+                    download.Title, ex.Message);
 
                 download.Status = DownloadStatus.ImportPending;
-                download.ErrorMessage = $"Waiting for path to be accessible (attempt {download.ImportRetryCount}): {ex.Message}";
+                download.ErrorMessage = $"Waiting for path to be accessible: {ex.Message}";
             }
             else
             {
+                download.ImportRetryCount = (download.ImportRetryCount ?? 0) + 1;
+
                 // For other import errors, treat as failed after MaxImportRetries attempts.
                 _logger.LogError(ex, "[Enhanced Download Monitor] ✗ Import failed (attempt {Count}/{Max}): {Title}",
                     download.ImportRetryCount, MaxImportRetries, download.Title);

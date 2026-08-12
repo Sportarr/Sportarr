@@ -72,7 +72,13 @@ public class SportsFileNameParser
         {
             Sport = "Fighting",
             Organization = "ONE Championship",
-            Pattern = new Regex(@"ONE[\.\-\s]+(?:Championship[\.\-\s]+)?(?<name>[A-Za-z]+[\.\-\s]*[A-Za-z]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            // Anchored, unlike the promotion patterns above it. Those all
+            // demand a number or a fixed phrase after the name, but this one
+            // accepts any word, so unanchored it matched the tail of an
+            // unrelated word: "Silverstone Race" and "Race One" both scored
+            // 90% as ONE Championship, which sent MotoGP and BSB releases
+            // down the fighting path. A real release leads with the promotion.
+            Pattern = new Regex(@"^ONE[\.\-\s]+(?:Championship[\.\-\s]+)?(?<name>[A-Za-z]+[\.\-\s]*[A-Za-z]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"ONE Championship: {match.Groups["name"].Value.Replace(".", " ").Trim()}"
         },
 
@@ -269,6 +275,23 @@ public class SportsFileNameParser
             Organization = "MotoGP",
             Pattern = new Regex(@"MotoGP[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["name"].Value)} Grand Prix",
+            RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
+            LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value),
+            SessionExtractor = (match) => DetectMotorsportSession(match.Groups["name"].Value)
+        },
+
+        // British Superbike: BSB.2026.Round01.Oulton.Park.Race.One
+        // Placed before the Moto patterns because nothing else claims BSB.
+        // Round counts run past nine, so the round group takes one or two
+        // digits and tolerates the padded Round01 form releases use.
+        new SportsPattern
+        {
+            Sport = "Motorsport",
+            Organization = "BSB",
+            Pattern = new Regex(@"\bBSB[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d{1,2})[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|DD[25P]|TNT|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => match.Groups["round"].Success
+                ? $"BSB {match.Groups["year"].Value} Round {match.Groups["round"].Value}: {CleanLocationName(match.Groups["name"].Value)}"
+                : $"BSB {match.Groups["year"].Value} {CleanLocationName(match.Groups["name"].Value)}",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value),
             SessionExtractor = (match) => DetectMotorsportSession(match.Groups["name"].Value)
@@ -950,6 +973,12 @@ public class SportsFileNameParser
         if (Regex.IsMatch(lower, @"\bwarm\s*up\b")) return "Warm Up";
         // Pre-show programmes that are not race sessions (e.g. MotoGP "Gear Up" show)
         if (Regex.IsMatch(lower, @"\bgear[\s\-_.]*up\b")) return "Pre-Show";
+        // Numbered races, before the bare Race check. Superbike rounds run two
+        // full races on the same weekend, so a release that only resolves to
+        // "Race" can be imported against the wrong one. The ordinal has to
+        // follow the word race: "Day One" is whole-day coverage, not race one.
+        if (Regex.IsMatch(lower, @"\brace\s*(1|one)\b")) return "Race 1";
+        if (Regex.IsMatch(lower, @"\brace\s*(2|two)\b")) return "Race 2";
         // Race — grand prix/gp safe here because practice/qualifying/sprint already matched above
         if (Regex.IsMatch(lower, @"\brace\b|\bgrand\s*prix\b|\bgp\b(?!\s*of)")) return "Race";
         if (Regex.IsMatch(lower, @"\bpre\s*season\s+test")) return "Pre-Season Testing";

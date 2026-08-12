@@ -532,6 +532,15 @@ public class LeagueResponse
     public int? QualityProfileId { get; set; }
     public int RetentionDays { get; set; }
     public int? RootFolderId { get; set; }
+
+    /// <summary>
+    /// Absolute folder holding this league's files. Null when no root folder is
+    /// bound, or when league folders are turned off, because then the league has
+    /// no folder of its own. The endpoint fills this in; the mapper cannot,
+    /// since it needs the root folder and the media management settings.
+    /// </summary>
+    public string? Path { get; set; }
+
     public bool SearchForMissingEvents { get; set; }
     public bool SearchForCutoffUnmetEvents { get; set; }
     public string? MonitoredParts { get; set; }

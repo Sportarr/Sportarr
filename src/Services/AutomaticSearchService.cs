@@ -826,12 +826,19 @@ public class AutomaticSearchService : IAutomaticSearchService
                     .Where(g => g.EventId == eventId)
                     .ToListAsync();
 
+                // Title and indexer are the last resort on purpose. Some
+                // indexers mint a fresh guid and download url per query, so the
+                // identifier match alone found nothing and the guard waved the
+                // same release through on every pass.
                 GrabHistory? FindPriorGrab(ReleaseSearchResult r) =>
                     eventGrabs
                         .Where(g =>
                             (!string.IsNullOrEmpty(r.TorrentInfoHash) && g.TorrentInfoHash == r.TorrentInfoHash) ||
                             (!string.IsNullOrEmpty(r.Guid) && g.Guid == r.Guid) ||
-                            (!string.IsNullOrEmpty(r.DownloadUrl) && g.DownloadUrl == r.DownloadUrl))
+                            (!string.IsNullOrEmpty(r.DownloadUrl) && g.DownloadUrl == r.DownloadUrl) ||
+                            (!string.IsNullOrEmpty(r.Title)
+                                && string.Equals(g.Title, r.Title, StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(g.Indexer, r.Indexer, StringComparison.OrdinalIgnoreCase)))
                         .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
                         .FirstOrDefault();
 
@@ -1265,22 +1272,32 @@ public class AutomaticSearchService : IAutomaticSearchService
             // If this automatic grab is a controlled retry of a release we
             // already fetched, advance its cooldown/cap counters so the
             // churn guard can eventually stop a release that never imports.
+            // The counters must land on the NEW row created below. This method
+            // writes one row per grab, and the guard reads only the most recent
+            // row for a release. A count written only to the older row is never
+            // read again, so the cap never applied and the same release went to
+            // the download client every 6 hours forever.
+            var regrabCount = 0;
+            DateTime? lastRegrabAttempt = null;
             if (!isManualSearch)
             {
                 var priorGrabOfSelected = eventGrabs
                     .Where(g =>
                         (!string.IsNullOrEmpty(bestRelease.TorrentInfoHash) && g.TorrentInfoHash == bestRelease.TorrentInfoHash) ||
                         (!string.IsNullOrEmpty(bestRelease.Guid) && g.Guid == bestRelease.Guid) ||
-                        (!string.IsNullOrEmpty(bestRelease.DownloadUrl) && g.DownloadUrl == bestRelease.DownloadUrl))
+                        (!string.IsNullOrEmpty(bestRelease.DownloadUrl) && g.DownloadUrl == bestRelease.DownloadUrl) ||
+                        (!string.IsNullOrEmpty(bestRelease.Title)
+                            && string.Equals(g.Title, bestRelease.Title, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(g.Indexer, bestRelease.Indexer, StringComparison.OrdinalIgnoreCase)))
                     .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
                     .FirstOrDefault();
                 if (priorGrabOfSelected != null && !priorGrabOfSelected.WasImported)
                 {
-                    priorGrabOfSelected.RegrabCount += 1;
-                    priorGrabOfSelected.LastRegrabAttempt = DateTime.UtcNow;
+                    regrabCount = priorGrabOfSelected.RegrabCount + 1;
+                    lastRegrabAttempt = DateTime.UtcNow;
                     _logger.LogInformation(
                         "[Automatic Search] Controlled re-grab {Count}/{Max} of '{Title}' for event {EventId}",
-                        priorGrabOfSelected.RegrabCount, GrabHistoryChurnGuard.MaxAutomaticRegrabs, bestRelease.Title, eventId);
+                        regrabCount, GrabHistoryChurnGuard.MaxAutomaticRegrabs, bestRelease.Title, eventId);
                 }
             }
 
@@ -1314,7 +1331,9 @@ public class AutomaticSearchService : IAutomaticSearchService
                 PartName = part,
                 GrabbedAt = DateTime.UtcNow,
                 DownloadClientId = downloadClient.Id,
-                DownloadId = downloadId
+                DownloadId = downloadId,
+                RegrabCount = regrabCount,
+                LastRegrabAttempt = lastRegrabAttempt
             };
             _db.GrabHistory.Add(grabHistory);
 

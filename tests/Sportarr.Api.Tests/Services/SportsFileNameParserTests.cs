@@ -104,4 +104,29 @@ public class SportsFileNameParserTests
             because: "DatePattern claims year-first dot-separated dates before season-span extraction ever runs");
         result.SeasonYearEnd.Should().BeNull();
     }
+    [Theory]
+    // "Silverstone" and "Race One" both end in the promotion name "one". The
+    // pattern was unanchored, so both scored 90% as ONE Championship and sent
+    // motorsport releases down the fighting path.
+    [InlineData("MotoGP 2026 Round 12 Silverstone Race 1080p WEB-DL", "Motorsport")]
+    [InlineData("BSB 2026 Round01 Oulton Park International Race One TNT WEB-DL 1080p", null)]
+    public void Parse_WordEndingInOne_IsNotReadAsOneChampionship(string filename, string? expectedSport)
+    {
+        var result = _parser.Parse(filename);
+
+        result.Organization.Should().NotBe("ONE Championship");
+        if (expectedSport != null)
+            result.Sport.Should().Be(expectedSport);
+    }
+
+    [Theory]
+    [InlineData("ONE Championship Fight Night 20 2026 1080p WEB-DL")]
+    [InlineData("ONE.Fight.Night.24.2026.1080p")]
+    public void Parse_RealOneChampionshipRelease_StillMatches(string filename)
+    {
+        var result = _parser.Parse(filename);
+
+        result.Organization.Should().Be("ONE Championship");
+        result.Sport.Should().Be("Fighting");
+    }
 }

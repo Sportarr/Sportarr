@@ -450,13 +450,22 @@ app.MapGet("/api/grab-history", async (SportarrDbContext db, int page = 1, int p
         GrabbedAt = g.GrabbedAt,
         WasImported = g.WasImported,
         ImportedAt = g.ImportedAt,
-        FileExists = g.FileExists,
+        // Resolved against the real file, so a superseded grab cannot claim a
+        // file that an upgrade replaced. A grab from before DestinationPath was
+        // recorded resolves to nothing and offers no delete, which is the safe
+        // direction.
+        FileExists = db.EventFiles.Any(f => f.EventId == g.EventId && f.FilePath == g.DestinationPath),
+        EventFileId = db.EventFiles
+            .Where(f => f.EventId == g.EventId && f.FilePath == g.DestinationPath)
+            .Select(f => (int?)f.Id).FirstOrDefault(),
         LastRegrabAttempt = g.LastRegrabAttempt,
         RegrabCount = g.RegrabCount,
         // Don't expose the download URL directly for security
         HasDownloadUrl = g.DownloadUrl != "",
         HasTorrentHash = g.TorrentInfoHash != null && g.TorrentInfoHash != "",
-        DestinationPath = null
+        // The file this grab produced. The UI needs it to delete only that
+        // file rather than everything the event holds.
+        DestinationPath = g.DestinationPath
     });
 
     var importRows = db.ImportHistories
@@ -486,7 +495,12 @@ app.MapGet("/api/grab-history", async (SportarrDbContext db, int page = 1, int p
         GrabbedAt = h.ImportedAt,
         WasImported = true,
         ImportedAt = h.ImportedAt,
-        FileExists = h.Event != null && h.Event.HasFile,
+        // Truth for this row is its OWN file, not "the event holds something".
+        // The event may hold a completely different release by now.
+        FileExists = db.EventFiles.Any(f => f.EventId == h.EventId && f.FilePath == h.DestinationPath),
+        EventFileId = db.EventFiles
+            .Where(f => f.EventId == h.EventId && f.FilePath == h.DestinationPath)
+            .Select(f => (int?)f.Id).FirstOrDefault(),
         LastRegrabAttempt = null,
         RegrabCount = 0,
         HasDownloadUrl = false,
@@ -942,6 +956,9 @@ public class UnifiedHistoryRow
     public bool WasImported { get; set; }
     public DateTime? ImportedAt { get; set; }
     public bool FileExists { get; set; }
+    /// <summary>The EventFile this row produced, when it still exists. Null means
+    /// the row owns no file on disk and must not offer to delete one.</summary>
+    public int? EventFileId { get; set; }
     public DateTime? LastRegrabAttempt { get; set; }
     public int RegrabCount { get; set; }
     public bool HasDownloadUrl { get; set; }

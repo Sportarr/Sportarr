@@ -205,7 +205,11 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
             var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags, skippedIndexers,
                 allowHighlights: evt.League?.AllowHighlights ?? false,
-                sportarrId: Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.ExternalId));
+                sportarrId: Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.ExternalId),
+                // The user asked for this event by hand, so show everything the
+                // indexer has and let scoring decide. Automatic search and RSS
+                // keep their category filter.
+                useCategoryFilter: false);
 
             // Add results with GUID deduplication (fallback queries may overlap with primary)
             foreach (var result in results)
@@ -513,7 +517,8 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
         logger.LogInformation("[PACK SEARCH] Searching: '{Query}'", query);
         var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, null, evt.League?.Tags, skippedIndexers,
             allowHighlights: evt.League?.AllowHighlights ?? false,
-            sportarrId: Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.League?.ExternalId));
+            sportarrId: Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.League?.ExternalId),
+            useCategoryFilter: false);
 
         foreach (var result in results)
         {

@@ -1355,6 +1355,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<DateTime>("Added")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("AudioCodec")
+                        .HasColumnType("text");
+
                     b.Property<string>("Codec")
                         .HasColumnType("text");
 
@@ -1404,6 +1407,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("ReleaseGroup")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReleaseTitle")
                         .HasColumnType("text");
 
                     b.Property<long>("Size")
@@ -1561,6 +1567,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<int>("CustomFormatScore")
                         .HasColumnType("integer");
+
+                    b.Property<string>("DestinationPath")
+                        .HasColumnType("text");
 
                     b.Property<int?>("DownloadClientId")
                         .HasColumnType("integer");

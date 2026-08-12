@@ -999,6 +999,16 @@ public class GrabHistory
     /// so users don't accidentally re-grab an old/replaced file.
     /// </summary>
     public bool Superseded { get; set; } = false;
+
+    /// <summary>
+    /// Where this grab's file landed when it imported. This is what makes a
+    /// history row's delete action safe. Without it the row can only name its
+    /// event, and deleting from a superseded row removed whatever file the
+    /// event held instead, which destroyed a user's 4K file when they deleted
+    /// a 720p row. Null for grabs that never imported and for rows created
+    /// before this was recorded.
+    /// </summary>
+    public string? DestinationPath { get; set; }
 }
 
 /// <summary>

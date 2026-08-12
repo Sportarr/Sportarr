@@ -229,7 +229,10 @@ public class ReleaseMatchingService
             EventTitle = evt.Title
         };
 
-        _logger.LogDebug("[Release Matching] Validating: '{Release}' against event '{Event}'",
+        // These lines run once per candidate release per event. At Debug they
+        // buried every other subsystem and rotated support logs away in
+        // minutes, so they stay at Trace.
+        _logger.LogTrace("[Release Matching] Validating: '{Release}' against event '{Event}'",
             release.Title, evt.Title);
 
         // VALIDATION 0: Reject non-event content (press conferences, interviews, etc.)
@@ -247,7 +250,7 @@ public class ReleaseMatchingService
 
             if (highlightsAllowed)
             {
-                _logger.LogDebug("[Release Matching] Allowing highlights release for '{Event}' (league opts in): '{Release}'",
+                _logger.LogTrace("[Release Matching] Allowing highlights release for '{Event}' (league opts in): '{Release}'",
                     evt.Title, release.Title);
             }
             else
@@ -255,7 +258,7 @@ public class ReleaseMatchingService
                 result.Confidence = 0;
                 result.IsHardRejection = true;
                 result.Rejections.Add($"Non-event content detected: {nonEventContent}");
-                _logger.LogDebug("[Release Matching] Hard rejection: non-event content '{ContentType}' detected in '{Release}'",
+                _logger.LogTrace("[Release Matching] Hard rejection: non-event content '{ContentType}' detected in '{Release}'",
                     nonEventContent, release.Title);
                 return result;
             }
@@ -331,7 +334,7 @@ public class ReleaseMatchingService
                 result.Confidence = 100;
                 result.IsMatch = true;
                 result.MatchReasons.Add($"Sportarr id token match ({releaseTokenId})");
-                _logger.LogDebug("[Release Matching] Id token match: '{Release}' is tagged {Token} = event '{Event}'",
+                _logger.LogTrace("[Release Matching] Id token match: '{Release}' is tagged {Token} = event '{Event}'",
                     release.Title, releaseTokenId, evt.Title);
                 return result;
             }
@@ -339,7 +342,7 @@ public class ReleaseMatchingService
             result.Confidence = 0;
             result.IsHardRejection = true;
             result.Rejections.Add($"Release is tagged for a different event ({releaseTokenId}, this event is {evt.ExternalId})");
-            _logger.LogDebug("[Release Matching] Id token mismatch: '{Release}' is tagged {Token}, event '{Event}' is {EventId}",
+            _logger.LogTrace("[Release Matching] Id token mismatch: '{Release}' is tagged {Token}, event '{Event}' is {EventId}",
                 release.Title, releaseTokenId, evt.Title, evt.ExternalId);
             return result;
         }
@@ -364,7 +367,7 @@ public class ReleaseMatchingService
                 result.Confidence = 0;
                 result.IsHardRejection = true;
                 result.Rejections.Add($"Release is tagged for a different league ({releaseLeagueId}, this league is {evt.League.ExternalId})");
-                _logger.LogDebug("[Release Matching] League id token mismatch: '{Release}' is tagged {Token}, league '{League}' is {LeagueId}",
+                _logger.LogTrace("[Release Matching] League id token mismatch: '{Release}' is tagged {Token}, league '{League}' is {LeagueId}",
                     release.Title, releaseLeagueId, evt.League.Name, evt.League.ExternalId);
                 return result;
             }
@@ -389,7 +392,7 @@ public class ReleaseMatchingService
             {
                 result.Confidence += 15;
                 result.MatchReasons.Add("Location/naming variation match");
-                _logger.LogDebug("[Release Matching] Location variation match: release uses alternate location name");
+                _logger.LogTrace("[Release Matching] Location variation match: release uses alternate location name");
             }
         }
 
@@ -406,7 +409,7 @@ public class ReleaseMatchingService
             {
                 result.Confidence -= 50;
                 result.Rejections.Add("Event number mismatch");
-                _logger.LogDebug("[Release Matching] Event number mismatch for '{Release}'", release.Title);
+                _logger.LogTrace("[Release Matching] Event number mismatch for '{Release}'", release.Title);
             }
         }
 
@@ -465,7 +468,7 @@ public class ReleaseMatchingService
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
                 result.Rejections.Add($"Event type mismatch: release is {releaseSubcategory}, event is {eventSubcategory}");
-                _logger.LogDebug("[Release Matching] Hard rejection: event type mismatch ({ReleaseType} vs {EventType}): '{Release}'",
+                _logger.LogTrace("[Release Matching] Hard rejection: event type mismatch ({ReleaseType} vs {EventType}): '{Release}'",
                     releaseSubcategory, eventSubcategory, release.Title);
             }
         }
@@ -500,7 +503,7 @@ public class ReleaseMatchingService
                 {
                     result.Confidence -= 20;
                     result.Rejections.Add("Could not confirm both teams in a non-Latin release title - add team aliases in that language for automatic matching");
-                    _logger.LogDebug("[Release Matching] Non-Latin title, only 1 of 2 teams recognized in '{Release}' for event '{Event}' (soft)",
+                    _logger.LogTrace("[Release Matching] Non-Latin title, only 1 of 2 teams recognized in '{Release}' for event '{Event}' (soft)",
                         release.Title, evt.Title);
                 }
                 else
@@ -511,7 +514,7 @@ public class ReleaseMatchingService
                     result.Confidence -= 100;
                     result.IsHardRejection = true;
                     result.Rejections.Add("Only one team name found - likely a different matchup");
-                    _logger.LogDebug("[Release Matching] Hard rejection: only 1 of 2 teams found in '{Release}' for event '{Event}'",
+                    _logger.LogTrace("[Release Matching] Hard rejection: only 1 of 2 teams found in '{Release}' for event '{Event}'",
                         release.Title, evt.Title);
                 }
             }
@@ -551,7 +554,7 @@ public class ReleaseMatchingService
 
         // VALIDATION 3: Date/Year proximity
         // First check full date if available, then fall back to year-only check
-        _logger.LogDebug("[Release Matching] Date validation for '{Release}': EventDate={EventDate}, EventYear={EventYear}",
+        _logger.LogTrace("[Release Matching] Date validation for '{Release}': EventDate={EventDate}, EventYear={EventYear}",
             release.Title,
             parseResult.EventDate?.ToString("yyyy-MM-dd") ?? "null",
             parseResult.EventYear?.ToString() ?? "null");
@@ -564,7 +567,7 @@ public class ReleaseMatchingService
             // by its true broadcast date (2025-12-31), not the UTC-rolled-over Jan 1.
             var eventDate = (evt.BroadcastDate ?? evt.EventDate.Date).Date;
             var daysDiff = Math.Abs((eventDate - parseResult.EventDate.Value.Date).TotalDays);
-            _logger.LogDebug("[Release Matching] Date comparison: release={ReleaseDate}, event={EventDate}, diff={Days} days",
+            _logger.LogTrace("[Release Matching] Date comparison: release={ReleaseDate}, event={EventDate}, diff={Days} days",
                 parseResult.EventDate.Value.ToString("yyyy-MM-dd"), eventDate.ToString("yyyy-MM-dd"), daysDiff);
 
             if (daysDiff <= 1)
@@ -591,7 +594,7 @@ public class ReleaseMatchingService
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
                 result.Rejections.Add($"Date mismatch: release is {parseResult.EventDate.Value:yyyy-MM-dd}, event is {eventDate:yyyy-MM-dd} ({daysDiff:F0} days off)");
-                _logger.LogDebug("[Release Matching] Hard rejection: date mismatch ({ReleaseDate} vs {EventDate}, {Days} days): '{Release}'",
+                _logger.LogTrace("[Release Matching] Hard rejection: date mismatch ({ReleaseDate} vs {EventDate}, {Days} days): '{Release}'",
                     parseResult.EventDate.Value.ToString("yyyy-MM-dd"), eventDate.ToString("yyyy-MM-dd"), daysDiff, release.Title);
             }
         }
@@ -633,7 +636,7 @@ public class ReleaseMatchingService
                 result.IsHardRejection = true;
                 var yearDisplay = releaseYearEnd.HasValue ? $"{releaseYear}-{releaseYearEnd}" : releaseYear.ToString();
                 result.Rejections.Add($"Year mismatch: release is {yearDisplay}, event is {eventYear}");
-                _logger.LogDebug("[Release Matching] Hard rejection: year mismatch ({ReleaseYear} vs {EventYear}): '{Release}'",
+                _logger.LogTrace("[Release Matching] Hard rejection: year mismatch ({ReleaseYear} vs {EventYear}): '{Release}'",
                     yearDisplay, eventYear, release.Title);
             }
         }
@@ -648,7 +651,7 @@ public class ReleaseMatchingService
             // Debug instead so per-comparison output stays out of Info, and
             // rely on `[SportsFileNameParser]` warnings (which fire once per
             // parse, not once per match) to surface genuinely malformed input.
-            _logger.LogDebug("[Release Matching] No date/year extracted from release: '{Release}' - date validation skipped",
+            _logger.LogTrace("[Release Matching] No date/year extracted from release: '{Release}' - date validation skipped",
                 release.Title);
         }
 
@@ -695,7 +698,7 @@ public class ReleaseMatchingService
                     result.Confidence -= 100;
                     result.Rejections.Add($"Multi-part disabled: rejecting part file '{detectedPart.SegmentName}' (only full event files accepted)");
                     result.IsHardRejection = true;
-                    _logger.LogDebug("[Release Matching] Hard rejection: multi-part disabled but release has part '{Part}': '{Release}'",
+                    _logger.LogTrace("[Release Matching] Hard rejection: multi-part disabled but release has part '{Part}': '{Release}'",
                         detectedPart.SegmentName, release.Title);
                 }
                 else
@@ -739,7 +742,7 @@ public class ReleaseMatchingService
                     {
                         result.Confidence += 10;
                         result.MatchReasons.Add($"Unmarked release (likely {requestedPart})");
-                        _logger.LogDebug("[Release Matching] Accepting unmarked release as {Part} candidate: '{Release}'",
+                        _logger.LogTrace("[Release Matching] Accepting unmarked release as {Part} candidate: '{Release}'",
                             requestedPart, release.Title);
                     }
                     else
@@ -749,7 +752,7 @@ public class ReleaseMatchingService
                         result.Confidence -= 100;
                         result.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely main show)");
                         result.IsHardRejection = true;
-                        _logger.LogDebug("[Release Matching] Hard rejection: requested part '{Part}' but no part detected in '{Release}'",
+                        _logger.LogTrace("[Release Matching] Hard rejection: requested part '{Part}' but no part detected in '{Release}'",
                             requestedPart, release.Title);
                     }
                 }
@@ -766,7 +769,7 @@ public class ReleaseMatchingService
             result.Confidence -= 100;
             result.IsHardRejection = true;
             result.Rejections.Add($"Different sport detected in release: {differentSport}");
-            _logger.LogDebug("[Release Matching] Hard rejection: different sport '{Sport}' detected in '{Release}' for event '{Event}'",
+            _logger.LogTrace("[Release Matching] Hard rejection: different sport '{Sport}' detected in '{Release}' for event '{Event}'",
                 differentSport, release.Title, evt.Title);
             return result;
         }
@@ -781,7 +784,7 @@ public class ReleaseMatchingService
             var eventSession = EventPartDetector.DetectMotorsportSessionType(evt.Title, evt.League?.Name ?? "");
             var releaseSession = EventPartDetector.DetectMotorsportSessionFromFilename(release.Title);
 
-            _logger.LogDebug("[Release Matching] Motorsport session validation: event='{EventSession}', release='{ReleaseSession}'",
+            _logger.LogTrace("[Release Matching] Motorsport session validation: event='{EventSession}', release='{ReleaseSession}'",
                 eventSession ?? "unknown", releaseSession ?? "unknown");
 
             if (eventSession != null && releaseSession != null)
@@ -802,7 +805,7 @@ public class ReleaseMatchingService
                     result.Confidence -= 100;
                     result.Rejections.Add($"Session mismatch: release is '{normalizedReleaseSession}', event is '{normalizedEventSession}'");
                     result.IsHardRejection = true;
-                    _logger.LogDebug("[Release Matching] Hard rejection: session mismatch ({ReleaseSession} vs {EventSession}): '{Release}'",
+                    _logger.LogTrace("[Release Matching] Hard rejection: session mismatch ({ReleaseSession} vs {EventSession}): '{Release}'",
                         normalizedReleaseSession, normalizedEventSession, release.Title);
                 }
             }
@@ -851,7 +854,7 @@ public class ReleaseMatchingService
                     result.Confidence -= 100;
                     result.Rejections.Add($"Round mismatch: release is Round {releaseRound}, event is Round {eventRound}");
                     result.IsHardRejection = true;
-                    _logger.LogDebug("[Release Matching] Hard rejection: round mismatch (Round {ReleaseRound} vs Round {EventRound}): '{Release}'",
+                    _logger.LogTrace("[Release Matching] Hard rejection: round mismatch (Round {ReleaseRound} vs Round {EventRound}): '{Release}'",
                         releaseRound, eventRound, release.Title);
                 }
             }
@@ -868,7 +871,7 @@ public class ReleaseMatchingService
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
                 result.Rejections.Add($"Location mismatch: release contains '{conflictingLocation.Value.ReleaseLocation}' but event is '{conflictingLocation.Value.EventLocation}'");
-                _logger.LogDebug("[Release Matching] Hard rejection: location mismatch ({ReleaseLocation} vs {EventLocation}): '{Release}'",
+                _logger.LogTrace("[Release Matching] Hard rejection: location mismatch ({ReleaseLocation} vs {EventLocation}): '{Release}'",
                     conflictingLocation.Value.ReleaseLocation, conflictingLocation.Value.EventLocation, release.Title);
             }
         }
@@ -882,7 +885,7 @@ public class ReleaseMatchingService
             result.Confidence -= 100;
             result.IsHardRejection = true;
             result.Rejections.Add($"Day mismatch: release is Day {releaseDayNumber}, event is Day {eventDayNumber}");
-            _logger.LogDebug("[Release Matching] Hard rejection: day mismatch (Day {ReleaseDay} vs Day {EventDay}): '{Release}'",
+            _logger.LogTrace("[Release Matching] Hard rejection: day mismatch (Day {ReleaseDay} vs Day {EventDay}): '{Release}'",
                 releaseDayNumber, eventDayNumber, release.Title);
         }
         else if (releaseDayNumber.HasValue && !eventDayNumber.HasValue)
@@ -908,7 +911,7 @@ public class ReleaseMatchingService
                 result.Rejections.Add(releaseIsTest
                     ? "Release is pre-season testing but event is a race weekend"
                     : "Release is a race weekend but event is pre-season testing");
-                _logger.LogDebug("[Release Matching] Hard rejection: pre-season testing vs race weekend mismatch: '{Release}' vs '{Event}'",
+                _logger.LogTrace("[Release Matching] Hard rejection: pre-season testing vs race weekend mismatch: '{Release}' vs '{Event}'",
                     release.Title, evt.Title);
             }
         }
@@ -967,7 +970,7 @@ public class ReleaseMatchingService
                 result.IsHardRejection = true;
                 result.Rejections.Add(
                     "Insufficient evidence: release identified only by year/season-episode, which does not map to Sportarr's event numbering");
-                _logger.LogDebug("[Release Matching] Hard rejection: insufficient event-level evidence (year/SxxxxExx only) for '{Release}' -> '{Event}'",
+                _logger.LogTrace("[Release Matching] Hard rejection: insufficient event-level evidence (year/SxxxxExx only) for '{Release}' -> '{Event}'",
                     release.Title, evt.Title);
             }
         }
@@ -1007,7 +1010,7 @@ public class ReleaseMatchingService
                 result.IsHardRejection = true;
                 result.Rejections.Add(
                     $"No league identity: release names neither '{evt.League.Name}' nor anything from the event title");
-                _logger.LogDebug("[Release Matching] Hard rejection: no league identity for '{Release}' -> '{Event}' (league '{League}')",
+                _logger.LogTrace("[Release Matching] Hard rejection: no league identity for '{Release}' -> '{Event}' (league '{League}')",
                     release.Title, evt.Title, evt.League.Name);
             }
         }
@@ -1028,7 +1031,7 @@ public class ReleaseMatchingService
         // (50MB/min of log spam, file rotator can't keep up, eventual
         // deadlock). The per-grab summary upstream still logs which release
         // ultimately won at Info, which is the actually-meaningful event.
-        _logger.LogDebug("[Release Matching] '{Release}' -> Event '{Event}': Confidence {Confidence}%, Match: {IsMatch}, Reasons: [{Reasons}], Rejections: [{Rejections}]",
+        _logger.LogTrace("[Release Matching] '{Release}' -> Event '{Event}': Confidence {Confidence}%, Match: {IsMatch}, Reasons: [{Reasons}], Rejections: [{Rejections}]",
             release.Title, evt.Title, result.Confidence, result.IsMatch,
             string.Join(", ", result.MatchReasons),
             string.Join(", ", result.Rejections));
@@ -1062,7 +1065,7 @@ public class ReleaseMatchingService
             }
             else
             {
-                _logger.LogDebug("[Release Matching] Filtered out: '{Release}' (Confidence: {Confidence}%, Rejections: {Rejections})",
+                _logger.LogTrace("[Release Matching] Filtered out: '{Release}' (Confidence: {Confidence}%, Rejections: {Rejections})",
                     release.Title, matchResult.Confidence, string.Join("; ", matchResult.Rejections));
             }
         }
@@ -1877,7 +1880,8 @@ public class ReleaseMatchingService
         { "Spain", new(StringComparer.OrdinalIgnoreCase) { "Spanish", "Barcelona", "Catalunya", "Catalonia", "Catalan", "Espagne", "Catalogne" } },
         { "Canada", new(StringComparer.OrdinalIgnoreCase) { "Canadian", "Montreal" } },
         { "Austria", new(StringComparer.OrdinalIgnoreCase) { "Austrian", "Spielberg", "Red Bull Ring", "Autriche" } },
-        { "Britain", new(StringComparer.OrdinalIgnoreCase) { "British", "Silverstone", "UK", "Great Britain", "Grande Bretagne", "Angleterre" } },
+        { "Britain", new(StringComparer.OrdinalIgnoreCase) { "British", "Silverstone", "UK", "Great Britain", "United Kingdom", "Grande Bretagne", "Angleterre" } },
+        { "United Kingdom", new(StringComparer.OrdinalIgnoreCase) { "British", "Britain", "Silverstone", "UK", "Great Britain", "Grande Bretagne", "Angleterre" } },
         { "Hungary", new(StringComparer.OrdinalIgnoreCase) { "Hungarian", "Budapest", "Hungaroring", "Hongrie", "Balaton Park" } },
         { "Belgium", new(StringComparer.OrdinalIgnoreCase) { "Belgian", "Spa", "Spa-Francorchamps", "Belgique" } },
         { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Dutch", "Zandvoort", "Assen", "Pays Bas" } },
@@ -1922,6 +1926,7 @@ public class ReleaseMatchingService
         { "United States", new(StringComparer.OrdinalIgnoreCase) { "Las Vegas", "Miami", "Austin", "COTA", "Texas" } },
         { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Emilia Romagna", "Monza", "Imola", "Mugello" } },
         { "Britain", new(StringComparer.OrdinalIgnoreCase) { "Silverstone" } },
+        { "United Kingdom", new(StringComparer.OrdinalIgnoreCase) { "Silverstone" } },
         { "Spain", new(StringComparer.OrdinalIgnoreCase) { "Barcelona", "Catalunya" } },
         { "France", new(StringComparer.OrdinalIgnoreCase) { "Le Mans", "Paul Ricard" } },
         { "Germany", new(StringComparer.OrdinalIgnoreCase) { "Sachsenring", "Hockenheim", "Nurburgring" } },

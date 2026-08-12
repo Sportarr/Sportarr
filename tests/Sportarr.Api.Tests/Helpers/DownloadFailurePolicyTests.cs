@@ -57,4 +57,26 @@ public class DownloadFailurePolicyTests
         DownloadFailurePolicy.ShouldRemoveDataOnFailure(downloadCompleted: false, removeFailedDownloadsSetting: false)
             .Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("Source file not found: /downloads/x.mkv")]
+    [InlineData("Path is not accessible")]
+    [InlineData("Directory does not exist")]
+    [InlineData("SOURCE FILE NOT FOUND")]
+    public void IsPathNotReadyError_TreatsMissingPathsAsAWait(string message)
+    {
+        // These must never spend the terminal retry budget: a mount or mover
+        // that takes longer than three polls would otherwise be failed forever.
+        DownloadFailurePolicy.IsPathNotReadyError(message).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Permission denied")]
+    [InlineData("Not an upgrade for existing file")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void IsPathNotReadyError_LeavesRealFailuresOnTheRetryBudget(string? message)
+    {
+        DownloadFailurePolicy.IsPathNotReadyError(message).Should().BeFalse();
+    }
 }

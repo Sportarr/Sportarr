@@ -87,6 +87,7 @@ public class FileImportService : IFileImportService
     private readonly DownloadClientService _downloadClientService;
     private readonly EventPartDetector _partDetector;
     private readonly ConfigService _configService;
+    private readonly ImportFileSuppressionService _importFileSuppression;
     private readonly DiskSpaceService _diskSpaceService;
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly NotificationService _notificationService;
@@ -104,6 +105,7 @@ public class FileImportService : IFileImportService
         DownloadClientService downloadClientService,
         EventPartDetector partDetector,
         ConfigService configService,
+        ImportFileSuppressionService importFileSuppression,
         DiskSpaceService diskSpaceService,
         SportarrApiClient sportarrApiClient,
         NotificationService notificationService,
@@ -118,6 +120,7 @@ public class FileImportService : IFileImportService
         _downloadClientService = downloadClientService;
         _partDetector = partDetector;
         _configService = configService;
+        _importFileSuppression = importFileSuppression;
         _diskSpaceService = diskSpaceService;
         _sportarrApiClient = sportarrApiClient;
         _notificationService = notificationService;
@@ -492,6 +495,12 @@ public class FileImportService : IFileImportService
                 // that replaces a good file with a broken release must be recoverable.
                 if (!string.IsNullOrEmpty(upgradedFile.FilePath) && File.Exists(upgradedFile.FilePath))
                 {
+                    // Tell the watcher this deletion is ours. Without it the
+                    // watcher marks the event as having no file and saves that,
+                    // and anything reading before the new file lands sees an
+                    // event that owns nothing.
+                    _importFileSuppression.SuppressDeletion(upgradedFile.FilePath);
+
                     try
                     {
                         var upgradeConfig = await _configService.GetConfigAsync();
@@ -658,6 +667,7 @@ public class FileImportService : IFileImportService
                 QualityScore = download.QualityScore,
                 CustomFormatScore = download.CustomFormatScore,
                 Codec = download.Codec ?? parsed.VideoCodec,
+                AudioCodec = parsed.AudioCodec,
                 Source = download.Source ?? parsed.Source,
                 PartName = partInfo?.SegmentName,
                 PartNumber = partInfo?.PartNumber,
@@ -665,7 +675,12 @@ public class FileImportService : IFileImportService
                 LastVerified = DateTime.UtcNow,
                 Exists = true,
                 OriginalTitle = download.Title, // Store the original grabbed release title for verification
-                ReleaseGroup = parsed.ReleaseGroup
+                ReleaseGroup = parsed.ReleaseGroup,
+                // The probe already reads the audio tracks, so record them.
+                // A subtitle tool picks languages by comparing against the
+                // audio language, and with none known it fetches subtitles in
+                // the language already being spoken.
+                Languages = parsed.DetectedLanguages?.ToList() ?? new List<string>()
             };
 
             // Global UNIQUE(FilePath) guard. The upgrade check above only finds
@@ -699,6 +714,39 @@ public class FileImportService : IFileImportService
             eventInfo.FileSize = actualFileSize;
             eventInfo.Quality = qualityString;
 
+            // An event holding a file must carry a season and episode number.
+            // Sync clears the episode index for postponed and cancelled events
+            // on purpose, so a file arriving for one leaves the pair missing,
+            // and a media server or an integration then has nothing to order or
+            // key the file by. Fill the gap here rather than change what sync
+            // does, because the contradiction belongs to this file, not to the
+            // schedule.
+            if (eventInfo.SeasonNumber is null)
+            {
+                eventInfo.SeasonNumber = int.TryParse(eventInfo.Season, out var parsedSeason)
+                    ? parsedSeason
+                    : eventInfo.EventDate.Year;
+                _logger.LogWarning(
+                    "[Import] Event {EventId} had no season number; derived {Season} so the imported file can be ordered",
+                    eventInfo.Id, eventInfo.SeasonNumber);
+            }
+
+            if (eventInfo.EpisodeNumber is null)
+            {
+                // Position by date within the same league and season, which is
+                // the same ordering sync uses.
+                var earlierInSeason = await _db.Events
+                    .Where(e => e.LeagueId == eventInfo.LeagueId
+                                && e.SeasonNumber == eventInfo.SeasonNumber
+                                && e.Id != eventInfo.Id
+                                && e.EventDate < eventInfo.EventDate)
+                    .CountAsync();
+                eventInfo.EpisodeNumber = earlierInSeason + 1;
+                _logger.LogWarning(
+                    "[Import] Event {EventId} had no episode number; derived {Episode} from its date within the season",
+                    eventInfo.Id, eventInfo.EpisodeNumber);
+            }
+
             // Update grab history to mark as imported with file existing
             // This enables the re-grab feature if files are later deleted
             var grabHistoryEntry = await _db.GrabHistory
@@ -710,6 +758,30 @@ public class FileImportService : IFileImportService
                 grabHistoryEntry.WasImported = true;
                 grabHistoryEntry.ImportedAt = DateTime.UtcNow;
                 grabHistoryEntry.FileExists = true;
+                grabHistoryEntry.DestinationPath = destinationPath;
+
+                // A grab history row is the proof that a real release produced
+                // this file, so its title is the only trustworthy scene name.
+                // Manual imports, library imports and DVR recordings reach this
+                // method too and have no such row, and they must leave the
+                // field null rather than borrow a filename.
+                eventFile.ReleaseTitle = grabHistoryEntry.Title;
+            }
+
+            // Older grabs for this same slot no longer own a file. This import
+            // either replaced their file or upgraded past it. Leaving their
+            // flag set made every old row still advertise "File Exists", which
+            // is what invited the delete that removed the wrong file.
+            var replacedGrabs = await _db.GrabHistory
+                .Where(g => g.EventId == download.EventId
+                            && g.PartName == download.Part
+                            && g.FileExists
+                            && (grabHistoryEntry == null || g.Id != grabHistoryEntry.Id)
+                            && (g.DestinationPath == null || g.DestinationPath != destinationPath))
+                .ToListAsync();
+            foreach (var replaced in replacedGrabs)
+            {
+                replaced.FileExists = false;
             }
 
             await _db.SaveChangesAsync();

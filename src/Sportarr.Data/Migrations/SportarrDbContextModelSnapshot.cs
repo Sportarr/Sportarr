@@ -1317,6 +1317,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime>("Added")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AudioCodec")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Codec")
                         .HasColumnType("TEXT");
 
@@ -1366,6 +1369,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ReleaseGroup")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReleaseTitle")
                         .HasColumnType("TEXT");
 
                     b.Property<long>("Size")
@@ -1515,6 +1521,9 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<int>("CustomFormatScore")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("DestinationPath")
+                        .HasColumnType("TEXT");
 
                     b.Property<int?>("DownloadClientId")
                         .HasColumnType("INTEGER");

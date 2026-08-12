@@ -276,6 +276,27 @@ public class EventPartDetector
             new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b", @"\bgrand\s*prix\b(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))", @"\bgp\b(?!\s*of\b)(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))" }),
         },
 
+        // British Superbike — a round runs two or three numbered races over the
+        // weekend, so the numbered entries must come before the bare Race one
+        // or every race matches the first event of the round. Keyed on the
+        // words the league name can carry, since the lookup below is a
+        // Contains test and the metadata source uses the sponsored name.
+        ["British Superbike"] = new List<MotorsportSessionType>
+        {
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)?\b", @"\bfp1\b" }),
+            new("Warm Up", new[] { @"\bwarm\s*up\b" }),
+            new("Sprint", new[] { @"(?<!qualifying\s)(?<!quali\s)\bsprint\b(?!\s*(qualifying|quali))" }),
+            new("Qualifying", new[] { @"(?<!sprint[\s._-]?)\b(shootout|qualif(ying|ier)|quali)\b(?!\s*(sprint))" }),
+            // Numbered races first. The ordinal must follow "race" so that
+            // whole-day coverage ("Day One") never claims a single race.
+            new("Race 1", new[] { @"\brace\s*(1|one)\b" }),
+            new("Race 2", new[] { @"\brace\s*(2|two)\b" }),
+            new("Race 3", new[] { @"\brace\s*(3|three)\b" }),
+            new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b" }),
+        },
+
         // NOTE: Formula E sessions removed - Sportarr API only has main race events, not individual sessions.
         // Can be added back when the API provides FP1/FP2/FP3/Qualifying as separate events.
 

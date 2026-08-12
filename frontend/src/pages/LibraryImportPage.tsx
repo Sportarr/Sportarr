@@ -1311,14 +1311,14 @@ const LibraryImportPage: React.FC = () => {
           >
             <div className="fixed inset-0 bg-black/70" />
           </Transition.Child>
-          <div className="fixed inset-0 overflow-y-auto">
+          <div className="fixed inset-0 overflow-hidden">
             <div className="flex min-h-full items-center justify-center p-4">
               <Transition.Child
                 as={Fragment}
                 enter="ease-out duration-200" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100"
                 leave="ease-in duration-150" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95"
               >
-                <Dialog.Panel className="w-full max-w-2xl rounded-lg bg-gray-900 border border-gray-700 shadow-2xl">
+                <Dialog.Panel className="w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg bg-gray-900 border border-gray-700 shadow-2xl">
                   <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
                     <Dialog.Title className="text-lg font-semibold text-white">
                       Edit File Metadata

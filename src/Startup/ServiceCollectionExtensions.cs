@@ -373,6 +373,9 @@ public static class ServiceCollectionExtensions
     {
         services.AddScoped<MediaFileParser>();
         services.AddScoped<MediaFileInspector>();
+        // Singleton: the watcher and the importer run in different scopes and
+        // must share the same suppression list.
+        services.AddSingleton<ImportFileSuppressionService>();
         services.AddScoped<SportsFileNameParser>();
         services.AddScoped<FileNamingService>();
         services.AddScoped<FileRenameService>();

@@ -60,6 +60,11 @@ public class ReleaseMatchScorer
             { "Silverstone", "Brands Hatch", "Donington" } },
         { "Great Britain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "Silverstone", "Brands Hatch", "Donington" } },
+        // The metadata source names this round "United Kingdom" while
+        // releases say "Great Britain", so the event's own location has to
+        // be a key too, the same way USA and United States both are above.
+        { "United Kingdom", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Silverstone", "Brands Hatch", "Donington" } },
 
         // Spain circuits (F1, MotoGP)
         { "Spain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -1075,7 +1080,8 @@ public class ReleaseMatchScorer
             { "Abu Dhabi", new[] { "AbuDhabi", "Yas Marina" } },
             { "Monaco", new[] { "Monte Carlo", "Monegasque" } },
             { "Austria", new[] { "Austrian", "Spielberg", "Red Bull Ring" } },
-            { "Britain", new[] { "British", "Silverstone", "UK", "Great Britain" } },
+            { "Britain", new[] { "British", "Silverstone", "UK", "Great Britain", "United Kingdom" } },
+            { "United Kingdom", new[] { "British", "Britain", "Silverstone", "UK", "Great Britain" } },
             { "Italy", new[] { "Italian", "Monza", "Imola", "Mugello", "Misano" } },
             { "Belgium", new[] { "Belgian", "Spa", "Spa-Francorchamps" } },
             { "Japan", new[] { "Japanese", "Suzuka", "Motegi", "Fuji" } },

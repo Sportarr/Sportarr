@@ -33,8 +33,15 @@ public static class Version
     {
         var assemblyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
 
-        // If we have a valid assembly version with a build number, use it (CI/CD build)
-        if (assemblyVersion != null && assemblyVersion.Build > 0)
+        // Sportarr's own MAJOR.MINOR.PATCH.BUILD scheme doesn't line up with
+        // System.Version's Major.Minor.Build.Revision properties - our PATCH
+        // (3rd component) lands in .Build, and CI's injected BUILD number
+        // (4th component) lands in .Revision. Checking .Build here was
+        // checking PATCH, not "did CI stamp a build number in" - so any
+        // build cut while PATCH is still 0 (e.g. right after a minor/major
+        // bump) fell through to the local-build fallback below even though
+        // a perfectly valid CI-stamped version was sitting in .Revision.
+        if (assemblyVersion != null && assemblyVersion.Revision > 0)
         {
             return $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}.{assemblyVersion.Revision}";
         }

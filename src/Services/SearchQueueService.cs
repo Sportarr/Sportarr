@@ -152,6 +152,25 @@ public class SearchQueueService
             }
         }
 
+        // One search per event and part at a time. Nothing stopped the same
+        // event being queued repeatedly, and each entry ran its own search and
+        // grabbed again, so one user got the same release sent to SABnzbd three
+        // times in ten seconds and was left with folder, folder.1 and folder.2.
+        // Returning the search already in flight matches how Sonarr's command
+        // queue collapses an equivalent command instead of running it twice.
+        var inFlight = _activeSearches.Values
+            .Concat(_pendingQueue)
+            .FirstOrDefault(q => q.EventId == eventId
+                && string.Equals(q.Part, part, StringComparison.OrdinalIgnoreCase)
+                && (q.Status == SearchQueueStatus.Queued || q.Status == SearchQueueStatus.Searching));
+        if (inFlight != null)
+        {
+            _logger.LogInformation(
+                "[SEARCH QUEUE] Search already in flight for '{Title}'{Part}, joining it instead of queueing another",
+                eventTitle, part != null ? $" ({part})" : "");
+            return inFlight;
+        }
+
         var queueItem = new SearchQueueItem
         {
             Id = Guid.NewGuid().ToString("N"),

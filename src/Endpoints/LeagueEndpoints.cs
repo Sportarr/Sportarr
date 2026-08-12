@@ -31,7 +31,35 @@ public static class LeagueEndpoints
     public static IEndpointRouteBuilder MapLeagueEndpoints(this IEndpointRouteBuilder app)
     {
 // API: Get leagues (universal for all sports)
-app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
+// Fill LeagueResponse.Path for a set of leagues. Integrations key a library
+// on one unique folder per league, so the value has to come from the same
+// root folder and naming settings the importer uses, not be guessed.
+static async Task FillLeaguePathsAsync(
+    SportarrDbContext db, FileNamingService naming, IEnumerable<LeagueResponse> responses, IEnumerable<League> leagues)
+{
+    var settings = await db.MediaManagementSettings.FirstOrDefaultAsync() ?? new MediaManagementSettings();
+    var roots = await db.RootFolders.ToDictionaryAsync(r => r.Id, r => r.Path);
+    var leagueById = leagues.ToDictionary(l => l.Id);
+
+    foreach (var response in responses)
+    {
+        if (!leagueById.TryGetValue(response.Id, out var league)
+            || league.RootFolderId is null
+            || !roots.TryGetValue(league.RootFolderId.Value, out var rootPath)
+            || string.IsNullOrWhiteSpace(rootPath))
+        {
+            continue;
+        }
+
+        var folder = naming.BuildLeagueFolderName(settings, league);
+        // No folder name means league folders are off, so this league shares
+        // the root with every other one. Report null rather than a path that
+        // is not unique to it.
+        response.Path = string.IsNullOrEmpty(folder) ? null : System.IO.Path.Combine(rootPath, folder);
+    }
+}
+
+app.MapGet("/api/leagues", async (SportarrDbContext db, FileNamingService naming, string? sport) =>
 {
     var query = db.Leagues.AsQueryable();
 
@@ -78,11 +106,13 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
             stats?.HasFutureEvents ?? false);
     }).ToList();
 
+    await FillLeaguePathsAsync(db, naming, response, leagues);
+
     return Results.Ok(response);
 });
 
 // API: Get league by ID
-app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
+app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNamingService naming) =>
 {
     var league = await db.Leagues
         .Include(l => l.MonitoredTeams)
@@ -98,6 +128,20 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
     var events = await db.Events
         .Where(e => e.LeagueId == id)
         .ToListAsync();
+
+    // Same rule as the list endpoint. Null when league folders are off, since
+    // the league then has no folder of its own.
+    string? leaguePath = null;
+    if (league.RootFolderId is not null)
+    {
+        var mmSettings = await db.MediaManagementSettings.FirstOrDefaultAsync() ?? new MediaManagementSettings();
+        var rootPath = (await db.RootFolders.FirstOrDefaultAsync(r => r.Id == league.RootFolderId.Value))?.Path;
+        var folderName = naming.BuildLeagueFolderName(mmSettings, league);
+        if (!string.IsNullOrWhiteSpace(rootPath) && !string.IsNullOrEmpty(folderName))
+        {
+            leaguePath = System.IO.Path.Combine(rootPath, folderName);
+        }
+    }
 
     return Results.Ok(new
     {
@@ -126,6 +170,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.AllowHighlights,
         league.RetentionDays,
         league.RootFolderId,
+        Path = leaguePath,
         league.SearchQueryTemplate,
         league.LogoUrl,
         league.BannerUrl,
@@ -160,7 +205,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Get all events for a specific league (filtered by monitoring settings)
-app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting events for league ID: {LeagueId}", id);
 
@@ -248,6 +293,36 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
             logger.LogDebug("[LEAGUES] Filtered by {TeamCount} monitored teams - {Filtered}/{Total} events",
                 monitoredTeamIds.Count, filteredEvents.Count, events.Count);
         }
+    }
+
+    // Paging is opt-in so the frontend and every existing consumer keep the
+    // plain array they already expect. Integrations ask for a page and get an
+    // envelope instead. A full MLB season is around 2400 events, and an
+    // integration doing a first sync walks every monitored league, so pulling
+    // whole seasons in single responses does not scale.
+    if (page.HasValue || pageSize.HasValue)
+    {
+        var currentPage = Math.Max(1, page ?? 1);
+        var size = Math.Clamp(pageSize ?? 100, 1, 1000);
+        var totalRecords = filteredEvents.Count;
+
+        var pageItems = filteredEvents
+            .Skip((currentPage - 1) * size)
+            .Take(size)
+            .Select(EventResponse.FromEvent)
+            .ToList();
+
+        logger.LogInformation("[LEAGUES] Returning page {Page} ({Count} of {Total}) for league: {LeagueName}",
+            currentPage, pageItems.Count, totalRecords, league.Name);
+
+        return Results.Ok(new
+        {
+            page = currentPage,
+            pageSize = size,
+            totalRecords,
+            totalPages = (int)Math.Ceiling(totalRecords / (double)size),
+            records = pageItems
+        });
     }
 
     // Convert to DTOs

@@ -405,26 +405,28 @@ public class EventQueryService
                 queries.Add($"{prefix} {year} Round{round.Value:D2}");
             }
 
-            // For Formula 1, add location-based supplementary queries to catch BILLIE-style
-            // releases (Formula.1.2026.China.Grand.Prix) that don't use round numbers.
-            if (seriesKey == "Formula1")
+            // Location queries catch releases named after the venue or country
+            // rather than the round ("motogp.2026.italy..."), which an indexer
+            // can otherwise bury under the broad season query. Every series
+            // needs them, not just Formula 1: the guards below keep a series
+            // that names events some other way from emitting junk, because a
+            // missing location or a title without a Grand Prix simply adds
+            // nothing.
+            if (!string.IsNullOrEmpty(evt.Location))
             {
-                if (!string.IsNullOrEmpty(evt.Location))
-                {
-                    queries.Add($"{prefix} {year} {evt.Location}");
-                }
-                if (!string.IsNullOrEmpty(titleWord))
-                {
-                    queries.Add($"{prefix} {year} {titleWord}");
+                queries.Add($"{prefix} {year} {evt.Location}");
+            }
+            if (!string.IsNullOrEmpty(titleWord))
+            {
+                queries.Add($"{prefix} {year} {titleWord}");
 
-                    // Also search the country-noun form of an adjective GP name
-                    // ("Belgian" -> "Belgium") - the two conventions coexist on
-                    // the same indexer and neither matches the other as text.
-                    if (GpDemonymToCountry.TryGetValue(titleWord, out var countryName) &&
-                        !string.Equals(countryName, evt.Location, StringComparison.OrdinalIgnoreCase))
-                    {
-                        queries.Add($"{prefix} {year} {countryName}");
-                    }
+                // Also search the country-noun form of an adjective GP name
+                // ("Belgian" -> "Belgium") - the two conventions coexist on
+                // the same indexer and neither matches the other as text.
+                if (GpDemonymToCountry.TryGetValue(titleWord, out var countryName) &&
+                    !string.Equals(countryName, evt.Location, StringComparison.OrdinalIgnoreCase))
+                {
+                    queries.Add($"{prefix} {year} {countryName}");
                 }
             }
 
@@ -995,10 +997,15 @@ public class EventQueryService
         if (lower.Contains("wrc") || lower.Contains("world rally"))
             return "WRC";
 
+        // British Superbike, checked before World Superbike so the shared
+        // "superbike" word cannot pull it into the wrong series. Releases
+        // use the BSB abbreviation, never the sponsored league name that
+        // the metadata source carries ("Bennetts British Superbike").
+        if (lower.Trim() == "bsb" || lower.Contains("british superbike"))
+            return "BSB";
+
         // World Superbike: TheSportsDB names the league literally "SBK",
         // while releases are almost always tagged WSBK (WorldSBK branding).
-        // "British Superbike" deliberately does NOT land here — that's a
-        // separate series with its own releases.
         if (lower.Trim() == "sbk" || lower.Contains("world superbike") ||
             lower.Contains("superbike world") || lower.Contains("worldsbk") || lower.Contains("wsbk"))
             return "WSBK";

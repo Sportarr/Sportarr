@@ -50,7 +50,7 @@ export default function RefreshScopeModal({
           <div className="fixed inset-0 bg-black/80" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
+        <div className="fixed inset-0 overflow-hidden">
           <div className="flex min-h-full items-center justify-center p-4 text-center">
             <Transition.Child
               as={Fragment}
@@ -61,7 +61,7 @@ export default function RefreshScopeModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-lg mx-4 transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 text-left align-middle shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-lg mx-4 transform max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 text-left align-middle shadow-xl transition-all">
                 <div className="p-4 md:p-6">
                   <div className="flex items-start gap-3 md:gap-4 mb-4">
                     <div className="flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-full bg-red-600/20 flex items-center justify-center">

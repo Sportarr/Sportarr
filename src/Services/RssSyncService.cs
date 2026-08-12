@@ -1284,6 +1284,18 @@ public class RssSyncService : BackgroundService
             _logger.LogDebug("[RSS Sync] Marked previous grab as superseded: {Title}", oldGrab.Title);
         }
 
+        // Carry the anti-churn counters onto the new row. The eligibility check
+        // above advances them on the PRIOR row, but this method adds a row per
+        // grab and the guard reads only the most recent one. Without this the
+        // new row reset the count to zero every time, so the cap never applied
+        // and the same release went to the download client every 6 hours.
+        var priorGrabOfRelease = await db.GrabHistory
+            .Where(g => g.EventId == evt.Id && g.DownloadUrl == release.DownloadUrl)
+            .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        var carriedRegrabCount = priorGrabOfRelease is { WasImported: false } ? priorGrabOfRelease.RegrabCount : 0;
+        var carriedLastRegrabAttempt = priorGrabOfRelease is { WasImported: false } ? priorGrabOfRelease.LastRegrabAttempt : null;
+
         var grabHistory = new GrabHistory
         {
             EventId = evt.Id,
@@ -1303,7 +1315,9 @@ public class RssSyncService : BackgroundService
             PartName = partName,
             GrabbedAt = DateTime.UtcNow,
             DownloadClientId = downloadClient.Id,
-            DownloadId = downloadId
+            DownloadId = downloadId,
+            RegrabCount = carriedRegrabCount,
+            LastRegrabAttempt = carriedLastRegrabAttempt
         };
         db.GrabHistory.Add(grabHistory);
 

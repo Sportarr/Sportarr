@@ -30,4 +30,20 @@ public static class DownloadFailurePolicy
     {
         return !downloadCompleted && removeFailedDownloadsSetting;
     }
+
+    /// <summary>
+    /// Whether an import exception only means the path is not there yet. A delayed
+    /// mount, an external mover, or an rsync/rclone job can all make the client
+    /// report completion before the file appears. These are waits, not failures, so
+    /// the caller must retry them without spending the terminal retry budget.
+    /// </summary>
+    public static bool IsPathNotReadyError(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return false;
+
+        return message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("not accessible", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("does not exist", StringComparison.OrdinalIgnoreCase);
+    }
 }

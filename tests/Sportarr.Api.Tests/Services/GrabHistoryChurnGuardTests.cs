@@ -60,6 +60,26 @@ public class GrabHistoryChurnGuardTests
             .Should().Be(GrabHistoryChurnGuard.Decision.BlockCapReached);
 
     [Fact]
+    public void NewestRowMustInheritTheCount_OrTheCapNeverApplies()
+    {
+        // Regression for the grab loop a user reported for three weeks. Both
+        // callers add ONE GrabHistory row per grab, and this guard reads only
+        // the newest row for a release. The count was written to the older row,
+        // so the newest row always read zero and the same release went to the
+        // download client every cooldown window forever. The log proved it:
+        // "Controlled re-grab 1/3" repeated for weeks and never reached 2/3.
+        var inherited = Grab(regrabCount: GrabHistoryChurnGuard.MaxAutomaticRegrabs, lastRegrab: Now.AddDays(-1));
+        GrabHistoryChurnGuard.Evaluate(inherited, Now)
+            .Should().Be(GrabHistoryChurnGuard.Decision.BlockCapReached);
+
+        // Same release, same age, but with the count reset by a fresh row: the
+        // guard can only keep retrying. This is the shape of the bug.
+        var reset = Grab(regrabCount: 0, lastRegrab: Now.AddDays(-1));
+        GrabHistoryChurnGuard.Evaluate(reset, Now)
+            .Should().Be(GrabHistoryChurnGuard.Decision.AllowControlledRetry);
+    }
+
+    [Fact]
     public void LastRegrabAttempt_TakesPrecedenceOverGrabbedAt()
     {
         // Originally grabbed two days ago, but a retry was logged 10 minutes ago: still cooling down.
