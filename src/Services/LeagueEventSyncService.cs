@@ -1936,12 +1936,12 @@ public class LeagueEventSyncService
     /// <summary>
     /// Determines if an event should be monitored based on the league's MonitorType setting
     /// </summary>
-    private static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason, string latestSeasonWithData,
+    internal static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason, string latestSeasonWithData,
         string? round, string? title, IReadOnlySet<int> cupStageSizes)
     {
         var now = DateTime.UtcNow;
 
-        return league.MonitorType switch
+        var monitoredByType = league.MonitorType switch
         {
             MonitorType.All => true,
             MonitorType.Future => eventDate > now,
@@ -1968,6 +1968,28 @@ public class LeagueEventSyncService
                 cupStageSizes),
             _ => true // Default to monitoring if unknown type
         };
+
+        if (monitoredByType)
+        {
+            return true;
+        }
+
+        // "Always monitor finals and championships" means always. The
+        // toggles used to only carry an event past the team filter, so a
+        // Super Bowl that had already been played was added under
+        // MonitorType.Future but arrived unmonitored, and the user saw the
+        // toggle do nothing. None stays absolute, and SpecialsOnly already
+        // is this rule.
+        if (league.MonitorType is MonitorType.None or MonitorType.SpecialsOnly)
+        {
+            return false;
+        }
+
+        return SpecialEventClassifier.BypassesTeamFilter(
+            round,
+            LeagueSportRules.IsTeamlessSport(league.Sport, league.Name) ? null : title,
+            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+            cupStageSizes);
     }
 
     /// <summary>
@@ -2251,7 +2273,25 @@ public class LeagueEventSyncService
     /// - "2023-2024" -> false (ended before current year)
     /// - "2020" -> false
     /// </summary>
-    private static bool IsCurrentOrFutureSeason(string season)
+    /// <summary>
+    /// Hub seasons in the current/future window that have no local events.
+    /// The changes-feed cursor can be current while a league locally
+    /// misses whole seasons: the league was monitored after its changes
+    /// flowed, the events predate the feed, or local rows were lost. A
+    /// cursor poll alone can never heal those, so refresh verifies
+    /// coverage with this before trusting "library is current".
+    /// </summary>
+    internal static List<string> FindMissingCurrentSeasons(
+        IEnumerable<string> hubSeasons, IEnumerable<string> localSeasons)
+    {
+        var local = new HashSet<string>(localSeasons, StringComparer.OrdinalIgnoreCase);
+        return hubSeasons
+            .Where(s => !string.IsNullOrEmpty(s) && IsCurrentOrFutureSeason(s))
+            .Where(s => !local.Contains(s))
+            .ToList();
+    }
+
+    internal static bool IsCurrentOrFutureSeason(string season)
     {
         if (string.IsNullOrEmpty(season))
             return false;

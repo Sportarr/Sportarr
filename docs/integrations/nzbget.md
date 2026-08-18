@@ -1,5 +1,9 @@
 # NZBGet
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/nzbget.svg" alt="" width="72" height="72" />
+</p>
+
 Efficient usenet downloader with a small resource footprint.
 
 | | |

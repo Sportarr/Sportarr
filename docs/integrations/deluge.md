@@ -1,5 +1,9 @@
 # Deluge
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/deluge.svg" alt="" width="72" height="72" />
+</p>
+
 Lightweight torrent client.
 
 | | |

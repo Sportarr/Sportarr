@@ -1463,6 +1463,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
 app.MapGet("/api/iptv/stream/url", async (
     string url,
     IHttpClientFactory httpClientFactory,
+    ConfigService configService,
     ILogger<Program> logger,
     HttpContext context) =>
 {
@@ -1474,8 +1475,10 @@ app.MapGet("/api/iptv/stream/url", async (
     // SSRF guard: this endpoint is anonymous (HLS players send no API key), so a caller-
     // supplied URL must never be allowed to target the server's own network. Only fetch
     // http/https URLs that resolve to public addresses; reject loopback/private/link-local
-    // (incl. cloud metadata 169.254.169.254) targets.
-    if (!await Sportarr.Api.Helpers.SsrfGuard.IsPublicHttpUrlAsync(url, context.RequestAborted))
+    // (incl. cloud metadata 169.254.169.254) targets. The admin's trusted networks are the
+    // one deliberate exception, for LAN tuners.
+    var trustedNetworks = Sportarr.Api.Helpers.SsrfGuard.ParseTrustedNetworks((await configService.GetConfigAsync()).IptvTrustedNetworks);
+    if (!await Sportarr.Api.Helpers.SsrfGuard.IsAllowedHttpUrlAsync(url, trustedNetworks, context.RequestAborted))
     {
         logger.LogWarning("[StreamProxy] Rejected non-public or invalid proxy URL");
         return Results.BadRequest(new { error = "URL is not an allowed stream target" });

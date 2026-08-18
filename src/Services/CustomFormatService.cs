@@ -59,8 +59,12 @@ public class CustomFormatService
     }
 
     /// <summary>
-    /// Checks if a release matches all specifications in a custom format
-    /// All specifications must match (AND logic)
+    /// Checks if a release matches a custom format with the same semantics the
+    /// release evaluator uses: every Required specification must match, and
+    /// each implementation group needs at least one match. Specs of the same
+    /// type are alternatives, different types are cumulative. Demanding that
+    /// every spec match made a TRaSH web tier unmatchable here, because its
+    /// WEBDL and WEBRIP source specs can never both be true.
     /// </summary>
     public bool MatchesFormat(string releaseTitle, CustomFormat format, long sizeInBytes = 0, string? indexerFlags = null)
     {
@@ -72,25 +76,24 @@ public class CustomFormatService
         // Parse release title once
         var parsed = _parser.Parse(releaseTitle);
 
-        // All specifications must match
-        foreach (var spec in format.Specifications)
+        var specResults = format.Specifications.Select(spec =>
         {
             var matches = EvaluateSpecification(spec, releaseTitle, parsed, sizeInBytes, indexerFlags);
-
-            // Apply negation
             if (spec.Negate)
             {
                 matches = !matches;
             }
+            return (Spec: spec, Matched: matches);
+        }).ToList();
 
-            // If required and doesn't match, format fails
-            if (spec.Required && !matches)
-            {
-                return false;
-            }
+        if (specResults.Any(r => r.Spec.Required && !r.Matched))
+        {
+            return false;
+        }
 
-            // If not required but doesn't match, format fails (all must match)
-            if (!matches)
+        foreach (var group in specResults.GroupBy(r => NormalizeImplementation(r.Spec.Implementation)))
+        {
+            if (!group.Any(r => r.Matched))
             {
                 return false;
             }
@@ -100,11 +103,25 @@ public class CustomFormatService
     }
 
     /// <summary>
+    /// TRaSH JSON uses the full Sonarr names ("ReleaseGroupSpecification");
+    /// specs created in the UI use the short forms. Both must route to the
+    /// same evaluator and land in the same alternatives group.
+    /// </summary>
+    private static string NormalizeImplementation(string implementation)
+    {
+        if (implementation.EndsWith("Specification", StringComparison.OrdinalIgnoreCase))
+        {
+            return implementation[..^"Specification".Length];
+        }
+        return implementation;
+    }
+
+    /// <summary>
     /// Evaluates a single specification against a release
     /// </summary>
     private bool EvaluateSpecification(FormatSpecification spec, string releaseTitle, ParsedFileInfo parsed, long sizeInBytes, string? indexerFlags)
     {
-        return spec.Implementation switch
+        return NormalizeImplementation(spec.Implementation) switch
         {
             "ReleaseTitle" => EvaluateReleaseTitle(spec, releaseTitle),
             "Source" => EvaluateSource(spec, parsed),

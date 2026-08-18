@@ -1,5 +1,9 @@
 # SABnzbd
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/sabnzbd.svg" alt="" width="72" height="72" />
+</p>
+
 Open source binary newsreader, the standard choice for usenet.
 
 | | |

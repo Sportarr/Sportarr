@@ -21,6 +21,7 @@ public class EventDvrService
     private readonly EpgSchedulingService _epgSchedulingService;
     private readonly EventChannelResolverService _channelResolver;
     private readonly ConfigService _configService;
+    private readonly LibraryImportService _libraryImport;
 
     public EventDvrService(
         ILogger<EventDvrService> logger,
@@ -32,7 +33,8 @@ public class EventDvrService
         ReleaseEvaluator releaseEvaluator,
         EpgSchedulingService epgSchedulingService,
         EventChannelResolverService channelResolver,
-        ConfigService configService)
+        ConfigService configService,
+        LibraryImportService libraryImport)
     {
         _logger = logger;
         _db = db;
@@ -44,6 +46,7 @@ public class EventDvrService
         _epgSchedulingService = epgSchedulingService;
         _channelResolver = channelResolver;
         _configService = configService;
+        _libraryImport = libraryImport;
     }
 
     /// <summary>
@@ -514,6 +517,16 @@ public class EventDvrService
         // Probe the file to detect quality
         await ProbeAndUpdateRecordingQualityAsync(recording);
 
+        // A recording with an import mode goes through the library import, so
+        // it lands in the event's folder under the normal naming rules. Without
+        // one it stays where the recorder wrote it and only the path is
+        // registered, which is what every recording did before the mode
+        // existed.
+        if (!string.IsNullOrWhiteSpace(recording.ImportMode))
+        {
+            return await ImportRecordingIntoLibraryAsync(recording);
+        }
+
         // Check if file already exists for this event
         var existingFile = await _db.EventFiles
             .FirstOrDefaultAsync(f => f.EventId == recording.EventId &&
@@ -574,6 +587,53 @@ public class EventDvrService
         _logger.LogInformation("[EventDVR] Imported DVR recording {RecordingId} as file for event {EventId}: {Title} ({Quality}, Score: {Score})",
             recordingId, recording.EventId, recording.Event.Title, recording.Quality, qualityScore);
 
+        return true;
+    }
+
+    /// <summary>
+    /// Place a finished recording in the library with the mode the user chose
+    /// when they scheduled it. The library import owns the destination folder,
+    /// the file name and the transfer, so the recording ends up organised the
+    /// same way a downloaded release does.
+    /// </summary>
+    private async Task<bool> ImportRecordingIntoLibraryAsync(DvrRecording recording)
+    {
+        var result = await _libraryImport.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new()
+            {
+                FilePath = recording.OutputPath!,
+                EventId = recording.EventId,
+                Quality = recording.Quality,
+                PartName = recording.PartName,
+                ImportMode = recording.ImportMode,
+            }
+        });
+
+        if (result.Imported.Count + result.Created.Count == 0)
+        {
+            var reason = result.Errors.Count > 0
+                ? string.Join("; ", result.Errors)
+                : "the library import did not take the file";
+            _logger.LogWarning(
+                "[EventDVR] Recording {RecordingId} was not imported: {Reason}", recording.Id, reason);
+            recording.ErrorMessage = reason;
+            recording.LastUpdated = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            return false;
+        }
+
+        // The import created the EventFile and pointed the event at the new
+        // path, so only the recording's own state is left to settle.
+        recording.Status = DvrRecordingStatus.Imported;
+        recording.ErrorMessage = null;
+        recording.LastUpdated = DateTime.UtcNow;
+        recording.ImportedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "[EventDVR] Imported recording {RecordingId} into the library for event {EventId} using {Mode}",
+            recording.Id, recording.EventId, recording.ImportMode);
         return true;
     }
 

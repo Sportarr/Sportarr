@@ -1,5 +1,9 @@
 # Plex
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/plex.svg" alt="" width="72" height="72" />
+</p>
+
 Sportarr provides a metadata agent for Plex that fetches posters, banners, descriptions, and episode organization from sportarr.net.
 
 ![Media Server Agents](../images/media-server-agents.png)

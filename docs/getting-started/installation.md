@@ -56,6 +56,7 @@ docker run -d \
 - **HexOS** - Sportarr is in the curated apps catalog with the same one-click install.
 - **Unraid** - search "sportarr" in Community Applications. Official templates live at [Sportarr/unraid-templates](https://github.com/Sportarr/unraid-templates).
 - **DockSTARTer** - Sportarr is a built-in app template. Run `ds -a sportarr` or enable it in the `ds` menu. See the [DockSTARTer guide](../integrations/dockstarter.md).
+- **Runtipi** - add the [Sportarr app store](https://github.com/Sportarr/runtipi-appstore) under **Settings > App Stores** (Runtipi v4.0.0 or later), then install Sportarr from the store list.
 
 ## Windows, Linux, and macOS
 

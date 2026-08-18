@@ -1459,8 +1459,24 @@ public class FFmpegRecorderService
                 }
             }
 
-            // Check if we never received any data
-            if (!hasReceivedData)
+            // Whether data arrived is decided by the file, not by what FFmpeg
+            // said. The recorder runs at -loglevel warning, so a healthy
+            // recording prints none of the lines scanned above and every
+            // successful recording used to end with this warning. A file that
+            // exists and holds bytes is proof; the log is only a fallback for
+            // when the file cannot be read.
+            var capturedBytes = 0L;
+            try
+            {
+                if (!string.IsNullOrEmpty(recording.OutputPath) && File.Exists(recording.OutputPath))
+                    capturedBytes = new FileInfo(recording.OutputPath).Length;
+            }
+            catch (IOException)
+            {
+                // Fall back to the log-derived flag below.
+            }
+
+            if (capturedBytes == 0 && !hasReceivedData)
             {
                 _logger.LogWarning("[DVR] Recording {RecordingId}: No stream data was received. The stream URL may be invalid or inaccessible.",
                     recording.RecordingId);

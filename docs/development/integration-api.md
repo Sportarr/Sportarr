@@ -313,6 +313,12 @@ data: {"id":42,"timestamp":"2026-08-10T23:30:45Z","resourceType":"file","action"
 `eventId`, `externalId`, `leagueId`, and `path` are present when the
 change has them and omitted otherwise.
 
+**`file.imported` and `file.removed` carry no `leagueId`.** They name the
+event only. Resolve the league from a row you already hold, and read
+`GET /api/events/{id}` when you have none yet. A consumer that looks only at
+its own table drops the first file frame after a fresh install, because that
+table is still empty.
+
 Reconnect semantics:
 
 - Send `?since=<last seen id>`, or rely on the standard `Last-Event-ID`

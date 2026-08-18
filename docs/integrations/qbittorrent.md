@@ -1,5 +1,9 @@
 # qBittorrent
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/qbittorrent.svg" alt="" width="72" height="72" />
+</p>
+
 Free and reliable torrent client, and the most common pairing for Sportarr torrent setups.
 
 | | |

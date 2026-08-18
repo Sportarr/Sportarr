@@ -1158,8 +1158,54 @@ public class TaskService : ITaskService
             var poller = scope_.ServiceProvider.GetRequiredService<HubChangesPollerService>();
             await onProgress(10, "Checking the hub for changes...");
             var summary = await poller.PollNowAsync(cancellationToken);
-            await onProgress(100, summary);
             _logger.LogInformation("[TASK] Hub change check complete for task {TaskId}: {Summary}", task.Id, summary);
+
+            // The poll is cursor-based and global, so it can truthfully
+            // report "current" while THIS league is locally missing whole
+            // seasons: monitored after its changes flowed, events created
+            // before the feed existed, or local rows lost. Verify the
+            // league's current/future season coverage against the hub and
+            // sync only what is missing.
+            await onProgress(60, "Verifying season coverage...");
+            var db = scope_.ServiceProvider.GetRequiredService<SportarrDbContext>();
+            var league = await db.Leagues.FindAsync(new object[] { leagueId }, cancellationToken);
+            if (!string.IsNullOrEmpty(league?.ExternalId))
+            {
+                var apiClient = scope_.ServiceProvider.GetRequiredService<SportarrApiClient>();
+                var hubSeasons = await apiClient.GetAllSeasonsAsync(league!.ExternalId!);
+                if (hubSeasons != null && hubSeasons.Count > 0)
+                {
+                    var localSeasons = await db.Events
+                        .Where(e => e.LeagueId == leagueId && e.Season != null)
+                        .Select(e => e.Season!)
+                        .Distinct()
+                        .ToListAsync(cancellationToken);
+                    var missing = LeagueEventSyncService.FindMissingCurrentSeasons(
+                        hubSeasons.Select(s => s.StrSeason ?? string.Empty), localSeasons);
+                    if (missing.Count > 0)
+                    {
+                        _logger.LogInformation(
+                            "[TASK] {LeagueName} is missing local events for hub season(s) {Seasons} - syncing them despite a current change cursor",
+                            league.Name, string.Join(", ", missing));
+                        await onProgress(70, $"Syncing missing season(s): {string.Join(", ", missing)}");
+                        var gapResult = await syncService.SyncLeagueEventsAsync(
+                            leagueId,
+                            seasons: missing,
+                            fullHistoricalSync: false,
+                            forceRefresh: true,
+                            onProgress: onProgress,
+                            cancellationToken: cancellationToken);
+                        if (!gapResult.Success)
+                        {
+                            throw new Exception(gapResult.Message ?? "Missing-season sync failed");
+                        }
+                        await onProgress(100,
+                            $"{summary}; recovered {gapResult.NewCount} event(s) from missing season(s) {string.Join(", ", missing)}");
+                        return;
+                    }
+                }
+            }
+            await onProgress(100, summary);
             return;
         }
 

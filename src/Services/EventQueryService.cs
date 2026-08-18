@@ -109,9 +109,13 @@ public class EventQueryService
         result = result.Replace("{EventName}",
             StripStageFromTitle(StripFightersFromTitle(evt.Title ?? "")), StringComparison.OrdinalIgnoreCase);
 
-        // Team names
-        result = result.Replace("{HomeTeam}", homeTeamName ?? evt.HomeTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{AwayTeam}", awayTeamName ?? evt.AwayTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
+        // Team names. Reading only the HomeTeam/AwayTeam navigations left
+        // these tokens empty for every league without linked Team rows, which
+        // is most of them. ResolveTeamNames reads the denormalized name
+        // columns first, the same way the reversed-order fallback does.
+        var (resolvedHome, resolvedAway) = ResolveTeamNames(evt);
+        result = result.Replace("{HomeTeam}", homeTeamName ?? resolvedHome ?? "", StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{AwayTeam}", awayTeamName ?? resolvedAway ?? "", StringComparison.OrdinalIgnoreCase);
         result = result.Replace("{vs}", "vs", StringComparison.OrdinalIgnoreCase);
 
         // Season
@@ -603,6 +607,27 @@ public class EventQueryService
             if (reversedSurnameQuery != null)
                 queries.Add(reversedSurnameQuery);
             queries.Add(NormalizeEventTitle(title));
+
+            // Season 10 Contender Series releases are named "UFC Tuesday
+            // Night Contender Series S10W01", a different show title and a
+            // W where the metadata numbering says episode, so the SxxExx
+            // query above finds nothing on full-text indexers.
+            var dwcs = Regex.Match(title,
+                @"(?:dana\s*white|dwcs|contender\s*series).*?season\s*(\d+)\s*(week|episode|ep\.?)\s*(\d+)",
+                RegexOptions.IgnoreCase);
+            if (dwcs.Success)
+            {
+                var s = int.Parse(dwcs.Groups[1].Value);
+                var e = int.Parse(dwcs.Groups[3].Value);
+                queries.Add($"UFC Tuesday Night Contender Series S{s}W{e:D2}");
+                if (dwcs.Groups[2].Value.StartsWith("w", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Some groups keep the classic show title with the week
+                    // numbering, so that pairing gets its own query too.
+                    queries.Add($"Dana Whites Contender Series S{s}W{e:D2}");
+                }
+            }
+
             var orgMatch = Regex.Match(title, @"^(UFC|Bellator|PFL|ONE|Boxing)", RegexOptions.IgnoreCase);
             if (orgMatch.Success)
             {
@@ -704,6 +729,31 @@ public class EventQueryService
     /// both sides fall back to canonical are skipped (that query already
     /// exists), and slots are capped to keep indexers unhammered.
     /// </summary>
+    /// <summary>
+    /// Home and away names with one precedence everywhere. The denormalized
+    /// name columns come first, because sync writes them for every event. The
+    /// Team navigations come second, because they need linked Team rows that
+    /// many leagues never get. The canonical "Home vs Away" title is the last
+    /// resort, and fills only the side that is still missing.
+    /// </summary>
+    internal static (string? Home, string? Away) ResolveTeamNames(Event evt)
+    {
+        var home = evt.HomeTeamName ?? evt.HomeTeam?.Name;
+        var away = evt.AwayTeamName ?? evt.AwayTeam?.Name;
+
+        if (string.IsNullOrWhiteSpace(home) || string.IsNullOrWhiteSpace(away))
+        {
+            var parts = evt.Title?.Split(" vs ", 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (parts is { Length: 2 })
+            {
+                if (string.IsNullOrWhiteSpace(home)) home = parts[0];
+                if (string.IsNullOrWhiteSpace(away)) away = parts[1];
+            }
+        }
+
+        return (home, away);
+    }
+
     private static IEnumerable<(string Home, string Away)> BuildTeamAliasPairs(Event evt)
     {
         const int maxSlots = 3;

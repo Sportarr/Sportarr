@@ -1,5 +1,9 @@
 # autobrr
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/autobrr.svg" alt="" width="72" height="72" />
+</p>
+
 [autobrr](https://autobrr.com) watches IRC announce channels and RSS feeds and pushes matching releases the moment they appear, well before RSS-based searching would find them. It has native Sportarr support.
 
 !!! info "Availability"

@@ -1977,7 +1977,11 @@ public static class DatabaseInitializer
         try
         {
             var mediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
-            if (mediaSettings != null)
+            if (mediaSettings != null && mediaSettings.FileFormatTokenUpgradeApplied)
+            {
+                Console.WriteLine("[Sportarr] StandardFileFormat upgrade already applied - leaving the configured format alone");
+            }
+            else if (mediaSettings != null)
             {
                 const string correctFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} - {Sportarr Id}";
                 const string correctFormatNoPart = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full} - {Sportarr Id}";
@@ -2042,6 +2046,12 @@ public static class DatabaseInitializer
                 {
                     Console.WriteLine($"[Sportarr] StandardFileFormat is already correct: '{currentFormat}'");
                 }
+
+                // One shot. Whatever branch ran above, the upgrade has now had
+                // its chance, so a later edit back to an older stock format is
+                // the user's choice and must survive the next restart.
+                mediaSettings.FileFormatTokenUpgradeApplied = true;
+                await db.SaveChangesAsync();
             }
             else
             {
@@ -2516,6 +2526,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "EventFiles", "Languages", "TEXT NOT NULL DEFAULT '[]'");
         EnsureColumn(db, "EventFiles", "ReleaseGroup", "TEXT");
         EnsureColumn(db, "MediaManagementSettings", "UserRejectedExtensions", "TEXT");
+        EnsureColumn(db, "MediaManagementSettings", "FileFormatTokenUpgradeApplied", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "Events", "Description", "TEXT");
         EnsureColumn(db, "IptvChannels", "HasArchive", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "IptvChannels", "ArchiveDays", "INTEGER NOT NULL DEFAULT 0");

@@ -398,15 +398,29 @@ public class SabnzbdClient
 
             // Decypharr requires mode and output in the QUERY STRING (not form data).
             // Sending them in form data causes Decypharr to return a default 404 page.
+            // The category has two quirks of its own. Decypharr reads it from the
+            // query string first, and it reads the parameter NAME "category", not
+            // SABnzbd's standard "cat" (pkg/server/sabnzbd/context.go in its
+            // source). Sending only a "cat" form field is why Sportarr logged a
+            // category while Decypharr received none, filed the download in the
+            // root instead of the category folder, and never auto-imported it.
             var uploadUrl = $"{baseUrl}?mode=addfile&output=json";
+            if (!string.IsNullOrWhiteSpace(category))
+            {
+                var escaped = Uri.EscapeDataString(category);
+                uploadUrl += $"&category={escaped}&cat={escaped}";
+            }
 
             // Build multipart content. Decypharr requires the file field to be named "name"
             // (the SABnzbd standard). Using "nzbfile" causes Decypharr to return
             // {"status":false,"error":"No files uploaded"}.
             using var content = new MultipartFormDataContent();
 
+            // Both names in the form body too, for emulator versions that read it
+            // from there.
             if (!string.IsNullOrWhiteSpace(category))
             {
+                content.Add(new StringContent(category), "category");
                 content.Add(new StringContent(category), "cat");
             }
 

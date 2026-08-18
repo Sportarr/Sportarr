@@ -741,6 +741,19 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                 .ToListAsync(cancellationToken),
             StringComparer.OrdinalIgnoreCase);
 
+        // A recording in flight writes its file for the length of the
+        // broadcast. Offering it for import while the recorder still holds it
+        // imports a part-written file. The DVR imports its own recording when
+        // it finishes, so the scan passes over an active one.
+        var activeRecordingPaths = new HashSet<string>(
+            await db.DvrRecordings
+                .Where(r => r.OutputPath != null &&
+                            (r.Status == DvrRecordingStatus.Recording ||
+                             r.Status == DvrRecordingStatus.Scheduled))
+                .Select(r => r.OutputPath!)
+                .ToListAsync(cancellationToken),
+            StringComparer.OrdinalIgnoreCase);
+
         var videoExtensions = new HashSet<string>(SupportedExtensions.Video, StringComparer.OrdinalIgnoreCase);
         var discoveredCount = 0;
 
@@ -770,7 +783,8 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                     if (cancellationToken.IsCancellationRequested) break;
 
                     // Skip if already tracked, already pending, or blocklisted
-                    if (trackedPaths.Contains(filePath) || pendingPaths.Contains(filePath) || blocklistedPaths.Contains(filePath))
+                    if (trackedPaths.Contains(filePath) || pendingPaths.Contains(filePath) ||
+                        blocklistedPaths.Contains(filePath) || activeRecordingPaths.Contains(filePath))
                         continue;
 
                     try

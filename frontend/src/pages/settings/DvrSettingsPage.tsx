@@ -36,6 +36,7 @@ interface NamingPresets {
 interface DvrSettings {
   defaultProfileId: number;
   recordingPath: string;
+  trustedNetworks: string;
   fileNamingPattern: string;
   prePaddingMinutes: number;
   postPaddingMinutes: number;
@@ -155,6 +156,7 @@ const HardwareAccelerationOptions: { value: number; label: string; description: 
 const defaultDvrSettings: DvrSettings = {
   defaultProfileId: 1,
   recordingPath: '',
+  trustedNetworks: '',
   fileNamingPattern: '{Title} - {Date}',
   prePaddingMinutes: 5,
   postPaddingMinutes: 30,
@@ -197,6 +199,9 @@ export default function DvrSettingsPage() {
   // DVR Settings state
   const [dvrSettings, setDvrSettings] = useState<DvrSettings>(defaultDvrSettings);
   const [availableHwAccel, setAvailableHwAccel] = useState<HardwareAccelerationInfo[]>([]);
+  // Where recordings actually land, resolved by the backend. An empty
+  // Recording Path resolves at record time, so the user cannot work it out.
+  const [effectivePath, setEffectivePath] = useState<{ path: string | null; source: string; accessible: boolean; warning?: string | null } | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsHasChanges, setSettingsHasChanges] = useState(false);
   const [originalSettings, setOriginalSettings] = useState<DvrSettings>(defaultDvrSettings);
@@ -258,6 +263,12 @@ export default function DvrSettingsPage() {
     try {
       const { data } = await apiClient.get<DvrSettings>('/dvr/settings');
       setDvrSettings(data);
+      try {
+        const { data: resolved } = await apiClient.get<{ path: string | null; source: string; accessible: boolean; warning?: string | null }>('/dvr/settings/effective-path');
+        setEffectivePath(resolved);
+      } catch {
+        setEffectivePath(null);
+      }
       setOriginalSettings(data);
       setSettingsHasChanges(false);
       // Sync encoding settings from config to the inline editor
@@ -977,6 +988,54 @@ export default function DvrSettingsPage() {
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   />
                   <p className="text-xs text-gray-500 mt-1">Where to save recordings (empty = root folder)</p>
+
+                  {effectivePath && (
+                    <div
+                      className={`mt-3 p-3 rounded-lg border ${
+                        effectivePath.path
+                          ? 'bg-gray-800/50 border-gray-700'
+                          : 'bg-red-950/30 border-red-900/50'
+                      }`}
+                    >
+                      {effectivePath.path ? (
+                        <>
+                          <div className="text-xs text-gray-500 mb-1">Recordings currently go to</div>
+                          <p className="text-sm text-white font-mono break-all">{effectivePath.path}</p>
+                        </>
+                      ) : (
+                        <div className="text-sm text-red-300 font-medium">Nowhere to record</div>
+                      )}
+                      {effectivePath.warning && (
+                        <p
+                          className={`text-xs mt-2 ${
+                            effectivePath.path ? 'text-amber-400/90' : 'text-red-300/90'
+                          }`}
+                        >
+                          {effectivePath.warning}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Trusted networks for LAN stream sources */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Trusted Stream Networks</label>
+                  <input
+                    type="text"
+                    value={dvrSettings.trustedNetworks}
+                    onChange={(e) => handleSettingsChange('trustedNetworks', e.target.value)}
+                    placeholder="e.g. 192.168.68.143 or 192.168.68.0/24"
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    IPs or CIDR ranges the stream guard may connect to, for LAN devices like an
+                    HDHomeRun tuner. Comma-separated. Leave empty to refuse all private addresses.
+                  </p>
+                  <p className="text-xs text-amber-400/80 mt-1">
+                    A trusted range is also reachable through the anonymous stream proxy. List
+                    specific devices, not networks with sensitive services on them.
+                  </p>
                 </div>
 
                 {/* File Naming - Enhanced with TRaSH presets */}

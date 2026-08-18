@@ -1,8 +1,14 @@
 # DockSTARTer
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/dockstarter.webp" alt="" width="72" height="72" />
+</p>
+
 [DockSTARTer](https://dockstarter.com/) makes it easy to run a home server
 stack in Docker, and Sportarr ships as a built-in app template alongside the
-other *arr apps.
+other *arr apps. DockSTARTer keeps its own
+[Sportarr page](https://dockstarter.com/apps/sportarr/) with the template
+details on their side.
 
 ## Adding Sportarr
 

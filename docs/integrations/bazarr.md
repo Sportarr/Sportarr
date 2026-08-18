@@ -1,5 +1,9 @@
 # Bazarr
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/bazarr.svg" alt="" width="72" height="72" />
+</p>
+
 Bazarr manages subtitles for your sports library. Add Sportarr in Bazarr exactly like you'd add Sonarr.
 
 ## Setup

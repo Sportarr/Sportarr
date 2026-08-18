@@ -247,3 +247,52 @@
 [data-md-color-scheme="slate"] ::-webkit-scrollbar-track {
   background-color: transparent;
 }
+
+/* Integration page header logos are icons, not screenshots - no border,
+   and a little air between the title and the body */
+.md-typeset .integration-logo {
+  margin: 0.4rem 0 1.2rem;
+}
+.md-typeset .integration-logo img {
+  border: none;
+  background: transparent;
+  vertical-align: middle;
+}
+
+/* Media server chooser cards - panel-styled links, icon beside the name */
+.md-typeset .server-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.8rem;
+  margin: 1.2rem 0;
+}
+.md-typeset .server-cards .server-card {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.9rem 1rem;
+  background-color: var(--sportarr-panel);
+  border: 1px solid var(--sportarr-border);
+  color: inherit;
+}
+.md-typeset .server-cards .server-card:hover {
+  background-color: var(--sportarr-panel-hover);
+  border-color: var(--sportarr-red, #dc2626);
+}
+.md-typeset .server-cards .server-card img {
+  border: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+.md-typeset .server-cards .server-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.md-typeset .server-cards .server-card-body strong {
+  font-size: 0.85rem;
+}
+.md-typeset .server-cards .server-card-body span {
+  font-size: 0.7rem;
+  color: var(--md-default-fg-color--light);
+}

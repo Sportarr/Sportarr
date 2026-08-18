@@ -21,6 +21,13 @@ public class HealthCheckMonitorService : BackgroundService
     // TRANSITIONS notify - a persistent issue fires once, not every 15
     // minutes, and OnHealthRestored fires when it clears.
     private HashSet<string> _activeIssues = new();
+
+    // Issue keys that actually fired an OnHealthIssue notification since
+    // startup. Restore means "everything we announced has cleared", not
+    // "zero issues exist" - a permanent baseline warning (an available
+    // update, a dismissed low-disk warning) must not block the restore
+    // notification for an outage we told the user about.
+    private readonly HashSet<string> _announcedIssues = new(StringComparer.Ordinal);
     private bool _baselineEstablished;
 
     public HealthCheckMonitorService(IServiceProvider services, ILogger<HealthCheckMonitorService> logger)
@@ -73,7 +80,7 @@ public class HealthCheckMonitorService : BackgroundService
         }
 
         var newIssues = issues.Where(i => !_activeIssues.Contains(IssueKey(i))).ToList();
-        var resolvedKeys = _activeIssues.Where(k => !currentKeys.Contains(k)).ToList();
+        var restored = EvaluateAnnouncedTransitions(currentKeys, newIssues.Select(IssueKey), _announcedIssues);
 
         foreach (var issue in newIssues)
         {
@@ -96,9 +103,9 @@ public class HealthCheckMonitorService : BackgroundService
             }
         }
 
-        if (resolvedKeys.Count > 0 && issues.Count == 0)
+        if (restored)
         {
-            _logger.LogInformation("[Health Monitor] All health issues resolved");
+            _logger.LogInformation("[Health Monitor] All reported health issues resolved");
             try
             {
                 await notificationService.SendNotificationAsync(
@@ -113,6 +120,27 @@ public class HealthCheckMonitorService : BackgroundService
         }
 
         _activeIssues = currentKeys;
+    }
+
+    /// <summary>
+    /// Updates the announced-issue set for this tick and reports whether a
+    /// restore notification is due. Restore fires when at least one
+    /// announced issue existed and none remain present, regardless of
+    /// baseline issues that never notified.
+    /// </summary>
+    internal static bool EvaluateAnnouncedTransitions(
+        HashSet<string> currentKeys,
+        IEnumerable<string> newIssueKeys,
+        HashSet<string> announcedIssues)
+    {
+        var hadAnnounced = announcedIssues.Count > 0;
+        announcedIssues.RemoveWhere(k => !currentKeys.Contains(k));
+        var clearedAll = hadAnnounced && announcedIssues.Count == 0;
+
+        foreach (var key in newIssueKeys)
+            announcedIssues.Add(key);
+
+        return clearedAll && announcedIssues.Count == 0;
     }
 
     private static string IssueKey(HealthCheckResult result) => $"{result.Type}:{result.Message}";

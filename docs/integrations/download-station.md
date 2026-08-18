@@ -1,5 +1,9 @@
 # Synology Download Station
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/synology-download-station.webp" alt="" width="72" height="72" />
+</p>
+
 Synology's built-in downloader. Download Station handles torrents and usenet from the same NAS, but Sportarr tracks them as two connections since they are configured independently: add **Synology Download Station** for torrents and **Synology Download Station (Usenet)** separately if you want both.
 
 | | |

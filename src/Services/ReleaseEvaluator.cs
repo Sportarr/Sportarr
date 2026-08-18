@@ -619,20 +619,23 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Check if a custom format matches a release.
-    /// Matching logic:
+    /// Check if a custom format matches a release, the way Sonarr evaluates
+    /// them, because TRaSH formats are written against those semantics:
     ///   1. Evaluate ALL specifications (apply negate flag)
-    ///   2. If ANY required specification fails → format doesn't match
-    ///   3. If only required specs exist and all pass → format matches
-    ///   4. If non-required specs exist, at least ONE must pass → format matches
-    ///   5. Otherwise → format doesn't match
+    ///   2. Every Required specification must match
+    ///   3. Specifications of the same type are alternatives; different types
+    ///      are cumulative. Each implementation group needs at least one match.
     ///
-    /// Key distinction: Required specs are "gate" conditions. Non-required specs are the actual matchers.
-    /// For a format like SDR with:
-    ///   - 2160p (required=true) = gate condition
-    ///   - HDR Formats (negate=true, required=false) = exclude HDR content
-    ///   - SDR (required=false) = match explicit SDR
-    /// The format should only match 2160p content that EITHER doesn't have HDR markers OR has explicit SDR.
+    /// The grouping is what makes a web tier mean "(any of these release
+    /// groups) AND (source is WEBDL or WEBRIP)". Treating every non-required
+    /// spec as one flat OR made the two source specs satisfy the whole
+    /// format, so every WEB release matched every tier regardless of its
+    /// release group.
+    ///
+    /// A gate-style format still works. SDR with 2160p (required), HDR
+    /// formats (negate, non-required) and SDR (non-required) matches 2160p
+    /// content that either lacks HDR markers or names SDR, because the two
+    /// non-required specs share one implementation group.
     /// </summary>
     private bool DoesFormatMatch(ReleaseSearchResult release, CustomFormat format)
     {
@@ -649,8 +652,7 @@ public class ReleaseEvaluator
         }).ToList();
 
         // Rule 1: If ANY required specification fails, format doesn't match
-        var requiredSpecs = specResults.Where(r => r.Spec.Required).ToList();
-        var failedRequired = requiredSpecs.Where(r => !r.Matched).ToList();
+        var failedRequired = specResults.Where(r => r.Spec.Required && !r.Matched).ToList();
         if (failedRequired.Any())
         {
             _logger.LogDebug("[Custom Format] '{Format}' - REJECTED: Required spec(s) failed: {FailedSpecs}",
@@ -658,28 +660,17 @@ public class ReleaseEvaluator
             return false;
         }
 
-        // Get non-required specs
-        var nonRequiredSpecs = specResults.Where(r => !r.Spec.Required).ToList();
-
-        // Rule 2: If there are no non-required specs, the format matches based on required specs alone
-        if (!nonRequiredSpecs.Any())
+        // Rule 2: every implementation group needs at least one matching spec.
+        foreach (var group in specResults.GroupBy(r => NormalizeImplementation(r.Spec.Implementation)))
         {
-            var passedRequiredSpecs = requiredSpecs.Where(r => r.Matched).Select(r => r.Spec.Name).ToList();
-            _logger.LogDebug("[Custom Format] '{Format}' - MATCHED via required specs only: {PassedSpecs}",
-                format.Name, string.Join(", ", passedRequiredSpecs));
-            return requiredSpecs.Any(); // If there were required specs and they all passed
+            if (!group.Any(r => r.Matched))
+            {
+                _logger.LogDebug("[Custom Format] '{Format}' - REJECTED: No {Implementation} specification matched ({Count} alternatives)",
+                    format.Name, group.Key, group.Count());
+                return false;
+            }
         }
 
-        // Rule 3: If non-required specs exist, at least ONE must pass
-        var passedNonRequired = nonRequiredSpecs.Where(r => r.Matched).ToList();
-        if (!passedNonRequired.Any())
-        {
-            _logger.LogDebug("[Custom Format] '{Format}' - REJECTED: All {Count} non-required specifications failed (required specs passed but non-required gate blocked)",
-                format.Name, nonRequiredSpecs.Count);
-            return false;
-        }
-
-        // At least one non-required spec passed and all required specs passed
         var passedSpecs = specResults.Where(r => r.Matched).Select(r => r.Spec.Name).ToList();
         _logger.LogDebug("[Custom Format] '{Format}' - MATCHED via specs: {PassedSpecs}",
             format.Name, string.Join(", ", passedSpecs));

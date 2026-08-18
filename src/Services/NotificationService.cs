@@ -1024,13 +1024,12 @@ public class NotificationService : INotificationService
 
     #region Notifiarr
 
-    // notifiarr.com doesn't have a dedicated /api/v1/notification/sportarr
-    // route live yet (per their dev, that's the eventual target once this
-    // native connection type is reviewed) - this points at their existing
-    // /test endpoint in the meantime so real payloads reach a safe,
-    // confirmed-working route instead of a 404. Swap to the real
-    // notification/sportarr path the moment they confirm it's live.
-    private const string NotifiarrEndpoint = "https://notifiarr.com/api/v1/notification/test?event=sportarr";
+    // The dedicated route went live 2026-08-15 (confirmed with an
+    // integration key: 200 from notifiarr.com, while nightly.notifiarr.app
+    // answers 421 "api requests belong on notifiarr.com" - the nightly flag
+    // lives on the account, not the API host). Users paste the
+    // Sportarr integration API key from their Notifiarr profile.
+    private const string NotifiarrEndpoint = "https://notifiarr.com/api/v1/notification/sportarr";
 
     /// <summary>
     /// Sends events directly to notifiarr.com, no Notifiarr client relay required.

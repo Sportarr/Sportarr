@@ -13,6 +13,11 @@ public class Config
     public string AuthenticationMethod { get; set; } = "None"; // None, Basic, Forms
     public string AuthenticationRequired { get; set; } = "DisabledForLocalAddresses";
     public bool AuthenticationEnabled { get; set; } = false;
+
+    // The first-run setup guide was dismissed or finished. Server-side so the
+    // guide stays gone from every browser and machine, not just the one that
+    // closed it.
+    public bool OnboardingDismissed { get; set; } = false;
     public string Username { get; set; } = "";
     public string Password { get; set; } = ""; // Stored hashed in PasswordHash; this field exists for clients that POST plaintext
     public string PasswordHash { get; set; } = "";
@@ -215,6 +220,16 @@ public class Config
     // providers rotate channels and guide data ages out fast, so both are
     // refreshed on their own cadence. 0 disables the respective refresh.
     public int IptvPlaylistRefreshHours { get; set; } = 168; // weekly
+
+    /// <summary>
+    /// IPs or CIDR ranges the stream guard treats as trusted, for LAN devices
+    /// like an HDHomeRun tuner ("192.168.68.143" or "192.168.68.0/24",
+    /// comma-separated). Empty keeps the guard fully closed: it refuses every
+    /// private, loopback and link-local target. A trusted range is also
+    /// reachable through the anonymous stream proxy, so list only devices,
+    /// never whole networks with sensitive services on them.
+    /// </summary>
+    public string IptvTrustedNetworks { get; set; } = "";
     public int EpgRefreshHours { get; set; } = 48; // every 2 days
 
     // Backlog Search Settings — scheduled missing/cutoff-unmet search.

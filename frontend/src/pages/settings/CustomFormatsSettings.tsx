@@ -466,10 +466,13 @@ export default function CustomFormatsSettings({ showAdvanced = false, embedded =
         </div>
       )}
 
-      {/* Add/Edit Custom Format Modal */}
+      {/* Add/Edit Custom Format Modal. No items-center on the overlay: a
+          centered flex child taller than the viewport overflows above the
+          scrollport, and that top part cannot be scrolled to. m-auto on the
+          child centers a short modal and keeps a tall one fully reachable. */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-4xl w-full my-8">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex p-4 overflow-y-auto">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-4xl w-full m-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-2xl font-bold text-white">
                 {editingFormat ? 'Edit Custom Format' : 'Add Custom Format'}

@@ -1,10 +1,14 @@
 # Homepage
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/homepage.webp" alt="" width="72" height="72" />
+</p>
+
 [Homepage](https://gethomepage.dev) can show a Sportarr tile with your library counts.
 
-## Native widget
+## Native widget (Homepage v2.0.0 and later)
 
-A first-class Sportarr widget is merged into Homepage and arrives with their next release. Once you're on a Homepage version that includes it:
+Homepage ships a first-class Sportarr widget since v2.0.0. Add it to your services like any other arr widget:
 
 ```yaml
 - Media:
@@ -17,11 +21,11 @@ A first-class Sportarr widget is merged into Homepage and arrives with their nex
           key: yourapikey
 ```
 
-It shows Wanted, Queued, and Leagues, matching the look of the other arr widgets.
+It shows Wanted, Queued, and Leagues, matching the look of the other arr widgets. The full reference lives in [Homepage's widget docs](https://gethomepage.dev/widgets/services/sportarr/).
 
-## customapi widget (works on any Homepage version)
+## customapi widget (Homepage versions before v2.0.0)
 
-Until then, or on older Homepage versions, the built-in `customapi` widget gets you the same tile using Sportarr's `/api/stats` endpoint:
+On older Homepage versions, the built-in `customapi` widget gets you the same tile using Sportarr's `/api/stats` endpoint:
 
 ```yaml
 - Media:

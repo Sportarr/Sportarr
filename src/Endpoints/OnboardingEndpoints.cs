@@ -15,8 +15,9 @@ public static class OnboardingEndpoints
 {
     public static IEndpointRouteBuilder MapOnboardingEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/onboarding/status", async (SportarrDbContext db) =>
+        app.MapGet("/api/onboarding/status", async (SportarrDbContext db, Services.ConfigService configService) =>
         {
+            var config = await configService.GetConfigAsync();
             var hasRootFolder = await db.RootFolders.AnyAsync();
             var hasQualityProfile = await db.QualityProfiles.AnyAsync();
             var hasEnabledIndexer = await db.Indexers.AnyAsync(i => i.Enabled);
@@ -47,7 +48,22 @@ public static class OnboardingEndpoints
                 // Fully set up: somewhere to put files, something to follow, and a
                 // way to get it. The guide can stop nagging once this is true.
                 isReady = hasRootFolder && monitoredLeagueCount > 0 && (downloadReady || dvrReady),
+                // Dismissal used to live in the browser, so every new machine
+                // showed the guide again on an install the user had already
+                // set up and closed it on.
+                dismissed = config.OnboardingDismissed,
             });
+        });
+
+        app.MapPost("/api/onboarding/dismiss", async (Services.ConfigService configService) =>
+        {
+            var config = await configService.GetConfigAsync();
+            if (!config.OnboardingDismissed)
+            {
+                config.OnboardingDismissed = true;
+                await configService.SaveConfigAsync(config);
+            }
+            return Results.Ok(new { dismissed = true });
         });
 
         return app;

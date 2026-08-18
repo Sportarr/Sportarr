@@ -48,7 +48,9 @@ export default function Layout() {
         const res = await apiGet('/api/onboarding/status');
         if (!res.ok) return;
         const status = await res.json();
-        if (!cancelled && status && status.isReady === false) {
+        // The server remembers a dismissal, so a guide closed on one machine
+        // stays closed on every other machine and browser.
+        if (!cancelled && status && status.isReady === false && status.dismissed !== true) {
           setShowOnboarding(true);
         }
       } catch {

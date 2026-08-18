@@ -1,5 +1,9 @@
 # Maintainerr
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/maintainerr.svg" alt="" width="72" height="72" />
+</p>
+
 Maintainerr automates library cleanup rules for Plex. It has native Sportarr support, so your sports library can be cleaned up with the same rule engine you use for movies and shows.
 
 !!! info "Availability"

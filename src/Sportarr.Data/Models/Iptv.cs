@@ -703,6 +703,14 @@ public class DvrRecording
     public int? DurationSeconds { get; set; }
 
     /// <summary>
+    /// How to place the finished recording in the library. "move", "copy" or
+    /// "hardlink". Null keeps the recording where the recorder wrote it and
+    /// registers that path, which is what every recording did before this
+    /// field existed.
+    /// </summary>
+    public string? ImportMode { get; set; }
+
+    /// <summary>
     /// Error message if recording failed
     /// </summary>
     public string? ErrorMessage { get; set; }
@@ -1163,6 +1171,7 @@ public class DvrRecordingResponse
     public int? DurationSeconds { get; set; }
     public string? ErrorMessage { get; set; }
     public string? PartName { get; set; }
+    public string? ImportMode { get; set; }
     public string? Quality { get; set; }
     public int? QualityScore { get; set; }
     public int? CustomFormatScore { get; set; }
@@ -1206,6 +1215,7 @@ public class DvrRecordingResponse
             DurationSeconds = recording.DurationSeconds,
             ErrorMessage = recording.ErrorMessage,
             PartName = recording.PartName,
+            ImportMode = recording.ImportMode,
             Quality = recording.Quality,
             QualityScore = recording.QualityScore,
             CustomFormatScore = recording.CustomFormatScore,
@@ -1225,6 +1235,12 @@ public class DvrRecordingResponse
 public class ScheduleDvrRecordingRequest
 {
     public int? EventId { get; set; }
+
+    /// <summary>
+    /// How to place the finished recording in the library. "move", "copy" or
+    /// "hardlink". Null leaves the recording where it was recorded.
+    /// </summary>
+    public string? ImportMode { get; set; }
     public int ChannelId { get; set; }
     public string? Title { get; set; }
     public DateTime ScheduledStart { get; set; }

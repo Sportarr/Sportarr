@@ -499,6 +499,19 @@ jobs:
         env:
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
 
+      # Stamp the current release version into the Tags table example so
+      # the Docker Hub overview never shows a stale pinnable tag. This
+      # edits the workspace copy only; nothing is committed.
+      - name: Stamp release version into Docker Hub overview
+        if: success()
+        continue-on-error: true
+        run: |
+          VERSION="${{ steps.bump_version.outputs.version_number }}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          sed -i -E "s/\| \`[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\` \| Specific release/| \`${VERSION}\` | Specific release/" DOCKERHUB.md
+          sed -i -E "s/\| \`[0-9]+\.[0-9]+\`, \`[0-9]+\` \| Latest release/| \`${MAJOR}.${MINOR}\`, \`${MAJOR}\` | Latest release/" DOCKERHUB.md
+
       # Sync the Docker Hub repo overview/description from DOCKERHUB.md.
       # Requires the access token to have read/write/delete scope; runs
       # non-blocking so a metadata sync failure can never fail a release.

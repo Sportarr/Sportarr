@@ -232,6 +232,14 @@ public class MediaManagementSettings
     // exactly forever (docs/RELEASE_NAMING.md). Empty for legacy rows.
     public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} - {Sportarr Id}";
 
+    /// <summary>
+    /// Marks that the startup upgrade to the {Sportarr Id} file format has
+    /// run. The upgrade rewrites a recognized stock format in place, so
+    /// without this marker it re-applied on every boot and overwrote a user
+    /// who deliberately picked one of the older stock formats.
+    /// </summary>
+    public bool FileFormatTokenUpgradeApplied { get; set; } = false;
+
     // Folders - Cascading options for granular control
     // CreateLeagueFolders: Creates folders like /UFC/, /Premier League/
     // CreateSeasonFolders: Creates folders like /UFC/Season 2024/ (requires CreateLeagueFolders)

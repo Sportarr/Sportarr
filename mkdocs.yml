@@ -84,6 +84,7 @@ nav:
       - Jellyfin: integrations/jellyfin.md
       - Kodi: integrations/kodi.md
       - Maintainerr: integrations/maintainerr.md
+      - Notifiarr: integrations/notifiarr.md
       - NZBdav: integrations/nzbdav.md
       - NZBGet: integrations/nzbget.md
       - Plex: integrations/plex.md

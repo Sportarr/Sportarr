@@ -378,6 +378,12 @@ public class CatchupDownloadService : BackgroundService
 
         if (success)
         {
+            // The download is written under a hidden name so a media server
+            // scan passes over it while it grows. Give it its real name now
+            // that nothing is writing to it.
+            outputPath = dvrService.RevealFinishedCapture(outputPath);
+            recording.OutputPath = outputPath;
+
             recording.Status = DvrRecordingStatus.Completed;
             recording.ActualEnd = DateTime.UtcNow;
             recording.DurationSeconds = minutes * 60;

@@ -1,5 +1,9 @@
 # Jellyfin
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/jellyfin.svg" alt="" width="72" height="72" />
+</p>
+
 Sportarr provides a metadata plugin for Jellyfin that fetches posters, banners, descriptions, and episode organization from sportarr.net. Requires Jellyfin 10.9 or later.
 
 ## Plugin repository (recommended)

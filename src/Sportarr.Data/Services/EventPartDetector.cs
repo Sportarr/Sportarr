@@ -768,6 +768,31 @@ public class EventPartDetector
     }
 
     /// <summary>
+    /// Find the part number that goes with a part name.
+    ///
+    /// A caller that supplies a part name but no number gets the number from
+    /// here. The number orders the parts of an event, and an integration that
+    /// keeps one record per part uses it to tell the parts apart. Two parts
+    /// with no number look like the same part.
+    /// </summary>
+    /// <param name="partName">Part name, for example "Prelims".</param>
+    /// <param name="sport">Event sport.</param>
+    /// <param name="eventTitle">Event title (drives PPV vs Fight Night part sets).</param>
+    /// <param name="leagueName">Owning league name.</param>
+    /// <returns>The part number, or null when the name matches no segment.</returns>
+    public static int? ResolvePartNumber(string? partName, string sport, string? eventTitle = null,
+        string? leagueName = null)
+    {
+        if (string.IsNullOrWhiteSpace(partName) || IsFullEvent(partName))
+            return null;
+
+        var match = GetSegmentDefinitions(sport, eventTitle, leagueName)
+            .FirstOrDefault(s => s.Name.Equals(partName, StringComparison.OrdinalIgnoreCase));
+
+        return match?.PartNumber;
+    }
+
+    /// <summary>
     /// Determine whether every monitored part of an event now has a file, i.e. the
     /// event is fully satisfied and can safely leave the Wanted / backlog / RSS search
     /// lists. This is what the event-level <c>HasFile</c> flag should reflect.

@@ -1,5 +1,9 @@
 # Emby
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/emby.svg" alt="" width="72" height="72" />
+</p>
+
 Sportarr provides a metadata plugin for Emby that fetches posters, banners, descriptions, and episode organization from sportarr.net. Requires Emby Server 4.9 or later.
 
 ## Setup

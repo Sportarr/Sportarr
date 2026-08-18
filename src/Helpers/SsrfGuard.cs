@@ -18,6 +18,17 @@ public static class SsrfGuard
     /// targets are rejected (fail closed).
     /// </summary>
     public static async Task<bool> IsPublicHttpUrlAsync(string url, CancellationToken cancellationToken = default)
+        => await IsAllowedHttpUrlAsync(url, Array.Empty<(IPAddress, int)>(), cancellationToken);
+
+    /// <summary>
+    /// Like <see cref="IsPublicHttpUrlAsync"/>, but an address inside one of
+    /// the admin's trusted networks passes too. This is what lets a LAN tuner
+    /// like an HDHomeRun be probed and proxied after the admin opts its
+    /// network in.
+    /// </summary>
+    public static async Task<bool> IsAllowedHttpUrlAsync(string url,
+        IReadOnlyList<(IPAddress Network, int PrefixLength)> trusted,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(url))
             return false;
@@ -42,11 +53,11 @@ public static class SsrfGuard
         if (addresses.Length == 0)
             return false;
 
-        // Reject if ANY resolved address is non-public (defends against DNS that returns both a
-        // public and an internal record).
+        // Reject if ANY resolved address is neither public nor trusted (defends against DNS that
+        // returns both a public and an internal record).
         foreach (var address in addresses)
         {
-            if (!IsPublicAddress(address))
+            if (!IsPublicAddress(address) && !IsTrustedAddress(address, trusted))
                 return false;
         }
 
@@ -59,7 +70,16 @@ public static class SsrfGuard
     /// dialed (so it also defeats DNS-rebinding and redirect-to-internal SSRF). Returns the raw
     /// transport stream; the handler layers TLS on top for https targets.
     /// </summary>
-    public static async ValueTask<Stream> ConnectValidatedAsync(DnsEndPoint endpoint, CancellationToken cancellationToken)
+    public static ValueTask<Stream> ConnectValidatedAsync(DnsEndPoint endpoint, CancellationToken cancellationToken)
+        => ConnectValidatedAsync(endpoint, Array.Empty<(IPAddress, int)>(), cancellationToken);
+
+    /// <summary>
+    /// <see cref="ConnectValidatedAsync(DnsEndPoint, CancellationToken)"/> with the admin's
+    /// trusted networks allowed through, so an opted-in LAN device is dialable.
+    /// </summary>
+    public static async ValueTask<Stream> ConnectValidatedAsync(DnsEndPoint endpoint,
+        IReadOnlyList<(IPAddress Network, int PrefixLength)> trusted,
+        CancellationToken cancellationToken)
     {
         IPAddress[] addresses;
         try
@@ -71,7 +91,7 @@ public static class SsrfGuard
             throw new IOException("SSRF guard: could not resolve host.");
         }
 
-        var target = addresses.FirstOrDefault(IsPublicAddress);
+        var target = addresses.FirstOrDefault(a => IsPublicAddress(a) || IsTrustedAddress(a, trusted));
         if (target == null)
         {
             throw new IOException("SSRF guard: refused connection to a non-public address.");
@@ -88,6 +108,88 @@ public static class SsrfGuard
             socket.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Parse the admin's trusted-network setting into (network, prefix) pairs.
+    /// Accepts bare IPs ("192.168.68.143") and CIDR ranges ("192.168.68.0/24"),
+    /// separated by commas, whitespace or newlines. Invalid entries are
+    /// dropped, so one typo cannot open the guard wider than intended.
+    /// </summary>
+    public static List<(IPAddress Network, int PrefixLength)> ParseTrustedNetworks(string? raw)
+    {
+        var result = new List<(IPAddress, int)>();
+        if (string.IsNullOrWhiteSpace(raw))
+            return result;
+
+        var entries = raw.Split(new[] { ',', ' ', '\t', '\r', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var entry in entries)
+        {
+            var slash = entry.IndexOf('/');
+            var host = slash >= 0 ? entry[..slash] : entry;
+            if (!IPAddress.TryParse(host, out var network))
+                continue;
+
+            if (network.IsIPv4MappedToIPv6)
+                network = network.MapToIPv4();
+
+            var maxPrefix = network.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;
+            var prefix = maxPrefix;
+            if (slash >= 0)
+            {
+                if (!int.TryParse(entry[(slash + 1)..], out prefix) || prefix < 0 || prefix > maxPrefix)
+                    continue;
+            }
+
+            result.Add((network, prefix));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// True when the address falls inside one of the admin's trusted networks.
+    /// The admin opted these ranges in deliberately, so trust beats the
+    /// public-address rules for them.
+    /// </summary>
+    public static bool IsTrustedAddress(IPAddress address, IReadOnlyList<(IPAddress Network, int PrefixLength)> trusted)
+    {
+        if (trusted.Count == 0)
+            return false;
+
+        if (address.IsIPv4MappedToIPv6)
+            address = address.MapToIPv4();
+
+        var addressBytes = address.GetAddressBytes();
+
+        foreach (var (network, prefixLength) in trusted)
+        {
+            if (network.AddressFamily != address.AddressFamily)
+                continue;
+
+            var networkBytes = network.GetAddressBytes();
+            var fullBytes = prefixLength / 8;
+            var remainderBits = prefixLength % 8;
+
+            var match = true;
+            for (var i = 0; i < fullBytes && match; i++)
+            {
+                if (addressBytes[i] != networkBytes[i])
+                    match = false;
+            }
+
+            if (match && remainderBits > 0)
+            {
+                var mask = (byte)(0xFF << (8 - remainderBits));
+                if ((addressBytes[fullBytes] & mask) != (networkBytes[fullBytes] & mask))
+                    match = false;
+            }
+
+            if (match)
+                return true;
+        }
+
+        return false;
     }
 
     public static bool IsPublicAddress(IPAddress address)

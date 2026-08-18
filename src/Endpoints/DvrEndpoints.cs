@@ -36,7 +36,31 @@ app.MapGet("/api/dvr/stats", async (SportarrDbContext db) =>
         importedCount = recordings.Count(r => r.Status == DvrRecordingStatus.Imported),
         failedCount = recordings.Count(r => r.Status == DvrRecordingStatus.Failed),
         cancelledCount = recordings.Count(r => r.Status == DvrRecordingStatus.Cancelled),
-        totalStorageUsed = recordings.Where(r => r.FileSize.HasValue).Sum(r => r.FileSize!.Value)
+        // Bytes sitting in the DVR folders, and only those. Recordings are a
+        // separate acquisition path from indexer grabs, so this number never
+        // counts a torrent or a usenet download, and those totals never count
+        // a recording.
+        //
+        // A row's FileSize is only written when the recording ends, so an
+        // in-flight capture and a failed one both carry null and used to count
+        // as nothing. That is how a page could report 0 B while a failed
+        // capture held megabytes. Those two states are measured from the file
+        // instead; a finished recording is trusted from the row, which keeps
+        // this off the disk for the bulk of the list.
+        totalStorageUsed = recordings.Sum(r =>
+        {
+            if (r.Status is DvrRecordingStatus.Recording or DvrRecordingStatus.Failed)
+            {
+                try
+                {
+                    if (!string.IsNullOrEmpty(r.OutputPath) && File.Exists(r.OutputPath))
+                        return new FileInfo(r.OutputPath).Length;
+                }
+                catch (IOException) { /* fall through to the recorded size */ }
+            }
+
+            return r.FileSize ?? 0L;
+        })
     };
 
     return Results.Ok(stats);
@@ -462,6 +486,110 @@ app.MapPost("/api/dvr/profiles/compare", async (HttpRequest request, DvrQualityS
 });
 
 // Get DVR settings from config
+// Captures left behind by a recording that failed. A failed recording keeps
+// whatever it managed to write, and that file is hidden while it is being
+// written, so nothing in the UI showed it and nobody could reclaim the space.
+// This is the DVR equivalent of a failed download sitting in Activity.
+app.MapGet("/api/dvr/recordings/failed-captures", async (SportarrDbContext db) =>
+{
+    var failed = await db.DvrRecordings
+        .Include(r => r.Event)
+        .Include(r => r.Channel)
+        .Where(r => r.Status == DvrRecordingStatus.Failed && r.OutputPath != null)
+        .OrderByDescending(r => r.LastUpdated ?? r.Created)
+        .ToListAsync();
+
+    var orphans = failed
+        .Select(r =>
+        {
+            long size = 0;
+            var exists = false;
+            try
+            {
+                if (File.Exists(r.OutputPath))
+                {
+                    exists = true;
+                    size = new FileInfo(r.OutputPath!).Length;
+                }
+            }
+            catch (IOException) { /* an unreadable file is reported as missing */ }
+
+            return new
+            {
+                r.Id,
+                r.Title,
+                r.EventId,
+                EventTitle = r.Event?.Title,
+                ChannelName = r.Channel?.Name,
+                r.OutputPath,
+                r.ErrorMessage,
+                r.ScheduledStart,
+                FileExists = exists,
+                FileSize = size,
+            };
+        })
+        .Where(r => r.FileExists)
+        .ToList();
+
+    return Results.Ok(orphans);
+});
+
+// Where recordings actually land right now. An empty Recording Path does not
+// mean one fixed place: it means the roomiest accessible root folder at the
+// moment a recording starts, which can differ between recordings and is
+// invisible to the user. This reports the resolved answer so the settings page
+// can show it instead of leaving people to guess.
+app.MapGet("/api/dvr/settings/effective-path", async (
+    ConfigService configService,
+    SportarrDbContext db,
+    DiskSpaceService diskSpaceService) =>
+{
+    var config = await configService.GetConfigAsync();
+    var configured = (config.DvrRecordingPath ?? string.Empty).Trim();
+
+    if (!string.IsNullOrEmpty(configured))
+    {
+        var accessible = Directory.Exists(configured);
+        return Results.Ok(new
+        {
+            path = configured,
+            source = "configured",
+            accessible,
+            warning = accessible
+                ? null
+                : "This path does not exist yet. Sportarr creates it when a recording starts, and fails the recording if it cannot.",
+        });
+    }
+
+    var rootFolders = await RootFolderLoader.LoadAsync(db, diskSpaceService);
+    var chosen = rootFolders
+        .Where(rf => rf.Accessible)
+        .OrderByDescending(rf => rf.FreeSpace)
+        .FirstOrDefault();
+
+    if (chosen == null)
+    {
+        return Results.Ok(new
+        {
+            path = (string?)null,
+            source = "none",
+            accessible = false,
+            warning = "Recording is not possible yet. No Recording Path is set and no accessible root folder exists, " +
+                      "so there is nowhere durable to record. Set a path here, or add a root folder in Media Management.",
+        });
+    }
+
+    return Results.Ok(new
+    {
+        path = chosen.Path,
+        source = "rootFolder",
+        accessible = true,
+        warning = rootFolders.Count(rf => rf.Accessible) > 1
+            ? "Recording Path is empty, so each recording goes to whichever root folder has the most free space at the time. Set a path to keep them together."
+            : null,
+    });
+});
+
 app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
 {
     var config = await configService.GetConfigAsync();
@@ -469,6 +597,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
     {
         defaultProfileId = config.DvrDefaultProfileId,
         recordingPath = config.DvrRecordingPath,
+        trustedNetworks = config.IptvTrustedNetworks,
         fileNamingPattern = config.DvrFileNamingPattern,
         prePaddingMinutes = config.DvrPrePaddingMinutes,
         postPaddingMinutes = config.DvrPostPaddingMinutes,
@@ -517,6 +646,8 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         config.DvrDefaultProfileId = defaultProfileId.GetInt32();
     if (settings.TryGetProperty("recordingPath", out var recordingPath))
         config.DvrRecordingPath = recordingPath.GetString() ?? "";
+    if (settings.TryGetProperty("trustedNetworks", out var trustedNetworks))
+        config.IptvTrustedNetworks = trustedNetworks.GetString() ?? "";
     if (settings.TryGetProperty("fileNamingPattern", out var pattern))
         config.DvrFileNamingPattern = pattern.GetString() ?? "{Title} - {Date}";
     if (settings.TryGetProperty("prePaddingMinutes", out var prePadding))

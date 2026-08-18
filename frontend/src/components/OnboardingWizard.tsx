@@ -384,12 +384,18 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepKey]);
 
-  const dismiss = () => {
+  // The server remembers the dismissal so the guide stays closed on every
+  // machine. localStorage stays as a same-browser fast path.
+  const persistDismissal = () => {
     localStorage.setItem('sportarr.onboardingDismissed', '1');
+    apiClient.post('/onboarding/dismiss').catch(() => { /* localStorage still covers this browser */ });
+  };
+  const dismiss = () => {
+    persistDismissal();
     onClose();
   };
   const finish = () => {
-    localStorage.setItem('sportarr.onboardingDismissed', '1');
+    persistDismissal();
     onComplete();
   };
 

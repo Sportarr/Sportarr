@@ -288,8 +288,11 @@ public class ReleaseMatchScorer
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     // Fighting-event identity regexes - hit per release for UFC/Bellator/PFL events.
-    private static readonly Regex _dwcsEventRegex = new(@"(?:dana\s*white|dwcs|contender\s*series).*?(?:s(\d+)e(\d+)|season\s*(\d+).*?episode\s*(\d+))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex _dwcsReleaseRegex = new(@"(?:dana\s*white|dwcs|contender\s*series).*?s(\d+)e(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // Season 10 events are titled "... season 10 Week 1" and its releases are
+    // named "UFC Tuesday Night Contender Series S10W01", so both sides accept
+    // "week"/W beside "episode"/E.
+    private static readonly Regex _dwcsEventRegex = new(@"(?:dana\s*white|dwcs|contender\s*series).*?(?:s(\d+)\s*[ew](\d+)|season\s*(\d+).*?(?:episode|week|ep)\s*(\d+))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _dwcsReleaseRegex = new(@"(?:dana\s*white|dwcs|contender\s*series).*?s(\d+)\s*[ew](\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     // Event number after the org keyword. The number can sit a few words after the
     // org ("UFC Freedom 250", "UFC on ESPN 50"), so allow a short run of non-digits
     // in between. Capped at 1-3 digits with a trailing boundary so it never latches
@@ -1348,15 +1351,18 @@ public class ReleaseMatchScorer
         if (dwcsEventMatch.Success)
         {
             hasEventIdentifier = true;
-            var eventSeason = dwcsEventMatch.Groups[1].Success ? dwcsEventMatch.Groups[1].Value : dwcsEventMatch.Groups[3].Value;
-            var eventEpisode = dwcsEventMatch.Groups[2].Success ? dwcsEventMatch.Groups[2].Value : dwcsEventMatch.Groups[4].Value;
+            // Compare as numbers. The event says "season 10 Week 1" while the
+            // release says "S10W01", so a string compare of "1" against "01"
+            // called every correct release the wrong episode.
+            var eventSeason = int.Parse(dwcsEventMatch.Groups[1].Success ? dwcsEventMatch.Groups[1].Value : dwcsEventMatch.Groups[3].Value);
+            var eventEpisode = int.Parse(dwcsEventMatch.Groups[2].Success ? dwcsEventMatch.Groups[2].Value : dwcsEventMatch.Groups[4].Value);
 
             // Check if release has matching season/episode
             var dwcsReleaseMatch = _dwcsReleaseRegex.Match(normalizedRelease);
             if (dwcsReleaseMatch.Success)
             {
-                var releaseSeason = dwcsReleaseMatch.Groups[1].Value;
-                var releaseEpisode = dwcsReleaseMatch.Groups[2].Value;
+                var releaseSeason = int.Parse(dwcsReleaseMatch.Groups[1].Value);
+                var releaseEpisode = int.Parse(dwcsReleaseMatch.Groups[2].Value);
 
                 if (releaseSeason == eventSeason && releaseEpisode == eventEpisode)
                 {

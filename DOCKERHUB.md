@@ -6,7 +6,9 @@ Sportarr is a sports PVR for Usenet and BitTorrent users. It monitors the sports
 - Automatic search, grab, import, rename, and upgrade of event releases
 - Calendar of upcoming events for your monitored leagues
 - Works with your existing Usenet and torrent setup (indexers and download clients)
+- Record live events from your own IPTV sources with the built-in DVR
 - Media server integration and metadata for sports libraries
+- Plays well with the wider ecosystem: Prowlarr, Maintainerr, Kodi, Notifiarr, Homepage, and more
 - Optional hardware-accelerated post-processing via ffmpeg (Intel QSV, VAAPI, NVIDIA NVENC)
 
 ## Quick start
@@ -84,16 +86,19 @@ For hardware-accelerated post-processing:
 | Tag | Description |
 | --- | ----------- |
 | `latest` | Latest stable release |
-| `4.0.1018.1098` | Specific release (pinnable) |
-| `4.0`, `4` | Latest release in that minor/major line |
+| `4.1.2.1112` | Specific release (pinnable) |
+| `4.1`, `4` | Latest release in that minor/major line |
 | `dev` | Development branch builds, updated frequently |
 
 Both `linux/amd64` and `linux/arm64` are published for all tags.
 
 ## Links
 
+- [Website](https://sportarr.net)
+- [Wiki and install guide](https://wiki.sportarr.net/getting-started/installation/)
 - [GitHub repository](https://github.com/Sportarr/Sportarr)
 - [Releases and changelogs](https://github.com/Sportarr/Sportarr/releases)
 - [Issue tracker](https://github.com/Sportarr/Sportarr/issues)
+- [Discord](https://discord.gg/YjHVWGWjjG)
 
 Licensed under GPL-3.0.

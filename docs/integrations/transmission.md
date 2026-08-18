@@ -1,5 +1,9 @@
 # Transmission
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/transmission.svg" alt="" width="72" height="72" />
+</p>
+
 Fast and easy torrent client.
 
 | | |

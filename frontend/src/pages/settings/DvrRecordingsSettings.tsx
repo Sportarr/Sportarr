@@ -80,6 +80,26 @@ interface ScheduleFormData {
   scheduledEnd: string;
   prePadding: number;
   postPadding: number;
+  // Optional. A recording linked to an event is imported against it when the
+  // recording finishes, instead of waiting in the manual import queue.
+  eventId?: number;
+  // Empty leaves the finished recording where it was recorded.
+  importMode?: 'move' | 'copy' | 'hardlink' | '';
+}
+
+interface FailedCapture {
+  id: number;
+  title: string;
+  outputPath: string;
+  fileSize: number;
+}
+
+interface EventSearchResult {
+  id: number;
+  title: string;
+  sport?: string | null;
+  leagueName?: string | null;
+  eventDate?: string | null;
 }
 
 interface IptvChannel {
@@ -97,6 +117,8 @@ const defaultFormData: ScheduleFormData = {
   scheduledEnd: '',
   prePadding: 5,
   postPadding: 15,
+  eventId: undefined,
+  importMode: '',
 };
 
 export default function DvrRecordingsSettings() {
@@ -127,6 +149,17 @@ export default function DvrRecordingsSettings() {
   const [channelSearch, setChannelSearch] = useState('');
   const [showChannelDropdown, setShowChannelDropdown] = useState(false);
 
+  // Event search state for the optional event link
+  const [eventSearch, setEventSearch] = useState('');
+  const [eventResults, setEventResults] = useState<EventSearchResult[]>([]);
+  const [showEventDropdown, setShowEventDropdown] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<EventSearchResult | null>(null);
+  const [isSearchingEvents, setIsSearchingEvents] = useState(false);
+
+  // Captures a failed recording left on disk. Hidden while they were being
+  // written, so nothing showed that the space was still taken.
+  const [failedCaptures, setFailedCaptures] = useState<FailedCapture[]>([]);
+
   // FFmpeg state
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null);
 
@@ -149,7 +182,30 @@ export default function DvrRecordingsSettings() {
   }, [statusFilter]);
 
   const loadData = async () => {
-    await Promise.all([loadRecordings(), loadStats(), loadChannels()]);
+    await Promise.all([loadRecordings(), loadStats(), loadChannels(), loadFailedCaptures()]);
+  };
+
+  const loadFailedCaptures = async () => {
+    try {
+      const { data } = await apiClient.get<FailedCapture[]>('/dvr/recordings/failed-captures');
+      setFailedCaptures(data);
+    } catch {
+      setFailedCaptures([]);
+    }
+  };
+
+  // Removing the recording takes its file with it, which is the point here:
+  // the capture is the thing occupying the disk.
+  const handleRemoveFailedCaptures = async (ids: number[]) => {
+    const reclaimed = failedCaptures.filter(c => ids.includes(c.id)).reduce((sum, c) => sum + c.fileSize, 0);
+    try {
+      await Promise.all(ids.map(id => apiClient.delete(`/dvr/recordings/${id}?deleteFile=true`)));
+      setFailedCaptures(prev => prev.filter(c => !ids.includes(c.id)));
+      await Promise.all([loadRecordings(), loadStats()]);
+      toast.success(ids.length === 1 ? 'Capture removed' : `${ids.length} captures removed`, { description: `Freed ${formatFileSize(reclaimed)}` });
+    } catch (err: any) {
+      toast.error('Could not remove the capture', { description: err?.message });
+    }
   };
 
   const loadRecordings = async () => {
@@ -450,6 +506,62 @@ export default function DvrRecordingsSettings() {
     setShowChannelDropdown(false);
   };
 
+  // Search events for the optional link, debounced so a fast typist does not
+  // fire a request per keystroke.
+  useEffect(() => {
+    if (!showScheduleModal) return;
+    const term = eventSearch.trim();
+    if (term.length < 2) {
+      setEventResults([]);
+      return;
+    }
+    let cancelled = false;
+    setIsSearchingEvents(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await apiClient.get<EventSearchResult[]>('/events/search', {
+          params: { q: term, limit: 25 },
+        });
+        if (!cancelled) setEventResults(data);
+      } catch {
+        if (!cancelled) setEventResults([]);
+      } finally {
+        if (!cancelled) setIsSearchingEvents(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [eventSearch, showScheduleModal]);
+
+  const handleEventSelect = (evt: EventSearchResult) => {
+    setSelectedEvent(evt);
+    setEventSearch('');
+    setShowEventDropdown(false);
+    setFormData(prev => ({
+      ...prev,
+      eventId: evt.id,
+      // Only fill a title the user has not written themselves.
+      eventTitle: prev.eventTitle.trim() === '' ? evt.title : prev.eventTitle,
+    }));
+  };
+
+  const handleEventClear = () => {
+    setSelectedEvent(null);
+    setEventSearch('');
+    setShowEventDropdown(false);
+    setFormData(prev => ({ ...prev, eventId: undefined }));
+  };
+
+  const closeScheduleModal = () => {
+    setShowScheduleModal(false);
+    setFormData(defaultFormData);
+    setChannelSearch('');
+    setShowChannelDropdown(false);
+    handleEventClear();
+  };
+
   return (
     <PageShell className="pb-8">
       <PageHeader
@@ -651,6 +763,34 @@ export default function DvrRecordingsSettings() {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* A failed recording keeps whatever it managed to write. The file is
+              hidden while it is being written, so without this nothing says the
+              space is still taken. */}
+          {failedCaptures.length > 0 && (
+            <div className="mb-4 p-4 bg-red-950/30 border border-red-900/50 rounded-lg flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <ExclamationTriangleIcon className="w-5 h-5 text-red-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-red-300 font-medium">
+                    {failedCaptures.length} failed recording
+                    {failedCaptures.length !== 1 ? 's' : ''} still holding{' '}
+                    {formatFileSize(failedCaptures.reduce((sum, c) => sum + c.fileSize, 0))}
+                  </div>
+                  <div className="text-xs text-red-300/70">
+                    These never finished, so their files are not in your library. Removing a
+                    recording deletes its file.
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleRemoveFailedCaptures(failedCaptures.map(c => c.id))}
+                className="px-3 py-1.5 bg-red-900/50 hover:bg-red-900 text-red-200 rounded text-sm transition-colors flex-shrink-0"
+              >
+                Remove All
+              </button>
             </div>
           )}
 
@@ -937,12 +1077,7 @@ export default function DvrRecordingsSettings() {
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    setShowScheduleModal(false);
-                    setFormData(defaultFormData);
-                    setChannelSearch('');
-                    setShowChannelDropdown(false);
-                  }}
+                  onClick={closeScheduleModal}
                   className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
                 >
                   <XMarkIcon className="w-6 h-6" />
@@ -960,6 +1095,97 @@ export default function DvrRecordingsSettings() {
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     placeholder="e.g., NFL: Patriots vs Cowboys"
                   />
+                </div>
+
+                {/* Optional link to an event in the library */}
+                {/* The wrapper carries the stacking context, not just the
+                    dropdown: a native select paints above a plain z-indexed
+                    sibling, so the results panel lost to Import Mode below. */}
+                <div className="relative z-40">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Link to Event <span className="text-gray-500 font-normal">(optional)</span>
+                  </label>
+
+                  {selectedEvent ? (
+                    <div className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate">{selectedEvent.title}</div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {[selectedEvent.leagueName, selectedEvent.sport]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleEventClear}
+                        className="text-gray-400 hover:text-white flex-shrink-0"
+                      >
+                        <XMarkIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={eventSearch}
+                      onChange={(e) => {
+                        setEventSearch(e.target.value);
+                        setShowEventDropdown(true);
+                      }}
+                      onFocus={() => setShowEventDropdown(true)}
+                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                      placeholder="Type to search your events..."
+                    />
+                  )}
+
+                  <p className="text-xs text-gray-500 mt-1">
+                    A linked recording is imported against that event when it finishes. Leave
+                    it empty to keep the recording as a standalone file.
+                  </p>
+
+                  {showEventDropdown && !selectedEvent && (
+                    <div className="absolute z-30 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                      {eventSearch.trim().length < 2 ? (
+                        <div className="px-4 py-3 text-gray-500 text-center">
+                          Type at least two characters
+                        </div>
+                      ) : isSearchingEvents ? (
+                        <div className="px-4 py-3 text-gray-500 text-center">Searching...</div>
+                      ) : eventResults.length === 0 ? (
+                        <div className="px-4 py-3 text-gray-500 text-center">
+                          No events match your search
+                        </div>
+                      ) : (
+                        eventResults.map((evt) => (
+                          <button
+                            key={evt.id}
+                            type="button"
+                            onClick={() => handleEventSelect(evt)}
+                            className="w-full px-4 py-3 text-left hover:bg-gray-700 transition-colors text-white"
+                          >
+                            <div className="truncate">{evt.title}</div>
+                            <div className="text-xs text-gray-500 truncate">
+                              {[
+                                evt.leagueName,
+                                evt.eventDate
+                                  ? new Date(evt.eventDate).toLocaleDateString()
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {showEventDropdown && !selectedEvent && (
+                    <div
+                      className="fixed inset-0 z-0"
+                      onClick={() => setShowEventDropdown(false)}
+                    />
+                  )}
                 </div>
 
                 {/* Searchable Channel Selector */}
@@ -1038,6 +1264,26 @@ export default function DvrRecordingsSettings() {
                   )}
                 </div>
 
+                {/* How the finished recording is placed in the library */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Import Mode</label>
+                  <select
+                    value={formData.importMode ?? ''}
+                    onChange={(e) => handleFormChange('importMode', e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  >
+                    <option value="">Leave in place (default)</option>
+                    <option value="hardlink">Hardlink into the library</option>
+                    <option value="copy">Copy into the library</option>
+                    <option value="move">Move into the library</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave in place keeps the recording in your DVR folder and points the event at
+                    it. The other three organise it into the library with your usual folder and
+                    naming rules, and need a linked event.
+                  </p>
+                </div>
+
                 {/* Date/Time Selection */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
@@ -1091,12 +1337,7 @@ export default function DvrRecordingsSettings() {
 
               <div className="mt-8 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
                 <button
-                  onClick={() => {
-                    setShowScheduleModal(false);
-                    setFormData(defaultFormData);
-                    setChannelSearch('');
-                    setShowChannelDropdown(false);
-                  }}
+                  onClick={closeScheduleModal}
                   className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
                 >
                   Cancel

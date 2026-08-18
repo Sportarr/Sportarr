@@ -1169,6 +1169,11 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                           placeholder="Your API key"
                         />
+                        {selectedTemplate?.implementation === 'Notifiarr' && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            Use the Sportarr integration API key from your Notifiarr profile, not your account key.
+                          </p>
+                        )}
                       </div>
                     )}
 

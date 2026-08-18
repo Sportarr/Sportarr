@@ -1,5 +1,9 @@
 # NZBdav
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/nzbdav.svg" alt="" width="72" height="72" />
+</p>
+
 Usenet streaming via WebDAV, exposed through a SABnzbd-compatible API, so completed downloads mount instead of occupying local disk.
 
 | | |

@@ -936,6 +936,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<long?>("FileSize")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ImportMode")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("ImportedAt")
                         .HasColumnType("TEXT");
 
@@ -2395,6 +2398,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("FileChmod")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("FileFormatTokenUpgradeApplied")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("ImportExtraFiles")
                         .HasColumnType("INTEGER");

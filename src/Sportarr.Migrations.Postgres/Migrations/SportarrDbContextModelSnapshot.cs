@@ -964,6 +964,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<long?>("FileSize")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("ImportMode")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("ImportedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2461,6 +2464,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("FileChmod")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<bool>("FileFormatTokenUpgradeApplied")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("ImportExtraFiles")
                         .HasColumnType("boolean");

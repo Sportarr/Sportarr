@@ -191,7 +191,7 @@ public static class ServiceCollectionExtensions
 
         // IPTV stream proxying (avoids CORS issues in browser)
         services.AddHttpClient("StreamProxy")
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
             {
                 AllowAutoRedirect = true,
                 MaxAutomaticRedirections = 10,
@@ -200,8 +200,15 @@ public static class ServiceCollectionExtensions
                 // SSRF guard: the stream proxy is reachable anonymously and fetches
                 // caller-supplied URLs, so validate the actual IP on every connection
                 // (initial request + each redirect hop) and refuse internal targets.
+                // The admin's trusted networks (LAN tuners like an HDHomeRun) are
+                // read per connection, so a settings change applies without a
+                // restart.
                 ConnectCallback = async (ctx, ct) =>
-                    await Sportarr.Api.Helpers.SsrfGuard.ConnectValidatedAsync(ctx.DnsEndPoint, ct)
+                {
+                    var config = await sp.GetRequiredService<Sportarr.Api.Services.ConfigService>().GetConfigAsync();
+                    var trusted = Sportarr.Api.Helpers.SsrfGuard.ParseTrustedNetworks(config.IptvTrustedNetworks);
+                    return await Sportarr.Api.Helpers.SsrfGuard.ConnectValidatedAsync(ctx.DnsEndPoint, trusted, ct);
+                }
             })
             .ConfigureHttpClient(client =>
             {

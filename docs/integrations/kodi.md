@@ -1,5 +1,9 @@
 # Kodi
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/kodi.svg" alt="" width="72" height="72" />
+</p>
+
 Kodi works differently from Plex, Jellyfin, and Emby: it doesn't need a plugin at all. Kodi reads local `.nfo` files and poster/fanart images straight off disk, and Sportarr can write those for you. A separate, optional addon also exists if you'd rather Kodi look events up dynamically instead.
 
 ## Option 1: Local metadata (recommended, no addon)

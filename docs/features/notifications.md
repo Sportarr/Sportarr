@@ -3,6 +3,7 @@
 Sportarr can notify you on grabs, imports, upgrades, and health issues. Configure providers under **Settings > Notifications**:
 
 - **Discord**, **Telegram**, **Slack**, **Mattermost**, and **Pushover**
+- **Notifiarr**, sent natively to notifiarr.com - see [Notifiarr](../integrations/notifiarr.md)
 - **Gotify**, **Join**, **Pushbullet**, and **SimplePush**
 - **Email (SMTP)**
 - Generic **webhooks**, with optional username/password auth and custom headers

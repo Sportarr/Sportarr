@@ -492,6 +492,20 @@ public class LibraryImportService
                             partNumber = partInfo?.PartNumber;
                         }
 
+                        // The caller can send a part name with no number. The number orders
+                        // the parts, so fill it from the name.
+                        partNumber ??= EventPartDetector.ResolvePartNumber(partName, existingEvent.Sport,
+                            existingEvent.Title, existingEvent.League?.Name);
+
+                        // One part holds one file. Importing a second file for a part that
+                        // already has one replaces it, the same way a grab upgrade does.
+                        // Keeping both leaves the event with two files named "Main Card",
+                        // and an integration that keeps one record per part loses one.
+                        if (existingFileRecord == null)
+                        {
+                            await ReplaceOccupiedPartAsync(existingEvent, partNumber, request.FilePath);
+                        }
+
                         // Build destination path and transfer file - pass part info and import mode
                         var destinationPath = await TransferFileToLibraryAsync(
                             request.FilePath,
@@ -664,6 +678,10 @@ public class LibraryImportService
                         partName = partInfo?.SegmentName;
                         partNumber = partInfo?.PartNumber;
                     }
+
+                    // The caller can send a part name with no number. The number orders
+                    // the parts, so fill it from the name.
+                    partNumber ??= EventPartDetector.ResolvePartNumber(partName, sport, newEvent.Title);
 
                     // Build destination path and transfer file - pass part info and import mode
                     var destinationPath = await TransferFileToLibraryAsync(
@@ -1353,6 +1371,63 @@ public class LibraryImportService
     /// <summary>
     /// Get media management settings
     /// </summary>
+    /// <summary>
+    /// Remove the file that already holds this part of the event, so the part
+    /// ends up with one file rather than two.
+    ///
+    /// A part is the unit of media. An event that shows "Main Card" twice is
+    /// wrong in the UI, and an integration that keeps one record per part drops
+    /// one of the two. The old file goes to the recycle bin when one is set, so
+    /// an import that replaces a good file stays recoverable.
+    /// </summary>
+    /// <param name="existingEvent">Event being imported into, with Files loaded.</param>
+    /// <param name="partNumber">Part the incoming file covers. Null means the whole event.</param>
+    /// <param name="incomingPath">Source path of the incoming file.</param>
+    private async Task ReplaceOccupiedPartAsync(Event existingEvent, int? partNumber, string incomingPath)
+    {
+        var occupant = existingEvent.Files
+            .FirstOrDefault(f => f.PartNumber == partNumber &&
+                                 !string.Equals(f.FilePath, incomingPath, StringComparison.OrdinalIgnoreCase));
+
+        if (occupant == null) return;
+
+        _logger.LogInformation(
+            "[Library Import] Part {Part} of event {EventId} already holds a file. Replacing it: {OldPath}",
+            partNumber?.ToString() ?? "(whole event)", existingEvent.Id, occupant.FilePath);
+
+        if (!string.IsNullOrEmpty(occupant.FilePath) && File.Exists(occupant.FilePath))
+        {
+            try
+            {
+                var config = await _configService.GetConfigAsync();
+                var recycleBin = config.RecycleBin;
+                if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
+                {
+                    var recyclePath = Path.Combine(recycleBin,
+                        $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(occupant.FilePath)}");
+                    File.Move(occupant.FilePath, recyclePath);
+                    _logger.LogInformation("[Library Import] Moved replaced file to recycle bin: {Path} -> {RecyclePath}",
+                        occupant.FilePath, recyclePath);
+                }
+                else
+                {
+                    File.Delete(occupant.FilePath);
+                    _logger.LogInformation("[Library Import] Deleted replaced file: {Path}", occupant.FilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Leave the record removed even when the file stays. A file the
+                // library no longer tracks is better than a duplicate part.
+                _logger.LogWarning(ex, "[Library Import] Failed to remove replaced file: {Path}", occupant.FilePath);
+            }
+        }
+
+        existingEvent.Files.Remove(occupant);
+        _db.EventFiles.Remove(occupant);
+        await _db.SaveChangesAsync();
+    }
+
     private async Task<MediaManagementSettings> GetMediaManagementSettingsAsync()
     {
         var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();

@@ -403,6 +403,23 @@ public class FileWatcherService : BackgroundService
                 return;
             }
 
+            // A DVR recording writes its file for as long as the broadcast
+            // runs, which is hours. The stability wait below gives up long
+            // before that, so without this check the part-written .ts lands
+            // in the manual import queue with an Import button while the
+            // recorder still holds it. The DVR imports its own recording
+            // when it finishes, so the watcher leaves an active one alone.
+            var isActiveRecording = await db.DvrRecordings.AnyAsync(r =>
+                r.OutputPath == filePath &&
+                (r.Status == DvrRecordingStatus.Recording ||
+                 r.Status == DvrRecordingStatus.Scheduled));
+            if (isActiveRecording)
+            {
+                _logger.LogDebug(
+                    "[File Watcher] Skipping file still being recorded by the DVR: {Path}", filePath);
+                return;
+            }
+
             // Wait for the file to stop growing before analyzing it.
             // Transcode tools (the Tdarr replace-in-place flow this path
             // exists for) write the new file over minutes; matching or

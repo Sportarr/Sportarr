@@ -317,6 +317,7 @@ public class DvrRecordingService
             PrePadding = request.PrePadding,
             PostPadding = request.PostPadding,
             PartName = request.PartName,
+            ImportMode = NormalizeImportMode(request.ImportMode),
             Status = DvrRecordingStatus.Scheduled,
             Quality = qualityName, // Set quality based on channel's detected quality
             Method = request.Method,
@@ -363,6 +364,7 @@ public class DvrRecordingService
         recording.PrePadding = request.PrePadding;
         recording.PostPadding = request.PostPadding;
         recording.PartName = request.PartName;
+        recording.ImportMode = NormalizeImportMode(request.ImportMode);
         recording.LastUpdated = DateTime.UtcNow;
 
         if (!string.IsNullOrEmpty(request.Title))
@@ -855,6 +857,12 @@ public class DvrRecordingService
     /// </summary>
     private async Task FinalizeCaptureContainerAsync(DvrRecording recording)
     {
+        // Nothing writes to the capture past this point, so let a media server
+        // see it. This runs before the container check below, because a
+        // recording that keeps its transport stream still has to be revealed,
+        // and before the remux, so the remux writes a visible name.
+        recording.OutputPath = RevealFinishedCapture(recording.OutputPath);
+
         if (string.IsNullOrEmpty(recording.OutputPath) ||
             !recording.OutputPath.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ||
             !File.Exists(recording.OutputPath))
@@ -1336,13 +1344,22 @@ public class DvrRecordingService
                 .OrderByDescending(rf => rf.FreeSpace)
                 .FirstOrDefault();
 
-            basePath = rootFolder?.Path ?? Path.Combine(AppContext.BaseDirectory, "recordings");
             if (rootFolder == null)
             {
-                _logger.LogWarning(
-                    "[DVR] No accessible root folder configured; recording to the application directory ({Path}). In Docker this lives INSIDE the container and is invisible on the host - add a root folder under Settings > Media Management to record somewhere durable.",
-                    basePath);
+                // Recording to the application directory was the old answer
+                // here. In Docker that is /app, which is not a mounted volume,
+                // so those recordings were invisible on the host, grew the
+                // container's writable layer, and were lost on the next
+                // update. Refusing matches what the configured-path branch
+                // above already does: no recording beats a recording the user
+                // cannot find and will lose.
+                throw new InvalidOperationException(
+                    "No DVR Recording Path is set and no accessible root folder exists, so there is nowhere " +
+                    "durable to record. Set a path in Settings > IPTV/DVR, or add a root folder in " +
+                    "Settings > Media Management.");
             }
+
+            basePath = rootFolder.Path;
         }
 
         // Get container format
@@ -1453,7 +1470,68 @@ public class DvrRecordingService
             _logger.LogDebug("[DVR] Created directory: {Directory}", directory);
         }
 
-        return destinationPath;
+        return HideWhileWriting(destinationPath);
+    }
+
+    /// <summary>
+    /// Prefix of a capture that is still being written.
+    /// </summary>
+    public const string InProgressPrefix = ".";
+
+    /// <summary>
+    /// Hide a capture from a media server while it is written. A partial
+    /// transport stream still plays, so Plex, Jellyfin and Emby all add a
+    /// half-recorded event to the library on their next scan. Every one of
+    /// them skips a file whose name starts with a dot. The extension is left
+    /// alone because the catchup downloader reads the container from it.
+    /// </summary>
+    public static string HideWhileWriting(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        var filename = Path.GetFileName(path);
+        if (string.IsNullOrEmpty(filename) || filename.StartsWith(InProgressPrefix, StringComparison.Ordinal))
+            return path;
+
+        var hidden = InProgressPrefix + filename;
+        return string.IsNullOrEmpty(directory) ? hidden : Path.Combine(directory, hidden);
+    }
+
+    /// <summary>
+    /// Give a finished capture its real name so a media server can see it.
+    /// Returns the path the file now has, which is unchanged when the file is
+    /// already visible or the rename fails.
+    /// </summary>
+    public string RevealFinishedCapture(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return path ?? string.Empty;
+
+        var directory = Path.GetDirectoryName(path);
+        var filename = Path.GetFileName(path);
+        if (!filename.StartsWith(InProgressPrefix, StringComparison.Ordinal))
+            return path;
+
+        var visible = filename.Substring(InProgressPrefix.Length);
+        var target = string.IsNullOrEmpty(directory) ? visible : Path.Combine(directory, visible);
+
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Move(path, target, overwrite: true);
+                _logger.LogDebug("[DVR] Capture finished, revealed as {Path}", target);
+                return target;
+            }
+        }
+        catch (Exception ex)
+        {
+            // A capture nobody can rename is still a usable recording, so keep
+            // the hidden path rather than failing the whole recording.
+            _logger.LogWarning(ex, "[DVR] Could not reveal finished capture {Path}", path);
+            return path;
+        }
+
+        return path;
     }
 
     /// <summary>
@@ -1530,6 +1608,24 @@ public class DvrRecordingService
     /// Map channel's detected quality to HDTV quality name for scoring
     /// Uses QualityScore, DetectedQuality, and channel name for best accuracy
     /// </summary>
+    /// <summary>
+    /// Accept only the three modes the library import understands. Anything
+    /// else becomes null, which leaves the recording where it was written.
+    /// </summary>
+    private static string? NormalizeImportMode(string? mode)
+    {
+        if (string.IsNullOrWhiteSpace(mode))
+            return null;
+
+        return mode.Trim().ToLowerInvariant() switch
+        {
+            "move" => "move",
+            "copy" => "copy",
+            "hardlink" => "hardlink",
+            _ => null,
+        };
+    }
+
     private static string MapChannelQualityToHdtvQuality(string? detectedQuality, int qualityScore, string? channelName = null)
     {
         // First try to map by quality score (most reliable if available)

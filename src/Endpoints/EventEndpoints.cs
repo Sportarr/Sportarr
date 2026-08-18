@@ -161,7 +161,8 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
 }).WithRequestValidation<CreateEventRequest>();
 
 // API: Update event (universal for all sports)
-app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db, EventDvrService eventDvrService) =>
+app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db, EventDvrService eventDvrService,
+    EventStreamService eventStream) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
@@ -211,6 +212,14 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
             evt.QualityProfileId = qualityProfileIdValue.GetInt32();
     }
 
+    // Read the modified fields BEFORE stamping LastUpdate. That stamp is set on
+    // every request, so it would make an edit that changed nothing look like a
+    // change and raise a stream event for it.
+    var changedFields = db.Entry(evt).Properties
+        .Where(p => p.IsModified)
+        .Select(p => p.Metadata.Name)
+        .ToList();
+
     evt.LastUpdate = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
@@ -219,6 +228,14 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
     if (wasMonitored != evt.Monitored)
     {
         await eventDvrService.HandleEventMonitoringChangeAsync(id, evt.Monitored);
+    }
+
+    // Editing an event raised no stream event, so a consumer never learned
+    // about a change made here. Monitoring an event on or off is exactly the
+    // kind of change an integration acts on.
+    if (changedFields.Count > 0)
+    {
+        await eventStream.PublishAsync("event", "updated", evt.Id, evt.ExternalId, evt.LeagueId);
     }
 
     // Reload with related entities

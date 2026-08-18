@@ -963,6 +963,21 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                             cupStageSizesBySeason[evt.Season ?? ""]),
                         _ => true
                     };
+
+                    // "Always monitor finals and championships" means always,
+                    // matching the sync-time rule. Without this, saving the
+                    // league under MonitorType.Future unmonitored every
+                    // already-played playoff game the toggle had monitored.
+                    // None stays absolute; SpecialsOnly already is this rule.
+                    if (!shouldMonitor &&
+                        league.MonitorType is not MonitorType.None and not MonitorType.SpecialsOnly)
+                    {
+                        shouldMonitor = SpecialEventClassifier.BypassesTeamFilter(
+                            evt.Round,
+                            isTeamlessSport ? null : evt.Title,
+                            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                            cupStageSizesBySeason[evt.Season ?? ""]);
+                    }
                 }
 
                 // Apply motorsport session type filter (only for F1 currently)
@@ -2057,15 +2072,19 @@ app.MapPost("/api/leagues/{id:int}/recalculate-episodes", async (
                 if (renumbered > 0)
                 {
                     logger.LogInformation("[LEAGUES] Renumbered {Count} events in season {Season}", renumbered, season);
+                }
 
-                    // Also rename files to reflect new episode numbers
-                    var renamed = await fileRenameService.RenameAllFilesInSeasonAsync(id, season);
-                    totalFilesRenamed += renamed;
+                // Always rename, even when nothing was renumbered here. The sync
+                // path usually writes the hub's new numbers first, so this call
+                // finds 0 to correct while the files on disk still carry the old
+                // ones. Gating the rename on renumbered > 0 made this endpoint a
+                // no-op in exactly the case a user runs it for.
+                var renamed = await fileRenameService.RenameAllFilesInSeasonAsync(id, season);
+                totalFilesRenamed += renamed;
 
-                    if (renamed > 0)
-                    {
-                        logger.LogInformation("[LEAGUES] Renamed {Count} files in season {Season}", renamed, season);
-                    }
+                if (renamed > 0)
+                {
+                    logger.LogInformation("[LEAGUES] Renamed {Count} files in season {Season}", renamed, season);
                 }
             }
         }

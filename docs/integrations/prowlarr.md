@@ -1,5 +1,9 @@
 # Prowlarr
 
+<p align="center" class="integration-logo">
+  <img src="../../assets/integrations/prowlarr.svg" alt="" width="72" height="72" />
+</p>
+
 Prowlarr manages your indexers in one place and syncs them to Sportarr automatically.
 
 !!! info "Native Sportarr support is on its way"
