@@ -393,6 +393,20 @@ public class SportsFileNameParser
             SessionExtractor = (match) => DetectMotorsportSession(match.Groups["name"].Value)
         },
 
+        // WRC rally-name-first, with an optional special stage:
+        // WRC.Rallye.Monte-Carlo.2026.SS5. TheSportsDB lists each stage as
+        // its own event named "WRC <rally> SS<n>" (issue #102).
+        new SportsPattern
+        {
+            Sport = "Motorsport",
+            Organization = "WRC",
+            Pattern = new Regex(@"WRC[\.\-\s]+(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)[\.\-\s]+(?<year>\d{4})(?:[\.\-\s]+SS(?<stage>\d+))?(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => match.Groups["stage"].Success
+                ? $"WRC {CleanLocationName(match.Groups["name"].Value)} SS{int.Parse(match.Groups["stage"].Value)}"
+                : $"WRC {CleanLocationName(match.Groups["name"].Value)}",
+            LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value)
+        },
+
         // NFL alternate formats: DD-MM-YYYY date, Playoffs/Divisional context words
         // Handles: "NFL 17-01-2026 AFC Divisional Buffalo Bills vs Denver Broncos"
         new SportsPattern

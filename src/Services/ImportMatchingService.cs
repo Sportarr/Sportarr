@@ -183,9 +183,13 @@ public class ImportMatchingService
             .Include(e => e.League)
             .AsQueryable();
 
-        // Strategy 1: Direct title match
+        // Strategy 1: Direct title match. Words join on wildcards so a
+        // separator difference ("Monte Carlo" vs "Monte-Carlo") cannot hide
+        // an event whose title contains every search word in order.
+        var wordPattern = "%" + string.Join("%",
+            cleanTitle.Split(new[] { ' ', '.', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)) + "%";
         var titleMatches = await query
-            .Where(e => EF.Functions.Like(e.Title, $"%{cleanTitle}%"))
+            .Where(e => EF.Functions.Like(e.Title, $"%{cleanTitle}%") || EF.Functions.Like(e.Title, wordPattern))
             .OrderByDescending(e => e.EventDate)
             .Take(10)
             .ToListAsync();
@@ -328,6 +332,20 @@ public class ImportMatchingService
             }
         }
 
+        // Special-stage token agreement (rally SSn releases, issue #102).
+        // The stage number is the only difference between sixteen otherwise
+        // identical stage titles, so it outweighs generic word overlap.
+        var searchStage = ExtractStageNumber(normalizedSearch);
+        var eventStage = ExtractStageNumber(normalizedEvent);
+        if (searchStage.HasValue && eventStage.HasValue)
+        {
+            confidence += searchStage == eventStage ? 15 : -40;
+        }
+        else if (searchStage.HasValue || eventStage.HasValue)
+        {
+            confidence -= 15;
+        }
+
         // Sport mismatch penalty: If sports parser detected a sport and event is a different sport, heavy penalty
         if (sportsResult != null && !string.IsNullOrEmpty(sportsResult.Sport) && !string.IsNullOrEmpty(evt.Sport))
         {
@@ -416,6 +434,12 @@ public class ImportMatchingService
         }
 
         return Math.Min(100, confidence);
+    }
+
+    private static int? ExtractStageNumber(string normalizedTitle)
+    {
+        var match = Regex.Match(normalizedTitle, @"\bSS(\d+)\b", RegexOptions.IgnoreCase);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var stage) ? stage : null;
     }
 
     /// <summary>
