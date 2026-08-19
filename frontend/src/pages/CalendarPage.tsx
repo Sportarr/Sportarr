@@ -156,7 +156,7 @@ function EventCard({
       type="button"
       onClick={onClick}
       data-testid={`calendar-event-${event.id}`}
-      className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? '' : 'opacity-60'} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all hover:opacity-95`}
+      className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? 'hover:opacity-95' : 'opacity-60 hover:opacity-75'} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all`}
       title={`${event.title}${event.monitored ? '' : '\nNot monitored'}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
     >
       {/* Top row */}
@@ -230,7 +230,7 @@ function SpaciousAgendaEventCard({
     <button
       type="button"
       onClick={onClick}
-      className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all hover:opacity-90 ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? '' : 'opacity-60'}`}
+      className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? 'hover:opacity-90' : 'opacity-60 hover:opacity-75'}`}
     >
       <div className="relative z-10 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -428,6 +428,16 @@ export default function CalendarPage() {
         .map(event => getSportCategory(event.sport))
     )) as string[];
   }, [events]);
+  // A sport the user picked can vanish from the list when the monitoring
+  // filter or the date window changes. The stale value would keep filtering
+  // while the select shows nothing selected, leaving an empty calendar with
+  // no visible cause.
+  useEffect(() => {
+    if (events && filterSport !== 'all' && !uniqueSports.includes(filterSport)) {
+      setFilterSport('all');
+    }
+  }, [events, filterSport, uniqueSports]);
+
   // Get "today" in the user's configured timezone
   const today = useMemo(() => getTodayInTimezone(timezone), [timezone]);
   const filterEvent = useCallback((event: Event) => {
