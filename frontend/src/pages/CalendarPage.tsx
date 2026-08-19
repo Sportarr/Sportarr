@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
 import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
@@ -35,7 +35,7 @@ interface CalendarUISettings {
 
 const TOOLBAR_GROUP_CLASS = 'inline-flex min-w-max items-center space-x-1 rounded-lg bg-gray-900 p-1';
 
-// Sport color mappings (matching Sonarr/Radarr style)
+// Sport color mappings.
 // Reserved colors (do not assign to sports):
 //   green  = Downloaded indicator
 //   red    = Live Now indicator
@@ -156,8 +156,8 @@ function EventCard({
       type="button"
       onClick={onClick}
       data-testid={`calendar-event-${event.id}`}
-      className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all hover:opacity-95`}
-      title={`${event.title}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
+      className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? '' : 'opacity-60'} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all hover:opacity-95`}
+      title={`${event.title}${event.monitored ? '' : '\nNot monitored'}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
     >
       {/* Top row */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between overflow-hidden">
@@ -230,7 +230,7 @@ function SpaciousAgendaEventCard({
     <button
       type="button"
       onClick={onClick}
-      className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all hover:opacity-90 ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border}`}
+      className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all hover:opacity-90 ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? '' : 'opacity-60'}`}
     >
       <div className="relative z-10 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -249,6 +249,12 @@ function SpaciousAgendaEventCard({
             )}
             {isLive && (
               <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded animate-pulse">LIVE</span>
+            )}
+            {!event.monitored && (
+              <span className="flex items-center gap-1 text-xs text-gray-400">
+                <EyeSlashIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                Not monitored
+              </span>
             )}
             {event.hasFile && (
               <CheckCircleIcon className="w-4 h-4 text-green-500 flex-shrink-0" />
@@ -378,6 +384,7 @@ export default function CalendarPage() {
   }, [isPhone]);
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterTvOnly, setFilterTvOnly] = useState(false);
+  const [showUnmonitored, setShowUnmonitored] = useState(false);
   const [showIcalModal, setShowIcalModal] = useState(false);
   const [icalCopied, setIcalCopied] = useState(false);
   const firstDayOfWeek: FirstDayOfWeek = uiSettings.firstDayOfWeek === 'monday' ? 'monday' : 'sunday';
@@ -410,7 +417,7 @@ export default function CalendarPage() {
     return { calStart: s.toISOString(), calEnd: e.toISOString() };
   }, [currentDate, currentView]);
 
-  const { data: events, isLoading, error } = useCalendarEvents(calStart, calEnd);
+  const { data: events, isLoading, error } = useCalendarEvents(calStart, calEnd, showUnmonitored);
 
   // Get unique sport categories from events for filter
   const uniqueSports = useMemo(() => {
@@ -424,7 +431,8 @@ export default function CalendarPage() {
   // Get "today" in the user's configured timezone
   const today = useMemo(() => getTodayInTimezone(timezone), [timezone]);
   const filterEvent = useCallback((event: Event) => {
-    // Server already filters to monitored-only, but keep client-side filters for sport/TV
+    // The server decides which monitoring states come back. Sport and TV
+    // stay client-side so switching them costs no request.
     // Apply TV availability filter
     if (filterTvOnly && !event.broadcast) return false;
 
@@ -641,12 +649,23 @@ export default function CalendarPage() {
                   <div className="inline-flex items-center gap-2 rounded-md bg-gray-800 px-3 py-1.5 text-sm text-gray-400">
                     <FunnelIcon className="h-4 w-4" />
                     <span>Filter</span>
-                    {(filterSport !== 'all' || filterTvOnly) && (
+                    {(filterSport !== 'all' || filterTvOnly || showUnmonitored) && (
                       <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-xs text-white">
-                        {(filterSport !== 'all' ? 1 : 0) + (filterTvOnly ? 1 : 0)}
+                        {(filterSport !== 'all' ? 1 : 0) + (filterTvOnly ? 1 : 0) + (showUnmonitored ? 1 : 0)}
                       </span>
                     )}
                   </div>
+
+                  {/* Monitoring Filter */}
+                  <select
+                    value={showUnmonitored ? 'all' : 'monitored'}
+                    onChange={(event) => setShowUnmonitored(event.target.value === 'all')}
+                    className="rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white transition-all focus:outline-none focus:ring-1 focus:ring-red-600"
+                    aria-label="Monitoring filter"
+                  >
+                    <option value="monitored">Monitored Only</option>
+                    <option value="all">All Events</option>
+                  </select>
 
                   {/* Sport Filter */}
                   <select
@@ -676,11 +695,12 @@ export default function CalendarPage() {
                     <span>TV Only</span>
                   </label>
 
-                  {(filterSport !== 'all' || filterTvOnly) && (
+                  {(filterSport !== 'all' || filterTvOnly || showUnmonitored) && (
                     <button
                       onClick={() => {
                         setFilterSport('all');
                         setFilterTvOnly(false);
+                        setShowUnmonitored(false);
                       }}
                       className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_INACTIVE_CLASS}`}
                     >
