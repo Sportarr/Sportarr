@@ -305,7 +305,7 @@ public class ReleaseMatchScorer
     // other promotions allow would let any title beginning with the word
     // "one" donate an unrelated number ("One Piece Episode 46").
     private static readonly Regex _oneCardNumberRegex = new(
-        @"\bone(?:[\s._-]+(?:championship|fc))?(?:[\s._-]+(?:fight[\s._-]*night|friday[\s._-]*fights))?[\s._-]+(\d{1,3})\b",
+        @"\bone(?:[\s._:-]+(?:championship|fc))?(?:[\s._:-]+(?:fight[\s._:-]*night|friday[\s._:-]*fights|on[\s._:-]+prime[\s._:-]*video))?[\s._:-]+(\d{1,3})\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     // ONE Championship needs its own name test. "One" is a plain English word

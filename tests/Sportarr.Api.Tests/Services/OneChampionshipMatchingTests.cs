@@ -95,6 +95,21 @@ public class OneChampionshipMatchingTests
             "ONE numbers some cards without any show words");
     }
 
+    [Theory]
+    [InlineData("ONE on Prime Video 5 Superbon vs Allazov", "ONE.on.Prime.Video.5.1080p.WEB-DL")]
+    [InlineData("ONE Friday Fights 95", "ONE.Friday.Fights.95.720p.WEBRip")]
+    [InlineData("ONE Fight Night: 46 Hemetsberger vs Diachkova", "ONE Fight Night: 46 1080p WEB-DL")]
+    public void EveryOneShowNaming_KeepsItsCardNumber(string eventTitle, string releaseTitle)
+    {
+        var evt = OneEvent();
+        evt.Title = eventTitle;
+
+        var score = _scorer.CalculateMatchScore(releaseTitle, evt);
+
+        score.Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.MinimumMatchScore,
+            "ONE has renamed its shows over the years and all of them number their cards");
+    }
+
     [Fact]
     public void OtherPromotionsKeepTheirOwnCardNumber()
     {
