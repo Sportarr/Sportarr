@@ -169,4 +169,13 @@ public class WrcStageParsingTests
         result.Organization.Should().Be("WRC");
         result.EventTitle.Should().Be("WRC Rallye Monte Carlo");
     }
+
+    [Fact]
+    public void OversizedStageToken_DoesNotThrow()
+    {
+        // An absurd digit run must not reach int.Parse and abort the parse.
+        var act = () => Parse("WRC.Rallye.Monte-Carlo.2026.SS999999999999999999.1080p.WEB.h264-RALLY");
+
+        act.Should().NotThrow();
+    }
 }

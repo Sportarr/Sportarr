@@ -183,16 +183,36 @@ public class ImportMatchingService
             .Include(e => e.League)
             .AsQueryable();
 
-        // Strategy 1: Direct title match. Words join on wildcards so a
-        // separator difference ("Monte Carlo" vs "Monte-Carlo") cannot hide
-        // an event whose title contains every search word in order.
-        var wordPattern = "%" + string.Join("%",
-            cleanTitle.Split(new[] { ' ', '.', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)) + "%";
+        // Strategy 1: Direct title match first. A second word-join pass only
+        // fills remaining slots, so a separator difference ("Monte Carlo" vs
+        // "Monte-Carlo") cannot hide an event, and broad wildcard hits cannot
+        // evict a direct substring match from the candidate cap.
         var titleMatches = await query
-            .Where(e => EF.Functions.Like(e.Title, $"%{cleanTitle}%") || EF.Functions.Like(e.Title, wordPattern))
+            .Where(e => EF.Functions.Like(e.Title, $"%{EscapeLikePattern(cleanTitle)}%", "\\"))
             .OrderByDescending(e => e.EventDate)
             .Take(10)
             .ToListAsync();
+
+        var searchWords = cleanTitle.Split(new[] { ' ', '.', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+        if (titleMatches.Count < 10 && searchWords.Length > 0)
+        {
+            var wordPattern = "%" + string.Join("%", searchWords.Select(EscapeLikePattern)) + "%";
+            var wordJoinMatches = await query
+                .Where(e => EF.Functions.Like(e.Title, wordPattern, "\\"))
+                .OrderByDescending(e => e.EventDate)
+                .Take(10)
+                .ToListAsync();
+
+            foreach (var match in wordJoinMatches)
+            {
+                if (titleMatches.Count >= 10)
+                    break;
+                if (!titleMatches.Any(m => m.Id == match.Id))
+                {
+                    titleMatches.Add(match);
+                }
+            }
+        }
 
         // Strategy 2: If organization/league is known, search by league name
         if (!string.IsNullOrEmpty(organization))
@@ -335,15 +355,21 @@ public class ImportMatchingService
         // Special-stage token agreement (rally SSn releases, issue #102).
         // The stage number is the only difference between sixteen otherwise
         // identical stage titles, so it outweighs generic word overlap.
-        var searchStage = ExtractStageNumber(normalizedSearch);
-        var eventStage = ExtractStageNumber(normalizedEvent);
-        if (searchStage.HasValue && eventStage.HasValue)
+        // Gated to motorsport so an SS-like token in another sport's title
+        // cannot swing an unrelated match.
+        if (EventPartDetector.IsMotorsport(evt.Sport ?? "") ||
+            (sportsResult != null && EventPartDetector.IsMotorsport(sportsResult.Sport ?? "")))
         {
-            confidence += searchStage == eventStage ? 15 : -40;
-        }
-        else if (searchStage.HasValue || eventStage.HasValue)
-        {
-            confidence -= 15;
+            var searchStage = ExtractStageNumber(normalizedSearch);
+            var eventStage = ExtractStageNumber(normalizedEvent);
+            if (searchStage.HasValue && eventStage.HasValue)
+            {
+                confidence += searchStage == eventStage ? 15 : -40;
+            }
+            else if (searchStage.HasValue || eventStage.HasValue)
+            {
+                confidence -= 15;
+            }
         }
 
         // Sport mismatch penalty: If sports parser detected a sport and event is a different sport, heavy penalty
@@ -441,6 +467,11 @@ public class ImportMatchingService
         var match = Regex.Match(normalizedTitle, @"\bSS(\d+)\b", RegexOptions.IgnoreCase);
         return match.Success && int.TryParse(match.Groups[1].Value, out var stage) ? stage : null;
     }
+
+    // LIKE metacharacters in a filename must stay literal, or an odd release
+    // name widens the pattern and floods the candidate cap.
+    private static string EscapeLikePattern(string input) =>
+        input.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
 
     /// <summary>
     /// Normalize title for better comparison

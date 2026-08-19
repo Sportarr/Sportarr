@@ -400,7 +400,7 @@ public class SportsFileNameParser
         {
             Sport = "Motorsport",
             Organization = "WRC",
-            Pattern = new Regex(@"WRC[\.\-\s]+(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)[\.\-\s]+(?<year>\d{4})(?:[\.\-\s]+SS(?<stage>\d+))?(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"WRC[\.\-\s]+(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)[\.\-\s]+(?<year>\d{4})(?:[\.\-\s]+SS(?<stage>\d{1,2}))?(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => match.Groups["stage"].Success
                 ? $"WRC {CleanLocationName(match.Groups["name"].Value)} SS{int.Parse(match.Groups["stage"].Value)}"
                 : $"WRC {CleanLocationName(match.Groups["name"].Value)}",
