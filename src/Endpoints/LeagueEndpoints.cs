@@ -204,8 +204,11 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
     });
 });
 
-// API: Get all events for a specific league (filtered by monitoring settings)
-app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, SportarrDbContext db, ILogger<Program> logger) =>
+// API: Get all events for a specific league (filtered by monitoring settings).
+// showAll=true drops the monitoring-based filters so the caller sees every
+// event the league holds, including sessions and teams the user does not
+// follow. Used by the league page's "show every event" toggle.
+app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, bool? showAll, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting events for league ID: {LeagueId}", id);
 
@@ -230,70 +233,9 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
 
-    // Filter events based on monitoring settings
-    List<Event> filteredEvents;
-
-    if (EventPartDetector.IsMotorsport(league.Sport))
-    {
-        // Motorsports: filter by monitored session types
-        if (league.MonitoredSessionTypes == null)
-        {
-            // null = no filter, show all events
-            filteredEvents = events;
-            logger.LogDebug("[LEAGUES] Motorsport league with no session filter - showing all {Count} events", events.Count);
-        }
-        else if (league.MonitoredSessionTypes == "")
-        {
-            // Empty string = user explicitly selected no sessions, show nothing
-            filteredEvents = new List<Event>();
-            logger.LogDebug("[LEAGUES] Motorsport league with empty session filter - showing no events");
-        }
-        else
-        {
-            // Filter by monitored session types
-            filteredEvents = events
-                .Where(e => EventPartDetector.IsMotorsportSessionMonitored(e.Title, league.Name, league.MonitoredSessionTypes))
-                .ToList();
-            logger.LogDebug("[LEAGUES] Motorsport league filtered by sessions ({Sessions}) - {Filtered}/{Total} events",
-                league.MonitoredSessionTypes, filteredEvents.Count, events.Count);
-        }
-    }
-    else
-    {
-        // Regular sports: filter by monitored teams.
-        // Teamless sports (see LeagueSportRules.IsTeamlessSport) bypass team
-        // filtering since they have no meaningful home/away team structure.
-        var monitoredTeamIds = new HashSet<string>();
-
-        if (!LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
-        {
-            monitoredTeamIds = league.MonitoredTeams
-                .Where(lt => lt.Monitored && lt.Team != null)
-                .Select(lt => lt.Team!.ExternalId)
-                .Where(id => !string.IsNullOrEmpty(id))
-                .Select(id => id!)
-                .ToHashSet();
-        }
-
-        if (monitoredTeamIds.Count == 0)
-        {
-            // No monitored teams = show all events (or league doesn't use team filtering)
-            filteredEvents = events;
-            logger.LogDebug("[LEAGUES] No monitored teams - showing all {Count} events", events.Count);
-        }
-        else
-        {
-            // Filter to events involving at least one monitored team.
-            // Events the specials opt-ins (MonitorFinals / MonitorPlayoffs /
-            // MonitorPreseason) carried past the sync's team filter must stay
-            // visible here too. Hiding them caused issue #244: the Super Bowl
-            // was in the library but never shown, so the toggle looked dead.
-            // Events holding files always show.
-            filteredEvents = FilterEventsByMonitoredTeams(events, monitoredTeamIds, league);
-            logger.LogDebug("[LEAGUES] Filtered by {TeamCount} monitored teams - {Filtered}/{Total} events",
-                monitoredTeamIds.Count, filteredEvents.Count, events.Count);
-        }
-    }
+    var filteredEvents = SelectVisibleEvents(events, league, showAll == true);
+    logger.LogDebug("[LEAGUES] Showing {Filtered}/{Total} events (showAll: {ShowAll})",
+        filteredEvents.Count, events.Count, showAll == true);
 
     // Paging is opt-in so the frontend and every existing consumer keep the
     // plain array they already expect. Integrations ask for a page and get an
@@ -2271,6 +2213,49 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
             LeagueMoveStatus.MoveFailed => Results.Problem(detail: result.Message, statusCode: 500, title: "League move failed"),
             _ => Results.Problem(detail: "Unknown move status", statusCode: 500),
         };
+    }
+
+    /// <summary>
+    /// Decides which of a league's events the page shows. Motorsport leagues
+    /// filter by session type, team leagues by monitored team. showAll skips
+    /// both, so a user can find a session or a team's game they do not follow
+    /// and monitor it by hand.
+    /// </summary>
+    internal static List<Event> SelectVisibleEvents(List<Event> events, League league, bool showAll)
+    {
+        if (showAll)
+        {
+            return events;
+        }
+
+        if (EventPartDetector.IsMotorsport(league.Sport))
+        {
+            // null means no session filter. An empty string means the user
+            // cleared every session, so nothing shows.
+            if (league.MonitoredSessionTypes == null) return events;
+            if (league.MonitoredSessionTypes.Length == 0) return new List<Event>();
+
+            return events
+                .Where(e => EventPartDetector.IsMotorsportSessionMonitored(e.Title, league.Name, league.MonitoredSessionTypes))
+                .ToList();
+        }
+
+        // Teamless sports have no meaningful home/away structure, so they
+        // never filter by team.
+        var monitoredTeamIds = new HashSet<string>();
+        if (!LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
+        {
+            monitoredTeamIds = league.MonitoredTeams
+                .Where(lt => lt.Monitored && lt.Team != null)
+                .Select(lt => lt.Team!.ExternalId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Select(id => id!)
+                .ToHashSet();
+        }
+
+        return monitoredTeamIds.Count == 0
+            ? events
+            : FilterEventsByMonitoredTeams(events, monitoredTeamIds, league);
     }
 
     /// <summary>
