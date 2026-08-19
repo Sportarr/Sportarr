@@ -101,6 +101,23 @@ public class LeagueEventVisibilityTests
     }
 
     [Fact]
+    public void SeasonlessEvents_DoNotInferCupStagesFromEachOther()
+    {
+        // A bare stage-size round ("2") only means a cup final when the
+        // season's own bracket shape says so. Season-less strays must not
+        // pool into one bucket and classify each other.
+        var stray = Ev("Stray Cup Game", "2", "tm-a", "tm-b");
+        stray.Season = null;
+        var unrounded = Ev("Stray Friendly", null, "tm-c", "tm-d");
+        unrounded.Season = null;
+
+        var visible = LeagueEndpoints.FilterEventsByMonitoredTeams(
+            new List<Event> { stray, unrounded }, MonitoredTeams, NflLeague(finals: true));
+
+        visible.Should().BeEmpty("neither event involves a monitored team or a provable final");
+    }
+
+    [Fact]
     public void FinalsOptIn_DoesNotLeakPlayoffGames()
     {
         var events = new List<Event>

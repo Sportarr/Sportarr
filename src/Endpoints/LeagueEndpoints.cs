@@ -2282,9 +2282,14 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
     internal static List<Event> FilterEventsByMonitoredTeams(
         List<Event> events, HashSet<string> monitoredTeamIds, League league)
     {
+        // Season-less strays would pool into one bucket and let bracket
+        // arithmetic infer cup stages from unrelated events, so they get
+        // no cup inference. Numeric codes and word rounds still classify.
         var cupStageSizesBySeason = events
             .GroupBy(e => e.Season ?? "")
-            .ToDictionary(g => g.Key, g => SpecialEventClassifier.ComputeCupStageSizes(g.Select(ev => ev.Round)));
+            .ToDictionary(g => g.Key, g => g.Key.Length == 0
+                ? (IReadOnlySet<int>)new HashSet<int>()
+                : SpecialEventClassifier.ComputeCupStageSizes(g.Select(ev => ev.Round)));
 
         return events
             .Where(e =>
