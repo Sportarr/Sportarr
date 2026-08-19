@@ -283,13 +283,13 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
         }
         else
         {
-            // Filter to events involving at least one monitored team
-            // Use the external ID properties stored on the event
-            filteredEvents = events
-                .Where(e =>
-                    (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
-                    (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)))
-                .ToList();
+            // Filter to events involving at least one monitored team.
+            // Events the specials opt-ins (MonitorFinals / MonitorPlayoffs /
+            // MonitorPreseason) carried past the sync's team filter must stay
+            // visible here too. Hiding them caused issue #244: the Super Bowl
+            // was in the library but never shown, so the toggle looked dead.
+            // Events holding files always show.
+            filteredEvents = FilterEventsByMonitoredTeams(events, monitoredTeamIds, league);
             logger.LogDebug("[LEAGUES] Filtered by {TeamCount} monitored teams - {Filtered}/{Total} events",
                 monitoredTeamIds.Count, filteredEvents.Count, events.Count);
         }
@@ -2271,5 +2271,29 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
             LeagueMoveStatus.MoveFailed => Results.Problem(detail: result.Message, statusCode: 500, title: "League move failed"),
             _ => Results.Problem(detail: "Unknown move status", statusCode: 500),
         };
+    }
+
+    /// <summary>
+    /// Display-side counterpart of the sync's monitored-team filter. Keeps
+    /// team games, events the specials opt-ins bypass the filter for, and
+    /// events that hold files. Cup stage sizes are computed per season, the
+    /// same way the sync computes them.
+    /// </summary>
+    internal static List<Event> FilterEventsByMonitoredTeams(
+        List<Event> events, HashSet<string> monitoredTeamIds, League league)
+    {
+        var cupStageSizesBySeason = events
+            .GroupBy(e => e.Season ?? "")
+            .ToDictionary(g => g.Key, g => SpecialEventClassifier.ComputeCupStageSizes(g.Select(ev => ev.Round)));
+
+        return events
+            .Where(e =>
+                (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
+                (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
+                e.HasFile ||
+                SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title,
+                    league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                    cupStageSizesBySeason[e.Season ?? ""]))
+            .ToList();
     }
 }
