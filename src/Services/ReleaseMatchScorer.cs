@@ -297,9 +297,16 @@ public class ReleaseMatchScorer
     // org ("UFC Freedom 250", "UFC on ESPN 50"), so allow a short run of non-digits
     // in between. Capped at 1-3 digits with a trailing boundary so it never latches
     // onto a 4-digit year ("UFC 2026") or a resolution tag ("1080p", "4K").
-    // "ONE Championship" counts as one org token. Left as two words it eats
-    // the whole gap allowance before the card number and the number is missed.
-    private static readonly Regex _fightingNumberRegex = new(@"\b(?:ufc|bellator|pfl|one(?:[\s._-]+championship)?)\b[^\d]{0,25}?(\d{1,3})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _fightingNumberRegex = new(@"\b(?:ufc|bellator|pfl)\b[^\d]{0,25}?(\d{1,3})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // ONE card numbers need the number to sit directly after the promotion
+    // name, with only its own show words between ("ONE 172", "ONE Fight
+    // Night 46", "ONE Championship Friday Fights 95"). The loose gap the
+    // other promotions allow would let any title beginning with the word
+    // "one" donate an unrelated number ("One Piece Episode 46").
+    private static readonly Regex _oneCardNumberRegex = new(
+        @"\bone(?:[\s._-]+(?:championship|fc))?(?:[\s._-]+(?:fight[\s._-]*night|friday[\s._-]*fights))?[\s._-]+(\d{1,3})\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     // ONE Championship needs its own name test. "One" is a plain English word
     // that many real leagues carry (One Day International Series, Japan Rugby
@@ -1408,7 +1415,7 @@ public class ReleaseMatchScorer
         // === UFC PPV / Fight Night - Number based ===
         // Event: "UFC 299" or "UFC Fight Night 240"
         // Release: "UFC.299.Main.Card" or "UFC.Fight.Night.240"
-        var eventNumberMatch = _fightingNumberRegex.Match(normalizedEvent);
+        var eventNumberMatch = MatchFightingCardNumber(normalizedEvent);
         if (eventNumberMatch.Success && !hasEventIdentifier)
         {
             hasEventIdentifier = true;
@@ -1417,7 +1424,7 @@ public class ReleaseMatchScorer
             // Check if event is specifically a "Fight Night" vs PPV
             var eventIsFightNight = _fightNightRegex.IsMatch(normalizedEvent);
 
-            var releaseNumberMatch = _fightingNumberRegex.Match(normalizedRelease);
+            var releaseNumberMatch = MatchFightingCardNumber(normalizedRelease);
             if (releaseNumberMatch.Success)
             {
                 var releaseNumber = releaseNumberMatch.Groups[1].Value;
@@ -1497,6 +1504,17 @@ public class ReleaseMatchScorer
             return -50;
 
         return score;
+    }
+
+    /// <summary>
+    /// Find the card number in a fighting title. The named promotions win,
+    /// so a title that merely opens with the word "one" cannot donate its
+    /// number to a UFC, Bellator, or PFL release.
+    /// </summary>
+    private static Match MatchFightingCardNumber(string normalizedTitle)
+    {
+        var match = _fightingNumberRegex.Match(normalizedTitle);
+        return match.Success ? match : _oneCardNumberRegex.Match(normalizedTitle);
     }
 
     /// <summary>

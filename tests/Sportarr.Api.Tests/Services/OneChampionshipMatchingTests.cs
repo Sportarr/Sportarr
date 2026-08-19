@@ -70,6 +70,49 @@ public class OneChampionshipMatchingTests
             "a different card number is a different event");
     }
 
+    [Theory]
+    [InlineData("One.Piece.Episode.46.2026.1080p.WEB-DL")]
+    [InlineData("One.Piece.Episode.46.1080p.WEB-DL")]
+    public void UnrelatedTitleCarryingTheSameNumber_IsRejected(string releaseTitle)
+    {
+        // The number has to belong to the promotion. A title that merely
+        // opens with the word "one" and happens to carry the card's number
+        // would otherwise clear the relevance floor and auto-grab.
+        var score = _scorer.CalculateMatchScore(releaseTitle, OneEvent(46));
+
+        score.Should().BeLessThan(ReleaseMatchScorer.MinimumMatchScore);
+    }
+
+    [Fact]
+    public void NumberedCardRelease_StillMatches()
+    {
+        var evt = OneEvent();
+        evt.Title = "ONE 172 Takeru vs Rodtang";
+
+        var score = _scorer.CalculateMatchScore("ONE.172.Takeru.vs.Rodtang.1080p.WEB-DL", evt);
+
+        score.Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.MinimumMatchScore,
+            "ONE numbers some cards without any show words");
+    }
+
+    [Fact]
+    public void OtherPromotionsKeepTheirOwnCardNumber()
+    {
+        // A stray leading "one" must not donate its number to a UFC release.
+        var ufc = new Event
+        {
+            Id = 3,
+            Title = "UFC 300 Pereira vs Hill",
+            Sport = "Fighting",
+            EventDate = new DateTime(2026, 4, 13, 0, 0, 0, DateTimeKind.Utc),
+            League = new League { Name = "UFC", Sport = "Fighting" },
+        };
+
+        var score = _scorer.CalculateMatchScore("One.2.UFC.300.Pereira.vs.Hill.1080p", ufc);
+
+        score.Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.AutoGrabMatchScore);
+    }
+
     [Fact]
     public void FighterNamedRelease_StillMatches()
     {
