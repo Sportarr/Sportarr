@@ -53,8 +53,8 @@ public class DwcsWeekNumberingTests
             "UFC.Tuesday.Night.Contender.Series.S10W03.720p.WEB-DL.H264.Fight-BB", DwcsEvent(1));
 
         wrong.Should().BeLessThan(right, "a different week is a different card");
-        wrong.Should().BeLessThan(ReleaseMatchScorer.AutoGrabMatchScore,
-            "a different week must never auto-grab");
+        wrong.Should().BeLessThan(ReleaseMatchScorer.MinimumMatchScore,
+            "a different week must not even reach the manual-result floor");
     }
 
     [Fact]

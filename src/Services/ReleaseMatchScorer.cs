@@ -487,20 +487,23 @@ public class ReleaseMatchScorer
         // round signal and let team match, date match, and game
         // number match (below) carry the disambiguation.
         const int MaxRealisticRoundNumber = 50;
-        var eventRound = !string.IsNullOrEmpty(evt.Round) ? ExtractRoundNumber(evt.Round) : null;
+        // Fighting events ignore the Round FIELD here. It counts the
+        // league's chronological card position (a DWCS "season 10 Week 1"
+        // event syncs under UFC with Round 31), which never appears in a
+        // release name - a W01 token would hard-reject its own event
+        // before the fighting matcher below could identify it. A week in
+        // the event TITLE is real identity and stays comparable, so a
+        // wrong-week release still hard-rejects.
+        var eventRound = !IsFightingSport(eventSportPrefix) && !string.IsNullOrEmpty(evt.Round)
+            ? ExtractRoundNumber(evt.Round)
+            : null;
         if (!eventRound.HasValue && !string.IsNullOrEmpty(evt.Title))
         {
             var titleRoundMatch = _titleRoundRegex.Match(evt.Title);
             if (titleRoundMatch.Success && int.TryParse(titleRoundMatch.Groups[1].Value, out var titleRound))
                 eventRound = titleRound;
         }
-        // Fighting events skip this gate. Their Round field counts the
-        // league's chronological card position (a DWCS "season 10 Week 1"
-        // event syncs under UFC with Round 31), which never appears in a
-        // release name - a W01 token would hard-reject its own event here
-        // before the fighting matcher below could identify it.
-        if (!IsFightingSport(eventSportPrefix)
-            && eventRound.HasValue && parsed.RoundNumber.HasValue
+        if (eventRound.HasValue && parsed.RoundNumber.HasValue
             && eventRound.Value <= MaxRealisticRoundNumber
             && parsed.RoundNumber.Value <= MaxRealisticRoundNumber)
         {
