@@ -297,7 +297,18 @@ public class ReleaseMatchScorer
     // org ("UFC Freedom 250", "UFC on ESPN 50"), so allow a short run of non-digits
     // in between. Capped at 1-3 digits with a trailing boundary so it never latches
     // onto a 4-digit year ("UFC 2026") or a resolution tag ("1080p", "4K").
-    private static readonly Regex _fightingNumberRegex = new(@"\b(?:ufc|bellator|pfl)\b[^\d]{0,25}?(\d{1,3})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // "ONE Championship" counts as one org token. Left as two words it eats
+    // the whole gap allowance before the card number and the number is missed.
+    private static readonly Regex _fightingNumberRegex = new(@"\b(?:ufc|bellator|pfl|one(?:[\s._-]+championship)?)\b[^\d]{0,25}?(\d{1,3})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // ONE Championship needs its own name test. "One" is a plain English word
+    // that many real leagues carry (One Day International Series, Japan Rugby
+    // League One, USL League One, several English Division One tiers), so the
+    // word alone never identifies the fighting promotion. A league is ONE when
+    // it is named exactly "ONE" or pairs the word with the promotion's own
+    // suffix; a release qualifies only with that suffix or "Fight Night".
+    private static readonly Regex _oneLeagueRegex = new(@"^\s*one\s*(?:championship|fc)?\s*$|\bone\s+(?:championship|fc)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _oneReleaseRegex = new(@"\bone[\s._-]+(?:championship|fc)\b|\bone[\s._-]+fight[\s._-]*night\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _fightNightRegex = new(@"fight\s*night", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _vsFightersRegex = new(@"[:\s]([a-z]+)\s*(?:vs|v)\s*([a-z]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
@@ -688,6 +699,8 @@ public class ReleaseMatchScorer
         // Fighting sports
         if (normalized.Contains("UFC"))
             return "UFC";
+        if (_oneReleaseRegex.IsMatch(normalized))
+            return "ONE";
         if (normalized.Contains("BELLATOR"))
             return "Bellator";
         if (normalized.Contains("PFL"))
@@ -755,6 +768,8 @@ public class ReleaseMatchScorer
                 return "WEC";
             if (upper.Contains("UFC"))
                 return "UFC";
+            if (_oneLeagueRegex.IsMatch(leagueName))
+                return "ONE";
             if (upper.Contains("NFL"))
                 return "NFL";
             if (upper.Contains("NBA"))
@@ -1543,7 +1558,7 @@ public class ReleaseMatchScorer
     private bool IsFightingSport(string? sportPrefix)
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
-        return sportPrefix is "UFC" or "Bellator" or "PFL" or "Boxing" or "WWE";
+        return sportPrefix is "UFC" or "Bellator" or "PFL" or "Boxing" or "WWE" or "ONE";
     }
 
     #endregion
