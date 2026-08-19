@@ -494,7 +494,13 @@ public class ReleaseMatchScorer
             if (titleRoundMatch.Success && int.TryParse(titleRoundMatch.Groups[1].Value, out var titleRound))
                 eventRound = titleRound;
         }
-        if (eventRound.HasValue && parsed.RoundNumber.HasValue
+        // Fighting events skip this gate. Their Round field counts the
+        // league's chronological card position (a DWCS "season 10 Week 1"
+        // event syncs under UFC with Round 31), which never appears in a
+        // release name - a W01 token would hard-reject its own event here
+        // before the fighting matcher below could identify it.
+        if (!IsFightingSport(eventSportPrefix)
+            && eventRound.HasValue && parsed.RoundNumber.HasValue
             && eventRound.Value <= MaxRealisticRoundNumber
             && parsed.RoundNumber.Value <= MaxRealisticRoundNumber)
         {
