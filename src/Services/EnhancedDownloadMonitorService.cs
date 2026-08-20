@@ -733,9 +733,6 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 return;
             }
 
-            download.Status = DownloadStatus.Imported;
-            download.ImportedAt = DateTime.UtcNow;
-
             _logger.LogInformation("[Enhanced Download Monitor] ✓ Import successful: {Title}", download.Title);
 
             // Remove from download client if configured in the client's settings
