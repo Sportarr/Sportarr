@@ -175,6 +175,7 @@ export default function UISettings({ showAdvanced: propShowAdvanced = false }: U
     setSettings(prev => ({ ...prev, [key]: value }));
     // The theme applies as soon as it is picked, so the choice is visible
     // before saving rather than after a reload.
+    // Preview only. The saved choice is what gets remembered.
     if (key === 'theme') applyTheme(value as ThemeChoice);
   };
 

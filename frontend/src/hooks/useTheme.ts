@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useUISettings } from './useUISettings';
 
 export type ThemeChoice = 'auto' | 'light' | 'dark';
@@ -15,54 +15,61 @@ function resolve(choice: ThemeChoice): 'light' | 'dark' {
   return choice;
 }
 
-export function applyTheme(choice: ThemeChoice): void {
-  document.documentElement.dataset.theme = resolve(choice);
-  try {
-    localStorage.setItem(STORAGE_KEY, choice);
-  } catch {
-    // Private browsing can refuse storage. The saved setting still applies
-    // on the next load, this only costs the pre-paint hint.
-  }
-}
-
 export function storedThemeChoice(): ThemeChoice {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved === 'light' || saved === 'dark' || saved === 'auto') return saved;
   } catch {
-    // ignore
+    // Private browsing can refuse storage.
   }
   return 'dark';
 }
 
 /**
- * Applies the saved theme to the document and keeps it in step with the
- * system when the user picked auto. The choice is mirrored into
- * localStorage so a reload paints the right theme before the settings
- * request comes back, instead of flashing the wrong one.
+ * Paints a theme. Only the saved server choice is remembered: previewing a
+ * selection the user has not saved must not become what the next page load
+ * paints before the settings arrive.
  */
-export function useTheme(): void {
+export function applyTheme(choice: ThemeChoice, remember = false): void {
+  document.documentElement.dataset.theme = resolve(choice);
+  if (!remember) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, choice);
+  } catch {
+    // Losing the hint only costs a flash on the next load.
+  }
+}
+
+/**
+ * Applies the saved theme and keeps it in step with the system when the
+ * user picked auto. The settings request is slower than the first paint, so
+ * nothing is applied until it answers: the inline script in index.html has
+ * already painted the remembered choice, and overwriting that with a
+ * default would flash the wrong theme at everyone who is not on it.
+ */
+export function useResolvedTheme(): 'light' | 'dark' {
   const { theme } = useUISettings();
+  const [resolved, setResolved] = useState<'light' | 'dark'>(
+    () => (typeof document !== 'undefined'
+      && document.documentElement.dataset.theme === 'light') ? 'light' : 'dark');
 
   useEffect(() => {
-    applyTheme(theme);
+    if (!theme) return;
+    applyTheme(theme, true);
+    setResolved(resolve(theme));
   }, [theme]);
 
   useEffect(() => {
     if (theme !== 'auto' || typeof window === 'undefined' || !window.matchMedia) return;
 
     const media = window.matchMedia('(prefers-color-scheme: light)');
-    const onChange = () => applyTheme('auto');
+    const onChange = () => {
+      applyTheme('auto', true);
+      setResolved(resolve('auto'));
+    };
     media.addEventListener('change', onChange);
     return () => media.removeEventListener('change', onChange);
   }, [theme]);
-}
 
-/**
- * Renders nothing. Exists so the theme hook runs inside the query provider,
- * since it reads the saved setting through React Query.
- */
-export function ThemeController(): null {
-  useTheme();
-  return null;
+  return resolved;
 }
