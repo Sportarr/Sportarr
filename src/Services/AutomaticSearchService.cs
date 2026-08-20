@@ -278,9 +278,15 @@ public class AutomaticSearchService : IAutomaticSearchService
             var primaryQuery = queries.FirstOrDefault();
             bool usedCache = false;
 
+            // What gets stored is the MERGED result of every query, so the key
+            // has to name every query. Keyed on the first one alone, editing a
+            // later search template left the key unchanged and the old merged
+            // results came back for as long as the cache held them.
+            var cacheKey = string.Join("", queries);
+
             if (!string.IsNullOrEmpty(primaryQuery))
             {
-                var cachedResults = _searchResultCache.TryGetCached(primaryQuery, config.SearchCacheDuration);
+                var cachedResults = _searchResultCache.TryGetCached(cacheKey, config.SearchCacheDuration);
                 if (cachedResults != null)
                 {
                     allReleases = _searchResultCache.ToSearchResults(cachedResults);
@@ -362,7 +368,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // primary-query cache entry.
                 if (!usedCache && !string.IsNullOrEmpty(primaryQuery))
                 {
-                    _searchResultCache.Store(primaryQuery, allReleases, config.SearchCacheDuration);
+                    _searchResultCache.Store(cacheKey, allReleases, config.SearchCacheDuration);
                     _logger.LogDebug("[Automatic Search] Cached {Count} results for query '{Query}'",
                         allReleases.Count, primaryQuery);
                 }

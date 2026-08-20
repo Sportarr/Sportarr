@@ -48,6 +48,24 @@ public static class SearchTemplateList
     }
 
     /// <summary>
+    /// Number of distinct templates the input holds, ignoring the cap. Used
+    /// to refuse a save rather than silently drop the extras.
+    /// </summary>
+    public static int CountDistinct(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            return 0;
+        }
+
+        return stored.Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+    }
+
+    /// <summary>
     /// Normalizes what the user typed back into storage form: trimmed, blank
     /// lines and duplicates dropped, capped. Returns null when nothing is
     /// left, so "no template" stays a single representation in the database.

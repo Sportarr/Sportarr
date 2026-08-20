@@ -91,6 +91,19 @@ public class MultipleSearchTemplatesTests
     }
 
     [Fact]
+    public void CountDistinct_SeesPastTheCap()
+    {
+        // The save path refuses an over-long list rather than dropping the
+        // extras, so it needs the true count, not the capped one.
+        var many = string.Join("\n", Enumerable.Range(1, 25).Select(i => $"group{i} {{Year}}"));
+
+        SearchTemplateList.CountDistinct(many).Should().Be(25);
+        SearchTemplateList.Parse(many).Should().HaveCount(SearchTemplateList.MaxTemplates);
+        SearchTemplateList.CountDistinct("a\n a \nb\n\n").Should().Be(2);
+        SearchTemplateList.CountDistinct(null).Should().Be(0);
+    }
+
+    [Fact]
     public void Normalize_CollapsesToStorageForm()
     {
         SearchTemplateList.Normalize("  a {Year} \n\n b {Year}\na {Year}\n").Should().Be("a {Year}\nb {Year}");

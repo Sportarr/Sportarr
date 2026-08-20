@@ -555,10 +555,15 @@ public class RssSyncService : BackgroundService
             {
                 var keywordSets = templates
                     .Select(ExtractRequiredKeywordsFromTemplate)
-                    .Where(k => k.Any())
                     .ToList();
 
-                if (keywordSets.Any() &&
+                // A template built only from tokens ("{HomeTeam} {AwayTeam}")
+                // asks for no literal word, so it accepts anything the event
+                // matcher already accepted. One of those means no filter at
+                // all, rather than one fewer alternative.
+                var everyTemplateHasKeywords = keywordSets.All(k => k.Any());
+
+                if (keywordSets.Any() && everyTemplateHasKeywords &&
                     !keywordSets.Any(k => ReleaseSatisfiesTemplateKeywords(release.Title, k)))
                 {
                     _logger.LogDebug(

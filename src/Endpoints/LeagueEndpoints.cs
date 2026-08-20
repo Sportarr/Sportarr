@@ -846,9 +846,23 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         // One template per line. Normalizing on save keeps blank lines,
         // stray whitespace, and duplicates out of the stored value, so every
         // reader sees the same list.
-        var newTemplate = searchTemplateProp.ValueKind == JsonValueKind.Null
+        var submittedTemplate = searchTemplateProp.ValueKind == JsonValueKind.Null
             ? null
-            : SearchTemplateList.Normalize(searchTemplateProp.GetString());
+            : searchTemplateProp.GetString();
+
+        // Refuse rather than truncate. Normalizing alone would drop the
+        // extras and the user would never learn their templates vanished.
+        var submittedCount = SearchTemplateList.CountDistinct(submittedTemplate);
+        if (submittedCount > SearchTemplateList.MaxTemplates)
+        {
+            return Results.BadRequest(new
+            {
+                error = $"A league can hold at most {SearchTemplateList.MaxTemplates} search templates, and {submittedCount} were sent. " +
+                        "Each template searches every indexer once per event, so remove some lines and save again."
+            });
+        }
+
+        var newTemplate = submittedTemplate == null ? null : SearchTemplateList.Normalize(submittedTemplate);
         if (league.SearchQueryTemplate != newTemplate)
         {
             logger.LogInformation("[LEAGUES] SearchQueryTemplate changing from '{Old}' to '{New}'",
@@ -1338,8 +1352,10 @@ app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, Json
 
     var samples = sampleEvents.Select(evt =>
     {
+        // Built the same way the search builds them, so the preview also
+        // shows the team-alias variants and the real query count.
         var queries = previewTemplates.Count > 0
-            ? previewTemplates.Select(t => eventQueryService.BuildQueryFromTemplate(t, evt)).ToList()
+            ? eventQueryService.BuildEventQueries(evt, null, string.Join("\n", previewTemplates))
             : new List<string> { eventQueryService.BuildEventQueries(evt).FirstOrDefault() ?? evt.Title };
 
         return new
