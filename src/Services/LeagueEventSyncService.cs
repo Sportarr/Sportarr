@@ -389,7 +389,7 @@ public class LeagueEventSyncService
             // the cleanup predicates below so all sides classify
             // identically.
             var cupStageSizes = SpecialEventClassifier.ComputeCupStageSizes(events.Select(e => e.Round));
-            if (monitoredTeamIds.Any())
+            if (monitoredTeamIds.Any() && !league.KeepAllEvents)
             {
                 events = events.Where(e =>
                     (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
@@ -492,7 +492,7 @@ public class LeagueEventSyncService
                 {
                     ProcessEvent(apiEvent, league, result, currentSeason, latestSeasonWithData, apiEpisodeMap,
                         existingByExternalId, teamsByExternalId, scheduledRecordingsByEventId,
-                        localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes);
+                        localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes, monitoredTeamIds);
                 }
                 catch (Exception ex)
                 {
@@ -759,7 +759,7 @@ public class LeagueEventSyncService
             // and get picked up here on the next sync). Rows holding files
             // are kept but unmonitored, so they stop upgrade-grabbing and
             // the user decides what to do with the media.
-            if (monitoredTeamIds.Any())
+            if (monitoredTeamIds.Any() && !league.KeepAllEvents)
             {
                 var orphanedIds = orphanedEvents.Select(e => e.Id).ToHashSet();
                 bool MatchesTeamFilter(Event e) =>
@@ -1453,7 +1453,8 @@ public class LeagueEventSyncService
         Dictionary<string, List<Event>> localByDateTitle,
         HashSet<string> apiIds,
         HashSet<int> adoptedLocalEventIds,
-        IReadOnlySet<int> cupStageSizes)
+        IReadOnlySet<int> cupStageSizes,
+        HashSet<string> monitoredTeamIds)
     {
         // Two-pass match against the preloaded existence dictionary (one
         // bulk query per season replaces the former one-to-two DB
@@ -1864,6 +1865,7 @@ public class LeagueEventSyncService
             // For motorsports, also check if the event matches the monitored session types
             // For UFC-style fighting leagues, also check if the event matches monitored event types
             Monitored = league.Monitored
+                && IsInsideTeamSelection(apiEvent, league, monitoredTeamIds, cupStageSizes)
                 && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
                     apiEvent.Round, apiEvent.Title, cupStageSizes)
                 && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
@@ -1931,6 +1933,30 @@ public class LeagueEventSyncService
             sport, newestYear, oldestYear, seasons.Count);
 
         return seasons;
+    }
+
+    /// <summary>
+    /// True when the event is one the user's team selection covers. Only
+    /// KeepAllEvents leagues ever see a false here, because every other
+    /// league drops these events before they reach this point. Kept events
+    /// must arrive unmonitored, or enabling the setting would start a search
+    /// for every game in the league.
+    /// </summary>
+    internal static bool IsInsideTeamSelection(Event apiEvent, League league,
+        HashSet<string> monitoredTeamIds, IReadOnlySet<int> cupStageSizes)
+    {
+        if (monitoredTeamIds.Count == 0)
+        {
+            return true;
+        }
+
+        var matchesTeam =
+            (!string.IsNullOrEmpty(apiEvent.HomeTeamExternalId) && monitoredTeamIds.Contains(apiEvent.HomeTeamExternalId!)) ||
+            (!string.IsNullOrEmpty(apiEvent.AwayTeamExternalId) && monitoredTeamIds.Contains(apiEvent.AwayTeamExternalId!));
+
+        return matchesTeam || SpecialEventClassifier.BypassesTeamFilter(
+            apiEvent.Round, apiEvent.Title,
+            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, cupStageSizes);
     }
 
     /// <summary>

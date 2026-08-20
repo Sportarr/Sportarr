@@ -62,6 +62,7 @@ interface LeagueDetail {
   description?: string;
   monitored: boolean;
   enableDvr?: boolean;
+  keepAllEvents?: boolean;
   monitorType?: string;
   qualityProfileId?: number;
   rootFolderId?: number | null;
@@ -673,6 +674,7 @@ export default function LeagueDetailPage() {
       retentionDays?: number;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
+      keepAllEvents?: boolean;
     }) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
@@ -821,9 +823,12 @@ export default function LeagueDetailPage() {
     retentionDays: number,
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
+    _enableDvr?: boolean,
+    keepAllEvents?: boolean,
   ) => {
     void _rootFolderId;
     void league;
+    void _enableDvr;
     updateLeagueSettingsMutation.mutate({
       monitoredTeamIds,
       monitorType,
@@ -842,6 +847,7 @@ export default function LeagueDetailPage() {
       retentionDays,
       allowHighlights,
       sessionTypeQualityProfiles,
+      keepAllEvents,
     });
   };
 

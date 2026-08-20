@@ -79,7 +79,8 @@ interface AddLeagueModalProps {
     retentionDays: number,
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
-    enableDvr: boolean
+    enableDvr: boolean,
+    keepAllEvents: boolean
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -96,6 +97,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitorFinals, setMonitorFinals] = useState(false);
   const [monitorPlayoffs, setMonitorPlayoffs] = useState(false);
   const [monitorPreseason, setMonitorPreseason] = useState(false);
+  const [keepAllEvents, setKeepAllEvents] = useState(false);
   const [allowHighlights, setAllowHighlights] = useState(false);
   // Add-only (#204): whether the DVR auto-scheduler may touch this league at
   // all, including its EPG/broadcaster-matching fallback. Editing an
@@ -303,6 +305,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         monitorFinals: existingLeague.monitorFinals,
         monitorPlayoffs: existingLeague.monitorPlayoffs,
         monitorPreseason: existingLeague.monitorPreseason,
+        keepAllEvents: existingLeague.keepAllEvents,
         allowHighlights: existingLeague.allowHighlights,
         searchQueryTemplate: existingLeague.searchQueryTemplate,
         tags: existingLeague.tags,
@@ -326,6 +329,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setMonitorFinals(existingLeague.monitorFinals || false);
       setMonitorPlayoffs(existingLeague.monitorPlayoffs || false);
       setMonitorPreseason(existingLeague.monitorPreseason || false);
+      setKeepAllEvents(existingLeague.keepAllEvents || false);
       setAllowHighlights(existingLeague.allowHighlights || false);
       setSearchQueryTemplate(existingLeague.searchQueryTemplate || '');
       setSearchTemplatePreview(null);
@@ -656,7 +660,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       retentionDays,
       allowHighlights,
       sessionTypeQualityString,
-      enableDvr
+      enableDvr,
+      keepAllEvents
     );
   };
 
@@ -960,6 +965,21 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                             <div>
                               <div className="text-sm font-medium text-white">Always monitor preseason</div>
                               <div className="text-xs text-gray-400">Warm-up games before the regular season - preseason weeks, exhibition games</div>
+                            </div>
+                          </label>
+
+                          <label className="flex items-start gap-3 p-3 rounded-lg bg-gray-800 hover:bg-gray-750 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={keepAllEvents}
+                              onChange={(e) => setKeepAllEvents(e.target.checked)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white">Keep every game in the library</div>
+                              <div className="text-xs text-gray-400">
+                                Games without one of your teams are normally not stored at all. Keep them, unmonitored, so you can find a one-off game and monitor it yourself. Uses more disk.
+                              </div>
                             </div>
                           </label>
                         </div>

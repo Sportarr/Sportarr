@@ -167,6 +167,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.MonitorFinals,
         league.MonitorPlayoffs,
         league.MonitorPreseason,
+        league.KeepAllEvents,
         league.AllowHighlights,
         league.RetentionDays,
         league.RootFolderId,
@@ -808,6 +809,21 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             logger.LogInformation("[LEAGUES] MonitorPreseason changing from {Old} to {New}", league.MonitorPreseason, newMonitorPreseason);
             league.MonitorPreseason = newMonitorPreseason;
             eventTypesChanged = true;
+        }
+    }
+
+    // Keeping every event changes what the next sync writes, not what is
+    // monitored, so no event re-monitoring is triggered here. Turning it on
+    // takes effect on the next sync; turning it off lets the sync's
+    // out-of-filter cleanup remove the extra events again.
+    if (body.TryGetProperty("keepAllEvents", out var keepAllEventsProp) &&
+        (keepAllEventsProp.ValueKind == JsonValueKind.True || keepAllEventsProp.ValueKind == JsonValueKind.False))
+    {
+        var newKeepAllEvents = keepAllEventsProp.GetBoolean();
+        if (league.KeepAllEvents != newKeepAllEvents)
+        {
+            logger.LogInformation("[LEAGUES] KeepAllEvents changing from {Old} to {New}", league.KeepAllEvents, newKeepAllEvents);
+            league.KeepAllEvents = newKeepAllEvents;
         }
     }
 

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Sportarr.Api.Data;
@@ -12,9 +13,11 @@ using Sportarr.Api.Data;
 namespace Sportarr.Api.Migrations.Postgres.Migrations
 {
     [DbContext(typeof(SportarrDbContext))]
-    partial class SportarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260820000940_AddLeagueKeepAllEvents")]
+    partial class AddLeagueKeepAllEvents
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

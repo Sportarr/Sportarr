@@ -2209,6 +2209,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "intFormedYear");
 
+                    b.Property<bool>("KeepAllEvents")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("LastUpdate")
                         .HasColumnType("TEXT");
 

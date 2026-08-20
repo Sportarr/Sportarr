@@ -1127,7 +1127,7 @@ public static class DatabaseInitializer
         // Ensure MonitorFinals / MonitorPlayoffs columns exist in Leagues
         // (special-event monitoring: finals and playoff rounds opt-in past
         // the team filter).
-        foreach (var specialCol in new[] { "MonitorFinals", "MonitorPlayoffs", "MonitorPreseason" })
+        foreach (var specialCol in new[] { "MonitorFinals", "MonitorPlayoffs", "MonitorPreseason", "KeepAllEvents" })
         {
             try
             {

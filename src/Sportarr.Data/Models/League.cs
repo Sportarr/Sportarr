@@ -255,6 +255,16 @@ public class League
     public bool MonitorPreseason { get; set; } = false;
 
     /// <summary>
+    /// Keep every event this league has, including games with none of the
+    /// monitored teams in them. Without this the sync refuses to create
+    /// those events and deletes any that already exist without a file, so
+    /// a one-off game can never be found. Kept events arrive unmonitored,
+    /// so nothing searches for them until the user asks. Costs disk: a
+    /// league can hold thousands of events per season.
+    /// </summary>
+    public bool KeepAllEvents { get; set; } = false;
+
+    /// <summary>
     /// Allow Highlights releases to match and grab for this league. By
     /// default highlights are hard-rejected as non-event content, which is
     /// right for most sports, but some (sumo notably) ship each day as a
