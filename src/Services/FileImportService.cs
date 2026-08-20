@@ -98,6 +98,22 @@ public class FileImportService : IFileImportService
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
+    internal static void MarkDownloadImported(DownloadQueueItem download, DateTime importedAt)
+    {
+        download.Status = DownloadStatus.Imported;
+        download.Progress = 100;
+        if (download.Size > 0)
+        {
+            download.Downloaded = Math.Max(download.Downloaded, download.Size);
+        }
+
+        download.TimeRemaining = null;
+        download.CompletedAt ??= importedAt;
+        download.ImportedAt = importedAt;
+        download.LastUpdate = importedAt;
+        download.ErrorMessage = null;
+    }
+
     public FileImportService(
         SportarrDbContext db,
         MediaFileParser parser,
@@ -650,9 +666,9 @@ public class FileImportService : IFileImportService
 
             _db.ImportHistories.Add(history);
 
-            // Update download status
-            download.Status = DownloadStatus.Imported;
-            download.ImportedAt = DateTime.UtcNow;
+            // Imported queue items are no longer polled, so normalize every
+            // derived transfer field while the successful import is committed.
+            MarkDownloadImported(download, history.ImportedAt);
 
             // Create EventFile record
             // IMPORTANT: Use quality/codec/source from download queue item (parsed from original release title at grab time)
