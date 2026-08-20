@@ -895,10 +895,27 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                 .ToDictionary(g => g.Key, g => SpecialEventClassifier.ComputeCupStageSizes(g.Select(e => e.Round)));
             var isTeamlessSport = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name);
 
+            // A KeepAllEvents league stores games with none of the user's
+            // teams in them. Every other league deletes those at sync, so
+            // this loop never met one and needed no team test. Without it,
+            // saving any league setting would monitor the whole league and
+            // start searching for it.
+            // Loaded here rather than off the league: this handler fetches
+            // the league with FindAsync, so its MonitoredTeams are empty and
+            // the gate would silently pass everything.
+            var recalcTeamIds = isTeamlessSport
+                ? new HashSet<string>()
+                : (await db.LeagueTeams
+                    .Where(lt => lt.LeagueId == id && lt.Monitored && lt.Team != null && lt.Team.ExternalId != null)
+                    .Select(lt => lt.Team!.ExternalId!)
+                    .ToListAsync()).ToHashSet();
+
             foreach (var evt in allEvents)
             {
                 // Base monitoring: is the league monitored?
-                bool shouldMonitor = league.Monitored;
+                bool shouldMonitor = league.Monitored
+                    && LeagueEventSyncService.IsInsideTeamSelection(evt, league, recalcTeamIds,
+                        cupStageSizesBySeason[evt.Season ?? ""]);
 
                 // Apply MonitorType filter (All, Future, CurrentSeason, etc.)
                 if (shouldMonitor)

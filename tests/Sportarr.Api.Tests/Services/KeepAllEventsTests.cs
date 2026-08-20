@@ -83,6 +83,26 @@ public class KeepAllEventsTests
     }
 
     [Fact]
+    public void SavingLeagueSettings_MustNotMonitorRetainedGames()
+    {
+        // The league PUT recalculates monitoring across every stored event.
+        // Before KeepAllEvents those out-of-team games did not exist, so the
+        // loop had no team test and would have monitored the whole league,
+        // starting a search for every game. This is the gate it now shares
+        // with the sync.
+        var teams = new HashSet<string> { "tm-cowboys" };
+        var league = Nfl();
+        league.MonitorType = MonitorType.All;
+
+        var retained = Game("tm-bears", "tm-packers");
+
+        var shouldMonitor = league.Monitored
+            && LeagueEventSyncService.IsInsideTeamSelection(retained, league, teams, NoCupStages);
+
+        shouldMonitor.Should().BeFalse("saving a setting must not arm the games the user only wanted to keep");
+    }
+
+    [Fact]
     public void PlayoffOptIn_IsSeparateFromFinals()
     {
         var teams = new HashSet<string> { "tm-cowboys" };
