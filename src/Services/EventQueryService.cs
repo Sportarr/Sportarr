@@ -1,3 +1,4 @@
+using Sportarr.Api.Helpers;
 using System.Text.RegularExpressions;
 using Sportarr.Api.Models;
 
@@ -221,28 +222,38 @@ public class EventQueryService
         var leagueName = evt.League?.Name;
 
         // If custom template is provided, use it instead of default logic
-        if (!string.IsNullOrWhiteSpace(customTemplate))
+        // A league may carry several templates, one per line, because release
+        // groups name the same event differently. Each is asked in turn and
+        // the results merge, so the first line stays the primary query.
+        var customTemplates = SearchTemplateList.Parse(customTemplate);
+        if (customTemplates.Count > 0)
         {
-            var templateQuery = BuildQueryFromTemplate(customTemplate, evt, part);
-            queries.Add(templateQuery);
-
-            // User-defined team aliases exist so releases named in another
-            // language match - but a query built from the canonical names
-            // never RETURNS those releases from the indexer in the first
-            // place (a Cyrillic-only rutracker title has no "Portugal" to
-            // hit). Re-expand the template once per alias slot so the
-            // indexer is also asked in the alias language.
-            foreach (var (home, away) in BuildTeamAliasPairs(evt))
+            foreach (var template in customTemplates)
             {
-                var variant = BuildQueryFromTemplate(customTemplate, evt, part, home, away);
-                if (!queries.Contains(variant, StringComparer.OrdinalIgnoreCase))
+                var templateQuery = BuildQueryFromTemplate(template, evt, part);
+                if (!queries.Contains(templateQuery, StringComparer.OrdinalIgnoreCase))
                 {
-                    queries.Add(variant);
+                    queries.Add(templateQuery);
+                }
+
+                // User-defined team aliases exist so releases named in another
+                // language match - but a query built from the canonical names
+                // never RETURNS those releases from the indexer in the first
+                // place (a Cyrillic-only rutracker title has no "Portugal" to
+                // hit). Re-expand the template once per alias slot so the
+                // indexer is also asked in the alias language.
+                foreach (var (home, away) in BuildTeamAliasPairs(evt))
+                {
+                    var variant = BuildQueryFromTemplate(template, evt, part, home, away);
+                    if (!queries.Contains(variant, StringComparer.OrdinalIgnoreCase))
+                    {
+                        queries.Add(variant);
+                    }
                 }
             }
 
-            _logger.LogInformation("[EventQuery] Using custom template query: '{Query}' for '{EventTitle}' ({Count} variant(s) incl. team aliases)",
-                templateQuery, evt.Title, queries.Count);
+            _logger.LogInformation("[EventQuery] Using {TemplateCount} custom template(s) for '{EventTitle}': primary '{Query}' ({Count} query/queries incl. team aliases)",
+                customTemplates.Count, evt.Title, queries.FirstOrDefault(), queries.Count);
             return queries;
         }
 

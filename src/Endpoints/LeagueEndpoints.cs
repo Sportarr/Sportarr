@@ -843,7 +843,12 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     // Handle custom search query template
     if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))
     {
-        var newTemplate = searchTemplateProp.ValueKind == JsonValueKind.Null ? null : searchTemplateProp.GetString();
+        // One template per line. Normalizing on save keeps blank lines,
+        // stray whitespace, and duplicates out of the stored value, so every
+        // reader sees the same list.
+        var newTemplate = searchTemplateProp.ValueKind == JsonValueKind.Null
+            ? null
+            : SearchTemplateList.Normalize(searchTemplateProp.GetString());
         if (league.SearchQueryTemplate != newTemplate)
         {
             logger.LogInformation("[LEAGUES] SearchQueryTemplate changing from '{Old}' to '{New}'",
@@ -1327,23 +1332,22 @@ app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, Json
         });
     }
 
+    // Every template is previewed, so a user writing three of them sees all
+    // three queries per event rather than only the first.
+    var previewTemplates = SearchTemplateList.Parse(template);
+
     var samples = sampleEvents.Select(evt =>
     {
-        string query;
-        if (!string.IsNullOrWhiteSpace(template))
-        {
-            query = eventQueryService.BuildQueryFromTemplate(template, evt);
-        }
-        else
-        {
-            query = eventQueryService.BuildEventQueries(evt).FirstOrDefault() ?? evt.Title;
-        }
+        var queries = previewTemplates.Count > 0
+            ? previewTemplates.Select(t => eventQueryService.BuildQueryFromTemplate(t, evt)).ToList()
+            : new List<string> { eventQueryService.BuildEventQueries(evt).FirstOrDefault() ?? evt.Title };
 
         return new
         {
             eventTitle = evt.Title,
             eventDate = evt.EventDate.ToString("yyyy-MM-dd"),
-            generatedQuery = query
+            generatedQuery = queries.FirstOrDefault() ?? evt.Title,
+            generatedQueries = queries
         };
     }).ToList();
 

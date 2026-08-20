@@ -137,9 +137,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   };
   // Custom search query template
   const [searchQueryTemplate, setSearchQueryTemplate] = useState('');
-  const [searchTemplatePreview, setSearchTemplatePreview] = useState<{ template: string; samples: { eventTitle: string; eventDate: string; generatedQuery: string }[] } | null>(null);
+  const [searchTemplatePreview, setSearchTemplatePreview] = useState<{ template: string; samples: { eventTitle: string; eventDate: string; generatedQuery: string; generatedQueries?: string[] }[] } | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const searchTemplateInputRef = useRef<HTMLInputElement>(null);
+  const searchTemplateInputRef = useRef<HTMLTextAreaElement>(null);
   // Tags
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
@@ -1426,15 +1426,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     </label>
                     <p className="text-xs text-gray-500 mb-2">
                       Override the default search query pattern. Leave blank to use the built-in query logic.
+                      Put one template per line to cover release groups that name events differently. Every line is
+                      searched and the results are combined, starting with the first.
                     </p>
                     <div className="flex gap-2">
-                      <input
+                      <textarea
                         ref={searchTemplateInputRef}
-                        type="text"
+                        rows={Math.min(6, Math.max(2, searchQueryTemplate.split('\n').length + 1))}
                         value={searchQueryTemplate}
                         onChange={(e) => { setSearchQueryTemplate(e.target.value); setSearchTemplatePreview(null); }}
-                        placeholder="e.g. {League} {Year} {Month} {Day}"
-                        className="flex-1 px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-600 text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                        placeholder={'One template per line, e.g.\n{League} {Year} {Month} {Day}\n{League} {Year} {HomeTeam} vs {AwayTeam}'}
+                        className="flex-1 px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-600 text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 font-mono resize-y"
                       />
                       {editMode && leagueId && (
                         <button
@@ -1470,7 +1472,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     {searchTemplatePreview && (
                       <div className="mt-3 bg-gray-800/50 border border-gray-700 rounded-lg p-3">
                         <div className="text-xs font-medium text-gray-400 mb-2">
-                          Preview ({searchTemplatePreview.template === '(default)' ? 'Using default query generation' : `Template: ${searchTemplatePreview.template}`})
+                          Preview ({(() => {
+                            if (searchTemplatePreview.template === '(default)') return 'Using default query generation';
+                            const lines = searchTemplatePreview.template.split('\n').filter(l => l.trim());
+                            return lines.length > 1 ? `${lines.length} templates` : `Template: ${lines[0] ?? ''}`;
+                          })()})
                         </div>
                         {searchTemplatePreview.samples.length === 0 ? (
                           <p className="text-xs text-gray-500">No events found to preview</p>
@@ -1479,7 +1485,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                             {searchTemplatePreview.samples.map((sample, idx) => (
                               <div key={idx} className="text-xs">
                                 <div className="text-gray-400">{sample.eventTitle} ({sample.eventDate})</div>
-                                <div className="text-green-400 font-mono">&#x2192; {sample.generatedQuery}</div>
+                                {(sample.generatedQueries && sample.generatedQueries.length > 0 ? sample.generatedQueries : [sample.generatedQuery]).map((q, qi) => (
+                                  <div key={qi} className="text-green-400 font-mono">&#x2192; {q}</div>
+                                ))}
                               </div>
                             ))}
                           </div>

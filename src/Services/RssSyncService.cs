@@ -1,3 +1,4 @@
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -545,15 +546,24 @@ public class RssSyncService : BackgroundService
                 continue;
 
             // Honor league custom-search-template required keywords.
-            var template = evt.League?.SearchQueryTemplate;
-            if (!string.IsNullOrWhiteSpace(template))
+            // A league can carry several templates for different release
+            // groups. The release only has to satisfy ONE of them: requiring
+            // every template's keywords at once would reject everything,
+            // since each template names its own group.
+            var templates = SearchTemplateList.Parse(evt.League?.SearchQueryTemplate);
+            if (templates.Count > 0)
             {
-                var requiredKeywords = ExtractRequiredKeywordsFromTemplate(template);
-                if (requiredKeywords.Any() && !ReleaseSatisfiesTemplateKeywords(release.Title, requiredKeywords))
+                var keywordSets = templates
+                    .Select(ExtractRequiredKeywordsFromTemplate)
+                    .Where(k => k.Any())
+                    .ToList();
+
+                if (keywordSets.Any() &&
+                    !keywordSets.Any(k => ReleaseSatisfiesTemplateKeywords(release.Title, k)))
                 {
                     _logger.LogDebug(
-                        "[RSS Sync] Release '{Release}' matched event '{Event}' but missing required search template keywords: {Keywords}",
-                        release.Title, evt.Title, string.Join(", ", requiredKeywords));
+                        "[RSS Sync] Release '{Release}' matched event '{Event}' but satisfied none of the {Count} search template(s)",
+                        release.Title, evt.Title, keywordSets.Count);
                     continue;
                 }
             }
