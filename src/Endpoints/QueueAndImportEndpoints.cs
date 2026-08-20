@@ -236,7 +236,7 @@ app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, D
 });
 
 // API: Queue Operations - Force Import
-app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, FileImportService fileImportService) =>
+app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -250,11 +250,18 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, F
         item.Status = DownloadStatus.Importing;
         await db.SaveChangesAsync();
 
-        await fileImportService.ImportDownloadAsync(item);
-
-        item.Status = DownloadStatus.Imported;
-        item.ImportedAt = DateTime.UtcNow;
+        // The import service owns the terminal state. Stamping it again here
+        // replaced the import history's timestamp with a slightly later one,
+        // and reported a rejected import as a success.
+        var result = await fileImportService.ImportDownloadAsync(item);
         await db.SaveChangesAsync();
+
+        if (result == null)
+        {
+            logger.LogInformation("[QUEUE] Import rejected for queue item {Id}: {Title} - {Reason}",
+                item.Id, item.Title, item.ErrorMessage);
+            return Results.BadRequest(new { error = item.ErrorMessage ?? "Import was rejected" });
+        }
 
         return Results.Ok(item);
     }
@@ -299,14 +306,17 @@ app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Fi
         item.RetryCount = (item.RetryCount ?? 0) + 1;
         await db.SaveChangesAsync();
 
-        // Attempt import
-        await fileImportService.ImportDownloadAsync(item);
-
-        // Success - mark as imported
-        item.Status = DownloadStatus.Imported;
-        item.ImportedAt = DateTime.UtcNow;
-        item.ErrorMessage = null;
+        // Attempt import. The import service marks the terminal state,
+        // including clearing the error this retry was started for.
+        var result = await fileImportService.ImportDownloadAsync(item);
         await db.SaveChangesAsync();
+
+        if (result == null)
+        {
+            logger.LogInformation("Retry import rejected for queue item {Id}: {Title} - {Reason}",
+                item.Id, item.Title, item.ErrorMessage);
+            return Results.BadRequest(new { success = false, message = item.ErrorMessage ?? "Import was rejected" });
+        }
 
         logger.LogInformation("Retry import succeeded for queue item {Id}: {Title}", item.Id, item.Title);
         return Results.Ok(new { success = true, message = "Import successful" });
