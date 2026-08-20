@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { applyTheme, type ThemeChoice } from '../../hooks/useTheme';
 import { UI_SETTINGS_QUERY_KEY } from '../../hooks/useUISettings';
 import { setGlobalBackoffCap } from '../../utils/queryBackoff';
 
@@ -172,6 +173,9 @@ export default function UISettings({ showAdvanced: propShowAdvanced = false }: U
 
   const updateSetting = <K extends keyof UISettingsData>(key: K, value: UISettingsData[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+    // The theme applies as soon as it is picked, so the choice is visible
+    // before saving rather than after a reload.
+    if (key === 'theme') applyTheme(value as ThemeChoice);
   };
 
   if (loading) {

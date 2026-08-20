@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import { ThemeController } from './hooks/useTheme';
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
 const LeagueDetailPage = lazy(() => import('./pages/LeagueDetailPage'));
 const TeamsPage = lazy(() => import('./pages/TeamsPage'));
@@ -167,6 +168,7 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={window.Sportarr?.urlBase || ''}>
+          <ThemeController />
           <Toaster position="top-right" theme="dark" richColors closeButton />
           <AuthProvider>
             <Suspense fallback={<RouteFallback />}>
