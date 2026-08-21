@@ -39,6 +39,18 @@ public class DvrRecordingService
     private static readonly ConcurrentDictionary<string, (DateTime FetchedAt, List<Event> Events)> _livescoreCache = new();
     private const int OvertimeStepMinutes = 10;
 
+    // A recorder that stops (naturally or via the watchdog's stall
+    // detection) within this fraction of the scheduled duration of the
+    // scheduled end is treated as a normal completion rather than a
+    // failure. Sports events routinely finish ahead of their scheduled
+    // window - a lopsided match called early, a weather delay that
+    // shortens play - and the upstream IPTV feed drops the channel the
+    // moment the broadcast ends, which looks identical to a dead stream
+    // from the byte-growth check alone. Relative rather than a flat grace
+    // period so a 5-minute highlights recording and a 4-hour cricket
+    // match get proportionate leeway.
+    private const double EarlyEndGraceFraction = 0.20;
+
     private readonly ILogger<DvrRecordingService> _logger;
     private readonly SportarrDbContext _db;
     private readonly FFmpegRecorderService _ffmpegRecorder;
@@ -747,11 +759,14 @@ public class DvrRecordingService
     /// <summary>
     /// Called by the recorder's monitor task when an ffmpeg process
     /// exited without a stop request (stream death, provider drop,
-    /// crash). Fails the row and rotates to a fallback channel while
-    /// the scheduled window is still open; when the exit landed at the
-    /// natural end of the window with data on disk, finalizes it as
-    /// Completed instead so a stream that ends exactly on time isn't
-    /// reported as a failure.
+    /// crash), and by the watchdog when it kills a stalled recorder.
+    /// Fails the row and rotates to a fallback channel while the
+    /// scheduled window is still open; when the exit landed at the
+    /// natural end of the window, or within EarlyEndGraceFraction of the
+    /// scheduled duration before the scheduled end, with data on disk,
+    /// finalizes it as Completed instead - covers both a stream that
+    /// ends exactly on time and a live event that wraps up early and
+    /// drops the feed.
     /// </summary>
     public async Task HandleRecorderExitAsync(int recordingId, int exitCode, string? errorSummary)
     {
@@ -770,26 +785,45 @@ public class DvrRecordingService
         var windowEnd = recording.ScheduledEnd.AddMinutes(recording.PostPadding);
         _overtimeExtensions.TryRemove(recordingId, out _);
 
-        long fileSize = 0;
-        if (!string.IsNullOrEmpty(recording.OutputPath) && File.Exists(recording.OutputPath))
+        // Null means "couldn't read it" (missing, or a transient
+        // IOException from the file still flushing/closing) rather than
+        // "empty" - callers decide whether that means zero or "keep
+        // whatever we read last".
+        long? TryReadFileSize()
         {
-            try { fileSize = new FileInfo(recording.OutputPath).Length; }
-            catch (IOException) { /* transient - treated as no data */ }
+            if (string.IsNullOrEmpty(recording.OutputPath) || !File.Exists(recording.OutputPath))
+                return null;
+            try { return new FileInfo(recording.OutputPath).Length; }
+            catch (IOException) { return null; }
         }
+
+        var fileSize = TryReadFileSize() ?? 0;
 
         recording.ActualEnd = now;
         recording.LastUpdated = now;
 
-        // Exited within 30s of the natural end with data on disk:
-        // the stream simply ended on time, so this is a completed run.
-        if (fileSize > 0 && now >= windowEnd.AddSeconds(-30))
+        // Discard a worthless partial before deciding Completed vs
+        // Failed - otherwise a near-instant drop that happens to land
+        // close to the scheduled end (e.g. a very short scheduled
+        // window) could finalize as a "completed" recording of an
+        // effectively empty file. CleanupWorthlessPartial only deletes
+        // when the file is under its size floor, so a real partial
+        // capture is untouched here; re-read the size afterward since
+        // it may now be gone.
+        CleanupWorthlessPartial(recording);
+        fileSize = TryReadFileSize() ?? 0;
+
+        // Exited at or after the natural end (30s grace), or after
+        // EarlyEndGraceFraction of the scheduled duration has already
+        // elapsed, with data on disk: either the stream ran to its
+        // scheduled finish, or the live event wrapped up early and the
+        // feed dropped - both are completed runs, not failures.
+        var scheduledDuration = recording.ScheduledEnd - recording.ScheduledStart;
+        var earlyEndThreshold = recording.ScheduledEnd - (scheduledDuration * EarlyEndGraceFraction);
+        if (fileSize > 0 && (now >= windowEnd.AddSeconds(-30) || now >= earlyEndThreshold))
         {
             await FinalizeCaptureContainerAsync(recording);
-            if (!string.IsNullOrEmpty(recording.OutputPath) && File.Exists(recording.OutputPath))
-            {
-                try { fileSize = new FileInfo(recording.OutputPath).Length; }
-                catch (IOException) { /* keep the pre-remux size */ }
-            }
+            fileSize = TryReadFileSize() ?? fileSize; // keep the pre-remux size if the re-read fails
 
             recording.Status = DvrRecordingStatus.Completed;
             recording.FileSize = fileSize;
@@ -799,8 +833,8 @@ public class DvrRecordingService
             recording.AverageBitrate = (fileSize * 8) / duration;
             await PersistRecordingStatusAsync(recording, "completed");
 
-            _logger.LogInformation("[DVR] Recording {Id}: recorder exited at the end of its window; finalized as completed ({Size} bytes)",
-                recordingId, fileSize);
+            _logger.LogInformation("[DVR] Recording {Id}: recorder exited {When} (scheduled end {End}); finalized as completed ({Size} bytes)",
+                recordingId, now >= windowEnd.AddSeconds(-30) ? "at the end of its window" : "within the early-end grace window", recording.ScheduledEnd, fileSize);
             FirePostRecordingCommand(recording);
 
             await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
@@ -816,7 +850,6 @@ public class DvrRecordingService
         await PersistRecordingStatusAsync(recording, "failed");
 
         _logger.LogWarning("[DVR] Recording {Id}: recorder exited mid-window (code {Code}); marked Failed", recordingId, exitCode);
-        CleanupWorthlessPartial(recording);
 
         int? rotatedId = null;
         if (now < windowEnd)

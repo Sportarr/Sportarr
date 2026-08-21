@@ -238,27 +238,29 @@ public class DvrWatchdogService : BackgroundService
                     if (elapsed >= StalledNoGrowthWindow && grew < StalledMinBytesGrowth)
                     {
                         _logger.LogWarning(
-                            "[DVR Watchdog] Recording {Id} output stalled: {Grew} bytes in {Elapsed}; killing FFmpeg and marking Failed",
+                            "[DVR Watchdog] Recording {Id} output stalled: {Grew} bytes in {Elapsed}; killing FFmpeg and reconciling",
                             row.Id, grew, elapsed);
-                        try { await recorder.StopRecordingAsync(row.Id); } catch { /* fallthrough to mark failed */ }
-                        row.Status = DvrRecordingStatus.Failed;
-                        row.ActualEnd = now;
-                        row.ErrorMessage = (row.ErrorMessage ?? "") +
-                            $"Watchdog: output stalled (only {grew} bytes written in {(int)elapsed.TotalSeconds}s).";
+                        try { await recorder.StopRecordingAsync(row.Id); } catch { /* fallthrough to reconcile */ }
                         _lastSize.Remove(row.Id);
-                        dvrService.CleanupWorthlessPartial(row);
 
-                        // A frozen upstream is channel-specific; try the
-                        // event's fallback channels while there is still
-                        // window left to record.
-                        int? rotatedId = null;
-                        if (now < row.ScheduledEnd.AddMinutes(row.PostPadding))
+                        // Delegate the Completed-vs-Failed call to the same
+                        // logic the recorder's own exit callback uses: a
+                        // stall this close to the recording's scheduled end
+                        // is treated as the live event ending early (the
+                        // upstream feed drops the instant the broadcast
+                        // stops) rather than a genuinely dead stream, so it
+                        // gets finalized, revealed and picked up by the
+                        // importer instead of abandoned under its hidden
+                        // dot-prefixed filename with an unqueryable status.
+                        try
                         {
-                            try { rotatedId = await dvrService.TryRescheduleOnFallbackAsync(row, "watchdog: output stalled"); }
-                            catch (Exception ex) { _logger.LogError(ex, "[DVR Watchdog] Fallback rotation failed for recording {Id}", row.Id); }
+                            await dvrService.HandleRecorderExitAsync(row.Id, 0,
+                                $"watchdog: output stalled (only {grew} bytes written in {(int)elapsed.TotalSeconds}s)");
                         }
-                        await dvrService.NotifyRecordingFailedAsync(row,
-                            $"The stream stalled (only {grew} bytes written in {(int)elapsed.TotalSeconds}s).", rotatedId);
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "[DVR Watchdog] Reconciliation failed for stalled recording {Id}", row.Id);
+                        }
                         continue;
                     }
                     // Still growing - refresh the sample so the next
