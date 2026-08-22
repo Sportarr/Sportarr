@@ -400,6 +400,10 @@ public class ChannelAutoMappingService
             }
 
             AddToken(NormalizeLeagueName(league.Name));
+            // Upstream alternate names only. League.UserAliases is deliberately not
+            // seeded here: it would change which channels auto-map to which leagues,
+            // which is a separate product decision from release/import identity.
+            // Possible future work if user aliases should also steer EPG mapping.
             foreach (var alt in AliasField.Parse(league.AlternateName))
                 AddToken(alt);
 
