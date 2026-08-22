@@ -74,16 +74,22 @@ public class SearchTemplateTokensTests
     /// builder at once. No supported token may survive into the output -
     /// that would mean the catalog promises a token the builder doesn't
     /// actually substitute.
+    ///
+    /// Round and stage are both single digits ("6") so a padded/unpadded mix
+    /// up would leave a stray character rather than silently producing the
+    /// same string for every variant - see
+    /// BuildQueryFromTemplate_RoundPaddingVariants for the assertion that
+    /// actually differentiates the three Round forms from each other.
     /// </summary>
     [Fact]
     public void BuildQueryFromTemplate_SubstitutesEveryCatalogToken()
     {
         var evt = new Event
         {
-            Title = "Tour de France Stage 16",
+            Title = "Tour de France Stage 6",
             Sport = "Cycling",
             EventDate = new DateTime(2027, 7, 16, 0, 0, 0, DateTimeKind.Utc),
-            Round = "16",
+            Round = "6",
             Season = "2027",
             HomeTeamName = "Team Alpha",
             AwayTeamName = "Team Beta",
@@ -97,5 +103,31 @@ public class SearchTemplateTokensTests
 
         result.Should().NotContain("{", "every supported token in the template should have been substituted");
         result.Should().NotContain("}", "every supported token in the template should have been substituted");
+    }
+
+    /// <summary>
+    /// A round number of "16" leaves {Round}, {Round:0}, and {Round:00} all
+    /// producing the same two-character string, so a template that mixed up
+    /// which key maps to which format would still pass. A single-digit round
+    /// tells padded and unpadded output apart, the same way
+    /// EventQueryServiceStageRaceTests.BuildQueryFromTemplate_StagePaddingVariants
+    /// already does for {Stage}.
+    /// </summary>
+    [Fact]
+    public void BuildQueryFromTemplate_RoundPaddingVariants()
+    {
+        var evt = new Event
+        {
+            Title = "Monaco Grand Prix",
+            Sport = "Motorsport",
+            EventDate = new DateTime(2027, 5, 23, 0, 0, 0, DateTimeKind.Utc),
+            Round = "6",
+            League = new League { Name = "Formula 1", Sport = "Motorsport" },
+        };
+        var service = new EventQueryService(NullLogger<EventQueryService>.Instance);
+
+        service.BuildQueryFromTemplate("{Round}", evt).Should().Be("06");
+        service.BuildQueryFromTemplate("{Round:00}", evt).Should().Be("06");
+        service.BuildQueryFromTemplate("{Round:0}", evt).Should().Be("6");
     }
 }

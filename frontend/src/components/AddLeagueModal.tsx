@@ -17,6 +17,7 @@ import {
   getPartOptions,
 } from '../utils/leagueSportRules';
 import TagSelector from './TagSelector';
+import { fallbackSearchTemplateTokens } from '../utils/searchTemplateTokens';
 
 interface Team {
   idTeam: string;
@@ -665,24 +666,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     );
   };
 
-  const searchTokens = [
-    { token: '{League}', description: 'League name' },
-    { token: '{Year}', description: 'Event year' },
-    { token: '{Month}', description: 'Month (2 digits)' },
-    { token: '{Day}', description: 'Day (2 digits)' },
-    { token: '{Round}', description: 'Round number (zero-padded, e.g., 01)' },
-    { token: '{Round:0}', description: 'Round number (no padding, e.g., 1)' },
-    { token: '{Stage}', description: 'Stage number of a stage race (no padding, e.g. 16); empty when the title names no stage' },
-    { token: '{Stage:00}', description: 'Stage number, zero-padded (e.g., 16 becomes 16, 1 becomes 01)' },
-    { token: '{Week}', description: 'Week number' },
-    { token: '{EventTitle}', description: 'Event title (raw)' },
-    { token: '{EventName}', description: 'Event title with fighter matchup or stage number stripped (e.g. "Tour de France")' },
-    { token: '{HomeTeam}', description: 'Home team' },
-    { token: '{AwayTeam}', description: 'Away team' },
-    { token: '{Season}', description: 'Season' },
-    { token: '{Part}', description: 'Part being searched (Prelims, Main Card); empty for whole-event searches' },
-    { token: '{EventType}', description: 'Detected event type (PPV, Fight Night, Contender Series, Weekly)' },
-  ];
+  // Single source of truth for every token the query builder supports,
+  // shared with the backend catalog (SearchTemplateTokens.All). This used
+  // to be its own independent 16-entry list here, missing {Round:00},
+  // {Stage:0}, and {vs} - tokens the builder honored but the picker could
+  // never insert.
+  const searchTokens = fallbackSearchTemplateTokens;
 
   const insertToken = (token: string) => {
     const input = searchTemplateInputRef.current;
