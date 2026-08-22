@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using System.Text.Json;
@@ -398,12 +399,19 @@ app.MapPut("/api/teams/{id:int}/aliases", async (int id, System.Text.Json.JsonEl
     if (body.TryGetProperty("userAliases", out var aliasesProp) &&
         aliasesProp.ValueKind == System.Text.Json.JsonValueKind.String)
     {
-        // Normalize: trim entries, drop blanks, dedupe, re-join.
-        cleaned = (aliasesProp.GetString() ?? "")
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        aliases = cleaned.Count > 0 ? string.Join(", ", cleaned) : null;
+        var rawAliases = aliasesProp.GetString() ?? "";
+        if (rawAliases.Length > AliasField.MaxUserAliasesLength)
+        {
+            return Results.BadRequest(new
+            {
+                field = "userAliases",
+                error = $"userAliases must be {AliasField.MaxUserAliasesLength} characters or fewer"
+            });
+        }
+
+        // Normalize: split on comma, pipe, or slash; trim entries, drop blanks, dedupe, re-join.
+        cleaned = AliasField.Parse(rawAliases).ToList();
+        aliases = AliasField.Normalize(rawAliases);
     }
 
     team.UserAliases = aliases;
