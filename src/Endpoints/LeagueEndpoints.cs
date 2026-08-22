@@ -1393,27 +1393,16 @@ app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, Json
 });
 
 // API: Get available search template tokens with descriptions
-app.MapGet("/api/search/available-tokens", (ILogger<Program> logger) =>
+app.MapGet("/api/search/available-tokens", (
+    // ILogger<LeagueEndpoints> won't compile: this is a static class, and C#
+    // forbids static types as generic type arguments (CS0718). ILogger<Program>
+    // is the working pattern every other static *Endpoints class in this
+    // codebase uses for the same reason (see SonarrQueueEndpoints).
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[SEARCH] Returning available search template tokens");
 
-    var tokens = new[]
-    {
-        new { token = "{League}", description = "League name (normalized abbreviation)", example = "NFL, UFC, Formula1" },
-        new { token = "{Year}", description = "Event year (4 digits)", example = "2025" },
-        new { token = "{Month}", description = "Event month (2 digits)", example = "01, 12" },
-        new { token = "{Day}", description = "Event day (2 digits)", example = "01, 31" },
-        new { token = "{Round}", description = "Round/race number (for motorsports)", example = "01, 15" },
-        new { token = "{Week}", description = "Week number (for team sports)", example = "1, 15" },
-        new { token = "{EventTitle}", description = "Full event title (raw)", example = "UFC 299, Super Bowl LVIII" },
-        new { token = "{EventName}", description = "Event title with trailing 'fighter1 vs fighter2' stripped (use for fighting cards where releases name the card, not the fighters)", example = "ONE Friday Fights 150 (from 'ONE Friday Fights 150 Kompetch vs Attachai')" },
-        new { token = "{HomeTeam}", description = "Home team name", example = "Chiefs, Lakers" },
-        new { token = "{AwayTeam}", description = "Away team name", example = "Raiders, Celtics" },
-        new { token = "{vs}", description = "Versus separator", example = "vs" },
-        new { token = "{Season}", description = "Season identifier", example = "2024-25, 2025" }
-    };
-
-    return Results.Ok(tokens);
+    return Results.Ok(SearchTemplateTokens.All);
 });
 
 // API: Get all leagues from Sportarr API (cached)

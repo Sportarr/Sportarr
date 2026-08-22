@@ -19,6 +19,28 @@ public class EventQueryService
     }
 
     /// <summary>
+    /// The canonical set of tokens BuildQueryFromTemplate substitutes, in the
+    /// exact order they are applied. This is the single source of truth
+    /// SearchTemplateTokensTests compares against SearchTemplateTokens.All so
+    /// the catalog and the builder can never drift apart again (#see
+    /// SearchTemplateTokens for the history).
+    ///
+    /// Order matters: {Round:00} and {Round:0} must be applied before the
+    /// bare {Round}, and {Stage:00}/{Stage:0} before the bare {Stage}, so a
+    /// formatted token is never left partially matched by its shorter
+    /// prefix.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> SupportedTemplateTokens = new[]
+    {
+        "{League}", "{Year}", "{Month}", "{Day}",
+        "{Round:00}", "{Round:0}", "{Round}",
+        "{Stage:00}", "{Stage:0}", "{Stage}",
+        "{Week}", "{EventTitle}", "{EventName}",
+        "{HomeTeam}", "{AwayTeam}", "{vs}",
+        "{Season}", "{Part}", "{EventType}",
+    };
+
+    /// <summary>
     /// Build a search query from a custom template.
     /// Supports tokens: {League}, {Year}, {Month}, {Day}, {Round}, {Round:00}, {Round:0}, {Week}, {EventTitle},
     /// {EventName}, {Stage}, {Stage:00}, {Stage:0}, {HomeTeam}, {AwayTeam}, {vs}, {Season}, {Part}, {EventType}
@@ -58,81 +80,94 @@ public class EventQueryService
         // League name (normalized - remove spaces, use abbreviations)
         var leagueName = evt.League?.Name ?? "";
         var normalizedLeague = GetNormalizedLeagueNameForTemplate(leagueName);
-        result = result.Replace("{League}", normalizedLeague, StringComparison.OrdinalIgnoreCase);
 
         // Date components - prefer the broadcast-local date so end-of-day shows
         // (AEW Dec 31 8pm Eastern = Jan 1 UTC) are queried by their broadcast
         // date, matching how indexer releases are named.
         var queryDate = evt.BroadcastDate ?? evt.EventDate.Date;
-        result = result.Replace("{Year}", queryDate.Year.ToString(), StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{Month}", queryDate.Month.ToString("D2"), StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{Day}", queryDate.Day.ToString("D2"), StringComparison.OrdinalIgnoreCase);
 
         // Round number (for motorsports) with format options
         // {Round} or {Round:00} = zero-padded (01, 02, ... 22)
         // {Round:0} = no padding (1, 2, ... 22)
         var round = evt.Round ?? "";
+        string roundPadded, roundUnpadded;
         if (int.TryParse(round, out var roundNum))
         {
-            // Handle explicit format specifiers first
-            result = result.Replace("{Round:00}", roundNum.ToString("D2"), StringComparison.OrdinalIgnoreCase);
-            result = result.Replace("{Round:0}", roundNum.ToString(), StringComparison.OrdinalIgnoreCase);
-            // Default {Round} uses zero-padding for backwards compatibility
-            result = result.Replace("{Round}", roundNum.ToString("D2"), StringComparison.OrdinalIgnoreCase);
+            roundPadded = roundNum.ToString("D2");
+            roundUnpadded = roundNum.ToString();
         }
         else
         {
             // Non-numeric round value - use as-is for all variants
-            result = result.Replace("{Round:00}", round, StringComparison.OrdinalIgnoreCase);
-            result = result.Replace("{Round:0}", round, StringComparison.OrdinalIgnoreCase);
-            result = result.Replace("{Round}", round, StringComparison.OrdinalIgnoreCase);
+            roundPadded = round;
+            roundUnpadded = round;
         }
 
         // Stage number of a stage race. Round holds a season-wide event
         // index for these leagues, so it can not name a single stage.
         var stage = ExtractStageNumber(evt.Title);
         var stageText = stage?.ToString() ?? "";
-        result = result.Replace("{Stage:00}", stage?.ToString("D2") ?? "", StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{Stage:0}", stageText, StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{Stage}", stageText, StringComparison.OrdinalIgnoreCase);
+        var stagePadded = stage?.ToString("D2") ?? "";
 
         // Week number (for team sports)
         var weekNumber = GetWeekNumber(evt);
-        result = result.Replace("{Week}", weekNumber?.ToString() ?? "", StringComparison.OrdinalIgnoreCase);
-
-        // Event title (raw)
-        result = result.Replace("{EventTitle}", evt.Title ?? "", StringComparison.OrdinalIgnoreCase);
 
         // Event name with the trailing fighter matchup or stage number
         // stripped. Fighting releases name the card ("ONE Friday Fights 150")
         // but not the fighters. Stage-race releases name the race in the
         // user's own language, so the English "Stage 16" suffix must go.
-        result = result.Replace("{EventName}",
-            StripStageFromTitle(StripFightersFromTitle(evt.Title ?? "")), StringComparison.OrdinalIgnoreCase);
+        var eventName = StripStageFromTitle(StripFightersFromTitle(evt.Title ?? ""));
 
         // Team names. Reading only the HomeTeam/AwayTeam navigations left
         // these tokens empty for every league without linked Team rows, which
         // is most of them. ResolveTeamNames reads the denormalized name
         // columns first, the same way the reversed-order fallback does.
         var (resolvedHome, resolvedAway) = ResolveTeamNames(evt);
-        result = result.Replace("{HomeTeam}", homeTeamName ?? resolvedHome ?? "", StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{AwayTeam}", awayTeamName ?? resolvedAway ?? "", StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{vs}", "vs", StringComparison.OrdinalIgnoreCase);
 
-        // Season
-        result = result.Replace("{Season}", evt.Season ?? "", StringComparison.OrdinalIgnoreCase);
-
-        // Part being searched (Prelims, Main Card, ...); empty on whole-event
-        // searches so a template like "{EventName} {Part}" degrades cleanly.
-        result = result.Replace("{Part}", part ?? "", StringComparison.OrdinalIgnoreCase);
+        // Replacement values keyed by the same canonical token constants the
+        // catalog uses (SupportedTemplateTokens), applied in that array's
+        // order so {Round:00}/{Round:0} and {Stage:00}/{Stage:0} are
+        // substituted before their shorter {Round}/{Stage} prefixes could
+        // otherwise partially consume them.
+        var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{League}"] = normalizedLeague,
+            ["{Year}"] = queryDate.Year.ToString(),
+            ["{Month}"] = queryDate.Month.ToString("D2"),
+            ["{Day}"] = queryDate.Day.ToString("D2"),
+            ["{Round:00}"] = roundPadded,
+            ["{Round:0}"] = roundUnpadded,
+            ["{Round}"] = roundPadded,
+            ["{Stage:00}"] = stagePadded,
+            ["{Stage:0}"] = stageText,
+            ["{Stage}"] = stageText,
+            ["{Week}"] = weekNumber?.ToString() ?? "",
+            ["{EventTitle}"] = evt.Title ?? "",
+            ["{EventName}"] = eventName,
+            ["{HomeTeam}"] = homeTeamName ?? resolvedHome ?? "",
+            ["{AwayTeam}"] = awayTeamName ?? resolvedAway ?? "",
+            ["{vs}"] = "vs",
+            ["{Season}"] = evt.Season ?? "",
+            ["{Part}"] = part ?? "",
+        };
 
         // Detected fighting event type, spaced for release-name matching
         // ("FightNight" -> "Fight Night", "ContenderSeries" -> "Contender
-        // Series"); empty when the title doesn't classify.
+        // Series"); empty when the title doesn't classify. Computed lazily -
+        // only when the template actually asks for it - since classification
+        // does real work.
         if (result.Contains("{EventType}", StringComparison.OrdinalIgnoreCase))
         {
             var typeName = EventPartDetector.DetectFightingEventTypeName(evt.Title ?? "", evt.League?.Name);
-            result = result.Replace("{EventType}", SpacePascalCase(typeName), StringComparison.OrdinalIgnoreCase);
+            replacements["{EventType}"] = SpacePascalCase(typeName);
+        }
+
+        foreach (var token in SupportedTemplateTokens)
+        {
+            if (replacements.TryGetValue(token, out var value))
+            {
+                result = result.Replace(token, value, StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         // Clean up any double spaces
