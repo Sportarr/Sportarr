@@ -13,11 +13,17 @@ The query *builder* never reads the field. `EventQueryService.GetNormalizedLeagu
 
 Teams do not have this gap: `Team.UserAliases` feeds `BuildTeamAliasPairs()`, which emits extra query variants. Teamless leagues (motorsport, fighting, snooker, darts — see `LeagueSportRules.TeamlessSports`) have no equivalent and no compensating fallback.
 
-### Secondary problem: the token list is stale and dead
+### Secondary problem: three tokens are unreachable from the UI
 
-`GET /api/search/available-tokens` advertises 12 tokens. `BuildQueryFromTemplate` handles 19. Missing from the endpoint: `{Round:00}`, `{Round:0}`, `{Stage}`, `{Stage:00}`, `{Stage:0}`, `{Part}`, `{EventType}`.
+`BuildQueryFromTemplate` substitutes **19** tokens. The clickable token buttons in `AddLeagueModal` offer **16**. These three are handled by the backend but have no button:
 
-Worse, **nothing consumes the endpoint**. `AddLeagueModal.tsx` hardcodes its own `searchTokens` array, which is separately incomplete (missing `{Round:00}`, `{Stage:0}`, `{vs}`). Two sources of truth, both wrong, in different ways.
+```
+{Round:00}   {Stage:0}   {vs}
+```
+
+They work if the user types them by hand, but the UI presents the button row as the set of available tokens, so in practice they are undiscoverable. This is the user-facing bug.
+
+Underneath it is a two-sources-of-truth problem. `GET /api/search/available-tokens` advertises 12 tokens and is missing seven (`{Round:00}`, `{Round:0}`, `{Stage}`, `{Stage:00}`, `{Stage:0}`, `{Part}`, `{EventType}`) — and **nothing consumes it**. `AddLeagueModal.tsx` hardcodes its own separate `searchTokens` array. Two lists, both wrong, in different ways, neither checked against the code that does the substituting.
 
 ## Non-goals
 
@@ -78,11 +84,30 @@ Outer-looping on league variant (not template) is what guarantees every canonica
 
 ### 4. Default builder path
 
-`BuildMotorsportQueries`, `BuildWrestlingQueries`, `BuildFightingQueries`, and `BuildTeamSportQueries` all accept `leagueName` as a parameter and derive everything from it (`GetMotorsportSeriesPrefix(leagueName)`, etc.).
+Two different mechanisms, because motorsport is structurally different from the other three.
 
-So the dispatch site calls the selected builder once per league-name variant, passing the variant as `leagueName`. **No changes to builder internals.** Existing dedup on the shared `queries` list absorbs collisions.
+#### 4a. Motorsport — inject aliases into the search prefixes
 
-Known limitation, accepted: motorsport maps `leagueName` through `GetMotorsportSeriesPrefix` to a series key with its own hardcoded prefix list, so aliases resolving to the same series key produce identical queries and dedup away. Alias expansion is effectively a no-op for motorsport. This is correct behaviour — that builder already carries its own naming variants — and it still helps every sport whose builder embeds the league name directly.
+`GetMotorsportSearchPrefixes(seriesKey)` is already the league-alias concept, hardcoded and closed to extension:
+
+```csharp
+"Formula1" => { "Formula 1", "Formula1" },
+"FormulaE" => { "Formula E", "FormulaE" },
+"WSBK"     => { "WSBK", "SBK" },
+_          => { seriesKey }          // one form only
+```
+
+F1, Formula E and WSBK search two name forms each. **MotoGP, NASCAR, IndyCar, WRC and BSB search exactly one**, and a motorsport league that misses the `GetMotorsportSeriesPrefix` ladder entirely falls through to `leagueName.Replace(" ", "")` — one concatenated form that frequently matches no release naming convention in use.
+
+Change: `GetMotorsportSearchPrefixes(seriesKey, league)` appends `League.AlternateName` and `League.UserAliases` entries to the hardcoded forms, deduped case-insensitively, alias contributions capped at 3.
+
+The existing `foreach (var prefix in searchPrefixes)` loop at `EventQueryService.cs:415` then emits the full round + location + fallback query set per name form with no further change. Hardcoded forms stay first, preserving the deliberate ordering comment at line 412 ("spaced form first so its results win the found-enough optimization").
+
+This is the primary motorsport fix and the reason motorsport is no longer a deferred limitation. Looping the whole builder per league-name variant would *not* work here — every variant collapses through `GetMotorsportSeriesPrefix` to the same series key and dedups away to a no-op.
+
+#### 4b. Wrestling, fighting, team sport — loop per league-name variant
+
+`BuildWrestlingQueries`, `BuildFightingQueries` and `BuildTeamSportQueries` embed `leagueName` directly rather than mapping it through a series key. For these the dispatch site calls the builder once per league-name variant, passing the variant as `leagueName`. **No changes to builder internals.** Existing dedup on the shared `queries` list absorbs collisions.
 
 ### 5. Query budget
 
@@ -110,8 +135,9 @@ This also retroactively bounds the current uncapped worst case of `10 templates 
 ### 6. Token list repair
 
 - Extract `SearchTemplateTokens.All` to `src/Helpers/`, listing all 19 tokens with description and example. `GET /api/search/available-tokens` serves it.
-- `AddLeagueModal.tsx` fetches the endpoint on open, retaining its current hardcoded array as an offline fallback.
-- **Completeness test** (this is what prevents a third staleness regression): build a template string containing every token in `SearchTemplateTokens.All`, run `BuildQueryFromTemplate` against a fully-populated sample event, assert no unsubstituted `{...}` remains. Separately assert every `result.Replace("{...}"` literal in `BuildQueryFromTemplate` appears in `All`.
+- `AddLeagueModal.tsx` fetches the endpoint on open and renders a button per returned token, retaining a hardcoded array as an offline fallback. **The fallback array must also list all 19** — a stale fallback reintroduces the same bug whenever the fetch fails.
+- **Acceptance check:** `{Round:00}`, `{Stage:0}` and `{vs}` each render a clickable button that inserts correctly at the cursor.
+- **Completeness test** (this is what prevents a third staleness regression): build a template string containing every token in `SearchTemplateTokens.All`, run `BuildQueryFromTemplate` against a fully-populated sample event, assert no unsubstituted `{...}` remains. Separately assert every `result.Replace("{...}"` literal in `BuildQueryFromTemplate` appears in `All`, so adding a token to the builder without listing it fails the build.
 
 ### 7. UI
 
@@ -125,10 +151,11 @@ Alias visibility comes free — the existing **Preview** button calls `BuildEven
 |---|---|
 | `BuildLeagueNameVariants` | canonical first; upstream + user merged; case-insensitive dedup; 3-alias cap; null league; no-alias league returns 1 element |
 | Template path | alias generates variants; `queries[0]` unchanged vs. today for every existing league; team-alias interaction |
-| Default path | all four builders expand; motorsport dedups to no-op |
+| Motorsport (4a) | alias appended after hardcoded forms; MotoGP/NASCAR/IndyCar/WRC/BSB gain a second form from an alias; F1 spaced-form-first ordering preserved; 3-alias cap; league with no alias produces byte-identical queries to today |
+| Other builders (4b) | wrestling, fighting, team sport each expand per variant; dedup absorbs collisions |
 | Budget | truncates at 12; drops alias variants before canonical; warning logged |
 | Sync safety | metadata refresh overwrites `AlternateName`, leaves `UserAliases` intact |
-| Tokens | completeness test both directions |
+| Tokens | completeness test both directions; the 3 previously-unreachable tokens render as buttons; offline fallback array lists all 19 |
 | Migration | applies clean; existing leagues get null |
 
 Existing `MultipleSearchTemplatesTests.cs` must continue to pass unmodified — it pins the current template behaviour.
@@ -138,3 +165,4 @@ Existing `MultipleSearchTemplatesTests.cs` must continue to pass unmodified — 
 - **Indexer load.** Bounded by the 12-query ceiling, which is stricter than today's effective 40.
 - **Bad upstream aliases** wasting queries. Mitigated: `UserAliases` lets users add what works; the 3-cap bounds the damage. Suppressing a bad upstream alias is not supported and is deferred until someone reports it.
 - **Cache churn** on first search post-upgrade. One-time, documented.
+- **Motorsport prefix ordering.** Appending aliases after the hardcoded forms preserves the "spaced form first" optimization noted at `EventQueryService.cs:412`. A test pins byte-identical output for alias-free leagues so this cannot regress silently.
