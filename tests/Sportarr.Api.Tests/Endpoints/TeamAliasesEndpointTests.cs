@@ -17,37 +17,16 @@ namespace Sportarr.Api.Tests.Endpoints;
 /// helper - both out of scope for a test-only fix. Per instructions, that extraction was not
 /// done here.
 ///
-/// What the handler actually does for the two behaviors under review is exactly this:
-///   - reject raw input longer than AliasField.MaxUserAliasesLength with a 400
-///   - otherwise store AliasField.Normalize(raw), having split on comma/pipe/slash via
-///     AliasField.Parse
-/// Both are covered by the shared helper the handler calls unmodified below. This proves
-/// the split/normalize logic is right and that the boundary is exactly 512/513, but it does
-/// NOT exercise the handler's own JsonElement parsing, its Results.BadRequest shape, or the
-/// analytics side effect - those remain uncovered at the endpoint level.
+/// This file covers only the shared AliasField parsing/normalization the handler
+/// delegates to for its split-and-store path (the pipe/slash bug fix and the
+/// canonical comma-and-space storage form). It does NOT cover the handler's own
+/// JsonElement parsing, its 400 response shape/length-cap rejection, or the
+/// analytics side effect - the handler is an inline lambda with no extracted seam,
+/// so those remain uncovered at the endpoint level. See the report for why no
+/// extraction was made to close that gap.
 /// </summary>
 public class TeamAliasesEndpointTests
 {
-    [Fact]
-    public void AliasField_Accepts512CharacterAliases()
-    {
-        var raw = new string('a', AliasField.MaxUserAliasesLength);
-
-        raw.Length.Should().Be(512);
-        raw.Length.Should().BeLessOrEqualTo(AliasField.MaxUserAliasesLength,
-            "512 characters is the endpoint's accept boundary, not a rejection");
-    }
-
-    [Fact]
-    public void AliasField_Rejects513CharacterAliases()
-    {
-        var raw = new string('a', AliasField.MaxUserAliasesLength + 1);
-
-        raw.Length.Should().Be(513);
-        raw.Length.Should().BeGreaterThan(AliasField.MaxUserAliasesLength,
-            "the endpoint's 400 branch triggers on raw.Length > AliasField.MaxUserAliasesLength, i.e. 513+");
-    }
-
     [Theory]
     [InlineData("Man Utd | MUFC")]
     [InlineData("Man Utd / MUFC")]
