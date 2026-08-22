@@ -113,4 +113,27 @@ public class ImportLeagueIdentityTests
         ReleaseMatchingService.TitleHasLeagueIdentity(title, "Monaco Grand Prix - Race", F1())
             .Should().Be(expected);
     }
+
+    // Regression: the shared helper both TitleHasLeagueIdentity (via TitleNamesLeague)
+    // and the import scorer's series-label gate call must consult League.UserAliases,
+    // not just the upstream AlternateName field. A release/import filename naming
+    // only a user-defined alias must not be rejected on the import side either.
+    [Fact]
+    public void ImportScorer_AcceptsSeriesLabelNamedOnlyByUserAlias()
+    {
+        var f1WithUserAlias = new League { Id = 2, Name = "Formula 1", Sport = "Motorsport", UserAliases = "F1TV Feed" };
+        var evt = MonacoRace();
+        evt.League = f1WithUserAlias;
+
+        LibraryImportService.CalculateMatchConfidence(
+            searchTitle: "betr Monaco Grand Prix",
+            eventTitle: "Monaco Grand Prix - Race",
+            organization: null,
+            evt: evt,
+            parsedDate: null,
+            parsedYear: 2026,
+            parsedRoundNumber: 6,
+            seriesLabel: "F1TV Feed")
+        .Should().BeGreaterThan(0);
+    }
 }

@@ -1771,10 +1771,14 @@ public class LibraryImportService
         // Hard cross-sport gate: if we identified an organization (IndyCar, NBA, NFL…),
         // reject any event from a different league immediately. This prevents IndyCar
         // files from matching NBA events, even when the title fuzzy score is high.
+        // Checked against every known alias for the league (canonical name, upstream
+        // alternate names, and any user-defined alias) so a release identified only
+        // by a user alias is not wrongly rejected here.
         if (!string.IsNullOrEmpty(organization) && evt.League != null)
         {
-            var leagueMatch = evt.League.Name.Contains(organization, StringComparison.OrdinalIgnoreCase)
-                           || organization.Contains(evt.League.Name, StringComparison.OrdinalIgnoreCase);
+            var leagueMatch = LeagueAliasHelper.GetMatchingAliases(evt.League).Any(alias =>
+                alias.Contains(organization, StringComparison.OrdinalIgnoreCase) ||
+                organization.Contains(alias, StringComparison.OrdinalIgnoreCase));
             if (!leagueMatch)
                 return 0; // Wrong sport — eliminate before any title comparison
             confidence += 15;

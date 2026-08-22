@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -399,11 +400,8 @@ public class ChannelAutoMappingService
             }
 
             AddToken(NormalizeLeagueName(league.Name));
-            if (!string.IsNullOrEmpty(league.AlternateName))
-            {
-                foreach (var alt in league.AlternateName.Split(new[] { ',', '|', '/' }, StringSplitOptions.RemoveEmptyEntries))
-                    AddToken(alt);
-            }
+            foreach (var alt in AliasField.Parse(league.AlternateName))
+                AddToken(alt);
 
             var eventTitles = await _db.Events
                 .Where(e => e.LeagueId == league.Id && e.EventDate >= windowStart && e.EventDate <= windowEnd)

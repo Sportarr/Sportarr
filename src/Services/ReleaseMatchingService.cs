@@ -656,21 +656,16 @@ public class ReleaseMatchingService
         }
 
         // VALIDATION 4: League/Organization match
-        // Match against the league's canonical name and any of its
-        // alternate names — release groups frequently use the
-        // sponsor-branded form (e.g. release titled "Gallagher
-        // Premiership..." for a league whose canonical name is
-        // "English Prem Rugby"). League.AlternateName carries the
-        // upstream API's strLeagueAlternate, which is comma-separated.
+        // Match against the league's canonical name and any of its known
+        // aliases — release groups frequently use the sponsor-branded form
+        // (e.g. release titled "Gallagher Premiership..." for a league whose
+        // canonical name is "English Prem Rugby"). Consults the same
+        // enumeration every other league-identity gate uses (upstream
+        // alternate names AND any user-defined aliases) so a release found
+        // only through a user alias cannot fail identity matching here.
         if (parseResult.Organization != null && evt.League != null)
         {
-            var leagueAliases = new List<string> { evt.League.Name };
-            if (!string.IsNullOrEmpty(evt.League.AlternateName))
-            {
-                leagueAliases.AddRange(SplitAliases(evt.League.AlternateName));
-            }
-
-            var matched = leagueAliases.Any(alias =>
+            var matched = LeagueAliasHelper.GetMatchingAliases(evt.League).Any(alias =>
                 alias.Contains(parseResult.Organization, StringComparison.OrdinalIgnoreCase) ||
                 parseResult.Organization.Contains(alias, StringComparison.OrdinalIgnoreCase));
 
@@ -1401,7 +1396,7 @@ public class ReleaseMatchingService
         var normalizedTitle = NormalizeTitle(releaseTitle);
         var compactTitle = RemoveSeparators(normalizedTitle);
 
-        foreach (var alias in LeagueAliases(league))
+        foreach (var alias in LeagueAliasHelper.GetMatchingAliases(league))
         {
             var normalizedAlias = NormalizeTitle(alias);
             if (string.IsNullOrWhiteSpace(normalizedAlias)) continue;
@@ -1464,7 +1459,7 @@ public class ReleaseMatchingService
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var alias in LeagueAliases(league))
+        foreach (var alias in LeagueAliasHelper.GetMatchingAliases(league))
         {
             var normalizedAlias = NormalizeTitle(alias);
             if (string.IsNullOrWhiteSpace(normalizedAlias)) continue;
@@ -1488,23 +1483,6 @@ public class ReleaseMatchingService
         }
 
         return false;
-    }
-
-    private static IEnumerable<string> LeagueAliases(League league)
-    {
-        yield return league.Name;
-        if (!string.IsNullOrEmpty(league.AlternateName))
-        {
-            foreach (var alias in SplitAliases(league.AlternateName))
-                yield return alias;
-        }
-
-        // "<Word> <number>" series conventionally abbreviate to first letter
-        // + number (Formula 1 → F1). Generated so leagues whose upstream
-        // record carries no alternate names still match the common form.
-        var abbrev = Regex.Match(league.Name ?? "", @"^([A-Za-z])[A-Za-z]*\s+(\d+)$");
-        if (abbrev.Success)
-            yield return abbrev.Groups[1].Value + abbrev.Groups[2].Value;
     }
 
     public static string NormalizeTitle(string title)
