@@ -1407,19 +1407,7 @@ public class LeagueEventSyncService
                 return;
             }
 
-            // Copy fields that come from upstream — never overwrite with
-            // empty / null. AlternateName / LogoUrl / etc. land here
-            // when upstream surfaces a value the existing row was
-            // missing (the most common case for legacy leagues added
-            // before the new bindings landed).
-            if (!string.IsNullOrEmpty(fullDetails.AlternateName)) league.AlternateName = fullDetails.AlternateName;
-            if (!string.IsNullOrEmpty(fullDetails.LogoUrl))       league.LogoUrl = fullDetails.LogoUrl;
-            if (!string.IsNullOrEmpty(fullDetails.BannerUrl))     league.BannerUrl = fullDetails.BannerUrl;
-            if (!string.IsNullOrEmpty(fullDetails.PosterUrl))     league.PosterUrl = fullDetails.PosterUrl;
-            if (!string.IsNullOrEmpty(fullDetails.Description))   league.Description = fullDetails.Description;
-            if (!string.IsNullOrEmpty(fullDetails.Website))       league.Website = fullDetails.Website;
-            if (!string.IsNullOrEmpty(fullDetails.FormedYear))    league.FormedYear = fullDetails.FormedYear;
-            if (!string.IsNullOrEmpty(fullDetails.Country))       league.Country = fullDetails.Country;
+            ApplyUpstreamMetadata(league, fullDetails);
 
             league.MetadataLastSyncedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
@@ -1439,6 +1427,29 @@ public class LeagueEventSyncService
                 "[League Event Sync] Metadata refresh failed for {LeagueName}: {Message}",
                 league.Name, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Copy the fields that come from upstream onto the local league row —
+    /// never overwriting with empty / null. AlternateName / LogoUrl / etc.
+    /// land here when upstream surfaces a value the existing row was missing
+    /// (the most common case for legacy leagues added before the new
+    /// bindings landed).
+    ///
+    /// Deliberately touches no local-only field: UserAliases,
+    /// AliasSearchOrder, and SearchEarlyStopMatchScoreOverride belong to the
+    /// user, not to the hub, and must survive every refresh.
+    /// </summary>
+    private static void ApplyUpstreamMetadata(League league, League fullDetails)
+    {
+        if (!string.IsNullOrEmpty(fullDetails.AlternateName)) league.AlternateName = fullDetails.AlternateName;
+        if (!string.IsNullOrEmpty(fullDetails.LogoUrl))       league.LogoUrl = fullDetails.LogoUrl;
+        if (!string.IsNullOrEmpty(fullDetails.BannerUrl))     league.BannerUrl = fullDetails.BannerUrl;
+        if (!string.IsNullOrEmpty(fullDetails.PosterUrl))     league.PosterUrl = fullDetails.PosterUrl;
+        if (!string.IsNullOrEmpty(fullDetails.Description))   league.Description = fullDetails.Description;
+        if (!string.IsNullOrEmpty(fullDetails.Website))       league.Website = fullDetails.Website;
+        if (!string.IsNullOrEmpty(fullDetails.FormedYear))    league.FormedYear = fullDetails.FormedYear;
+        if (!string.IsNullOrEmpty(fullDetails.Country))       league.Country = fullDetails.Country;
     }
 
     /// <summary>

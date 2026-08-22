@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Validators;
 using System.Text.Json;
 
 namespace Sportarr.Api.Services;
@@ -16,6 +17,15 @@ public class LeagueAddResult
 {
     public bool Success { get; set; }
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// camelCase name of the offending request field when the failure is
+    /// field-specific, so the endpoint can return the same
+    /// { field, error } body the team alias endpoint returns. Null for
+    /// failures that aren't tied to a single field.
+    /// </summary>
+    public string? Field { get; set; }
+
     public int StatusCode { get; set; } = 200;
     public League? League { get; set; }
     public bool Monitored { get; set; }
@@ -43,6 +53,12 @@ public class LeagueAddService
     private readonly NotificationService _notificationService;
     private readonly ILogger<LeagueAddService> _logger;
 
+    /// <summary>
+    /// Stateless and cheap, so it is shared rather than injected - keeping it
+    /// out of the constructor leaves every existing call site untouched.
+    /// </summary>
+    private static readonly AddLeagueRequestValidator _validator = new();
+
     public LeagueAddService(
         SportarrDbContext db,
         TaskService taskService,
@@ -61,6 +77,25 @@ public class LeagueAddService
     {
         try
         {
+            // POST /api/leagues deserializes the body by hand, so no
+            // validation endpoint filter ever runs against this request.
+            // Invoke the validator here instead, before anything is written,
+            // so the add path enforces exactly what the update path does.
+            var validation = _validator.Validate(request);
+            if (!validation.IsValid)
+            {
+                var failure = validation.Errors[0];
+                var field = char.ToLowerInvariant(failure.PropertyName[0]) + failure.PropertyName[1..];
+                _logger.LogWarning("[LEAGUES] Rejected: {Field} - {Error}", field, failure.ErrorMessage);
+                return new LeagueAddResult
+                {
+                    Success = false,
+                    StatusCode = 400,
+                    Field = field,
+                    ErrorMessage = failure.ErrorMessage
+                };
+            }
+
             // Convert DTO to League entity
             var league = request.ToLeague();
 

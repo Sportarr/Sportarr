@@ -283,6 +283,32 @@ public class League
     public string? SearchQueryTemplate { get; set; }
 
     /// <summary>
+    /// Extra league names the user wants searched, in the same
+    /// comma/pipe/slash-separated form as Team.UserAliases and stored
+    /// normalized via AliasField.Normalize. Purely local: the weekly
+    /// upstream metadata refresh never writes this field, so a user alias
+    /// survives every refresh. Null = none.
+    /// </summary>
+    public string? UserAliases { get; set; }
+
+    /// <summary>
+    /// The user's customized ordering of this league's name forms, stored
+    /// as JSON. Null means the order was never customized and the default
+    /// ordering applies. Saved positions are reconciled by normalized
+    /// value after the effective forms are deduplicated; Source is kept
+    /// only as provenance for the UI.
+    /// </summary>
+    public List<LeagueAliasOrderEntry>? AliasSearchOrder { get; set; }
+
+    /// <summary>
+    /// Per-league override for the global search early-stop match score.
+    /// Null inherits the global setting, 0 disables early stopping for this
+    /// league, and a positive value (up to 100, matching ReleaseMatchScorer's
+    /// clamp) replaces the global threshold.
+    /// </summary>
+    public int? SearchEarlyStopMatchScoreOverride { get; set; }
+
+    /// <summary>
     /// Override the global DVR pre-roll padding (minutes before the
     /// scheduled event start) for this league. Null falls back to
     /// sport-specific defaults, then to the global setting. Sports
@@ -485,6 +511,15 @@ public class AddLeagueRequest
     /// </summary>
     public string? SearchQueryTemplate { get; set; }
 
+    /// <summary>Extra league names to search, comma/pipe/slash separated (see League.UserAliases).</summary>
+    public string? UserAliases { get; set; }
+
+    /// <summary>Customized alias search order; null = never customized (see League.AliasSearchOrder).</summary>
+    public List<LeagueAliasOrderEntry>? AliasSearchOrder { get; set; }
+
+    /// <summary>Per-league early-stop match score override; null inherits the global setting.</summary>
+    public int? SearchEarlyStopMatchScoreOverride { get; set; }
+
     /// <summary>
     /// Convert DTO to League entity for database
     /// </summary>
@@ -514,6 +549,9 @@ public class AddLeagueRequest
             AllowHighlights = AllowHighlights,
             RetentionDays = Math.Max(0, RetentionDays),
             SearchQueryTemplate = SearchQueryTemplate,
+            UserAliases = AliasField.Normalize(UserAliases),
+            AliasSearchOrder = AliasSearchOrder,
+            SearchEarlyStopMatchScoreOverride = SearchEarlyStopMatchScoreOverride,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
             PosterUrl = PosterUrl,
@@ -562,6 +600,16 @@ public class LeagueResponse
     public bool MonitorPreseason { get; set; }
     public bool AllowHighlights { get; set; }
     public string? SearchQueryTemplate { get; set; }
+
+    /// <summary>Extra league names to search, comma separated (see League.UserAliases).</summary>
+    public string? UserAliases { get; set; }
+
+    /// <summary>Customized alias search order; null = never customized.</summary>
+    public List<LeagueAliasOrderEntry>? AliasSearchOrder { get; set; }
+
+    /// <summary>Per-league early-stop match score override; null inherits the global setting.</summary>
+    public int? SearchEarlyStopMatchScoreOverride { get; set; }
+
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
     public string? PosterUrl { get; set; }
@@ -680,6 +728,9 @@ public class LeagueResponse
             AllowHighlights = league.AllowHighlights,
             RetentionDays = league.RetentionDays,
             SearchQueryTemplate = league.SearchQueryTemplate,
+            UserAliases = league.UserAliases,
+            AliasSearchOrder = league.AliasSearchOrder,
+            SearchEarlyStopMatchScoreOverride = league.SearchEarlyStopMatchScoreOverride,
             LogoUrl = league.LogoUrl,
             BannerUrl = league.BannerUrl,
             PosterUrl = league.PosterUrl,

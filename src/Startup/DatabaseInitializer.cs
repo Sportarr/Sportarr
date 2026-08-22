@@ -1146,6 +1146,37 @@ public static class DatabaseInitializer
             }
         }
 
+        // Ensure the league search preference columns exist in Leagues
+        // (user aliases, the customized alias search order, and the
+        // per-league early-stop match score override). All three are
+        // nullable with no backfill: NULL means "never customized" for the
+        // alias order and "inherit the global setting" for the override.
+        // The alias column stays unconstrained TEXT - the 512-character
+        // limit is application validation only.
+        foreach (var (searchPrefCol, searchPrefType) in new[]
+                 {
+                     ("UserAliases", "TEXT"),
+                     ("AliasSearchOrder", "TEXT"),
+                     ("SearchEarlyStopMatchScoreOverride", "INTEGER")
+                 })
+        {
+            try
+            {
+                var checkSearchPrefSql = $"SELECT COUNT(*) FROM pragma_table_info('Leagues') WHERE name='{searchPrefCol}'";
+                var searchPrefExists = db.Database.SqlQueryRaw<int>(checkSearchPrefSql).AsEnumerable().FirstOrDefault();
+                if (searchPrefExists == 0)
+                {
+                    Console.WriteLine($"[Sportarr] Leagues.{searchPrefCol} column missing - adding it now...");
+                    db.Database.ExecuteSqlRaw($"ALTER TABLE \"Leagues\" ADD COLUMN \"{searchPrefCol}\" {searchPrefType} NULL");
+                    Console.WriteLine($"[Sportarr] Leagues.{searchPrefCol} column added successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Sportarr] Warning: Could not verify Leagues.{searchPrefCol} column: {ex.Message}");
+            }
+        }
+
         // Ensure HubChangesCursor column exists in AppSettings (hub changes
         // feed poller). Stores the last consumed feed sequence so polling
         // resumes across restarts.

@@ -191,6 +191,19 @@ public class SportarrDbContext : DbContext
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));
+            // Same JSON-column pattern as Tags. Nullable on purpose: a null
+            // column means the alias order was never customized, which is
+            // distinct from an empty (all forms removed) order.
+            entity.Property(l => l.AliasSearchOrder).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<LeagueAliasOrderEntry>>(v, JsonSerializerOptionsProvider.Database)
+            ).Metadata.SetValueComparer(new ValueComparer<List<LeagueAliasOrderEntry>?>(
+                (c1, c2) => c1 == null
+                    ? c2 == null
+                    : c2 != null && c1.Count == c2.Count
+                        && c1.Zip(c2, (e1, e2) => e1.Source == e2.Source && e1.Value == e2.Value).All(same => same),
+                c => c == null ? 0 : c.Aggregate(0, (a, v) => HashCode.Combine(a, v.Source.GetHashCode(), v.Value.GetHashCode())),
+                c => c == null ? null : c.Select(e => new LeagueAliasOrderEntry { Source = e.Source, Value = e.Value }).ToList()));
         });
 
         // Team configuration

@@ -2231,6 +2231,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<DateTime>("Added")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("AliasSearchOrder")
+                        .HasColumnType("text");
+
                     b.Property<bool>("AllowHighlights")
                         .HasColumnType("boolean");
 
@@ -2329,6 +2332,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<int?>("RootFolderId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("SearchEarlyStopMatchScoreOverride")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("SearchForCutoffUnmetEvents")
                         .HasColumnType("boolean");
 
@@ -2349,6 +2355,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<string>("Tags")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserAliases")
                         .HasColumnType("text");
 
                     b.Property<string>("Website")
