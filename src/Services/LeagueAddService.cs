@@ -26,6 +26,13 @@ public class LeagueAddResult
     /// </summary>
     public string? Field { get; set; }
 
+    /// <summary>
+    /// Every field-specific failure for this request, in validator order.
+    /// Field/ErrorMessage above mirror the first entry so existing callers
+    /// keep working. Empty for non-validation failures.
+    /// </summary>
+    public List<LeagueFieldError> Errors { get; set; } = new();
+
     public int StatusCode { get; set; } = 200;
     public League? League { get; set; }
     public bool Monitored { get; set; }
@@ -84,15 +91,19 @@ public class LeagueAddService
             var validation = _validator.Validate(request);
             if (!validation.IsValid)
             {
-                var failure = validation.Errors[0];
-                var field = char.ToLowerInvariant(failure.PropertyName[0]) + failure.PropertyName[1..];
-                _logger.LogWarning("[LEAGUES] Rejected: {Field} - {Error}", field, failure.ErrorMessage);
+                // Every failure is reported, not just the first: a request
+                // that gets both its aliases and its early-stop override
+                // wrong should learn about both in one round trip.
+                var errors = LeagueValidationErrors.Map(validation);
+                _logger.LogWarning("[LEAGUES] Rejected: {Errors}",
+                    string.Join("; ", errors.Select(e => $"{e.Field} - {e.Error}")));
                 return new LeagueAddResult
                 {
                     Success = false,
                     StatusCode = 400,
-                    Field = field,
-                    ErrorMessage = failure.ErrorMessage
+                    Field = errors[0].Field,
+                    ErrorMessage = errors[0].Error,
+                    Errors = errors
                 };
             }
 

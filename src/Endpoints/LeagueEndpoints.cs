@@ -876,129 +876,21 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
-    // Local league search preferences. All three are purely local: the
-    // weekly upstream metadata refresh never writes them, so what the user
-    // sets here survives every refresh.
-    if (body.TryGetProperty("userAliases", out var userAliasesProp))
+    // Local league search preferences (user aliases, saved alias order,
+    // early-stop override). All three are purely local: the weekly upstream
+    // metadata refresh never writes them, so what the user sets here
+    // survives every refresh. Parsing, validation, and assignment live in
+    // ApplyLeagueSearchPreferences so this handler and POST /api/leagues
+    // enforce one shared set of rules.
+    var searchPreferenceErrors = ApplyLeagueSearchPreferences(body, league, logger);
+    if (searchPreferenceErrors.Count > 0)
     {
-        var rawAliases = userAliasesProp.ValueKind == JsonValueKind.Null
-            ? null
-            : userAliasesProp.GetString();
-
-        if (rawAliases is not null && rawAliases.Length > AliasField.MaxUserAliasesLength)
+        return Results.BadRequest(new
         {
-            return Results.BadRequest(new
-            {
-                field = "userAliases",
-                error = $"userAliases must be {AliasField.MaxUserAliasesLength} characters or fewer"
-            });
-        }
-
-        var newAliases = AliasField.Normalize(rawAliases);
-        if (league.UserAliases != newAliases)
-        {
-            logger.LogInformation("[LEAGUES] UserAliases changing from '{Old}' to '{New}'",
-                league.UserAliases ?? "(none)", newAliases ?? "(none)");
-            league.UserAliases = newAliases;
-        }
-    }
-
-    if (body.TryGetProperty("aliasSearchOrder", out var aliasOrderProp))
-    {
-        // Null clears the customization entirely and returns the league to
-        // the default ordering; an empty array is a real (all-forms-removed)
-        // order and is kept as such.
-        List<LeagueAliasOrderEntry>? newOrder = null;
-        if (aliasOrderProp.ValueKind != JsonValueKind.Null)
-        {
-            try
-            {
-                newOrder = JsonSerializer.Deserialize<List<LeagueAliasOrderEntry>>(
-                    aliasOrderProp.GetRawText(),
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            }
-            catch (JsonException)
-            {
-                return Results.BadRequest(new
-                {
-                    field = "aliasSearchOrder",
-                    error = "aliasSearchOrder must be an array of { source, value } entries"
-                });
-            }
-        }
-
-        if (newOrder is not null)
-        {
-            if (newOrder.Count > AddLeagueRequestValidator.MaxAliasOrderEntries)
-            {
-                return Results.BadRequest(new
-                {
-                    field = "aliasSearchOrder",
-                    error = $"aliasSearchOrder must hold at most {AddLeagueRequestValidator.MaxAliasOrderEntries} entries"
-                });
-            }
-            if (newOrder.Any(e => !Enum.IsDefined(typeof(LeagueNameFormSource), e.Source)))
-            {
-                return Results.BadRequest(new
-                {
-                    field = "aliasSearchOrder",
-                    error = "aliasSearchOrder entries must carry a known source"
-                });
-            }
-            if (newOrder.Any(e => string.IsNullOrWhiteSpace(e.Value)
-                || e.Value.Length > AddLeagueRequestValidator.MaxAliasOrderValueLength))
-            {
-                return Results.BadRequest(new
-                {
-                    field = "aliasSearchOrder",
-                    error = $"aliasSearchOrder values must be non-empty and at most {AddLeagueRequestValidator.MaxAliasOrderValueLength} characters"
-                });
-            }
-        }
-
-        logger.LogInformation("[LEAGUES] AliasSearchOrder changing to {Count} entries",
-            newOrder?.Count.ToString() ?? "(default)");
-        league.AliasSearchOrder = newOrder;
-    }
-
-    if (body.TryGetProperty("searchEarlyStopMatchScoreOverride", out var earlyStopProp))
-    {
-        int? newOverride;
-        if (earlyStopProp.ValueKind == JsonValueKind.Null)
-        {
-            newOverride = null;
-        }
-        else if (earlyStopProp.ValueKind == JsonValueKind.Number && earlyStopProp.TryGetInt32(out var parsedOverride))
-        {
-            newOverride = parsedOverride;
-        }
-        else
-        {
-            return Results.BadRequest(new
-            {
-                field = "searchEarlyStopMatchScoreOverride",
-                error = "searchEarlyStopMatchScoreOverride must be a whole number or null"
-            });
-        }
-
-        if (newOverride is int overrideValue &&
-            (overrideValue < AddLeagueRequestValidator.MinEarlyStopMatchScore ||
-             overrideValue > AddLeagueRequestValidator.MaxEarlyStopMatchScore))
-        {
-            return Results.BadRequest(new
-            {
-                field = "searchEarlyStopMatchScoreOverride",
-                error = $"searchEarlyStopMatchScoreOverride must be between {AddLeagueRequestValidator.MinEarlyStopMatchScore} and {AddLeagueRequestValidator.MaxEarlyStopMatchScore}"
-            });
-        }
-
-        if (league.SearchEarlyStopMatchScoreOverride != newOverride)
-        {
-            logger.LogInformation("[LEAGUES] SearchEarlyStopMatchScoreOverride changing from {Old} to {New}",
-                league.SearchEarlyStopMatchScoreOverride?.ToString() ?? "(global)",
-                newOverride?.ToString() ?? "(global)");
-            league.SearchEarlyStopMatchScoreOverride = newOverride;
-        }
+            field = searchPreferenceErrors[0].Field,
+            error = searchPreferenceErrors[0].Error,
+            errors = searchPreferenceErrors
+        });
     }
 
     if (body.TryGetProperty("tags", out var tagsProp))
@@ -1619,7 +1511,7 @@ app.MapPost("/api/leagues", async (HttpContext context, LeagueAddService leagueA
             // the team alias endpoint's body shape.
             return result.Field is null
                 ? Results.BadRequest(new { error = result.ErrorMessage })
-                : Results.BadRequest(new { field = result.Field, error = result.ErrorMessage });
+                : Results.BadRequest(new { field = result.Field, error = result.ErrorMessage, errors = result.Errors });
         }
         return Results.Problem(detail: result.ErrorMessage, statusCode: result.StatusCode, title: "Error adding league");
     }
@@ -2443,6 +2335,119 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
             ? events
             : FilterEventsByMonitoredTeams(events, monitoredTeamIds, league);
     }
+
+    /// <summary>
+    /// Reads the three league search preference fields out of a partial
+    /// update body, validates them with the same AddLeagueRequestValidator
+    /// the add path runs, and applies them to <paramref name="league"/>.
+    ///
+    /// The validator is fed a request shim carrying only the submitted
+    /// fields, so a rule added to the validator binds here automatically and
+    /// the two write paths cannot drift. Nothing is assigned unless every
+    /// submitted field validates. Returns an empty list on success.
+    ///
+    /// Absent fields are left untouched; an explicit null clears. For the
+    /// alias order specifically, null restores the default ordering while an
+    /// empty array is a real (all-forms-removed) order and is kept as one.
+    /// </summary>
+    internal static List<LeagueFieldError> ApplyLeagueSearchPreferences(
+        JsonElement body, League league, ILogger? logger = null)
+    {
+        // Name/Sport only exist to satisfy the DTO's required members; the
+        // validator has no rules on them and they are never assigned back.
+        var submitted = new AddLeagueRequest { Name = league.Name, Sport = league.Sport };
+
+        var aliasesSubmitted = false;
+        string? rawAliases = null;
+        if (body.TryGetProperty("userAliases", out var userAliasesProp))
+        {
+            if (userAliasesProp.ValueKind != JsonValueKind.Null && userAliasesProp.ValueKind != JsonValueKind.String)
+            {
+                return [new LeagueFieldError("userAliases", "userAliases must be a string or null")];
+            }
+            aliasesSubmitted = true;
+            rawAliases = userAliasesProp.ValueKind == JsonValueKind.Null ? null : userAliasesProp.GetString();
+            submitted.UserAliases = rawAliases;
+        }
+
+        var orderSubmitted = false;
+        if (body.TryGetProperty("aliasSearchOrder", out var aliasOrderProp))
+        {
+            orderSubmitted = true;
+            if (aliasOrderProp.ValueKind != JsonValueKind.Null)
+            {
+                try
+                {
+                    submitted.AliasSearchOrder = JsonSerializer.Deserialize<List<LeagueAliasOrderEntry>>(
+                        aliasOrderProp.GetRawText(),
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                catch (JsonException)
+                {
+                    return [new LeagueFieldError(
+                        "aliasSearchOrder",
+                        "aliasSearchOrder must be an array of { source, value } entries")];
+                }
+            }
+        }
+
+        var overrideSubmitted = false;
+        if (body.TryGetProperty("searchEarlyStopMatchScoreOverride", out var earlyStopProp))
+        {
+            if (earlyStopProp.ValueKind == JsonValueKind.Null)
+            {
+                overrideSubmitted = true;
+            }
+            else if (earlyStopProp.ValueKind == JsonValueKind.Number && earlyStopProp.TryGetInt32(out var parsedOverride))
+            {
+                overrideSubmitted = true;
+                submitted.SearchEarlyStopMatchScoreOverride = parsedOverride;
+            }
+            else
+            {
+                return [new LeagueFieldError(
+                    "searchEarlyStopMatchScoreOverride",
+                    "searchEarlyStopMatchScoreOverride must be a whole number or null")];
+            }
+        }
+
+        var validation = SearchPreferenceValidator.Validate(submitted);
+        if (!validation.IsValid)
+        {
+            return LeagueValidationErrors.Map(validation);
+        }
+
+        if (aliasesSubmitted)
+        {
+            var newAliases = AliasField.Normalize(rawAliases);
+            if (league.UserAliases != newAliases)
+            {
+                logger?.LogInformation("[LEAGUES] UserAliases changing from '{Old}' to '{New}'",
+                    league.UserAliases ?? "(none)", newAliases ?? "(none)");
+                league.UserAliases = newAliases;
+            }
+        }
+
+        if (orderSubmitted)
+        {
+            logger?.LogInformation("[LEAGUES] AliasSearchOrder changing to {Count} entries",
+                submitted.AliasSearchOrder?.Count.ToString() ?? "(default)");
+            league.AliasSearchOrder = submitted.AliasSearchOrder;
+        }
+
+        if (overrideSubmitted && league.SearchEarlyStopMatchScoreOverride != submitted.SearchEarlyStopMatchScoreOverride)
+        {
+            logger?.LogInformation("[LEAGUES] SearchEarlyStopMatchScoreOverride changing from {Old} to {New}",
+                league.SearchEarlyStopMatchScoreOverride?.ToString() ?? "(global)",
+                submitted.SearchEarlyStopMatchScoreOverride?.ToString() ?? "(global)");
+            league.SearchEarlyStopMatchScoreOverride = submitted.SearchEarlyStopMatchScoreOverride;
+        }
+
+        return [];
+    }
+
+    /// <summary>Stateless and cheap, so one shared instance serves every update.</summary>
+    private static readonly AddLeagueRequestValidator SearchPreferenceValidator = new();
 
     /// <summary>
     /// Display-side counterpart of the sync's monitored-team filter. Keeps

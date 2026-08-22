@@ -29,7 +29,15 @@ public enum LeagueNameFormSource
 /// as JSON on League.AliasSearchOrder; a null list means the user never
 /// customized the order.
 /// </summary>
-public class LeagueAliasOrderEntry
+/// <remarks>
+/// A record, not a class: value equality is what makes "the normalized value
+/// is the identity key" enforceable, and it lets the EF ValueComparer use
+/// SequenceEqual exactly like the League.Tags configuration next to it. The
+/// properties stay mutable and non-positional, so the JSON storage shape is
+/// an ordinary { "source": ..., "value": ... } object - unchanged from the
+/// class form and unchanged for System.Text.Json in both directions.
+/// </remarks>
+public record LeagueAliasOrderEntry
 {
     public LeagueNameFormSource Source { get; set; }
 

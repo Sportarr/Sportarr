@@ -198,11 +198,14 @@ public class SportarrDbContext : DbContext
                 v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
                 v => System.Text.Json.JsonSerializer.Deserialize<List<LeagueAliasOrderEntry>>(v, JsonSerializerOptionsProvider.Database)
             ).Metadata.SetValueComparer(new ValueComparer<List<LeagueAliasOrderEntry>?>(
-                (c1, c2) => c1 == null
-                    ? c2 == null
-                    : c2 != null && c1.Count == c2.Count
-                        && c1.Zip(c2, (e1, e2) => e1.Source == e2.Source && e1.Value == e2.Value).All(same => same),
-                c => c == null ? 0 : c.Aggregate(0, (a, v) => HashCode.Combine(a, v.Source.GetHashCode(), v.Value.GetHashCode())),
+                // SequenceEqual works here exactly as it does for Tags because
+                // LeagueAliasOrderEntry is a record: value equality, not
+                // reference equality.
+                (c1, c2) => c1 == null ? c2 == null : c2 != null && c1.SequenceEqual(c2),
+                // Value is non-null by construction on both write paths, but a
+                // hand-edited row could still deserialize a null into it, and an
+                // NRE inside change tracking is a miserable way to find out.
+                c => c == null ? 0 : c.Aggregate(0, (a, v) => HashCode.Combine(a, v.Source.GetHashCode(), v.Value == null ? 0 : v.Value.GetHashCode())),
                 c => c == null ? null : c.Select(e => new LeagueAliasOrderEntry { Source = e.Source, Value = e.Value }).ToList()));
         });
 
