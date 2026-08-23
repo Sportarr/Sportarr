@@ -297,8 +297,57 @@ public class EventPartDetector
             new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b" }),
         },
 
-        // NOTE: Formula E sessions removed - Sportarr API only has main race events, not individual sessions.
-        // Can be added back when the API provides FP1/FP2/FP3/Qualifying as separate events.
+        // IndyCar — practice/qualifying/race, plus numbered races because a
+        // doubleheader round is titled "... Race #1" / "... Race #2" by the
+        // metadata source. The numbered entries must precede the bare Race one
+        // or both races of a round match the first event, as in British
+        // Superbike above. "Grand Prix" earns Race the same way it does for F1:
+        // an IndyCar road-course round is titled "Grand Prix of <place>".
+        ["IndyCar"] = new List<MotorsportSessionType>
+        {
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)?\b", @"\bfp1\b" }),  // Catches bare and "Final Practice"
+            new("Warm Up", new[] { @"\bwarm\s*up\b" }),
+            new("Qualifying", new[] { @"(?<!sprint[\s._-]?)\b(qualif(ying|ier)|quali)\b(?!\s*(sprint))" }),
+            // "#" is part of the event title ("Race #1"), not a separator, so it
+            // survives the filename cleaning and has to be matched explicitly.
+            new("Race 1", new[] { @"\brace\s*#?\s*(1|one)\b" }),
+            new("Race 2", new[] { @"\brace\s*#?\s*(2|two)\b" }),
+            new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b", @"\bgrand\s*prix\b(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))" }),
+        },
+
+        // NASCAR — every national series (Cup, Xfinity, Craftsman Truck) shares
+        // this structure, and the lookup below is a Contains test, so one entry
+        // covers all three. Note that a NASCAR race event is titled by its
+        // sponsor alone ("Coke Zero Sugar 400"): no pattern here can detect it,
+        // which is what the "no session in the title" fallback in
+        // ReleaseMatchingService covers.
+        ["NASCAR"] = new List<MotorsportSessionType>
+        {
+            new("Practice 2", new[] { @"\b(final\s*|free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 1", new[] { @"\b(final\s*|free\s*)?practice\s*(1|one)?\b", @"\bfp1\b" }),
+            new("Qualifying", new[] { @"(?<!sprint[\s._-]?)\b(qualif(ying|ier)|quali)\b(?!\s*(sprint))" }),
+            new("Race 1", new[] { @"\brace\s*#?\s*(1|one)\b" }),
+            new("Race 2", new[] { @"\brace\s*#?\s*(2|two)\b" }),
+            new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b" }),
+        },
+
+        // Formula E — this entry was removed earlier because the API carried
+        // only main race events. It now carries sessions as separate events
+        // ("Tokyo ePrix - Free Practice 3", "Tokyo ePrix - Qualifying"), so the
+        // table is worth having again. "E Prix" is the round's own word for
+        // Grand Prix; double-header rounds are titled "... - Race 1"/"Race 2".
+        ["Formula E"] = new List<MotorsportSessionType>
+        {
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)?\b", @"\bfp1\b" }),
+            new("Qualifying", new[] { @"(?<!sprint[\s._-]?)\b(qualif(ying|ier)|quali)\b(?!\s*(sprint))" }),
+            new("Race 1", new[] { @"\brace\s*#?\s*(1|one)\b" }),
+            new("Race 2", new[] { @"\brace\s*#?\s*(2|two)\b" }),
+            new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b", @"\be[\s._-]?prix\b(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))" }),
+        },
 
         // MotoGP sessions - Similar structure to F1 but with different terminology
         // IMPORTANT: Most specific patterns MUST come first (first match wins)
