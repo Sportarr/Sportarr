@@ -27,7 +27,7 @@ public class LeagueAddResult
 /// POST /api/leagues handler in LeagueEndpoints.cs so the SportarrList
 /// import list type (ImportListService.SyncSportarrListAsync) can drive
 /// the exact same dedup/root-folder/quality-profile/teamless-sport logic
-/// instead of a second, drifting copy of it - see CLAUDE.md's rationale
+/// instead of a second, drifting copy of it - see docs/ARCHITECTURE.md's rationale
 /// for services over duplicated endpoint logic.
 ///
 /// Deliberately does NOT read the HTTP request body or return ASP.NET

@@ -1454,7 +1454,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 // persistently failing client (bad auth, timeout, malformed
                 // response) would silently stop having its external downloads
                 // detected with zero trace in default logs and no user-visible
-                // signal. Matches CLAUDE.md's own logging convention (Warning =
+                // signal. Matches docs/ARCHITECTURE.md's own logging convention (Warning =
                 // recoverable problem, one client's poll failing doesn't abort
                 // the others).
                 _logger.LogWarning(ex, "[Enhanced Download Monitor] Error checking external downloads for client: {Client}", client.Name);

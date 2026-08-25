@@ -14,7 +14,7 @@
     UseNpgsql's MigrationsAssembly("Sportarr.Migrations.Postgres") points at an assembly
     that contains ONLY Postgres migrations - no ambiguity with the SQLite migration
     history in Sportarr.Data, no risk of "dotnet ef migrations add" finding/overwriting
-    the wrong provider's snapshot. See CLAUDE.md's Database section for the workflow.
+    the wrong provider's snapshot. See docs/ARCHITECTURE.md's Database section for the workflow.
 
     Postgres support is fresh-install-only: this history starts from a single baseline
     migration reflecting the current model, not a replay of the SQLite migration history.

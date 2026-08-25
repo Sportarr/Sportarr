@@ -1,7 +1,7 @@
 <div align="center">
 
 <p>
-  <a href="https://github.com/Sportarr/Sportarr/blob/main/COPYRIGHT.md"><img src="https://img.shields.io/badge/license-GPL--v3-green?style=flat" alt="License"></a>
+  <a href="https://github.com/Sportarr/Sportarr/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-GPL--v3-green?style=flat" alt="License"></a>
   <a href="https://discord.gg/YjHVWGWjjG"><img src="https://img.shields.io/discord/1427430309653123105?style=flat&logo=discord&logoColor=white&label=discord&color=7289da" alt="Discord online"></a>
 </p>
 
@@ -299,8 +299,15 @@ Sportarr is free and self-funded. If it saves you time, a [one-time or monthly c
 
 ## License
 
-GNU GPL v3 - see [LICENSE.md](LICENSE.md)
+GNU GPL v3 - see [LICENSE.md](LICENSE.md) and [COPYRIGHT.md](COPYRIGHT.md).
 
----
+## Acknowledgements
 
-Sportarr is based on Sonarr. Thanks to the Sonarr team for the foundation.
+Sportarr began as a fork of [Sonarr](https://github.com/Sonarr/Sonarr) in October 2025. The
+application was rewritten shortly afterwards and the great majority of the code here is
+original, but parts of it are still derived from Sonarr and the project would not exist
+without the years of work that went into it first.
+
+Thank you to Mark McDowall, Keivan Beigi, Taloth Saldono and everyone who has contributed to
+Sonarr. Their copyright notices are retained in [COPYRIGHT.md](COPYRIGHT.md), and Sportarr is
+released under the same GPL-3.0 licence.

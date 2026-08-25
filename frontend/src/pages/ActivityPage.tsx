@@ -2651,7 +2651,7 @@ export default function ActivityPage() {
                   <option value="ignoreDownload">Ignore Download</option>
                 </select>
                 <p className="text-sm text-yellow-500 mt-2">
-                  {removalMethod === 'removeFromClient' && 'Removes download and file(s) from download client'}
+                  {removalMethod === 'removeFromClient' && 'Deletes the download and its files from the download client'}
                   {removalMethod === 'changeCategory' && 'Changes download to the \'Post-Import Category\' from Download Client'}
                   {removalMethod === 'ignoreDownload' && 'Stops Sportarr from processing this download further'}
                 </p>

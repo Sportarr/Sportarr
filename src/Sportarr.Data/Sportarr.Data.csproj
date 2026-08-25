@@ -11,7 +11,7 @@
     SportarrDbContext, the domain models, and the existing SQLite migration history.
     Split out of the main Sportarr project so a second, Postgres-only migrations
     project (Sportarr.Migrations.Postgres) can reference this DbContext without a
-    circular project reference back to the app. See CLAUDE.md's Database section.
+    circular project reference back to the app. See docs/ARCHITECTURE.md's Database section.
 
     A few files here declare namespaces that don't match this project's folder
     layout (Sportarr.Api.Services, Sportarr.Api.Helpers, Sportarr.Api.Converters,

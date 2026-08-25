@@ -144,21 +144,21 @@ public class BroadcasTheNetClientTests
         releases.Should().HaveCount(2);
 
         var first = releases.First();
-        first.Guid.Should().Be("BTN-123");
-        first.Title.Should().Be("Jimmy.Kimmel.2014.09.15.Jane.Fonda.HDTV.x264-aAF");
-        first.DownloadUrl.Should().Be("https://broadcasthe.net/torrents.php?action=download&id=123&authkey=123&torrent_pass=123");
-        first.InfoUrl.Should().Be("https://broadcasthe.net/torrents.php?id=237457&torrentid=123");
+        first.Guid.Should().Be("BTN-5001");
+        first.Title.Should().Be("UFC.300.Prelims.1080p.WEB.h264-SPORTARR");
+        first.DownloadUrl.Should().Be("https://broadcasthe.net/torrents.php?action=download&id=5001&authkey=123&torrent_pass=123");
+        first.InfoUrl.Should().Be("https://broadcasthe.net/torrents.php?id=880201&torrentid=5001");
         first.Indexer.Should().Be(_indexer.Name);
-        first.PublishDate.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1410902133).UtcDateTime);
-        first.Size.Should().Be(505099926);
-        first.TorrentInfoHash.Should().Be("123");
-        first.Seeders.Should().Be(40);
-        first.Leechers.Should().Be(9);
+        first.PublishDate.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1776081600).UtcDateTime);
+        first.Size.Should().Be(3221225472);
+        first.TorrentInfoHash.Should().Be("5001");
+        first.Seeders.Should().Be(52);
+        first.Leechers.Should().Be(7);
 
         // Quality metadata from BTN fields
-        first.Source.Should().Be("HDTV");
-        first.Codec.Should().Be("x264");
-        first.Quality.Should().Be("SD");
+        first.Source.Should().Be("WEB-DL");
+        first.Codec.Should().Be("h264");
+        first.Quality.Should().Be("1080p");
 
         VerifyRequest("https://api.broadcasthe.net/");
     }
@@ -258,7 +258,7 @@ public class BroadcasTheNetClientTests
         releases.Should().HaveCount(2);
         // DownloadURL comes from the BTN JSON payload; the client doesn't rewrite it
         releases.First().DownloadUrl.Should().Be(
-            "https://broadcasthe.net/torrents.php?action=download&id=123&authkey=123&torrent_pass=123");
+            "https://broadcasthe.net/torrents.php?action=download&id=5001&authkey=123&torrent_pass=123");
 
         VerifyRequest("http://api.broadcasthe.net/");
     }
@@ -435,7 +435,7 @@ public class BroadcasTheNetClientTests
 
         var releases = await _subject.FetchRecentAsync(_indexer);
 
-        releases.First().InfoUrl.Should().Be("https://broadcasthe.net/torrents.php?id=237457&torrentid=123");
+        releases.First().InfoUrl.Should().Be("https://broadcasthe.net/torrents.php?id=880201&torrentid=5001");
 
         VerifyRequest("https://api.broadcasthe.net/");
     }
