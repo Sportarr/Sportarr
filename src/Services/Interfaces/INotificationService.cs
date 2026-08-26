@@ -15,7 +15,10 @@ public interface INotificationService
     /// <param name="title">Notification title</param>
     /// <param name="message">Notification message</param>
     /// <param name="data">Optional structured event data for the notification</param>
-    Task SendNotificationAsync(
+    /// <returns>Whether any provider took it. A caller recording that the
+    /// user was told needs to know, since a provider failing is not an
+    /// exception here.</returns>
+    Task<bool> SendNotificationAsync(
         NotificationTrigger trigger,
         string title,
         string message,

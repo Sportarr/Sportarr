@@ -62,6 +62,7 @@ interface LeagueDetail {
   description?: string;
   monitored: boolean;
   enableDvr?: boolean;
+  keepAllEvents?: boolean;
   monitorType?: string;
   qualityProfileId?: number;
   rootFolderId?: number | null;
@@ -264,6 +265,10 @@ export default function LeagueDetailPage() {
   // Owners who actually want to audit cancellations flip the toggle and the
   // list re-renders to include them, badged distinctly.
   const [showCancelled, setShowCancelled] = useState(false);
+  // Reveals events the league's own monitoring choices hide: sessions the
+  // user does not follow, and games without a followed team. Needed to find
+  // a one-off event and monitor it by hand.
+  const [showAllEvents, setShowAllEvents] = useState(false);
   const [dvrChannelSearch, setDvrChannelSearch] = useState('');
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [isDescClamped, setIsDescClamped] = useState(false);
@@ -312,9 +317,10 @@ export default function LeagueDetailPage() {
 
   // Fetch events for this league
   const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['league-events', id],
+    queryKey: ['league-events', id, showAllEvents],
     queryFn: async () => {
-      const response = await apiClient.get<EventDetail[]>(`/leagues/${id}/events`);
+      const response = await apiClient.get<EventDetail[]>(
+        `/leagues/${id}/events${showAllEvents ? '?showAll=true' : ''}`);
       return response.data;
     },
     enabled: !!id,
@@ -663,11 +669,13 @@ export default function LeagueDetailPage() {
       tags?: number[];
       searchQueryTemplate?: string | null;
       monitorFinals?: boolean;
+      specialEventsMonitorType?: string;
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
       retentionDays?: number;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
+      keepAllEvents?: boolean;
     }) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
@@ -811,14 +819,18 @@ export default function LeagueDetailPage() {
     // stable but ignored here.
     _rootFolderId: number | null,
     monitorFinals: boolean,
+    specialEventsMonitorType: string,
     monitorPlayoffs: boolean,
     monitorPreseason: boolean,
     retentionDays: number,
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
+    _enableDvr?: boolean,
+    keepAllEvents?: boolean,
   ) => {
     void _rootFolderId;
     void league;
+    void _enableDvr;
     updateLeagueSettingsMutation.mutate({
       monitoredTeamIds,
       monitorType,
@@ -832,11 +844,13 @@ export default function LeagueDetailPage() {
       searchQueryTemplate,
       tags,
       monitorFinals,
+      specialEventsMonitorType,
       monitorPlayoffs,
       monitorPreseason,
       retentionDays,
       allowHighlights,
       sessionTypeQualityProfiles,
+      keepAllEvents,
     });
   };
 
@@ -1723,6 +1737,19 @@ export default function LeagueDetailPage() {
                 </label>
               );
             })()}
+
+            <label className="flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showAllEvents}
+                onChange={(e) => setShowAllEvents(e.target.checked)}
+                className="rounded text-red-600 focus:ring-red-500 bg-gray-800 border-gray-600"
+              />
+              Show every event
+              <span className="text-gray-500">
+                (including sessions and teams you do not follow)
+              </span>
+            </label>
           </div>
 
           {eventsLoading ? (

@@ -1216,3 +1216,23 @@ public class ReleaseCache
     /// </summary>
     public bool IsPack { get; set; } = false;
 }
+
+/// <summary>
+/// Download status returned from a download client. This lived in the file
+/// holding a retired background service, so removing that service took a model
+/// every client adapter uses with it.
+/// </summary>
+public class DownloadClientStatus
+{
+    public required string Status { get; set; }
+    public double Progress { get; set; }
+    public long Downloaded { get; set; }
+    public long Size { get; set; }
+    public TimeSpan? TimeRemaining { get; set; }
+    public string? ErrorMessage { get; set; }
+    public string? SavePath { get; set; }
+
+    // Seed tracking fields for torrent clients
+    public double? Ratio { get; set; } // Current upload/download ratio
+    public DateTime? CompletedAt { get; set; } // When the download completed
+}

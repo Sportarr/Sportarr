@@ -197,6 +197,7 @@ export default function LeagueSearchPage() {
       tags,
       rootFolderId,
       monitorFinals,
+      specialEventsMonitorType,
       monitorPlayoffs,
       monitorPreseason,
       retentionDays,
@@ -217,6 +218,7 @@ export default function LeagueSearchPage() {
       tags?: number[];
       rootFolderId?: number | null;
       monitorFinals?: boolean;
+      specialEventsMonitorType?: string;
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
       retentionDays?: number;
@@ -251,6 +253,7 @@ export default function LeagueSearchPage() {
         tags: tags,
         rootFolderId: rootFolderId,
         monitorFinals: monitorFinals ?? false,
+        specialEventsMonitorType: specialEventsMonitorType ?? "All",
         monitorPlayoffs: monitorPlayoffs ?? false,
         monitorPreseason: monitorPreseason ?? false,
         allowHighlights: allowHighlights ?? false,
@@ -318,11 +321,14 @@ export default function LeagueSearchPage() {
       sport,
       leagueName,
       monitorFinals,
+      specialEventsMonitorType,
       monitorPlayoffs,
       monitorPreseason,
       retentionDays,
       allowHighlights,
-      sessionTypeQualityProfiles
+      sessionTypeQualityProfiles,
+      rootFolderId,
+      enableDvr
     }: {
       leagueId: number;
       monitoredTeamIds: string[];
@@ -339,11 +345,14 @@ export default function LeagueSearchPage() {
       sport: string;
       leagueName: string;
       monitorFinals?: boolean;
+      specialEventsMonitorType?: string;
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
       retentionDays?: number;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
+      rootFolderId?: number | null;
+      enableDvr?: boolean;
     }) => {
       // Teamless sports auto-monitor; other sports require at least one selected team.
       const isMotorsportLeague = isMotorsport(sport);
@@ -368,6 +377,7 @@ export default function LeagueSearchPage() {
         searchQueryTemplate: searchQueryTemplate,
         tags: tags,
         monitorFinals: monitorFinals ?? false,
+        specialEventsMonitorType: specialEventsMonitorType ?? "All",
         monitorPlayoffs: monitorPlayoffs ?? false,
         monitorPreseason: monitorPreseason ?? false,
         allowHighlights: allowHighlights ?? false,
@@ -510,6 +520,7 @@ export default function LeagueSearchPage() {
     tags: number[],
     rootFolderId: number | null,
     monitorFinals: boolean,
+    specialEventsMonitorType: string,
     monitorPlayoffs: boolean,
     monitorPreseason: boolean,
     retentionDays: number,
@@ -535,11 +546,14 @@ export default function LeagueSearchPage() {
         sport: league.strSport,
         leagueName: league.strLeague,
         monitorFinals,
+        specialEventsMonitorType,
         monitorPlayoffs,
         monitorPreseason,
         retentionDays,
         allowHighlights,
-        sessionTypeQualityProfiles
+        sessionTypeQualityProfiles,
+        rootFolderId,
+        enableDvr
       });
     } else {
       addLeagueMutation.mutate({
@@ -556,6 +570,7 @@ export default function LeagueSearchPage() {
         tags,
         rootFolderId,
         monitorFinals,
+        specialEventsMonitorType,
         monitorPlayoffs,
         monitorPreseason,
         retentionDays,

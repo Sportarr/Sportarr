@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
 import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
@@ -35,7 +35,7 @@ interface CalendarUISettings {
 
 const TOOLBAR_GROUP_CLASS = 'inline-flex min-w-max items-center space-x-1 rounded-lg bg-gray-900 p-1';
 
-// Sport color mappings (matching Sonarr/Radarr style)
+// Sport color mappings.
 // Reserved colors (do not assign to sports):
 //   green  = Downloaded indicator
 //   red    = Live Now indicator
@@ -108,9 +108,58 @@ const getLeagueLogoUrl = (event: Event) => event.league?.logoUrl ?? event.league
 // Check if an event is currently live based on time
 // Events are considered live if current time is within 4 hours after start time
 // (most sporting events last 2-4 hours)
+
+/**
+ * Copy text to the clipboard, returning whether it worked.
+ *
+ * navigator.clipboard exists only on a secure origin. A self-hosted install
+ * reached over plain http on a LAN address is not one, so the modern call is
+ * simply absent there and reaching for it throws. The textarea fallback is the
+ * pre-clipboard-API technique and still works everywhere.
+ */
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the textarea below.
+  }
+
+  try {
+    const scratch = document.createElement('textarea');
+    scratch.value = text;
+    scratch.setAttribute('readonly', '');
+    scratch.style.position = 'fixed';
+    scratch.style.opacity = '0';
+    document.body.appendChild(scratch);
+    scratch.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(scratch);
+    return copied;
+  } catch {
+    return false;
+  }
+};
 const isEventLive = (event: Event, timezone: string | null): boolean => {
   // If status is explicitly "Live", it's live
   if (event.status === 'Live') return true;
+
+  // An event that has already finished, or that will never be played, is not
+  // live whatever the clock says. Only the time window was checked, so a match
+  // that ended, or one cancelled or postponed hours earlier, still carried the
+  // red pulsing LIVE card for four hours after its start time.
+  // Normalised, because real feeds spell these many ways. The league page
+  // already recognises "Match Finished", "Canceled", "AET" and case
+  // variants, and comparing raw literals here kept the live pulse on for
+  // events that page already showed as over.
+  const terminal = (event.status || '').toUpperCase();
+  if (terminal === 'COMPLETED' || terminal === 'FT' || terminal === 'AET' ||
+      terminal === 'MATCH FINISHED' || terminal === 'CANCELLED' ||
+      terminal === 'CANCELED' || terminal === 'POSTPONED') {
+    return false;
+  }
 
   // Use timezone-aware "now" so the comparison is consistent with converted event dates
   const now = getNowInTimezone(timezone);
@@ -156,8 +205,8 @@ function EventCard({
       type="button"
       onClick={onClick}
       data-testid={`calendar-event-${event.id}`}
-      className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all hover:opacity-95`}
-      title={`${event.title}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
+      className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? 'hover:opacity-95' : 'opacity-60 hover:opacity-75'} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all`}
+      title={`${event.title}${event.monitored ? '' : '\nNot monitored'}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
     >
       {/* Top row */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between overflow-hidden">
@@ -230,7 +279,7 @@ function SpaciousAgendaEventCard({
     <button
       type="button"
       onClick={onClick}
-      className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all hover:opacity-90 ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border}`}
+      className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? 'hover:opacity-90' : 'opacity-60 hover:opacity-75'}`}
     >
       <div className="relative z-10 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -249,6 +298,12 @@ function SpaciousAgendaEventCard({
             )}
             {isLive && (
               <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded animate-pulse">LIVE</span>
+            )}
+            {!event.monitored && (
+              <span className="flex items-center gap-1 text-xs text-gray-400">
+                <EyeSlashIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                Not monitored
+              </span>
             )}
             {event.hasFile && (
               <CheckCircleIcon className="w-4 h-4 text-green-500 flex-shrink-0" />
@@ -365,8 +420,24 @@ export default function CalendarPage() {
   const navigate = useNavigate();
   const dateInputRef = useRef<HTMLInputElement>(null);
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
-  const [currentView, setCurrentView] = useState<CalendarView>('month');
+  const [currentView, setCurrentView] = useState<CalendarView>(() => {
+    // Restore the view the user last chose. Only a "they chose something" flag
+    // was kept, not the choice, so a reload dropped a phone user back to the
+    // month grid the flag exists to keep them out of.
+    const saved = localStorage.getItem('sportarr.calendarView');
+    return saved === 'month' || saved === 'week' || saved === 'agenda' ? saved : 'month';
+  });
   const isPhone = useMediaQuery('(max-width: 639px)');
+
+  // Re-render on the minute so the day rolls over and the live badges come and
+  // go on their own. Both were worked out once per render, so a calendar left
+  // open overnight kept yesterday marked as today and an event that started or
+  // finished meanwhile kept whatever badge it had when the page loaded.
+  const [minuteTick, setMinuteTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setMinuteTick(tick => tick + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Phones default to the agenda list: the month grid needs a 900px canvas and
   // horizontal scrolling, which is no way to read a calendar on a phone. Only
@@ -378,6 +449,7 @@ export default function CalendarPage() {
   }, [isPhone]);
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterTvOnly, setFilterTvOnly] = useState(false);
+  const [showUnmonitored, setShowUnmonitored] = useState(false);
   const [showIcalModal, setShowIcalModal] = useState(false);
   const [icalCopied, setIcalCopied] = useState(false);
   const firstDayOfWeek: FirstDayOfWeek = uiSettings.firstDayOfWeek === 'monday' ? 'monday' : 'sunday';
@@ -410,7 +482,7 @@ export default function CalendarPage() {
     return { calStart: s.toISOString(), calEnd: e.toISOString() };
   }, [currentDate, currentView]);
 
-  const { data: events, isLoading, error } = useCalendarEvents(calStart, calEnd);
+  const { data: events, isLoading, error } = useCalendarEvents(calStart, calEnd, showUnmonitored);
 
   // Get unique sport categories from events for filter
   const uniqueSports = useMemo(() => {
@@ -421,10 +493,21 @@ export default function CalendarPage() {
         .map(event => getSportCategory(event.sport))
     )) as string[];
   }, [events]);
+  // A sport the user picked can vanish from the list when the monitoring
+  // filter or the date window changes. The stale value would keep filtering
+  // while the select shows nothing selected, leaving an empty calendar with
+  // no visible cause.
+  useEffect(() => {
+    if (events && filterSport !== 'all' && !uniqueSports.includes(filterSport)) {
+      setFilterSport('all');
+    }
+  }, [events, filterSport, uniqueSports]);
+
   // Get "today" in the user's configured timezone
-  const today = useMemo(() => getTodayInTimezone(timezone), [timezone]);
+  const today = useMemo(() => getTodayInTimezone(timezone), [timezone, minuteTick]);
   const filterEvent = useCallback((event: Event) => {
-    // Server already filters to monitored-only, but keep client-side filters for sport/TV
+    // The server decides which monitoring states come back. Sport and TV
+    // stay client-side so switching them costs no request.
     // Apply TV availability filter
     if (filterTvOnly && !event.broadcast) return false;
 
@@ -625,6 +708,7 @@ export default function CalendarPage() {
                       type="button"
                       onClick={() => {
                         localStorage.setItem('sportarr.calendarViewChosen', '1');
+                        localStorage.setItem('sportarr.calendarView', view);
                         setCurrentView(view);
                       }}
                       className={`${TOOLBAR_BUTTON_BASE_CLASS} ${
@@ -641,12 +725,23 @@ export default function CalendarPage() {
                   <div className="inline-flex items-center gap-2 rounded-md bg-gray-800 px-3 py-1.5 text-sm text-gray-400">
                     <FunnelIcon className="h-4 w-4" />
                     <span>Filter</span>
-                    {(filterSport !== 'all' || filterTvOnly) && (
+                    {(filterSport !== 'all' || filterTvOnly || showUnmonitored) && (
                       <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-xs text-white">
-                        {(filterSport !== 'all' ? 1 : 0) + (filterTvOnly ? 1 : 0)}
+                        {(filterSport !== 'all' ? 1 : 0) + (filterTvOnly ? 1 : 0) + (showUnmonitored ? 1 : 0)}
                       </span>
                     )}
                   </div>
+
+                  {/* Monitoring Filter */}
+                  <select
+                    value={showUnmonitored ? 'all' : 'monitored'}
+                    onChange={(event) => setShowUnmonitored(event.target.value === 'all')}
+                    className="rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white transition-all focus:outline-none focus:ring-1 focus:ring-red-600"
+                    aria-label="Monitoring filter"
+                  >
+                    <option value="monitored">Monitored Only</option>
+                    <option value="all">All Events</option>
+                  </select>
 
                   {/* Sport Filter */}
                   <select
@@ -676,11 +771,12 @@ export default function CalendarPage() {
                     <span>TV Only</span>
                   </label>
 
-                  {(filterSport !== 'all' || filterTvOnly) && (
+                  {(filterSport !== 'all' || filterTvOnly || showUnmonitored) && (
                     <button
                       onClick={() => {
                         setFilterSport('all');
                         setFilterTvOnly(false);
+                        setShowUnmonitored(false);
                       }}
                       className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_INACTIVE_CLASS}`}
                     >
@@ -779,6 +875,17 @@ export default function CalendarPage() {
                                   aria-label={`${dayEvents.length} events on ${day.date.toDateString()}`}
                                   onClick={() => {
                                     localStorage.setItem('sportarr.calendarViewChosen', '1');
+
+                                    localStorage.setItem('sportarr.calendarView', 'agenda');
+                                    // Anchor the agenda on the day that was
+                                    // tapped. Switching the view alone left it
+                                    // anchored wherever it already was, so the
+                                    // agenda opened on another date and the
+                                    // events just tapped could be far down the
+                                    // list or, for a spillover cell from the
+                                    // neighbouring month, outside the range
+                                    // altogether.
+                                    setCurrentDate(day.date);
                                     setCurrentView('agenda');
                                   }}
                                   className="flex flex-wrap items-center gap-1 px-0.5 pt-1"
@@ -892,9 +999,17 @@ export default function CalendarPage() {
               />
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}${createRequestUrl('/api/calendar.ics')}?apikey=${window.Sportarr?.apiKey || ''}`);
-                  setIcalCopied(true);
-                  setTimeout(() => setIcalCopied(false), 3000);
+                  // The clipboard API is only present on a secure origin, and
+                  // a self-hosted install reached over plain http is not one, so
+                  // this threw and the copy silently never happened. Fall back to
+                  // the old selection trick there, and only report success once
+                  // something actually worked.
+                  const icalUrl = `${window.location.origin}${createRequestUrl('/api/calendar.ics')}?apikey=${window.Sportarr?.apiKey || ''}`;
+                  copyToClipboard(icalUrl).then(copied => {
+                    if (!copied) return;
+                    setIcalCopied(true);
+                    setTimeout(() => setIcalCopied(false), 3000);
+                  });
                 }}
                 className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
               >

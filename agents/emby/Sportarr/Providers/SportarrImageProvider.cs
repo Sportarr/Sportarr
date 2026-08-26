@@ -234,6 +234,34 @@ namespace Sportarr.Providers
         /// An <see cref="HttpResponseInfo"/> containing the image data if successful;
         /// otherwise, null if the image cannot be retrieved.
         /// </returns>
+        /// <summary>
+        /// Largest artwork this will pull. A poster is a couple of megabytes;
+        /// anything approaching this is not artwork.
+        /// </summary>
+        private const long MaxImageBytes = 32L * 1024 * 1024;
+
+        /// <summary>
+        /// Read a response body with a ceiling, for servers that declare no
+        /// length or lie about it.
+        /// </summary>
+        private static async Task<byte[]> ReadCappedAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+        {
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var buffer = new System.IO.MemoryStream();
+            var chunk = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, 0, chunk.Length, cancellationToken)) > 0)
+            {
+                if (buffer.Length + read > MaxImageBytes)
+                {
+                    throw new HttpRequestException(
+                        $"Artwork exceeded the {MaxImageBytes} byte ceiling while downloading.");
+                }
+                buffer.Write(chunk, 0, read);
+            }
+            return buffer.ToArray();
+        }
+
         public async Task<HttpResponseInfo?> GetImageResponse(string url, CancellationToken cancellationToken)
         {
             _logger.Debug($"[Sportarr] Retrieving image from url --> {url}");
@@ -243,14 +271,32 @@ namespace Sportarr.Providers
             // image into a NullReferenceException that aborts the item's
             // whole image refresh. Throwing surfaces a clean per-image
             // provider error instead.
-            var response = await _httpClient.GetAsync(url, cancellationToken);
+            // The URL comes from metadata, so it is not necessarily anything
+            // the user chose. Fetching it blind let a hostile one point the
+            // media server at whatever the URL named and read a response of
+            // any size at all straight into memory.
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var target) ||
+                (target.Scheme != Uri.UriSchemeHttp && target.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new HttpRequestException($"Refusing to fetch artwork from '{url}': only http and https are allowed.");
+            }
+
+            var response = await _httpClient.GetAsync(target, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 response.Dispose();
                 throw new HttpRequestException($"Image fetch failed with {(int)response.StatusCode} for {url}");
             }
 
-            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            var declared = response.Content.Headers.ContentLength;
+            if (declared > MaxImageBytes)
+            {
+                response.Dispose();
+                throw new HttpRequestException(
+                    $"Refusing artwork from '{url}': {declared} bytes is larger than the {MaxImageBytes} byte ceiling.");
+            }
+
+            var bytes = await ReadCappedAsync(response, cancellationToken);
 
             return new HttpResponseInfo
             {

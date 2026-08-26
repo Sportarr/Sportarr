@@ -73,7 +73,13 @@ export default function EpgSourcesPanel({ onSourcesChanged }: EpgSourcesPanelPro
     }
   };
 
+  // Deleting takes the source's URL, its settings and its guide data with it,
+  // and it used to happen on one click of a small unlabelled cross next to the
+  // sync button. Ask first.
+  const [confirmDelete, setConfirmDelete] = useState<EpgSource | null>(null);
+
   const deleteSource = async (id: number) => {
+    setConfirmDelete(null);
     try {
       await apiClient.delete(`/epg/sources/${id}`);
       toast.success('EPG source deleted');
@@ -217,7 +223,7 @@ export default function EpgSourcesPanel({ onSourcesChanged }: EpgSourcesPanelPro
                   <ArrowPathIcon className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => deleteSource(source.id)}
+                  onClick={() => setConfirmDelete(source)}
                   className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors"
                   title="Delete"
                 >
@@ -226,6 +232,38 @@ export default function EpgSourcesPanel({ onSourcesChanged }: EpgSourcesPanelPro
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-red-900/40 bg-gradient-to-br from-gray-900 to-black p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-white">Delete this guide source?</h3>
+            <p className="mt-2 text-sm text-gray-400">
+              {confirmDelete.name} and its programme data will be removed. Its URL and settings
+              are not kept, so you would have to enter them again.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="rounded border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-700"
+              >
+                Keep it
+              </button>
+              <button
+                onClick={() => deleteSource(confirmDelete.id)}
+                className="rounded bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

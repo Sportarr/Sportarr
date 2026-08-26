@@ -678,9 +678,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Per-IP rate limiting (currently applied to the login endpoint to slow brute force).
-app.UseRateLimiter();
-
 // Global exception handling - must be early in pipeline
 app.UseExceptionHandling();
 app.UseRequestLogging();
@@ -732,6 +729,14 @@ app.UseRouting();
 // PublicProbe) — ASP.NET then rejected those requests with HTTP 400 "endpoint contains
 // CORS metadata, but a middleware was not found that supports CORS".
 app.UseCors();
+
+// Per-IP rate limiting (currently applied to the login endpoint to slow brute
+// force). This has to run after UseRouting for the same reason CORS does: the
+// login endpoint opts in with RequireRateLimiting, and that metadata belongs to
+// the matched endpoint, which does not exist yet before routing. Sitting ahead
+// of it, the limiter saw no policy on any request and the login limit was never
+// applied at all.
+app.UseRateLimiter();
 
 // Configure static files (UI from wwwroot)
 // For URL base support, we need to inject the urlBase into index.html

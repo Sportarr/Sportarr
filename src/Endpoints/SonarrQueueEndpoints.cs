@@ -136,7 +136,13 @@ public static class SonarrQueueEndpoints
             logger.LogDebug("[V3-COMPAT] DELETE /api/v3/queue/{Id} removeFromClient={Rfc} blocklist={Bl} skipRedownload={Skip} changeCategory={Cc}",
                 id, removeFromClient, blocklist, skipRedownload, changeCategory);
 
-            if (id >= PendingImportIdOffset)
+            // A real queue row whose id has climbed past the offset must not be
+            // read as a pending import. DownloadQueue ids autoincrement and are
+            // never reused, so the counter tracks every row ever created rather
+            // than the rows on hand, and a long lived or churn heavy install
+            // reaches the offset eventually. Deleting the wrong row here takes
+            // an unrelated download and its files with it.
+            if (id >= PendingImportIdOffset && !await db.DownloadQueue.AnyAsync(d => d.Id == id))
             {
                 return await RemovePendingImportAsync(id - PendingImportIdOffset, removeFromClient, db, downloadClientService, logger);
             }
@@ -182,7 +188,7 @@ public static class SonarrQueueEndpoints
 
             foreach (var id in body.Ids)
             {
-                if (id >= PendingImportIdOffset)
+                if (id >= PendingImportIdOffset && !await db.DownloadQueue.AnyAsync(d => d.Id == id))
                 {
                     await RemovePendingImportAsync(id - PendingImportIdOffset, removeFromClient, db, downloadClientService, logger);
                     continue;

@@ -2,6 +2,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Sportarr.Api.Services;
 
@@ -26,6 +27,7 @@ public class AutomaticSearchService : IAutomaticSearchService
     private readonly ReleaseProfileService _releaseProfileService;
     private readonly EventPartDetector _partDetector;
     private readonly NotificationService _notificationService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Max 3 concurrent event searches to prevent overwhelming indexers
@@ -49,9 +51,11 @@ public class AutomaticSearchService : IAutomaticSearchService
         ReleaseProfileService releaseProfileService,
         EventPartDetector partDetector,
         NotificationService notificationService,
+        IServiceScopeFactory scopeFactory,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
+        _scopeFactory = scopeFactory;
         _indexerSearchService = indexerSearchService;
         _downloadClientService = downloadClientService;
         _eventQueryService = eventQueryService;
@@ -230,22 +234,23 @@ public class AutomaticSearchService : IAutomaticSearchService
 
             // Resolve quality profile BEFORE searching so custom formats are applied during evaluation.
             // Without this, cached and live search results skip custom format scoring entirely.
-            // Fallback chain: provided ID → event's profile → league's profile → default.
-            if (!qualityProfileId.HasValue)
+            // Fallback chain: provided ID → event's profile → league's profile → default,
+            // through the same resolver RSS sync and the reaper use. Taking the
+            // event's id on trust handed a profile that no longer exists down to
+            // the evaluator, which then graded with no profile at all: no
+            // allowed-quality gate, no minimum format score, no size check,
+            // while the selection step below resolved the league's profile and
+            // gated by that.
+            //
+            // A supplied id is checked too. Three callers pre-resolve the
+            // event's or league's id themselves and pass it in, and a deleted
+            // profile is freely reachable because nothing clears those ids
+            // when a profile goes, so the same dangling id arrived here as a
+            // "provided" one and was trusted just the same.
+            var profiles = await _db.QualityProfiles.ToListAsync();
+            if (!qualityProfileId.HasValue || profiles.All(p => p.Id != qualityProfileId.Value))
             {
-                if (evt.QualityProfileId.HasValue)
-                {
-                    qualityProfileId = evt.QualityProfileId.Value;
-                }
-                else if (evt.League?.QualityProfileId != null)
-                {
-                    qualityProfileId = evt.League.QualityProfileId.Value;
-                }
-                else
-                {
-                    var defaultProfile = await _db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
-                    qualityProfileId = defaultProfile?.Id;
-                }
+                qualityProfileId = RssSyncService.ResolveQualityProfile(evt, profiles)?.Id;
             }
 
             // No quality profile anywhere = nothing to evaluate releases against.
@@ -278,9 +283,21 @@ public class AutomaticSearchService : IAutomaticSearchService
             var primaryQuery = queries.FirstOrDefault();
             bool usedCache = false;
 
+            // What gets stored is the MERGED result of every query, so the key
+            // has to name every query. Keyed on the first one alone, editing a
+            // later search template left the key unchanged and the old merged
+            // results came back for as long as the cache held them.
+            // Tags decide which indexers the search reaches, so an answer cached
+            // for one league must not be handed to a league pointing at different
+            // indexers.
+            // Joined on a separator no query can contain. Run together, the
+            // variant lists "ab","c" and "a","bc" produce the same key and one
+            // event reuses the other's merged releases.
+            var cacheKey = SearchResultCache.ScopeKey(string.Join("\u001f", queries), evt.League?.Tags);
+
             if (!string.IsNullOrEmpty(primaryQuery))
             {
-                var cachedResults = _searchResultCache.TryGetCached(primaryQuery, config.SearchCacheDuration);
+                var cachedResults = _searchResultCache.TryGetCached(cacheKey, config.SearchCacheDuration);
                 if (cachedResults != null)
                 {
                     allReleases = _searchResultCache.ToSearchResults(cachedResults);
@@ -362,7 +379,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // primary-query cache entry.
                 if (!usedCache && !string.IsNullOrEmpty(primaryQuery))
                 {
-                    _searchResultCache.Store(primaryQuery, allReleases, config.SearchCacheDuration);
+                    _searchResultCache.Store(cacheKey, allReleases, config.SearchCacheDuration);
                     _logger.LogDebug("[Automatic Search] Cached {Count} results for query '{Query}'",
                         allReleases.Count, primaryQuery);
                 }
@@ -785,11 +802,13 @@ public class AutomaticSearchService : IAutomaticSearchService
                     .FirstOrDefaultAsync(p => p.Id == evt.League.QualityProfileId.Value);
             }
 
-            // Final fallback: Default profile (first by ID)
+            // Final fallback: the profile flagged as default, else first by id.
+            // The same answer RSS sync and the reaper give.
             if (qualityProfile == null)
             {
                 qualityProfile = await _db.QualityProfiles
-                    .OrderBy(q => q.Id)
+                    .OrderBy(q => q.IsDefault ? 0 : 1)
+                    .ThenBy(q => q.Id)
                     .FirstOrDefaultAsync();
             }
 
@@ -1630,7 +1649,17 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // Additional delay before search
                 await Task.Delay(EventSearchDelayMs);
                 _logger.LogDebug("[Automatic Search] Searching: {Description}", target.Description);
-                return await SearchAndDownloadEventAsync(target.EventId, null, target.Part, isManualSearch: false);
+
+                // Each search gets its own scope, and so its own DbContext. Up
+                // to three of these run at once and a DbContext is not safe to
+                // share between them: concurrent use throws outright, and two
+                // saves racing on one context can write each other's half
+                // finished work. That is what made a batch search fail here and
+                // there, miss grabs, and leave interleaved queue and history
+                // rows behind.
+                using var scope = _scopeFactory.CreateScope();
+                var scopedSearch = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
+                return await scopedSearch.SearchAndDownloadEventAsync(target.EventId, null, target.Part, isManualSearch: false);
             }
             finally
             {

@@ -13,6 +13,9 @@
         padding: 0;
         background: #000;
       }
+      html[data-theme="light"], html[data-theme="light"] body {
+        background: #fff;
+      }
       #initial-loader {
         position: fixed;
         top: 0;
@@ -49,6 +52,17 @@
     <div id="initial-loader">
       <div class="spinner"></div>
     </div>
+    <script>
+      // Paint the last chosen theme before React loads, so a light user does
+      // not get a black flash on every navigation.
+      try {
+        var t = localStorage.getItem("sportarr.theme") || "dark";
+        if (t === "auto") {
+          t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.dataset.theme = t;
+      } catch (e) { document.documentElement.dataset.theme = "dark"; }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

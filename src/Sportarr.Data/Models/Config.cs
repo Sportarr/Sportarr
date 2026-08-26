@@ -19,7 +19,22 @@ public class Config
     // closed it.
     public bool OnboardingDismissed { get; set; } = false;
     public string Username { get; set; } = "";
-    public string Password { get; set; } = ""; // Stored hashed in PasswordHash; this field exists for clients that POST plaintext
+    // Clients can POST a plaintext password to the settings endpoint, and an
+    // old config.xml can still hold one from before hashing existed. Only the
+    // derived hash and salt below are persisted.
+    //
+    // Readable but never written. XmlIgnore would have kept a plaintext value
+    // out of the file, but it also stops the one already in an old file being
+    // read, and startup needs to read it to hash it. Without that an upgrade
+    // writes an empty hash and locks the user out. ShouldSerializePassword
+    // below is what keeps it from being written back.
+    public string Password { get; set; } = "";
+
+    /// <summary>
+    /// Tells XmlSerializer never to write this element. The plaintext is
+    /// something to migrate away from, not something to keep.
+    /// </summary>
+    public bool ShouldSerializePassword() => false;
     public string PasswordHash { get; set; } = "";
     public string PasswordSalt { get; set; } = "";
     public int PasswordIterations { get; set; } = 10000;
@@ -100,6 +115,11 @@ public class Config
     public bool ShowUnknownLeagueItems { get; set; } = false;
     public bool ShowEventPath { get; set; } = false;
     public string TimeZone { get; set; } = ""; // Empty = use system timezone, otherwise IANA timezone ID (e.g., "America/New_York")
+
+    // Longest delay the frontend backs off to when requests keep failing. The
+    // settings response is rebuilt from this file, so a value kept only in the
+    // database copy came back as the default on the next reload.
+    public int QueryBackoffCapMs { get; set; } = 120000;
 
     // Media Management
     public bool RenameEvents { get; set; } = false;
@@ -240,6 +260,17 @@ public class Config
     public int BacklogSearchMaxConcurrent { get; set; } = 3; // SemaphoreSlim cap so backlog doesn't hammer indexers
     public int BacklogSearchMaxAgeDays { get; set; } = 365; // skip events older than this on backlog pass (1y by default; 0 = no cap)
     public bool BacklogSearchEnabled { get; set; } = true;
+
+    /// <summary>
+    /// How long after an event's scheduled start the backlog waits before it
+    /// counts as missing.
+    ///
+    /// The backlog used to treat an event as searchable the instant its start
+    /// time passed, while it was still being played, and could grab a partial
+    /// or otherwise premature release. Four hours clears almost every sport,
+    /// including the long ones. Zero restores the old behaviour.
+    /// </summary>
+    public int BacklogSearchGraceMinutes { get; set; } = 240;
 
     // Indexer minimum age.
     // Wait this many minutes after a release was posted to the indexer before

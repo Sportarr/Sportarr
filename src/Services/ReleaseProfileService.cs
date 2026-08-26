@@ -56,7 +56,7 @@ public class ReleaseProfileService
             if (!string.IsNullOrWhiteSpace(profile.Required))
             {
                 var requiredPatterns = SplitPatterns(profile.Required);
-                var matchesRequired = requiredPatterns.Any(pattern => MatchesPattern(release.Title, pattern));
+                var matchesRequired = requiredPatterns.Any(pattern => MatchesPattern(release.Title, pattern, treatTimeoutAsMatch: false));
 
                 if (!matchesRequired)
                 {
@@ -80,7 +80,7 @@ public class ReleaseProfileService
             {
                 var ignoredPatterns = SplitPatterns(profile.Ignored);
                 var matchingIgnored = ignoredPatterns
-                    .Where(pattern => MatchesPattern(release.Title, pattern))
+                    .Where(pattern => MatchesPattern(release.Title, pattern, treatTimeoutAsMatch: true))
                     .ToList();
 
                 if (matchingIgnored.Any())
@@ -108,7 +108,7 @@ public class ReleaseProfileService
                     if (string.IsNullOrWhiteSpace(preferred.Key))
                         continue;
 
-                    if (MatchesPattern(release.Title, preferred.Key))
+                    if (MatchesPattern(release.Title, preferred.Key, treatTimeoutAsMatch: false))
                     {
                         evaluation.PreferredScore += preferred.Value;
                         evaluation.MatchedPreferred.Add(preferred);
@@ -154,12 +154,21 @@ public class ReleaseProfileService
     /// <summary>
     /// Check if a release title matches a pattern (case-insensitive regex).
     /// </summary>
-    private bool MatchesPattern(string title, string pattern)
+    /// <param name="treatTimeoutAsMatch">
+    /// What to answer when the pattern runs out of time. A pattern that says
+    /// what must NOT be there has to answer yes, or a release carrying the
+    /// forbidden term is waved through by the very rule meant to stop it. A
+    /// pattern that says what MUST be there answers no, so nothing is accepted
+    /// on a check that never completed.
+    /// </param>
+    private bool MatchesPattern(string title, string pattern, bool treatTimeoutAsMatch)
     {
         try
         {
-            // Treat the pattern as a regex
-            var regex = new Regex(pattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+            // A quarter second per pattern. A second each looked harmless
+            // until a profile with dozens of them met a few hundred releases,
+            // and a search sat there for minutes.
+            var regex = new Regex(pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
             return regex.IsMatch(title);
         }
         catch (RegexParseException ex)
@@ -170,8 +179,9 @@ public class ReleaseProfileService
         }
         catch (RegexMatchTimeoutException)
         {
-            _logger.LogWarning("[Release Profile] Regex timeout for pattern '{Pattern}'", pattern);
-            return false;
+            _logger.LogWarning("[Release Profile] Regex timeout for pattern '{Pattern}'; treating it as {Verdict}",
+                pattern, treatTimeoutAsMatch ? "a match" : "no match");
+            return treatTimeoutAsMatch;
         }
     }
 }

@@ -28,7 +28,11 @@ public class NoAuthenticationHandler : AuthenticationHandler<AuthenticationSchem
             new Claim("Anonymous", "true")
         };
 
-        var identity = new ClaimsIdentity(claims, authenticationType: null);
+        // The authentication type has to be set. Without one the identity
+        // reports itself as unauthenticated, so the standard authorization
+        // policy refused every protected endpoint with a 401 or 403 on an
+        // install that had deliberately turned authentication off.
+        var identity = new ClaimsIdentity(claims, authenticationType: "NoAuth");
         var claimsPrincipal = new ClaimsPrincipal(identity);
 
         return Task.FromResult(AuthenticateResult.Success(

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeftIcon, SignalIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import StreamPlayerModal from '../../components/StreamPlayerModal';
 import { apiGet } from '../../utils/api';
+import { createRequestUrl } from '../../utils/request';
 
 interface ChannelDetail {
   id: number;
@@ -52,7 +53,11 @@ export default function WatchChannelPage() {
         // Stream URL - use the proxy endpoint, not the raw upstream
         // URL. The browser cannot reach upstream IPTV servers
         // directly (CORS, auth headers), so we always proxy.
-        data.streamUrl = `/api/iptv/stream/${data.id}`;
+        // Through the same helper every other request uses. A bare path from
+        // the site root ignored the configured URL base, so an install hosted
+        // under something like /sportarr asked for /api/iptv/... instead of
+        // /sportarr/api/iptv/... and playback simply failed.
+        data.streamUrl = createRequestUrl(`/api/iptv/stream/${data.id}`);
         setChannel(data);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load channel'))

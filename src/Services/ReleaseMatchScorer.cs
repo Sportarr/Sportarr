@@ -259,11 +259,11 @@ public class ReleaseMatchScorer
     // of releases. Pre-compiling once avoids re-parsing the same patterns on every
     // scoring pass.
     private static readonly Regex _titleRoundRegex = new(@"(?:Round|R|Week|W)\.?\s*(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex _yearRegex = new(@"\b(20[2-9]\d)\b", RegexOptions.Compiled);
+    private static readonly Regex _yearRegex = new(@"\b((?:19[3-9]\d|20\d\d))\b", RegexOptions.Compiled);
     private static readonly Regex _parseRoundRegex = new(@"(?:Round|R|Week|W)[\.\s]*(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _gameNumberRegex = new(@"\bGame[\.\s_-]*(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex _isoDateRegex = new(@"\b(20[2-9]\d)[.\-](\d{2})[.\-](\d{2})\b", RegexOptions.Compiled);
-    private static readonly Regex _euroDateRegex = new(@"\b(\d{2})[.\-](\d{2})[.\-](20[2-9]\d)\b", RegexOptions.Compiled);
+    private static readonly Regex _isoDateRegex = new(@"\b((?:19[3-9]\d|20\d\d))[.\-](\d{2})[.\-](\d{2})\b", RegexOptions.Compiled);
+    private static readonly Regex _euroDateRegex = new(@"\b(\d{2})[.\-](\d{2})[.\-]((?:19[3-9]\d|20\d\d))\b", RegexOptions.Compiled);
 
     // DetectSportPrefix patterns - hit per release in the parse pass.
     private static readonly Regex _formula3WordRegex = new(@"\bFORMULA[\.\-\s]*3\b", RegexOptions.Compiled);
@@ -298,6 +298,24 @@ public class ReleaseMatchScorer
     // in between. Capped at 1-3 digits with a trailing boundary so it never latches
     // onto a 4-digit year ("UFC 2026") or a resolution tag ("1080p", "4K").
     private static readonly Regex _fightingNumberRegex = new(@"\b(?:ufc|bellator|pfl)\b[^\d]{0,25}?(\d{1,3})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // ONE card numbers need the number to sit directly after the promotion
+    // name, with only its own show words between ("ONE 172", "ONE Fight
+    // Night 46", "ONE Championship Friday Fights 95"). The loose gap the
+    // other promotions allow would let any title beginning with the word
+    // "one" donate an unrelated number ("One Piece Episode 46").
+    private static readonly Regex _oneCardNumberRegex = new(
+        @"\bone(?:[\s._:-]+(?:championship|fc))?(?:[\s._:-]+(?:fight[\s._:-]*night|friday[\s._:-]*fights|on[\s._:-]+prime[\s._:-]*video))?[\s._:-]+(\d{1,3})\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // ONE Championship needs its own name test. "One" is a plain English word
+    // that many real leagues carry (One Day International Series, Japan Rugby
+    // League One, USL League One, several English Division One tiers), so the
+    // word alone never identifies the fighting promotion. A league is ONE when
+    // it is named exactly "ONE" or pairs the word with the promotion's own
+    // suffix; a release qualifies only with that suffix or "Fight Night".
+    private static readonly Regex _oneLeagueRegex = new(@"^\s*one\s*(?:championship|fc)?\s*$|\bone\s+(?:championship|fc)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _oneReleaseRegex = new(@"\bone[\s._-]+(?:championship|fc)\b|\bone[\s._-]+fight[\s._-]*night\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _fightNightRegex = new(@"fight\s*night", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _vsFightersRegex = new(@"[:\s]([a-z]+)\s*(?:vs|v)\s*([a-z]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
@@ -487,7 +505,16 @@ public class ReleaseMatchScorer
         // round signal and let team match, date match, and game
         // number match (below) carry the disambiguation.
         const int MaxRealisticRoundNumber = 50;
-        var eventRound = !string.IsNullOrEmpty(evt.Round) ? ExtractRoundNumber(evt.Round) : null;
+        // Fighting events ignore the Round FIELD here. It counts the
+        // league's chronological card position (a DWCS "season 10 Week 1"
+        // event syncs under UFC with Round 31), which never appears in a
+        // release name - a W01 token would hard-reject its own event
+        // before the fighting matcher below could identify it. A week in
+        // the event TITLE is real identity and stays comparable, so a
+        // wrong-week release still hard-rejects.
+        var eventRound = !IsFightingSport(eventSportPrefix) && !string.IsNullOrEmpty(evt.Round)
+            ? ExtractRoundNumber(evt.Round)
+            : null;
         if (!eventRound.HasValue && !string.IsNullOrEmpty(evt.Title))
         {
             var titleRoundMatch = _titleRoundRegex.Match(evt.Title);
@@ -549,9 +576,14 @@ public class ReleaseMatchScorer
         }
 
         // Date matching (for team sports with specific dates)
+        // CRITICAL: a definite different date is a wrong-event signal, the same
+        // way a wrong team or a wrong fighter is, so it rejects rather than
+        // scoring low.
         if (IsDateBasedSport(eventSportPrefix))
         {
             var dateScore = GetDateMatchScore(parsed, evt);
+            if (dateScore < 0)
+                return 0; // A different day between the same teams is a different game
             score += dateScore; // 0-20 points
         }
 
@@ -679,6 +711,8 @@ public class ReleaseMatchScorer
         // Fighting sports
         if (normalized.Contains("UFC"))
             return "UFC";
+        if (_oneReleaseRegex.IsMatch(normalized))
+            return "ONE";
         if (normalized.Contains("BELLATOR"))
             return "Bellator";
         if (normalized.Contains("PFL"))
@@ -746,6 +780,8 @@ public class ReleaseMatchScorer
                 return "WEC";
             if (upper.Contains("UFC"))
                 return "UFC";
+            if (_oneLeagueRegex.IsMatch(leagueName))
+                return "ONE";
             if (upper.Contains("NFL"))
                 return "NFL";
             if (upper.Contains("NBA"))
@@ -1297,6 +1333,12 @@ public class ReleaseMatchScorer
     /// a late-evening US game stored in UTC lands on the next calendar day but indexer releases
     /// are titled with the venue-local date (e.g. event at 2026-02-27 03:00 UTC, release "... 2026 02 26 ...").
     /// </summary>
+    /// <summary>
+    /// Returned when the release names a day that is not this fixture's. The
+    /// caller rejects on any negative, exactly as it does for a wrong team.
+    /// </summary>
+    private const int WrongDate = -100;
+
     private int GetDateMatchScore(ParsedRelease parsed, Event evt)
     {
         var score = 0;
@@ -1314,11 +1356,31 @@ public class ReleaseMatchScorer
                 var parsedDate = new DateTime(eventDate.Year, parsed.Month.Value, parsed.Day.Value);
                 var diffDays = Math.Abs((parsedDate - eventDate).TotalDays);
                 if (diffDays == 0)
+                {
                     score += 10;                  // exact day
+                }
                 else if (diffDays <= 1)
+                {
                     score += 8;                   // off-by-one (timezone rollover)
+                }
+                else if (evt.HomeTeamId.HasValue && evt.AwayTeamId.HasValue)
+                {
+                    // Both teams are known, so the day is what tells one
+                    // fixture from another. The same two teams meet again on
+                    // the next day of an MLB series and repeatedly through an
+                    // NBA or NHL season, and the team score alone carries a
+                    // release well past the auto-grab threshold, so a five
+                    // point deduction never stopped the wrong game being
+                    // grabbed and imported as this one.
+                    return WrongDate;
+                }
                 else
-                    score -= 5;                   // different day - small penalty
+                {
+                    // No teams to anchor the fixture. A multi-day event can
+                    // legitimately carry a date away from the row's own, so
+                    // this stays a nudge rather than a rejection.
+                    score -= 5;
+                }
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -1384,7 +1446,7 @@ public class ReleaseMatchScorer
         // === UFC PPV / Fight Night - Number based ===
         // Event: "UFC 299" or "UFC Fight Night 240"
         // Release: "UFC.299.Main.Card" or "UFC.Fight.Night.240"
-        var eventNumberMatch = _fightingNumberRegex.Match(normalizedEvent);
+        var eventNumberMatch = MatchFightingCardNumber(normalizedEvent);
         if (eventNumberMatch.Success && !hasEventIdentifier)
         {
             hasEventIdentifier = true;
@@ -1393,7 +1455,7 @@ public class ReleaseMatchScorer
             // Check if event is specifically a "Fight Night" vs PPV
             var eventIsFightNight = _fightNightRegex.IsMatch(normalizedEvent);
 
-            var releaseNumberMatch = _fightingNumberRegex.Match(normalizedRelease);
+            var releaseNumberMatch = MatchFightingCardNumber(normalizedRelease);
             if (releaseNumberMatch.Success)
             {
                 var releaseNumber = releaseNumberMatch.Groups[1].Value;
@@ -1476,6 +1538,17 @@ public class ReleaseMatchScorer
     }
 
     /// <summary>
+    /// Find the card number in a fighting title. The named promotions win,
+    /// so a title that merely opens with the word "one" cannot donate its
+    /// number to a UFC, Bellator, or PFL release.
+    /// </summary>
+    private static Match MatchFightingCardNumber(string normalizedTitle)
+    {
+        var match = _fightingNumberRegex.Match(normalizedTitle);
+        return match.Success ? match : _oneCardNumberRegex.Match(normalizedTitle);
+    }
+
+    /// <summary>
     /// Check if a word is common in fighting sports (shouldn't be used for matching).
     /// </summary>
     private bool IsFightingCommonWord(string word)
@@ -1534,7 +1607,7 @@ public class ReleaseMatchScorer
     private bool IsFightingSport(string? sportPrefix)
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
-        return sportPrefix is "UFC" or "Bellator" or "PFL" or "Boxing" or "WWE";
+        return sportPrefix is "UFC" or "Bellator" or "PFL" or "Boxing" or "WWE" or "ONE";
     }
 
     #endregion

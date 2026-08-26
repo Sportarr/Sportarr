@@ -2,6 +2,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Exceptions;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Npgsql;
 using System.Diagnostics;
 using System.IO.Compression;
@@ -159,6 +160,7 @@ public class BackupService
         _logger.LogInformation("Creating backup: {BackupPath}", backupPath);
 
         string? pgDumpTempFile = null;
+        string? sqliteSnapshotFile = null;
         try
         {
             if (_db.Database.IsNpgsql())
@@ -170,8 +172,15 @@ public class BackupService
             }
             else
             {
-                // Ensure WAL mode checkpoint to get a consistent backup
+                // Take the snapshot with VACUUM INTO. Checkpointing and then
+                // copying the db, wal and shm files one after another read
+                // three different instants of a live database, so the set could
+                // restore torn. VACUUM INTO writes one consistent, compacted
+                // file in a transaction, and it needs no journal files beside
+                // it.
                 await _db.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(FULL)");
+                sqliteSnapshotFile = Path.Combine(Path.GetTempPath(), $"sportarr_sqlite_{Guid.NewGuid():N}.db");
+                await _db.Database.ExecuteSqlRawAsync($"VACUUM INTO '{sqliteSnapshotFile.Replace("'", "''")}'");
             }
 
             // Create backup zip file
@@ -182,27 +191,12 @@ public class BackupService
                     // Custom-format pg_dump archive; restored via pg_restore, not a file copy.
                     zipArchive.CreateEntryFromFile(pgDumpTempFile, "postgres.dump");
                 }
-                else
+                else if (sqliteSnapshotFile != null && File.Exists(sqliteSnapshotFile))
                 {
-                    // Add main database file
-                    if (File.Exists(_databasePath))
-                    {
-                        zipArchive.CreateEntryFromFile(_databasePath, "sportarr.db");
-                    }
-
-                    // Add WAL file if it exists
-                    var walPath = _databasePath + "-wal";
-                    if (File.Exists(walPath))
-                    {
-                        zipArchive.CreateEntryFromFile(walPath, "sportarr.db-wal");
-                    }
-
-                    // Add SHM file if it exists
-                    var shmPath = _databasePath + "-shm";
-                    if (File.Exists(shmPath))
-                    {
-                        zipArchive.CreateEntryFromFile(shmPath, "sportarr.db-shm");
-                    }
+                    // One file, already consistent. Restores that meet no
+                    // journal files delete any stale ones beside the live
+                    // database, which is what the snapshot expects.
+                    zipArchive.CreateEntryFromFile(sqliteSnapshotFile, "sportarr.db");
                 }
 
                 // Add config.xml (API key, auth, bind URL)
@@ -253,6 +247,11 @@ public class BackupService
             if (pgDumpTempFile != null && File.Exists(pgDumpTempFile))
             {
                 try { File.Delete(pgDumpTempFile); } catch { /* best effort */ }
+            }
+
+            if (sqliteSnapshotFile != null && File.Exists(sqliteSnapshotFile))
+            {
+                try { File.Delete(sqliteSnapshotFile); } catch { /* best effort */ }
             }
         }
     }
@@ -312,7 +311,7 @@ public class BackupService
         IReadOnlySet<string>? scope = null)
     {
         var backupFolder = await GetBackupFolderAsync();
-        var backupPath = Path.Combine(backupFolder, backupName);
+        var backupPath = ResolveBackupPath(backupFolder, backupName);
 
         if (!File.Exists(backupPath))
         {
@@ -411,14 +410,31 @@ public class BackupService
                     File.Copy(_databasePath, currentBackupPath, true);
                 }
 
+                // Close the pooled connections BEFORE the file is replaced. A
+                // connection still open on the old file writes its cached pages
+                // out when it is finally disposed, and by then the file under it
+                // is the restored one, which corrupts it. Doing this afterwards
+                // is what corrupts the database; doing it here means nothing
+                // holds the file while it is swapped, and the work that follows
+                // the restore opens the file that was actually restored instead
+                // of failing against a handle pointing at the old one.
+                SqliteConnection.ClearAllPools();
+
+                // Refuse a backup that carries no database rather than
+                // going ahead. The journal cleanup below deletes the live WAL,
+                // and that WAL holds committed transactions the main file does
+                // not have yet, so a restore from an archive with no database
+                // used to discard data and report success.
+                var restoredDbPath = Path.Combine(restoreDir, "sportarr.db");
+                if (!File.Exists(restoredDbPath))
+                {
+                    throw new InvalidOperationException(
+                        "This backup contains no database file, so there is nothing to restore.");
+                }
+
                 try
                 {
-                    // Replace database files
-                    var restoredDbPath = Path.Combine(restoreDir, "sportarr.db");
-                    if (File.Exists(restoredDbPath))
-                    {
-                        File.Copy(restoredDbPath, _databasePath, true);
-                    }
+                    File.Copy(restoredDbPath, _databasePath, true);
 
                     var restoredWalPath = Path.Combine(restoreDir, "sportarr.db-wal");
                     if (File.Exists(restoredWalPath))
@@ -441,6 +457,7 @@ public class BackupService
                     {
                         File.Delete(_databasePath + "-shm");
                     }
+
                 }
                 catch (Exception copyEx)
                 {
@@ -504,7 +521,7 @@ public class BackupService
     public async Task<BackupManifest?> ReadManifestAsync(string backupName)
     {
         var backupFolder = await GetBackupFolderAsync();
-        var backupPath = Path.Combine(backupFolder, backupName);
+        var backupPath = ResolveBackupPath(backupFolder, backupName);
         if (!File.Exists(backupPath))
             throw new FileNotFoundException($"Backup file not found: {backupName}");
 
@@ -623,10 +640,38 @@ public class BackupService
     /// <summary>
     /// Delete a backup file
     /// </summary>
+    /// <summary>
+    /// Resolve a caller-supplied backup name to a path inside the backup
+    /// folder. The name arrives from the route and was combined with the folder
+    /// unchecked, so one carrying ".." addressed a file anywhere the process
+    /// could reach: restore read it, download served it, and delete removed it.
+    /// </summary>
+    private static string ResolveBackupPath(string backupFolder, string backupName)
+    {
+        if (string.IsNullOrWhiteSpace(backupName) ||
+            backupName.Contains("..", StringComparison.Ordinal) ||
+            backupName.Contains('/') || backupName.Contains('\\') ||
+            Path.IsPathRooted(backupName) ||
+            !string.Equals(Path.GetFileName(backupName), backupName, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Invalid backup name: {backupName}");
+        }
+
+        var root = Path.GetFullPath(backupFolder).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var resolved = Path.GetFullPath(Path.Combine(backupFolder, backupName));
+
+        if (!resolved.StartsWith(root, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Invalid backup name: {backupName}");
+        }
+
+        return resolved;
+    }
+
     public async Task DeleteBackupAsync(string backupName)
     {
         var backupFolder = await GetBackupFolderAsync();
-        var backupPath = Path.Combine(backupFolder, backupName);
+        var backupPath = ResolveBackupPath(backupFolder, backupName);
 
         if (!File.Exists(backupPath))
         {

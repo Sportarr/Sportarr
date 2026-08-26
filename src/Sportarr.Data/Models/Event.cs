@@ -11,6 +11,15 @@ namespace Sportarr.Api.Models;
 public class CreateEventRequest
 {
     /// <summary>
+    /// Whether to look for this event as soon as it is added.
+    ///
+    /// The add dialog has always offered "Start search immediately" and the
+    /// answer had nowhere to go: the field did not exist, so the box did
+    /// nothing whichever way it was left.
+    /// </summary>
+    public bool SearchOnAdd { get; set; }
+
+    /// <summary>
     /// Event ID from Sportarr API API
     /// </summary>
     public string? ExternalId { get; set; }
@@ -619,7 +628,12 @@ public class EventResponse
             // "All Files" list (which reads EventFiles directly) listed the file.
             // OR-ing keeps it safe when Files isn't eager-loaded: the flag still
             // wins, we only ever ADD "downloaded" when a real file exists.
-            HasFile = evt.HasFile || evt.Files.Any(f => f.Exists),
+            // A real file always wins. When files were loaded and none of them
+            // exist, say so rather than trusting a stale flag: the response
+            // otherwise called the event downloaded and returned an empty file
+            // list in the same breath. With no files loaded at all there is
+            // nothing to contradict the flag, so it still stands.
+            HasFile = evt.Files.Any(f => f.Exists) || (evt.HasFile && evt.Files.Count == 0),
             FilePath = evt.FilePath,
             FileSize = evt.FileSize,
             Quality = evt.Quality,
@@ -677,16 +691,23 @@ public class EventResponse
             .Select(s => new { Name = s.Name, Number = s.PartNumber })
             .ToList();
 
-        // If the event itself is not monitored, all parts are unmonitored
+        // If the event itself is not monitored, all parts are unmonitored.
+        // Whether a part has a file is a separate question: reporting them all
+        // as not downloaded made an unmonitored event look empty even with
+        // every part sitting in the library.
         if (!evt.Monitored)
         {
-            return allParts.Select(part => new PartStatus
+            return allParts.Select(part =>
             {
-                PartName = part.Name,
-                PartNumber = part.Number,
-                Monitored = false,
-                Downloaded = false,
-                File = null
+                var partFile = evt.Files.FirstOrDefault(f => f.PartNumber == part.Number && f.Exists);
+                return new PartStatus
+                {
+                    PartName = part.Name,
+                    PartNumber = part.Number,
+                    Monitored = false,
+                    Downloaded = partFile != null,
+                    File = partFile != null ? EventFileResponse.FromEventFile(partFile) : null
+                };
             }).ToList();
         }
 

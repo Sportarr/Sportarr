@@ -13,14 +13,17 @@ public class RTorrentClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<RTorrentClient> _logger;
+    private readonly Sportarr.Api.Services.Interfaces.IRemotePathMappingService? _pathMappingService;
     private string? _baseUrl;
     private string? _authCredentials;
     private HttpClient? _customHttpClient; // For SSL bypass
 
-    public RTorrentClient(HttpClient httpClient, ILogger<RTorrentClient> logger)
+    public RTorrentClient(HttpClient httpClient, ILogger<RTorrentClient> logger,
+        Sportarr.Api.Services.Interfaces.IRemotePathMappingService? pathMappingService = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _pathMappingService = pathMappingService;
     }
 
     /// <summary>
@@ -61,7 +64,7 @@ public class RTorrentClient
 
             // Test with system.client_version
             var response = await SendXmlRpcRequestAsync(config, "system.client_version", Array.Empty<object>());
-            return response != null;
+            return Succeeded(response, "system.client_version");
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
         {
@@ -195,7 +198,10 @@ public class RTorrentClient
             // Use d.multicall2 to get all torrents with multiple fields
             var fields = new[] { "d.hash=", "d.name=", "d.size_bytes=", "d.completed_bytes=",
                                 "d.up.total=", "d.state=", "d.down.rate=", "d.up.rate=",
-                                "d.directory=", "d.base_path=", "d.custom1=", "d.creation_date=" };
+                                // d.creation_date is when the torrent FILE was made, often
+                                // years before anyone downloaded it, and it was being reported
+                                // as the completion time. d.timestamp.finished is the real one.
+                                "d.directory=", "d.base_path=", "d.custom1=", "d.timestamp.finished=" };
 
             var response = await SendXmlRpcRequestAsync(config, "d.multicall2", new object[] { "", "main" }.Concat(fields).ToArray());
 
@@ -270,7 +276,7 @@ public class RTorrentClient
         {
             ConfigureClient(config);
             var response = await SendXmlRpcRequestAsync(config, "d.priority.set", new object[] { hash, priority });
-            return response != null;
+            return Succeeded(response, "d.priority.set");
         }
         catch (Exception ex)
         {
@@ -291,7 +297,7 @@ public class RTorrentClient
         {
             ConfigureClient(config);
             var response = await SendXmlRpcRequestAsync(config, "d.custom1.set", new object[] { hash, category ?? string.Empty });
-            return response != null;
+            return Succeeded(response, "d.custom1.set");
         }
         catch (Exception ex)
         {
@@ -355,8 +361,8 @@ public class RTorrentClient
                     IsCompleted = isCompleted,
                     Protocol = "Torrent",
                     TorrentInfoHash = torrent.Hash,
-                    CompletedDate = torrent.TimeAdded > 0 && isCompleted
-                        ? DateTimeOffset.FromUnixTimeSeconds(torrent.TimeAdded).UtcDateTime
+                    CompletedDate = torrent.TimeFinished > 0 && isCompleted
+                        ? DateTimeOffset.FromUnixTimeSeconds(torrent.TimeFinished).UtcDateTime
                         : (DateTime?)null
                 });
             }
@@ -464,18 +470,92 @@ public class RTorrentClient
         {
             ConfigureClient(config);
 
+            // Neither mode used to do what it says. "Leave the files" ran
+            // d.close, which only stops the torrent and leaves it registered
+            // in rTorrent forever. "Delete the files" ran d.erase, which
+            // removes the torrent and leaves every byte on disk, because
+            // rTorrent has no call that deletes data.
+            string? basePath = null;
             if (deleteFiles)
             {
-                // Delete with files using d.erase
-                var response = await SendXmlRpcRequestAsync(config, "d.erase", new object[] { hash });
-                return response != null;
+                var pathResponse = await SendXmlRpcRequestAsync(config, "d.base_path", new object[] { hash });
+                if (Succeeded(pathResponse, "d.base_path"))
+                {
+                    basePath = ExtractSingleValue(pathResponse!);
+                }
             }
-            else
+
+            var eraseResponse = await SendXmlRpcRequestAsync(config, "d.erase", new object[] { hash });
+            if (!Succeeded(eraseResponse, "d.erase"))
             {
-                // Just remove from client
-                var response = await SendXmlRpcRequestAsync(config, "d.close", new object[] { hash });
-                return response != null;
+                return false;
             }
+
+            if (!deleteFiles)
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(basePath))
+            {
+                _logger.LogWarning(
+                    "[rTorrent] Removed {Hash} but could not find out where its data lives, so the files were left in place",
+                    hash);
+                return true;
+            }
+
+            // rTorrent reports where it thinks the data lives. Erasing that
+            // path as given deletes whatever the local host happens to have at
+            // the same place, which for a remote rTorrent is somebody else's
+            // data entirely. Translate it, then require it to sit inside a
+            // folder this client was actually configured to download into.
+            var localPath = _pathMappingService != null
+                ? await _pathMappingService.RemapRemoteToLocalAsync(config.Host ?? string.Empty, basePath)
+                : basePath;
+
+            var approvedRoots = await GetApprovedDeletionRootsAsync(config);
+
+            if (approvedRoots.Count == 0)
+            {
+                _logger.LogWarning(
+                    "[rTorrent] Removed {Hash} but left its files in place: nothing says where this client downloads. " +
+                    "Set the client's download directory or add a remote path mapping to allow deletion.",
+                    hash);
+                return true;
+            }
+
+            if (!IsUnderApprovedRoot(localPath, approvedRoots))
+            {
+                _logger.LogWarning(
+                    "[rTorrent] Removed {Hash} but refused to delete {Path}: it is outside every configured download folder",
+                    hash, localPath);
+                return true;
+            }
+
+            try
+            {
+                if (Directory.Exists(localPath))
+                {
+                    Directory.Delete(localPath, recursive: true);
+                }
+                else if (File.Exists(localPath))
+                {
+                    File.Delete(localPath);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "[rTorrent] Removed {Hash} but {Path} is not reachable from here, so its files were left in place. " +
+                        "A remote rTorrent needs a remote path mapping for this to work.",
+                        hash, localPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[rTorrent] Removed {Hash} but could not delete {Path}", hash, localPath);
+            }
+
+            return true;
         }
         catch (Exception ex)
         {
@@ -540,12 +620,69 @@ public class RTorrentClient
         {
             ConfigureClient(config);
             var response = await SendXmlRpcRequestAsync(config, method, new object[] { hash });
-            return response != null;
+            return Succeeded(response, method);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[rTorrent] Error controlling torrent");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Decide whether an XML-RPC reply actually did what was asked.
+    ///
+    /// rTorrent answers a refused call with HTTP 200 and a fault struct in the
+    /// body, so treating any non-null response as success reported every
+    /// failed start, stop, delete, label and priority change as done. Callers
+    /// then discarded tracking state for a deletion that never happened.
+    /// </summary>
+    private bool Succeeded(string? response, string method)
+    {
+        if (response == null) return false;
+
+        if (response.Contains("<fault>", StringComparison.OrdinalIgnoreCase))
+        {
+            var reason = ExtractFaultString(response);
+            _logger.LogWarning("[rTorrent] {Method} was refused: {Reason}", method, reason ?? "no reason given");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string? ExtractFaultString(string response)
+    {
+        try
+        {
+            var doc = XDocument.Parse(response);
+            return doc.Descendants("member")
+                .Where(m => (string?)m.Element("name") == "faultString")
+                .Select(m => m.Element("value")?.Value)
+                .FirstOrDefault();
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Pull the single scalar out of an XML-RPC reply.
+    /// </summary>
+    private static string? ExtractSingleValue(string response)
+    {
+        try
+        {
+            var doc = XDocument.Parse(response);
+            return doc.Descendants("param")
+                .Select(p => p.Element("value")?.Value)
+                .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))
+                ?.Trim();
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
         }
     }
 
@@ -607,7 +744,7 @@ public class RTorrentClient
                         Directory = values[8],
                         BasePath = values[9],
                         Label = values[10],
-                        TimeAdded = long.TryParse(values[11], out var added) ? added : 0
+                        TimeFinished = long.TryParse(values[11], out var finished) ? finished : 0
                     });
                 }
             }
@@ -619,6 +756,52 @@ public class RTorrentClient
 
         return torrents;
     }
+
+    /// <summary>
+    /// The folders this client may delete inside: its own download directory
+    /// and the local side of any remote path mapping for its host. An empty
+    /// list means nothing is known, and deletion is refused rather than
+    /// guessed at.
+    /// </summary>
+    private async Task<List<string>> GetApprovedDeletionRootsAsync(DownloadClient config)
+    {
+        var roots = new List<string>();
+
+        void Add(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            try
+            {
+                roots.Add(Path.GetFullPath(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+            }
+            catch
+            {
+                // Not a path this host can make sense of.
+            }
+        }
+
+        Add(config.Directory);
+
+        if (_pathMappingService != null)
+        {
+            foreach (var root in await _pathMappingService.GetLocalRootsAsync(config.Host ?? string.Empty))
+            {
+                Add(root);
+            }
+        }
+
+        return roots;
+    }
+
+    /// <summary>
+    /// Whether a path really sits inside a folder this client downloads into.
+    ///
+    /// Comparing the text alone was not enough. A path under an approved root
+    /// can lead through a link to somewhere else entirely, and this decides
+    /// whether a recursive delete runs, so both sides are resolved first.
+    /// </summary>
+    private static bool IsUnderApprovedRoot(string path, List<string> roots) =>
+        Sportarr.Api.Helpers.PathResolution.IsInsideAny(path, roots);
 }
 
 /// <summary>
@@ -637,5 +820,11 @@ public class RTorrentTorrent
     public string Directory { get; set; } = "";
     public string BasePath { get; set; } = ""; // d.base_path: file path (single-file) or data root (multi-file)
     public string Label { get; set; } = "";
-    public long TimeAdded { get; set; } // Unix timestamp
+    /// <summary>
+    /// Unix timestamp of when the download finished, from d.timestamp.finished.
+    /// Zero when rTorrent has no record of it, which is the case for a torrent
+    /// that has not finished.
+    /// </summary>
+    public long TimeFinished { get; set; }
+
 }

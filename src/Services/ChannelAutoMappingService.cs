@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Helpers;
 
 namespace Sportarr.Api.Services;
 
@@ -254,15 +255,17 @@ public class ChannelAutoMappingService
             .ToDictionary(g => g.Key, g => g.First());
 
         // Also index by common alternate names
-        var leagueAltNames = new Dictionary<string, League>(StringComparer.OrdinalIgnoreCase);
+        var leagueNameIndex = new LeagueNameIndex();
         foreach (var league in leagues)
         {
             // Add normalized name
-            leagueAltNames[NormalizeLeagueName(league.Name)] = league;
+            leagueNameIndex.Claim(NormalizeLeagueName(league.Name), league, ClaimStrength.Exact);
 
             // Add common abbreviations
-            AddLeagueAbbreviations(leagueAltNames, league);
+            AddLeagueAbbreviations(leagueNameIndex, league);
         }
+
+        var leagueAltNames = leagueNameIndex.Build(_logger);
 
         _logger.LogDebug("[AutoMapping] Indexed {Count} league name variations", leagueAltNames.Count);
 
@@ -290,7 +293,7 @@ public class ChannelAutoMappingService
                     networksDetectedCount++;
                 }
 
-                var mappingsCreated = await AutoMapChannelAsync(channel, leagueAltNames, epgSeeds);
+                var mappingsCreated = await AutoMapChannelAsync(channel, leagueAltNames, leagues, epgSeeds);
                 result.ChannelsProcessed++;
                 result.MappingsCreated += mappingsCreated;
 
@@ -456,6 +459,7 @@ public class ChannelAutoMappingService
     }
 
     private async Task<int> AutoMapChannelAsync(IptvChannel channel, Dictionary<string, League> leaguesByName,
+        IReadOnlyCollection<League> allLeagues,
         Dictionary<string, Dictionary<int, int>>? epgSeeds = null)
     {
         // Manual mappings stay put. Collect their league_ids so we
@@ -485,10 +489,14 @@ public class ChannelAutoMappingService
             scores[leagueId] = cur;
         }
 
-        // We need the full league list for direct-name + country
-        // checks. Caller already loaded it into leaguesByName, but
-        // we want the actual League rows too for sport / country.
-        var leaguesById = leaguesByName.Values.Distinct().ToDictionary(l => l.Id);
+        // The candidate set is every league, not the name index.
+        // A name key claimed by two leagues at equal strength is dropped
+        // from that index on purpose, because it cannot resolve to one
+        // league. Deriving the candidates from it as well meant a league
+        // whose every key was contested disappeared from the EPG, country
+        // and direct-name signals too, so none of its channels could ever
+        // be mapped by anything.
+        var leaguesById = allLeagues.DistinctBy(l => l.Id).ToDictionary(l => l.Id);
         var leaguesList = leaguesById.Values.ToList();
 
         // Signal 0 — EPG evidence seeds (league-side scan). Runs FIRST so
@@ -534,9 +542,9 @@ public class ChannelAutoMappingService
             {
                 var token = NormalizeLeagueName(league.Name);
                 if (string.IsNullOrEmpty(token) || token.Length < 3) continue;
-                if (tvgIdSources.Any(s => s.Contains(token)))
+                if (tvgIdSources.Any(s => StartsAtWordBoundary(s, token)))
                 {
-                    AddScore(league.Id, W_TVG_ID_MATCH, "tvg_id", string.Join(", ", tvgIdSources.Where(s => s.Contains(token))));
+                    AddScore(league.Id, W_TVG_ID_MATCH, "tvg_id", string.Join(", ", tvgIdSources.Where(s => StartsAtWordBoundary(s, token))));
                 }
             }
         }
@@ -550,7 +558,7 @@ public class ChannelAutoMappingService
         {
             var token = NormalizeLeagueName(league.Name);
             if (string.IsNullOrEmpty(token) || token.Length < 3) continue;
-            if (channelNameLower.Contains(token))
+            if (StartsAtWordBoundary(channelNameLower, token))
             {
                 AddScore(league.Id, W_NAME_DIRECT_LEAGUE, "name_contains_league", $"\"{league.Name}\" in channel name");
             }
@@ -602,8 +610,8 @@ public class ChannelAutoMappingService
                     {
                         var hay = ((p.Title ?? "") + " " + (p.Description ?? "") + " " + (p.Category ?? ""))
                             .ToLowerInvariant();
-                        return (leagueToken.Length >= 3 && hay.Contains(leagueToken)) ||
-                               (!string.IsNullOrEmpty(sportToken) && sportToken.Length >= 4 && hay.Contains(sportToken));
+                        return (leagueToken.Length >= 3 && StartsAtWordBoundary(hay, leagueToken)) ||
+                               (!string.IsNullOrEmpty(sportToken) && sportToken.Length >= 4 && StartsAtWordBoundary(hay, sportToken));
                     });
                     if (matchingPrograms > 0)
                     {
@@ -692,7 +700,10 @@ public class ChannelAutoMappingService
         {
             foreach (var keyword in pattern.Keywords)
             {
-                if (searchText.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                // Word boundary, same as the name signals. "wnba tv"
+                // contains "nba tv", and the network score this fed was
+                // enough to map a channel to the league it merely contains.
+                if (StartsAtWordBoundary(searchText, keyword))
                 {
                     if (!detected.Contains(pattern.NetworkId))
                     {
@@ -734,7 +745,7 @@ public class ChannelAutoMappingService
     public async Task<IptvChannel?> GetBestChannelForLeagueAsync(int leagueId)
     {
         var mappings = await _db.ChannelLeagueMappings
-            .Where(m => m.LeagueId == leagueId)
+            .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
             .Include(m => m.Channel)
             .ThenInclude(c => c!.Source)
             .ToListAsync();
@@ -752,7 +763,8 @@ public class ChannelAutoMappingService
                 Quality = DetectChannelQuality(m.Channel!.Name),
                 StatusScore = GetStatusScore(m.Channel!.Status)
             })
-            .OrderByDescending(x => x.Mapping.IsPreferred) // Preferred channels first
+            .OrderByDescending(x => ChannelHealth.Rank(x.Channel.Status)) // Dead channels last
+            .ThenByDescending(x => x.Mapping.IsPreferred) // Then preferred channels
             .ThenByDescending(x => x.Quality.Score) // Then by quality
             .ThenByDescending(x => x.StatusScore) // Then by online status
             .ThenByDescending(x => x.Mapping.Priority) // Then by mapping priority
@@ -775,7 +787,7 @@ public class ChannelAutoMappingService
     public async Task<List<(IptvChannel Channel, ChannelQuality Quality)>> GetChannelsForLeagueByQualityAsync(int leagueId)
     {
         var mappings = await _db.ChannelLeagueMappings
-            .Where(m => m.LeagueId == leagueId)
+            .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
             .Include(m => m.Channel)
             .ThenInclude(c => c!.Source)
             .ToListAsync();
@@ -783,7 +795,8 @@ public class ChannelAutoMappingService
         return mappings
             .Where(m => m.Channel != null && m.Channel.IsEnabled && m.Channel.Source?.IsActive == true)
             .Select(m => (m.Channel!, DetectChannelQuality(m.Channel!.Name)))
-            .OrderByDescending(x => x.Item2.Score)
+            .OrderByDescending(x => ChannelHealth.Rank(x.Item1.Status))
+            .ThenByDescending(x => x.Item2.Score)
             .ThenByDescending(x => GetStatusScore(x.Item1.Status))
             .ToList();
     }
@@ -795,7 +808,7 @@ public class ChannelAutoMappingService
     public async Task<bool> UpdatePreferredChannelForLeagueAsync(int leagueId)
     {
         var mappings = await _db.ChannelLeagueMappings
-            .Where(m => m.LeagueId == leagueId)
+            .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
             .Include(m => m.Channel)
             .ToListAsync();
 
@@ -811,7 +824,8 @@ public class ChannelAutoMappingService
                 Quality = DetectChannelQuality(m.Channel!.Name),
                 StatusScore = GetStatusScore(m.Channel!.Status)
             })
-            .OrderByDescending(x => x.Quality.Score)
+            .OrderByDescending(x => ChannelHealth.Rank(x.Mapping.Channel!.Status))
+            .ThenByDescending(x => x.Quality.Score)
             .ThenByDescending(x => x.StatusScore)
             .FirstOrDefault();
 
@@ -839,6 +853,7 @@ public class ChannelAutoMappingService
     public async Task<int> UpdateAllPreferredChannelsAsync()
     {
         var leagueIds = await _db.ChannelLeagueMappings
+            .Where(m => m.Priority >= 0)
             .Select(m => m.LeagueId)
             .Distinct()
             .ToListAsync();
@@ -886,7 +901,80 @@ public class ChannelAutoMappingService
             .Trim();
     }
 
-    private static void AddLeagueAbbreviations(Dictionary<string, League> dict, League league)
+    /// <summary>
+    /// How firmly a league claims a lookup key. An exact name or abbreviation
+    /// match is a strong claim and beats a claim made by mere containment, so
+    /// "NBA" keeps the "nba" key even though "NBA G League" also contains it.
+    /// Two claims of equal strength from different leagues make the key
+    /// ambiguous, and an ambiguous key is dropped rather than handed to
+    /// whichever league happened to be indexed last.
+    /// </summary>
+    private enum ClaimStrength
+    {
+        Contains = 0,
+        Exact = 1,
+    }
+
+    /// <summary>
+    /// Builds the league lookup, keeping the strongest claim on each key and
+    /// discarding keys that two different leagues claim equally. Plain
+    /// assignment let the last league indexed take a shared key, so one real
+    /// league vanished from the lookup while its name evidence was credited to
+    /// another, and a channel could be mapped to a competition it never
+    /// carries.
+    /// </summary>
+    private sealed class LeagueNameIndex
+    {
+        private readonly Dictionary<string, (League League, ClaimStrength Strength)> _claims = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _ambiguous = new(StringComparer.OrdinalIgnoreCase);
+
+        public void Claim(string key, League league, ClaimStrength strength)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return;
+
+            if (!_claims.TryGetValue(key, out var held))
+            {
+                _claims[key] = (league, strength);
+                return;
+            }
+
+            if (held.League.Id == league.Id)
+            {
+                if (strength > held.Strength) _claims[key] = (league, strength);
+                return;
+            }
+
+            if (strength > held.Strength)
+            {
+                _claims[key] = (league, strength);
+                _ambiguous.Remove(key);
+                return;
+            }
+
+            if (strength == held.Strength)
+            {
+                _ambiguous.Add(key);
+            }
+        }
+
+        public Dictionary<string, League> Build(ILogger logger)
+        {
+            foreach (var key in _ambiguous)
+            {
+                _claims.Remove(key);
+            }
+
+            if (_ambiguous.Count > 0)
+            {
+                logger.LogDebug("[AutoMapping] {Count} league name key(s) claimed by more than one league and left unmapped: {Keys}",
+                    _ambiguous.Count, string.Join(", ", _ambiguous.Take(10)));
+            }
+
+            return _claims.ToDictionary(kv => kv.Key, kv => kv.Value.League, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static void AddLeagueAbbreviations(LeagueNameIndex index, League league)
     {
         var name = league.Name.ToUpperInvariant();
 
@@ -918,21 +1006,53 @@ public class ChannelAutoMappingService
 
         foreach (var (abbrev, fullNames) in abbreviations)
         {
-            foreach (var fullName in fullNames)
+            // Whole word, not substring. "WNBA" and "NBA G League" both
+            // contained "NBA", so both claimed the NBA key and a channel named
+            // for one competition was mapped to another.
+            var namesTheAbbreviation = ContainsWholeWord(name, abbrev);
+            var isExactlyThisLeague =
+                league.Name.Equals(abbrev, StringComparison.OrdinalIgnoreCase) ||
+                fullNames.Any(fn => league.Name.Equals(fn, StringComparison.OrdinalIgnoreCase));
+
+            if (!namesTheAbbreviation && !isExactlyThisLeague)
             {
-                if (name.Contains(abbrev) || league.Name.Equals(fullName, StringComparison.OrdinalIgnoreCase))
-                {
-                    dict[abbrev.ToLowerInvariant()] = league;
-                    foreach (var fn in fullNames)
-                    {
-                        dict[fn] = league;
-                    }
-                }
+                continue;
+            }
+
+            var strength = isExactlyThisLeague ? ClaimStrength.Exact : ClaimStrength.Contains;
+
+            index.Claim(abbrev.ToLowerInvariant(), league, strength);
+            foreach (var fn in fullNames)
+            {
+                index.Claim(fn, league, strength);
             }
         }
 
         // Add the exact name
-        dict[league.Name.ToLowerInvariant()] = league;
+        index.Claim(league.Name.ToLowerInvariant(), league, ClaimStrength.Exact);
+    }
+
+    /// <summary>
+    /// True when the haystack contains the term as a whole word.
+    /// </summary>
+    private static bool ContainsWholeWord(string haystack, string term)
+    {
+        return Regex.IsMatch(haystack, $@"\b{Regex.Escape(term)}\b", RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>
+    /// True when the haystack contains the term starting on a word boundary.
+    /// </summary>
+    /// <remarks>
+    /// Plain containment let a channel score for a league whose name it merely
+    /// contains, so "WNBA TV" was mapped to the NBA. The end of the term is
+    /// deliberately left open, because a tvg-id runs its words together and
+    /// "nbatv.us" is a real NBA channel.
+    /// </remarks>
+    private static bool StartsAtWordBoundary(string haystack, string term)
+    {
+        if (string.IsNullOrEmpty(haystack) || string.IsNullOrEmpty(term)) return false;
+        return Regex.IsMatch(haystack, $@"\b{Regex.Escape(term)}", RegexOptions.IgnoreCase);
     }
 
     /// <summary>

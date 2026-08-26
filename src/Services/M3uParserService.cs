@@ -205,7 +205,10 @@ public class M3uParserService
         // include the legacy code pages by default. Idempotent.
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 
-        var bytes = await response.Content.ReadAsByteArrayAsync();
+        // A large playlist from a slow provider is legitimate, the same as a
+        // big guide, so the read gets five minutes rather than the default.
+        var bytes = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsByteArrayAsync(
+            response.Content, "The playlist", readTimeout: TimeSpan.FromMinutes(5));
         if (bytes.Length == 0) return string.Empty;
 
         var charset = response.Content.Headers.ContentType?.CharSet;
@@ -256,7 +259,7 @@ public class M3uParserService
     /// </summary>
     public async Task<List<IptvChannel>> ParseFromUrlAsync(string url, int sourceId, string? userAgent = null)
     {
-        _logger.LogInformation("[M3U Parser] Fetching playlist from URL: {Url}", url);
+        _logger.LogInformation("[M3U Parser] Fetching playlist from URL: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(url));
 
         try
         {
@@ -272,7 +275,7 @@ public class M3uParserService
                 request.Headers.UserAgent.ParseAdd("VLC/3.0.18 LibVLC/3.0.18");
             }
 
-            var response = await GetHttpClient().SendAsync(request);
+            using var response = await GetHttpClient().SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
 
             var content = await ReadResponseTextAsync(response);
@@ -280,7 +283,7 @@ public class M3uParserService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[M3U Parser] Failed to fetch playlist from URL: {Url}", url);
+            _logger.LogError(ex, "[M3U Parser] Failed to fetch playlist from URL: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(url));
             throw;
         }
     }
@@ -585,7 +588,7 @@ public class M3uParserService
                 request.Headers.UserAgent.ParseAdd("VLC/3.0.18 LibVLC/3.0.18");
             }
 
-            var response = await GetHttpClient().SendAsync(request);
+            using var response = await GetHttpClient().SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
 
             var content = await ReadResponseTextAsync(response);
@@ -596,7 +599,7 @@ public class M3uParserService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[M3U Parser] Failed to get channel count from URL: {Url}", url);
+            _logger.LogError(ex, "[M3U Parser] Failed to get channel count from URL: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(url));
             return 0;
         }
     }

@@ -79,6 +79,7 @@ nav:
       - Decypharr: integrations/decypharr.md
       - Deluge: integrations/deluge.md
       - DockSTARTer: integrations/dockstarter.md
+      - Doplarr: integrations/doplarr.md
       - Emby: integrations/emby.md
       - Homepage: integrations/homepage.md
       - Jellyfin: integrations/jellyfin.md

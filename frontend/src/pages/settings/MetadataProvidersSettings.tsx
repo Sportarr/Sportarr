@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { DocumentTextIcon, PhotoIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 import { apiGet, apiPut } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import TagSelector from '../../components/TagSelector';
@@ -66,11 +67,22 @@ export default function MetadataProvidersSettings() {
       if (response.ok) {
         initialProvider.current = { ...provider };
         setHasUnsavedChanges(false);
+        toast.success('Metadata provider saved');
       } else {
+        // A rejected save used to go only to the browser console while the
+        // page cleared nothing and said nothing, so the user walked away
+        // believing edits were stored that had not been.
+        const body = await response.json().catch(() => null);
         console.error('Failed to save metadata provider');
+        toast.error('Could not save the metadata provider', {
+          description: body?.error ?? response.statusText,
+        });
       }
     } catch (error) {
       console.error('Failed to save metadata provider:', error);
+      toast.error('Could not save the metadata provider', {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setSaving(false);
     }

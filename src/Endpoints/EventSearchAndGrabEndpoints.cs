@@ -195,7 +195,7 @@ app.MapPost("/api/release/grab", async (
         logger.LogWarning("[GRAB] Download URL contains embedded newlines — sanitizing");
         release.DownloadUrl = release.DownloadUrl.Replace("\n", "").Replace("\r", "").Trim();
     }
-    logger.LogInformation("[GRAB] Download URL: {Url}", release.DownloadUrl);
+    logger.LogInformation("[GRAB] Download URL: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(release.DownloadUrl));
     logger.LogInformation("[GRAB] Download URL Type: {UrlType}",
         release.DownloadUrl.StartsWith("magnet:") ? "Magnet Link" :
         release.DownloadUrl.EndsWith(".torrent") ? "Torrent File URL" :

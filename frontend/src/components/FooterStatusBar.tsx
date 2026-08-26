@@ -252,8 +252,13 @@ function FooterStatusBar() {
       if (downloadTimeoutRef.current) {
         clearTimeout(downloadTimeoutRef.current);
       }
+      // Clear only if this is still the notification on screen. The timer used
+      // to clear whatever was showing when it fired, so with several downloads
+      // or imports finishing close together one item's timer cut another's
+      // five seconds short and the message flashed past.
+      const shownId = importedTransitionItem.id;
       downloadTimeoutRef.current = setTimeout(() => {
-        setDownloadNotification(null);
+        setDownloadNotification(current => (current?.id === shownId ? null : current));
       }, 5000);
       return;
     }

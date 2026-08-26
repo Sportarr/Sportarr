@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FolderIcon, ChevronRightIcon, HomeIcon, XMarkIcon, ServerIcon } from '@heroicons/react/24/outline';
 import { apiGet } from '../utils/api';
 
@@ -41,16 +41,24 @@ export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'S
     }
   }, [isOpen, initialPath]);
 
+  // Only the newest listing may write the current path. Two folder clicks in
+  // quick succession could otherwise land out of order and leave the path set
+  // to the folder the user had moved on from.
+  const loadSeq = useRef(0);
+
   const loadDirectory = async (path: string, fallbackToRoot = false) => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
 
     try {
       const queryParam = path ? `?path=${encodeURIComponent(path)}` : '';
       const response = await apiGet(`/api/filesystem${queryParam}`);
+      if (seq !== loadSeq.current) return;
 
       if (response.ok) {
         const data: FileSystemResponse = await response.json();
+        if (seq !== loadSeq.current) return;
         setItems(data.directories);
         setParent(data.parent);
         setCurrentPath(path);
@@ -66,10 +74,11 @@ export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'S
         await loadDirectory('');
         return;
       }
+      if (seq !== loadSeq.current) return;
       setError('Failed to load directory');
       console.error('Failed to load directory:', err);
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   };
 
@@ -86,6 +95,10 @@ export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'S
   };
 
   const handleSelectCurrent = () => {
+    // The path is only adopted once its listing has arrived, so selecting
+    // while one is still loading saved the folder the user had just left
+    // rather than the one they had opened.
+    if (loading) return;
     if (currentPath) {
       onSelect(currentPath);
       onClose();
@@ -251,7 +264,7 @@ export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'S
             </button>
             <button
               onClick={handleSelectCurrent}
-              disabled={!currentPath}
+              disabled={!currentPath || loading}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Select Folder

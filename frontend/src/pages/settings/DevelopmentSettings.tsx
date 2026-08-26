@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { BeakerIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPut } from '../../utils/api';
+import { runSettingsSave } from '../../hooks/useSettings';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
@@ -52,17 +53,22 @@ export default function DevelopmentSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await apiGet('/api/settings');
-      if (!response.ok) throw new Error('Failed to fetch current settings');
+      // Read and write inside the shared chain, so a save from another
+      // settings page cannot slip between this read and this write and be
+      // put back as it was.
+      const saveResponse = await runSettingsSave(async () => {
+        const response = await apiGet('/api/settings');
+        if (!response.ok) throw new Error('Failed to fetch current settings');
 
-      const currentSettings = await response.json();
+        const currentSettings = await response.json();
 
-      const updatedSettings = {
-        ...currentSettings,
-        developmentSettings: JSON.stringify(settings),
-      };
+        const updatedSettings = {
+          ...currentSettings,
+          developmentSettings: JSON.stringify(settings),
+        };
 
-      const saveResponse = await apiPut('/api/settings', updatedSettings);
+        return apiPut('/api/settings', updatedSettings);
+      });
 
       if (saveResponse.ok) {
         initialSettings.current = settings;

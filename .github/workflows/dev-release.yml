@@ -62,6 +62,13 @@ jobs:
           echo "Frontend files copied to src/wwwroot:"
           ls -la src/wwwroot/
 
+      - name: Check every migration is discoverable
+        run: |
+          # A hand-written migration without its Designer file is invisible to
+          # EF and ships silently. The guard lives in the test suite, and the
+          # suite is not otherwise part of this build.
+          dotnet test tests/Sportarr.Api.Tests/Sportarr.Api.Tests.csproj -p:SkipFrontendBuild=true --nologo --filter "FullyQualifiedName~MigrationDiscoveryTests"
+
       - name: Build Windows x64
         run: |
           dotnet publish src/Sportarr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/win-x64

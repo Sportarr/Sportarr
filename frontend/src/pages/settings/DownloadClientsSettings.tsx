@@ -3,6 +3,7 @@ import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDow
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import { apiGet, apiPut } from '../../utils/api';
+import { runSettingsSave } from '../../hooks/useSettings';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import TagSelector from '../../components/TagSelector';
@@ -361,7 +362,10 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
-      // First fetch current settings
+      // Read and write inside the shared chain, so a save from another
+      // settings page cannot slip between this read and this write and be
+      // put back as it was.
+      await runSettingsSave(async () => {
       const response = await apiGet('/api/settings');
       if (!response.ok) throw new Error('Failed to fetch current settings');
 
@@ -388,8 +392,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         diskScanIntervalMinutes: Math.max(5, diskScanIntervalMinutes),
       };
 
-      // Save to API
-      await apiPut('/api/settings', updatedSettings);
+      return apiPut('/api/settings', updatedSettings);
+      });
 
       // Update initial settings and reset unsaved changes flag
       initialSettings.current = {

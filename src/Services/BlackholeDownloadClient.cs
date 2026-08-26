@@ -27,8 +27,17 @@ public static class BlackholeDownloadClient
     /// How long a file must be untouched before the download counts as
     /// finished. External clients give no completion signal, so write
     /// quiescence is the only reliable indicator.
+    ///
+    /// Sixty seconds was too short. A download that stalls for a minute, on a
+    /// slow swarm or a dropped connection, looks finished, and a client that
+    /// writes straight to the final name leaves no partial marker to say
+    /// otherwise. The import then takes a truncated file and files it in the
+    /// library under the name of the finished event, which is worse than
+    /// waiting: the user believes they have the event. The cost of the longer
+    /// window is that a genuinely finished download waits this long before it
+    /// imports.
     /// </summary>
-    public static readonly TimeSpan WriteQuiescence = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan WriteQuiescence = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// Characters stripped from file names. A fixed cross-platform set (the

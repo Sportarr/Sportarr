@@ -22,6 +22,12 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public static class TorrentFileResolver
 {
+    /// <summary>
+    /// Ceiling on a downloaded torrent file. Real ones are tens of kilobytes,
+    /// and even a torrent listing thousands of files stays well inside this.
+    /// </summary>
+    private const long MaxTorrentBytes = 20L * 1024 * 1024;
+
     public static async Task<TorrentDownloadResult> ResolveAsync(
         string torrentUrl, bool skipSslValidation, IHttpClientFactory httpClientFactory, ILogger logger, CancellationToken ct = default)
     {
@@ -152,7 +158,39 @@ public static class TorrentFileResolver
                 return TorrentDownloadResult.Failure($"Failed to download torrent: HTTP {statusCode}");
             }
 
-            var contentBytes = await response.Content.ReadAsByteArrayAsync(ct);
+            // Read with a ceiling. A torrent file is tens of kilobytes and the
+            // largest real ones are a few megabytes, but this buffered whatever
+            // arrived straight into memory, so an indexer serving a huge body,
+            // by fault or on purpose, could exhaust the process and take every
+            // search, grab and import down with it. The declared length is
+            // checked first and the read is capped as well, because a server
+            // can omit that header or lie about it.
+            var declaredLength = response.Content.Headers.ContentLength;
+            if (declaredLength > MaxTorrentBytes)
+            {
+                return TorrentDownloadResult.Failure(
+                    $"Torrent file is too large ({declaredLength} bytes); the ceiling is {MaxTorrentBytes} bytes.");
+            }
+
+            byte[] contentBytes;
+            await using (var contentStream = await response.Content.ReadAsStreamAsync(ct))
+            using (var buffered = new MemoryStream())
+            {
+                var chunk = new byte[81920];
+                int read;
+                while ((read = await contentStream.ReadAsync(chunk, ct)) > 0)
+                {
+                    if (buffered.Length + read > MaxTorrentBytes)
+                    {
+                        return TorrentDownloadResult.Failure(
+                            $"Torrent file exceeded the {MaxTorrentBytes} byte ceiling while downloading.");
+                    }
+
+                    buffered.Write(chunk, 0, read);
+                }
+
+                contentBytes = buffered.ToArray();
+            }
 
             if (contentBytes.Length == 0)
             {

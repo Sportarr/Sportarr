@@ -5,6 +5,8 @@ interface SettingsHeaderProps {
   subtitle?: string;
   onSave?: () => void;
   isSaving?: boolean;
+  /** Blocks Save when the page has nothing trustworthy to write. */
+  saveDisabled?: boolean;
   hasUnsavedChanges?: boolean;
   saveButtonText?: string;
   showSaveButton?: boolean;
@@ -23,6 +25,7 @@ export default function SettingsHeader({
   subtitle,
   onSave,
   isSaving = false,
+  saveDisabled = false,
   hasUnsavedChanges = false,
   saveButtonText = 'Save Settings',
   showSaveButton = true,
@@ -42,7 +45,7 @@ export default function SettingsHeader({
               <div className="relative">
                 <button
                   onClick={onSave}
-                  disabled={isSaving}
+                  disabled={isSaving || saveDisabled}
                   className={`px-6 py-2 rounded-lg transition-all flex items-center space-x-2 ${
                     hasUnsavedChanges
                       ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/50 animate-pulse'
@@ -79,7 +82,7 @@ export default function SettingsHeader({
         >
           <button
             onClick={onSave}
-            disabled={isSaving}
+            disabled={isSaving || saveDisabled}
             className="pointer-events-auto flex items-center gap-2 rounded-full bg-red-600 px-5 py-3 text-sm font-semibold text-white shadow-xl shadow-red-900/50 transition-colors hover:bg-red-700 disabled:opacity-60"
           >
             {isSaving ? (

@@ -17,7 +17,11 @@ namespace Sportarr.Api.Tests.Services;
 /// </summary>
 public class AlwaysMonitorSpecialsTests
 {
-    private static League Nfl(MonitorType type, bool finals = true, bool playoffs = true) => new()
+    // The reach defaults to All here because that is what these cases were
+    // written against, and it is what a league that predates the setting
+    // carries. How far the toggles reach is covered on its own below.
+    private static League Nfl(MonitorType type, bool finals = true, bool playoffs = true,
+        MonitorType reach = MonitorType.All) => new()
     {
         Name = "NFL",
         Sport = "American Football",
@@ -25,6 +29,7 @@ public class AlwaysMonitorSpecialsTests
         MonitorType = type,
         MonitorFinals = finals,
         MonitorPlayoffs = playoffs,
+        SpecialEventsMonitorType = reach,
     };
 
     private static readonly IReadOnlySet<int> NoCupStages = new HashSet<int>();

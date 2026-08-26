@@ -127,6 +127,7 @@ public class EventPartDetector
             @"\b post [\s._-]* (show|fight|event) \b",  // "Post Show", "Post Fight", "Post Event"
             @"\b post [\s._-]* fight [\s._-]* show \b", // "Post Fight Show"
         }),
+
     };
 
     // Fight Night segments - subset of full segments (no Early Prelims)
@@ -327,6 +328,109 @@ public class EventPartDetector
             new("Qualifying", new[] { @"(?<!sprint[\s._-]?)\bqualif(ying|ier)\b", @"(?<!sprint[\s._-]?)\bquali\b" }),
             // Race: lookaheads prevent "Grand Prix Practice" from matching as Race
             new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b", @"\bgrand\s*prix\b(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))", @"\bgp\b(?!\s*of\b)(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))" }),
+        },
+
+        // IndyCar names no session for its race. Every other session appends
+        // one to the event's own name, so the weekend reads
+        // "Firestone Grand Prix of St. Petersburg Practice 1", then
+        // "... Qualifying", then plain "Firestone Grand Prix of St.
+        // Petersburg" for the race itself. That is the opposite of Formula 1,
+        // where the race names itself and the sessions are the exception, so
+        // there is no pattern here that recognises a race. It is read as
+        // whatever is left, through MotorsportDefaultSessionByLeague below.
+        //
+        // Patterns come from the 2026 calendar. The Indianapolis 500 is the
+        // outlier: practices run past number three, qualifying runs over three
+        // rounds, and Fast Friday is its own thing.
+        ["IndyCar"] = new List<MotorsportSessionType>
+        {
+            new("Practice 1", new[] { @"\bpractice\s*(1|one)\b" }),
+            new("Practice 2", new[] { @"\bpractice\s*(2|two)\b" }),
+            new("Practice 3", new[] { @"\bpractice\s*(3|three)\b" }),
+            // Indianapolis 500 qualifying weekend, before the general
+            // "practice" catch-all so it is not swallowed by it.
+            new("Fast Friday", new[] { @"\bfast\s*friday\b" }),
+            // Anything else calling itself practice: the bare word, the
+            // numbers above three that only the Indianapolis 500 runs, and
+            // "Final Practice" with it. A release saying "Final Practice" is
+            // read as plain practice, so a label of its own would reject it.
+            new("Practice", new[] { @"\bpractice\b" }),
+            // The Indianapolis 500 runs three rounds of qualifying, but a
+            // release naming a round is read as plain qualifying by the
+            // filename parser, so keeping the rounds apart here would reject
+            // the very release that belongs to the event.
+            new("Qualifying", new[] { @"\bqualif(ying|ications?|ier)?\b", @"\bquali\b" }),
+            new("Warm Up", new[] { @"\bwarm\s*up\b" }),
+            // Milwaukee runs two races on one weekend, written "Race #1".
+            // They share one label for the same reason as qualifying above.
+            new("Race", new[] { @"\brace\b" }),
+        },
+
+        // WEC. Sessions name themselves and the race does not, the same shape
+        // as IndyCar, so the race is read as whatever is left. Qualifying and
+        // Hyperpole are run per class ("Qualifying - LMGT3"), which is a
+        // different axis from the session and is not split out here.
+        ["WEC"] = new List<MotorsportSessionType>
+        {
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            // Hyperpole is WEC's pole shootout. It comes before qualifying
+            // because an event can be titled "Hyperpole Qualifying".
+            new("Hyperpole", new[] { @"\bhyperpole\b" }),
+            new("Qualifying", new[] { @"\bqualif(ying|ier)?\b", @"\bquali\b" }),
+            // Listed so the selector can offer it. WEC titles never carry the
+            // word, so it is the default below that actually reads a race.
+            new("Race", new[] { @"\brace\b" }),
+        },
+
+        // Formula E. Sessions name themselves; the race is the E Prix itself,
+        // so it is read as whatever is left. The note left in 2025 that this
+        // series published nothing but races no longer holds: the calendar
+        // carries free practice and qualifying for every round.
+        ["Formula E"] = new List<MotorsportSessionType>
+        {
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            new("Practice", new[] { @"\bpractice\b" }),
+            // "Duels" was the name for the knockout rounds in earlier seasons.
+            new("Qualifying", new[] { @"\bqualif(ying|ier)?\b", @"\bquali\b", @"\bduels?\b" }),
+            // Listed so the selector can offer it. The race is the E Prix
+            // itself, which the default below reads.
+            new("Race", new[] { @"\brace\b" }),
+        },
+
+        // Supercars. Every event names a session, so nothing is left for a
+        // race to be read from and there is no default below. Races are
+        // numbered across the whole season and reach the forties, so they
+        // share one label rather than becoming forty entries in the selector.
+        ["Supercars"] = new List<MotorsportSessionType>
+        {
+            new("Practice 1", new[] { @"\bpractice\s*(1|one)\b" }),
+            new("Practice 2", new[] { @"\bpractice\s*(2|two)\b" }),
+            new("Practice 3", new[] { @"\bpractice\s*(3|three)\b" }),
+            new("Practice", new[] { @"\bpractice\b" }),
+            // The top ten shootout is Supercars' pole session, and "shootout"
+            // is the word the release parser reads it by. It comes before
+            // qualifying so the shootout is not read as ordinary qualifying.
+            new("Shootout", new[] { @"\bshootout\b", @"\btop\s*(10|ten)\b" }),
+            new("Qualifying", new[] { @"\bqualif(ying|ier)?\b", @"\bquali\b" }),
+            new("Warm Up", new[] { @"\bwarm\s*up\b" }),
+            new("Race", new[] { @"\brace\b" }),
+        },
+
+        // World Supersport. A round is one practice, a Superpole and two
+        // races, and every event names its session. The two races share one
+        // label because a release naming a race number is read as a plain
+        // race, so splitting them would reject the release that belongs here.
+        ["WorldSSP"] = new List<MotorsportSessionType>
+        {
+            new("Practice", new[] { @"\b(free\s*)?practice\b" }),
+            // Superpole is this series' qualifying session.
+            new("Superpole", new[] { @"\bsuperpole\b" }),
+            new("Warm Up", new[] { @"\bwarm\s*up\b" }),
+            new("Race", new[] { @"\brace\b" }),
         },
     };
 
@@ -986,6 +1090,28 @@ public class EventPartDetector
     }
 
     /// <summary>
+    /// What a plain event name means for a league that does not name its main
+    /// session.
+    ///
+    /// IndyCar calls the race after the event itself and appends a word only
+    /// for the other sessions, so a race matches nothing. An undetected
+    /// session is monitored whatever the user picked, so without this,
+    /// choosing "Qualifying" still brought in every race and the setting
+    /// looked ignored.
+    ///
+    /// Deliberately not a catch-all pattern in the table above:
+    /// DetectMotorsportSessionFromFilename sweeps every league's patterns, so
+    /// one there would answer for releases of other sports as well.
+    /// </summary>
+    private static readonly Dictionary<string, string> MotorsportDefaultSessionByLeague =
+        new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["IndyCar"] = "Race",
+        ["WEC"] = "Race",
+        ["Formula E"] = "Race",
+    };
+
+    /// <summary>
     /// Get available session types for a motorsport league
     /// Currently supports Formula 1 and MotoGP - returns empty list for other motorsports
     /// </summary>
@@ -1024,6 +1150,7 @@ public class EventPartDetector
 
         var cleanTitle = eventTitle.ToLowerInvariant();
         List<MotorsportSessionType>? sessions = null;
+        string? matchedLeagueKey = null;
 
         // Find the appropriate session definitions for this league
         foreach (var kvp in MotorsportSessionsByLeague)
@@ -1031,6 +1158,7 @@ public class EventPartDetector
             if (leagueName?.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase) == true)
             {
                 sessions = kvp.Value;
+                matchedLeagueKey = kvp.Key;
                 break;
             }
         }
@@ -1049,6 +1177,14 @@ public class EventPartDetector
                     return session.Name;
                 }
             }
+        }
+
+        // Nothing named a session. For a league whose main session goes
+        // unnamed, that silence is the answer.
+        if (matchedLeagueKey != null
+            && MotorsportDefaultSessionByLeague.TryGetValue(matchedLeagueKey, out var fallback))
+        {
+            return fallback;
         }
 
         return null;

@@ -733,9 +733,6 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 return;
             }
 
-            download.Status = DownloadStatus.Imported;
-            download.ImportedAt = DateTime.UtcNow;
-
             _logger.LogInformation("[Enhanced Download Monitor] ✓ Import successful: {Title}", download.Title);
 
             // Remove from download client if configured in the client's settings
@@ -1095,6 +1092,12 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // download Sportarr lost track of (crash, removed queue row) and gets
         // re-adopted into the queue below instead of being ignored.
         var grabsByDownloadId = new Dictionary<string, GrabHistory>(StringComparer.OrdinalIgnoreCase);
+        // Same grabs keyed by hash. A Real-Debrid download changes its id
+        // between the grab and the poll, so the id lookup misses and the hash
+        // dedup below then skipped the download as already known. It was
+        // neither re-adopted nor offered as a pending import, and it sat in the
+        // client for ever, which is the case the id keying cannot cover.
+        var grabsByHash = new Dictionary<string, GrabHistory>(StringComparer.OrdinalIgnoreCase);
         foreach (var grab in await db.GrabHistory
                      .AsNoTracking()
                      .Where(g => g.DownloadId != null)
@@ -1102,12 +1105,27 @@ public class EnhancedDownloadMonitorService : BackgroundService
                      .ToListAsync(cancellationToken))
         {
             grabsByDownloadId[grab.DownloadId!] = grab; // later grabs win
+            if (!string.IsNullOrEmpty(grab.TorrentInfoHash))
+            {
+                grabsByHash[grab.TorrentInfoHash] = grab;
+            }
         }
 
         // Hash-based fallback dedup. Real-Debrid uncached downloads can return
         // a different DownloadId from Decypharr at grab-time vs poll-time (the
         // ID changes once RD finishes caching the torrent), so DownloadId alone
         // misses the duplicate. The torrent info hash stays stable.
+        var liveHashes = new HashSet<string>(
+            (await db.DownloadQueue
+                .Where(d => d.TorrentInfoHash != null)
+                .Select(d => d.TorrentInfoHash!)
+                .Concat(db.PendingImports
+                    .Where(pi => pi.TorrentInfoHash != null)
+                    .Select(pi => pi.TorrentInfoHash!))
+                .ToListAsync(cancellationToken))
+            .Select(h => h.ToLowerInvariant()),
+            StringComparer.OrdinalIgnoreCase);
+
         var knownHashes = new HashSet<string>(
             (await db.DownloadQueue
                 .Where(d => d.TorrentInfoHash != null)
@@ -1208,7 +1226,18 @@ public class EnhancedDownloadMonitorService : BackgroundService
                             download.Title, download.DownloadId);
                         continue;
                     }
-                    if (grabsByDownloadId.TryGetValue(download.DownloadId, out var grab))
+                    // Match the grab by id, then by hash. The hash survives the
+                    // id changing under us, and a hash still live in the queue or
+                    // in pending imports is already represented, so only a grab
+                    // with no live row can be re-adopted this way.
+                    if (!grabsByDownloadId.TryGetValue(download.DownloadId, out var grab) &&
+                        !string.IsNullOrEmpty(download.TorrentInfoHash) &&
+                        !liveHashes.Contains(download.TorrentInfoHash))
+                    {
+                        grabsByHash.TryGetValue(download.TorrentInfoHash, out grab);
+                    }
+
+                    if (grab != null)
                     {
                         if (grab.WasImported)
                         {
@@ -1270,7 +1299,16 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
                         knownDownloadIds.Add(download.DownloadId);
                         if (!string.IsNullOrEmpty(download.TorrentInfoHash))
+                        {
                             knownHashes.Add(download.TorrentInfoHash);
+
+                            // The live set was read once before this loop, so a
+                            // hash re-adopted here still looked absent from it.
+                            // Two clients reporting the same torrent in one pass
+                            // would each re-adopt it and leave two queue rows for
+                            // one download, which then imported twice.
+                            liveHashes.Add(download.TorrentInfoHash);
+                        }
 
                         _logger.LogInformation(
                             "[Enhanced Download Monitor] Re-adopted lost grab '{Title}' (id {Id}) from '{Client}' — grabbed but never imported and still present in the client",
@@ -1300,6 +1338,21 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         _logger.LogDebug(
                             "[Enhanced Download Monitor] Skipping '{Title}' — title is blocklisted (user previously rejected)",
                             download.Title);
+                        continue;
+                    }
+
+                    // Nothing that is still settling gets a row. A torrent
+                    // caught in "moving" or "checking" reports itself as not
+                    // complete, and the row written for it said manual import
+                    // required, notified about it, and then suppressed
+                    // re-detection for good, because a pending row is only
+                    // cleared when the download leaves the client. The next
+                    // poll picks it up once it has settled.
+                    if (!download.IsCompleted)
+                    {
+                        _logger.LogDebug(
+                            "[Enhanced Download Monitor] Deferring external download {Title}. It is not finished yet (Client: {Client})",
+                            download.Title, client.Name);
                         continue;
                     }
 

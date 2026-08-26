@@ -1,3 +1,4 @@
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -545,15 +546,29 @@ public class RssSyncService : BackgroundService
                 continue;
 
             // Honor league custom-search-template required keywords.
-            var template = evt.League?.SearchQueryTemplate;
-            if (!string.IsNullOrWhiteSpace(template))
+            // A league can carry several templates for different release
+            // groups. The release only has to satisfy ONE of them: requiring
+            // every template's keywords at once would reject everything,
+            // since each template names its own group.
+            var templates = SearchTemplateList.Parse(evt.League?.SearchQueryTemplate);
+            if (templates.Count > 0)
             {
-                var requiredKeywords = ExtractRequiredKeywordsFromTemplate(template);
-                if (requiredKeywords.Any() && !ReleaseSatisfiesTemplateKeywords(release.Title, requiredKeywords))
+                var keywordSets = templates
+                    .Select(ExtractRequiredKeywordsFromTemplate)
+                    .ToList();
+
+                // A template built only from tokens ("{HomeTeam} {AwayTeam}")
+                // asks for no literal word, so it accepts anything the event
+                // matcher already accepted. One of those means no filter at
+                // all, rather than one fewer alternative.
+                var everyTemplateHasKeywords = keywordSets.All(k => k.Any());
+
+                if (keywordSets.Any() && everyTemplateHasKeywords &&
+                    !keywordSets.Any(k => ReleaseSatisfiesTemplateKeywords(release.Title, k)))
                 {
                     _logger.LogDebug(
-                        "[RSS Sync] Release '{Release}' matched event '{Event}' but missing required search template keywords: {Keywords}",
-                        release.Title, evt.Title, string.Join(", ", requiredKeywords));
+                        "[RSS Sync] Release '{Release}' matched event '{Event}' but satisfied none of the {Count} search template(s)",
+                        release.Title, evt.Title, keywordSets.Count);
                     continue;
                 }
             }
@@ -682,6 +697,10 @@ public class RssSyncService : BackgroundService
         }
 
         // 2. Check if already in queue (PART-AWARE) - with upgrade logic
+        DownloadQueueItem? itemToReplace = null;
+        var replacedScore = 0;
+        var replacementScore = 0;
+
         var existingQueueItem = await db.DownloadQueue
             .Where(d => d.EventId == evt.Id &&
                        (d.Status == DownloadStatus.Queued ||
@@ -697,10 +716,13 @@ public class RssSyncService : BackgroundService
 
             if (newTotalScore > existingTotalScore)
             {
-                // New release is better - remove old one and allow new grab
-                await RemoveAndCancelQueueItemAsync(db, existingQueueItem, downloadClientService, cancellationToken);
-                _logger.LogInformation("[RSS Sync] Replacing queued item with better release: {OldScore} -> {NewScore} for {Part}",
-                    existingTotalScore, newTotalScore, releasePart ?? "full event");
+                // The new release wins, but do not cancel the running download
+                // yet. Every check below can still reject this release, and a
+                // cancel here deletes the files of a download that nothing
+                // replaces. The swap happens once the decision is final.
+                itemToReplace = existingQueueItem;
+                replacedScore = existingTotalScore;
+                replacementScore = newTotalScore;
             }
             else
             {
@@ -845,79 +867,19 @@ public class RssSyncService : BackgroundService
 
         if (existingFile != null)
         {
-            // Recalculate quality scores from quality strings (don't trust stored values from old inverted scoring).
-            // CalculateQualityScoreFromName returns 0 for null, empty, "Unknown", or any other unparseable
-            // string, so the gate below covers all three cases in one check.
-            var existingQualityScoreOnly = ReleaseEvaluator.CalculateQualityScoreFromName(existingFile.Quality);
-            var existingTotalScore = existingQualityScoreOnly + existingFile.CustomFormatScore;
+            // One decision, shared with the pending-release reaper. The rules
+            // lived inline here and the reaper mirrored only the score half
+            // of them, so a hold released later grabbed over files this gate
+            // refuses and dropped propers it lets through.
+            var refusal = Helpers.ExistingFileUpgradeGate.RefusalReason(
+                existingFile, release.Title, release.Quality, release.CustomFormatScore, profile, config);
+            if (refusal != null)
+            {
+                return (false, refusal, releasePart);
+            }
+
+            var existingTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(existingFile.Quality) + existingFile.CustomFormatScore;
             var newTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(release.Quality) + release.CustomFormatScore;
-
-            // REFUSE-UNKNOWN-UPGRADE GATE: Library imports whose filenames lacked a quality
-            // keyword get persisted with Quality="Unknown" (or null/empty), which scores 0.
-            // Every RSS-discovered release then looks like an upgrade and the event gets
-            // re-downloaded, defeating the user's import. Refuse to auto-upgrade when we
-            // can't classify the existing file. Manual searches go through AutomaticSearchService
-            // directly with isManualSearch=true and bypass this path.
-            if (existingQualityScoreOnly == 0)
-            {
-                return (false, $"Existing file quality is unrecognized ('{existingFile.Quality ?? "null"}'), refusing auto re-download", releasePart);
-            }
-
-            // Upgrades disabled for this profile: never replace an existing file,
-            // regardless of score. RSS previously skipped this check and re-grabbed
-            // the same event from another client, leaving two copies.
-            if (profile != null && !profile.UpgradesAllowed)
-            {
-                return (false, "Upgrades are disabled for this quality profile", releasePart);
-            }
-
-            // A proper/repack of the SAME quality is a legitimate upgrade:
-            // the original was broken and re-released fixed. Gated on the
-            // Download Propers and Repacks setting.
-            var revisionUpgrade = config.DownloadPropersAndRepacks == "preferAndUpgrade" &&
-                newTotalScore == existingTotalScore &&
-                Helpers.ReleaseRevision.Parse(release.Title) >
-                Helpers.ReleaseRevision.Parse(existingFile.OriginalTitle ?? existingFile.Quality);
-
-            if (newTotalScore <= existingTotalScore && !revisionUpgrade)
-            {
-                return (false, $"Existing file has same or better score ({existingTotalScore})", releasePart);
-            }
-
-            // COSMETIC-DUPLICATE GUARD: broadcasters repost the identical
-            // release under a branded name ("Sky Sports _ Formula1_2026_…"
-            // vs "Formula1.2026.…", same group, same quality). Preferred-
-            // keyword scoring can then rate the branded name higher and
-            // "upgrade" to a byte-identical download. When the only tokens
-            // separating the new title from the existing file's original
-            // title are broadcaster words, it is the same content - only a
-            // proper/repack revision justifies replacing it.
-            if (!revisionUpgrade &&
-                TitlesDifferOnlyByBroadcasterBranding(existingFile.OriginalTitle, release.Title))
-            {
-                return (false,
-                    "Same release as the existing file (title differs only by broadcaster branding)",
-                    releasePart);
-            }
-
-            // A custom-format-only gain must clear the profile's minimum score
-            // increment. A genuine quality-tier upgrade (higher quality score) is
-            // always allowed, but when the quality is unchanged and only the custom
-            // format score improved, a trivial bump (e.g. +10 under a 50-point
-            // increment) must not trigger a needless second download.
-            if (profile != null)
-            {
-                var newQualityScoreOnly = ReleaseEvaluator.CalculateQualityScoreFromName(release.Quality);
-                bool isQualityUpgrade = newQualityScoreOnly > existingQualityScoreOnly;
-                var formatGain = release.CustomFormatScore - existingFile.CustomFormatScore;
-                if (!isQualityUpgrade && formatGain < profile.FormatScoreIncrement)
-                {
-                    return (false,
-                        $"Custom-format gain {formatGain} below minimum score increment {profile.FormatScoreIncrement}",
-                        releasePart);
-                }
-            }
-
             _logger.LogInformation("[RSS Sync] File upgrade detected: {OldScore} -> {NewScore} for {Part}",
                 existingTotalScore, newTotalScore, releasePart ?? "full event");
         }
@@ -958,10 +920,13 @@ public class RssSyncService : BackgroundService
             }
         }
 
-        // 6. Check quality profile
-        var qualityProfile = evt.QualityProfileId.HasValue
-            ? await db.QualityProfiles.FirstOrDefaultAsync(p => p.Id == evt.QualityProfileId.Value, cancellationToken)
-            : await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync(cancellationToken);
+        // 6. Check quality profile. The caller resolved it once, through the
+        // same resolver the reaper uses, and the existing-file gate above
+        // already judged by it. A second lookup here by the event's own id
+        // alone answered "no quality profile" for an event pointing at a
+        // profile that no longer exists, while the gate had happily used the
+        // league's.
+        var qualityProfile = profile;
 
         if (qualityProfile == null)
             return (false, "No quality profile", releasePart);
@@ -1065,6 +1030,15 @@ public class RssSyncService : BackgroundService
             return (false, "Quality not approved", releasePart);
         if (release.Rejections != null && release.Rejections.Count > 0)
             return (false, $"Release rejected: {release.Rejections[0]}", releasePart);
+
+        // The decision is final, so the queued download this release beats can
+        // go now.
+        if (itemToReplace != null)
+        {
+            await RemoveAndCancelQueueItemAsync(db, itemToReplace, downloadClientService, cancellationToken);
+            _logger.LogInformation("[RSS Sync] Replacing queued item with better release: {OldScore} -> {NewScore} for {Part}",
+                replacedScore, replacementScore, releasePart ?? "full event");
+        }
 
         return (true, "OK", releasePart);
     }

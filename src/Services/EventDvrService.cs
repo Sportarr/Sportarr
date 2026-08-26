@@ -83,7 +83,15 @@ public class EventDvrService
         // downloaded from a catchup archive if the resolved channel keeps
         // one (checked after channel resolution below). Remember the
         // distinction here instead of rejecting outright.
-        var isPastEvent = evt.EventDate <= DateTime.UtcNow;
+        //
+        // An event counts as past only once its expected runtime has elapsed.
+        // Measuring from the start time alone throws away an event that is
+        // still on air: a game joined ten minutes after kickoff still has
+        // most of its runtime left to record. The scheduler accepts a start
+        // time in the past and begins on its next tick, so the remainder is
+        // captured.
+        var expectedEnd = evt.EventDate.AddHours(EpgSchedulingService.DefaultDurationHours);
+        var isPastEvent = expectedEnd <= DateTime.UtcNow;
 
         // Check if event has a league
         if (evt.LeagueId == null)

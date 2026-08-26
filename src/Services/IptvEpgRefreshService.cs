@@ -20,6 +20,35 @@ public class IptvEpgRefreshService : BackgroundService
     // Hour-granularity settings only need a coarse tick.
     private readonly TimeSpan _checkInterval = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// When a source that has been failing may be tried again.
+    ///
+    /// A source records its last update only when the update works, so one
+    /// that keeps failing stays permanently overdue and was contacted on every
+    /// half-hourly sweep no matter what cadence the user had configured. That
+    /// is a lot of requests at a provider that is already unhappy. Each
+    /// failure doubles the wait, up to the configured interval.
+    /// </summary>
+    private readonly Dictionary<string, (DateTime NextAttempt, int Failures)> _backoff = new();
+
+    private bool IsBackedOff(string key)
+    {
+        return _backoff.TryGetValue(key, out var state) && DateTime.UtcNow < state.NextAttempt;
+    }
+
+    private void NoteSuccess(string key) => _backoff.Remove(key);
+
+    private void NoteFailure(string key, TimeSpan ceiling)
+    {
+        var failures = _backoff.TryGetValue(key, out var state) ? state.Failures + 1 : 1;
+        var wait = TimeSpan.FromMinutes(Math.Min(
+            _checkInterval.TotalMinutes * Math.Pow(2, Math.Min(failures, 6)),
+            Math.Max(ceiling.TotalMinutes, _checkInterval.TotalMinutes)));
+        _backoff[key] = (DateTime.UtcNow + wait, failures);
+        _logger.LogDebug("[IPTV/EPG Refresh] {Key} has failed {Failures} time(s); not trying again for {Wait}",
+            key, failures, wait);
+    }
+
     public IptvEpgRefreshService(IServiceProvider serviceProvider, ILogger<IptvEpgRefreshService> logger)
     {
         _serviceProvider = serviceProvider;
@@ -74,17 +103,23 @@ public class IptvEpgRefreshService : BackgroundService
             if (dueSources.Count > 0)
             {
                 var iptvService = scope.ServiceProvider.GetRequiredService<IptvSourceService>();
+                var iptvCeiling = TimeSpan.FromHours(config.IptvPlaylistRefreshHours);
                 foreach (var source in dueSources)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
+                    var key = $"iptv:{source.Id}";
+                    if (IsBackedOff(key)) continue;
+
                     try
                     {
                         var count = await iptvService.SyncChannelsAsync(source.Id);
+                        NoteSuccess(key);
                         _logger.LogInformation("[IPTV/EPG Refresh] Refreshed IPTV playlist '{Name}': {Count} channels",
                             source.Name, count);
                     }
                     catch (Exception ex)
                     {
+                        NoteFailure(key, iptvCeiling);
                         _logger.LogWarning(ex, "[IPTV/EPG Refresh] Failed to refresh IPTV playlist '{Name}'", source.Name);
                     }
                 }
@@ -102,25 +137,32 @@ public class IptvEpgRefreshService : BackgroundService
             if (dueEpg.Count > 0)
             {
                 var epgService = scope.ServiceProvider.GetRequiredService<EpgService>();
+                var epgCeiling = TimeSpan.FromHours(config.EpgRefreshHours);
                 foreach (var source in dueEpg)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
+                    var key = $"epg:{source.Id}";
+                    if (IsBackedOff(key)) continue;
+
                     try
                     {
                         var result = await epgService.SyncSourceAsync(source.Id);
                         if (result.Success)
                         {
+                            NoteSuccess(key);
                             _logger.LogInformation("[IPTV/EPG Refresh] Refreshed EPG source '{Name}': {Programs} programs across {Channels} channels",
                                 source.Name, result.ProgramCount, result.ChannelCount);
                         }
                         else
                         {
+                            NoteFailure(key, epgCeiling);
                             _logger.LogWarning("[IPTV/EPG Refresh] EPG refresh failed for '{Name}': {Error}",
                                 source.Name, result.Error);
                         }
                     }
                     catch (Exception ex)
                     {
+                        NoteFailure(key, epgCeiling);
                         _logger.LogWarning(ex, "[IPTV/EPG Refresh] Failed to refresh EPG source '{Name}'", source.Name);
                     }
                 }

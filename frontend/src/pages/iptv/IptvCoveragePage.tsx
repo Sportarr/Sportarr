@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   ExclamationTriangleIcon,
@@ -147,6 +147,10 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
   // null = not fetched yet, [] = fetched + empty, [...] = data.
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [mappingsByLeague, setMappingsByLeague] = useState<Record<number, LeagueChannelMapping[] | null>>({});
+  // A failed mapping fetch used to be stored as an empty list, so a network
+  // blip read as "no channels are mapped to this league" and reopening the
+  // row never retried, because the row looked already loaded.
+  const [mappingErrors, setMappingErrors] = useState<Record<number, string>>({});
   const [busyMapping, setBusyMapping] = useState<number | null>(null);
 
   // Modal state for the "Why is this mapped?" explain popover and
@@ -178,16 +182,34 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
     }
   }, []);
 
-  const load = async (days = horizonDays) => {
+  // The action callbacks below are memoised, so they hold the load function
+  // from the first render. Reading the window off state there meant every
+  // mapping action quietly reloaded the report for fourteen days while the
+  // selector still showed the window the user had picked. The ref is read at
+  // call time and is always current.
+  const horizonDaysRef = useRef(horizonDays);
+  useEffect(() => {
+    horizonDaysRef.current = horizonDays;
+  }, [horizonDays]);
+
+  // Only the newest report is allowed to land. Switching windows twice in
+  // quick succession could otherwise leave the slower first response on
+  // screen under the second window's label.
+  const loadSeq = useRef(0);
+
+  const load = async (days = horizonDaysRef.current) => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
     try {
       const { data } = await apiClient.get<CoverageReport>(`/iptv/coverage-report?days=${days}`);
+      if (seq !== loadSeq.current) return;
       setReport(data);
     } catch (e) {
+      if (seq !== loadSeq.current) return;
       setError(e instanceof Error ? e.message : 'Failed to load coverage report');
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   };
 
@@ -200,12 +222,27 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
   // user explicitly toggles back closed + open or after any per-channel
   // action so the UI reflects the new state.
   const fetchMappings = useCallback(async (leagueId: number) => {
+    setMappingErrors((prev) => {
+      if (!(leagueId in prev)) return prev;
+      const next = { ...prev };
+      delete next[leagueId];
+      return next;
+    });
     try {
       const { data } = await apiClient.get<LeagueChannelMapping[]>(`/iptv/leagues/${leagueId}/mappings`);
       setMappingsByLeague((prev) => ({ ...prev, [leagueId]: data }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load channel mappings');
-      setMappingsByLeague((prev) => ({ ...prev, [leagueId]: [] }));
+      const message = e instanceof Error ? e.message : 'Failed to load channel mappings';
+      toast.error(message);
+      // Record the failure rather than an empty list. An empty list reads as
+      // "this league has no channels", which is a different and much more
+      // alarming statement than "we could not ask".
+      setMappingErrors((prev) => ({ ...prev, [leagueId]: message }));
+      setMappingsByLeague((prev) => {
+        const next = { ...prev };
+        delete next[leagueId];
+        return next;
+      });
     }
   }, []);
 
@@ -498,6 +535,8 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
                         <tr className="bg-black/40">
                           <td colSpan={10} className="px-6 py-4">
                             <LeagueChannelInspector
+                              loadError={mappingErrors[row.leagueId]}
+                              onRetry={() => void fetchMappings(row.leagueId)}
                               leagueId={row.leagueId}
                               leagueName={row.leagueName}
                               mappings={mappingsByLeague[row.leagueId]}
@@ -792,6 +831,8 @@ function LeagueChannelInspector({
   leagueName,
   mappings,
   busyMapping,
+  loadError,
+  onRetry,
   onTogglePreferred,
   onToggleManual,
   onUnmap,
@@ -802,12 +843,30 @@ function LeagueChannelInspector({
   leagueName: string;
   mappings: LeagueChannelMapping[] | null | undefined;
   busyMapping: number | null;
+  loadError?: string;
+  onRetry: () => void;
   onTogglePreferred: (channelId: number, currentlyPreferred: boolean) => void;
   onToggleManual: (channelId: number, currentlyManual: boolean) => void;
   onUnmap: (channelId: number, channelName: string) => void;
   onExplain: (channelId: number) => void;
   onTestResolve: () => void;
 }) {
+  if (loadError) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-red-300">
+          Could not load the channels mapped to {leagueName}. {loadError}
+        </p>
+        <button
+          onClick={onRetry}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 rounded transition-colors"
+        >
+          <ArrowPathIcon className="w-3.5 h-3.5" />
+          Try again
+        </button>
+      </div>
+    );
+  }
   if (mappings === undefined || mappings === null) {
     return (
       <div className="text-sm text-gray-400 flex items-center gap-2">
@@ -850,7 +909,12 @@ function LeagueChannelInspector({
       </div>
       <div className="grid grid-cols-1 gap-1.5">
         {mappings.map((m) => {
-          const isBusy = busyMapping === m.channelId;
+          // Any request in flight for this league disables every action in
+          // the panel, not just the row that started it. Only one channel can
+          // be the preferred one, so a star clicked on a second row while the
+          // first was still saving raced it and the loser's choice is what
+          // stuck.
+          const isBusy = busyMapping !== null;
           const offline = m.status === 'Offline' || m.status === 'Error' || !m.isEnabled;
           // Identifier for `key` — leagueId pinned in case a channel
           // accidentally ends up in two leagues during a transitional

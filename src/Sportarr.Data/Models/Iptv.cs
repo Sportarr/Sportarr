@@ -394,6 +394,18 @@ public class IptvChannel
     public string? TvgId { get; set; }
 
     /// <summary>
+    /// Whether the TVG-ID above was chosen by the user rather than read from
+    /// the playlist.
+    ///
+    /// Nearly every channel in an ordinary playlist carries one, so its mere
+    /// presence says nothing about whether anybody wanted this channel kept.
+    /// Treating it as though it did meant no channel was ever deleted once it
+    /// vanished from a playlist, and a provider that rotates its identifiers
+    /// grew the table without limit.
+    /// </summary>
+    public bool TvgIdIsManual { get; set; }
+
+    /// <summary>
     /// TVG-Name for EPG matching
     /// </summary>
     public string? TvgName { get; set; }
@@ -597,6 +609,24 @@ public class ChannelLeagueMapping
     public bool IsManual { get; set; }
 
     /// <summary>
+    /// A negative priority marks an exclusion: the admin said this channel
+    /// does NOT carry this league.
+    ///
+    /// Deleting the row outright did not survive, because the auto-mapper
+    /// recreated it on the next sweep as soon as the evidence still crossed
+    /// the confidence threshold. The row is kept instead, flagged manual and
+    /// pushed below zero, so the mapper skips the pair and every resolver
+    /// filters it out. Re-mapping the pair clears the exclusion.
+    /// </summary>
+    public const int ExcludedPriority = -1;
+
+    /// <summary>
+    /// True when this row records "not this league" rather than a mapping.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool IsExcluded => Priority < 0;
+
+    /// <summary>
     /// JSON-encoded list of mapping signals that contributed to this
     /// row. Shape: [{"kind": "tvg_id", "score": 30, "detail": "ESPN.us"},
     /// {"kind": "epg_category", "score": 20, "detail": "92 / 124 sport
@@ -660,7 +690,11 @@ public class DvrRecording
     /// <summary>
     /// Minutes to continue recording after scheduled time
     /// </summary>
-    public int PostPadding { get; set; } = 15;
+    // The settings default and the sport table both promise 30 minutes of
+    // post-roll. A recording created without an explicit value used 15 and
+    // stopped a quarter of an hour early, cutting off overtime and the end of
+    // a delayed event.
+    public int PostPadding { get; set; } = 30;
 
     /// <summary>
     /// Actual start time (when recording actually started)
@@ -988,6 +1022,16 @@ public class AddIptvSourceRequest
     public string? UserAgent { get; set; }
     public string? FfmpegInputArgs { get; set; }
 
+    /// <summary>
+    /// When testing an existing source whose password the caller did not
+    /// retype, this names the source so the stored password is used.
+    ///
+    /// Without it the test went out with the placeholder the form shows in
+    /// place of a saved password and reported a failure against credentials
+    /// that were perfectly good.
+    /// </summary>
+    public int? SourceId { get; set; }
+
     public IptvSource ToEntity()
     {
         return new IptvSource
@@ -1246,7 +1290,8 @@ public class ScheduleDvrRecordingRequest
     public DateTime ScheduledStart { get; set; }
     public DateTime ScheduledEnd { get; set; }
     public int PrePadding { get; set; } = 5;
-    public int PostPadding { get; set; } = 15;
+    // Matches the configured DVR default. See DvrRecording.PostPadding.
+    public int PostPadding { get; set; } = 30;
     public string? PartName { get; set; }
 
     /// <summary>

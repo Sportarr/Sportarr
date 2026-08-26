@@ -14,6 +14,13 @@ public class FileFormatManager
     private readonly ILogger<FileFormatManager> _logger;
 
     // Standard format templates
+    /// <summary>
+    /// Stands in for a {Part Name} token while multi-part episodes are off, so
+    /// the user's choice of the readable label survives being switched off and
+    /// on again. It renders as nothing, being no token the namer knows.
+    /// </summary>
+    private const string PartNamePlaceholder = "{Part Name Disabled}";
+
     private const string FORMAT_WITH_PART = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} - {Sportarr Id}";
     private const string FORMAT_WITHOUT_PART = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full} - {Sportarr Id}";
 
@@ -57,6 +64,21 @@ public class FileFormatManager
             // re-inserted alongside it when toggling multi-part off and on.
             var hasAnyPartToken = currentFormat.Contains("{Part}", StringComparison.OrdinalIgnoreCase)
                 || currentFormat.Contains("{Part Name}", StringComparison.OrdinalIgnoreCase);
+
+            // Turning it back on restores whichever token was taken away.
+            if (enableMultiPart && currentFormat.Contains(PartNamePlaceholder, StringComparison.Ordinal))
+            {
+                settings.StandardFileFormat = currentFormat.Replace(PartNamePlaceholder, "{Part Name}", StringComparison.Ordinal);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation("Restored the {{Part Name}} token the user had chosen: {Format}", settings.StandardFileFormat);
+                return;
+            }
+
+            // Off again with the placeholder already there: nothing to do.
+            if (!enableMultiPart && currentFormat.Contains(PartNamePlaceholder, StringComparison.Ordinal))
+            {
+                return;
+            }
             if (enableMultiPart && !hasAnyPartToken)
             {
                 // Add {Part} after {Episode} if it exists
@@ -74,9 +96,17 @@ public class FileFormatManager
             else if (!enableMultiPart && hasAnyPartToken)
             {
                 // Remove part tokens ({Part Name} first - {Part} is not a
-                // substring of it, but the order makes the intent explicit)
+                // substring of it, but the order makes the intent explicit).
+                //
+                // Which one was there is remembered in the format itself, as an
+                // inert placeholder. Turning multi-part off and on again used
+                // to hand back {Part} whatever the user had chosen, so someone
+                // who had deliberately picked the readable {Part Name} label
+                // silently ended up with the generic one and every file
+                // imported afterwards was named differently.
+                var hadPartName = currentFormat.Contains("{Part Name}", StringComparison.OrdinalIgnoreCase);
                 settings.StandardFileFormat = currentFormat
-                    .Replace("{Part Name}", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("{Part Name}", hadPartName ? PartNamePlaceholder : "", StringComparison.OrdinalIgnoreCase)
                     .Replace("{Part}", "", StringComparison.OrdinalIgnoreCase);
                 await _db.SaveChangesAsync();
                 _logger.LogInformation("Removed part token(s) from custom format: {Format}", settings.StandardFileFormat);

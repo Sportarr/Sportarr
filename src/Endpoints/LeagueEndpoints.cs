@@ -148,6 +148,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.Id,
         league.ExternalId,
         league.Name,
+        league.AlternateName,
         league.Sport,
         league.Country,
         league.Description,
@@ -167,6 +168,8 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.MonitorFinals,
         league.MonitorPlayoffs,
         league.MonitorPreseason,
+        league.SpecialEventsMonitorType,
+        league.KeepAllEvents,
         league.AllowHighlights,
         league.RetentionDays,
         league.RootFolderId,
@@ -204,8 +207,11 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
     });
 });
 
-// API: Get all events for a specific league (filtered by monitoring settings)
-app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, SportarrDbContext db, ILogger<Program> logger) =>
+// API: Get all events for a specific league (filtered by monitoring settings).
+// showAll=true drops the monitoring-based filters so the caller sees every
+// event the league holds, including sessions and teams the user does not
+// follow. Used by the league page's "show every event" toggle.
+app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, bool? showAll, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting events for league ID: {LeagueId}", id);
 
@@ -230,70 +236,9 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
 
-    // Filter events based on monitoring settings
-    List<Event> filteredEvents;
-
-    if (EventPartDetector.IsMotorsport(league.Sport))
-    {
-        // Motorsports: filter by monitored session types
-        if (league.MonitoredSessionTypes == null)
-        {
-            // null = no filter, show all events
-            filteredEvents = events;
-            logger.LogDebug("[LEAGUES] Motorsport league with no session filter - showing all {Count} events", events.Count);
-        }
-        else if (league.MonitoredSessionTypes == "")
-        {
-            // Empty string = user explicitly selected no sessions, show nothing
-            filteredEvents = new List<Event>();
-            logger.LogDebug("[LEAGUES] Motorsport league with empty session filter - showing no events");
-        }
-        else
-        {
-            // Filter by monitored session types
-            filteredEvents = events
-                .Where(e => EventPartDetector.IsMotorsportSessionMonitored(e.Title, league.Name, league.MonitoredSessionTypes))
-                .ToList();
-            logger.LogDebug("[LEAGUES] Motorsport league filtered by sessions ({Sessions}) - {Filtered}/{Total} events",
-                league.MonitoredSessionTypes, filteredEvents.Count, events.Count);
-        }
-    }
-    else
-    {
-        // Regular sports: filter by monitored teams.
-        // Teamless sports (see LeagueSportRules.IsTeamlessSport) bypass team
-        // filtering since they have no meaningful home/away team structure.
-        var monitoredTeamIds = new HashSet<string>();
-
-        if (!LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
-        {
-            monitoredTeamIds = league.MonitoredTeams
-                .Where(lt => lt.Monitored && lt.Team != null)
-                .Select(lt => lt.Team!.ExternalId)
-                .Where(id => !string.IsNullOrEmpty(id))
-                .Select(id => id!)
-                .ToHashSet();
-        }
-
-        if (monitoredTeamIds.Count == 0)
-        {
-            // No monitored teams = show all events (or league doesn't use team filtering)
-            filteredEvents = events;
-            logger.LogDebug("[LEAGUES] No monitored teams - showing all {Count} events", events.Count);
-        }
-        else
-        {
-            // Filter to events involving at least one monitored team
-            // Use the external ID properties stored on the event
-            filteredEvents = events
-                .Where(e =>
-                    (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
-                    (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)))
-                .ToList();
-            logger.LogDebug("[LEAGUES] Filtered by {TeamCount} monitored teams - {Filtered}/{Total} events",
-                monitoredTeamIds.Count, filteredEvents.Count, events.Count);
-        }
-    }
+    var filteredEvents = SelectVisibleEvents(events, league, showAll == true);
+    logger.LogDebug("[LEAGUES] Showing {Filtered}/{Total} events (showAll: {ShowAll})",
+        filteredEvents.Count, events.Count, showAll == true);
 
     // Paging is opt-in so the frontend and every existing consumer keep the
     // plain array they already expect. Integrations ask for a page and get an
@@ -869,6 +814,53 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // How far back those toggles reach. It decides which events the next sync
+    // admits just as the toggles themselves do, so it rides the same resync.
+    if (body.TryGetProperty("specialEventsMonitorType", out var specialReachProp) &&
+        specialReachProp.ValueKind == JsonValueKind.String &&
+        Enum.TryParse<MonitorType>(specialReachProp.GetString(), ignoreCase: true, out var newSpecialReach))
+    {
+        if (league.SpecialEventsMonitorType != newSpecialReach)
+        {
+            logger.LogInformation("[LEAGUES] SpecialEventsMonitorType changing from {Old} to {New}",
+                league.SpecialEventsMonitorType, newSpecialReach);
+            league.SpecialEventsMonitorType = newSpecialReach;
+            eventTypesChanged = true;
+        }
+    }
+
+    // Keeping every event changes what the next sync writes, not what is
+    // monitored, so no event re-monitoring is triggered here. Turning it on
+    // takes effect on the next sync; turning it off lets the sync's
+    // out-of-filter cleanup remove the extra events again.
+    if (body.TryGetProperty("keepAllEvents", out var keepAllEventsProp) &&
+        (keepAllEventsProp.ValueKind == JsonValueKind.True || keepAllEventsProp.ValueKind == JsonValueKind.False))
+    {
+        var newKeepAllEvents = keepAllEventsProp.GetBoolean();
+        if (league.KeepAllEvents != newKeepAllEvents)
+        {
+            logger.LogInformation("[LEAGUES] KeepAllEvents changing from {Old} to {New}", league.KeepAllEvents, newKeepAllEvents);
+            league.KeepAllEvents = newKeepAllEvents;
+        }
+    }
+
+    // Extra names the league is known by. Release matching already reads
+    // these, but with no way to set one, a release carrying a sponsor-branded
+    // name that upstream metadata does not list was simply missed.
+    if (body.TryGetProperty("alternateName", out var alternateNameProp) &&
+        (alternateNameProp.ValueKind == JsonValueKind.String || alternateNameProp.ValueKind == JsonValueKind.Null))
+    {
+        var newAlternateName = alternateNameProp.ValueKind == JsonValueKind.Null
+            ? null
+            : alternateNameProp.GetString()?.Trim();
+        if (string.IsNullOrWhiteSpace(newAlternateName)) newAlternateName = null;
+        if (league.AlternateName != newAlternateName)
+        {
+            logger.LogInformation("[LEAGUES] AlternateName changing for {Name}", league.Name);
+            league.AlternateName = newAlternateName;
+        }
+    }
+
     // Allow Highlights releases: affects future release matching only, no
     // event re-monitoring needed.
     if (body.TryGetProperty("allowHighlights", out var allowHighlightsProp) &&
@@ -885,7 +877,26 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     // Handle custom search query template
     if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))
     {
-        var newTemplate = searchTemplateProp.ValueKind == JsonValueKind.Null ? null : searchTemplateProp.GetString();
+        // One template per line. Normalizing on save keeps blank lines,
+        // stray whitespace, and duplicates out of the stored value, so every
+        // reader sees the same list.
+        var submittedTemplate = searchTemplateProp.ValueKind == JsonValueKind.Null
+            ? null
+            : searchTemplateProp.GetString();
+
+        // Refuse rather than truncate. Normalizing alone would drop the
+        // extras and the user would never learn their templates vanished.
+        var submittedCount = SearchTemplateList.CountDistinct(submittedTemplate);
+        if (submittedCount > SearchTemplateList.MaxTemplates)
+        {
+            return Results.BadRequest(new
+            {
+                error = $"A league can hold at most {SearchTemplateList.MaxTemplates} search templates, and {submittedCount} were sent. " +
+                        "Each template searches every indexer once per event, so remove some lines and save again."
+            });
+        }
+
+        var newTemplate = submittedTemplate == null ? null : SearchTemplateList.Normalize(submittedTemplate);
         if (league.SearchQueryTemplate != newTemplate)
         {
             logger.LogInformation("[LEAGUES] SearchQueryTemplate changing from '{Old}' to '{New}'",
@@ -937,47 +948,43 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                 .ToDictionary(g => g.Key, g => SpecialEventClassifier.ComputeCupStageSizes(g.Select(e => e.Round)));
             var isTeamlessSport = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name);
 
+            // A KeepAllEvents league stores games with none of the user's
+            // teams in them. Every other league deletes those at sync, so
+            // this loop never met one and needed no team test. Without it,
+            // saving any league setting would monitor the whole league and
+            // start searching for it.
+            // Loaded here rather than off the league: this handler fetches
+            // the league with FindAsync, so its MonitoredTeams are empty and
+            // the gate would silently pass everything.
+            var recalcTeamIds = isTeamlessSport
+                ? new HashSet<string>()
+                : (await db.LeagueTeams
+                    .Where(lt => lt.LeagueId == id && lt.Monitored && lt.Team != null && lt.Team.ExternalId != null)
+                    .Select(lt => lt.Team!.ExternalId!)
+                    .ToListAsync()).ToHashSet();
+
             foreach (var evt in allEvents)
             {
                 // Base monitoring: is the league monitored?
-                bool shouldMonitor = league.Monitored;
+                bool shouldMonitor = league.Monitored
+                    && LeagueEventSyncService.IsInsideTeamSelection(evt, league, recalcTeamIds,
+                        cupStageSizesBySeason[evt.Season ?? ""]);
 
-                // Apply MonitorType filter (All, Future, CurrentSeason, etc.)
+                // Which season rule applies, and how far the special-event
+                // toggles reach past it, is one decision and it lives in one
+                // place. This used to be a second copy of it here, which then
+                // had to be kept in step by hand and was not: the reach the
+                // league now carries was ignored on save, so saving a league
+                // put back the very championships the setting had just been
+                // narrowed to exclude.
+                //
+                // The latest season is passed as the current one, which is
+                // what this path already did.
                 if (shouldMonitor)
                 {
-                    shouldMonitor = league.MonitorType switch
-                    {
-                        MonitorType.All => true,
-                        MonitorType.Future => evt.EventDate > DateTime.UtcNow,
-                        MonitorType.CurrentSeason => evt.Season == currentSeason,
-                        MonitorType.LatestSeason => evt.Season == currentSeason,
-                        MonitorType.NextSeason => !string.IsNullOrEmpty(evt.Season) &&
-                                                  int.TryParse(evt.Season.Split('-')[0], out var year) &&
-                                                  year == DateTime.UtcNow.Year + 1,
-                        MonitorType.Recent => evt.EventDate >= DateTime.UtcNow.AddDays(-30),
-                        MonitorType.None => false,
-                        MonitorType.SpecialsOnly => SpecialEventClassifier.BypassesTeamFilter(
-                            evt.Round,
-                            isTeamlessSport ? null : evt.Title,
-                            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
-                            cupStageSizesBySeason[evt.Season ?? ""]),
-                        _ => true
-                    };
-
-                    // "Always monitor finals and championships" means always,
-                    // matching the sync-time rule. Without this, saving the
-                    // league under MonitorType.Future unmonitored every
-                    // already-played playoff game the toggle had monitored.
-                    // None stays absolute; SpecialsOnly already is this rule.
-                    if (!shouldMonitor &&
-                        league.MonitorType is not MonitorType.None and not MonitorType.SpecialsOnly)
-                    {
-                        shouldMonitor = SpecialEventClassifier.BypassesTeamFilter(
-                            evt.Round,
-                            isTeamlessSport ? null : evt.Title,
-                            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
-                            cupStageSizesBySeason[evt.Season ?? ""]);
-                    }
+                    shouldMonitor = LeagueEventSyncService.ShouldMonitorEvent(
+                        league, evt.EventDate, evt.Season, currentSeason, currentSeason,
+                        evt.Round, evt.Title, cupStageSizesBySeason[evt.Season ?? ""]);
                 }
 
                 // Apply motorsport session type filter (only for F1 currently)
@@ -1352,23 +1359,24 @@ app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, Json
         });
     }
 
+    // Every template is previewed, so a user writing three of them sees all
+    // three queries per event rather than only the first.
+    var previewTemplates = SearchTemplateList.Parse(template);
+
     var samples = sampleEvents.Select(evt =>
     {
-        string query;
-        if (!string.IsNullOrWhiteSpace(template))
-        {
-            query = eventQueryService.BuildQueryFromTemplate(template, evt);
-        }
-        else
-        {
-            query = eventQueryService.BuildEventQueries(evt).FirstOrDefault() ?? evt.Title;
-        }
+        // Built the same way the search builds them, so the preview also
+        // shows the team-alias variants and the real query count.
+        var queries = previewTemplates.Count > 0
+            ? eventQueryService.BuildEventQueries(evt, null, string.Join("\n", previewTemplates))
+            : new List<string> { eventQueryService.BuildEventQueries(evt).FirstOrDefault() ?? evt.Title };
 
         return new
         {
             eventTitle = evt.Title,
             eventDate = evt.EventDate.ToString("yyyy-MM-dd"),
-            generatedQuery = query
+            generatedQuery = queries.FirstOrDefault() ?? evt.Title,
+            generatedQueries = queries
         };
     }).ToList();
 
@@ -1667,7 +1675,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 });
 
 // API: Delete league
-app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, FileNamingService naming, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -1700,21 +1708,6 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
             {
                 if (File.Exists(eventFile.FilePath))
                 {
-                    // Extract the league folder path from the file path
-                    // File structure: {RootFolder}/{LeagueName}/Season {Year}/{filename}
-                    // We want to delete: {RootFolder}/{LeagueName}/
-                    var fileDir = Path.GetDirectoryName(eventFile.FilePath);
-                    if (!string.IsNullOrEmpty(fileDir))
-                    {
-                        // Go up one level from "Season {Year}" to get the league folder
-                        var seasonDir = fileDir;
-                        var leagueDir = Path.GetDirectoryName(seasonDir);
-                        if (!string.IsNullOrEmpty(leagueDir))
-                        {
-                            leagueFoldersToDelete.Add(leagueDir);
-                        }
-                    }
-
                     File.Delete(eventFile.FilePath);
                     logger.LogDebug("[LEAGUES] Deleted file: {Path}", eventFile.FilePath);
                 }
@@ -1725,9 +1718,51 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
             }
         }
 
+        // The folder to remove is the league's OWN folder, resolved from its
+        // root folder and the naming settings. It used to be inferred by
+        // walking two parents up from a file path, which assumed the layout
+        // {Root}/{League}/Season X/. With season folders turned off that walk
+        // lands on the root folder itself and the recursive delete below wiped
+        // every other league. BuildLeagueFolderName returns nothing when
+        // league folders are off, and then the league has no folder of its own.
+        string? leagueRootPath = null;
+        if (league.RootFolderId is not null)
+        {
+            var mmSettingsForDelete = await db.MediaManagementSettings.FirstOrDefaultAsync() ?? new MediaManagementSettings();
+            var rootPathForDelete = (await db.RootFolders.FirstOrDefaultAsync(r => r.Id == league.RootFolderId.Value))?.Path;
+            leagueRootPath = rootPathForDelete;
+            var folderNameForDelete = naming.BuildLeagueFolderName(mmSettingsForDelete, league);
+            if (!string.IsNullOrWhiteSpace(rootPathForDelete) && !string.IsNullOrEmpty(folderNameForDelete))
+            {
+                leagueFoldersToDelete.Add(Path.Combine(rootPathForDelete, folderNameForDelete));
+            }
+        }
+
+        // Nothing at or above a configured root folder may ever be deleted.
+        var configuredRoots = await db.RootFolders.Select(r => r.Path).ToListAsync();
+
         // Delete league folders (the {LeagueName} directory that contains all Season folders)
         foreach (var leagueFolder in leagueFoldersToDelete)
         {
+            if (!IsSafeLeagueFolderTarget(leagueFolder, leagueRootPath, configuredRoots))
+            {
+                logger.LogWarning("[LEAGUES] Refusing to delete {Path}: it is not a folder inside this league's root", leagueFolder);
+                continue;
+            }
+
+            // The folder above is worked out from the naming settings as they
+            // are now, not from where the files actually went. Change the
+            // league folder format after importing and it names a folder this
+            // league never used, which may be somebody else's. Being inside a
+            // root folder does not make it this league's to remove, so the
+            // files it holds have to say so.
+            if (!await FolderBelongsToLeagueAsync(db, leagueFolder, id))
+            {
+                logger.LogWarning(
+                    "[LEAGUES] Refusing to delete {Path}: none of this league's files were in it, or another league's were",
+                    leagueFolder);
+                continue;
+            }
             try
             {
                 if (Directory.Exists(leagueFolder))
@@ -2271,5 +2306,184 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
             LeagueMoveStatus.MoveFailed => Results.Problem(detail: result.Message, statusCode: 500, title: "League move failed"),
             _ => Results.Problem(detail: "Unknown move status", statusCode: 500),
         };
+    }
+
+    /// <summary>
+    /// Decides which of a league's events the page shows. Motorsport leagues
+    /// filter by session type, team leagues by monitored team. showAll skips
+    /// both, so a user can find a session or a team's game they do not follow
+    /// and monitor it by hand.
+    /// </summary>
+
+    /// <summary>
+    /// True when a folder is safe to delete recursively for a league. The
+    /// target must sit strictly inside that league's own root folder, and it
+    /// must never be a configured root or an ancestor of one. Containment is
+    /// what stops a naming format or a league name from resolving sideways
+    /// out of the root; the root check stops the layout assumptions that
+    /// previously resolved to the root itself.
+    /// </summary>
+    /// <summary>
+    /// Whether a folder holds this league's files and nobody else's.
+    ///
+    /// The folder chosen for deletion comes from the naming settings as they
+    /// stand, so it can name somewhere this league never wrote to. Recursive
+    /// deletion needs more than a plausible name, so the tracked paths are
+    /// asked: at least one of this league's files has to be in there, and none
+    /// of any other league's.
+    /// </summary>
+    private static async Task<bool> FolderBelongsToLeagueAsync(SportarrDbContext db, string folder, int leagueId)
+    {
+        string prefix;
+        try
+        {
+            prefix = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        }
+        catch
+        {
+            return false;
+        }
+
+        var tracked = await db.EventFiles
+            .Where(f => f.FilePath != null && f.FilePath != "")
+            .Select(f => new { f.FilePath, LeagueId = f.Event != null ? f.Event.LeagueId : null })
+            .ToListAsync();
+
+        var mine = false;
+
+        foreach (var file in tracked)
+        {
+            string full;
+            try
+            {
+                full = Path.GetFullPath(file.FilePath!);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+            // Somebody else keeps files in here, so it is not this league's
+            // folder to remove whatever it is called.
+            if (file.LeagueId != leagueId) return false;
+
+            mine = true;
+        }
+
+        return mine;
+    }
+
+    internal static bool IsSafeLeagueFolderTarget(string target, string? leagueRootPath, IEnumerable<string> rootFolderPaths)
+    {
+        if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(leagueRootPath))
+        {
+            return false;
+        }
+
+        string full, root;
+        try
+        {
+            full = Normalize(target);
+            root = Normalize(leagueRootPath);
+        }
+        catch
+        {
+            return false;
+        }
+
+        // Must be strictly below the league's own root.
+        if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var configured in rootFolderPaths)
+        {
+            if (string.IsNullOrWhiteSpace(configured))
+            {
+                continue;
+            }
+
+            string other;
+            try { other = Normalize(configured); } catch { return false; }
+
+            if (string.Equals(full, other, StringComparison.OrdinalIgnoreCase)
+                || other.StartsWith(full + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        static string Normalize(string p) =>
+            Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+    internal static List<Event> SelectVisibleEvents(List<Event> events, League league, bool showAll)
+    {
+        if (showAll)
+        {
+            return events;
+        }
+
+        if (EventPartDetector.IsMotorsport(league.Sport))
+        {
+            // null means no session filter. An empty string means the user
+            // cleared every session, so nothing shows.
+            if (league.MonitoredSessionTypes == null) return events;
+            if (league.MonitoredSessionTypes.Length == 0) return new List<Event>();
+
+            return events
+                .Where(e => EventPartDetector.IsMotorsportSessionMonitored(e.Title, league.Name, league.MonitoredSessionTypes))
+                .ToList();
+        }
+
+        // Teamless sports have no meaningful home/away structure, so they
+        // never filter by team.
+        var monitoredTeamIds = new HashSet<string>();
+        if (!LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
+        {
+            monitoredTeamIds = league.MonitoredTeams
+                .Where(lt => lt.Monitored && lt.Team != null)
+                .Select(lt => lt.Team!.ExternalId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Select(id => id!)
+                .ToHashSet();
+        }
+
+        return monitoredTeamIds.Count == 0
+            ? events
+            : FilterEventsByMonitoredTeams(events, monitoredTeamIds, league);
+    }
+
+    /// <summary>
+    /// Display-side counterpart of the sync's monitored-team filter. Keeps
+    /// team games, events the specials opt-ins bypass the filter for, and
+    /// events that hold files. Cup stage sizes are computed per season, the
+    /// same way the sync computes them.
+    /// </summary>
+    internal static List<Event> FilterEventsByMonitoredTeams(
+        List<Event> events, HashSet<string> monitoredTeamIds, League league)
+    {
+        // Season-less strays would pool into one bucket and let bracket
+        // arithmetic infer cup stages from unrelated events, so they get
+        // no cup inference. Numeric codes and word rounds still classify.
+        var cupStageSizesBySeason = events
+            .GroupBy(e => e.Season ?? "")
+            .ToDictionary(g => g.Key, g => g.Key.Length == 0
+                ? (IReadOnlySet<int>)new HashSet<int>()
+                : SpecialEventClassifier.ComputeCupStageSizes(g.Select(ev => ev.Round)));
+
+        return events
+            .Where(e =>
+                (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
+                (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
+                e.HasFile ||
+                SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title,
+                    league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                    cupStageSizesBySeason[e.Season ?? ""]))
+            .ToList();
     }
 }

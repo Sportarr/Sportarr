@@ -346,7 +346,15 @@ app.MapDelete("/api/history/{id:int}", async (
     // Handle blocklist action.
     // Supports both torrent (by hash) and Usenet (by title+indexer).
     var torrentHash = item.DownloadQueueItem?.TorrentInfoHash;
-    var releaseTitle = item.SourcePath;
+    // The blocklist is matched by release name for Usenet, and SourcePath is
+    // the file this import read, not the name the indexer published. Writing
+    // the path meant no Usenet entry ever matched, so blocklisting an import
+    // did nothing and RSS grabbed the same release again on its next pass. The
+    // queue row carries the real name; the file name is only a last resort for
+    // imports that never had a grab.
+    var releaseTitle = !string.IsNullOrWhiteSpace(item.DownloadQueueItem?.Title)
+        ? item.DownloadQueueItem!.Title
+        : Path.GetFileNameWithoutExtension(item.SourcePath);
     var indexer = item.DownloadQueueItem?.Indexer ?? "Unknown";
     var protocol = item.DownloadQueueItem?.Protocol ?? (string.IsNullOrEmpty(torrentHash) ? "Usenet" : "Torrent");
 
@@ -644,31 +652,6 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             indexerRecord?.SeedTime
         );
 
-        if (downloadId != null)
-        {
-            try
-            {
-                await notificationService.SendNotificationAsync(
-                    NotificationTrigger.OnGrab,
-                    $"Grabbed: {grabHistory.Title}",
-                    $"Re-grab from history\nIndexer: {grabHistory.Indexer ?? "Unknown"}",
-                    new NotificationEventData
-                    {
-                        EventId = grabHistory.EventId,
-                        EventExternalId = grabHistory.Event?.ExternalId,
-                        EventTitle = grabHistory.Event?.Title ?? "",
-                        League = grabHistory.Event?.League?.Name,
-                        Sport = grabHistory.Event?.Sport,
-                        Indexer = grabHistory.Indexer ?? "",
-                        Quality = grabHistory.Quality ?? "",
-                        Size = grabHistory.Size,
-                        DownloadId = downloadId,
-                    },
-                    grabHistory.Event?.League?.Tags);
-            }
-            catch { /* notification failure never fails the regrab */ }
-        }
-
         if (downloadId == null)
         {
             grabHistory.LastRegrabAttempt = DateTime.UtcNow;
@@ -677,30 +660,9 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             return Results.BadRequest(new { error = "Failed to add to download client" });
         }
 
-        // Recent/older event queue priority (issue #220) - same logic as the
-        // other grab paths, duplicated here since re-grabbing from history
-        // goes through this endpoint instead.
-        if (grabHistory.Event != null)
-        {
-            var isRecentRegrabEvent = grabHistory.Event.EventDate >= DateTime.UtcNow.AddDays(-14);
-            var requestedRegrabPriority = isRecentRegrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
-
-            try
-            {
-                var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedRegrabPriority);
-                if (!prioritySet)
-                {
-                    logger.LogWarning("[Regrab] Failed to set queue priority for {DownloadId} on {Client}",
-                        downloadId, downloadClient.Name);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "[Regrab] Error setting queue priority for {DownloadId}", downloadId);
-            }
-        }
-
-        // Create new queue item
+        // Record the grab before anything optional runs. The client already
+        // holds this download, so a failure between here and the insert would
+        // leave it running with nothing tracking it.
         var queueItem = new DownloadQueueItem
         {
             EventId = grabHistory.EventId,
@@ -729,12 +691,56 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 
         db.DownloadQueue.Add(queueItem);
 
-        // Update grab history
         grabHistory.LastRegrabAttempt = DateTime.UtcNow;
         grabHistory.RegrabCount++;
-        grabHistory.FileExists = false; // Reset since we're re-downloading
+        grabHistory.FileExists = false; // Reset since we are re-downloading
 
         await db.SaveChangesAsync();
+
+        try
+        {
+            await notificationService.SendNotificationAsync(
+                NotificationTrigger.OnGrab,
+                $"Grabbed: {grabHistory.Title}",
+                $"Re-grab from history\nIndexer: {grabHistory.Indexer ?? "Unknown"}",
+                new NotificationEventData
+                {
+                    EventId = grabHistory.EventId,
+                    EventExternalId = grabHistory.Event?.ExternalId,
+                    EventTitle = grabHistory.Event?.Title ?? "",
+                    League = grabHistory.Event?.League?.Name,
+                    Sport = grabHistory.Event?.Sport,
+                    Indexer = grabHistory.Indexer ?? "",
+                    Quality = grabHistory.Quality ?? "",
+                    Size = grabHistory.Size,
+                    DownloadId = downloadId,
+                },
+                grabHistory.Event?.League?.Tags);
+        }
+        catch { /* notification failure never fails the regrab */ }
+
+        // Recent/older event queue priority (issue #220) - same logic as the
+        // other grab paths, duplicated here since re-grabbing from history
+        // goes through this endpoint instead.
+        if (grabHistory.Event != null)
+        {
+            var isRecentRegrabEvent = grabHistory.Event.EventDate >= DateTime.UtcNow.AddDays(-14);
+            var requestedRegrabPriority = isRecentRegrabEvent ? downloadClient.RecentPriority : downloadClient.OlderPriority;
+
+            try
+            {
+                var prioritySet = await downloadClientService.ApplyQueuePriorityAsync(downloadClient, downloadId, requestedRegrabPriority);
+                if (!prioritySet)
+                {
+                    logger.LogWarning("[Regrab] Failed to set queue priority for {DownloadId} on {Client}",
+                        downloadId, downloadClient.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[Regrab] Error setting queue priority for {DownloadId}", downloadId);
+            }
+        }
 
         logger.LogInformation("[Re-grab] Successfully re-grabbed: {Title} from history ID {HistoryId}",
             grabHistory.Title, id);
@@ -889,11 +895,28 @@ app.MapPost("/api/grab-history/regrab-missing", async (
             grabHistory.RegrabCount++;
             grabHistory.FileExists = false;
 
+            // Save per item. The client already holds this download, so a save
+            // deferred to the end of the batch would orphan every download the
+            // loop had added by the time it failed. Sportarr would never import
+            // them and the client would keep them for ever.
+            await db.SaveChangesAsync();
+
             successCount++;
             logger.LogInformation("[Re-grab] Queued: {Title}", grabHistory.Title);
         }
         catch (Exception ex)
         {
+            // Let go of the row that would not save. It stays in the change
+            // tracker as Added otherwise, so every later save in the batch
+            // retried it and failed the same way, and one bad release took
+            // the whole re-grab down with it.
+            foreach (var entry in db.ChangeTracker.Entries<DownloadQueueItem>()
+                         .Where(e => e.State == EntityState.Added)
+                         .ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+
             errors.Add($"{grabHistory.Title}: {ex.Message}");
             failedCount++;
             grabHistory.LastRegrabAttempt = DateTime.UtcNow;

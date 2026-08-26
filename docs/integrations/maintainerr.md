@@ -19,4 +19,10 @@ Items resolve by exact ID against Sportarr, and deletions clean up the download 
 
 ## How matching works
 
-Sportarr's media server agents stamp every show with external IDs that Maintainerr reads from Plex. If a league won't resolve, refresh metadata on that show in Plex and trigger a sync for the league in Sportarr, then re-run the collection. The full ID contract is documented in [External IDs](../EXTERNAL_IDS.md).
+The Sportarr metadata provider stamps every show with external IDs that Maintainerr reads from Plex. This only happens when the sports library itself uses the Sportarr agent. Adding the provider under **Settings > Metadata Agents** is not enough on its own, the library must be created with (or switched to) the Sportarr agent, and the legacy bundle agent does not stamp IDs at all.
+
+If Maintainerr logs `Couldn't resolve a Sportarr league id for media server item ...`, the show in Plex has no Sportarr IDs on it. Check two things. First, the event files must carry a season and episode number in their names (`S2026E23` style) so Plex can match them to the agent at all. Files without one never match, and Plex logs `Match request for 'UFC' returned no metadata` for them. Second, open the show and check **Edit > Match**. If it says Plex TV Series, the library is on the wrong agent. Fix whichever applies, refresh metadata on the show, then run the collection again.
+
+Maintainerr needs no extra step after that. It reads the show's IDs live from Plex when it evaluates rules and again when it acts, with a five minute cache at most, so the next scheduled run (or the run button on the rule) picks up the refreshed metadata. One thing to expect. If renaming the files made Plex create new items, the old ones drop out of the collection and the new ones are added fresh, so the deletion countdown starts over for them.
+
+The debug line `No external ids resolved for N of N children of Plex collection ...` is normal for a collection of events. Sportarr stamps IDs on the show, not on individual events, and Maintainerr reads them from the show. The full ID contract is documented in [External IDs](../EXTERNAL_IDS.md).

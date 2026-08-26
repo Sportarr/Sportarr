@@ -53,7 +53,7 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
         // Read raw JSON to handle Prowlarr API format from frontend
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync();
-        logger.LogInformation("[INDEXER CREATE] Received payload: {Json}", json);
+        logger.LogDebug("[INDEXER CREATE] Received payload: {Json}", Sportarr.Api.Helpers.SecretRedactor.Json(json));
 
         // Deserialize as dynamic JSON to extract fields
         var apiIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
@@ -245,7 +245,7 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
         // Read raw JSON to handle Prowlarr API format from frontend
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync();
-        logger.LogInformation("[INDEXER UPDATE] Received payload for ID {Id}: {Json}", id, json);
+        logger.LogDebug("[INDEXER UPDATE] Received payload for ID {Id}: {Json}", id, Sportarr.Api.Helpers.SecretRedactor.Json(json));
 
         // Deserialize as dynamic JSON to extract fields
         var apiIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);

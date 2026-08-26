@@ -31,7 +31,7 @@ public static class SonarrEpisodeFileEndpoints
             {
                 id = ef.Id,
                 seriesId = seriesId.Value,
-                seasonNumber = ef.Event?.SeasonNumber ?? DateTime.Now.Year,
+                seasonNumber = ef.Event?.SeasonNumber ?? DateTime.UtcNow.Year,
                 episodeNumber = ef.Event?.EpisodeNumber ?? 0,
                 relativePath = Path.GetFileName(ef.FilePath),
                 path = ef.FilePath,
@@ -95,7 +95,7 @@ public static class SonarrEpisodeFileEndpoints
             {
                 id = eventFile.Id,
                 seriesId = eventFile.Event?.LeagueId ?? 0,
-                seasonNumber = eventFile.Event?.SeasonNumber ?? DateTime.Now.Year,
+                seasonNumber = eventFile.Event?.SeasonNumber ?? DateTime.UtcNow.Year,
                 episodeNumber = eventFile.Event?.EpisodeNumber ?? 0,
                 relativePath = Path.GetFileName(eventFile.FilePath),
                 path = eventFile.FilePath,
@@ -142,20 +142,36 @@ public static class SonarrEpisodeFileEndpoints
             }
             catch (Exception ex)
             {
+                // Dropping the row anyway made Sportarr forget a file that is
+                // still in the library, and reported the deletion as done. The
+                // file stays, so the record stays with it.
                 logger.LogWarning(ex, "[V3-COMPAT] Failed to delete file: {Path}", eventFile.FilePath);
+                return Results.Problem(
+                    detail: $"Could not delete {eventFile.FilePath}: {ex.Message}",
+                    statusCode: StatusCodes.Status500InternalServerError);
             }
 
             if (eventFile.Event != null)
             {
-                var remainingFiles = await db.EventFiles
+                var remaining = await db.EventFiles
                     .Where(ef => ef.EventId == eventFile.EventId && ef.Id != id && ef.Exists)
-                    .CountAsync();
+                    .OrderByDescending(ef => ef.Size)
+                    .FirstOrDefaultAsync();
 
-                if (remainingFiles == 0)
+                if (remaining == null)
                 {
                     eventFile.Event.HasFile = false;
                     eventFile.Event.FilePath = null;
                     eventFile.Event.FileSize = null;
+                }
+                else if (eventFile.Event.FilePath == eventFile.FilePath)
+                {
+                    // The event's own copy of the path still pointed at the
+                    // file that was just deleted, so anything reading those
+                    // denormalized fields saw a file that is not there.
+                    eventFile.Event.HasFile = true;
+                    eventFile.Event.FilePath = remaining.FilePath;
+                    eventFile.Event.FileSize = remaining.Size;
                 }
             }
 
@@ -231,15 +247,25 @@ public static class SonarrEpisodeFileEndpoints
                     var evt = await db.Events.FindAsync(eventId);
                     if (evt != null)
                     {
-                        var remainingFiles = await db.EventFiles
+                        var remaining = await db.EventFiles
                             .Where(ef => ef.EventId == eventId && ef.Exists)
-                            .CountAsync();
+                            .OrderByDescending(ef => ef.Size)
+                            .FirstOrDefaultAsync();
 
-                        if (remainingFiles == 0)
+                        if (remaining == null)
                         {
                             evt.HasFile = false;
                             evt.FilePath = null;
                             evt.FileSize = null;
+                        }
+                        else if (!string.Equals(evt.FilePath, remaining.FilePath, StringComparison.Ordinal))
+                        {
+                            // Point the event at a file that still exists. It
+                            // otherwise kept the path of one of the files this
+                            // request had just removed.
+                            evt.HasFile = true;
+                            evt.FilePath = remaining.FilePath;
+                            evt.FileSize = remaining.Size;
                         }
                     }
                 }
@@ -270,7 +296,13 @@ public static class SonarrEpisodeFileEndpoints
 
             if (seasonNumber.HasValue)
             {
-                baseQuery = baseQuery.Where(e => e.SeasonNumber == seasonNumber.Value);
+                // An event with no season is reported under the current year,
+                // so it has to be findable under that year too. Filtering on
+                // the raw column alone hid it from the very number this API
+                // had just handed the caller.
+                var fallbackSeason = DateTime.UtcNow.Year;
+                baseQuery = baseQuery.Where(e =>
+                    (e.SeasonNumber ?? fallbackSeason) == seasonNumber.Value);
             }
 
             var events = await baseQuery.Include(e => e.Files).ToListAsync();
@@ -279,7 +311,7 @@ public static class SonarrEpisodeFileEndpoints
             {
                 var firstFile = e.Files.FirstOrDefault(f => f.Exists);
                 var hasFile = firstFile != null;
-                var episodeSeason = e.SeasonNumber ?? DateTime.Now.Year;
+                var episodeSeason = e.SeasonNumber ?? DateTime.UtcNow.Year;
 
                 return new
                 {
@@ -343,7 +375,7 @@ public static class SonarrEpisodeFileEndpoints
 
             var firstFile = eventItem.Files.FirstOrDefault(f => f.Exists);
             var hasFile = firstFile != null;
-            var episodeSeason = eventItem.SeasonNumber ?? DateTime.Now.Year;
+            var episodeSeason = eventItem.SeasonNumber ?? DateTime.UtcNow.Year;
 
             var result = new
             {
@@ -412,7 +444,7 @@ public static class SonarrEpisodeFileEndpoints
                 id = eventItem.Id,
                 seriesId = eventItem.LeagueId ?? 0,
                 episodeFileId = firstFile?.Id ?? 0,
-                seasonNumber = eventItem.SeasonNumber ?? DateTime.Now.Year,
+                seasonNumber = eventItem.SeasonNumber ?? DateTime.UtcNow.Year,
                 episodeNumber = eventItem.EpisodeNumber ?? 0,
                 title = eventItem.Title,
                 hasFile = firstFile != null,
@@ -430,7 +462,10 @@ public static class SonarrEpisodeFileEndpoints
             logger.LogDebug("[V3-COMPAT] PUT /api/v3/episode/monitor - {Json}", json);
 
             List<int> episodeIds = new();
-            var monitored = true;
+            // No default. Assuming true meant a body that left the field out,
+            // or sent something that is not a boolean, switched monitoring on
+            // for everything it named and started grabbing.
+            bool? monitored = null;
             try
             {
                 using var doc = JsonDocument.Parse(json);
@@ -461,13 +496,18 @@ public static class SonarrEpisodeFileEndpoints
                 return Results.BadRequest(new { error = "episodeIds is required" });
             }
 
+            if (monitored == null)
+            {
+                return Results.BadRequest(new { error = "monitored is required and must be true or false" });
+            }
+
             var events = await db.Events
                 .Where(e => episodeIds.Contains(e.Id))
                 .ToListAsync();
 
             foreach (var eventItem in events)
             {
-                eventItem.Monitored = monitored;
+                eventItem.Monitored = monitored.Value;
             }
             await db.SaveChangesAsync();
 
@@ -478,7 +518,7 @@ public static class SonarrEpisodeFileEndpoints
             {
                 id = e.Id,
                 seriesId = e.LeagueId ?? 0,
-                seasonNumber = e.SeasonNumber ?? DateTime.Now.Year,
+                seasonNumber = e.SeasonNumber ?? DateTime.UtcNow.Year,
                 episodeNumber = e.EpisodeNumber ?? 0,
                 title = e.Title,
                 monitored = e.Monitored

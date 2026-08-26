@@ -13,6 +13,59 @@ namespace Sportarr.Api.Endpoints;
 
 public static class CustomFormatEndpoints
 {
+    /// <summary>
+    /// Guards the read-modify-write of every profile's format score list.
+    ///
+    /// That list is a JSON column, so two creates in flight both read the
+    /// profiles, both add their own entry, and the second save overwrote the
+    /// first. One of the two new formats then existed with no score anywhere,
+    /// and every profile scored releases as though it were not there.
+    /// </summary>
+    private static readonly SemaphoreSlim ProfileFormatLock = new(1, 1);
+
+    /// <summary>
+    /// Add or remove one format across every quality profile's score list.
+    /// </summary>
+    private static async Task ApplyFormatToProfilesAsync(SportarrDbContext db, int formatId, bool add)
+    {
+        await ProfileFormatLock.WaitAsync();
+        try
+        {
+            // Read inside the lock so this sees anything a concurrent create
+            // has already written.
+            var profiles = await db.QualityProfiles.ToListAsync();
+            var changed = false;
+
+            foreach (var profile in profiles)
+            {
+                if (add)
+                {
+                    if (profile.FormatItems.Any(fi => fi.FormatId == formatId)) continue;
+                    profile.FormatItems.Add(new ProfileFormatItem { FormatId = formatId, Score = 0 });
+                    changed = true;
+                }
+                else
+                {
+                    var removed = profile.FormatItems.RemoveAll(fi => fi.FormatId == formatId);
+                    if (removed > 0) changed = true;
+                }
+
+                if (changed)
+                {
+                    // The list is a converted column, so the change tracker
+                    // needs telling that the value itself moved on.
+                    db.Entry(profile).Property(p => p.FormatItems).IsModified = true;
+                }
+            }
+
+            if (changed) await db.SaveChangesAsync();
+        }
+        finally
+        {
+            ProfileFormatLock.Release();
+        }
+    }
+
     public static IEndpointRouteBuilder MapCustomFormatEndpoints(this IEndpointRouteBuilder app)
     {
 // API: Get all custom formats
@@ -50,15 +103,7 @@ app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext d
     // No .Include() here: FormatItems is a JSON-value-converted column
     // (SportarrDbContext.cs), not a real navigation, so it loads with the
     // entity automatically - Include() on it throws at query-compile time.
-    var profiles = await db.QualityProfiles.ToListAsync();
-    foreach (var profile in profiles)
-    {
-        if (!profile.FormatItems.Any(fi => fi.FormatId == format.Id))
-        {
-            profile.FormatItems.Add(new ProfileFormatItem { FormatId = format.Id, Score = 0 });
-        }
-    }
-    await db.SaveChangesAsync();
+    await ApplyFormatToProfilesAsync(db, format.Id, add: true);
 
     cfCache.InvalidateAll(); // Invalidate CF match cache
     return Results.Ok(format);
@@ -117,11 +162,12 @@ app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db, Cus
     var format = await db.CustomFormats.FindAsync(id);
     if (format == null) return Results.NotFound();
 
-    // Remove format score entries from all quality profiles
-    var orphanedItems = await db.Set<ProfileFormatItem>()
-        .Where(fi => fi.FormatId == id)
-        .ToListAsync();
-    db.RemoveRange(orphanedItems);
+    // Remove the format's score entries from every quality profile. These are
+    // not rows in a table of their own: they live inside each profile's JSON
+    // column, so asking the context for a set of them either threw or matched
+    // nothing and the scores were left pointing at a format that no longer
+    // exists.
+    await ApplyFormatToProfilesAsync(db, id, add: false);
 
     db.CustomFormats.Remove(format);
     await db.SaveChangesAsync();

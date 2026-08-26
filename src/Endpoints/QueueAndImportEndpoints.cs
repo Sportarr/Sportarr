@@ -182,6 +182,9 @@ app.MapDelete("/api/queue/{id:int}", async (
     {
         404 => Results.NotFound(),
         400 => Results.BadRequest(result.ErrorMessage),
+        // The row went but the client would not confirm the deletion. Say so
+        // rather than returning a bare success for a download still running.
+        200 => Results.Ok(new { warning = result.ErrorMessage }),
         _ => Results.NoContent(),
     };
 });
@@ -236,7 +239,7 @@ app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, D
 });
 
 // API: Queue Operations - Force Import
-app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, FileImportService fileImportService) =>
+app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -250,11 +253,18 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, F
         item.Status = DownloadStatus.Importing;
         await db.SaveChangesAsync();
 
-        await fileImportService.ImportDownloadAsync(item);
-
-        item.Status = DownloadStatus.Imported;
-        item.ImportedAt = DateTime.UtcNow;
+        // The import service owns the terminal state. Stamping it again here
+        // replaced the import history's timestamp with a slightly later one,
+        // and reported a rejected import as a success.
+        var result = await fileImportService.ImportDownloadAsync(item);
         await db.SaveChangesAsync();
+
+        if (result == null)
+        {
+            logger.LogInformation("[QUEUE] Import rejected for queue item {Id}: {Title} - {Reason}",
+                item.Id, item.Title, item.ErrorMessage);
+            return Results.BadRequest(new { error = item.ErrorMessage ?? "Import was rejected" });
+        }
 
         return Results.Ok(item);
     }
@@ -299,14 +309,17 @@ app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Fi
         item.RetryCount = (item.RetryCount ?? 0) + 1;
         await db.SaveChangesAsync();
 
-        // Attempt import
-        await fileImportService.ImportDownloadAsync(item);
-
-        // Success - mark as imported
-        item.Status = DownloadStatus.Imported;
-        item.ImportedAt = DateTime.UtcNow;
-        item.ErrorMessage = null;
+        // Attempt import. The import service marks the terminal state,
+        // including clearing the error this retry was started for.
+        var result = await fileImportService.ImportDownloadAsync(item);
         await db.SaveChangesAsync();
+
+        if (result == null)
+        {
+            logger.LogInformation("Retry import rejected for queue item {Id}: {Title} - {Reason}",
+                item.Id, item.Title, item.ErrorMessage);
+            return Results.BadRequest(new { success = false, message = item.ErrorMessage ?? "Import was rejected" });
+        }
 
         logger.LogInformation("Retry import succeeded for queue item {Id}: {Title}", item.Id, item.Title);
         return Results.Ok(new { success = true, message = "Import successful" });
@@ -543,7 +556,9 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
 app.MapPost("/api/pending-imports/{id:int}/reject", async (
     int id,
     SportarrDbContext db,
-    ILogger<Program> logger) =>
+    IServiceScopeFactory scopeFactory,
+    ILogger<Program> logger,
+    bool search = false) =>
 {
     // Reject a pending import (user doesn't want to import it). Hard-deletes the
     // PendingImport row and writes a Blocklist entry so the disk-scan and
@@ -562,11 +577,22 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
         BlockedAt = DateTime.UtcNow
     });
 
+    var suggestedEventId = import.SuggestedEventId;
+    var suggestedPart = import.SuggestedPart;
+
     db.PendingImports.Remove(import);
     await db.SaveChangesAsync();
 
     logger.LogInformation("[Pending Import] Rejected and blocklisted {Title} (path {FilePath}, hash {Hash})",
         import.Title, import.FilePath, import.TorrentInfoHash ?? "n/a");
+
+    // "Blocklist and search for replacement" asked for a replacement. Without
+    // this the choice did nothing that plain blocklisting did not, even though
+    // the same dialog honours it for queue items.
+    if (search && suggestedEventId.HasValue)
+    {
+        await StartReplacementSearchAsync(scopeFactory, suggestedEventId.Value, suggestedPart, db, logger);
+    }
 
     return Results.NoContent();
 });
@@ -588,7 +614,9 @@ app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
     int id,
     SportarrDbContext db,
     DownloadClientService downloadClientService,
-    ILogger<Program> logger) =>
+    IServiceScopeFactory scopeFactory,
+    ILogger<Program> logger,
+    bool search = false) =>
 {
     var import = await db.PendingImports
         .Include(pi => pi.DownloadClient)
@@ -638,8 +666,19 @@ app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
         BlockedAt = DateTime.UtcNow
     });
 
+    var suggestedEventId = import.SuggestedEventId;
+    var suggestedPart = import.SuggestedPart;
+
     db.PendingImports.Remove(import);
     await db.SaveChangesAsync();
+
+    // The dialog offers a replacement search alongside this removal. Without
+    // honouring it here, choosing to search did nothing whenever the download
+    // was also being removed from the client.
+    if (search && suggestedEventId.HasValue)
+    {
+        await StartReplacementSearchAsync(scopeFactory, suggestedEventId.Value, suggestedPart, db, logger);
+    }
 
     return Results.NoContent();
 });
@@ -721,21 +760,46 @@ app.MapPost("/api/pending-imports/{id:int}/import-pack", async (
         import.Status = PendingImportStatus.Importing;
         await db.SaveChangesAsync();
 
-        // Import all matching files from the pack
-        var result = await packImportService.ImportPackAsync(
+        // Look before anything is deleted. Unmatched files go to the bin
+        // as the real run scans, so a pack where nothing matched was
+        // stripped bare and then left pending as though it could be tried
+        // again, with nothing left to try against.
+        var probe = await packImportService.ImportPackAsync(
             import.FilePath,
             leagueId: null,
-            deleteUnmatched: true,
-            dryRun: false);
+            deleteUnmatched: false,
+            dryRun: true);
 
-        // Mark as completed
-        import.Status = PendingImportStatus.Completed;
-        import.ResolvedAt = DateTime.UtcNow;
+        var result = probe.Matches.Count > 0
+            ? await packImportService.ImportPackAsync(
+                import.FilePath,
+                leagueId: null,
+                deleteUnmatched: true,
+                dryRun: false)
+            : probe;
+
+        // A pack that imported nothing is not resolved. Leaving it pending
+        // keeps it on the Activity page, where the user can look at why every
+        // file missed and try again, rather than having it disappear as done.
+        if (result.FilesImported > 0)
+        {
+            import.Status = PendingImportStatus.Completed;
+            import.ResolvedAt = DateTime.UtcNow;
+            import.ErrorMessage = null;
+            logger.LogInformation("[Pack Import] Imported {Count} of {Scanned} files from pack: {Title}",
+                result.FilesImported, result.FilesScanned, import.Title);
+        }
+        else
+        {
+            import.Status = PendingImportStatus.Pending;
+            import.ErrorMessage = result.Errors.Count > 0
+                ? string.Join("; ", result.Errors)
+                : $"No file in this pack matched a monitored event ({result.FilesScanned} scanned)";
+            logger.LogWarning("[Pack Import] No file matched an event in pack: {Title}", import.Title);
+        }
+
         import.MatchedEventsCount = result.FilesImported;
         await db.SaveChangesAsync();
-
-        logger.LogInformation("[Pack Import] Successfully imported {Count} files from pack: {Title}",
-            result.FilesImported, import.Title);
 
         return Results.Ok(new {
             filesScanned = result.FilesScanned,
@@ -789,5 +853,50 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
 });
 
         return app;
+    }
+
+    /// <summary>
+    /// Start a replacement search for an event whose download was rejected.
+    ///
+    /// The search outlives the request that asked for it, and the request's
+    /// scope takes its database context away the moment the response
+    /// completes, so the work gets a scope of its own.
+    /// </summary>
+    private static async Task StartReplacementSearchAsync(
+        IServiceScopeFactory scopeFactory,
+        int eventId,
+        string? part,
+        SportarrDbContext db,
+        ILogger logger)
+    {
+        var evt = await db.Events
+            .Include(e => e.League)
+            .FirstOrDefaultAsync(e => e.Id == eventId);
+
+        if (evt is not { Monitored: true })
+        {
+            logger.LogInformation(
+                "[Pending Import] No replacement search for event {EventId}; it is not monitored", eventId);
+            return;
+        }
+
+        var qualityProfileId = evt.QualityProfileId ?? evt.League?.QualityProfileId;
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            var scopedSearch = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
+            var scopedLogger = scope.ServiceProvider.GetRequiredService<ILogger<AutomaticSearchService>>();
+            try
+            {
+                scopedLogger.LogInformation("[Pending Import] Searching for replacement for event {EventId}, part: {Part}",
+                    eventId, part ?? "all");
+                await scopedSearch.SearchAndDownloadEventAsync(eventId, qualityProfileId, part, isManualSearch: true);
+            }
+            catch (Exception ex)
+            {
+                scopedLogger.LogError(ex, "[Pending Import] Failed to search for replacement for event {EventId}", eventId);
+            }
+        });
     }
 }

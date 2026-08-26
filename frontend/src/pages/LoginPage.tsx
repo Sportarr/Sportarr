@@ -9,6 +9,14 @@ function normalizeAppPath(path: string): string {
     return '/leagues';
   }
 
+  // The router adds the base itself, so it has to come off here. Matching
+  // only on a trailing slash missed the base on its own, which is exactly what
+  // a return to the application root looks like, and the router then added it
+  // a second time and landed on /sportarr/sportarr with no route behind it.
+  if (urlBase && path === urlBase) {
+    return '/';
+  }
+
   if (urlBase && path.startsWith(urlBase + '/')) {
     return path.slice(urlBase.length) || '/';
   }

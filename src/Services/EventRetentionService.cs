@@ -143,17 +143,27 @@ public class EventRetentionService : BackgroundService
                 .Select(f => new NotificationFileData { Path = f.FilePath, Quality = f.Quality, Size = f.Size })
                 .ToList();
 
+            // Rows for files that would not delete stay put. Removing them
+            // anyway left the file on disk with nothing tracking it, and the
+            // event is unmonitored a few lines below, so nothing would ever
+            // look at it again. A file already gone is still removable: that
+            // is the ordinary case of a file deleted outside Sportarr.
+            var removableFiles = new List<EventFile>();
+
             foreach (var file in evt.Files.ToList())
             {
                 if (!File.Exists(file.FilePath))
+                {
+                    removableFiles.Add(file);
                     continue;
+                }
 
                 try
                 {
                     if (useRecycleBin)
                     {
                         var fileName = Path.GetFileName(file.FilePath);
-                        var recyclePath = Path.Combine(recycleBinPath!, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{fileName}");
+                        var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, fileName);
                         File.Move(file.FilePath, recyclePath);
                     }
                     else
@@ -164,7 +174,10 @@ public class EventRetentionService : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "[Event Retention] Failed to delete file: {FilePath}", file.FilePath);
+                    continue;
                 }
+
+                removableFiles.Add(file);
 
                 try
                 {
@@ -178,11 +191,32 @@ public class EventRetentionService : BackgroundService
 
             if (hadFiles)
             {
-                db.RemoveRange(evt.Files);
-                evt.HasFile = false;
-                evt.FilePath = null;
-                evt.FileSize = null;
-                evt.Quality = null;
+                db.RemoveRange(removableFiles);
+
+                var keptFiles = evt.Files.Except(removableFiles).ToList();
+                if (keptFiles.Count == 0)
+                {
+                    evt.HasFile = false;
+                    evt.FilePath = null;
+                    evt.FileSize = null;
+                    evt.Quality = null;
+                }
+                else
+                {
+                    // A file that survived is still the event's file.
+                    var kept = keptFiles[0];
+                    evt.FilePath = kept.FilePath;
+                    evt.FileSize = kept.Size;
+                    evt.Quality = kept.Quality;
+                    _logger.LogWarning("[Event Retention] Event {EventId} keeps {Count} file(s) that could not be removed",
+                        evt.Id, keptFiles.Count);
+                }
+
+                // Report only what actually went.
+                deletedFilesData = removableFiles
+                    .Where(f => !string.IsNullOrEmpty(f.FilePath))
+                    .Select(f => new NotificationFileData { Path = f.FilePath, Quality = f.Quality, Size = f.Size })
+                    .ToList();
             }
 
             evt.Monitored = false;
@@ -191,7 +225,7 @@ public class EventRetentionService : BackgroundService
                 "[Event Retention] Unmonitored{FileNote} event {EventId} ({Title}) - past the league's {Days}-day retention window (event date {EventDate:yyyy-MM-dd})",
                 hadFiles ? " and deleted files for" : "", evt.Id, evt.Title, retentionDays, evt.EventDate);
 
-            if (hadFiles)
+            if (deletedFilesData.Count > 0)
             {
                 try
                 {

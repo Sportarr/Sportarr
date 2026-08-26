@@ -75,9 +75,46 @@ public class NotificationService : INotificationService
     }
 
     /// <summary>
+    /// True when at least one enabled connection is subscribed to this
+    /// trigger. A send that returns false means either "nobody is listening"
+    /// or "a listener failed", and the health monitor needs to tell those
+    /// apart: only the second one is worth offering again.
+    /// </summary>
+    public async Task<bool> HasProviderForTriggerAsync(NotificationTrigger trigger)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var notifications = await db.Notifications.Where(n => n.Enabled).ToListAsync();
+
+        foreach (var notification in notifications)
+        {
+            try
+            {
+                var config = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(notification.ConfigJson) ?? new();
+                if (ShouldSendForTrigger(config, trigger))
+                {
+                    return true;
+                }
+            }
+            catch (JsonException)
+            {
+                // An unreadable config is not a subscription.
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Send a notification through all enabled notification providers that match the trigger
     /// </summary>
-    public async Task SendNotificationAsync(NotificationTrigger trigger, string title, string message, NotificationEventData? data = null, List<int>? leagueTags = null)
+    /// <returns>
+    /// Whether any provider actually took it. A caller that records having
+    /// told the user needs to know, because a provider failing here is not an
+    /// exception, and treating it as delivered meant the user was never told
+    /// and later saw the all-clear for something they never heard about.
+    /// </returns>
+    public async Task<bool> SendNotificationAsync(NotificationTrigger trigger, string title, string message, NotificationEventData? data = null, List<int>? leagueTags = null)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
@@ -107,6 +144,8 @@ public class NotificationService : INotificationService
         // publishes its own add/update/remove batch, so only the paths
         // sync never touches map here.
         await PublishStreamEventsAsync(trigger, data);
+
+        var anyDelivered = false;
 
         foreach (var notification in notifications)
         {
@@ -150,6 +189,7 @@ public class NotificationService : INotificationService
                     _ => false
                 };
 
+                anyDelivered |= success;
                 notification.LastNotificationSucceeded = success;
                 notification.LastNotificationError = success ? null : $"Failed to send {trigger} notification via {notification.Implementation}";
                 notification.LastNotificationAt = DateTime.UtcNow;
@@ -175,6 +215,8 @@ public class NotificationService : INotificationService
         // Single save for the whole batch - every notification object above
         // came from this same tracked db context.
         await db.SaveChangesAsync();
+
+        return anyDelivered;
     }
 
     /// <summary>
@@ -390,6 +432,13 @@ public class NotificationService : INotificationService
     /// can't inject arguments. Fire-and-forget with a 10-minute ceiling so
     /// a hung script never blocks the notification loop.
     /// </summary>
+    /// <summary>
+    /// Ceiling on custom script processes running at once, across every
+    /// notification. Two is enough for a script that reacts to an import and
+    /// keeps a bulk operation from forking one process per file.
+    /// </summary>
+    private static readonly SemaphoreSlim ScriptConcurrency = new(2, 2);
+
     private bool RunCustomScript(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, NotificationEventData? data)
     {
         var scriptPath = GetConfigString(config, "scriptPath");
@@ -408,6 +457,12 @@ public class NotificationService : INotificationService
 
         _ = Task.Run(async () =>
         {
+            // Bound how many scripts run at once. This is fire and forget, so
+            // a bulk import or a season rename fired one notification per file
+            // and each one forked its own process, hundreds at a time, every
+            // one of them free to run for the full ten minute ceiling. Waiting
+            // tasks are cheap; waiting processes are not.
+            await ScriptConcurrency.WaitAsync();
             try
             {
                 using var process = Process.Start(psi);
@@ -439,6 +494,10 @@ public class NotificationService : INotificationService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[CustomScript] {Path} failed", scriptPath);
+            }
+            finally
+            {
+                ScriptConcurrency.Release();
             }
         });
 

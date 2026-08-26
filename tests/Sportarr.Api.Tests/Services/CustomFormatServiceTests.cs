@@ -45,7 +45,7 @@ public class CustomFormatServiceTests
         _service.MatchesFormat(title, format).Should().Be(shouldMatch);
     }
 
-    private static CustomFormat BuildSizeFormat(long minMb, long maxMb) => new()
+    private static CustomFormat BuildSizeFormat(double minGb, double maxGb) => new()
     {
         Id = 2,
         Name = "Size",
@@ -57,7 +57,7 @@ public class CustomFormatServiceTests
                 Implementation = "Size",
                 Required = true,
                 Negate = false,
-                Fields = new Dictionary<string, object> { { "min", (double)minMb }, { "max", (double)maxMb } }
+                Fields = new Dictionary<string, object> { { "min", minGb }, { "max", maxGb } }
             }
         }
     };
@@ -65,13 +65,30 @@ public class CustomFormatServiceTests
     [Fact]
     public void MatchesFormat_SizeCondition_UsesRealSizeInsteadOfAlwaysZero()
     {
-        var format = BuildSizeFormat(minMb: 1000, maxMb: 5000);
-        var sizeInBytes = 2000L * 1024 * 1024; // 2000 MB - inside the min/max range
+        var format = BuildSizeFormat(minGb: 1, maxGb: 5);
+        var sizeInBytes = 2L * 1024 * 1024 * 1024; // 2 GB, inside the range
 
         // Without a real size threaded through, this always evaluated against 0
-        // bytes, so a min=1000 condition could never match.
+        // bytes, so a min condition could never match.
         _service.MatchesFormat("Release.Title.1080p", format, sizeInBytes).Should().BeTrue();
         _service.MatchesFormat("Release.Title.1080p", format, sizeInBytes: 0).Should().BeFalse();
+    }
+
+    [Fact]
+    public void MatchesFormat_SizeCondition_ReadsBoundsAsGigabytesLikeGrabTimeDoes()
+    {
+        // The grab-time evaluator has always read these bounds as gigabytes.
+        // Reading them as megabytes here made the same format score one way at
+        // grab time and another at rename time, off by a factor of a thousand:
+        // a 2 GB release passed a "between 1 and 5" rule at grab time and
+        // failed it at rename time.
+        var format = BuildSizeFormat(minGb: 1, maxGb: 5);
+
+        var twoGb = 2L * 1024 * 1024 * 1024;
+        var twoHundredMb = 200L * 1024 * 1024;
+
+        _service.MatchesFormat("Release.Title.1080p", format, twoGb).Should().BeTrue();
+        _service.MatchesFormat("Release.Title.1080p", format, twoHundredMb).Should().BeFalse();
     }
 
     private static CustomFormat BuildIndexerFlagFormat(string flagValue) => new()

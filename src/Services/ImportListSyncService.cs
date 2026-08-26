@@ -46,14 +46,15 @@ public class ImportListSyncService : BackgroundService
 
     private async Task SyncAllEnabledAsync(CancellationToken ct)
     {
-        using var scope = _services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
-        var importListService = scope.ServiceProvider.GetRequiredService<ImportListService>();
-
-        var listIds = await db.ImportLists
-            .Where(l => l.Enabled)
-            .Select(l => l.Id)
-            .ToListAsync(ct);
+        List<int> listIds;
+        using (var listScope = _services.CreateScope())
+        {
+            var listDb = listScope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+            listIds = await listDb.ImportLists
+                .Where(l => l.Enabled)
+                .Select(l => l.Id)
+                .ToListAsync(ct);
+        }
 
         if (listIds.Count == 0)
             return;
@@ -62,6 +63,13 @@ public class ImportListSyncService : BackgroundService
         {
             if (ct.IsCancellationRequested)
                 break;
+
+            // A scope of its own for every list. Sharing one meant a list that
+            // failed part way left its half-applied changes tracked on the
+            // shared context, and the next list's save tried to write them, so
+            // one bad list could corrupt or fail every list behind it.
+            using var scope = _services.CreateScope();
+            var importListService = scope.ServiceProvider.GetRequiredService<ImportListService>();
 
             try
             {

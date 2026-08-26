@@ -909,7 +909,10 @@ public class SportarrApiClient
         // The full catalog is ~3000 leagues and changes rarely; without this
         // cache every visit to Add League paid a metadata-API round trip plus
         // a full deserialize before the page could render anything.
-        const string cacheKey = "sportarr-api:all-leagues";
+        // The metadata server is part of the key. Without it, pointing the
+        // install at a different server kept serving the old server's catalog
+        // for up to a day, and ids from it fail or mean something else there.
+        var cacheKey = $"sportarr-api:all-leagues:{_apiBaseUrl}";
         if (_cache.TryGetValue(cacheKey, out List<League>? cachedLeagues) && cachedLeagues != null)
         {
             return cachedLeagues;
@@ -1021,7 +1024,7 @@ public class SportarrApiClient
         // the Add Team page without a second edit.
         var supportedSports = sports?.OrderBy(s => s).ToList()
             ?? TeamLeagueDiscoveryService.GetSupportedSportsList().OrderBy(s => s).ToList();
-        var cacheKey = $"all-teams:{string.Join(",", supportedSports)}";
+        var cacheKey = $"all-teams:{_apiBaseUrl}:{string.Join(",", supportedSports)}";
 
         // Return cached result if available and not forcing refresh
         if (!forceRefresh && _cache.TryGetValue(cacheKey, out List<Team>? cached) && cached != null)
@@ -1045,9 +1048,14 @@ public class SportarrApiClient
         }
         catch (Exception ex)
         {
+            // Only a missing endpoint justifies the fan-out. Falling back on
+            // any failure turned one hiccup on the bulk endpoint into hundreds
+            // of per-league requests against a server that was already
+            // struggling, which is how a brief outage became a long one.
             _logger.LogWarning(ex,
-                "[SportarrAPI] /all/teams bulk path failed; falling back to per-league aggregation for {Sports}",
+                "[SportarrAPI] /all/teams failed for {Sports}. Not falling back to per-league aggregation, which would be hundreds of requests against a server that just failed.",
                 string.Join(", ", supportedSports));
+            return null;
         }
 
         uniqueTeams ??= await GetAllTeamsForSportsFanoutAsync(supportedSports);
@@ -1167,8 +1175,14 @@ public class SportarrApiClient
             var leagueTeamArrays = await Task.WhenAll(tasks);
             var allTeams = leagueTeamArrays.SelectMany(t => t).ToList();
 
+            // Leagues were selected by a substring match on sport, so asking
+            // for "Football" pulled in American Football leagues and their
+            // teams came back too. Someone browsing for a football team could
+            // follow a gridiron one by mistake. Filter on the team's own sport.
             var uniqueTeams = allTeams
                 .Where(t => !string.IsNullOrEmpty(t.ExternalId))
+                .Where(t => supportedSports.Any(s =>
+                    string.Equals(t.Sport, s, StringComparison.OrdinalIgnoreCase)))
                 .GroupBy(t => t.ExternalId)
                 .Select(g => g.First())
                 .OrderBy(t => t.Sport)

@@ -50,66 +50,195 @@ public class DatabaseHealthCheck : IHealthCheck
 /// </summary>
 public class DiskSpaceHealthCheck : IHealthCheck
 {
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DiskSpaceHealthCheck> _logger;
 
     // Thresholds in GB
     private const long UnhealthyThresholdGb = 1;
     private const long DegradedThresholdGb = 5;
 
-    public DiskSpaceHealthCheck(ILogger<DiskSpaceHealthCheck> logger)
+    public DiskSpaceHealthCheck(IServiceScopeFactory scopeFactory, ILogger<DiskSpaceHealthCheck> logger)
     {
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
-    public Task<HealthCheckResult> CheckHealthAsync(
+    public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var currentDir = Directory.GetCurrentDirectory();
-            var root = Path.GetPathRoot(currentDir);
+            // Only the volume the application itself runs from was measured.
+            // On any normal install that is not where anything lands, so the
+            // check reported plenty of room while the disk taking recordings
+            // and library imports was full and nothing warned anybody.
+            var paths = new List<string> { Directory.GetCurrentDirectory() };
 
-            if (string.IsNullOrEmpty(root))
+            try
             {
-                return Task.FromResult(HealthCheckResult.Degraded("Could not determine disk root"));
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+                paths.AddRange(await dbContext.RootFolders
+                    .Select(rf => rf.Path)
+                    .ToListAsync(cancellationToken).ConfigureAwait(false));
+
+                var configService = scope.ServiceProvider.GetService<Sportarr.Api.Services.Interfaces.IConfigService>();
+                if (configService != null)
+                {
+                    var appConfig = await configService.GetConfigAsync().ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(appConfig.DvrRecordingPath))
+                    {
+                        paths.Add(appConfig.DvrRecordingPath);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // A database that cannot be read is the database check's
+                // problem, not this one's. Fall back to the volume we know.
+                _logger.LogDebug(ex, "Disk space check could not read the configured paths");
             }
 
-            var drive = new DriveInfo(root);
+            var worstFreeGb = double.MaxValue;
+            string? worstDrive = null;
+            double worstTotalGb = 0;
+            var seenDrives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var checkedAny = false;
 
-            if (!drive.IsReady)
+            // Every call below is a synchronous syscall against a mount that
+            // may be dead. The sibling hardlink check learned this already. A
+            // stat on a hung mount blocked the health request itself, and each
+            // probe after it piled on another blocked thread. Give the sweep
+            // one deadline and each mount a slice of it.
+            using var probeDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            probeDeadline.CancelAfter(TimeSpan.FromSeconds(6));
+
+            foreach (var path in paths)
             {
-                return Task.FromResult(HealthCheckResult.Unhealthy("Disk is not ready"));
+                if (string.IsNullOrWhiteSpace(path)) continue;
+                if (probeDeadline.IsCancellationRequested) break;
+
+                DriveReading? reading;
+                try
+                {
+                    reading = await Task.Run(() => ReadDrive(path, _logger), probeDeadline.Token)
+                        .WaitAsync(TimeSpan.FromSeconds(3), probeDeadline.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (TimeoutException)
+                {
+                    // That thread stays in the kernel until the mount answers.
+                    // Nothing here can free it. The health request no longer
+                    // waits on it, which is the part that matters.
+                    _logger.LogWarning("Disk space check timed out reading {Path}. The mount is not responding.", path);
+                    continue;
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                if (reading == null) continue;
+                if (!seenDrives.Add(reading.Name)) continue;
+
+                checkedAny = true;
+                if (reading.FreeGb < worstFreeGb)
+                {
+                    worstFreeGb = reading.FreeGb;
+                    worstDrive = reading.Name;
+                    worstTotalGb = reading.TotalGb;
+                }
             }
 
-            var freeSpaceGb = drive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
+            if (!checkedAny || worstDrive == null)
+            {
+                return HealthCheckResult.Degraded("Could not determine disk root");
+            }
 
             var data = new Dictionary<string, object>
             {
-                { "drive", drive.Name },
-                { "freeSpaceGb", Math.Round(freeSpaceGb, 2) },
-                { "totalSpaceGb", Math.Round(drive.TotalSize / (1024.0 * 1024.0 * 1024.0), 2) }
+                { "drive", worstDrive },
+                { "freeSpaceGb", Math.Round(worstFreeGb, 2) },
+                { "totalSpaceGb", Math.Round(worstTotalGb, 2) },
+                { "drivesChecked", seenDrives.Count }
             };
 
-            if (freeSpaceGb < UnhealthyThresholdGb)
+            if (worstFreeGb < UnhealthyThresholdGb)
             {
-                return Task.FromResult(HealthCheckResult.Unhealthy(
-                    $"Critical: Only {freeSpaceGb:F1}GB free disk space", null, data));
+                return HealthCheckResult.Unhealthy(
+                    $"Critical: Only {worstFreeGb:F1}GB free on {worstDrive}", null, data);
             }
 
-            if (freeSpaceGb < DegradedThresholdGb)
+            if (worstFreeGb < DegradedThresholdGb)
             {
-                return Task.FromResult(HealthCheckResult.Degraded(
-                    $"Low disk space: {freeSpaceGb:F1}GB free", null, data));
+                return HealthCheckResult.Degraded(
+                    $"Low disk space: {worstFreeGb:F1}GB free on {worstDrive}", null, data);
             }
 
-            return Task.FromResult(HealthCheckResult.Healthy(
-                $"Disk space OK: {freeSpaceGb:F1}GB free", data));
+            return HealthCheckResult.Healthy(
+                $"Disk space OK: {worstFreeGb:F1}GB free on {worstDrive}", data);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Disk space health check failed");
-            return Task.FromResult(HealthCheckResult.Unhealthy("Failed to check disk space", ex));
+            return HealthCheckResult.Unhealthy("Failed to check disk space", ex);
+        }
+    }
+
+    private sealed record DriveReading(string Name, double FreeGb, double TotalGb);
+
+    private static DriveReading? ReadDrive(string path, ILogger logger)
+    {
+        if (!Directory.Exists(path)) return null;
+
+        var fullPath = Path.GetFullPath(path);
+
+        DriveInfo drive;
+        try
+        {
+            // Ask about the filesystem this folder is really on. On Linux
+            // every absolute path roots at "/", so measuring the path root
+            // reported the operating system disk for every folder and
+            // collapsed them all into one entry. A library on its own mount
+            // could be full while this said there was plenty of room.
+            drive = new DriveInfo(fullPath);
+            if (!drive.IsReady) return null;
+        }
+        catch (ArgumentException)
+        {
+            // Windows wants a drive letter rather than a folder.
+            var root = Path.GetPathRoot(fullPath);
+            if (string.IsNullOrEmpty(root)) return null;
+
+            try
+            {
+                drive = new DriveInfo(root);
+                if (!drive.IsReady) return null;
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Disk space check skipped {Path}", path);
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Disk space check skipped {Path}", path);
+            return null;
+        }
+
+        try
+        {
+            const double gb = 1024.0 * 1024.0 * 1024.0;
+            return new DriveReading(drive.Name, drive.AvailableFreeSpace / gb, drive.TotalSize / gb);
+        }
+        catch (Exception ex)
+        {
+            // The mount can disappear between answering IsReady and being
+            // asked for its size.
+            logger.LogDebug(ex, "Disk space check could not size {Path}", path);
+            return null;
         }
     }
 }
@@ -297,15 +426,24 @@ public class HardlinkHealthCheck : IHealthCheck
                 return HealthCheckResult.Healthy("No accessible root folders to verify");
             }
 
+            // Resolve each root folder once. The inner loop used to stat every
+            // root again for every download path, so a handful of each meant
+            // dozens of processes for one health probe.
+            var rootDevices = new Dictionary<string, string?>();
+            foreach (var root in rootFolders)
+            {
+                rootDevices[root.Path] = await GetDeviceTokenAsync(root.Path, cancellationToken).ConfigureAwait(false);
+            }
+
             var conflicts = new List<string>();
             foreach (var downloadPath in localDownloadPaths)
             {
-                var downloadDevice = GetDeviceToken(downloadPath);
+                var downloadDevice = await GetDeviceTokenAsync(downloadPath, cancellationToken).ConfigureAwait(false);
                 if (downloadDevice == null) continue; // couldn't determine — skip rather than false-alarm
 
                 foreach (var root in rootFolders)
                 {
-                    var rootDevice = GetDeviceToken(root.Path);
+                    var rootDevice = rootDevices[root.Path];
                     if (rootDevice == null) continue;
 
                     if (!string.Equals(downloadDevice, rootDevice, StringComparison.OrdinalIgnoreCase))
@@ -338,7 +476,7 @@ public class HardlinkHealthCheck : IHealthCheck
     /// paths on the same mount compare equal. Unix: the device number from
     /// `stat -c %d`. Windows: the path root (drive). Null if it can't be determined.
     /// </summary>
-    private static string? GetDeviceToken(string path)
+    private static async Task<string?> GetDeviceTokenAsync(string path, CancellationToken cancellationToken)
     {
         try
         {
@@ -363,8 +501,26 @@ public class HardlinkHealthCheck : IHealthCheck
             using var process = System.Diagnostics.Process.Start(psi);
             if (process == null) return null;
 
-            var output = process.StandardOutput.ReadToEnd().Trim();
-            process.WaitForExit(3000);
+            // The output was read to the end before anything imposed a limit,
+            // so the three second wait below it protected nothing. A stat on a
+            // hung mount blocked the health request itself, and every probe
+            // after it piled another blocked thread and another orphan process
+            // on top.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(3));
+
+            string output;
+            try
+            {
+                var readTask = process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+                output = (await readTask.WaitAsync(timeout.Token).ConfigureAwait(false)).Trim();
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                return null;
+            }
 
             return string.IsNullOrEmpty(output) ? null : output;
         }

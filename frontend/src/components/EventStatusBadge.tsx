@@ -9,6 +9,7 @@ import {
   QueueListIcon,
 } from '@heroicons/react/24/outline';
 import type { SearchQueueItem, DownloadQueueItem } from '../api/hooks';
+import { parseAsUtc } from '../utils/timezone';
 
 interface EventStatusBadgeProps {
   eventId: number;
@@ -120,10 +121,15 @@ const EventStatusBadge = memo(function EventStatusBadge({
 
     // Check for recently completed search (show briefly before download starts)
     if (recentSearch) {
-      const completedTime = recentSearch.completedAt ? new Date(recentSearch.completedAt).getTime() : 0;
+      // The server sends this in UTC, and a timestamp without a zone marker is
+      // read as local time. West of UTC that put the completion in the future,
+      // so the badge stayed up for hours and hid the real download and import
+      // status behind it; east of UTC it put the completion hours in the past
+      // and the badge never appeared at all.
+      const completedTime = recentSearch.completedAt ? parseAsUtc(recentSearch.completedAt).getTime() : 0;
       const now = Date.now();
       // Only show completed status for 3 seconds
-      if (now - completedTime < 3000) {
+      if (completedTime > 0 && now - completedTime >= 0 && now - completedTime < 3000) {
         if (recentSearch.success) {
           return {
             type: 'completed',

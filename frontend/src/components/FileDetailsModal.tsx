@@ -1,5 +1,5 @@
 import { formatEventDate } from '../utils/timezone';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -116,6 +116,33 @@ export default function FileDetailsModal({
     }
   }, [isOpen]);
 
+  // Start from this file's own mapping every time the modal opens on a
+  // different file. The selections were only initialised on the very first
+  // mount, so opening the modal for a second file showed, and would have
+  // saved, the event chosen for the previous one.
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelectedLeagueId(currentMapping?.leagueId ?? null);
+    setSelectedSeason(currentMapping?.season ?? null);
+    setSelectedEventId(currentMapping?.eventId ?? null);
+    setSelectedPart(currentMapping?.partName ?? null);
+    setSelectedPartNumber(currentMapping?.partNumber ?? null);
+    setEventSearch('');
+    setDebouncedSearch('');
+    setSeasons([]);
+    setEvents([]);
+    setParts([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, fileName]);
+
+  // Only the newest answer for each list is allowed to land. Changing league,
+  // season or event while a request was in flight let the older answer arrive
+  // last, so the picker offered events or parts belonging to the previous
+  // selection and could submit one of them against the current league.
+  const seasonSeq = useRef(0);
+  const eventSeq = useRef(0);
+  const partSeq = useRef(0);
+
   // Load seasons when league changes
   useEffect(() => {
     if (selectedLeagueId) {
@@ -174,21 +201,25 @@ export default function FileDetailsModal({
   };
 
   const loadSeasons = async (leagueId: number) => {
+    const seq = ++seasonSeq.current;
     setLoadingSeasons(true);
     try {
       const response = await apiGet(`/api/library/leagues/${leagueId}/seasons`);
+      if (seq !== seasonSeq.current) return;
       if (response.ok) {
         const data = await response.json();
+        if (seq !== seasonSeq.current) return;
         setSeasons(data.seasons || []);
       }
     } catch (err) {
       console.error('Failed to load seasons:', err);
     } finally {
-      setLoadingSeasons(false);
+      if (seq === seasonSeq.current) setLoadingSeasons(false);
     }
   };
 
   const loadEvents = async (leagueId: number, season: string | null, search: string = '') => {
+    const seq = ++eventSeq.current;
     setLoadingEvents(true);
     try {
       const params = new URLSearchParams();
@@ -200,29 +231,34 @@ export default function FileDetailsModal({
       const queryString = params.toString();
       const url = `/api/library/leagues/${leagueId}/events${queryString ? `?${queryString}` : ''}`;
       const response = await apiGet(url);
+      if (seq !== eventSeq.current) return;
       if (response.ok) {
         const data = await response.json();
+        if (seq !== eventSeq.current) return;
         setEvents(data.events || []);
       }
     } catch (err) {
       console.error('Failed to load events:', err);
     } finally {
-      setLoadingEvents(false);
+      if (seq === eventSeq.current) setLoadingEvents(false);
     }
   };
 
   const loadParts = async (sport: string) => {
+    const seq = ++partSeq.current;
     setLoadingParts(true);
     try {
       const response = await apiGet(`/api/library/parts/${encodeURIComponent(sport)}`);
+      if (seq !== partSeq.current) return;
       if (response.ok) {
         const data = await response.json();
+        if (seq !== partSeq.current) return;
         setParts(data.parts || []);
       }
     } catch (err) {
       console.error('Failed to load parts:', err);
     } finally {
-      setLoadingParts(false);
+      if (seq === partSeq.current) setLoadingParts(false);
     }
   };
 

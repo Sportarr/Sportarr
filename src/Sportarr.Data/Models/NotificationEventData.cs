@@ -98,6 +98,10 @@ public class NotificationEventData
         var dict = new Dictionary<string, object>();
         if (EventId.HasValue) dict["eventId"] = EventId.Value;
         if (EventExternalId != null) dict["eventExternalId"] = EventExternalId;
+        // Webhook consumers were handed this and custom scripts were not, so a
+        // script had no reliable way to cross-reference the event against the
+        // source everyone else was using.
+        if (TsdbId != null) dict["tsdbId"] = TsdbId;
         if (EventTitle != null) dict["eventTitle"] = EventTitle;
         if (League != null) dict["league"] = League;
         if (Sport != null) dict["sport"] = Sport;

@@ -42,8 +42,16 @@ public static class DownloadFailurePolicy
         if (string.IsNullOrEmpty(message))
             return false;
 
-        return message.Contains("not found", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("not accessible", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("does not exist", StringComparison.OrdinalIgnoreCase);
+        // Only a message about a PATH means "not there yet". The bare phrases
+        // matched anything, so a permanent failure that happens to say
+        // "Event not found" or "No matching event found" was treated as a wait
+        // and the download sat in ImportPending being retried for ever.
+        return PathNotReadyPattern.IsMatch(message);
     }
+
+    private static readonly System.Text.RegularExpressions.Regex PathNotReadyPattern = new(
+        @"\b(?:path|file|directory|folder|drive|mount|share)\b.{0,80}?\b(?:not\s+found|not\s+accessible|does\s+not\s+exist|is\s+not\s+ready|unavailable)\b" +
+        @"|\b(?:could\s+not\s+find|unable\s+to\s+(?:find|access))\b.{0,80}?\b(?:path|file|directory|folder)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(250));
 }

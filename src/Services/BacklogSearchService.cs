@@ -76,10 +76,12 @@ public class BacklogSearchService : BackgroundService
     {
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
-        // Only consider events that have aired. Pre-event releases get filtered
-        // at the release level (by PublishDate), so the event-eligibility check
-        // is intentionally simple here.
-        var searchableBefore = DateTime.UtcNow;
+        // Only consider events that have finished. This used to be the present
+        // moment, so an event counted as missing the instant its start time
+        // passed and the backlog could go looking for it, and grab something
+        // partial, while it was still being played.
+        var grace = TimeSpan.FromMinutes(Math.Max(0, config.BacklogSearchGraceMinutes));
+        var searchableBefore = DateTime.UtcNow - grace;
 
         // Optional age cap - skip ancient events to keep passes bounded.
         DateTime? oldestAllowed = config.BacklogSearchMaxAgeDays > 0

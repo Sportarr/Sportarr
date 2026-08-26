@@ -227,6 +227,17 @@ const LibraryImportPage: React.FC = () => {
   const [importMode, setImportMode] = useState<'auto' | 'copy' | 'hardlink' | 'move'>('auto');
   // Shown next to Auto so the user knows what it will actually do.
   const [autoModeLabel, setAutoModeLabel] = useState('follow media management settings');
+
+  // The scan and import loops below poll a task until it finishes. They had no
+  // way out: a task that never reached a terminal state kept them asking every
+  // two seconds for ever, navigating away did not stop them, and each
+  // abandoned run left another one going for the lifetime of the page. This is
+  // cleared when the page goes away.
+  const pollingAllowed = useRef(true);
+  useEffect(() => {
+    pollingAllowed.current = true;
+    return () => { pollingAllowed.current = false; };
+  }, []);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -304,6 +315,7 @@ const LibraryImportPage: React.FC = () => {
       let result: ScanResult | null = null;
       for (;;) {
         await new Promise(resolve => setTimeout(resolve, 2000));
+        if (!pollingAllowed.current) return;
         let task: { status: string; progress?: number; message?: string; result?: string } | null = null;
         try {
           const taskResponse = await apiGet(`/api/task/${taskId}`);
@@ -552,6 +564,7 @@ const LibraryImportPage: React.FC = () => {
       // hiccup just retries on the next tick.
       for (;;) {
         await new Promise(resolve => setTimeout(resolve, 2000));
+        if (!pollingAllowed.current) return;
         let task: { status: string; progress?: number; message?: string; result?: string } | null = null;
         try {
           const taskResponse = await apiGet(`/api/task/${taskId}`);

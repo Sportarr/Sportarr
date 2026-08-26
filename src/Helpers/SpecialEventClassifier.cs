@@ -39,14 +39,20 @@ public static class SpecialEventClassifier
     private static readonly string[] FinalTitleKeywords =
     {
         "super bowl", "world series", "stanley cup final", "grand final",
-        "cup final", "championship game", "nba finals", "finals game"
+        "cup final", "championship game", "nba finals", "finals game",
+        // Deciders that name themselves without the word final.
+        "title game", "title fight", "national championship"
     };
 
     private static readonly string[] PlayoffTitleKeywords =
     {
         "wild card", "wildcard", "divisional round", "play-in", "play in tournament",
-        "conference semifinal", "conference final", "quarterfinal", "quarter-final",
-        "semifinal", "semi-final", "playoff", "knockout", "elimination round"
+        "conference semifinal", "conference final", "conference championship",
+        "quarterfinal", "quarter-final",
+        "semifinal", "semi-final", "playoff", "knockout", "elimination round",
+        // Postseason rounds that name themselves without saying playoff.
+        "final four", "division series", "league championship series",
+        "championship series", "elite eight", "sweet sixteen"
     };
 
     private static readonly int[] StageSizes = { 2, 4, 8, 16, 32, 64 };
@@ -179,18 +185,24 @@ public static class SpecialEventClassifier
         if (!string.IsNullOrWhiteSpace(title))
         {
             var t = title.ToLowerInvariant();
-            foreach (var kw in FinalTitleKeywords)
-            {
-                if (t.Contains(kw))
-                {
-                    return SpecialTier.Final;
-                }
-            }
+
+            // Playoff wording is checked first because it is the more specific
+            // of the two. "Conference Finals Game 7" contains "finals game" and
+            // was being called a final, so it was pulled in by Monitor Finals
+            // and left out by Monitor Playoffs, which is backwards on both
+            // counts. No genuine final carries a playoff round's name.
             foreach (var kw in PlayoffTitleKeywords)
             {
                 if (t.Contains(kw))
                 {
                     return SpecialTier.Playoff;
+                }
+            }
+            foreach (var kw in FinalTitleKeywords)
+            {
+                if (t.Contains(kw))
+                {
+                    return SpecialTier.Final;
                 }
             }
             if (t.Contains("preseason") || t.Contains("pre-season") || t.Contains("exhibition game"))

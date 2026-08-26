@@ -44,6 +44,17 @@ public class SearchResultCache
         public DateTime CachedAt { get; set; }
 
         /// <summary>
+        /// The lifetime this entry was stored with.
+        ///
+        /// Cleanup used to run against whatever duration the current caller
+        /// happened to pass, so one caller with a short window wiped entries
+        /// another had stored for much longer, and the same searches went back
+        /// out to the indexers over and over. Each entry is judged on its own
+        /// lifetime now.
+        /// </summary>
+        public int LifetimeSeconds { get; set; } = 300;
+
+        /// <summary>
         /// The search query used to fetch these results
         /// </summary>
         public string Query { get; set; } = string.Empty;
@@ -161,6 +172,20 @@ public class SearchResultCache
     }
 
     /// <summary>
+    /// Build the key for one query as searched under one set of indexer tags.
+    ///
+    /// Tags decide which indexers a search actually reaches. Two leagues can
+    /// produce the same query while pointing at different indexers, and on the
+    /// query alone the second league takes the first one's answer and never
+    /// asks its own indexers, hiding releases that are really there.
+    /// </summary>
+    public static string ScopeKey(string query, IEnumerable<int>? indexerTags)
+    {
+        var tags = indexerTags?.Distinct().OrderBy(t => t).ToList() ?? new List<int>();
+        return tags.Count == 0 ? query : $"tags:{string.Join(",", tags)}|{query}";
+    }
+
+    /// <summary>
     /// Try to get cached results for a query
     /// </summary>
     /// <param name="query">The search query (e.g., "UFC.300", "NFL.2025")</param>
@@ -183,7 +208,13 @@ public class SearchResultCache
             {
                 _logger.LogDebug("[ReleaseCache] Cache EXPIRED for '{Query}' (age: {Age:F1}s > {Max}s)",
                     query, age.TotalSeconds, cacheDurationSeconds);
-                _cache.TryRemove(key, out _);
+                // Only drop it if it is past its own lifetime too. A reader
+                // with a shorter tolerance treats it as a miss without taking
+                // it away from readers who would still accept it.
+                if (age.TotalSeconds > cached.LifetimeSeconds)
+                {
+                    _cache.TryRemove(key, out _);
+                }
             }
         }
 
@@ -221,6 +252,7 @@ public class SearchResultCache
         {
             RawReleases = rawReleases,
             CachedAt = DateTime.UtcNow,
+            LifetimeSeconds = cacheDurationSeconds,
             Query = query,
             IndexersQueried = indexersQueried?.ToList() ?? new List<string>()
         };
@@ -271,8 +303,10 @@ public class SearchResultCache
     private void CleanupExpired(int maxAgeSeconds)
     {
         var now = DateTime.UtcNow;
+        // Each entry is judged against the lifetime it was stored with, not
+        // against whatever the caller who triggered this cleanup asked for.
         var expiredKeys = _cache
-            .Where(kvp => (now - kvp.Value.CachedAt).TotalSeconds > maxAgeSeconds)
+            .Where(kvp => (now - kvp.Value.CachedAt).TotalSeconds > Math.Max(maxAgeSeconds, kvp.Value.LifetimeSeconds))
             .Select(kvp => kvp.Key)
             .ToList();
 

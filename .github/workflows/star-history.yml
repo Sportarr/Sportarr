@@ -13,13 +13,14 @@ name: Star History
 # needs read access to run, and the commit is done with our own script and
 # the same PAT the contributors workflow already uses to push to a
 # protected branch, so no outside action ever holds write access to the
-# repo. Refreshes on a daily schedule, on demand, and right after someone
-# stars the repo.
+# repo.
+#
+# Refreshes weekly, and on demand. It used to also run on every `watch`
+# event, so a single new star produced a commit. At two to seven stars a
+# day that buried the real history under chart updates.
 on:
   schedule:
-    - cron: "0 7 * * *" # daily 07:00 UTC
-  watch:
-    types: [started]
+    - cron: "0 7 * * 1" # weekly, Monday 07:00 UTC
   workflow_dispatch:
 
 concurrency:

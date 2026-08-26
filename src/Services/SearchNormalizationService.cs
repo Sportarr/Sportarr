@@ -265,6 +265,24 @@ public static class SearchNormalizationService
             }
         }
 
+        // Common wording differences: "GP" for "Grand Prix", "Champ" for
+        // "Championship" and so on. This table has always been here and
+        // nothing ever consulted it, so a release using the short form was
+        // simply not matched against an event using the long one.
+        foreach (var (word, alternatives) in WordSubstitutions)
+        {
+            if (!ContainsWord(normalized, word)) continue;
+
+            foreach (var alternative in alternatives)
+            {
+                var alternate = ReplaceWord(normalized, word, alternative);
+                if (!variations.Contains(alternate, StringComparer.OrdinalIgnoreCase))
+                {
+                    variations.Add(alternate);
+                }
+            }
+        }
+
         return variations;
     }
 

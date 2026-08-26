@@ -119,6 +119,8 @@ export default function IptvChannelsSettings() {
 
   // Mapping modal state
   const [mappingChannel, setMappingChannel] = useState<IptvChannel | null>(null);
+  const mappingRequestRef = useRef(0);
+  const [mappingsLoading, setMappingsLoading] = useState(false);
   const [channelMappings, setChannelMappings] = useState<LeagueMapping[]>([]);
   const [selectedLeagues, setSelectedLeagues] = useState<number[]>([]);
   const [preferredLeagueId, setPreferredLeagueId] = useState<number | null>(null);
@@ -482,10 +484,12 @@ export default function IptvChannelsSettings() {
       setTeamPickerTeams([]);
       return;
     }
+    let current = true;
     apiClient
       .get<Array<{ id: number; teamId: number; teamName?: string }>>(`/iptv/channels/${mappingChannel.id}/team-mappings`)
-      .then(({ data }) => setChannelTeamMappings(Array.isArray(data) ? data : []))
-      .catch(() => setChannelTeamMappings([]));
+      .then(({ data }) => { if (current) setChannelTeamMappings(Array.isArray(data) ? data : []); })
+      .catch(() => { if (current) setChannelTeamMappings([]); });
+    return () => { current = false; };
   }, [mappingChannel]);
 
   useEffect(() => {
@@ -652,20 +656,35 @@ export default function IptvChannelsSettings() {
 
   // Mapping operations
   const openMappingModal = async (channel: IptvChannel) => {
+    // Reopening the modal on a second channel while the first channel's
+    // mappings are still in flight would let the older response land last and
+    // fill the form with the wrong channel's leagues. Save posts whatever the
+    // form holds, so the stale answer is discarded instead.
+    const requestId = ++mappingRequestRef.current;
+
     setMappingChannel(channel);
+    setChannelMappings([]);
+    setSelectedLeagues([]);
+    setPreferredLeagueId(null);
+    setMappingsLoading(true);
+
     try {
       const { data } = await apiClient.get<LeagueMapping[]>(`/iptv/channels/${channel.id}/mappings`);
+      if (requestId !== mappingRequestRef.current) return;
+      setMappingsLoading(false);
       setChannelMappings(data);
       setSelectedLeagues(data.map((m) => m.leagueId));
       const preferred = data.find((m) => m.isPreferred);
       setPreferredLeagueId(preferred?.leagueId || null);
     } catch (err: any) {
+      if (requestId !== mappingRequestRef.current) return;
+      setMappingsLoading(false);
       toast.error('Failed to load mappings', { description: err.message });
     }
   };
 
   const handleSaveMappings = async () => {
-    if (!mappingChannel) return;
+    if (!mappingChannel || mappingsLoading) return;
 
     try {
       await apiClient.post('/iptv/channels/map', {
@@ -1816,7 +1835,8 @@ export default function IptvChannelsSettings() {
                   </button>
                   <button
                     onClick={handleSaveMappings}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                    disabled={mappingsLoading}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                   >
                     Save Mappings
                   </button>

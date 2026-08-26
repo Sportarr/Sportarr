@@ -93,7 +93,14 @@ public class FilteredExportService
                 attrs.Add($"tvg-language=\"{EscapeAttribute(channel.Language)}\"");
 
             var attrString = attrs.Count > 0 ? " " + string.Join(" ", attrs) : "";
-            sb.AppendLine($"#EXTINF:-1{attrString},{channel.Name}");
+
+            // The display name needs the same treatment as the attributes. A
+            // name carrying a carriage return or newline ended the line early,
+            // and everything after it was read by the client as further M3U
+            // directives or as a stream URL of its own, so a provider could put
+            // phantom channels into the exported playlist or point one at a URL
+            // that is not the Sportarr proxy.
+            sb.AppendLine($"#EXTINF:-1{attrString},{EscapeDisplayName(channel.Name)}");
 
             // Use Sportarr's stream proxy URL
             sb.AppendLine($"{baseUrl}/api/iptv/stream/{channel.Id}");
@@ -248,6 +255,19 @@ public class FilteredExportService
             .Replace("\"", "'")
             .Replace("\n", " ")
             .Replace("\r", "");
+    }
+
+    /// <summary>
+    /// Keep a channel's display name on one line. It closes the EXTINF line,
+    /// so a line break in it lets whatever follows be read as another
+    /// directive.
+    /// </summary>
+    private static string EscapeDisplayName(string value)
+    {
+        return value
+            .Replace("\r\n", " ")
+            .Replace("\n", " ")
+            .Replace("\r", " ");
     }
 }
 

@@ -14,4 +14,11 @@ public interface IRemotePathMappingService
     /// the path unchanged.
     /// </summary>
     Task<string> RemapRemoteToLocalAsync(string host, string remotePath);
+
+    /// <summary>
+    /// The local folders mapped for one host. Callers that delete on disk use
+    /// these to check a client-reported path really belongs to this client
+    /// before acting on it.
+    /// </summary>
+    Task<List<string>> GetLocalRootsAsync(string host);
 }

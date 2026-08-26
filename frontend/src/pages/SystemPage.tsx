@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { HeartIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useSystemStatus } from '../api/hooks';
 import PageHeader from '../components/PageHeader';
@@ -17,17 +18,32 @@ export default function SystemPage() {
       setBtcCopied(true);
       setTimeout(() => setBtcCopied(false), 2000);
     } catch (err) {
-      // Fallback for older browsers or non-secure contexts
+      // Fallback for older browsers or non-secure contexts. Whether it worked
+      // is the return value, and ignoring it meant the page said "Copied!"
+      // when nothing had been copied. Someone pasting an old clipboard could
+      // send funds to the wrong address on the strength of that.
       const textArea = document.createElement('textarea');
       textArea.value = btcAddress;
       textArea.style.position = 'fixed';
       textArea.style.left = '-999999px';
       document.body.appendChild(textArea);
       textArea.select();
-      document.execCommand('copy');
+      let copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } catch {
+        copied = false;
+      }
       document.body.removeChild(textArea);
-      setBtcCopied(true);
-      setTimeout(() => setBtcCopied(false), 2000);
+
+      if (copied) {
+        setBtcCopied(true);
+        setTimeout(() => setBtcCopied(false), 2000);
+      } else {
+        toast.error('Could not copy the address', {
+          description: 'Select it and copy it by hand.',
+        });
+      }
     }
   };
 

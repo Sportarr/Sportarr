@@ -168,10 +168,21 @@ $@"<?xml version=""1.0"" encoding=""UTF-8""?>
     private static string GetDeviceId(IConfiguration config)
     {
         if (_cachedDeviceId != null) return _cachedDeviceId;
-        // Hash the data path (which is unique per install) into 8
-        // hex chars - HDHomeRun device IDs are 8-digit hex.
-        var dataPath = config["Sportarr:DataPath"] ?? "/data";
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(dataPath));
+
+        // The data path is not unique per install: every container install
+        // uses the default, so two of them advertised the very same tuner
+        // identity and a media server would merge them, serve one the other's
+        // cached lineup, or lose one of them entirely. The API key is
+        // generated per install and persists, so it is what actually
+        // distinguishes them. The path remains the fallback for the case where
+        // no key has been generated yet.
+        var seed = config["Sportarr:ApiKey"];
+        if (string.IsNullOrWhiteSpace(seed))
+        {
+            seed = config["Sportarr:DataPath"] ?? "/data";
+        }
+
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
         _cachedDeviceId = Convert.ToHexString(bytes, 0, 4); // 8 hex chars
         return _cachedDeviceId;
     }

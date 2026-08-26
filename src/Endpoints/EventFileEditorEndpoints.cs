@@ -269,7 +269,14 @@ public static class EventFileEditorEndpoints
                     eventTitle = evt.Title;
                 }
             }
-            else if (leagueId.HasValue)
+
+            // Fall back to the league whenever the event did not answer. The
+            // league branch only ran when no event id was supplied at all, so
+            // passing both and having the event lookup come up empty, which is
+            // what happens for a deleted event or a file not tied to one, left
+            // the part selector blank even though the caller had named a
+            // perfectly good league.
+            if (string.IsNullOrEmpty(sport) && leagueId.HasValue)
             {
                 var lg = await db.Leagues
                     .Where(l => l.Id == leagueId.Value)
@@ -326,8 +333,34 @@ public static class EventFileEditorEndpoints
         if (req.OriginalTitle != null) file.OriginalTitle = req.OriginalTitle;
         if (req.Languages != null) file.Languages = req.Languages;
         if (req.IndexerFlags != null) file.IndexerFlags = req.IndexerFlags;
-        if (req.PartName != null) file.PartName = req.PartName;
-        if (req.PartNumber.HasValue) file.PartNumber = req.PartNumber;
+        // An empty part name means "this is the whole event". Null still means
+        // "leave it as it is", which is what every other field here does, but
+        // that left no way at all to undo a part once one had been set: the
+        // stale part stuck to the file and went on shaping its name and how it
+        // was presented in the library.
+        if (req.PartName != null)
+        {
+            var trimmed = req.PartName.Trim();
+            if (trimmed.Length == 0)
+            {
+                file.PartName = null;
+                file.PartNumber = null;
+            }
+            else
+            {
+                file.PartName = trimmed;
+            }
+        }
+
+        // A part number of zero clears it, for the same reason.
+        if (req.PartNumber.HasValue)
+        {
+            file.PartNumber = req.PartNumber.Value <= 0 ? null : req.PartNumber;
+            if (file.PartNumber == null && req.PartName == null)
+            {
+                file.PartName = null;
+            }
+        }
     }
 }
 

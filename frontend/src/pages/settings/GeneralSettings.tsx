@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon, TvIcon, ArrowDownTrayIcon, LinkIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import { runSettingsSave } from '../../hooks/useSettings';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
@@ -69,6 +70,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Track initial values to detect changes
@@ -96,7 +98,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
     authenticationRequired: 'disabledforlocaladdresses',
     username: '',
     password: '',
-    apiKey: 'd290f1ee-6c54-4b01-90e6-d701748f0851',
+    apiKey: '',
     certificateValidation: 'enabled',
   });
 
@@ -160,10 +162,19 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
     setHasUnsavedChanges(hasChanges);
   }, [hostSettings, securitySettings, proxySettings, loggingSettings, analyticsSettings, backupSettings, updateSettings]);
 
+  // A failed load leaves every field on its hardcoded default, which for
+  // security means authentication off and a blank API key. Saving that would
+  // overwrite a working configuration, so a failure is recorded and Save is
+  // held until the real values arrive.
   const loadSettings = async () => {
+    setLoadFailed(false);
     try {
       const response = await apiGet('/api/settings');
-      if (response.ok) {
+      if (!response.ok) {
+        setLoadFailed(true);
+        return;
+      }
+      {
         const data = await response.json();
 
         const loadedSettings = {
@@ -205,12 +216,23 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSave = async () => {
+    // Nothing was ever loaded, so the form holds defaults, not the user's
+    // settings. Writing them would disable authentication and clear the API
+    // key.
+    if (!initialValues.current) {
+      toast.error('Settings Not Loaded', {
+        description: 'Current settings could not be read. Reload the page before saving.',
+      });
+      return;
+    }
+
     // Validate credentials when enabling Forms or Basic authentication
     if (securitySettings.authenticationMethod === 'forms' || securitySettings.authenticationMethod === 'basic') {
       // Check if this is a new auth setup (no existing credentials) or user is changing password
@@ -252,26 +274,28 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
 
     setSaving(true);
     try {
-      // First fetch current settings
-      const response = await apiGet('/api/settings');
-      if (!response.ok) throw new Error('Failed to fetch current settings');
+      // Read and write inside the shared chain, so a save from another
+      // settings page cannot slip between this read and this write and be
+      // put back as it was.
+      const saveResponse = await runSettingsSave(async () => {
+        const response = await apiGet('/api/settings');
+        if (!response.ok) throw new Error('Failed to fetch current settings');
 
-      const currentSettings = await response.json();
+        const currentSettings = await response.json();
 
-      // Update with new values
-      const updatedSettings = {
-        ...currentSettings,
-        hostSettings: JSON.stringify(hostSettings),
-        securitySettings: JSON.stringify(securitySettings),
-        proxySettings: JSON.stringify(proxySettings),
-        loggingSettings: JSON.stringify(loggingSettings),
-        analyticsSettings: JSON.stringify(analyticsSettings),
-        backupSettings: JSON.stringify(backupSettings),
-        updateSettings: JSON.stringify(updateSettings),
-      };
+        const updatedSettings = {
+          ...currentSettings,
+          hostSettings: JSON.stringify(hostSettings),
+          securitySettings: JSON.stringify(securitySettings),
+          proxySettings: JSON.stringify(proxySettings),
+          loggingSettings: JSON.stringify(loggingSettings),
+          analyticsSettings: JSON.stringify(analyticsSettings),
+          backupSettings: JSON.stringify(backupSettings),
+          updateSettings: JSON.stringify(updateSettings),
+        };
 
-      // Save to API
-      const saveResponse = await apiPut('/api/settings', updatedSettings);
+        return apiPut('/api/settings', updatedSettings);
+      });
 
       if (!saveResponse.ok) {
         // Handle validation errors from backend
@@ -412,11 +436,28 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
         subtitle="General application settings"
         onSave={handleSave}
         isSaving={saving}
+        saveDisabled={loadFailed}
         hasUnsavedChanges={hasUnsavedChanges}
         saveButtonText={saving ? 'Saving...' : 'Save Changes'}
       />
 
       <div className="max-w-6xl mx-auto px-6">
+
+      {loadFailed && (
+        <div className="mb-8 rounded-lg border border-red-700 bg-red-950/50 p-4">
+          <p className="text-white font-semibold">Settings could not be loaded</p>
+          <p className="text-gray-300 text-sm mt-1">
+            The fields below show defaults, not your saved settings. Saving is
+            blocked so your configuration is not overwritten.
+          </p>
+          <button
+            onClick={loadSettings}
+            className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
 
       {/* Host */}
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">

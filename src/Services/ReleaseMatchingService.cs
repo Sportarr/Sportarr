@@ -1811,48 +1811,79 @@ public class ReleaseMatchingService
         // every pattern's character class, so this changes nothing else.
         var normalizedTitle = releaseTitle.Replace('_', '.');
 
+        // Where in the title a series has already been recognised as the
+        // event's own. The list runs most specific first, and a later, broader
+        // pattern can match the very same characters: "F1.Academy" is correctly
+        // read as F1 Academy and then the bare F1 pattern fires on the same
+        // "F1", so a perfectly good F1 Academy release was rejected as being
+        // Formula 1. A match that overlaps ground already accounted for is the
+        // same token seen again, not a second series.
+        var accountedFor = new List<(int Start, int End)>();
+
         foreach (var (pattern, sport) in SportIdentifiers)
         {
-            if (pattern.IsMatch(normalizedTitle))
-            {
-                // Check if this sport identifier is actually part of the event's own sport/league
-                var sportLower = sport.ToLowerInvariant();
-                if (eventSport.Contains(sportLower) || eventLeague.Contains(sportLower) || eventTitle.Contains(sportLower))
-                {
-                    // This sport identifier belongs to the event itself - not a mismatch
-                    continue;
-                }
+            // Every occurrence, not just the first. A title can name the
+            // event's own series and a different one, and the broad pattern's
+            // first hit often sits inside the specific token ("F1" inside
+            // "F1.Academy"). Judging that one hit alone and moving on left the
+            // standalone token later in the name unexamined, so a cross-series
+            // bundle passed.
+            var matches = pattern.Matches(normalizedTitle);
+            if (matches.Count == 0) continue;
 
-                // Also check reverse: if the release sport pattern matches the event's league/sport context
-                if (pattern.IsMatch(eventSport) || pattern.IsMatch(eventLeague))
-                {
-                    continue;
-                }
+            var sportLower = sport.ToLowerInvariant();
 
+            // Does this identifier describe the event's own series? All four
+            // tests below decide that for the pattern as a whole, so they are
+            // asked once rather than per occurrence.
+            var belongsToEvent =
+                // Named directly by the event's sport, league or title.
+                eventSport.Contains(sportLower)
+                || eventLeague.Contains(sportLower)
+                || eventTitle.Contains(sportLower)
+                // Or the reverse: the pattern matches the event's own context.
+                || pattern.IsMatch(eventSport)
+                || pattern.IsMatch(eventLeague)
                 // Sibling-alias hatch: a series can have several spellings
                 // (WSBK releases vs the "SBK" league name TheSportsDB uses).
-                // If ANY pattern mapping to the same series matches the
-                // event's own sport/league/title, the release is that
-                // event's series, not a mismatch — the single matched
-                // pattern above can't see its aliases.
-                if (SportIdentifiers.Any(si => si.Sport == sport &&
-                        (si.Pattern.IsMatch(eventSport) || si.Pattern.IsMatch(eventLeague) || si.Pattern.IsMatch(eventTitle))))
+                // If ANY pattern mapping to the same series matches the event's
+                // own sport, league or title, the release is that event's
+                // series, not a mismatch. The single matched pattern cannot
+                // see its own aliases.
+                || SportIdentifiers.Any(si => si.Sport == sport &&
+                        (si.Pattern.IsMatch(eventSport) || si.Pattern.IsMatch(eventLeague) || si.Pattern.IsMatch(eventTitle)))
+                // Separator-insensitive fallback: fused labels like "Formula1"
+                // (kept distinct internally) never literally appear in a real
+                // league name like "Formula 1" with its space, so a bare "F1"
+                // release abbreviation had no escape hatch above and was hard
+                // rejected against its own league.
+                || RemoveSeparators(eventSport).Contains(RemoveSeparators(sportLower))
+                || RemoveSeparators(eventLeague).Contains(RemoveSeparators(sportLower))
+                || RemoveSeparators(eventTitle).Contains(RemoveSeparators(sportLower));
+
+            if (belongsToEvent)
+            {
+                // Every occurrence is this event's own series, so a broader
+                // pattern firing on the same characters later is that same
+                // token seen again rather than a second series.
+                foreach (System.Text.RegularExpressions.Match m in matches)
+                {
+                    accountedFor.Add((m.Index, m.Index + m.Length));
+                }
+                continue;
+            }
+
+            // A different series. Any occurrence standing on ground no more
+            // specific pattern claimed is a real mismatch.
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                var start = m.Index;
+                var end = start + m.Length;
+                if (accountedFor.Any(span => start < span.End && span.Start < end))
                 {
                     continue;
                 }
 
-                // Separator-insensitive fallback: fused labels like "Formula1"/"Formula2"/
-                // "Formula3" (kept distinct internally) never literally appear in a real
-                // league name like "Formula 1" (with a space), so a bare "F1" release
-                // abbreviation had no escape hatch above and was hard rejected against its
-                // own league.
-                var sportCompact = RemoveSeparators(sportLower);
-                if (RemoveSeparators(eventSport).Contains(sportCompact) || RemoveSeparators(eventLeague).Contains(sportCompact) || RemoveSeparators(eventTitle).Contains(sportCompact))
-                {
-                    continue;
-                }
-
-                // Found a different sport in the release - this is a mismatch
                 return sport;
             }
         }
@@ -1965,14 +1996,34 @@ public class ReleaseMatchingService
 
         if (eventLocations.Count == 0) return null; // Can't determine event location
 
-        // Expand with parent-child hierarchy (PR #43 logic)
+        // Expand with parent-child hierarchy (PR #43 logic).
+        //
+        // A venue implies its country, so a release naming the country is
+        // compatible with an event at one of its circuits. The other direction
+        // is not symmetric, and treating it as though it were let a release
+        // for one race pass as another: the United States holds three separate
+        // Grands Prix, so a Miami event picked up Las Vegas through their
+        // shared parent and a Las Vegas release sailed through validation for
+        // the Miami race. Italy is the same story with Monza and Imola.
+        //
+        // A country therefore only inherits the children that are not races in
+        // their own right. "Silverstone" and "Suzuka" are just names for the
+        // British and Japanese races; "Miami", "Las Vegas" and "Emilia
+        // Romagna" are races of their own and are never inherited.
         foreach (var (parent, children) in LocationHierarchy)
         {
             if (children.Any(c => eventLocations.Contains(c)))
                 eventLocations.Add(parent);
-            if (eventLocations.Contains(parent))
-                foreach (var child in children)
-                    eventLocations.Add(child);
+        }
+
+        foreach (var (parent, children) in LocationHierarchy)
+        {
+            if (!eventLocations.Contains(parent)) continue;
+            foreach (var child in children)
+            {
+                if (MotorsportLocations.ContainsKey(child)) continue; // a race of its own
+                eventLocations.Add(child);
+            }
         }
 
         // Also add aliases of any newly-added locations

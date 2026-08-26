@@ -158,12 +158,49 @@ public class HousekeepingService : BackgroundService
 
             var cutoff = DateTime.UtcNow.AddDays(-config.RecycleBinCleanup);
             var removed = 0;
+            var binRoot = Path.GetFullPath(config.RecycleBin)
+                .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            // The bin itself may sit behind a link. The parent of each entry
+            // is resolved before the comparison below, so the root has to be
+            // resolved the same way or the prefixes never agree, and every
+            // recycled link is skipped again on a bin under, say, a linked
+            // /data.
+            var resolvedBinRoot = Helpers.PathResolution.ResolveThroughLinks(binRoot)
+                .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
             foreach (var file in Directory.GetFiles(config.RecycleBin, "*", SearchOption.AllDirectories))
             {
                 try
                 {
-                    if (File.GetLastWriteTimeUtc(file) < cutoff)
+                    // Recursion walks through a symbolic link like any other
+                    // directory, so a link left in the bin would hand this loop
+                    // paths in the library and it would delete them on age.
+                    // Nothing outside the bin is ever this method to delete.
+                    // Collapsing the text is not enough: a link is followed
+                    // like any other folder, and a path through one still
+                    // reads as being under the bin while the file it names
+                    // sits in the library. Every step is resolved before the
+                    // comparison, and anything that cannot be resolved is
+                    // left alone.
+                    // The file itself may be a link, and deleting a link
+                    // removes the link, not what it points at. Resolving the
+                    // final component too made every recycled symlink look
+                    // like it sat outside the bin, so the bin filled with
+                    // dead links it warned about on every pass. Only the
+                    // folders on the way there have to be real.
+                    var parent = Path.GetDirectoryName(file);
+                    var checkedPath = string.IsNullOrEmpty(parent)
+                        ? file
+                        : Path.Combine(Helpers.PathResolution.ResolveThroughLinks(parent), Path.GetFileName(file));
+                    if (!Helpers.PathResolution.IsInsideAny(checkedPath, new[] { binRoot }) &&
+                        !checkedPath.StartsWith(resolvedBinRoot, StringComparison.Ordinal))
+                    {
+                        _logger.LogWarning("[Housekeeping] Skipping {File}: it resolves outside the recycle bin", file);
+                        continue;
+                    }
+
+                    if (GetRecycledAtUtc(file) < cutoff)
                     {
                         File.Delete(file);
                         removed++;
@@ -197,6 +234,37 @@ public class HousekeepingService : BackgroundService
         {
             _logger.LogError(ex, "[Housekeeping] Recycle bin cleanup failed");
         }
+    }
+
+    /// <summary>
+    /// When a file was put in the recycle bin, which is not the same as when
+    /// it was last written. Recycling moves the file and a move keeps the
+    /// original timestamp, so a media file that had not been touched for a
+    /// year arrived already older than any retention window and was deleted on
+    /// the next pass, minutes after the user recycled it. Every caller names
+    /// the file with the time it recycled it, so read that first.
+    /// </summary>
+    internal static DateTime GetRecycledAtUtc(string path)
+    {
+        var name = Path.GetFileName(path);
+        // Sixteen, not fifteen: index 15 is the separator after the stamp, so
+        // a name that is exactly the stamp and nothing else threw here and the
+        // file was skipped on every pass instead of falling back to its
+        // filesystem timestamp.
+        if (name.Length >= 16 && name[8] == '_' && name[15] == '_' &&
+            DateTime.TryParseExact(name[..15], "yyyyMMdd_HHmmss",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var stamped))
+        {
+            return stamped;
+        }
+
+        // No stamp, so fall back to whichever timestamp the filesystem moved
+        // forward when the file arrived.
+        var written = File.GetLastWriteTimeUtc(path);
+        var created = File.GetCreationTimeUtc(path);
+        return created > written ? created : written;
     }
 
     /// <summary>

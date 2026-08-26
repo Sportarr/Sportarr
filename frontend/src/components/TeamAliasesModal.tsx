@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
@@ -29,18 +29,32 @@ export default function TeamAliasesModal({ isOpen, onClose, leagueId, leagueName
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
 
+  // Only the newest league's teams may be shown. The previous league's list
+  // stayed on screen until the new one arrived, and could arrive last and
+  // replace it, so the modal displayed one league's teams under another
+  // league's name and saving wrote aliases to the wrong teams.
+  const loadSeq = useRef(0);
+
   useEffect(() => {
     if (!isOpen) return;
+    const seq = ++loadSeq.current;
     setEdits({});
+    setTeams([]);
     setLoading(true);
     apiClient
       .get<TeamRow[]>(`/teams?leagueId=${leagueId}`)
-      .then((response) => setTeams(response.data))
+      .then((response) => {
+        if (seq !== loadSeq.current) return;
+        setTeams(response.data);
+      })
       .catch((err) => {
+        if (seq !== loadSeq.current) return;
         console.error('Failed to load teams:', err);
         toast.error('Failed to load teams');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (seq === loadSeq.current) setLoading(false);
+      });
   }, [isOpen, leagueId]);
 
   if (!isOpen) return null;

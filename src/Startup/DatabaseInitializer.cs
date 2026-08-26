@@ -316,6 +316,15 @@ public static class DatabaseInitializer
                 Console.WriteLine("[Sportarr] IptvChannels.IptvOrgId column added successfully");
             }
 
+            var checkTvgManualSql = "SELECT COUNT(*) FROM pragma_table_info('IptvChannels') WHERE name='TvgIdIsManual'";
+            var tvgManualExists = db.Database.SqlQueryRaw<int>(checkTvgManualSql).AsEnumerable().FirstOrDefault();
+            if (tvgManualExists == 0)
+            {
+                Console.WriteLine("[Sportarr] IptvChannels.TvgIdIsManual column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE IptvChannels ADD COLUMN TvgIdIsManual INTEGER NOT NULL DEFAULT 0");
+                Console.WriteLine("[Sportarr] IptvChannels.TvgIdIsManual column added successfully");
+            }
+
             var checkIptvOrgConfSql = "SELECT COUNT(*) FROM pragma_table_info('IptvChannels') WHERE name='IptvOrgConfidence'";
             var iptvOrgConfExists = db.Database.SqlQueryRaw<int>(checkIptvOrgConfSql).AsEnumerable().FirstOrDefault();
             if (iptvOrgConfExists == 0)
@@ -912,6 +921,47 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify EventFileHistory table: {ex.Message}");
         }
 
+        // Ensure RestoreReports table exists. Its migration carries no
+        // designer file, so EF never discovered it and never created the
+        // table on SQLite. Every restore therefore ended in an error while
+        // writing its report row, although the restore itself had worked.
+        // The Postgres baseline builds the table from the model and was
+        // never affected.
+        try
+        {
+            var restoreReportsExists = db.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='RestoreReports'")
+                .AsEnumerable().FirstOrDefault();
+
+            if (restoreReportsExists == 0)
+            {
+                Console.WriteLine("[Sportarr] RestoreReports table missing - creating it now...");
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""RestoreReports"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""BackupFileName"" TEXT NOT NULL,
+                        ""StartedAt"" TEXT NOT NULL,
+                        ""CompletedAt"" TEXT NULL,
+                        ""TotalEventFiles"" INTEGER NOT NULL DEFAULT 0,
+                        ""FilesFound"" INTEGER NOT NULL DEFAULT 0,
+                        ""FilesMissing"" INTEGER NOT NULL DEFAULT 0,
+                        ""FilesSkippedUnreachableRoot"" INTEGER NOT NULL DEFAULT 0,
+                        ""ManifestJson"" TEXT NULL,
+                        ""PathRemapsJson"" TEXT NULL,
+                        ""Notes"" TEXT NULL,
+                        ""SourceHost"" TEXT NULL,
+                        ""SourceSportarrVersion"" TEXT NULL,
+                        ""Status"" TEXT NOT NULL DEFAULT 'pending'
+                    )");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_RestoreReports_StartedAt"" ON ""RestoreReports"" (""StartedAt"")");
+                Console.WriteLine("[Sportarr] RestoreReports table created successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify RestoreReports table: {ex.Message}");
+        }
+
         // Ensure PendingImports table exists (for external download detection feature)
         try
         {
@@ -942,7 +992,7 @@ public static class DatabaseInitializer
                         ""ResolvedAt"" TEXT NULL,
                         ""Protocol"" TEXT NULL,
                         ""TorrentInfoHash"" TEXT NULL,
-                        CONSTRAINT ""FK_PendingImports_DownloadClients_DownloadClientId"" FOREIGN KEY (""DownloadClientId"") REFERENCES ""DownloadClients"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_PendingImports_DownloadClients_DownloadClientId"" FOREIGN KEY (""DownloadClientId"") REFERENCES ""DownloadClients"" (""Id"") ON DELETE SET NULL,
                         CONSTRAINT ""FK_PendingImports_Events_SuggestedEventId"" FOREIGN KEY (""SuggestedEventId"") REFERENCES ""Events"" (""Id"") ON DELETE SET NULL
                     )");
 
@@ -1018,7 +1068,7 @@ public static class DatabaseInitializer
                         ""IsPack"" INTEGER NOT NULL DEFAULT 0,
                         ""FileCount"" INTEGER NOT NULL DEFAULT 0,
                         ""MatchedEventsCount"" INTEGER NOT NULL DEFAULT 0,
-                        CONSTRAINT ""FK_PendingImports_DownloadClients_DownloadClientId"" FOREIGN KEY (""DownloadClientId"") REFERENCES ""DownloadClients"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_PendingImports_DownloadClients_DownloadClientId"" FOREIGN KEY (""DownloadClientId"") REFERENCES ""DownloadClients"" (""Id"") ON DELETE SET NULL,
                         CONSTRAINT ""FK_PendingImports_Events_SuggestedEventId"" FOREIGN KEY (""SuggestedEventId"") REFERENCES ""Events"" (""Id"") ON DELETE SET NULL
                     )");
 
@@ -1127,7 +1177,10 @@ public static class DatabaseInitializer
         // Ensure MonitorFinals / MonitorPlayoffs columns exist in Leagues
         // (special-event monitoring: finals and playoff rounds opt-in past
         // the team filter).
-        foreach (var specialCol in new[] { "MonitorFinals", "MonitorPlayoffs", "MonitorPreseason" })
+        // SpecialEventsMonitorType joins them: 0 is All, which is the reach
+        // those toggles had before the setting existed, so an install coming
+        // through this path keeps doing what it was doing.
+        foreach (var specialCol in new[] { "MonitorFinals", "MonitorPlayoffs", "MonitorPreseason", "KeepAllEvents", "SpecialEventsMonitorType" })
         {
             try
             {
@@ -1932,14 +1985,33 @@ public static class DatabaseInitializer
                 Console.WriteLine($"[Sportarr] Found {stuckImports.Count} download(s) stranded in 'Importing' from a previous session - recovering...");
                 foreach (var item in stuckImports)
                 {
-                    var eventHasFile = await db.EventFiles.AnyAsync(f => f.EventId == item.EventId && f.Exists);
-                    if (eventHasFile)
+                    // The evidence has to be the file this download was importing,
+                    // not any file the event happens to own. Two cases made the
+                    // looser check finalise an import that never happened. An
+                    // upgrade deletes the old file from disk before it transfers
+                    // the new one and only drops the old row afterwards, so a
+                    // crash in between leaves a row describing a file that is
+                    // gone. And on a multi-part event one finished part answered
+                    // for every other part. Both stranded the download for good,
+                    // because nothing moves a row out of Imported.
+                    var partFiles = await db.EventFiles
+                        .Where(f => f.EventId == item.EventId && f.Exists)
+                        .ToListAsync();
+
+                    var importedFile = partFiles.FirstOrDefault(f =>
+                        string.Equals(f.PartName, item.Part, StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrEmpty(f.FilePath) &&
+                        File.Exists(f.FilePath));
+
+                    if (importedFile != null)
                     {
                         item.Status = DownloadStatus.Imported;
                         item.ImportedAt ??= DateTime.UtcNow;
                     }
                     else
                     {
+                        // Hand it back to the monitor. The import is idempotent,
+                        // so a retry either completes it or fails visibly.
                         item.Status = DownloadStatus.Completed;
                     }
                 }

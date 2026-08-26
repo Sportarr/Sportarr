@@ -275,8 +275,13 @@ public class DvrQualityScoreCalculator
     {
         if (profile.VideoCodec == "copy")
         {
-            // Stream copy - assume H.264 from typical IPTV source
-            return "H.264";
+            // A stream copy keeps whatever the channel sends, which is not
+            // known here. Naming a codec anyway made the estimate look
+            // authoritative and could invert the recommendation against a real
+            // release. An empty string leaves the codec out of the synthetic
+            // title, so codec rules simply do not match rather than matching
+            // the wrong one.
+            return "";
         }
 
         return profile.VideoCodec.ToLower() switch
@@ -304,8 +309,9 @@ public class DvrQualityScoreCalculator
     {
         if (profile.AudioCodec == "copy")
         {
-            // Stream copy - assume AAC from typical IPTV source
-            return "AAC";
+            // See the video codec note above: a copy keeps the channel's own
+            // audio and this cannot know what that is.
+            return "";
         }
 
         return profile.AudioCodec.ToLower() switch
@@ -416,7 +422,15 @@ public class DvrQualityScoreCalculator
                     {
                         try
                         {
-                            var regex = new System.Text.RegularExpressions.Regex(patternValue, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            // Custom format patterns are written by users and
+                            // imported from guides, and one that backtracks
+                            // badly used to hold this thread for as long as it
+                            // took. Repeated score calculations could pile up
+                            // enough of them to starve the server.
+                            var regex = new System.Text.RegularExpressions.Regex(
+                                patternValue,
+                                System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+                                TimeSpan.FromMilliseconds(250));
                             var matches = regex.IsMatch(syntheticTitle);
 
                             if (spec.Negate)

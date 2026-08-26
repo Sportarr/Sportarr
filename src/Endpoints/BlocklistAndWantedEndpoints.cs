@@ -163,20 +163,21 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
     {
         logger.LogDebug("[Wanted] GET /api/wanted/cutoff-unmet - page: {Page}, pageSize: {PageSize}", page, pageSize);
 
-        // Load every monitored event with a file, apply the profile-cutoff
-        // filter, THEN paginate. Paginating before the in-memory cutoff
-        // filter produced partial pages and a totalRecords that only
-        // counted the current page.
-        var events = await db.Events
-            .Include(e => e.League)
-            .Include(e => e.HomeTeam)
-            .Include(e => e.AwayTeam)
-            .Include(e => e.Files)
+        // The cutoff test runs in memory, so the whole candidate set has to be
+        // considered before paginating, or pages come out partial and the
+        // total only counts the current one. It used to pull every one of
+        // those events complete with league, both teams and all their files,
+        // which on a large library is a great deal of memory for a page of
+        // fifty rows, and several such requests at once could take the server
+        // down. Only the three columns the test needs are read here; the page
+        // itself is loaded in full afterwards.
+        var candidates = await db.Events
             .Where(e => e.Monitored && e.HasFile && e.Quality != null)
             .OrderBy(e => e.EventDate)
+            .Select(e => new { e.Id, e.QualityProfileId, e.Quality })
             .ToListAsync();
 
-        logger.LogDebug("[Wanted] Found {Count} total events with files and quality", events.Count);
+        logger.LogDebug("[Wanted] Found {Count} total events with files and quality", candidates.Count);
 
         // Items is a JSON-converted column (no QualityItem entity exists), so
         // it loads with the row automatically. Include(p => p.Items) is
@@ -186,15 +187,32 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
         var profiles = await db.QualityProfiles
             .ToDictionaryAsync(p => p.Id);
 
-        var cutoffUnmetEvents = events.Where(e => IsBelowCutoff(e.QualityProfileId, e.Quality, profiles)).ToList();
+        var belowCutoff = candidates
+            .Where(e => IsBelowCutoff(e.QualityProfileId, e.Quality, profiles))
+            .Select(e => e.Id)
+            .ToList();
 
-        logger.LogInformation("[Wanted] Filtered to {Count} events below cutoff", cutoffUnmetEvents.Count);
+        logger.LogInformation("[Wanted] Filtered to {Count} events below cutoff", belowCutoff.Count);
 
-        var totalRecords = cutoffUnmetEvents.Count;
-        var eventResponses = cutoffUnmetEvents
+        var totalRecords = belowCutoff.Count;
+        var pageIds = belowCutoff
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(EventResponse.FromEvent)
+            .ToList();
+
+        var pageEvents = await db.Events
+            .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Include(e => e.Files)
+            .Where(e => pageIds.Contains(e.Id))
+            .ToListAsync();
+
+        // Keep the order the filter established.
+        var byId = pageEvents.ToDictionary(e => e.Id);
+        var eventResponses = pageIds
+            .Where(byId.ContainsKey)
+            .Select(id => EventResponse.FromEvent(byId[id]))
             .ToList();
 
         return Results.Ok(new

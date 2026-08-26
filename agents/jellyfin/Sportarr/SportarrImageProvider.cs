@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -192,10 +193,88 @@ namespace Jellyfin.Plugin.Sportarr
             return images;
         }
 
-        public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
+        /// <summary>
+        /// Largest artwork this will pull. A poster is a couple of megabytes;
+        /// anything approaching this is not artwork.
+        /// </summary>
+        private const long MaxImageBytes = 32L * 1024 * 1024;
+
+        public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
         {
+            // The URL comes from metadata, so it is not necessarily anything
+            // the user chose. Fetching it blind let a hostile one point the
+            // media server at whatever the URL named and hand back a response
+            // of any size at all.
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var target) ||
+                (target.Scheme != Uri.UriSchemeHttp && target.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new InvalidOperationException($"[Sportarr] Refusing to fetch artwork from '{url}': only http and https are allowed.");
+            }
+
             var client = _httpClientFactory.CreateClient();
-            return client.GetAsync(url, cancellationToken);
+            client.Timeout = TimeSpan.FromSeconds(30);
+
+            var response = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            var declared = response.Content.Headers.ContentLength;
+            if (declared > MaxImageBytes)
+            {
+                response.Dispose();
+                throw new InvalidOperationException(
+                    $"[Sportarr] Refusing artwork from '{url}': {declared} bytes is larger than the {MaxImageBytes} byte ceiling.");
+            }
+
+            // A declared length is optional and a server sending chunked has
+            // none, so the ceiling has to hold on the bytes that actually
+            // arrive. Reading through the cap here means an artwork host
+            // cannot stream something enormous into the media server by
+            // simply not saying how big it is.
+            try
+            {
+                var body = await ReadCappedAsync(response, url, cancellationToken);
+
+                var capped = new HttpResponseMessage(response.StatusCode)
+                {
+                    Content = new ByteArrayContent(body)
+                };
+
+                if (response.Content.Headers.ContentType != null)
+                {
+                    capped.Content.Headers.ContentType = response.Content.Headers.ContentType;
+                }
+
+                return capped;
+            }
+            finally
+            {
+                response.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Read a response body with a ceiling, for servers that declare no
+        /// length or lie about it.
+        /// </summary>
+        private static async Task<byte[]> ReadCappedAsync(
+            HttpResponseMessage response, string url, CancellationToken cancellationToken)
+        {
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var buffer = new MemoryStream();
+
+            var chunk = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, 0, chunk.Length, cancellationToken)) > 0)
+            {
+                if (buffer.Length + read > MaxImageBytes)
+                {
+                    throw new InvalidOperationException(
+                        $"[Sportarr] Refusing artwork from '{url}': it passed the {MaxImageBytes} byte ceiling while downloading.");
+                }
+
+                buffer.Write(chunk, 0, read);
+            }
+
+            return buffer.ToArray();
         }
     }
 }

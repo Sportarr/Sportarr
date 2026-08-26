@@ -93,8 +93,15 @@ async function fetchKnownLists(leagueId?: number, eventId?: number): Promise<Kno
       return res.data;
     })
     .catch(() => {
-      knownListsCache.set(key, FALLBACK_LISTS);
+      // Do not cache the fallback. Caching it turned one failed request into
+      // permanently unrestricted fields for this league or event, so the user
+      // could type any part name or number and the library ended up with files
+      // named from something no part list contains, until the page was fully
+      // reloaded.
       return FALLBACK_LISTS;
+    })
+    .finally(() => {
+      knownListsInflight.delete(key);
     });
   knownListsInflight.set(key, promise);
   return promise;
@@ -136,7 +143,15 @@ export default function FileMetadataEditor({
   const [customPartName, setCustomPartName] = useState(false);
 
   useEffect(() => {
-    fetchKnownLists(leagueId, eventId).then(setLists);
+    // Only the newest answer counts. Switching event or league while a
+    // request was in flight let the older lists arrive last, so metadata for
+    // one event could be saved using another event's part names and numbers
+    // and the library file was named from them.
+    let current = true;
+    fetchKnownLists(leagueId, eventId).then(result => {
+      if (current) setLists(result);
+    });
+    return () => { current = false; };
   }, [leagueId, eventId]);
 
   // Keep flagsList in sync if value.indexerFlags changes externally.

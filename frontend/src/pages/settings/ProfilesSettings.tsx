@@ -524,22 +524,16 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const handleSetDefault = async (id: number) => {
     try {
-      // First, unset all profiles as default
-      const updatedProfiles = qualityProfiles.map(profile => ({
-        ...profile,
-        isDefault: profile.id === id
-      }));
-
-      // Update each profile
-      for (const profile of updatedProfiles) {
-        const response = await apiPut(`/api/qualityprofile/${profile.id}`, profile);
-
-        if (!response.ok) {
-          const error = await response.json();
-          console.error('Failed to update profile:', error);
-          alert(`Failed to set default profile: ${error.error || 'Unknown error'}`);
-          return;
-        }
+      // One call that moves the flag on the server. Writing every profile in
+      // a loop meant a failure part way through could clear the old default
+      // without ever setting the new one, leaving the install with no default
+      // profile at all.
+      const response = await apiPost(`/api/qualityprofile/${id}/set-default`, {});
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        console.error('Failed to set default profile:', error);
+        alert(`Failed to set default profile: ${error?.error || 'Unknown error'}`);
+        return;
       }
 
       await loadProfiles();
@@ -755,10 +749,16 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
         // Adjust parent index if needed
         const adjustedParent = parentIndex > draggedItem.index ? parentIndex - 1 : parentIndex;
         const group = items[adjustedParent];
-        if (group.items) {
+        if (group?.items) {
           const groupItems = [...group.items];
           groupItems.splice(adjustedTargetIndex, 0, movedItem);
           items[adjustedParent] = { ...group, items: groupItems };
+        } else {
+          // The drop landed on something that is not a group. The item had
+          // already been lifted out of the list, and leaving it there deleted
+          // it: a whole quality group could vanish this way, and the next save
+          // wrote the profile without those qualities. Put it back.
+          items.splice(Math.min(draggedItem.index, items.length), 0, movedItem);
         }
       }
       // Moving from a group to top level

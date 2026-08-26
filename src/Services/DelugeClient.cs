@@ -466,16 +466,23 @@ public class DelugeClient
         }
 
         // Map Deluge state to standard status
-        var status = torrent.State.ToLowerInvariant() switch
-        {
-            "downloading" => "downloading",
-            "seeding" or "uploading" => "completed",
-            "paused" => "paused",
-            "queued" => "queued",
-            "checking" or "allocating" => "queued",
-            "error" => "failed",
-            _ => "downloading"
-        };
+        // A finished torrent that has been paused, or queued behind others
+        // after finishing, still holds all its data. Reading those states
+        // literally left the download sitting in the queue for ever and it was
+        // never imported, which is what happens as soon as a seed ratio or
+        // seed time is met. Completion is decided on the data being there.
+        var status = torrent.Progress >= 100
+            ? "completed"
+            : torrent.State.ToLowerInvariant() switch
+            {
+                "downloading" => "downloading",
+                "seeding" or "uploading" => "completed",
+                "paused" => "paused",
+                "queued" => "queued",
+                "checking" or "allocating" => "queued",
+                "error" => "failed",
+                _ => "downloading"
+            };
 
         // Calculate time remaining
         TimeSpan? timeRemaining = null;
@@ -631,7 +638,15 @@ public class DelugeClient
                     DownloadId = torrent.Hash,
                     Title = torrent.Name,
                     Category = category,
-                    FilePath = GetEffectiveSavePath(torrent),
+                    // Same combination GetTorrentStatusAsync makes: the save
+                    // path is the directory the download sits in, shared with
+                    // every other download in the category, so the torrent name
+                    // has to be appended to name the download itself. Handing
+                    // the bare directory to external-download import pointed it
+                    // at everything alongside it.
+                    FilePath = !string.IsNullOrEmpty(torrent.Name)
+                        ? Path.Combine(GetEffectiveSavePath(torrent), torrent.Name)
+                        : GetEffectiveSavePath(torrent),
                     Size = torrent.TotalSize,
                     IsCompleted = isCompleted,
                     Protocol = "Torrent",

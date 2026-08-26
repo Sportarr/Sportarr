@@ -24,8 +24,10 @@ public class EpgSchedulingService
     // Significant mismatch threshold - if times differ by more than this, log a warning
     private const int SignificantMismatchMinutes = 30;
 
-    // Default duration if no EPG program found (in hours)
-    private const int DefaultDurationHours = 3;
+    // Default duration if no EPG program found (in hours). Public so callers
+    // deciding whether an event is still running use the same number this
+    // service schedules against.
+    public const int DefaultDurationHours = 3;
 
     public EpgSchedulingService(
         ILogger<EpgSchedulingService> logger,
@@ -265,13 +267,21 @@ public class EpgSchedulingService
             result.OptimizedStartTime = epgMatch.Program.StartTime.AddMinutes(-prePaddingMinutes);
         }
 
-        // Use EPG end time for accurate duration
-        var epgDuration = (epgMatch.Program.EndTime - epgMatch.Program.StartTime).TotalMinutes;
-        result.DurationMinutes = (int)epgDuration;
-        result.OptimizedEndTime = epgMatch.Program.EndTime.AddMinutes(postPaddingMinutes);
+        // The start above deliberately covers both times when the two sources
+        // disagree. The end has to do the same. Taking the EPG end alone cut
+        // the recording short whenever the guide programme began earlier and
+        // ran shorter than the event really does, which is the common shape
+        // when a guide lists a pre-show under the same title.
+        var epgEnd = epgMatch.Program.EndTime;
+        var apiEnd = evt.EventDate.AddHours(DefaultDurationHours);
+        var chosenEnd = result.TimeMismatchDetected && apiEnd > epgEnd ? apiEnd : epgEnd;
+
+        var unpaddedStart = result.OptimizedStartTime.AddMinutes(prePaddingMinutes);
+        result.DurationMinutes = (int)(chosenEnd - unpaddedStart).TotalMinutes;
+        result.OptimizedEndTime = chosenEnd.AddMinutes(postPaddingMinutes);
 
         _logger.LogInformation("[EPG-Scheduler] Optimized recording for '{EventTitle}': " +
-            "{Start} to {End} ({Duration} min from EPG, confidence: {Confidence}%)",
+            "{Start} to {End} ({Duration} min, confidence: {Confidence}%)",
             evt.Title,
             result.OptimizedStartTime.ToString("HH:mm"),
             result.OptimizedEndTime.ToString("HH:mm"),

@@ -311,6 +311,7 @@ public class HubChangesPollerService : BackgroundService
             totalChanges, settings.HubChangesCursor, cursor);
 
         var refreshedNames = new List<string>();
+        var refreshFailed = false;
         if (work.Count > 0)
         {
             // Only leagues this install actually has (and monitors) matter.
@@ -376,11 +377,24 @@ public class HubChangesPollerService : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "[Changes Poller] Refresh of {LeagueName} failed", league.Name);
+                    refreshFailed = true;
                 }
             }
         }
 
-        if (cursor != settings.HubChangesCursor)
+        // Only move the cursor once every affected league has been refreshed.
+        // It used to advance whatever happened, so a league whose refresh threw
+        // had its change records consumed and never saw them again: a new
+        // event, a deletion, a score correction or a reschedule was lost until
+        // something unrelated touched that league. Holding the cursor means the
+        // next cycle tries the same changes again.
+        if (refreshFailed)
+        {
+            _logger.LogWarning(
+                "[Changes Poller] Holding the cursor at {Cursor} because a league refresh failed; these changes will be retried",
+                settings.HubChangesCursor);
+        }
+        else if (cursor != settings.HubChangesCursor)
         {
             settings.HubChangesCursor = cursor;
             await db.SaveChangesAsync(cancellationToken);

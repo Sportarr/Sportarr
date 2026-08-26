@@ -174,10 +174,21 @@ public class PathRemapService
         // path components (very common: `Boston_Red_Sox`, etc.) would let
         // unrelated paths match and the SUBSTR rewrite would garble them.
         // SUBSTR-equality matches the prefix as a literal string.
+        // Only rows already flagged missing. The prefix is derived from
+        // missing paths alone, but the rewrite used to match every row under
+        // it, so a drift affecting one mount rewrote the records of files on
+        // every other mount below the same prefix. Those files were sitting
+        // exactly where their record said, and the rewrite pointed the library
+        // away from them.
+        //
+        // Identifiers are quoted because Postgres folds unquoted names to
+        // lower case and the tables are created with their PascalCase names,
+        // so the unquoted form could never resolve there at all.
         var affected = await _db.Database.ExecuteSqlInterpolatedAsync(
-            $@"UPDATE EventFiles
-               SET FilePath = {newPrefix} || SUBSTR(FilePath, {oldPrefix.Length + 1})
-               WHERE SUBSTR(FilePath, 1, {oldPrefix.Length}) = {oldPrefix}",
+            $@"UPDATE ""EventFiles""
+               SET ""FilePath"" = {newPrefix} || SUBSTR(""FilePath"", {oldPrefix.Length + 1})
+               WHERE NOT ""Exists""
+                 AND SUBSTR(""FilePath"", 1, {oldPrefix.Length}) = {oldPrefix}",
             ct);
 
         _logger.LogInformation("[PathRemap] Rewrote {Count} EventFile rows", affected);

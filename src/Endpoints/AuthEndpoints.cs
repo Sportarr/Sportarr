@@ -32,6 +32,19 @@ public static class AuthEndpoints
 
                 var sessionId = await sessionService.CreateSessionAsync(request.Username, ipAddress, userAgent, request.RememberMe);
 
+                // Ask again now the session exists. A password change ends
+                // every session, but it does that between the check above and
+                // this line, so a login validated against the old password
+                // created its session just after the wipe and outlived the
+                // change meant to lock it out. Anything saved after this point
+                // ends this session along with the rest.
+                if (!await authService.ValidateCredentialsAsync(request.Username, request.Password))
+                {
+                    await sessionService.DeleteSessionAsync(sessionId);
+                    logger.LogWarning("[AUTH LOGIN] Credentials changed while {Username} was signing in. Session ended.", request.Username);
+                    return Results.Unauthorized();
+                }
+
                 // Mark the cookie Secure whenever the original request was HTTPS, including
                 // TLS terminated at a reverse proxy (X-Forwarded-Proto: https). We don't force
                 // Secure unconditionally because the app can be served over plain HTTP on the
@@ -140,7 +153,12 @@ public static class AuthEndpoints
             {
                 logger.LogError(ex, "[AUTH CHECK] CRITICAL ERROR: {Message}", ex.Message);
                 logger.LogError(ex, "[AUTH CHECK] Stack trace: {StackTrace}", ex.StackTrace);
-                return Results.Ok(new { authenticated = true, authDisabled = true });
+
+                // Fail closed. Reporting authDisabled here told the UI that this
+                // install needs no login, on nothing more than a failed read of
+                // the settings row. The login screen is the safe answer when we
+                // cannot tell what the settings say.
+                return Results.Ok(new { authenticated = false });
             }
         });
 

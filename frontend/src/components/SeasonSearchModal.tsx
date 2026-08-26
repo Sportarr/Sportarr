@@ -1,5 +1,5 @@
 import { formatEventDate } from '../utils/timezone';
-import { Fragment, useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import {
@@ -141,16 +141,26 @@ export default function SeasonSearchModal({
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [markFailedConfirm, setMarkFailedConfirm] = useState<HistoryItem | null>(null);
 
+  // Every load of this modal gets a number. An indexer search runs for as long
+  // as the indexers take, so reopening on another season can finish second and
+  // paint the earlier season's releases under the current heading. The grab and
+  // blocklist buttons act on whatever is painted, so a late answer is dropped
+  // rather than shown.
+  const requestRef = useRef(0);
+
   // Clear search results and auto-trigger search when modal opens
   useEffect(() => {
     if (isOpen) {
+      const requestId = ++requestRef.current;
+
       setSearchResults(null);
       setSearchError(null);
       setDownloadingIndex(null);
       setExpandedReleases(new Set());
       setActiveTab('search');
       setBlocklistConfirm(null);
-      loadHistory();
+      setHistory([]);
+      loadHistory(requestId);
 
       // Auto-trigger search when modal opens (like individual event search)
       const autoSearch = async () => {
@@ -159,30 +169,38 @@ export default function SeasonSearchModal({
           const endpoint = `/api/leagues/${leagueId}/seasons/${encodeURIComponent(season)}/search`;
           const response = await apiPost(endpoint, { qualityProfileId });
           const results = await response.json();
+          if (requestId !== requestRef.current) return;
           setSearchResults(results);
         } catch (error) {
           console.error('Season search failed:', error);
+          if (requestId !== requestRef.current) return;
           setSearchError('Failed to search indexers. Please try again.');
         } finally {
-          setIsSearching(false);
+          if (requestId === requestRef.current) {
+            setIsSearching(false);
+          }
         }
       };
       autoSearch();
     }
   }, [isOpen, leagueId, season, qualityProfileId]);
 
-  const loadHistory = async () => {
+  const loadHistory = async (requestId: number) => {
     setIsLoadingHistory(true);
     try {
       const response = await apiGet(`/api/leagues/${leagueId}/seasons/${encodeURIComponent(season)}/history`);
+      if (requestId !== requestRef.current) return;
       if (response.ok) {
         const data = await response.json();
+        if (requestId !== requestRef.current) return;
         setHistory(data);
       }
     } catch (error) {
       console.error('Failed to load history:', error);
     } finally {
-      setIsLoadingHistory(false);
+      if (requestId === requestRef.current) {
+        setIsLoadingHistory(false);
+      }
     }
   };
 
@@ -218,6 +236,10 @@ export default function SeasonSearchModal({
   };
 
   const handleSearch = async () => {
+    // A manual search supersedes the automatic one, so it takes the next
+    // number and the automatic result is discarded when it arrives.
+    const requestId = ++requestRef.current;
+
     setIsSearching(true);
     setSearchError(null);
     setSearchResults(null);
@@ -226,12 +248,16 @@ export default function SeasonSearchModal({
       const endpoint = `/api/leagues/${leagueId}/seasons/${encodeURIComponent(season)}/search`;
       const response = await apiPost(endpoint, { qualityProfileId });
       const results = await response.json();
+      if (requestId !== requestRef.current) return;
       setSearchResults(results);
     } catch (error) {
       console.error('Season search failed:', error);
+      if (requestId !== requestRef.current) return;
       setSearchError('Failed to search indexers. Please try again.');
     } finally {
-      setIsSearching(false);
+      if (requestId === requestRef.current) {
+        setIsSearching(false);
+      }
     }
   };
 
@@ -319,7 +345,7 @@ export default function SeasonSearchModal({
             ? 'Release blocklisted and searching for replacement...'
             : 'Release added to blocklist.',
         });
-        loadHistory();
+        loadHistory(requestRef.current);
       } else {
         toast.error('Failed', { description: 'Could not mark release as failed.' });
       }

@@ -8,7 +8,7 @@ namespace Sportarr.Providers
     /// Registers the Sportarr provider ID as a known external identifier for series.
     /// This surfaces the stored "Sportarr" provider ID (e.g. "lg-000028") as a labelled
     /// field in the Emby metadata editor, alongside IMDb/TheTVDB IDs. The value is shown
-    /// as plain text; The click-through URL points to the Sportarr API Series (League).
+    /// as plain text; the click-through URL opens the league page on sportarr.net.
     /// </summary>
     public class SportarrSeriesExternalId : IExternalId
     {
@@ -27,7 +27,7 @@ namespace Sportarr.Providers
         /// Gets the URL format string for linking out to the ID. The "{0}" placeholder
         /// is replaced with the stored Sportarr ID to produce a clickable link.
         /// </summary>
-        public string UrlFormatString => $"{SportarrPlugin.Instance?.Options.txtApiUrl ?? "https://sportarr.net"}/api/metadata/agents/series/{{0}}";
+        public string UrlFormatString => $"{SportarrPlugin.Instance?.Options.txtApiUrl ?? "https://sportarr.net"}/browse/leagues/{{0}}";
 
         /// <summary>
         /// Determines whether this external ID applies to the given item.
@@ -40,8 +40,8 @@ namespace Sportarr.Providers
     /// <summary>
     /// Registers the Sportarr provider ID as a known external identifier for episodes (matches/events).
     /// This surfaces the stored "Sportarr" provider ID as a labelled field in the Emby metadata
-    /// editor, alongside IMDb/TheTVDB IDs. The click-through URL points to the Sportarr API Episode
-    /// (Event).
+    /// editor, alongside IMDb/TheTVDB IDs. The click-through URL opens the event page on
+    /// sportarr.net.
     /// </summary>
     public class SportarrEpisodeExternalId : IExternalId
     {
@@ -60,7 +60,7 @@ namespace Sportarr.Providers
         /// Gets the URL format string for linking out to the ID. The "{0}" placeholder
         /// is replaced with the stored Sportarr ID to produce a clickable link.
         /// </summary>
-        public string UrlFormatString => $"{SportarrPlugin.Instance?.Options.txtApiUrl ?? "https://sportarr.net"}/api/metadata/agents/episode/{{0}}";
+        public string UrlFormatString => $"{SportarrPlugin.Instance?.Options.txtApiUrl ?? "https://sportarr.net"}/browse/events/{{0}}";
 
         /// <summary>
         /// Determines whether this external ID applies to the given item.

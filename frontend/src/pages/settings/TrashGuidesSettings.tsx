@@ -158,6 +158,11 @@ export default function TrashGuidesSettings({ embedded = false }: { embedded?: b
   };
 
   const handleSyncAll = async () => {
+    // One sync at a time. The button is disabled while one runs, but this is
+    // also called from elsewhere on the page, and two syncs against the same
+    // upstream duplicate the work and can leave the database holding whichever
+    // one happened to finish last rather than what the user last asked for.
+    if (syncing) return;
     setSyncing(true);
     try {
       const response = await apiPost('/api/trash/sync', {});
@@ -281,6 +286,7 @@ export default function TrashGuidesSettings({ embedded = false }: { embedded?: b
   };
 
   const handleSaveSettings = async () => {
+    if (savingSettings) return;
     setSavingSettings(true);
     try {
       const response = await apiPut('/api/trash/settings', syncSettings);

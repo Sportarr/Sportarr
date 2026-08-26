@@ -117,6 +117,17 @@ app.MapPost("/api/qualityprofile", async (QualityProfile profile, SportarrDbCont
         return Results.BadRequest(new { error = "A quality profile with this name already exists" });
     }
 
+    // Only one profile can be the default. Accepting the flag from the payload
+    // without clearing it elsewhere left several marked default at once, and
+    // whichever consumer asked next got an arbitrary one of them.
+    if (profile.IsDefault)
+    {
+        foreach (var other in await db.QualityProfiles.Where(p => p.IsDefault).ToListAsync())
+        {
+            other.IsDefault = false;
+        }
+    }
+
     db.QualityProfiles.Add(profile);
     await db.SaveChangesAsync();
     return Results.Ok(profile);
@@ -149,7 +160,27 @@ app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, Sp
         }
 
         existing.Name = profile.Name;
-        existing.IsDefault = profile.IsDefault;
+
+        // Same single-default rule as the create path. Clearing the flag on the
+        // only profile that has it is refused too, because an install with no
+        // default profile has nothing to fall back on.
+        if (profile.IsDefault && !existing.IsDefault)
+        {
+            foreach (var other in await db.QualityProfiles.Where(p => p.IsDefault && p.Id != id).ToListAsync())
+            {
+                other.IsDefault = false;
+            }
+            existing.IsDefault = true;
+        }
+        else if (!profile.IsDefault && existing.IsDefault)
+        {
+            var anotherDefaultExists = await db.QualityProfiles.AnyAsync(p => p.IsDefault && p.Id != id);
+            existing.IsDefault = !anotherDefaultExists;
+        }
+        else
+        {
+            existing.IsDefault = profile.IsDefault;
+        }
         existing.UpgradesAllowed = profile.UpgradesAllowed;
         existing.CutoffQuality = profile.CutoffQuality;
         existing.Items = profile.Items;

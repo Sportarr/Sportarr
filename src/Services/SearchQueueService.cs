@@ -252,7 +252,7 @@ public class SearchQueueService
     /// <summary>
     /// Cancel a pending search (cannot cancel active searches).
     /// </summary>
-    public bool CancelSearch(string queueId)
+    public async Task<bool> CancelSearchAsync(string queueId)
     {
         // Can only cancel pending searches, not active ones
         // For now, we'll mark it as cancelled when it gets dequeued
@@ -261,6 +261,7 @@ public class SearchQueueService
         {
             pending.Status = SearchQueueStatus.Cancelled;
             pending.Message = "Cancelled by user";
+            await MarkTaskCancelledAsync(pending, "Cancelled by user");
             _logger.LogInformation("[SEARCH QUEUE] Marked search for cancellation: {QueueId}", queueId);
             return true;
         }
@@ -270,7 +271,7 @@ public class SearchQueueService
     /// <summary>
     /// Clear all pending searches.
     /// </summary>
-    public int ClearPendingSearches()
+    public async Task<int> ClearPendingSearchesAsync()
     {
         int count = 0;
         while (_pendingQueue.TryDequeue(out var item))
@@ -279,10 +280,55 @@ public class SearchQueueService
             item.Message = "Queue cleared";
             item.CompletedAt = DateTime.UtcNow;
             _completedSearches[item.Id] = item;
+            await MarkTaskCancelledAsync(item, "Queue cleared");
             count++;
         }
         _logger.LogInformation("[SEARCH QUEUE] Cleared {Count} pending searches", count);
         return count;
+    }
+
+    /// <summary>
+    /// Close out the task row behind a cancelled search.
+    ///
+    /// Cancelling only changed the in-memory item, so the row stayed Queued
+    /// for good and the task history claimed work was still waiting that
+    /// nothing would ever pick up.
+    /// </summary>
+    private async Task MarkTaskCancelledAsync(SearchQueueItem item, string message)
+    {
+        if (!item.TaskId.HasValue) return;
+
+        // The in-memory item is already cancelled by the time this runs, so
+        // nothing comes back for a second try. One failed save left the row
+        // Queued for ever, which is exactly the state this method exists to
+        // prevent, so it gets a few attempts of its own.
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+                var task = await db.Tasks.FindAsync(item.TaskId.Value);
+                if (task == null) return;
+
+                task.Status = Models.TaskStatus.Cancelled;
+                task.Ended = DateTime.UtcNow;
+                task.Duration = task.Ended - (task.Started ?? task.Queued);
+                task.Message = message;
+                await db.SaveChangesAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                if (attempt == 3)
+                {
+                    _logger.LogWarning(ex, "[SEARCH QUEUE] Could not close the task row for cancelled search {QueueId}", item.Id);
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(attempt));
+            }
+        }
     }
 
     /// <summary>
@@ -345,6 +391,19 @@ public class SearchQueueService
                     _lastSearchStartTime = DateTime.UtcNow;
                 }
 
+                // Check again. The slot wait and the throttling delay above
+                // can take seconds, and a cancel that arrived during them was
+                // ignored, so a search the user had stopped still ran and
+                // could grab a release.
+                if (queueItem.Status == SearchQueueStatus.Cancelled)
+                {
+                    _searchSemaphore.Release();
+                    queueItem.CompletedAt = DateTime.UtcNow;
+                    _completedSearches[queueItem.Id] = queueItem;
+                    await MarkTaskCancelledAsync(queueItem, queueItem.Message);
+                    continue;
+                }
+
                 // Move to active
                 queueItem.Status = SearchQueueStatus.Searching;
                 queueItem.StartedAt = DateTime.UtcNow;
@@ -364,6 +423,15 @@ public class SearchQueueService
             _isProcessing = false;
             _processingLock.Release();
         }
+
+        // Anything queued between the last empty read and the release above
+        // saw a processor already holding the lock, gave up, and left its item
+        // sitting there until some unrelated search happened along. Re-check
+        // now that the lock is free.
+        if (!_pendingQueue.IsEmpty)
+        {
+            _ = ProcessQueueAsync();
+        }
     }
 
     /// <summary>
@@ -373,6 +441,15 @@ public class SearchQueueService
     {
         try
         {
+            // Last look before anything is spent. A cancel can land in the
+            // gap between the queue processor handing this off and the search
+            // actually starting.
+            if (queueItem.Status == SearchQueueStatus.Cancelled)
+            {
+                await MarkTaskCancelledAsync(queueItem, queueItem.Message);
+                return;
+            }
+
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
             var automaticSearchService = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();

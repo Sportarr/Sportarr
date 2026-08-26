@@ -42,7 +42,22 @@ public class FileWatcherService : BackgroundService
         // Wait for app to initialize
         await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
 
-        await SetupWatchersAsync(stoppingToken);
+        // Guarded because an exception escaping ExecuteAsync stops the whole
+        // host by default. A root folder that is missing or unreadable at boot
+        // must not take Sportarr down; the refresh in the loop below picks the
+        // watchers up once it is back.
+        try
+        {
+            await SetupWatchersAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[File Watcher] Could not set up watchers at startup; will retry on the next refresh");
+        }
 
         // Keep running and periodically refresh watchers (in case root folders change)
         while (!stoppingToken.IsCancellationRequested)

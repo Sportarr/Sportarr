@@ -45,10 +45,24 @@ public class RemotePathMappingService : IRemotePathMappingService
                 normalizedRemote.StartsWith(normalizedMapping + "/", StringComparison.OrdinalIgnoreCase))
             {
                 var relativePath = normalizedRemote.Substring(remoteBase.Length).TrimStart('/');
+                var localBase = mapping.LocalPath.TrimEnd('/', '\\');
                 var localPath = string.IsNullOrEmpty(relativePath)
-                    ? mapping.LocalPath.TrimEnd('/', '\\')
-                    : Path.Combine(mapping.LocalPath.TrimEnd('/', '\\'),
-                        relativePath.Replace('/', Path.DirectorySeparatorChar));
+                    ? localBase
+                    : Path.Combine(localBase, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+                // The remote path comes from the download client, and one
+                // carrying ".." segments combines into somewhere outside the
+                // mapping entirely. Whatever sat there would then be treated as
+                // this download's contents and imported, renamed or moved, so a
+                // result that leaves the local base is refused and the path is
+                // left unmapped.
+                if (!IsInsideLocalBase(localBase, localPath))
+                {
+                    _logger.LogWarning(
+                        "[PathMapping] Refusing to remap [{Remote}] for host [{Host}]: it resolves outside the mapped folder [{Local}]",
+                        remotePath, host, localBase);
+                    return remotePath;
+                }
 
                 _logger.LogDebug("Remapped remote path [{Remote}] to local path [{Local}] for host [{Host}]",
                     remotePath, localPath, host);
@@ -57,5 +71,44 @@ public class RemotePathMappingService : IRemotePathMappingService
         }
 
         return remotePath;
+    }
+
+    public async Task<List<string>> GetLocalRootsAsync(string host)
+    {
+        var mappings = await _db.RemotePathMappings.ToListAsync();
+
+        return mappings
+            .Where(m => m.Host.Equals(host, StringComparison.OrdinalIgnoreCase))
+            .Select(m => m.LocalPath.TrimEnd('/', '\\'))
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .ToList();
+    }
+
+    /// <summary>
+    /// True when the combined path stays inside the folder the mapping points
+    /// at. Guards against ".." segments arriving in the path a download client
+    /// reports.
+    ///
+    /// The comparison follows the host. Linux tells "downloads" and "Downloads"
+    /// apart, so ignoring case there let a client escape into a sibling folder
+    /// that differs only by case and have its files imported or moved.
+    /// </summary>
+    private static bool IsInsideLocalBase(string localBase, string candidate)
+    {
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        try
+        {
+            var root = Path.GetFullPath(localBase).TrimEnd(Path.DirectorySeparatorChar);
+            var full = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar);
+            return full.Equals(root, comparison) ||
+                   full.StartsWith(root + Path.DirectorySeparatorChar, comparison);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

@@ -137,6 +137,40 @@ export function getDateInTimezone(utcDateString: string, timezone: string | null
  * @param timezone - User's configured timezone ID
  * @param options - Intl.DateTimeFormat options
  */
+/**
+ * Whole days between today and a date, counted in one named timezone.
+ *
+ * A relative label worked out from the browser's own clock disagreed with a
+ * date rendered in the configured timezone, so an event shown as one day
+ * could be labelled as the next.
+ */
+export function dayDifferenceInTimezone(
+  utcDateString: string,
+  timezone: string | null | undefined,
+  now: Date = new Date()
+): number {
+  const target = parseAsUtc(utcDateString);
+
+  const dayNumber = (d: Date): number => {
+    if (!timezone) {
+      return Math.floor(
+        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 86400000
+      );
+    }
+    try {
+      // en-CA gives YYYY-MM-DD, which parses back as a plain calendar day.
+      const iso = d.toLocaleDateString('en-CA', { timeZone: timezone });
+      return Math.floor(Date.parse(`${iso}T00:00:00Z`) / 86400000);
+    } catch {
+      return Math.floor(
+        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 86400000
+      );
+    }
+  };
+
+  return dayNumber(target) - dayNumber(now);
+}
+
 export function formatTimeInTimezone(
   utcDateString: string,
   timezone: string | null | undefined,

@@ -164,51 +164,91 @@ public class SeasonSearchService
                 }
             }
 
-            if (matchedEvents.Count > 0)
+            // Determine if this is a "season pack" (matches multiple events or has season pack keywords)
+            // Season search should ONLY return season packs - users wanting specific events/parts
+            // should use the event-level search instead.
+            //
+            // The title check runs whether or not any individual event matched.
+            // A pack covering a whole season names no single fixture, so it
+            // matches nothing, and while this test sat behind a "matched at
+            // least one event" gate it could never fire for the very releases
+            // it was written to catch. A complete season pack could not appear
+            // in a season search at all.
+            // A pack that matched no fixture is being taken on the word of
+            // its title alone, so the title has to name this league. The
+            // markers below are generic enough on their own ("complete",
+            // "collection") that an unrelated release carrying one would
+            // otherwise be offered as this league's season and, with the
+            // events attached below, be downloadable as it.
+            var namesThisLeague = ReleaseMatchingService.TitleNamesLeague(release.Title, league);
+            var isSeasonPack = matchedEvents.Count > 1
+                || (IsLikelySeasonPack(release.Title, season, league.Name) && namesThisLeague);
+
+            // Skip non-season packs - season search is specifically for season-level content
+            if (!isSeasonPack)
             {
-                // Determine if this is a "season pack" (matches multiple events or has season pack keywords)
-                // Season search should ONLY return season packs - users wanting specific events/parts
-                // should use the event-level search instead
-                var isSeasonPack = matchedEvents.Count > 1 || IsLikelySeasonPack(release.Title, season, league.Name);
-
-                // Skip non-season packs - season search is specifically for season-level content
-                if (!isSeasonPack)
-                {
-                    continue;
-                }
-
-                seasonReleases.Add(new SeasonSearchRelease
-                {
-                    Title = release.Title,
-                    Guid = release.Guid,
-                    DownloadUrl = release.DownloadUrl,
-                    InfoUrl = release.InfoUrl,
-                    Indexer = release.Indexer,
-                    Protocol = release.Protocol,
-                    Size = release.Size,
-                    Quality = release.Quality,
-                    Source = release.Source,
-                    Codec = release.Codec,
-                    Language = release.Language,
-                    Seeders = release.Seeders,
-                    Leechers = release.Leechers,
-                    PublishDate = release.PublishDate,
-                    Score = release.Score,
-                    QualityScore = release.QualityScore,
-                    IndexerFlags = release.IndexerFlags,
-                    MatchedFormats = release.MatchedFormats,
-                    Approved = release.Approved,
-                    Rejections = release.Rejections,
-                    TorrentInfoHash = release.TorrentInfoHash,
-
-                    // Season-specific fields
-                    IsSeasonPack = isSeasonPack,
-                    MatchedEvents = matchedEvents,
-                    MatchedEventCount = matchedEvents.Count,
-                    BestConfidence = matchedEvents.Max(m => m.Confidence),
-                    DetectedPart = matchedEvents.FirstOrDefault()?.DetectedPart
-                });
+                continue;
             }
+
+            // A pack recognised from its title alone names no fixture, so it
+            // matched nothing and arrived with an empty event list. The grab
+            // request takes its event from that list, so the release showed up
+            // in the results and then could not be downloaded at all. A pack
+            // covers the season, so the season is what it is attached to, with
+            // the opening fixture as the anchor the grab needs.
+            if (matchedEvents.Count == 0)
+            {
+                matchedEvents = seasonEvents
+                    .OrderBy(e => e.EventDate)
+                    .Select(e => new SeasonEventMatch
+                    {
+                        EventId = e.Id,
+                        EventTitle = e.Title,
+                        EventDate = e.EventDate,
+                        EpisodeNumber = e.EpisodeNumber,
+                        // No fixture was matched, so there is no confidence to
+                        // report for any one of them.
+                        Confidence = 0,
+                        MatchReasons = new List<string> { "Whole-season pack, matched by title" },
+                        HasFile = e.HasFile,
+                        Monitored = e.Monitored
+                    })
+                    .ToList();
+            }
+
+            seasonReleases.Add(new SeasonSearchRelease
+            {
+                Title = release.Title,
+                Guid = release.Guid,
+                DownloadUrl = release.DownloadUrl,
+                InfoUrl = release.InfoUrl,
+                Indexer = release.Indexer,
+                Protocol = release.Protocol,
+                Size = release.Size,
+                Quality = release.Quality,
+                Source = release.Source,
+                Codec = release.Codec,
+                Language = release.Language,
+                Seeders = release.Seeders,
+                Leechers = release.Leechers,
+                PublishDate = release.PublishDate,
+                Score = release.Score,
+                QualityScore = release.QualityScore,
+                IndexerFlags = release.IndexerFlags,
+                MatchedFormats = release.MatchedFormats,
+                Approved = release.Approved,
+                Rejections = release.Rejections,
+                TorrentInfoHash = release.TorrentInfoHash,
+
+                // Season-specific fields
+                IsSeasonPack = isSeasonPack,
+                MatchedEvents = matchedEvents,
+                MatchedEventCount = matchedEvents.Count,
+                // Zero when the pack was recognised from its title alone,
+                // which is honest: no individual fixture was matched.
+                BestConfidence = matchedEvents.Count > 0 ? matchedEvents.Max(m => m.Confidence) : 0,
+                DetectedPart = matchedEvents.FirstOrDefault()?.DetectedPart
+            });
         }
 
         // Sort by: matched event count (more events = better season coverage), then by quality score
@@ -308,6 +348,14 @@ public class SeasonSearchService
 
     /// <summary>
     /// Check if a release title suggests it's a season pack.
+    /// </summary>
+    /// <summary>
+    /// Whether a title reads as a whole-season release.
+    ///
+    /// This answers the shape of the title only. Whether the release belongs
+    /// to the league being searched is a separate question, asked by the
+    /// caller through TitleNamesLeague, because several of these markers are
+    /// generic enough to appear in releases of any sport.
     /// </summary>
     private bool IsLikelySeasonPack(string title, string season, string leagueName)
     {

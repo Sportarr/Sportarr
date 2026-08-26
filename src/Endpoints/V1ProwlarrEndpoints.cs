@@ -104,8 +104,16 @@ app.MapPost("/api/v1/indexer", async (
                 if (!Uri.TryCreate(i.Url.TrimEnd('/') + "/", UriKind.Absolute, out var existingUri))
                     return false;
                 var existingPath = existingUri.AbsolutePath.TrimEnd('/');
-                // Same Prowlarr indexer path AND same indexer name = duplicate via different hostname
-                return existingPath == urlPath && i.Name.Equals(name, StringComparison.OrdinalIgnoreCase);
+                // Same path and same name is meant to catch one Prowlarr
+                // reached through a different hostname. On its own it also
+                // matched a DIFFERENT Prowlarr: two of them both expose /7/api
+                // and can both hold an indexer called NZBgeek, so syncing the
+                // second replaced the first one's URL and API key and searches
+                // through the original stopped. Requiring the same port makes
+                // the rename case still work while keeping two instances apart.
+                return existingPath == urlPath
+                    && existingUri.Port == parsedUri.Port
+                    && i.Name.Equals(name, StringComparison.OrdinalIgnoreCase);
             });
 
             if (existingIndexer != null)
@@ -197,7 +205,8 @@ app.MapPut("/api/v1/indexer/{id:int}", async (
     {
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync();
-        logger.LogInformation("[PROWLARR] PUT /api/v1/indexer/{Id} - Received: {Json}", id, json);
+        // The payload carries the indexer's API key.
+        logger.LogInformation("[PROWLARR] PUT /api/v1/indexer/{Id} - Received: {Json}", id, Sportarr.Api.Helpers.SecretRedactor.Json(json));
 
         var indexer = await db.Indexers.FindAsync(id);
         if (indexer is null) return Results.NotFound();
@@ -207,6 +216,33 @@ app.MapPut("/api/v1/indexer/{id:int}", async (
         indexer.Name = prowlarrIndexer.GetProperty("name").GetString() ?? indexer.Name;
         indexer.Enabled = prowlarrIndexer.TryGetProperty("enable", out var enableProp) ? enableProp.GetBoolean() : indexer.Enabled;
         indexer.Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : indexer.Priority;
+
+        // The connection details were ignored entirely, so Prowlarr was told
+        // the update had worked while Sportarr went on searching the old URL
+        // with the old key.
+        if (prowlarrIndexer.TryGetProperty("fields", out var updateFields) &&
+            updateFields.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var field in updateFields.EnumerateArray())
+            {
+                if (!field.TryGetProperty("name", out var fieldNameEl)) continue;
+                var fieldName = fieldNameEl.GetString();
+                if (!field.TryGetProperty("value", out var fieldValueEl)) continue;
+                var fieldValue = fieldValueEl.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? fieldValueEl.GetString()
+                    : fieldValueEl.ToString();
+
+                if (fieldName == "baseUrl" && !string.IsNullOrWhiteSpace(fieldValue))
+                {
+                    indexer.Url = fieldValue.TrimEnd('/');
+                }
+                else if ((fieldName == "apiKey" || fieldName == "apikey") && fieldValue != null)
+                {
+                    indexer.ApiKey = fieldValue;
+                }
+            }
+        }
+
         indexer.LastModified = DateTime.UtcNow;
 
         await db.SaveChangesAsync();

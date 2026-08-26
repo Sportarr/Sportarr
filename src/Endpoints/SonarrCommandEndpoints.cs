@@ -213,6 +213,8 @@ public static class SonarrCommandEndpoints
                 {
                     logger.LogInformation("[DECYPHARR] Processing ManualImport command");
 
+                    (int Imported, int Pended, int Missing, int Failed) outcome = (0, 0, 0, 0);
+
                     if (root.TryGetProperty("files", out var filesElement) && filesElement.ValueKind == JsonValueKind.Array)
                     {
                         // Actually import. This handler previously counted the
@@ -224,12 +226,20 @@ public static class SonarrCommandEndpoints
                         // pending import for review instead of vanishing.
                         var importedCount = 0;
                         var pendedCount = 0;
+                        // Files that could not be dealt with at all. The reply
+                        // used to say "Completed" no matter what, so a caller
+                        // was told a missing or failing file had been imported
+                        // and could go on to clean the download up.
+                        var missingCount = 0;
+                        var failedCount = 0;
 
                         foreach (var fileElement in filesElement.EnumerateArray())
                         {
                             var path = fileElement.TryGetProperty("path", out var pathEl) ? pathEl.GetString() : null;
                             if (string.IsNullOrEmpty(path) || !File.Exists(path))
                             {
+                                missingCount++;
+                                logger.LogWarning("[DECYPHARR] ManualImport was asked for a file that is not there: {Path}", path ?? "(no path)");
                                 continue;
                             }
 
@@ -295,23 +305,37 @@ public static class SonarrCommandEndpoints
                             }
                             catch (Exception ex)
                             {
+                                failedCount++;
                                 logger.LogWarning(ex, "[DECYPHARR] Failed to import {Path}", path);
                             }
                         }
 
-                        logger.LogInformation("[DECYPHARR] ManualImport imported {Imported} file(s), queued {Pended} for review",
-                            importedCount, pendedCount);
+                        logger.LogInformation(
+                            "[DECYPHARR] ManualImport imported {Imported} file(s), queued {Pended} for review, {Missing} missing, {Failed} failed",
+                            importedCount, pendedCount, missingCount, failedCount);
+
+                        outcome = (importedCount, pendedCount, missingCount, failedCount);
                     }
+
+                    // Say what actually happened. Nothing imported and
+                    // something wrong is a failure, not a completion: telling
+                    // the caller otherwise let it treat unimported files as
+                    // dealt with and clean the download away.
+                    var anyProblem = outcome.Missing > 0 || outcome.Failed > 0;
+                    var commandStatus = outcome.Imported == 0 && anyProblem ? "failed" : "completed";
+                    var commandMessage = anyProblem
+                        ? $"Imported {outcome.Imported}, queued {outcome.Pended} for review, {outcome.Missing} missing, {outcome.Failed} failed"
+                        : $"Imported {outcome.Imported}, queued {outcome.Pended} for review";
 
                     return Results.Ok(new
                     {
                         id = new Random().Next(1, 10000),
                         name = "ManualImport",
                         commandName = "ManualImport",
-                        message = "Completed",
+                        message = commandMessage,
                         body = new { },
                         priority = "normal",
-                        status = "completed",
+                        status = commandStatus,
                         queued = DateTime.UtcNow.ToString("o"),
                         started = DateTime.UtcNow.ToString("o"),
                         ended = DateTime.UtcNow.ToString("o"),

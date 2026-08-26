@@ -2074,6 +2074,9 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("TvgIdIsManual")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("TvgName")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
@@ -2209,6 +2212,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "intFormedYear");
 
+                    b.Property<bool>("KeepAllEvents")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("LastUpdate")
                         .HasColumnType("TEXT");
 
@@ -2275,6 +2281,9 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<string>("SessionTypeQualityProfiles")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("SpecialEventsMonitorType")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Sport")
                         .IsRequired()
@@ -4105,7 +4114,7 @@ namespace Sportarr.Api.Migrations
                     b.HasOne("Sportarr.Api.Models.DownloadClient", "DownloadClient")
                         .WithMany()
                         .HasForeignKey("DownloadClientId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Sportarr.Api.Models.Event", "SuggestedEvent")
                         .WithMany()

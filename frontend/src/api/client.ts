@@ -29,7 +29,17 @@ const API_KEY_PRIME_ERROR_MESSAGE = 'Failed to fetch API key from initialize end
 
 let apiKeyPrimePromise: Promise<string> | null = null;
 
+// Bumped on logout. A prime already in flight when the user logs out would
+// otherwise finish afterwards and put the key back on window, leaving the
+// browser holding a full-privilege credential that outranks the ended session.
+let apiKeyGeneration = 0;
+
+// Logout also stops the request interceptor priming a fresh key by itself.
+// Login primes explicitly, so nothing needs the automatic path to resume.
+let apiKeyPrimingSuspended = false;
+
 async function fetchApiKeyFromInitialize(): Promise<string> {
+  const generation = apiKeyGeneration;
   const initializeUrl = createRequestUrl('/initialize.json');
   const response = await fetch(initializeUrl, {
     credentials: 'include',
@@ -58,6 +68,10 @@ async function fetchApiKeyFromInitialize(): Promise<string> {
   const data = await response.json();
   const apiKey = String(data?.apiKey || '');
 
+  if (generation !== apiKeyGeneration) {
+    return '';
+  }
+
   if (typeof window !== 'undefined') {
     window.Sportarr = {
       ...(window.Sportarr || { apiRoot: '', apiKey: '', urlBase: '', version: 'unknown' }),
@@ -75,6 +89,10 @@ async function ensureApiKey(): Promise<string> {
     return existingKey;
   }
 
+  if (apiKeyPrimingSuspended) {
+    return '';
+  }
+
   if (!apiKeyPrimePromise) {
     apiKeyPrimePromise = fetchApiKeyFromInitialize().finally(() => {
       apiKeyPrimePromise = null;
@@ -85,11 +103,14 @@ async function ensureApiKey(): Promise<string> {
 }
 
 export async function primeApiKey(): Promise<void> {
+  apiKeyPrimingSuspended = false;
   await ensureApiKey();
 }
 
 export function clearPrimedApiKey(): void {
+  apiKeyGeneration += 1;
   apiKeyPrimePromise = null;
+  apiKeyPrimingSuspended = true;
   if (typeof window !== 'undefined' && window.Sportarr) {
     window.Sportarr.apiKey = '';
   }

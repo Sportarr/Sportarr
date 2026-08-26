@@ -25,6 +25,16 @@ public static class AgentInstaller
                     needsCopy = sourceInfo.LastWriteTimeUtc > destInfo.LastWriteTimeUtc;
                 }
 
+                // Timestamps alone were not enough. A copy that failed part
+                // way through still stamped the destination directory, so
+                // every later run said the agents were already there while the
+                // bundle Plex needs was incomplete or missing outright.
+                if (!needsCopy && !PlexBundleIsComplete(agentsDestPath))
+                {
+                    Console.WriteLine("[Sportarr] The installed Plex bundle is incomplete, reinstalling it");
+                    needsCopy = true;
+                }
+
                 if (needsCopy)
                 {
                     Console.WriteLine($"[Sportarr] Copying media server agents to {agentsDestPath}...");
@@ -52,7 +62,14 @@ public static class AgentInstaller
                             Console.WriteLine("[Sportarr] Launch Sportarr once as administrator to fix these permissions permanently.");
                         }
                     }
-                    Console.WriteLine("[Sportarr] Plex agent available at: {0}", Path.Combine(agentsDestPath, "plex", "Sportarr.bundle"));
+                    // Name what was actually installed. The copied bundle is
+                    // not always called Sportarr.bundle, and a log line
+                    // pointing at a folder that is not there sent people
+                    // looking for a broken install.
+                    foreach (var installedBundle in InstalledPlexBundles(agentsDestPath))
+                    {
+                        Console.WriteLine("[Sportarr] Plex agent available at: {0}", installedBundle);
+                    }
                 }
                 else
                 {
@@ -64,7 +81,10 @@ public static class AgentInstaller
                 Console.WriteLine($"[Sportarr] Agents not found in build output, checking config directory...");
 
                 var plexAgentFile = Path.Combine(agentsDestPath, "plex", "Sportarr.bundle", "Contents", "Code", "__init__.py");
-                var needsUpdate = !Directory.Exists(agentsDestPath) || !File.Exists(plexAgentFile);
+                // The manifest matters as much as the code. Writing the code
+                // and then failing before the manifest left a bundle Plex
+                // will not even look at, and the old check called that done.
+                var needsUpdate = !Directory.Exists(agentsDestPath) || !PlexBundleIsComplete(agentsDestPath);
 
                 if (!needsUpdate && File.Exists(plexAgentFile))
                 {
@@ -72,6 +92,10 @@ public static class AgentInstaller
                     if (existingCode.Contains("import os") || existingCode.Contains("os.environ") || existingCode.Contains("\r\n"))
                     {
                         Console.WriteLine("[Sportarr] Detected outdated Plex agent with CRLF or import issues, updating...");
+                        // Overwriting without a word threw away whatever was
+                        // there, including an agent someone had edited on
+                        // purpose. A copy is kept and named in the log.
+                        BackupExistingAgent(plexAgentFile);
                         needsUpdate = true;
                     }
                 }
@@ -94,6 +118,57 @@ public static class AgentInstaller
             Console.WriteLine($"[Sportarr] Warning: Could not setup agents directory: {ex.Message}");
         }
     }
+
+/// <summary>
+/// A Plex bundle is only usable when both the code and the manifest are
+/// there. Either one alone is a bundle Plex ignores.
+/// </summary>
+static bool PlexBundleIsComplete(string agentsDestPath)
+{
+    // The bundle name is not assumed. What ships in the build output is
+    // Sportarr-Legacy.bundle while the built-in fallback writes
+    // Sportarr.bundle, so a hardcoded name could never match one of the
+    // two and the copy ran again on every single startup.
+    return InstalledPlexBundles(agentsDestPath).Any(bundle =>
+        File.Exists(Path.Combine(bundle, "Contents", "Code", "__init__.py"))
+        && File.Exists(Path.Combine(bundle, "Contents", "Info.plist")));
+}
+
+/// <summary>
+/// Every *.bundle folder installed for Plex, whatever it is called.
+/// </summary>
+static string[] InstalledPlexBundles(string agentsDestPath)
+{
+    var plexDir = Path.Combine(agentsDestPath, "plex");
+    if (!Directory.Exists(plexDir)) return Array.Empty<string>();
+
+    try
+    {
+        return Directory.GetDirectories(plexDir, "*.bundle");
+    }
+    catch (Exception)
+    {
+        return Array.Empty<string>();
+    }
+}
+
+/// <summary>
+/// Keep a copy of an agent file before replacing it, so a local edit is
+/// recoverable rather than gone.
+/// </summary>
+static void BackupExistingAgent(string path)
+{
+    try
+    {
+        var backup = $"{path}.replaced-{DateTime.UtcNow:yyyyMMddHHmmss}";
+        File.Copy(path, backup, overwrite: true);
+        Console.WriteLine($"[Sportarr] Kept a copy of the previous agent at {backup}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Sportarr] Warning: could not back up {path} before replacing it: {ex.Message}");
+    }
+}
 
 // Helper function to recursively copy directories.
 // Resilient to per-file failures: tracks successes and access-denied failures
@@ -150,7 +225,15 @@ public static class AgentInstaller
     // Fixed Plex agent code - no imports, hardcoded URL, uses LF line endings
     var plexAgentCode = "# -*- coding: utf-8 -*-\n\nSPORTARR_API_URL = 'https://sportarr.net'\n\n\ndef Start():\n    Log.Info(\"[Sportarr] Agent starting...\")\n    Log.Info(\"[Sportarr] API URL: %s\" % SPORTARR_API_URL)\n    HTTP.CacheTime = 3600\n\n\nclass SportarrAgent(Agent.TV_Shows):\n    name = 'Sportarr'\n    languages = ['en']\n    primary_provider = True\n    fallback_agent = False\n    accepts_from = ['com.plexapp.agents.localmedia']\n\n    def search(self, results, media, lang, manual):\n        Log.Info(\"[Sportarr] Searching for: %s\" % media.show)\n\n        try:\n            search_url = \"%s/api/metadata/plex/search?title=%s\" % (\n                SPORTARR_API_URL,\n                String.Quote(media.show, usePlus=True)\n            )\n\n            if media.year:\n                search_url = search_url + \"&year=%s\" % media.year\n\n            Log.Debug(\"[Sportarr] Search URL: %s\" % search_url)\n            response = JSON.ObjectFromURL(search_url)\n\n            if 'results' in response:\n                for idx, series in enumerate(response['results'][:10]):\n                    score = 100 - (idx * 5)\n\n                    if series.get('title', '').lower() == media.show.lower():\n                        score = 100\n\n                    results.Append(MetadataSearchResult(\n                        id=str(series.get('id')),\n                        name=series.get('title'),\n                        year=series.get('year'),\n                        score=score,\n                        lang=lang\n                    ))\n\n                    Log.Info(\"[Sportarr] Found: %s (ID: %s, Score: %d)\" % (\n                        series.get('title'), series.get('id'), score\n                    ))\n\n        except Exception as e:\n            Log.Error(\"[Sportarr] Search error: %s\" % str(e))\n\n    def update(self, metadata, media, lang, force):\n        Log.Info(\"[Sportarr] Updating metadata for ID: %s\" % metadata.id)\n\n        try:\n            series_url = \"%s/api/metadata/plex/series/%s\" % (SPORTARR_API_URL, metadata.id)\n            Log.Debug(\"[Sportarr] Series URL: %s\" % series_url)\n            series = JSON.ObjectFromURL(series_url)\n\n            if series:\n                metadata.title = series.get('title')\n                metadata.summary = series.get('summary')\n                metadata.originally_available_at = None\n\n                if series.get('year'):\n                    try:\n                        metadata.originally_available_at = Datetime.ParseDate(\"%s-01-01\" % series.get('year'))\n                    except:\n                        pass\n\n                metadata.studio = series.get('studio')\n                metadata.content_rating = series.get('content_rating')\n\n                metadata.genres.clear()\n                for genre in series.get('genres', []):\n                    metadata.genres.add(genre)\n\n                if series.get('poster_url'):\n                    try:\n                        metadata.posters[series['poster_url']] = Proxy.Media(\n                            HTTP.Request(series['poster_url']).content\n                        )\n                    except Exception as e:\n                        Log.Warn(\"[Sportarr] Failed to fetch poster: %s\" % e)\n\n                if series.get('banner_url'):\n                    try:\n                        metadata.banners[series['banner_url']] = Proxy.Media(\n                            HTTP.Request(series['banner_url']).content\n                        )\n                    except Exception as e:\n                        Log.Warn(\"[Sportarr] Failed to fetch banner: %s\" % e)\n\n                if series.get('fanart_url'):\n                    try:\n                        metadata.art[series['fanart_url']] = Proxy.Media(\n                            HTTP.Request(series['fanart_url']).content\n                        )\n                    except Exception as e:\n                        Log.Warn(\"[Sportarr] Failed to fetch fanart: %s\" % e)\n\n            seasons_url = \"%s/api/metadata/plex/series/%s/seasons\" % (SPORTARR_API_URL, metadata.id)\n            Log.Debug(\"[Sportarr] Seasons URL: %s\" % seasons_url)\n            seasons_response = JSON.ObjectFromURL(seasons_url)\n\n            if 'seasons' in seasons_response:\n                for season_data in seasons_response['seasons']:\n                    season_num = season_data.get('season_number')\n                    if season_num in media.seasons:\n                        season = metadata.seasons[season_num]\n                        season.title = season_data.get('title', \"Season %s\" % season_num)\n                        season.summary = season_data.get('summary', '')\n\n                        if season_data.get('poster_url'):\n                            try:\n                                season.posters[season_data['poster_url']] = Proxy.Media(\n                                    HTTP.Request(season_data['poster_url']).content\n                                )\n                            except Exception as e:\n                                Log.Warn(\"[Sportarr] Failed to fetch season poster: %s\" % e)\n\n                        self.update_episodes(metadata, media, season_num)\n\n        except Exception as e:\n            Log.Error(\"[Sportarr] Update error: %s\" % str(e))\n\n    def update_episodes(self, metadata, media, season_num):\n        Log.Debug(\"[Sportarr] Updating episodes for season %s\" % season_num)\n\n        try:\n            episodes_url = \"%s/api/metadata/plex/series/%s/season/%s/episodes\" % (\n                SPORTARR_API_URL, metadata.id, season_num\n            )\n            Log.Debug(\"[Sportarr] Episodes URL: %s\" % episodes_url)\n            episodes_response = JSON.ObjectFromURL(episodes_url)\n\n            if 'episodes' in episodes_response:\n                for ep_data in episodes_response['episodes']:\n                    ep_num = ep_data.get('episode_number')\n\n                    if ep_num in media.seasons[season_num].episodes:\n                        episode = metadata.seasons[season_num].episodes[ep_num]\n\n                        title = ep_data.get('title', \"Episode %s\" % ep_num)\n                        if ep_data.get('part_name'):\n                            title = \"%s - %s\" % (title, ep_data['part_name'])\n\n                        episode.title = title\n                        episode.summary = ep_data.get('summary', '')\n\n                        if ep_data.get('air_date'):\n                            try:\n                                episode.originally_available_at = Datetime.ParseDate(ep_data['air_date'])\n                            except:\n                                pass\n\n                        if ep_data.get('duration_minutes'):\n                            episode.duration = ep_data['duration_minutes'] * 60 * 1000\n\n                        if ep_data.get('thumb_url'):\n                            try:\n                                episode.thumbs[ep_data['thumb_url']] = Proxy.Media(\n                                    HTTP.Request(ep_data['thumb_url']).content\n                                )\n                            except Exception as e:\n                                Log.Warn(\"[Sportarr] Failed to fetch episode thumb: %s\" % e)\n\n                        Log.Debug(\"[Sportarr] Updated S%sE%s: %s\" % (season_num, ep_num, title))\n\n        except Exception as e:\n            Log.Error(\"[Sportarr] Episodes update error: %s\" % str(e))\n";
 
-    File.WriteAllText(Path.Combine(plexPath, "__init__.py"), plexAgentCode);
+    // Keep whatever is already there before writing over it. This runs
+    // whenever the bundle is incomplete, and a missing manifest used to cost
+    // the user an agent script they had edited on purpose.
+    var plexAgentFile = Path.Combine(plexPath, "__init__.py");
+    if (File.Exists(plexAgentFile) && File.ReadAllText(plexAgentFile) != plexAgentCode)
+    {
+        BackupExistingAgent(plexAgentFile);
+    }
+    File.WriteAllText(plexAgentFile, plexAgentCode);
 
     // Create Info.plist for Plex (using LF line endings)
     var infoPlistPath = Path.Combine(agentsDestPath, "plex", "Sportarr.bundle", "Contents");

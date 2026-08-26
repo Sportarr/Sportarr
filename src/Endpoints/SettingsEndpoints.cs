@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using Sportarr.Api.Validators;
 using System.Text.Json;
 
 namespace Sportarr.Api.Endpoints;
@@ -191,7 +192,8 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
             EventViewMode = config.EventViewMode,
             ShowUnknownLeagueItems = config.ShowUnknownLeagueItems,
             ShowEventPath = config.ShowEventPath,
-            TimeZone = config.TimeZone
+            TimeZone = config.TimeZone,
+            QueryBackoffCapMs = config.QueryBackoffCapMs > 0 ? config.QueryBackoffCapMs : 120000
         }, jsonOptions),
 
         MediaManagementSettings = mediaSettingsJson,
@@ -243,6 +245,50 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
     return Results.Ok(settings);
 });
 
+// Write only the interface preferences.
+//
+// The UI settings page used to read the whole settings object, swap its own
+// section and put all of it back, so anything another page had saved in the
+// meantime was overwritten with the copy read moments earlier. Nothing else
+// on the page needs to travel with it.
+app.MapPut("/api/settings/ui", async (UISettings uiSettings, ConfigService configService, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    var jsonOptions = new System.Text.Json.JsonSerializerOptions
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+    };
+
+    var settings = await db.AppSettings.FirstOrDefaultAsync();
+    if (settings == null)
+    {
+        settings = new AppSettings();
+        db.AppSettings.Add(settings);
+    }
+
+    settings.UISettings = System.Text.Json.JsonSerializer.Serialize(uiSettings, jsonOptions);
+    await db.SaveChangesAsync();
+
+    var config = await configService.GetConfigAsync();
+    config.FirstDayOfWeek = uiSettings.FirstDayOfWeek;
+    config.CalendarWeekColumnHeader = uiSettings.CalendarWeekColumnHeader;
+    config.ShortDateFormat = uiSettings.ShortDateFormat;
+    config.LongDateFormat = uiSettings.LongDateFormat;
+    config.TimeFormat = uiSettings.TimeFormat;
+    config.ShowRelativeDates = uiSettings.ShowRelativeDates;
+    config.Theme = uiSettings.Theme;
+    config.EnableColorImpairedMode = uiSettings.EnableColorImpairedMode;
+    config.UILanguage = uiSettings.UILanguage;
+    config.EventViewMode = uiSettings.EventViewMode;
+    config.ShowUnknownLeagueItems = uiSettings.ShowUnknownLeagueItems;
+    config.ShowEventPath = uiSettings.ShowEventPath;
+    config.TimeZone = uiSettings.TimeZone;
+    config.QueryBackoffCapMs = uiSettings.QueryBackoffCapMs;
+    await configService.SaveConfigAsync(config);
+
+    logger.LogInformation("[CONFIG] Interface settings saved");
+    return Results.Ok(new { success = true });
+}).WithRequestValidation<UISettings>();
+
 app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService configService, SimpleAuthService simpleAuthService, SportarrDbContext db, FileFormatManager fileFormatManager, ILogger<Program> logger) =>
 {
     logger.LogInformation("[CONFIG] Settings update requested");
@@ -254,19 +300,50 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
     };
 
-    // Parse all settings from frontend format
-    var hostSettings = System.Text.Json.JsonSerializer.Deserialize<HostSettings>(updatedSettings.HostSettings, jsonOptions);
-    var securitySettings = System.Text.Json.JsonSerializer.Deserialize<SecuritySettings>(updatedSettings.SecuritySettings, jsonOptions);
-    var proxySettings = System.Text.Json.JsonSerializer.Deserialize<ProxySettings>(updatedSettings.ProxySettings, jsonOptions);
-    var loggingSettings = System.Text.Json.JsonSerializer.Deserialize<LoggingSettings>(updatedSettings.LoggingSettings, jsonOptions);
-    var analyticsSettings = System.Text.Json.JsonSerializer.Deserialize<AnalyticsSettings>(updatedSettings.AnalyticsSettings, jsonOptions);
-    var backupSettings = System.Text.Json.JsonSerializer.Deserialize<BackupSettings>(updatedSettings.BackupSettings, jsonOptions);
-    var updateSettingsObj = System.Text.Json.JsonSerializer.Deserialize<UpdateSettings>(updatedSettings.UpdateSettings, jsonOptions);
-    var uiSettings = System.Text.Json.JsonSerializer.Deserialize<UISettings>(updatedSettings.UISettings, jsonOptions);
-    var mediaManagementSettings = System.Text.Json.JsonSerializer.Deserialize<MediaManagementSettings>(updatedSettings.MediaManagementSettings, jsonOptions);
-    var developmentSettings = !string.IsNullOrEmpty(updatedSettings.DevelopmentSettings)
-        ? System.Text.Json.JsonSerializer.Deserialize<DevelopmentSettings>(updatedSettings.DevelopmentSettings, jsonOptions)
-        : null;
+    // Parse all settings from frontend format. A block that cannot be
+    // read fails the whole request before any of it is applied. These
+    // parsed straight into their types, so a malformed block threw
+    // mid-handler and surfaced as a bare 500 that never said which block
+    // was at fault.
+    HostSettings? hostSettings;
+    SecuritySettings? securitySettings;
+    ProxySettings? proxySettings;
+    LoggingSettings? loggingSettings;
+    AnalyticsSettings? analyticsSettings;
+    BackupSettings? backupSettings;
+    UpdateSettings? updateSettingsObj;
+    UISettings? uiSettings;
+    MediaManagementSettings? mediaManagementSettings;
+    DevelopmentSettings? developmentSettings;
+    var parsingBlock = "hostSettings";
+    try
+    {
+        hostSettings = System.Text.Json.JsonSerializer.Deserialize<HostSettings>(updatedSettings.HostSettings, jsonOptions);
+        parsingBlock = "securitySettings";
+        securitySettings = System.Text.Json.JsonSerializer.Deserialize<SecuritySettings>(updatedSettings.SecuritySettings, jsonOptions);
+        parsingBlock = "proxySettings";
+        proxySettings = System.Text.Json.JsonSerializer.Deserialize<ProxySettings>(updatedSettings.ProxySettings, jsonOptions);
+        parsingBlock = "loggingSettings";
+        loggingSettings = System.Text.Json.JsonSerializer.Deserialize<LoggingSettings>(updatedSettings.LoggingSettings, jsonOptions);
+        parsingBlock = "analyticsSettings";
+        analyticsSettings = System.Text.Json.JsonSerializer.Deserialize<AnalyticsSettings>(updatedSettings.AnalyticsSettings, jsonOptions);
+        parsingBlock = "backupSettings";
+        backupSettings = System.Text.Json.JsonSerializer.Deserialize<BackupSettings>(updatedSettings.BackupSettings, jsonOptions);
+        parsingBlock = "updateSettings";
+        updateSettingsObj = System.Text.Json.JsonSerializer.Deserialize<UpdateSettings>(updatedSettings.UpdateSettings, jsonOptions);
+        parsingBlock = "uiSettings";
+        uiSettings = System.Text.Json.JsonSerializer.Deserialize<UISettings>(updatedSettings.UISettings, jsonOptions);
+        parsingBlock = "mediaManagementSettings";
+        mediaManagementSettings = System.Text.Json.JsonSerializer.Deserialize<MediaManagementSettings>(updatedSettings.MediaManagementSettings, jsonOptions);
+        parsingBlock = "developmentSettings";
+        developmentSettings = !string.IsNullOrEmpty(updatedSettings.DevelopmentSettings)
+            ? System.Text.Json.JsonSerializer.Deserialize<DevelopmentSettings>(updatedSettings.DevelopmentSettings, jsonOptions)
+            : null;
+    }
+    catch (Exception ex) when (ex is System.Text.Json.JsonException or ArgumentNullException)
+    {
+        return Results.BadRequest(new { error = $"The {parsingBlock} block could not be read: {ex.Message}" });
+    }
 
     // Get previous EnableMultiPartEpisodes value to detect changes
     var config = await configService.GetConfigAsync();
@@ -317,6 +394,18 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         logger.LogInformation("[AUTH] Setting new credentials for user: {Username}", securitySettings.Username);
         await simpleAuthService.SetCredentialsAsync(securitySettings.Username, securitySettings.Password);
         logger.LogInformation("[AUTH] Credentials set successfully");
+    }
+    else if (securitySettings != null &&
+             !string.IsNullOrWhiteSpace(securitySettings.Username) &&
+             !string.Equals(securitySettings.Username, config.Username, StringComparison.Ordinal) &&
+             !string.IsNullOrWhiteSpace(config.PasswordHash))
+    {
+        // A username change with no new password used to be written straight
+        // into the config here, which never reached SimpleAuthService and so
+        // left every session issued to the old name signed in. Send it through
+        // the same place a password change goes.
+        logger.LogInformation("[AUTH] Updating username to: {Username}", securitySettings.Username);
+        await simpleAuthService.SetUsernameAsync(securitySettings.Username);
     }
 
     // Log incoming security settings for debugging
@@ -434,6 +523,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
             config.ShowUnknownLeagueItems = uiSettings.ShowUnknownLeagueItems;
             config.ShowEventPath = uiSettings.ShowEventPath;
             config.TimeZone = uiSettings.TimeZone;
+            config.QueryBackoffCapMs = uiSettings.QueryBackoffCapMs;
         }
 
         if (mediaManagementSettings != null)
@@ -697,6 +787,29 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
     }
 
     logger.LogInformation("[CONFIG] Settings saved to config.xml successfully");
+
+    // The response is the request body echoed back, and the security block in
+    // it still carries the plain text password the caller just submitted. That
+    // put the password into response logs, browser tooling and anything else
+    // watching the exchange, for no benefit: the caller already knows it and
+    // what gets stored is a hash.
+    try
+    {
+        var echoedSecurity = string.IsNullOrWhiteSpace(updatedSettings.SecuritySettings)
+            ? null
+            : System.Text.Json.JsonSerializer.Deserialize<SecuritySettings>(updatedSettings.SecuritySettings, jsonOptions);
+        if (echoedSecurity != null && !string.IsNullOrEmpty(echoedSecurity.Password))
+        {
+            echoedSecurity.Password = "";
+            updatedSettings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(echoedSecurity, jsonOptions);
+        }
+    }
+    catch (System.Text.Json.JsonException)
+    {
+        // Unreadable security block: send nothing rather than risk echoing it.
+        updatedSettings.SecuritySettings = "{}";
+    }
+
     return Results.Ok(updatedSettings);
     }
     catch (Exception ex)

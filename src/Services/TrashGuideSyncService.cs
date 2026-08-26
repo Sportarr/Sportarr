@@ -414,13 +414,27 @@ public class TrashGuideSyncService
                     var cf = await FetchCustomFormatAsync(fileName);
                     if (cf?.TrashScores != null)
                     {
-                        // Try the specified score set, fall back to default
-                        var score = cf.TrashScores.GetValueOrDefault(scoreSet,
-                            cf.TrashScores.GetValueOrDefault("default", 0));
-
-                        if (score != 0) // Only include non-zero scores
+                        // Try the specified score set, fall back to default.
+                        // TryGetValue, not a default of zero, because a score
+                        // set that deliberately zeroes a format is saying
+                        // something: ignore this one. Treating that zero as
+                        // "no score here" dropped it, and the caller then fell
+                        // back to the format's own default, so a profile
+                        // meant to neutralise a format ended up weighting it
+                        // and ranked releases accordingly.
+                        int? score = null;
+                        if (cf.TrashScores.TryGetValue(scoreSet, out var scoreSetValue))
                         {
-                            trashScores[cf.TrashId] = score;
+                            score = scoreSetValue;
+                        }
+                        else if (cf.TrashScores.TryGetValue("default", out var defaultValue))
+                        {
+                            score = defaultValue;
+                        }
+
+                        if (score.HasValue)
+                        {
+                            trashScores[cf.TrashId] = score.Value;
                         }
                     }
                 }

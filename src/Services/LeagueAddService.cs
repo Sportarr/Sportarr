@@ -59,10 +59,14 @@ public class LeagueAddService
 
     public async Task<LeagueAddResult> AddLeagueAsync(AddLeagueRequest request)
     {
+        // Declared out here so the catch can tell whether the row was already
+        // committed and report that rather than a bare failure.
+        League? league = null;
+
         try
         {
             // Convert DTO to League entity
-            var league = request.ToLeague();
+            league = request.ToLeague();
 
             // Enrich league with full details (including images) if missing
             // The /all/leagues endpoint doesn't include images, so fetch from lookup
@@ -315,6 +319,70 @@ public class LeagueAddService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LEAGUES] Error adding league: {Name}. Error: {Message}", request?.Name ?? "Unknown", ex.Message);
+
+            // The league row is committed early, before teams, artwork and the
+            // first sync. A failure after that point used to report a plain
+            // failure while the league sat in the database, so the user was
+            // told nothing had happened, saw the league appear anyway, and was
+            // refused on a retry with "League already exists". Say what
+            // actually happened instead, and queue the deep sync that finishes
+            // the job so the league repairs itself.
+            if (league is { Id: > 0 })
+            {
+                var queued = false;
+                try
+                {
+                    var repairBody = JsonSerializer.Serialize(new { leagueId = league.Id, scope = "full" });
+                    await _taskService.QueueTaskAsync($"Deep Sync {league.Name}", "RefreshLeague", priority: 0, body: repairBody);
+                    queued = true;
+                }
+                catch (Exception queueEx)
+                {
+                    _logger.LogWarning(queueEx, "[LEAGUES] Could not queue the repair sync for {Name}", league.Name);
+                }
+
+                // The refresh syncs events. It cannot choose teams, because the
+                // teams came in with this request and nothing else has them,
+                // so a team setup that failed here stays failed until the user
+                // opens the league. Saying only "a refresh has been queued"
+                // sent people to wait on a repair that could not happen, and
+                // said it even when the queueing itself had just failed.
+                // Mirrors the gate on the save path above: a teamless league
+                // never gets LeagueTeams rows, so it must not be told to go
+                // and choose teams it has no picker for.
+                var teamsMissing = false;
+                if (request?.MonitoredTeamIds is { Count: > 0 }
+                    && !LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
+                {
+                    try
+                    {
+                        teamsMissing = !await _db.LeagueTeams.AnyAsync(lt => lt.LeagueId == league.Id);
+                    }
+                    catch (Exception)
+                    {
+                        teamsMissing = true;
+                    }
+                }
+
+                var message = $"{league.Name} was added but its setup did not finish ({ex.Message}).";
+                if (teamsMissing)
+                {
+                    message += " Its teams were not saved, so open the league and choose them.";
+                }
+                message += queued
+                    ? " A refresh has been queued; do not add it again."
+                    : " The refresh could not be queued either; open the league and refresh it. Do not add it again.";
+
+                return new LeagueAddResult
+                {
+                    Success = false,
+                    StatusCode = 500,
+                    League = league,
+                    Monitored = league.Monitored,
+                    ErrorMessage = message
+                };
+            }
+
             return new LeagueAddResult { Success = false, StatusCode = 500, ErrorMessage = ex.Message };
         }
     }

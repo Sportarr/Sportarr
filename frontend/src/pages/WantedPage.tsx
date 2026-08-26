@@ -21,7 +21,7 @@ import { useColumnVisibility } from '../hooks/useColumnVisibility';
 import ManualSearchModal from '../components/ManualSearchModal';
 import { useSearchQueueStatus } from '../api/hooks';
 import { apiGet, apiPost, apiPut } from '../utils/api';
-import { formatTimeInTimezone, parseAsUtc } from '../utils/timezone';
+import { formatTimeInTimezone, dayDifferenceInTimezone } from '../utils/timezone';
 import { useUISettings } from '../hooks/useUISettings';
 import { BADGE_AMBER, BADGE_BLUE, BUTTON_BASE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_WARNING, BUTTON_SECONDARY, TABLE_ROW_HOVER } from '../utils/designTokens';
 
@@ -165,29 +165,51 @@ const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) =
     fetchWantedEvents();
   }, [activeTab, currentPage]);
 
+  // Only the newest request is allowed to write to the page. Switching tab or
+  // page quickly let an older response land last, so one tab's rows and record
+  // count were shown under the other's heading and page number, which could
+  // also disable Search All on a count that belonged elsewhere.
+  const fetchSeq = React.useRef(0);
+
   const fetchWantedEvents = async () => {
+    const seq = ++fetchSeq.current;
+    const requestedTab = activeTab;
+    const requestedPage = currentPage;
+
     setLoading(true);
     setError(null);
     try {
       const endpoint =
-        activeTab === 'missing'
-          ? `/api/wanted/missing?page=${currentPage}&pageSize=${pageSize}`
-          : `/api/wanted/cutoff-unmet?page=${currentPage}&pageSize=${pageSize}`;
+        requestedTab === 'missing'
+          ? `/api/wanted/missing?page=${requestedPage}&pageSize=${pageSize}`
+          : `/api/wanted/cutoff-unmet?page=${requestedPage}&pageSize=${pageSize}`;
 
       const response = await apiGet(endpoint);
       if (!response.ok) throw new Error('Failed to fetch wanted events');
       const data: WantedResponse = await response.json();
+      if (seq !== fetchSeq.current) return;
 
-      if (activeTab === 'missing') {
+      // Landing past the end of a set that has since shrunk showed an empty
+      // list saying there was nothing wanted, with no pager to get back to
+      // the rows that are still there.
+      const lastPage = Math.max(1, Math.ceil(data.totalRecords / pageSize));
+      if (data.events.length === 0 && data.totalRecords > 0 && requestedPage > lastPage) {
+        setTotalRecords(data.totalRecords);
+        setCurrentPage(lastPage);
+        return;
+      }
+
+      if (requestedTab === 'missing') {
         setMissingEvents(data.events);
       } else {
         setCutoffUnmetEvents(data.events);
       }
       setTotalRecords(data.totalRecords);
     } catch (err) {
+      if (seq !== fetchSeq.current) return;
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
-      setLoading(false);
+      if (seq === fetchSeq.current) setLoading(false);
     }
   };
 
@@ -315,13 +337,10 @@ const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) =
     // naive `+ 'Z'` append produced "...ZZ" (an Invalid Date) once the API
     // started returning proper UTC timestamps, which rendered every row's
     // countdown as "In NaN days".
-    const date = parseAsUtc(dateString);
-    const now = new Date();
-
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const diffMs = dateOnly.getTime() - todayOnly.getTime();
-    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    // Counted in the same timezone the row's date is rendered in. Using the
+    // browser's own clock here meant an event shown as one day could be
+    // labelled as the next.
+    const diffDays = dayDifferenceInTimezone(dateString, timezone);
 
     if (diffDays < 0) {
       return `${Math.abs(diffDays)} days ago`;

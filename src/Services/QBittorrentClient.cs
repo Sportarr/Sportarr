@@ -204,12 +204,16 @@ public class QBittorrentClient
     /// </summary>
     public async Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
+        // Held outside the try so the timeout handler can tell a torrent that
+        // arrived from one that was already there.
+        List<QBittorrentTorrent>? torrentsBefore = null;
+
         try
         {
             var baseUrl = GetBaseUrl(config);
             _logger.LogInformation("[qBittorrent] ========== STARTING TORRENT ADD ==========");
             _logger.LogInformation("[qBittorrent] Base URL: {BaseUrl}", baseUrl);
-            _logger.LogInformation("[qBittorrent] Torrent URL: {Url}", torrentUrl);
+            _logger.LogInformation("[qBittorrent] Torrent URL: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(torrentUrl));
             _logger.LogInformation("[qBittorrent] Category: {Category}", category);
 
             var client = GetHttpClient(config);
@@ -285,7 +289,7 @@ public class QBittorrentClient
             }
 
             // Get current torrents before adding to detect duplicates
-            var torrentsBefore = await GetTorrentsAsync(config);
+            torrentsBefore = await GetTorrentsAsync(config);
             var torrentCountBefore = torrentsBefore?.Count ?? 0;
             _logger.LogInformation("[qBittorrent] Torrents before add: {Count}", torrentCountBefore);
 
@@ -675,6 +679,23 @@ public class QBittorrentClient
         catch (TaskCanceledException ex)
         {
             _logger.LogError(ex, "[qBittorrent] ========== TIMEOUT ==========");
+
+            // qBittorrent often accepts a torrent and then takes too long to
+            // say so, which is routine on an instance holding thousands of
+            // them. Calling that a failure leaves no record of a download that
+            // is really running, and when its files turn up they are read as
+            // something found on disk and moved into the library, taking the
+            // data out from under the seeding torrent (issue #251). Ask the
+            // client what it actually has before deciding.
+            var landed = await FindTorrentAfterTimeoutAsync(config, expectedName, torrentsBefore);
+            if (landed != null)
+            {
+                _logger.LogInformation(
+                    "[qBittorrent] The request timed out, but '{Name}' is present on the client. Treating the add as successful.",
+                    landed.Name);
+                return AddDownloadResult.Succeeded(landed.Hash);
+            }
+
             return AddDownloadResult.Failed("Request to qBittorrent timed out", AddDownloadErrorType.Timeout);
         }
         catch (Exception ex)
@@ -683,6 +704,53 @@ public class QBittorrentClient
             _logger.LogError(ex, "[qBittorrent] Exception: {Message}", ex.Message);
             _logger.LogError(ex, "[qBittorrent] Exception Type: {Type}", ex.GetType().Name);
             return AddDownloadResult.Failed($"Unexpected error: {ex.Message}", AddDownloadErrorType.Unknown);
+        }
+    }
+
+    /// <summary>
+    /// Look for a torrent the client accepted before the request timed out.
+    ///
+    /// Only a torrent that was not on the client beforehand counts. Matching
+    /// on the name alone would hand back a torrent that was already there and
+    /// merely reads like the expected one, and the release would then follow
+    /// somebody else's download while its own add stayed untracked.
+    /// </summary>
+    private async Task<QBittorrentTorrent?> FindTorrentAfterTimeoutAsync(
+        DownloadClient config, string? expectedName, List<QBittorrentTorrent>? torrentsBefore)
+    {
+        if (string.IsNullOrWhiteSpace(expectedName) || torrentsBefore == null)
+        {
+            // With nothing to compare against there is no way to tell an
+            // arrival from a torrent that was always there.
+            return null;
+        }
+
+        try
+        {
+            var torrents = await GetTorrentsAsync(config);
+            if (torrents == null || torrents.Count == 0)
+            {
+                return null;
+            }
+
+            var knownHashes = torrentsBefore
+                .Select(t => t.Hash)
+                .Where(hash => !string.IsNullOrEmpty(hash))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return torrents.FirstOrDefault(t =>
+                !string.IsNullOrEmpty(t.Hash) &&
+                !knownHashes.Contains(t.Hash) &&
+                !string.IsNullOrEmpty(t.Name) &&
+                (t.Name.Contains(expectedName, StringComparison.OrdinalIgnoreCase) ||
+                 expectedName.Contains(t.Name, StringComparison.OrdinalIgnoreCase)));
+        }
+        catch (Exception ex)
+        {
+            // Best effort. A client that cannot be reached twice running is
+            // reported as the failure it looks like.
+            _logger.LogWarning(ex, "[qBittorrent] Could not check whether the timed-out add had landed");
+            return null;
         }
     }
 
@@ -774,11 +842,26 @@ public class QBittorrentClient
         return categoryTorrents.Select(t =>
         {
             var state = t.State.ToLowerInvariant();
+
+            // States where the bytes are not all in place yet, whatever
+            // progress reports. "moving" is the dangerous one: qBittorrent
+            // reports full progress while it is still relocating the files, so
+            // an import started here reads a partial file at the destination.
+            // The checking states resolve within seconds and are worth waiting
+            // for rather than importing data being verified.
+            var isTransitional = state is "moving" or "checkingdl" or "checkingup"
+                or "checkingresumedata" or "allocating";
+
             // qBittorrent 4.x reports pausedUP, 5.x reports stoppedUP for a
-            // completed-then-stopped torrent; accept both.
-            var isCompleted = state == "uploading" || state == "stalledup" ||
-                              state == "pausedup" || state == "stoppedup" ||
-                              t.Progress >= 0.999;
+            // completed-then-stopped torrent; accept both. The progress
+            // fallback covers the remaining finished states, and it has to be
+            // the whole torrent: 0.999 of a 50 GB download is 50 MB short,
+            // which is a truncated video file in the library.
+            var isCompleted = !isTransitional &&
+                              (state == "uploading" || state == "stalledup" ||
+                               state == "pausedup" || state == "stoppedup" ||
+                               state == "forcedup" || state == "queuedup" ||
+                               t.Progress >= 1.0);
 
             return new ExternalDownloadInfo
             {

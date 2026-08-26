@@ -351,6 +351,17 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
     setSelectedPartNumber(part?.partNumber ?? null);
   };
 
+  // Pull the server's message out of a failed response, falling back to a
+  // plain one when the body is not the shape we expect.
+  const readError = async (response: Response, fallback: string): Promise<string> => {
+    try {
+      const body = await response.json();
+      return body?.error ?? body?.message ?? fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
   const handleAccept = async () => {
     if (!selectedEventId) {
       alert('Please select an event to import to');
@@ -359,12 +370,20 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
 
     setIsLoading(true);
     try {
-      // Update suggestion if user changed it
+      // These helpers hand back the response rather than throwing, so a failed
+      // request has to be read. Without that the accept below went ahead with
+      // the event the server still had recorded, importing the file under the
+      // previous suggestion instead of the one just chosen, and a failed
+      // accept still closed the modal as though it had worked.
       if (selectedEventId !== pendingImport.suggestedEventId || selectedPart !== pendingImport.suggestedPart) {
-        await apiPut(`/api/pending-imports/${pendingImport.id}/suggestion`, {
+        const suggestionResponse = await apiPut(`/api/pending-imports/${pendingImport.id}/suggestion`, {
           eventId: selectedEventId,
           part: selectedPart
         });
+
+        if (!suggestionResponse.ok) {
+          throw new Error(await readError(suggestionResponse, "Could not change the event for this file"));
+        }
       }
 
       // Accept the import — pass user-edited metadata overrides so the new
@@ -372,7 +391,12 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
       // / etc. instead of whatever the parser guessed.
       const metadataOverrides = stripEmptyOverrides(editorValues);
       const acceptBody = Object.keys(metadataOverrides).length > 0 ? { metadataOverrides } : {};
-      await apiPost(`/api/pending-imports/${pendingImport.id}/accept`, acceptBody);
+      const acceptResponse = await apiPost(`/api/pending-imports/${pendingImport.id}/accept`, acceptBody);
+
+      if (!acceptResponse.ok) {
+        throw new Error(await readError(acceptResponse, "Import failed"));
+      }
+
       onSuccess();
     } catch (error: any) {
       console.error('Failed to import:', error);
@@ -385,10 +409,16 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const handleReject = async () => {
     setIsLoading(true);
     try {
-      await apiPost(`/api/pending-imports/${pendingImport.id}/reject`, {});
+      const response = await apiPost(`/api/pending-imports/${pendingImport.id}/reject`, {});
+
+      if (!response.ok) {
+        throw new Error(await readError(response, "Could not reject this file"));
+      }
+
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to reject:', error);
+      alert(error?.message ?? 'Could not reject this file');
     } finally {
       setIsLoading(false);
     }

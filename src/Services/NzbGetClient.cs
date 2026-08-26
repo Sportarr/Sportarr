@@ -84,7 +84,7 @@ public class NzbGetClient
     {
         try
         {
-            _logger.LogInformation("[NZBGet] Fetching NZB from: {Url}", nzbUrl);
+            _logger.LogInformation("[NZBGet] Fetching NZB from: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(nzbUrl));
 
             // Fetch the NZB file as raw bytes to preserve encoding
             using var response = await _httpClient.GetAsync(nzbUrl);
@@ -182,7 +182,7 @@ public class NzbGetClient
     /// </summary>
     private async Task<int?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category)
     {
-        _logger.LogInformation("[NZBGet] Adding NZB via URL (appendurl mode): {Url}", nzbUrl);
+        _logger.LogInformation("[NZBGet] Adding NZB via URL (appendurl mode): {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(nzbUrl));
 
         // An empty NZBFilename here left NZBGet deriving its own name from the URL,
         // which for indexer API URLs with no visible filename segment (query-string

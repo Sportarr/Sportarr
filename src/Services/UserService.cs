@@ -14,9 +14,21 @@ public class UserService
 {
     private const int NUMBER_OF_BYTES = 256 / 8; // 256-bit derived key
     private const int SALT_SIZE = 128 / 8; // 128-bit salt
-    private const int DEFAULT_ITERATIONS = 10000;
+    /// <summary>
+    /// PBKDF2 iterations for a new or changed password.
+    ///
+    /// Ten thousand was the old figure and it has not been adequate for a long
+    /// time: a stolen user table could be cracked offline far more cheaply than
+    /// a modern configuration should allow. This matches current guidance for
+    /// PBKDF2 with HMAC-SHA512. Existing rows keep the count they were written
+    /// with, so they still verify, and each one is rewritten at the new count
+    /// the next time its owner signs in.
+    /// </summary>
+    private const int DEFAULT_ITERATIONS = 210000;
 
     private readonly SportarrDbContext _db;
+    // Set when a verify upgraded an old hash, so the caller knows to save.
+    private bool _pendingRehash;
     private readonly ILogger<UserService> _logger;
 
     public UserService(SportarrDbContext db, ILogger<UserService> logger)
@@ -49,6 +61,20 @@ public class UserService
         // Verify password
         if (VerifyHashedPassword(user, password))
         {
+            if (_pendingRehash)
+            {
+                _pendingRehash = false;
+                try
+                {
+                    await _db.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    // Signing in still worked; the stronger hash lands next time.
+                    _logger.LogWarning(ex, "[USER] Could not store the rehashed password for {Username}", user.Username);
+                }
+            }
+
             return user;
         }
 
@@ -68,6 +94,11 @@ public class UserService
             // Update existing user
             SetHashedPassword(existingUser, password);
             _db.Users.Update(existingUser);
+
+            // A password change is how a user shuts out someone holding a
+            // stolen cookie. Sessions issued against the old password must
+            // not survive it.
+            await EndSessionsForAsync(existingUser.Username, "the password changed");
         }
         else
         {
@@ -105,8 +136,32 @@ public class UserService
         }
 
         _db.Users.Remove(user);
+
+        // Sessions outlive the row they authenticate. Drop them with the user
+        // so a deleted account cannot keep browsing on an existing cookie.
+        await EndSessionsForAsync(user.Username, "the user was deleted");
+
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    /// <summary>
+    /// Drop every login session belonging to one username.
+    /// </summary>
+    private async Task EndSessionsForAsync(string username, string reason)
+    {
+        var sessions = await _db.AuthSessions
+            .Where(s => s.Username.ToLower() == username.ToLower())
+            .ToListAsync();
+
+        if (sessions.Count == 0)
+        {
+            return;
+        }
+
+        _db.AuthSessions.RemoveRange(sessions);
+        _logger.LogInformation("[AUTH] Ended {Count} session(s) for {Username} because {Reason}",
+            sessions.Count, username, reason);
     }
 
     /// <summary>
@@ -151,7 +206,20 @@ public class UserService
             var salt = Convert.FromBase64String(user.Salt);
             var hashedPassword = GetHashedPassword(password, salt, user.Iterations);
 
-            return hashedPassword == user.Password;
+            if (hashedPassword != user.Password) return false;
+
+            // Bring an old hash up to the current work factor now that the
+            // plain password is in hand. Without this the weaker hash stays in
+            // the table for the life of the install.
+            if (user.Iterations < DEFAULT_ITERATIONS)
+            {
+                user.Password = GetHashedPassword(password, salt, DEFAULT_ITERATIONS);
+                user.Iterations = DEFAULT_ITERATIONS;
+                _pendingRehash = true;
+                _logger.LogInformation("[USER] Rehashed {Username}'s password at the current work factor", user.Username);
+            }
+
+            return true;
         }
         catch (Exception ex)
         {

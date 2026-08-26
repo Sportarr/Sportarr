@@ -108,18 +108,38 @@ public class RestoreReconciliationService
             var baseline = DateTime.UtcNow;
             _diskScan.TriggerScanNow();
 
+            var skippedUnreachable = await CountUnreachableUnvisitedAsync(baseline, ct);
+            if (skippedUnreachable > 0)
+            {
+                _logger.LogInformation(
+                    "[RestoreReconciliation] {Count} file(s) sit under unreachable roots; the scan wait will not hold for them",
+                    skippedUnreachable);
+            }
+
             var deadline = baseline + ScanWaitCeiling;
             while (DateTime.UtcNow < deadline)
             {
                 if (ct.IsCancellationRequested) break;
                 await Task.Delay(ScanPollInterval, ct);
-                var oldest = await _db.EventFiles
+                // Count what is still unvisited rather than asking for the
+                // oldest visit. LastVerified is nullable and SQL MIN skips
+                // nulls, so a table whose rows had never been verified
+                // answered exactly like an empty table and the wait ended
+                // before the scan had looked at a single file. Rows restored
+                // from a backup predating that column are all null, which is
+                // precisely the case this wait exists for.
+                //
+                // The scan leaves rows under unreachable roots unstamped on
+                // purpose, so they can never satisfy the wait. They were
+                // counted before the loop, and the wait ends when nothing
+                // else is left; a mount that is not coming back inside the
+                // ceiling is the report's job to surface, not this loop's
+                // job to sit out.
+                var unvisited = await _db.EventFiles
                     .AsNoTracking()
                     .Where(ef => ef.FilePath != null)
-                    .Select(ef => (DateTime?)ef.LastVerified)
-                    .DefaultIfEmpty(DateTime.UtcNow)
-                    .MinAsync(ct);
-                if (oldest.HasValue && oldest.Value >= baseline) break;
+                    .CountAsync(ef => ef.LastVerified == null || ef.LastVerified < baseline, ct);
+                if (unvisited <= skippedUnreachable) break;
             }
 
             // Pull final counts from the (now-reconciled) database. We do
@@ -136,6 +156,11 @@ public class RestoreReconciliationService
             // The exact count is reachable via the same root-folder check
             // DiskScanService used; we redo it here to keep this service
             // independent.
+            // Count only among the rows the scan left marked as present.
+            // Counting every row under an unreachable root and subtracting it
+            // from the found total removed rows that were already counted as
+            // missing, so the found figure came out low and found plus missing
+            // plus skipped did not add up to the total.
             report.FilesSkippedUnreachableRoot = await CountUnreachableAsync(ct);
             if (report.FilesSkippedUnreachableRoot > 0)
             {
@@ -192,28 +217,65 @@ public class RestoreReconciliationService
         }
     }
 
+    /// <summary>
+    /// How many files still marked as present live under a root that is not
+    /// reachable from here.
+    ///
+    /// Separators are levelled on both sides first. A backup taken on Windows
+    /// and restored on Linux stores paths with backslashes while the local
+    /// root uses forward slashes, so the prefix never matched, nothing was
+    /// counted as skipped, and every file under an unreachable root was
+    /// reported as found. That is precisely the path drift the report exists
+    /// to surface.
+    /// </summary>
+    /// <summary>
+    /// How many unvisited rows the scan is going to skip because their root
+    /// is unreachable. The wait loop subtracts them, because the scan never
+    /// stamps them and a wait that includes them can only run out the clock.
+    /// </summary>
+    private async Task<int> CountUnreachableUnvisitedAsync(DateTime baseline, CancellationToken ct)
+    {
+        var unreachable = (await _db.RootFolders.ToListAsync(ct))
+            .Where(rf => !string.IsNullOrEmpty(rf.Path) && !Directory.Exists(rf.Path))
+            .Select(rf => LevelSeparators(rf.Path).TrimEnd('/') + '/')
+            .ToList();
+        if (unreachable.Count == 0) return 0;
+
+        var paths = await _db.EventFiles
+            .AsNoTracking()
+            .Where(ef => ef.FilePath != null)
+            .Where(ef => ef.LastVerified == null || ef.LastVerified < baseline)
+            .Select(ef => ef.FilePath!)
+            .ToListAsync(ct);
+
+        return paths.Count(p =>
+        {
+            var levelled = LevelSeparators(p);
+            return unreachable.Any(prefix => levelled.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        });
+    }
+
     private async Task<int> CountUnreachableAsync(CancellationToken ct)
     {
         var unreachable = (await _db.RootFolders.ToListAsync(ct))
             .Where(rf => !string.IsNullOrEmpty(rf.Path) && !Directory.Exists(rf.Path))
-            .Select(rf => rf.Path
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                + Path.DirectorySeparatorChar)
+            .Select(rf => LevelSeparators(rf.Path).TrimEnd('/') + '/')
             .ToList();
         if (unreachable.Count == 0) return 0;
 
         var allPaths = await _db.EventFiles
             .AsNoTracking()
-            .Where(ef => ef.FilePath != null)
+            .Where(ef => ef.FilePath != null && ef.Exists)
             .Select(ef => ef.FilePath!)
             .ToListAsync(ct);
 
         var skipped = 0;
         foreach (var p in allPaths)
         {
+            var levelled = LevelSeparators(p);
             foreach (var prefix in unreachable)
             {
-                if (p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                if (levelled.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 {
                     skipped++;
                     break;
@@ -222,6 +284,8 @@ public class RestoreReconciliationService
         }
         return skipped;
     }
+
+    private static string LevelSeparators(string path) => path.Replace('\\', '/');
 
     private static string? AppendNote(string? existing, string add)
     {

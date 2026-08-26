@@ -48,6 +48,23 @@ public static class ReleaseTypeDetector
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
+    /// Names of a single session or a single race.
+    ///
+    /// A round number on its own was read as a pack, but a motorsport weekend
+    /// ships one file per session and every one of them carries the round
+    /// number too. Those single sessions were called packs, which changed how
+    /// custom formats scored them and could reject a perfectly good release or
+    /// pull in a pack nobody wanted. Naming a session, or a specific race,
+    /// settles it: this is one event.
+    /// </summary>
+    private static readonly Regex SingleSessionPattern = new(
+        @"\b(?:RACE|QUALIFYING|QUALI|SPRINT(?:[\.\-\s]?(?:RACE|QUALIFYING|SHOOTOUT))?|" +
+        @"FP[123]|PRACTICE(?:[\.\-\s]?[123])?|FREE[\.\-\s]?PRACTICE|" +
+        @"WARM[\.\-\s]?UP|SHAKEDOWN|GRAND[\.\-\s]?PRIX|GP|" +
+        @"MAIN[\.\-\s]?CARD|PRELIMS?|EARLY[\.\-\s]?PRELIMS?)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
     /// sportarrLeagueId/sportarrEventId, when present, come from Sportarr's own
     /// id tag (docs/RELEASE_NAMING.md) and are authoritative - they take
     /// precedence over title-keyword guessing.
@@ -79,9 +96,18 @@ public static class ReleaseTypeDetector
         var hasExplicitPackMarker = PackMarkerPattern.IsMatch(releaseTitle);
         var hasBareRoundMarker = RoundMarkerPattern.IsMatch(releaseTitle);
 
-        if (hasExplicitPackMarker || hasBareRoundMarker)
+        if (hasExplicitPackMarker)
         {
             return ReleaseType.Pack;
+        }
+
+        if (hasBareRoundMarker)
+        {
+            // A round number and the name of one session is one session, not a
+            // pack of them.
+            return SingleSessionPattern.IsMatch(releaseTitle)
+                ? ReleaseType.SingleEvent
+                : ReleaseType.Pack;
         }
 
         return ReleaseType.Unknown;

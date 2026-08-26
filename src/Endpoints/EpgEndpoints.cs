@@ -74,7 +74,11 @@ app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, EpgService e
 // Update an EPG source
 app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest request, EpgService epgService) =>
 {
-    var source = await epgService.UpdateSourceAsync(id, request.Name, request.Url, request.IsActive, request.Priority);
+    // The IPTV source this guide belongs to was accepted on create and then
+    // ignored on every edit, so a guide pointed at the wrong provider could
+    // not be corrected and kept driving mapping against it.
+    var source = await epgService.UpdateSourceAsync(
+        id, request.Name, request.Url, request.IsActive, request.Priority, request.IptvSourceId);
     if (source == null)
         return Results.NotFound();
 
@@ -88,7 +92,8 @@ app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest reque
         source.Created,
         source.LastUpdated,
         source.LastError,
-        source.ProgramCount
+        source.ProgramCount,
+        source.IptvSourceId
     });
 }).WithRequestValidation<AddEpgSourceRequest>();
 
@@ -173,6 +178,9 @@ app.MapPost("/api/iptv/channels/{channelId:int}/map-epg", async (
         return Results.BadRequest(new { error = "EPG channel ID not found in database" });
 
     channel.TvgId = epgChannelId;
+    // Chosen here rather than read from the playlist, which is what keeps
+    // this channel when its provider drops it.
+    channel.TvgIdIsManual = true;
     await db.SaveChangesAsync();
 
     logger.LogInformation("[EPG] Manually mapped IPTV channel '{Channel}' to EPG channel '{EpgChannel}'",
@@ -199,6 +207,7 @@ app.MapDelete("/api/iptv/channels/{channelId:int}/map-epg", async (
 
     var oldTvgId = channel.TvgId;
     channel.TvgId = null;
+    channel.TvgIdIsManual = false;
     await db.SaveChangesAsync();
 
     logger.LogInformation("[EPG] Cleared EPG mapping for IPTV channel '{Channel}' (was: {OldTvgId})",
@@ -319,6 +328,7 @@ app.MapPost("/api/epg/programs/{id:int}/schedule-dvr", async (
     int id,
     EpgService epgService,
     DvrRecordingService dvrService,
+    ConfigService configService,
     SportarrDbContext db,
     ILogger<Program> logger) =>
 {
@@ -326,23 +336,38 @@ app.MapPost("/api/epg/programs/{id:int}/schedule-dvr", async (
     if (program == null)
         return Results.NotFound(new { error = "Program not found" });
 
-    // Find the channel with matching TvgId
-    var channel = await db.IptvChannels
-        .FirstOrDefaultAsync(c => c.TvgId == program.ChannelId && !c.IsHidden && c.IsEnabled);
+    // Several channels can carry the same tvg-id: an SD feed and an HD one,
+    // or the same channel from two providers. Taking whichever came back
+    // first meant recording an arbitrary one of them, often the dead backup.
+    // Rank them the way the event resolver does and take the best.
+    var candidates = await db.IptvChannels
+        .Where(c => c.TvgId == program.ChannelId && !c.IsHidden && c.IsEnabled)
+        .ToListAsync();
+
+    var channel = candidates
+        .OrderByDescending(c => Sportarr.Api.Helpers.ChannelHealth.Rank(c.Status))
+        .ThenByDescending(c => c.QualityScore)
+        .ThenBy(c => c.Id)
+        .FirstOrDefault();
 
     if (channel == null)
         return Results.BadRequest(new { error = "No channel found matching this program's channel ID" });
 
     try
     {
+        // The configured padding, not a pair of hard-coded numbers. A user who
+        // set a longer post-roll for overruns still had their captures cut at
+        // fifteen minutes.
+        var dvrConfig = await configService.GetConfigAsync();
+
         var request = new ScheduleDvrRecordingRequest
         {
             Title = program.Title,
             ChannelId = channel.Id,
             ScheduledStart = program.StartTime,
             ScheduledEnd = program.EndTime,
-            PrePadding = 5,
-            PostPadding = 15
+            PrePadding = dvrConfig.DvrPrePaddingMinutes,
+            PostPadding = dvrConfig.DvrPostPaddingMinutes
         };
 
         var recording = await dvrService.ScheduleRecordingAsync(request);

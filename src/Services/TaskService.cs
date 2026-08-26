@@ -68,11 +68,19 @@ public class TaskService : ITaskService
             return;
         }
 
+        // Whether the loop stopped because there was nothing left, rather
+        // than because something went wrong. Only a clean drain re-checks
+        // afterwards, so a persistent failure cannot spin.
+        var drained = false;
+        var consecutiveFailures = 0;
+
         try
         {
             while (true)
             {
                 int nextTaskId;
+                try
+                {
                 using (var scope = _scopeFactory.CreateScope())
                 {
                     var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
@@ -108,7 +116,7 @@ public class TaskService : ITaskService
                         }
 
                         _logger.LogDebug("[TASK] Task already running: {Name}", runningTask.Name);
-                        return;
+                        break;
                     }
 
                     var nextTask = await db.Tasks
@@ -120,20 +128,67 @@ public class TaskService : ITaskService
                     if (nextTask == null)
                     {
                         _logger.LogDebug("[TASK] No queued tasks to process");
-                        return;
+                        drained = true;
+                        break;
                     }
 
                     nextTaskId = nextTask.Id;
                 }
 
                 await ExecuteTaskAsync(nextTaskId);
+                consecutiveFailures = 0;
+                }
+                catch (Exception ex)
+                {
+                    // A transient database error used to escape the drain
+                    // loop entirely. Everything still queued then sat there
+                    // until some unrelated task happened to be queued or the
+                    // application restarted.
+                    consecutiveFailures++;
+                    _logger.LogError(ex,
+                        "[TASK] Queue processing failed (consecutive failure {Count}/{Max})",
+                        consecutiveFailures, MaxConsecutiveQueueFailures);
+                    if (consecutiveFailures >= MaxConsecutiveQueueFailures)
+                    {
+                        _logger.LogError("[TASK] Giving up on this drain. Queued work will be picked up on the next trigger.");
+                        break;
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(2 * consecutiveFailures));
+                }
             }
         }
         finally
         {
             _taskLock.Release();
         }
+
+        // Anything queued between the empty read above and the release saw a
+        // processor holding the lock, gave up, and left its row waiting for an
+        // unrelated trigger. Re-check now that the lock is free.
+        if (drained)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+                if (await db.Tasks.AnyAsync(t => t.Status == Models.TaskStatus.Queued))
+                {
+                    _ = ProcessQueueAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[TASK] Could not re-check the queue after draining");
+            }
+        }
     }
+
+    /// <summary>
+    /// How many failures in a row end a drain. Without a ceiling a database
+    /// that is down would spin here forever.
+    /// </summary>
+    private const int MaxConsecutiveQueueFailures = 3;
 
     /// <summary>
     /// Execute a specific task
@@ -248,6 +303,11 @@ public class TaskService : ITaskService
                     .SetProperty(t => t.Duration, task.Duration)
                     .SetProperty(t => t.Progress, task.Progress)
                     .SetProperty(t => t.Message, task.Message)
+                    // The structured payload a library import or scan builds
+                    // lives here. Leaving it out of the fallback recorded the
+                    // task as completed with nothing for the page polling it
+                    // to show.
+                    .SetProperty(t => t.Result, task.Result)
                     .SetProperty(t => t.Exception, task.Exception));
             _logger.LogInformation(
                 "[TASK] Terminal status for task {TaskId} persisted via fallback update", task.Id);
@@ -1182,12 +1242,31 @@ public class TaskService : ITaskService
                         .ToListAsync(cancellationToken);
                     var missing = LeagueEventSyncService.FindMissingCurrentSeasons(
                         hubSeasons.Select(s => s.StrSeason ?? string.Empty), localSeasons);
+
+                    // A season counts as present as soon as one event from it
+                    // survives locally, so a season missing forty of its
+                    // forty-one events looked complete and a "current" refresh
+                    // did nothing about it. The current and future seasons are
+                    // resynced regardless, which is what pressing refresh is
+                    // asking for. Older seasons still need the full scope.
+                    var currentSeasons = hubSeasons
+                        .Select(s => s.StrSeason ?? string.Empty)
+                        .Where(s => !string.IsNullOrEmpty(s) && LeagueEventSyncService.IsCurrentOrFutureSeason(s))
+                        .ToList();
+                    foreach (var season in currentSeasons)
+                    {
+                        if (!missing.Contains(season, StringComparer.OrdinalIgnoreCase))
+                        {
+                            missing.Add(season);
+                        }
+                    }
+
                     if (missing.Count > 0)
                     {
                         _logger.LogInformation(
-                            "[TASK] {LeagueName} is missing local events for hub season(s) {Seasons} - syncing them despite a current change cursor",
+                            "[TASK] Resyncing {LeagueName} season(s) {Seasons} to close any local gap the change cursor cannot see",
                             league.Name, string.Join(", ", missing));
-                        await onProgress(70, $"Syncing missing season(s): {string.Join(", ", missing)}");
+                        await onProgress(70, $"Syncing season(s): {string.Join(", ", missing)}");
                         var gapResult = await syncService.SyncLeagueEventsAsync(
                             leagueId,
                             seasons: missing,
@@ -1200,7 +1279,7 @@ public class TaskService : ITaskService
                             throw new Exception(gapResult.Message ?? "Missing-season sync failed");
                         }
                         await onProgress(100,
-                            $"{summary}; recovered {gapResult.NewCount} event(s) from missing season(s) {string.Join(", ", missing)}");
+                            $"{summary}; recovered {gapResult.NewCount} event(s) from season(s) {string.Join(", ", missing)}");
                         return;
                     }
                 }

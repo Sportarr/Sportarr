@@ -13,6 +13,27 @@ public class FFmpegRecorderService
     private readonly ConfigService _configService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Dictionary<int, RecordingProcess> _activeRecordings = new();
+    private readonly HashSet<int> _startingRecordings = new();
+
+    /// <summary>
+    /// Recordings whose process has ended and which are being finished off:
+    /// revealed, remuxed, measured and written back.
+    ///
+    /// Remuxing a large capture takes minutes, and for all of it the process
+    /// is gone while the row still says Recording. That is exactly what the
+    /// watchdog looks for, so it reconciled recordings that were stopping
+    /// perfectly normally and stamped a failure message on them.
+    /// </summary>
+    private readonly HashSet<int> _finalizingRecordings = new();
+
+    // Longer than the FFmpeg startup probe, so a normal start gets to finish
+    // and clean itself up before shutdown stops waiting for it.
+    private static readonly TimeSpan StartSettleTimeout = TimeSpan.FromSeconds(20);
+
+    // Set while the app is shutting down. A start already in flight would
+    // otherwise register its process after StopAllRecordings had drained the
+    // map, and that FFmpeg would outlive the app with nothing tracking it.
+    private volatile bool _shuttingDown;
     private readonly object _lock = new();
 
     public FFmpegRecorderService(
@@ -36,6 +57,9 @@ public class FFmpegRecorderService
         string? extraInputArgs = null,
         CancellationToken cancellationToken = default)
     {
+        var reservedStart = false;
+        Process? startedProcess = null;
+        var handedOff = false;
         try
         {
             _logger.LogInformation("[DVR] Starting recording {RecordingId}: {StreamUrl} -> {OutputPath}",
@@ -56,10 +80,24 @@ public class FFmpegRecorderService
             // two ffmpeg processes writing the SAME output file: the second
             // truncates the first's data on open and the interleaved writes
             // corrupt the container.
+            // The reservation covers the whole start, not just this check.
+            // FFmpeg takes up to 15 seconds to prove it is running, and a
+            // second caller that only saw an empty _activeRecordings would
+            // start its own process inside that window.
+            if (_shuttingDown)
+            {
+                return new RecordingResult
+                {
+                    Success = false,
+                    Error = "Sportarr is shutting down"
+                };
+            }
+
             lock (_lock)
             {
-                if (_activeRecordings.TryGetValue(recordingId, out var existing) &&
-                    !existing.Process.HasExited)
+                if ((_activeRecordings.TryGetValue(recordingId, out var existing) &&
+                     !existing.Process.HasExited) ||
+                    _startingRecordings.Contains(recordingId))
                 {
                     _logger.LogWarning("[DVR] Recording {RecordingId} already has a live recorder process; refusing duplicate start", recordingId);
                     return new RecordingResult
@@ -68,6 +106,9 @@ public class FFmpegRecorderService
                         Error = "A recorder process is already active for this recording"
                     };
                 }
+
+                _startingRecordings.Add(recordingId);
+                reservedStart = true;
             }
 
             // Ensure output directory exists
@@ -109,6 +150,7 @@ public class FFmpegRecorderService
 
             var process = new Process { StartInfo = processInfo };
             process.Start();
+            startedProcess = process;
 
             // Wait briefly to check if FFmpeg fails immediately (bad stream, codec issues, etc.)
             await Task.Delay(2000, cancellationToken);
@@ -146,6 +188,7 @@ public class FFmpegRecorderService
 
                     process = new Process { StartInfo = retryProcessInfo };
                     process.Start();
+                    startedProcess = process;
 
                     // Wait and check again
                     await Task.Delay(2000, cancellationToken);
@@ -233,10 +276,29 @@ public class FFmpegRecorderService
                 StartTime = DateTime.UtcNow
             };
 
+            // FFmpeg takes up to fifteen seconds to prove itself, and
+            // shutdown can begin inside that window. The flag is read again
+            // under the same lock that shutdown drains, so a start finishing
+            // late cannot register a process nothing will ever stop. Leaving
+            // handedOff false makes the finally block kill it.
             lock (_lock)
             {
+                if (_shuttingDown)
+                {
+                    _logger.LogWarning(
+                        "[DVR] Recording {RecordingId} finished starting during shutdown; abandoning it",
+                        recordingId);
+                    return new RecordingResult
+                    {
+                        Success = false,
+                        Error = "Sportarr is shutting down"
+                    };
+                }
+
                 _activeRecordings[recordingId] = recordingProcess;
             }
+
+            handedOff = true;
 
             // Start monitoring the process output asynchronously
             _ = MonitorRecordingAsync(recordingProcess, cancellationToken);
@@ -256,6 +318,55 @@ public class FFmpegRecorderService
                 Success = false,
                 Error = ex.Message
             };
+        }
+        finally
+        {
+            // Every path that leaves without handing the process to the
+            // monitor must kill it. An FFmpeg left running here keeps writing
+            // the output file, is invisible to stop and to shutdown, and
+            // fights the process a fallback attempt starts next.
+            if (!handedOff && startedProcess != null)
+            {
+                try
+                {
+                    if (!startedProcess.HasExited)
+                    {
+                        startedProcess.Kill(entireProcessTree: true);
+
+                        // Hold the start slot until the process is really
+                        // gone. Releasing it while FFmpeg was still dying let
+                        // a fallback attempt start against a recorder that
+                        // still held the output file and the stream.
+                        using var killWait = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        try
+                        {
+                            await startedProcess.WaitForExitAsync(killWait.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            _logger.LogWarning("[DVR] The killed recorder for recording {RecordingId} had not exited after five seconds", recordingId);
+                        }
+
+                        _logger.LogWarning("[DVR] Killed the recorder process for recording {RecordingId} because the start did not complete", recordingId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[DVR] Could not kill the recorder process for recording {RecordingId}", recordingId);
+                }
+                finally
+                {
+                    startedProcess.Dispose();
+                }
+            }
+
+            if (reservedStart)
+            {
+                lock (_lock)
+                {
+                    _startingRecordings.Remove(recordingId);
+                }
+            }
         }
     }
 
@@ -446,17 +557,118 @@ public class FFmpegRecorderService
     /// <summary>
     /// Stop all active recordings
     /// </summary>
-    public async Task StopAllRecordingsAsync()
+    /// <summary>
+    /// Mark a recording as being finished off until the returned handle is
+    /// disposed. The watchdog leaves it alone in the meantime.
+    /// </summary>
+    public IDisposable BeginFinalizing(int recordingId)
     {
-        List<int> recordingIds;
         lock (_lock)
         {
-            recordingIds = _activeRecordings.Keys.ToList();
+            _finalizingRecordings.Add(recordingId);
         }
 
-        foreach (var id in recordingIds)
+        return new FinalizingScope(this, recordingId);
+    }
+
+    /// <summary>True while a recording is being finished off.</summary>
+    public bool IsFinalizing(int recordingId)
+    {
+        lock (_lock)
         {
-            await StopRecordingAsync(id);
+            return _finalizingRecordings.Contains(recordingId);
+        }
+    }
+
+    private void EndFinalizing(int recordingId)
+    {
+        lock (_lock)
+        {
+            _finalizingRecordings.Remove(recordingId);
+        }
+    }
+
+    private sealed class FinalizingScope : IDisposable
+    {
+        private FFmpegRecorderService? _owner;
+        private readonly int _recordingId;
+
+        public FinalizingScope(FFmpegRecorderService owner, int recordingId)
+        {
+            _owner = owner;
+            _recordingId = recordingId;
+        }
+
+        public void Dispose() =>
+            Interlocked.Exchange(ref _owner, null)?.EndFinalizing(_recordingId);
+    }
+
+    public async Task StopAllRecordingsAsync()
+    {
+        // Refuse new starts first. A start that was already waiting for FFmpeg
+        // to prove itself finishes and registers during the loop below, so the
+        // map is drained twice: once for what was running, once for anything
+        // that arrived while it ran.
+        _shuttingDown = true;
+
+        // A start still inside its probe is in neither map yet. Draining only
+        // what is active would finish while such a start was mid-flight and
+        // leave its FFmpeg running. The starts see the flag at their handoff
+        // and kill their own process, so this waits for that to happen.
+        await WaitForStartsToSettleAsync();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            List<int> recordingIds;
+            lock (_lock)
+            {
+                recordingIds = _activeRecordings.Keys.ToList();
+            }
+
+            if (recordingIds.Count == 0)
+            {
+                break;
+            }
+
+            foreach (var id in recordingIds)
+            {
+                await StopRecordingAsync(id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Wait for any start still proving its FFmpeg process to reach its
+    /// handoff. Bounded, because a wedged start must not hold up shutdown.
+    /// </summary>
+    private async Task WaitForStartsToSettleAsync()
+    {
+        var deadline = DateTime.UtcNow + StartSettleTimeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            int starting;
+            lock (_lock)
+            {
+                starting = _startingRecordings.Count;
+            }
+
+            if (starting == 0)
+            {
+                return;
+            }
+
+            await Task.Delay(250);
+        }
+
+        lock (_lock)
+        {
+            if (_startingRecordings.Count > 0)
+            {
+                _logger.LogWarning(
+                    "[DVR] {Count} recording start(s) had not settled when shutdown timed out",
+                    _startingRecordings.Count);
+            }
         }
     }
 

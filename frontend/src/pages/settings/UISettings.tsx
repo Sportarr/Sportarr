@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPut } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { applyTheme, type ThemeChoice } from '../../hooks/useTheme';
 import { UI_SETTINGS_QUERY_KEY } from '../../hooks/useUISettings';
 import { setGlobalBackoffCap } from '../../utils/queryBackoff';
 
@@ -136,20 +137,10 @@ export default function UISettings({ showAdvanced: propShowAdvanced = false }: U
   const handleSave = async () => {
     setSaving(true);
     try {
-      // First fetch current settings
-      const response = await apiGet('/api/settings');
-      if (!response.ok) throw new Error('Failed to fetch current settings');
-
-      const currentSettings = await response.json();
-
-      // Update with new UI settings
-      const updatedSettings = {
-        ...currentSettings,
-        uiSettings: JSON.stringify(settings),
-      };
-
-      // Save to API
-      const saveResponse = await apiPut('/api/settings', updatedSettings);
+      // Send only the interface preferences. Reading the whole settings object
+      // and putting all of it back overwrote anything another page had saved
+      // in between with the copy read moments earlier.
+      const saveResponse = await apiPut('/api/settings/ui', settings);
 
       if (saveResponse.ok) {
         initialSettings.current = settings;
@@ -172,6 +163,10 @@ export default function UISettings({ showAdvanced: propShowAdvanced = false }: U
 
   const updateSetting = <K extends keyof UISettingsData>(key: K, value: UISettingsData[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+    // The theme applies as soon as it is picked, so the choice is visible
+    // before saving rather than after a reload.
+    // Preview only. The saved choice is what gets remembered.
+    if (key === 'theme') applyTheme(value as ThemeChoice);
   };
 
   if (loading) {

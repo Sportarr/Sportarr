@@ -23,7 +23,52 @@ public class EventStreamService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<EventStreamService> _logger;
-    private readonly ConcurrentDictionary<Guid, Channel<StreamEvent>> _subscribers = new();
+    private const int SubscriberQueueCapacity = 256;
+
+    /// <summary>
+    /// One live subscriber's queue, and whether anything has been dropped from
+    /// it.
+    ///
+    /// The queue drops its oldest entry when it fills, and the comment used to
+    /// say a slow consumer would catch up from the cursor "on its next
+    /// reconnect". A consumer that stays connected never reconnects, so it
+    /// simply never learned about those changes and went on showing stale
+    /// state indefinitely. The flag lets the endpoint notice and replay.
+    /// </summary>
+    private sealed class SubscriberQueue
+    {
+        public required Channel<StreamEvent> Channel { get; init; }
+        private int _dropped;
+
+        public void NoteDropped() => Interlocked.Exchange(ref _dropped, 1);
+
+        /// <summary>True once, then clears, so the caller replays exactly once.</summary>
+        public bool ConsumeDropped() => Interlocked.Exchange(ref _dropped, 0) == 1;
+
+        private readonly object _writeGate = new();
+
+        public void Write(StreamEvent evt)
+        {
+            // Reader.Count is the depth right now. At capacity the next write
+            // discards the oldest entry, and that entry is a change some
+            // consumer has not seen.
+            //
+            // Reading the depth and writing have to happen together. Two
+            // publishers arriving at once both saw room, both wrote, and the
+            // second one pushed an entry out without either noticing, so the
+            // consumer was never told to replay and lost that change for good.
+            lock (_writeGate)
+            {
+                if (Channel.Reader.Count >= SubscriberQueueCapacity)
+                {
+                    NoteDropped();
+                }
+                Channel.Writer.TryWrite(evt);
+            }
+        }
+    }
+
+    private readonly ConcurrentDictionary<Guid, SubscriberQueue> _subscribers = new();
 
     public EventStreamService(IServiceScopeFactory scopeFactory, ILogger<EventStreamService> logger)
     {
@@ -59,11 +104,12 @@ public class EventStreamService
                 await db.SaveChangesAsync();
             }
 
-            foreach (var channel in _subscribers.Values)
+            foreach (var subscriber in _subscribers.Values)
             {
-                // Bounded channels drop-oldest; a slow consumer falls back
-                // to cursor catch-up on its next reconnect.
-                channel.Writer.TryWrite(evt);
+                // Bounded queue, oldest dropped when full. A drop is recorded
+                // so the consumer can be caught up from the cursor without
+                // having to reconnect first.
+                subscriber.Write(evt);
             }
         }
         catch (Exception ex)
@@ -88,11 +134,11 @@ public class EventStreamService
                 await db.SaveChangesAsync();
             }
 
-            foreach (var channel in _subscribers.Values)
+            foreach (var subscriber in _subscribers.Values)
             {
                 foreach (var evt in events)
                 {
-                    channel.Writer.TryWrite(evt);
+                    subscriber.Write(evt);
                 }
             }
         }
@@ -111,20 +157,21 @@ public class EventStreamService
     {
         var id = Guid.NewGuid();
         var channel = Channel.CreateBounded<StreamEvent>(
-            new BoundedChannelOptions(256)
+            new BoundedChannelOptions(SubscriberQueueCapacity)
             {
                 FullMode = BoundedChannelFullMode.DropOldest,
                 SingleReader = true,
             });
-        _subscribers[id] = channel;
-        return new Subscription(this, id, channel.Reader);
+        var queue = new SubscriberQueue { Channel = channel };
+        _subscribers[id] = queue;
+        return new Subscription(this, id, channel.Reader, queue.ConsumeDropped);
     }
 
     private void Unsubscribe(Guid id)
     {
-        if (_subscribers.TryRemove(id, out var channel))
+        if (_subscribers.TryRemove(id, out var subscriber))
         {
-            channel.Writer.TryComplete();
+            subscriber.Channel.Writer.TryComplete();
         }
     }
 
@@ -144,13 +191,23 @@ public class EventStreamService
         private readonly EventStreamService _service;
         private readonly Guid _id;
 
+        private readonly Func<bool> _consumeDropped;
+
         public ChannelReader<StreamEvent> Reader { get; }
 
-        internal Subscription(EventStreamService service, Guid id, ChannelReader<StreamEvent> reader)
+        /// <summary>
+        /// True once when this subscriber's queue overflowed and events were
+        /// discarded, so the caller knows to catch up from the cursor rather
+        /// than carry on with a gap it cannot see.
+        /// </summary>
+        public bool MissedEvents() => _consumeDropped();
+
+        internal Subscription(EventStreamService service, Guid id, ChannelReader<StreamEvent> reader, Func<bool> consumeDropped)
         {
             _service = service;
             _id = id;
             Reader = reader;
+            _consumeDropped = consumeDropped;
         }
 
         public void Dispose() => _service.Unsubscribe(_id);

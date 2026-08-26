@@ -44,10 +44,10 @@ public class DvrAutoSchedulerServiceTests
         return (Task)method.Invoke(svc, new object[] { db, CancellationToken.None })!;
     }
 
-    private static bool InvokeIsWrapperShow(string normalizedProgramTitle)
+    private static bool InvokeIsWrapperShow(string normalizedProgramTitle, string normalizedEventTitle = "")
     {
         var method = typeof(DvrAutoSchedulerService).GetMethod("IsWrapperShow", BindingFlags.NonPublic | BindingFlags.Static)!;
-        return (bool)method.Invoke(null, new object[] { normalizedProgramTitle })!;
+        return (bool)method.Invoke(null, new object[] { normalizedProgramTitle, normalizedEventTitle })!;
     }
 
     [Fact]
@@ -114,5 +114,22 @@ public class DvrAutoSchedulerServiceTests
     public void IsWrapperShow_DoesNotFlagARealBroadcastTitle(string normalizedTitle)
     {
         InvokeIsWrapperShow(normalizedTitle).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("nhl winter classic", "nhl winter classic")]
+    [InlineData("2026 nhl winter classic", "nhl winter classic")]
+    public void IsWrapperShow_DoesNotFlagAnEventWhoseOwnNameCarriesTheKeyword(
+        string normalizedProgramTitle, string normalizedEventTitle)
+    {
+        // "classic" marks reruns, so the Winter Classic was skipped as one
+        // and the live broadcast never got recorded.
+        InvokeIsWrapperShow(normalizedProgramTitle, normalizedEventTitle).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsWrapperShow_StillFlagsWrapperContentAroundSuchAnEvent()
+    {
+        InvokeIsWrapperShow("nhl winter classic postgame", "nhl winter classic").Should().BeTrue();
     }
 }

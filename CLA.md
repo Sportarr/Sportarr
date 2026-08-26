@@ -1,12 +1,22 @@
 # Sportarr Individual Contributor License Agreement #
 
 Thank you for your interest in contributing to Sportarr ("We" or "Us").
-This contributor agreement ("Agreement") documents the rights granted by contributors to Us. To make this document effective, please complete the form below. This is a legally binding document, so please read it carefully before agreeing to it. The Agreement may cover more than one software project managed by Us.
+This contributor agreement ("Agreement") documents the rights granted by contributors to Us. This is a legally binding document, so please read it carefully before agreeing to it. The Agreement may cover more than one software project managed by Us.
+
+## How to accept ##
+
+Leave a comment on your first pull request saying:
+
+> I have read the CLA and I agree to it.
+
+One comment covers that pull request and everything you contribute afterwards, so you only need to do it once. There is no form to sign and no separate service to register with.
+
+If you would rather not agree, say so on the pull request. We can still discuss the change, and in most cases a maintainer can implement the idea independently.
 
 ## 1. Definitions ##
 
 "You" means the individual who Submits a Contribution to Us.
-"Contribution" means any work of authorship that is Submitted by You to Us in which You own or assert ownership of the Copyright. If You do not own the Copyright in the entire work of authorship, please follow the instructions in .
+"Contribution" means any work of authorship that is Submitted by You to Us in which You own or assert ownership of the Copyright. If You do not own the Copyright in the entire work of authorship, say so on the pull request and identify the parts You did not write, who owns them, and the license they arrive under, so We can decide whether We are able to include them.
 "Copyright" means all rights protecting works of authorship owned or controlled by You, including copyright, moral and neighboring rights, as appropriate, for the full term of their existence including any extensions by You.
 "Material" means the work of authorship which is made available by Us to third parties. When this Agreement covers more than one software project, the Material means the work of authorship to which the Contribution was Submitted. After You Submit the Contribution, it may be included in the Material.
 "Submit" means any form of electronic, verbal, or written communication sent to Us or our representatives, including but not limited to electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, Us for the purpose of discussing and improving the Material, but excluding communication that is conspicuously marked or otherwise designated in writing by You as "Not a Contribution."
@@ -39,8 +49,8 @@ Any rights not expressly licensed under this section are expressly reserved by Y
 You confirm that:
 (a) You have the legal authority to enter into this Agreement.
 (b) You own the Copyright and patent claims covering the Contribution which are required to grant the rights under Section 2.
-(c) The grant of rights under Section 2 does not violate any grant of rights which You have made to third parties, including Your employer. If You are an employee, You have had Your employer approve this Agreement or sign the Entity version of this document. If You are less than eighteen years old, please have Your parents or guardian sign the Agreement.
-(d) You have followed the instructions in , if You do not own the Copyright in the entire work of authorship Submitted.
+(c) The grant of rights under Section 2 does not violate any grant of rights which You have made to third parties, including Your employer. If You are an employee and Your contribution is connected to Your work, You have Your employer's approval to agree to this Agreement. If You are under eighteen, Your parent or guardian agrees to it on Your behalf.
+(d) If You do not own the Copyright in the entire work of authorship Submitted, You have identified the parts You did not write, as described in Section 1.
 
 ## 4. Disclaimer ##
 
@@ -53,7 +63,7 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU BE LIABL
 ## 6. Miscellaneous ##
 
 ### 6.1 ###
-This Agreement will be governed by and construed in accordance with the laws of excluding its conflicts of law provisions. Under certain circumstances, the governing law in this section might be superseded by the United Nations Convention on Contracts for the International Sale of Goods ("UN Convention") and the parties intend to avoid the application of the UN Convention to this Agreement and, thus, exclude the application of the UN Convention in its entirety to this Agreement.
+This Agreement will be governed by and construed in accordance with the laws of the State of Wyoming, United States of America, excluding its conflicts of law provisions. Under certain circumstances, the governing law in this section might be superseded by the United Nations Convention on Contracts for the International Sale of Goods ("UN Convention") and the parties intend to avoid the application of the UN Convention to this Agreement and, thus, exclude the application of the UN Convention in its entirety to this Agreement.
 
 ### 6.2 ###
 This Agreement sets out the entire agreement between You and Us for Your Contributions to Us and overrides all other agreements or understandings.

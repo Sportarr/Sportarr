@@ -113,7 +113,7 @@ public class SabnzbdClient
                 !string.IsNullOrWhiteSpace(config.ApiKey),
                 config.ApiKey?.Length ?? 0);
 
-            _logger.LogInformation("[SABnzbd] Fetching NZB from: {Url}", nzbUrl);
+            _logger.LogInformation("[SABnzbd] Fetching NZB from: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(nzbUrl));
 
             // Fetch the NZB file as raw bytes to preserve encoding
             using var response = await _httpClient.GetAsync(nzbUrl);
@@ -362,7 +362,7 @@ public class SabnzbdClient
     {
         try
         {
-            _logger.LogInformation("[DecypharrUsenet] Fetching NZB from: {Url}", nzbUrl);
+            _logger.LogInformation("[DecypharrUsenet] Fetching NZB from: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(nzbUrl));
 
             // Fetch the NZB file as raw bytes to preserve encoding
             using var response = await _httpClient.GetAsync(nzbUrl);
@@ -428,7 +428,7 @@ public class SabnzbdClient
             fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
             content.Add(fileContent, "name", filename);
 
-            _logger.LogInformation("[DecypharrUsenet] Uploading NZB to: {Url}", uploadUrl);
+            _logger.LogInformation("[DecypharrUsenet] Uploading NZB to: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(uploadUrl));
 
             using var uploadResponse = await _httpClient.PostAsync(uploadUrl, content);
             var responseContent = await uploadResponse.Content.ReadAsStringAsync();
@@ -1365,13 +1365,15 @@ public class SabnzbdClient
 
             var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/api";
 
-            // Build form data for POST request
+            // The job fields go in the form body. The control fields (mode, output)
+            // and the auth go in the query string only, never in both. CherryPy
+            // merges a duplicated parameter into a list, and SABnzbd then crashes
+            // on `mode in _api_table` with an unhashable-type error (issues #183
+            // and #263).
             var formData = new Dictionary<string, string>
             {
-                { "mode", "addurl" },
                 { "name", nzbUrl },
-                { "cat", category },
-                { "output", "json" }
+                { "cat", category }
             };
 
             if (string.IsNullOrWhiteSpace(category))
@@ -1401,32 +1403,26 @@ public class SabnzbdClient
             // Add authentication
             var hasApiKey = !string.IsNullOrWhiteSpace(config.ApiKey);
             var hasCredentials = !string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password);
-            _logger.LogInformation("[SABnzbd] Authentication check: HasApiKey={HasApiKey}, HasCredentials={HasCredentials}", hasApiKey, hasCredentials);
+            _logger.LogDebug("[SABnzbd] Authentication check: HasApiKey={HasApiKey}, HasCredentials={HasCredentials}", hasApiKey, hasCredentials);
 
+            // Auth lives in the query string. Some SAB-compatible servers only
+            // authenticate from there and reject form-only auth; real SABnzbd
+            // accepts either.
+            var addUrlQuery = new System.Text.StringBuilder("?mode=addurl&output=json");
             if (hasApiKey)
             {
-                formData["apikey"] = config.ApiKey!;
-                _logger.LogInformation("[SABnzbd] Using API key authentication (length: {Length})", config.ApiKey!.Length);
+                addUrlQuery.Append($"&apikey={Uri.EscapeDataString(config.ApiKey!)}");
+                _logger.LogDebug("[SABnzbd] Using API key authentication (length: {Length})", config.ApiKey!.Length);
             }
             else if (hasCredentials)
             {
-                formData["ma_username"] = config.Username!;
-                formData["ma_password"] = config.Password!;
-                _logger.LogInformation("[SABnzbd] Using username/password authentication");
+                addUrlQuery.Append($"&ma_username={Uri.EscapeDataString(config.Username!)}&ma_password={Uri.EscapeDataString(config.Password!)}");
+                _logger.LogDebug("[SABnzbd] Using username/password authentication");
             }
             else
             {
                 _logger.LogWarning("[SABnzbd] No API key or credentials configured for download client '{Name}'", config.Name);
             }
-
-            // Mirror mode/auth into the query string too. Some SAB-compatible servers
-            // only authenticate from the query string and reject form-only auth with
-            // "Authentication required"; real SABnzbd accepts either.
-            var addUrlQuery = new System.Text.StringBuilder("?mode=addurl&output=json");
-            if (hasApiKey)
-                addUrlQuery.Append($"&apikey={Uri.EscapeDataString(config.ApiKey!)}");
-            else if (hasCredentials)
-                addUrlQuery.Append($"&ma_username={Uri.EscapeDataString(config.Username!)}&ma_password={Uri.EscapeDataString(config.Password!)}");
             var postUrl = $"{baseUrl}{addUrlQuery}";
 
             _logger.LogInformation("[SABnzbd] POST addurl request to: {Url}", baseUrl);
@@ -1449,29 +1445,16 @@ public class SabnzbdClient
             {
                 _logger.LogInformation("[SABnzbd] POST addurl failed with {Status}, falling back to GET request", response.StatusCode);
 
-                // Build query with authentication included directly
-                // We use the hasApiKey/hasCredentials variables captured earlier in this method
-                // to ensure authentication is included in the GET fallback request
-                var queryBuilder = new System.Text.StringBuilder();
-                queryBuilder.Append($"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&output=json");
-
-                // Add authentication to GET request using the variables we captured at the start
-                if (hasApiKey)
+                // SendApiRequestAsync appends the auth itself. Adding it here as
+                // well sent ma_username and ma_password twice, which is the same
+                // CherryPy list merge that breaks mode.
+                var getQuery = $"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&output=json";
+                if (!string.IsNullOrWhiteSpace(nzbname))
                 {
-                    queryBuilder.Append($"&apikey={Uri.EscapeDataString(config.ApiKey!)}");
-                    _logger.LogInformation("[SABnzbd] GET fallback: Including API key in request");
-                }
-                else if (hasCredentials)
-                {
-                    queryBuilder.Append($"&ma_username={Uri.EscapeDataString(config.Username!)}&ma_password={Uri.EscapeDataString(config.Password!)}");
-                    _logger.LogInformation("[SABnzbd] GET fallback: Including username/password in request");
-                }
-                else
-                {
-                    _logger.LogWarning("[SABnzbd] GET fallback: No authentication credentials available");
+                    getQuery += $"&nzbname={Uri.EscapeDataString(nzbname)}";
                 }
 
-                return await SendApiRequestAsync(config, queryBuilder.ToString());
+                return await SendApiRequestAsync(config, getQuery);
             }
 
             _logger.LogWarning("[SABnzbd] POST addurl request failed: {Status}", response.StatusCode);

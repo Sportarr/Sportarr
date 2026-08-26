@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Helpers;
 
 namespace Sportarr.Api.Services;
 
@@ -381,10 +382,29 @@ public class IptvSourceService
             ex.HasArchive = inc.HasArchive;
             ex.ArchiveDays = inc.ArchiveDays;
 
+            // Channels that predate the manual marker carry no record of who
+            // chose their id. A playlist that offers none while one is stored
+            // is the clear case: that id came from somewhere else, which means
+            // somebody set it, so it is recognised as theirs and the channel
+            // is kept when the provider drops it.
+            //
+            // Deliberately not inferred from the two ids merely differing. A
+            // provider rotating its identifiers looks exactly like that, and
+            // marking every channel manual would put back the very hoarding
+            // this was meant to end.
+            if (!ex.TvgIdIsManual
+                && !string.IsNullOrWhiteSpace(ex.TvgId)
+                && string.IsNullOrWhiteSpace(inc.TvgId))
+            {
+                ex.TvgIdIsManual = true;
+            }
+
             // TvgId doubles as the EPG mapping (set by auto-map or the manual
             // picker); never clobber an established mapping with playlist data.
             if (string.IsNullOrWhiteSpace(ex.TvgId) && !string.IsNullOrWhiteSpace(inc.TvgId))
             {
+                // Nothing stored, so take what the playlist offers. It came
+                // from the playlist, which is what the marker records.
                 ex.TvgId = inc.TvgId;
             }
 
@@ -414,9 +434,26 @@ public class IptvSourceService
 
             foreach (var c in disappeared)
             {
-                if (referenced.Contains(c.Id) || c.IsFavorite)
+                // Anything the user has touched is retired rather than deleted.
+                // A provider dropping a channel for one refresh is common, and
+                // deleting it threw away the hidden flag, a deliberate disable
+                // and the EPG mapping with it, so the channel came back with
+                // defaults and reappeared in lists the user had taken it out
+                // of. A retired row keeps all of that and is revived when the
+                // channel returns.
+                var userConfigured = c.IsFavorite
+                    || c.IsHidden
+                    || (!c.IsEnabled && c.LastError != RemovedFromPlaylistError)
+                    || c.TvgIdIsManual;
+
+                if (referenced.Contains(c.Id) || userConfigured)
                 {
-                    if (c.IsEnabled || c.LastError != RemovedFromPlaylistError)
+                    // Only a channel that was enabled gets the auto-retired
+                    // marker. Stamping it on one the user had disabled would
+                    // make the revival on its return read it as the app's own
+                    // retirement and switch it back on, undoing the very
+                    // setting this branch exists to keep.
+                    if (c.IsEnabled)
                     {
                         c.IsEnabled = false;
                         c.Status = IptvChannelStatus.Offline;
@@ -524,6 +561,62 @@ public class IptvSourceService
     /// <summary>
     /// Test a channel's stream connectivity
     /// </summary>
+
+    /// <summary>
+    /// Ask a stream URL whether it is alive. HEAD is tried first because it
+    /// costs nothing, but a great many IPTV servers refuse it while serving the
+    /// same URL over GET, so a refusal falls back to a GET for the first byte
+    /// with the body left unread. Without that fallback a working channel was
+    /// recorded as offline.
+    /// </summary>
+    private async Task<HttpResponseMessage> ProbeChannelAsync(
+        HttpClient httpClient, IptvChannel channel, CancellationToken ct)
+    {
+        void ApplyUserAgent(HttpRequestMessage message)
+        {
+            if (!string.IsNullOrEmpty(channel.Source?.UserAgent))
+            {
+                message.Headers.UserAgent.Clear();
+                message.Headers.UserAgent.ParseAdd(channel.Source.UserAgent);
+            }
+        }
+
+        HttpResponseMessage? headResponse = null;
+        try
+        {
+            using var headRequest = new HttpRequestMessage(HttpMethod.Head, channel.StreamUrl);
+            ApplyUserAgent(headRequest);
+            headResponse = await httpClient.SendAsync(headRequest, ct);
+
+            if (headResponse.IsSuccessStatusCode)
+            {
+                return headResponse;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            // Some servers close the connection on HEAD rather than answering.
+            _logger.LogDebug(ex, "[IPTV] HEAD probe failed for {Name}; trying a ranged GET", channel.Name);
+        }
+
+        using var getRequest = new HttpRequestMessage(HttpMethod.Get, channel.StreamUrl);
+        ApplyUserAgent(getRequest);
+        getRequest.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 1);
+
+        // Headers only: a live stream would otherwise be pulled for as long as
+        // the probe held it open.
+        var getResponse = await httpClient.SendAsync(getRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+
+        if (getResponse.IsSuccessStatusCode || headResponse == null)
+        {
+            headResponse?.Dispose();
+            return getResponse;
+        }
+
+        // Neither worked, so report whichever the server gave for HEAD.
+        getResponse.Dispose();
+        return headResponse;
+    }
     public async Task<(bool Success, string? Error)> TestChannelAsync(int channelId)
     {
         var channel = await _db.IptvChannels
@@ -535,23 +628,22 @@ public class IptvSourceService
 
         try
         {
-            _logger.LogDebug("[IPTV] Testing channel: {Name} ({Url})", channel.Name, channel.StreamUrl);
+            _logger.LogDebug("[IPTV] Testing channel: {Name} ({Url})",
+                channel.Name, Sportarr.Api.Helpers.SecretRedactor.Url(channel.StreamUrl));
 
             // Use IptvClient which has AllowAutoRedirect=true for following 302 redirects
             var httpClient = _httpClientFactory.CreateClient("IptvClient");
 
-            var request = new HttpRequestMessage(HttpMethod.Head, channel.StreamUrl);
-
-            // Add user agent if source has one (override the default)
-            if (!string.IsNullOrEmpty(channel.Source?.UserAgent))
-            {
-                request.Headers.UserAgent.Clear();
-                request.Headers.UserAgent.ParseAdd(channel.Source.UserAgent);
-            }
-
             // Use a short timeout for testing
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var response = await httpClient.SendAsync(request, cts.Token);
+
+            // HEAD first, then a ranged GET if that is refused. Plenty of IPTV
+            // servers, Xtream ones especially, answer HEAD with 405 or 400 while
+            // serving the same URL happily over GET, and the channel was marked
+            // offline on the strength of that. Channel selection now sends a
+            // channel it believes to be dead to the back of the queue, so a
+            // false reading here keeps a recording off a working stream.
+            using var response = await ProbeChannelAsync(httpClient, channel, cts.Token);
 
             if (response.IsSuccessStatusCode)
             {
@@ -658,7 +750,7 @@ public class IptvSourceService
     public async Task<List<IptvChannel>> GetChannelsForLeagueAsync(int leagueId)
     {
         return await _db.ChannelLeagueMappings
-            .Where(m => m.LeagueId == leagueId)
+            .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
             .Include(m => m.Channel)
             .OrderByDescending(m => m.IsPreferred)
             .ThenBy(m => m.Priority)
@@ -671,14 +763,18 @@ public class IptvSourceService
     /// </summary>
     public async Task<IptvChannel?> GetPreferredChannelForLeagueAsync(int leagueId)
     {
-        var mapping = await _db.ChannelLeagueMappings
-            .Where(m => m.LeagueId == leagueId)
+        var mappings = await _db.ChannelLeagueMappings
+            .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
             .Include(m => m.Channel)
-            .OrderByDescending(m => m.IsPreferred)
-            .ThenBy(m => m.Priority)
-            .FirstOrDefaultAsync();
+            .ThenInclude(c => c!.Source)
+            .ToListAsync();
 
-        return mapping?.Channel;
+        return mappings
+            .Where(m => m.Channel != null && m.Channel.IsEnabled && m.Channel.Source?.IsActive == true)
+            .OrderByDescending(m => ChannelHealth.Rank(m.Channel!.Status))
+            .ThenByDescending(m => m.IsPreferred)
+            .ThenByDescending(m => m.Priority)
+            .FirstOrDefault()?.Channel;
     }
 
     /// <summary>
@@ -697,12 +793,17 @@ public class IptvSourceService
             {
                 continue;
             }
-            var teamMapping = await _db.ChannelTeamMappings
+            var teamMappings = await _db.ChannelTeamMappings
                 .Where(m => m.TeamId == teamId.Value)
                 .Include(m => m.Channel)
-                .OrderByDescending(m => m.IsPreferred)
+                .ThenInclude(c => c!.Source)
+                .ToListAsync();
+            var teamMapping = teamMappings
+                .Where(m => m.Channel != null && m.Channel.IsEnabled && m.Channel.Source?.IsActive == true)
+                .OrderByDescending(m => ChannelHealth.Rank(m.Channel!.Status))
+                .ThenByDescending(m => m.IsPreferred)
                 .ThenBy(m => m.Priority)
-                .FirstOrDefaultAsync();
+                .FirstOrDefault();
             if (teamMapping?.Channel != null)
             {
                 return teamMapping.Channel;
@@ -852,7 +953,7 @@ public class IptvSourceService
     public async Task<List<ChannelLeagueMapping>> GetChannelMappingsAsync(int channelId)
     {
         return await _db.ChannelLeagueMappings
-            .Where(m => m.ChannelId == channelId)
+            .Where(m => m.ChannelId == channelId && m.Priority >= 0)
             .Include(m => m.League)
             .ToListAsync();
     }
@@ -997,6 +1098,7 @@ public class IptvSourceService
     public async Task<List<(int LeagueId, string LeagueName, int ChannelCount)>> GetLeaguesWithChannelCountsAsync()
     {
         var mappings = await _db.ChannelLeagueMappings
+            .Where(m => m.Priority >= 0)
             .Include(m => m.League)
             .GroupBy(m => new { m.LeagueId, m.League!.Name })
             .Select(g => new { g.Key.LeagueId, g.Key.Name, Count = g.Count() })

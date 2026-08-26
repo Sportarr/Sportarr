@@ -43,7 +43,13 @@ public class LeagueEventAutoSyncService : BackgroundService
 
         // Wait 10 minutes after startup before first sync (let users configure indexers/settings)
         _logger.LogInformation("[Auto-Sync] First sync will run in 10 minutes. Configure your setup in the meantime.");
-        await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
+        // Jitter the first sync as well as the later ones. A fixed delay meant
+        // every install that restarted for the same release update reached the
+        // metadata service ten minutes later, all together.
+        var startupDelay = TimeSpan.FromMinutes(10) +
+            TimeSpan.FromSeconds(Random.Shared.Next(0, (int)TimeSpan.FromMinutes(20).TotalSeconds));
+        _logger.LogInformation("[Auto-Sync] First sync in {Minutes:F1} minutes (jittered)", startupDelay.TotalMinutes);
+        await Task.Delay(startupDelay, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {

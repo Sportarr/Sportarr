@@ -92,11 +92,33 @@ public static class LibraryEndpoints
             try
             {
                 var results = new List<object>();
+                string? remoteWarning = null;
 
-                var apiEvents = await sportarrApi.SearchEventAsync(query);
+                // The hosted lookup failing used to take the whole endpoint
+                // with it, so an offline metadata service meant manual import
+                // could not even search the events already stored locally.
+                List<Sportarr.Api.Models.Event>? apiEvents = null;
+                try
+                {
+                    apiEvents = await sportarrApi.SearchEventAsync(query);
+                }
+                catch (Exception ex)
+                {
+                    remoteWarning = $"The metadata service could not be reached: {ex.Message}. Showing local events only.";
+                }
+
                 if (apiEvents != null)
                 {
-                    foreach (var evt in apiEvents.Take(20))
+                    // The narrowing the caller asked for was ignored on the
+                    // remote side, so the event they wanted could be pushed
+                    // out of the first twenty by unrelated sports.
+                    var remoteMatches = apiEvents
+                        .Where(e => string.IsNullOrEmpty(sport) ||
+                                    string.Equals(e.Sport, sport, StringComparison.OrdinalIgnoreCase))
+                        .Where(e => string.IsNullOrEmpty(organization) ||
+                                    (e.League?.Name?.Contains(organization, StringComparison.OrdinalIgnoreCase) ?? false));
+
+                    foreach (var evt in remoteMatches.Take(20))
                     {
                         var existingEvent = await db.Events
                             .Include(e => e.Files)
@@ -129,16 +151,25 @@ public static class LibraryEndpoints
                     }
                 }
 
+                // Events that already have a file belong in the list. Adding a
+                // second part of a multi-part card, or replacing a file with a
+                // better copy, both need an event the old filter hid.
                 var localQuery = db.Events
                     .Include(e => e.League)
                     .Include(e => e.HomeTeam)
                     .Include(e => e.AwayTeam)
-                    .Where(e => !e.HasFile)
                     .AsQueryable();
 
                 if (!string.IsNullOrEmpty(sport))
                 {
                     localQuery = localQuery.Where(e => e.Sport == sport);
+                }
+
+                // The organization narrowing did nothing at all before.
+                if (!string.IsNullOrEmpty(organization))
+                {
+                    localQuery = localQuery.Where(e => e.League != null &&
+                        EF.Functions.Like(e.League.Name, $"%{organization}%"));
                 }
 
                 var localEvents = await localQuery
@@ -167,7 +198,7 @@ public static class LibraryEndpoints
                     }
                 }
 
-                return Results.Ok(new { results });
+                return Results.Ok(new { results, warning = remoteWarning });
             }
             catch (Exception ex)
             {

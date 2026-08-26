@@ -161,6 +161,11 @@ export default function StreamPlayerModal({
   const [loadingDebug, setLoadingDebug] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [ffmpegSessionId, setFfmpegSessionId] = useState<string | null>(null);
+  // The effect that starts a stream also owns the cleanup that stops it, and
+  // that cleanup closes over the state as it was before the session existed.
+  // Reading the session from a ref instead is what makes the stop actually
+  // run, rather than leaving the transcode alive on the server.
+  const ffmpegSessionIdRef = useRef<string | null>(null);
   const [videoReady, setVideoReady] = useState(false);
   const [isPip, setIsPip] = useState(false);
   const ffmpegInitializingRef = useRef(false);
@@ -291,6 +296,7 @@ export default function StreamPlayerModal({
 
       if (response.data.success) {
         log('info', 'FFmpeg stream started', { sessionId: response.data.sessionId, playlistUrl: response.data.playlistUrl });
+        ffmpegSessionIdRef.current = response.data.sessionId;
         setFfmpegSessionId(response.data.sessionId);
         return response.data.sessionId;
       } else {
@@ -305,12 +311,21 @@ export default function StreamPlayerModal({
 
   // Stop FFmpeg stream
   const stopFfmpegStream = async () => {
-    if (channelId && ffmpegSessionId) {
+    if (channelId && ffmpegSessionIdRef.current) {
+      // Cleared before the request so a re-entrant call does not stop twice,
+      // but restored when the request fails. Forgetting the id on failure
+      // meant no later cleanup could stop the session, and the server-side
+      // transcode kept pulling the channel.
+      const sessionId = ffmpegSessionIdRef.current;
+      ffmpegSessionIdRef.current = null;
       try {
         log('info', 'Stopping FFmpeg stream', { channelId });
         await apiClient.post(`/v1/stream/${channelId}/stop`);
         setFfmpegSessionId(null);
       } catch (err) {
+        if (ffmpegSessionIdRef.current === null) {
+          ffmpegSessionIdRef.current = sessionId;
+        }
         log('warn', 'Failed to stop FFmpeg stream', err);
       }
     }
@@ -810,6 +825,7 @@ export default function StreamPlayerModal({
     await cleanup();
     setPlaybackMode('proxy');
     setRetryCount(0);
+    ffmpegSessionIdRef.current = null;
     setFfmpegSessionId(null);
     setVideoReady(false);
     onClose();

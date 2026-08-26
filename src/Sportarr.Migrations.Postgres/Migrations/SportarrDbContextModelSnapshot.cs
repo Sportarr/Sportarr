@@ -2132,6 +2132,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<bool>("TvgIdIsManual")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("TvgName")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -2271,6 +2274,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "intFormedYear");
 
+                    b.Property<bool>("KeepAllEvents")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("LastUpdate")
                         .HasColumnType("timestamp with time zone");
 
@@ -2337,6 +2343,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<string>("SessionTypeQualityProfiles")
                         .HasColumnType("text");
+
+                    b.Property<int>("SpecialEventsMonitorType")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Sport")
                         .IsRequired()
@@ -4209,7 +4218,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.HasOne("Sportarr.Api.Models.DownloadClient", "DownloadClient")
                         .WithMany()
                         .HasForeignKey("DownloadClientId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Sportarr.Api.Models.Event", "SuggestedEvent")
                         .WithMany()

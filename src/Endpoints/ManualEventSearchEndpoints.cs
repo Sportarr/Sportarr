@@ -35,24 +35,41 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     string? part = null;
     bool forceRefresh = false;
     string? customQuery = null;
-    if (request.ContentLength > 0)
+    // Read the body unconditionally. Gating on Content-Length threw away the
+    // whole request whenever it arrived chunked, which is what a fetch with a
+    // streamed body produces, so the custom query, the part and the force
+    // refresh were silently dropped and the search ran on defaults.
     {
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync();
-        if (!string.IsNullOrEmpty(json))
+        if (!string.IsNullOrWhiteSpace(json))
         {
-            var requestData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
-            if (requestData.TryGetProperty("part", out var partProp))
+            try
             {
-                part = partProp.GetString();
+                var requestData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+                if (requestData.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    if (requestData.TryGetProperty("part", out var partProp) &&
+                        partProp.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        part = partProp.GetString();
+                    }
+                    if (requestData.TryGetProperty("forceRefresh", out var refreshProp) &&
+                        (refreshProp.ValueKind == System.Text.Json.JsonValueKind.True ||
+                         refreshProp.ValueKind == System.Text.Json.JsonValueKind.False))
+                    {
+                        forceRefresh = refreshProp.GetBoolean();
+                    }
+                    if (requestData.TryGetProperty("customQuery", out var customQueryProp) &&
+                        customQueryProp.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        customQuery = customQueryProp.GetString()?.Trim();
+                    }
+                }
             }
-            if (requestData.TryGetProperty("forceRefresh", out var refreshProp))
+            catch (System.Text.Json.JsonException ex)
             {
-                forceRefresh = refreshProp.GetBoolean();
-            }
-            if (requestData.TryGetProperty("customQuery", out var customQueryProp))
-            {
-                customQuery = customQueryProp.GetString()?.Trim();
+                logger.LogWarning(ex, "[SEARCH] Ignoring an unreadable search options body");
             }
         }
     }
@@ -102,11 +119,15 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             .FirstOrDefaultAsync(p => p.Id == evt.League.QualityProfileId.Value);
     }
 
-    // Final fallback: Default profile (first by ID)
+    // Final fallback: the profile flagged as default, else first by id. The
+    // same answer RSS sync, the reaper and automatic search give; taking the
+    // first by id here graded the list the user looks at by a different
+    // profile from the one RSS would grab by.
     if (qualityProfile == null)
     {
         qualityProfile = await db.QualityProfiles
-            .OrderBy(q => q.Id)
+            .OrderBy(q => q.IsDefault ? 0 : 1)
+            .ThenBy(q => q.Id)
             .FirstOrDefaultAsync();
     }
 
@@ -158,52 +179,60 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     // This dramatically reduces API calls for:
     // - Multi-part events (UFC 300 Prelims + Main Card share "UFC.300" cache)
     // - Same-year events (all NFL 2025 games share "NFL.2025" cache)
+    // Every query variant is cached under its own key.
+    //
+    // Only the primary query used to be cached, so a repeat search served the
+    // primary from cache and then went back out to the indexers for every
+    // supplementary variant. The saving was a fraction of what it looked like,
+    // and a user clicking search twice still spent most of the quota twice.
+    //
+    // No early exit of any kind: supplementary queries must always run so
+    // alternative naming conventions (BILLIE-style F1 location releases,
+    // country-noun vs adjective GP names) are reached. A result-count break
+    // here silently skipped the remaining variants whenever a broad query
+    // already held 100+ releases, which is exactly how the Belgian GP race
+    // releases went missing from manual search while qualifying showed up
+    // fine (#168). The work is bounded: at most six query variants, each
+    // capped by the indexers themselves, deduplicated by GUID below.
     bool usedCache = false;
+    var queriesAttempted = 0;
 
-    if (!forceRefresh)
+    foreach (var query in queries)
     {
-        var cached = searchResultCache.TryGetCached(primaryQuery, config.SearchCacheDuration);
-        if (cached != null)
-        {
-            // Cache HIT - convert raw releases back to fresh ReleaseSearchResults
-            // All event-specific fields (match scores, rejections, CF scores) will be recalculated below
-            allResults = searchResultCache.ToSearchResults(cached);
-            usedCache = true;
-            logger.LogInformation("[SEARCH] Using {Count} cached raw releases for '{Query}' - will re-match against event '{EventTitle}'",
-                allResults.Count, primaryQuery, evt.Title);
+        queriesAttempted++;
+        List<ReleaseSearchResult>? results = null;
 
-            // Pre-populate seenGuids so the supplementary queries below don't re-add cached releases
-            foreach (var r in allResults)
-                if (!string.IsNullOrEmpty(r.Guid))
-                    seenGuids.Add(r.Guid);
+        // The cached answer belongs to the indexers this league can reach, not
+        // to the query text alone.
+        var cacheKey = SearchResultCache.ScopeKey(query, evt.League?.Tags);
+
+        if (forceRefresh)
+        {
+            searchResultCache.Invalidate(cacheKey);
         }
-    }
-    else
-    {
-        // Force refresh requested - invalidate existing cache
-        searchResultCache.Invalidate(primaryQuery);
-        logger.LogInformation("[SEARCH] Force refresh - invalidated cache for '{Query}'", primaryQuery);
-    }
-
-    // Run all queries: live queries when no cache hit; supplementary queries always.
-    // Supplementary queries (Skip(1)) target alternative naming conventions (e.g. BILLIE-style
-    // F1 location releases) the primary query may not reach, so they must run even on a cache hit.
-    var queriesToRun = usedCache ? queries.Skip(1).ToList() : queries.ToList();
-
-    if (queriesToRun.Any())
-    {
-        int queriesAttempted = 0;
-
-        foreach (var query in queriesToRun)
+        else
         {
-            queriesAttempted++;
+            var cached = searchResultCache.TryGetCached(cacheKey, config.SearchCacheDuration);
+            if (cached != null)
+            {
+                // Cache HIT - convert raw releases back to fresh results. Every
+                // event-specific field is recalculated below.
+                results = searchResultCache.ToSearchResults(cached);
+                usedCache = true;
+                logger.LogInformation("[SEARCH] Using {Count} cached raw releases for '{Query}' - will re-match against event '{EventTitle}'",
+                    results.Count, query, evt.Title);
+            }
+        }
+
+        if (results == null)
+        {
             logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
-                queriesAttempted, queriesToRun.Count, query);
+                queriesAttempted, queries.Count, query);
 
             // Pass enableMultiPartEpisodes to ensure proper part filtering
             // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
             // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
-            var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags, skippedIndexers,
+            results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags, skippedIndexers,
                 allowHighlights: evt.League?.AllowHighlights ?? false,
                 sportarrId: Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.ExternalId),
                 // The user asked for this event by hand, so show everything the
@@ -211,28 +240,14 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                 // keep their category filter.
                 useCategoryFilter: false);
 
-            // Add results with GUID deduplication (fallback queries may overlap with primary)
-            foreach (var result in results)
-            {
-                if (string.IsNullOrEmpty(result.Guid) || seenGuids.Add(result.Guid))
-                {
-                    allResults.Add(result);
-                }
-            }
+            // Cache the raw results before any event-specific validation.
+            // Store refuses an empty set, so a transient outage cannot shadow
+            // real results for the rest of the window.
+            searchResultCache.Store(cacheKey, results);
 
-            // No early-exit of any kind: supplementary queries must always run
-            // so alternative naming conventions (BILLIE-style F1 location
-            // releases, country-noun vs adjective GP names) are reached. A
-            // result-count break here silently skipped the remaining variants
-            // whenever the cache or a broad query already held 100+ releases,
-            // which is exactly how the Belgian GP race releases went missing
-            // from manual search while qualifying showed up fine (#168). The
-            // work is already bounded: at most six query variants, each capped
-            // by the indexers themselves, deduplicated by GUID above.
             if (results.Count > 0)
             {
-                logger.LogInformation("[SEARCH] Found {Count} results from query '{Query}' ({Total} total)",
-                    results.Count, query, allResults.Count);
+                logger.LogInformation("[SEARCH] Found {Count} results from query '{Query}'", results.Count, query);
             }
             else
             {
@@ -240,6 +255,14 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             }
         }
 
+        // Add results with GUID deduplication (fallback queries may overlap)
+        foreach (var result in results)
+        {
+            if (string.IsNullOrEmpty(result.Guid) || seenGuids.Add(result.Guid))
+            {
+                allResults.Add(result);
+            }
+        }
     }
 
     // RELEASE EVALUATION: Apply quality profile and custom format scoring
@@ -305,16 +328,11 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         else
         {
             // Fresh results from indexers - IndexerSearchService already evaluated with quality profile
-            // Just set the part for tracking
+            // Just set the part for tracking. Caching happened per query above.
             foreach (var release in allResults)
             {
                 release.Part = part;
             }
-
-            // Cache the raw results for future searches
-            // Note: We cache BEFORE any date/match validation since those are event-specific
-            searchResultCache.Store(primaryQuery, allResults);
-            logger.LogInformation("[SEARCH] Cached {Count} raw releases for '{Query}'", allResults.Count, primaryQuery);
         }
     }
 
@@ -386,51 +404,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
     // Check blocklist status for each result: show blocked items but mark them.
     // Supports both torrent (by hash) and Usenet (by title+indexer).
-    var blocklistItems = await db.Blocklist
-        .Select(b => new { b.TorrentInfoHash, b.Title, b.Indexer, b.Protocol, b.Message })
-        .ToListAsync();
-
-    // Build hash lookup for torrents (use GroupBy to handle duplicate hashes gracefully)
-    var torrentBlocklistLookup = blocklistItems
-        .Where(b => !string.IsNullOrEmpty(b.TorrentInfoHash))
-        .GroupBy(b => b.TorrentInfoHash!)
-        .ToDictionary(g => g.Key, g => g.First().Message);
-
-    // Build title+indexer lookup for Usenet (use GroupBy to handle duplicate title+indexer combinations)
-    var usenetBlocklistLookup = blocklistItems
-        .Where(b => b.Protocol == "Usenet" || string.IsNullOrEmpty(b.TorrentInfoHash))
-        .GroupBy(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant())
-        .ToDictionary(g => g.Key, g => g.First().Message, StringComparer.OrdinalIgnoreCase);
-
-    foreach (var result in allResults)
-    {
-        bool isBlocked = false;
-        string? blockReason = null;
-
-        // Check torrent hash blocklist
-        if (!string.IsNullOrEmpty(result.TorrentInfoHash) && torrentBlocklistLookup.TryGetValue(result.TorrentInfoHash, out var torrentReason))
-        {
-            isBlocked = true;
-            blockReason = torrentReason;
-        }
-        // Check Usenet blocklist (by title+indexer)
-        else if (result.Protocol == "Usenet" || string.IsNullOrEmpty(result.TorrentInfoHash))
-        {
-            var usenetKey = $"{result.Title}|{result.Indexer}".ToLowerInvariant();
-            if (usenetBlocklistLookup.TryGetValue(usenetKey, out var usenetReason))
-            {
-                isBlocked = true;
-                blockReason = usenetReason;
-            }
-        }
-
-        if (isBlocked)
-        {
-            result.IsBlocklisted = true;
-            result.BlocklistReason = blockReason;
-            result.Rejections.Add("Release is blocklisted");
-        }
-    }
+    await MarkBlocklistedAsync(db, allResults);
 
     // Sort results: by match score (best matches first), then quality score
     // Non-matching releases appear at the very bottom (visible when "Hide Rejected" is off)
@@ -467,6 +441,8 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     IndexerSearchService indexerSearchService,
     EventQueryService eventQueryService,
     ConfigService configService,
+    ReleaseMatchingService releaseMatchingService,
+    ReleaseMatchScorer releaseMatchScorer,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[PACK SEARCH] POST /api/event/{EventId}/search-pack - Pack search initiated", eventId);
@@ -497,7 +473,11 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     }
     if (qualityProfile == null)
     {
-        qualityProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
+        // The flagged default first, as every other path resolves it.
+        qualityProfile = await db.QualityProfiles
+            .OrderBy(q => q.IsDefault ? 0 : 1)
+            .ThenBy(q => q.Id)
+            .FirstOrDefaultAsync();
     }
 
     // Build pack queries (e.g., "NFL-2025-Week15")
@@ -522,25 +502,72 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
 
         foreach (var result in results)
         {
-            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+            // A release with no GUID used to be discarded outright. Some
+            // indexers do not send one, and those releases simply vanished.
+            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Add(result.Guid)) continue;
+
+            // Mark as pack result
+            result.IsPack = true;
+            allResults.Add(result);
+        }
+
+        // No early exit. Stopping at ten results meant the later query
+        // variants never ran, and the only usable pack is often the one a
+        // later variant names differently. The list is at most a handful of
+        // queries and the results are deduplicated above.
+    }
+
+    // Pack results went straight to the UI ranked by raw indexer score, with
+    // no validation at all, so a wrong season, wrong week, wrong league or
+    // already blocklisted pack was presented as approved and listed first.
+    // They get the same checks a normal manual search applies.
+    var packConfig = await configService.GetConfigAsync();
+
+    // The week the event belongs to. The general validation compares numbers
+    // found in the release title against numbers in the event title, and a
+    // team fixture like "Chiefs vs Bills" carries none, so a pack for the
+    // wrong week of the right season sailed through as approved.
+    var expectedWeek = eventQueryService.GetWeekNumber(evt);
+
+    foreach (var result in allResults)
+    {
+        var matchResult = releaseMatchingService.ValidateRelease(
+            result, evt, null, packConfig.EnableMultiPartEpisodes);
+        if (matchResult.Rejections.Any())
+        {
+            result.Rejections.AddRange(matchResult.Rejections);
+        }
+        if (matchResult.IsHardRejection)
+        {
+            result.Approved = false;
+        }
+
+        if (expectedWeek.HasValue)
+        {
+            var packWeek = Sportarr.Api.Helpers.PackWeekParser.SingleWeek(result.Title);
+            if (packWeek.HasValue && packWeek.Value != expectedWeek.Value)
             {
-                seenGuids.Add(result.Guid);
-                // Mark as pack result
-                result.IsPack = true;
-                allResults.Add(result);
+                result.Rejections.Add($"Pack is for week {packWeek.Value}, this event is week {expectedWeek.Value}");
+                result.Approved = false;
             }
         }
 
-        // Stop if we have enough results
-        if (allResults.Count >= 10) break;
+        result.MatchScore = releaseMatchScorer.CalculateMatchScore(result.Title, evt);
     }
 
-    // Sort by score/quality
+    await MarkBlocklistedAsync(db, allResults);
+
+    // Sort the same way the manual search does: usable first, rejected and
+    // blocklisted last, best score inside each band.
     var sortedResults = allResults
-        .OrderByDescending(r => r.Score)
+        .OrderBy(r => !r.Approved)
+        .ThenBy(r => r.IsBlocklisted)
+        .ThenByDescending(r => r.MatchScore)
+        .ThenByDescending(r => r.Score)
         .ToList();
 
-    logger.LogInformation("[PACK SEARCH] Pack search completed. Returning {Count} results", sortedResults.Count);
+    logger.LogInformation("[PACK SEARCH] Pack search completed. Returning {Count} results ({Blocked} blocklisted)",
+        sortedResults.Count, sortedResults.Count(r => r.IsBlocklisted));
 
     // Dedupe skipped entries by IndexerId (fallback queries re-hit the same indexers)
     var dedupedSkipped = skippedIndexers
@@ -556,5 +583,62 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
 });
 
         return app;
+    }
+
+    /// <summary>
+    /// Flag every release the user has already blocklisted.
+    ///
+    /// Torrents match on the info hash, usenet on title plus indexer, which is
+    /// all the blocklist records for a protocol with no hash.
+    /// </summary>
+    private static async Task MarkBlocklistedAsync(SportarrDbContext db, List<ReleaseSearchResult> results)
+    {
+        if (results.Count == 0) return;
+
+        var blocklistItems = await db.Blocklist
+            .Select(b => new { b.TorrentInfoHash, b.Title, b.Indexer, b.Protocol, b.Message })
+            .ToListAsync();
+
+        // Build hash lookup for torrents (use GroupBy to handle duplicate hashes gracefully)
+        var torrentBlocklistLookup = blocklistItems
+            .Where(b => !string.IsNullOrEmpty(b.TorrentInfoHash))
+            .GroupBy(b => b.TorrentInfoHash!)
+            .ToDictionary(g => g.Key, g => g.First().Message);
+
+        // Build title+indexer lookup for Usenet (use GroupBy to handle duplicate title+indexer combinations)
+        var usenetBlocklistLookup = blocklistItems
+            .Where(b => b.Protocol == "Usenet" || string.IsNullOrEmpty(b.TorrentInfoHash))
+            .GroupBy(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First().Message, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var result in results)
+        {
+            bool isBlocked = false;
+            string? blockReason = null;
+
+            // Check torrent hash blocklist
+            if (!string.IsNullOrEmpty(result.TorrentInfoHash) && torrentBlocklistLookup.TryGetValue(result.TorrentInfoHash, out var torrentReason))
+            {
+                isBlocked = true;
+                blockReason = torrentReason;
+            }
+            // Check Usenet blocklist (by title+indexer)
+            else if (result.Protocol == "Usenet" || string.IsNullOrEmpty(result.TorrentInfoHash))
+            {
+                var usenetKey = $"{result.Title}|{result.Indexer}".ToLowerInvariant();
+                if (usenetBlocklistLookup.TryGetValue(usenetKey, out var usenetReason))
+                {
+                    isBlocked = true;
+                    blockReason = usenetReason;
+                }
+            }
+
+            if (isBlocked)
+            {
+                result.IsBlocklisted = true;
+                result.BlocklistReason = blockReason;
+                result.Rejections.Add("Release is blocklisted");
+            }
+        }
     }
 }

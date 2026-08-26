@@ -330,6 +330,8 @@ public class PackImportService
         // this, a caller-controlled path (e.g. /data/media) would let pack-import recursively
         // delete media anywhere the process can write. If the path is not contained, we keep
         // importing matches but refuse to delete.
+        var recycleBin = (await _configService.GetConfigAsync()).RecycleBin;
+
         if (deleteUnmatched && !dryRun && !await IsPathWithinAllowedBaseAsync(downloadPath))
         {
             _logger.LogWarning("[Pack Import] Refusing to delete unmatched files: {Path} is not inside a configured root folder or download directory", downloadPath);
@@ -391,13 +393,28 @@ public class PackImportService
                 {
                     try
                     {
-                        File.Delete(file);
+                        // The recycle bin holds these, the same as every other
+                        // delete in the app. A file lands here whenever the
+                        // matcher scored it under the threshold, which also
+                        // happens when the event is missing or the league is
+                        // not monitored yet, so the user must be able to get
+                        // it back.
+                        if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
+                        {
+                            var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBin, fileName);
+                            File.Move(file, recyclePath);
+                            _logger.LogDebug("[Pack Import] Moved unmatched file to recycle bin: {File}", fileName);
+                        }
+                        else
+                        {
+                            File.Delete(file);
+                            _logger.LogDebug("[Pack Import] Deleted unmatched file: {File}", fileName);
+                        }
                         result.FilesDeleted++;
-                        _logger.LogDebug("[Pack Import] Deleted unmatched file: {File}", fileName);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "[Pack Import] Failed to delete unmatched file: {File}", fileName);
+                        _logger.LogWarning(ex, "[Pack Import] Failed to remove unmatched file: {File}", fileName);
                     }
                 }
             }

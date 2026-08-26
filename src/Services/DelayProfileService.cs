@@ -276,8 +276,22 @@ public class DelayProfileService
     {
         // Extract resolution from quality string for comparison
         var releaseResolution = ExtractResolutionRank(release.Quality);
+
+        // An unreadable quality ranks zero, and zero used to compare equal to
+        // the best of a field where nothing else was readable either, so a
+        // release nobody could grade bypassed the delay it was supposed to
+        // wait out. Only a release whose quality is actually known can claim
+        // to be the best one.
+        if (releaseResolution == 0)
+        {
+            return false;
+        }
+
+        // Judge it against the releases that can be graded. An ungradeable
+        // result should neither raise nor lower the bar.
         var maxResolution = allReleases
             .Select(r => ExtractResolutionRank(r.Quality))
+            .Where(rank => rank > 0)
             .DefaultIfEmpty(0)
             .Max();
 

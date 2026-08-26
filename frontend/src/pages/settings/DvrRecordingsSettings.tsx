@@ -170,12 +170,25 @@ export default function DvrRecordingsSettings() {
     checkFfmpeg();
   }, []);
 
+  // Re-check while the answer is unknown, so a check that could not reach the
+  // server settles on its own instead of leaving the page unsure and manual
+  // recording unavailable for the rest of the session.
+  useEffect(() => {
+    if (ffmpegAvailable !== null) return;
+    const interval = setInterval(checkFfmpeg, 30000);
+    return () => clearInterval(interval);
+  }, [ffmpegAvailable]);
+
   // Load on filter change and refresh every 30 seconds. The interval lives
   // in THIS effect so each registration closes over the current filter;
   // registered on mount it kept polling with the initial 'All' forever and
   // overwrote a filtered list with everything a few seconds after the user
   // picked a status.
   useEffect(() => {
+    // Drop the selection when the filter changes. Rows selected under the
+    // previous filter stayed selected while invisible, and a bulk delete then
+    // removed recordings the user could no longer see.
+    setSelectedIds(new Set());
     loadRecordings();
     const interval = setInterval(loadRecordings, 30000);
     return () => clearInterval(interval);
@@ -253,7 +266,13 @@ export default function DvrRecordingsSettings() {
       const { data } = await apiClient.get<{ available: boolean; version?: string; path?: string }>('/dvr/ffmpeg/status');
       setFfmpegAvailable(data.available);
     } catch (err: any) {
-      setFfmpegAvailable(false);
+      // A request that never got an answer says nothing about whether FFmpeg
+      // is installed. Recording it as absent turned a momentary blip into a
+      // page that refused manual recording for the rest of the session and
+      // told the user FFmpeg was missing. Unknown stays unknown, and the next
+      // check settles it.
+      console.error('Could not check FFmpeg availability:', err);
+      setFfmpegAvailable(null);
     }
   };
 
@@ -340,7 +359,10 @@ export default function DvrRecordingsSettings() {
   };
 
   const handleBulkDelete = async () => {
-    const ids = Array.from(selectedIds);
+    // Only what is actually on screen. A selection made before the list
+    // changed under it must not take rows the user cannot see with it.
+    const visibleIds = new Set(recordings.map(r => r.id));
+    const ids = Array.from(selectedIds).filter(id => visibleIds.has(id));
     if (ids.length === 0) return;
 
     try {
@@ -358,7 +380,8 @@ export default function DvrRecordingsSettings() {
       }
 
       // Update state
-      setRecordings(prev => prev.filter(r => !selectedIds.has(r.id)));
+      const deleted = new Set(ids);
+      setRecordings(prev => prev.filter(r => !deleted.has(r.id)));
       setSelectedIds(new Set());
       await loadStats();
 
@@ -980,13 +1003,18 @@ export default function DvrRecordingsSettings() {
                   <div className="flex items-center space-x-2 ml-4">
                     {recording.status === 'Scheduled' && (
                       <>
-                        <button
-                          onClick={() => handleStartRecording(recording.id)}
-                          className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-950/30 rounded transition-colors"
-                          title="Start Now"
-                        >
-                          <PlayIcon className="w-5 h-5" />
-                        </button>
+                        {/* A catchup recording downloads after the event, and
+                            the backend refuses to start it live, so the button
+                            only offered a guaranteed error toast. */}
+                        {recording.method !== 'Catchup' && (
+                          <button
+                            onClick={() => handleStartRecording(recording.id)}
+                            className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-950/30 rounded transition-colors"
+                            title="Start Now"
+                          >
+                            <PlayIcon className="w-5 h-5" />
+                          </button>
+                        )}
                         <button
                           onClick={() => setShowDeleteConfirm(recording.id)}
                           className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"

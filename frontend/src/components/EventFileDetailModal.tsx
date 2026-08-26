@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ArrowsRightLeftIcon, PencilIcon } from '@heroicons/react/24/outline';
 import ReassignEventFileModal from './ReassignEventFileModal';
@@ -222,6 +222,36 @@ export default function EventFileDetailModal({
       blocklistAction: 'none'
     });
   };
+
+  // The confirmations below sit outside the HeadlessUI dialog so it cannot
+  // swallow their clicks. The cost is that the dialog's focus trap marks
+  // everything outside itself inert, which made both confirmations appear and
+  // then refuse every click: the user was stuck with no way to confirm or
+  // cancel, and files could not be deleted through this screen at all. While
+  // one is open, its own branch of the tree is taken back out of inert.
+  const confirmationRef = useRef<HTMLDivElement | null>(null);
+  const confirmationOpen = deleteDialog != null || showDeleteAllDialog;
+
+  useLayoutEffect(() => {
+    if (!confirmationOpen) return;
+
+    const node = confirmationRef.current;
+    if (!node) return;
+
+    const cleared: Element[] = [];
+    for (let el: Element | null = node; el && el !== document.body; el = el.parentElement) {
+      if (el.hasAttribute('inert')) { el.removeAttribute('inert'); cleared.push(el); }
+      if (el.getAttribute('aria-hidden') === 'true') { el.removeAttribute('aria-hidden'); cleared.push(el); }
+    }
+
+    return () => {
+      // Put it back so the main dialog's own trap behaves normally again.
+      for (const el of cleared) {
+        if (!el.isConnected) continue;
+        el.setAttribute('inert', '');
+      }
+    };
+  }, [confirmationOpen]);
 
   return (
     <>
@@ -485,6 +515,7 @@ export default function EventFileDetailModal({
       {/* Delete Single File Dialog - OUTSIDE the HeadlessUI Dialog/Transition to prevent event capture */}
       {deleteDialog && (
         <div
+          ref={confirmationRef}
           className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4"
           onClick={(e) => {
             e.stopPropagation();
@@ -563,6 +594,7 @@ export default function EventFileDetailModal({
       {showDeleteAllDialog && (
         <div
           className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4"
+          ref={confirmationRef}
           onClick={(e) => {
             e.stopPropagation();
             // Only close if clicking the backdrop, not the inner content

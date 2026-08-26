@@ -2,11 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
 import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import { ThemedToaster } from './components/ThemedToaster';
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
 const LeagueDetailPage = lazy(() => import('./pages/LeagueDetailPage'));
 const TeamsPage = lazy(() => import('./pages/TeamsPage'));
@@ -167,7 +168,7 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={window.Sportarr?.urlBase || ''}>
-          <Toaster position="top-right" theme="dark" richColors closeButton />
+          <ThemedToaster />
           <AuthProvider>
             <Suspense fallback={<RouteFallback />}>
             <Routes>

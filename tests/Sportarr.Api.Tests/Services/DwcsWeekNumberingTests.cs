@@ -19,11 +19,16 @@ public class DwcsWeekNumberingTests
 {
     private readonly ReleaseMatchScorer _scorer = new();
 
+    // Round "31" mirrors production: DWCS events sync under the UFC league,
+    // whose Round field counts the league's chronological card position, not
+    // the DWCS week. The round gate must never compare it against a release's
+    // W01 token (issue #243's second round: score 0 before the DWCS matcher ran).
     private static Event DwcsEvent(int week) => new()
     {
         Id = 1,
         Title = $"Dana Whites Contender Series season 10 Week {week}",
         Sport = "Fighting",
+        Round = (29 + week * 2).ToString(),
         EventDate = new DateTime(2026, 8, 12, 0, 0, 0, DateTimeKind.Utc),
         League = new League { Name = "UFC", Sport = "Fighting" },
     };
@@ -48,6 +53,8 @@ public class DwcsWeekNumberingTests
             "UFC.Tuesday.Night.Contender.Series.S10W03.720p.WEB-DL.H264.Fight-BB", DwcsEvent(1));
 
         wrong.Should().BeLessThan(right, "a different week is a different card");
+        wrong.Should().BeLessThan(ReleaseMatchScorer.MinimumMatchScore,
+            "a different week must not even reach the manual-result floor");
     }
 
     [Fact]
@@ -60,6 +67,7 @@ public class DwcsWeekNumberingTests
                 Id = 2,
                 Title = "Dana Whites Contender Series season 7 Episode 1",
                 Sport = "Fighting",
+                Round = "27",
                 EventDate = new DateTime(2023, 8, 8, 0, 0, 0, DateTimeKind.Utc),
                 League = new League { Name = "UFC", Sport = "Fighting" },
             });

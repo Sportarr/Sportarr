@@ -15,8 +15,19 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class ImportFileSuppressionService
 {
-    private readonly ConcurrentDictionary<string, DateTime> _suppressed =
-        new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Paths are compared the way the filesystem compares them. Ignoring case
+    /// everywhere meant that on Linux, where two names differing only in case
+    /// are two different files, suppressing one silenced the watcher for the
+    /// other: a real deletion, creation or rename went unnoticed and the
+    /// database kept the wrong file against the event, or an import never
+    /// happened at all.
+    /// </summary>
+    private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase
+        : StringComparer.Ordinal;
+
+    private readonly ConcurrentDictionary<string, DateTime> _suppressed = new(PathComparer);
 
     /// <summary>
     /// How long a suppression lasts. Long enough to cover the delete and the

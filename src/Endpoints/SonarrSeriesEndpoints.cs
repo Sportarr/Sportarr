@@ -334,6 +334,7 @@ public static class SonarrSeriesEndpoints
         app.MapDelete("/api/v3/series/{id:int}", async (
             int id,
             SportarrDbContext db,
+            ConfigService configService,
             ILogger<Program> logger,
             bool deleteFiles = false,
             bool addImportListExclusion = false) =>
@@ -376,12 +377,21 @@ public static class SonarrSeriesEndpoints
                 ? await db.EventFiles.Where(ef => eventIds.Contains(ef.EventId)).ToListAsync()
                 : new List<EventFile>();
 
+            var failedPaths = new List<string>();
+
             if (deleteFiles && eventFiles.Any())
             {
                 logger.LogInformation("[V3-COMPAT] Deleting {Count} files for league {Name}",
                     eventFiles.Count, league.Name);
 
                 var foldersToDelete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                // The recycle bin applies here too. Sonarr sends deleted series
+                // files to its own recycle bin, and so does every other delete
+                // in this app, so an automated cleanup calling this shim must
+                // not be the one path that destroys files outright.
+                var recycleBin = (await configService.GetConfigAsync()).RecycleBin;
+                var useRecycleBin = !string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin);
 
                 foreach (var eventFile in eventFiles)
                 {
@@ -394,13 +404,25 @@ public static class SonarrSeriesEndpoints
                             {
                                 foldersToDelete.Add(fileDir);
                             }
-                            File.Delete(eventFile.FilePath);
-                            logger.LogDebug("[V3-COMPAT] Deleted file: {Path}", eventFile.FilePath);
+
+                            if (useRecycleBin)
+                            {
+                                var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(
+                                    recycleBin!, Path.GetFileName(eventFile.FilePath));
+                                File.Move(eventFile.FilePath, recyclePath);
+                                logger.LogDebug("[V3-COMPAT] Moved file to recycle bin: {Path}", eventFile.FilePath);
+                            }
+                            else
+                            {
+                                File.Delete(eventFile.FilePath);
+                                logger.LogDebug("[V3-COMPAT] Deleted file: {Path}", eventFile.FilePath);
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         logger.LogWarning(ex, "[V3-COMPAT] Failed to delete file: {Path}", eventFile.FilePath);
+                        failedPaths.Add(eventFile.FilePath);
                     }
                 }
 
@@ -436,6 +458,20 @@ public static class SonarrSeriesEndpoints
 
             logger.LogInformation("[V3-COMPAT] Deleted league {Name} and {EventCount} events",
                 league.Name, events.Count);
+
+            if (failedPaths.Count > 0)
+            {
+                // The caller asked for the files and some are still there. It
+                // has no other way to learn that, and an automated cleaner that
+                // believes the space came back will keep filling the disk.
+                //
+                // The rows that named these files are gone with the league, so
+                // this is the last point at which anything knows where they
+                // are. Name them rather than counting them.
+                logger.LogWarning("[V3-COMPAT] {Count} file(s) for league {Name} could not be removed and are still on disk: {Paths}",
+                    failedPaths.Count, league.Name, string.Join(", ", failedPaths));
+                return Results.Ok(new { filesNotDeleted = failedPaths.Count, paths = failedPaths });
+            }
 
             return Results.Ok();
         });

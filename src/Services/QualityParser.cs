@@ -178,7 +178,6 @@ public static class QualityParser
         // WEB-DL sources - includes streaming service indicators
         @"(?<webdl>WEB[-_. ]?DL|WEBDL|WebHD|WEB[-_. ]HD|" +
             @"(?:DL|WEB|BD|BR)MUX|" +
-            @"(?:Amazon|Netflix|iTunes|Vudu|Hulu|Disney\+?|HBO(?:Max)?|AppleTV\+?|Peacock|Paramount\+?|ESPN\+?|DAZN|UFC[-_. ]?FightPass|MLB[-_. ]?TV)[-_. ]?(?:HD|UHD|WEB|4K)?|" +
             @"WEB(?![-_. ]?(?:Rip|Cap|Mux|DL|HD))(?=[-_. ]|$))|" +  // bare WEB, not followed by Rip/Cap/Mux/DL/HD
         // WebRip sources
         @"(?<webrip>WEB[-_. ]?Rip|WEBRip|WEB[-_. ]?Cap|WEBCap|WEB[-_. ]?Mux|HC[-_. ]?WEBRip)|" +
@@ -194,6 +193,20 @@ public static class QualityParser
         @"(?<sdtv>SDTV)|" +
         @"(?<tvrip>TVRip|TV[-_. ]?Rip)" +
         @")\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Streaming services whose name in a title suggests a web release.
+    ///
+    /// These used to sit inside the source pattern alongside the real source
+    /// tokens, and a regex takes the leftmost match. Sports titles lead with
+    /// the broadcaster, so "ESPN.NFL.2026.Week.05.HDTV.x264" matched ESPN
+    /// before it ever reached HDTV and a broadcast capture was filed as
+    /// WEB-DL, which then accepted, rejected or upgraded against the wrong
+    /// rules. They are only consulted when the title names no source at all.
+    /// </summary>
+    private static readonly Regex _streamingServiceRegex = new(
+        @"\b(?:Amazon|Netflix|iTunes|Vudu|Hulu|Disney\+?|HBO(?:Max)?|AppleTV\+?|Peacock|Paramount\+?|ESPN\+?|DAZN|UFC[-_. ]?FightPass|MLB[-_. ]?TV)[-_. ]?(?:HD|UHD|WEB|4K)?\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
@@ -396,6 +409,16 @@ public static class QualityParser
         if (lastSourceMatch != null)
         {
             source = DetermineSource(lastSourceMatch);
+        }
+
+        // Only when the title names no source at all does a streaming service
+        // in the name suggest one. Leaving those names in with the real source
+        // tokens meant a broadcaster's name at the front of a sports title won
+        // over the HDTV tag further along, and a broadcast capture was filed
+        // as WEB-DL.
+        if (source == null && _streamingServiceRegex.IsMatch(normalizedName))
+        {
+            source = QualitySource.Web;
         }
 
         // Determine quality from source + resolution

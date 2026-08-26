@@ -1,3 +1,4 @@
+using Sportarr.Api.Helpers;
 using System.Text.RegularExpressions;
 using Sportarr.Api.Models;
 
@@ -221,28 +222,38 @@ public class EventQueryService
         var leagueName = evt.League?.Name;
 
         // If custom template is provided, use it instead of default logic
-        if (!string.IsNullOrWhiteSpace(customTemplate))
+        // A league may carry several templates, one per line, because release
+        // groups name the same event differently. Each is asked in turn and
+        // the results merge, so the first line stays the primary query.
+        var customTemplates = SearchTemplateList.Parse(customTemplate);
+        if (customTemplates.Count > 0)
         {
-            var templateQuery = BuildQueryFromTemplate(customTemplate, evt, part);
-            queries.Add(templateQuery);
-
-            // User-defined team aliases exist so releases named in another
-            // language match - but a query built from the canonical names
-            // never RETURNS those releases from the indexer in the first
-            // place (a Cyrillic-only rutracker title has no "Portugal" to
-            // hit). Re-expand the template once per alias slot so the
-            // indexer is also asked in the alias language.
-            foreach (var (home, away) in BuildTeamAliasPairs(evt))
+            foreach (var template in customTemplates)
             {
-                var variant = BuildQueryFromTemplate(customTemplate, evt, part, home, away);
-                if (!queries.Contains(variant, StringComparer.OrdinalIgnoreCase))
+                var templateQuery = BuildQueryFromTemplate(template, evt, part);
+                if (!queries.Contains(templateQuery, StringComparer.OrdinalIgnoreCase))
                 {
-                    queries.Add(variant);
+                    queries.Add(templateQuery);
+                }
+
+                // User-defined team aliases exist so releases named in another
+                // language match - but a query built from the canonical names
+                // never RETURNS those releases from the indexer in the first
+                // place (a Cyrillic-only rutracker title has no "Portugal" to
+                // hit). Re-expand the template once per alias slot so the
+                // indexer is also asked in the alias language.
+                foreach (var (home, away) in BuildTeamAliasPairs(evt))
+                {
+                    var variant = BuildQueryFromTemplate(template, evt, part, home, away);
+                    if (!queries.Contains(variant, StringComparer.OrdinalIgnoreCase))
+                    {
+                        queries.Add(variant);
+                    }
                 }
             }
 
-            _logger.LogInformation("[EventQuery] Using custom template query: '{Query}' for '{EventTitle}' ({Count} variant(s) incl. team aliases)",
-                templateQuery, evt.Title, queries.Count);
+            _logger.LogInformation("[EventQuery] Using {TemplateCount} custom template(s) for '{EventTitle}': primary '{Query}' ({Count} query/queries incl. team aliases)",
+                customTemplates.Count, evt.Title, queries.FirstOrDefault(), queries.Count);
             return queries;
         }
 
@@ -281,10 +292,19 @@ public class EventQueryService
                 evt.Title, sport, leagueName ?? "(none)");
         }
 
-        _logger.LogInformation("[EventQuery] Built {Count} {QueryType} queries for '{EventTitle}': {Queries}",
-            queries.Count, queryType, evt.Title, string.Join(" | ", queries));
+        // The builders above can emit the same string twice, for instance when
+        // a title's location word matches the event's own location or when two
+        // search-name forms collapse together. Each duplicate was a separate
+        // request to every indexer for an answer already in hand.
+        var deduped = queries
+            .Where(q => !string.IsNullOrWhiteSpace(q))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        return queries;
+        _logger.LogInformation("[EventQuery] Built {Count} {QueryType} queries for '{EventTitle}': {Queries}",
+            deduped.Count, queryType, evt.Title, string.Join(" | ", deduped));
+
+        return deduped;
     }
 
     /// <summary>
@@ -443,23 +463,106 @@ public class EventQueryService
     /// Build wrestling queries (WWE, AEW).
     /// Weekly shows use date-based queries; PPVs use event name queries.
     /// </summary>
+    /// <remarks>
+    /// The promotions below are matched against the league name first, then
+    /// the title. A promotion nobody listed falls back to the league's own
+    /// name, which is still far better than calling it WWE.
+    /// </remarks>
+    private static readonly (string Org, string[] Aliases)[] WrestlingPromotions =
+    {
+        ("WWE", new[] { "WWE", "World Wrestling Entertainment" }),
+        // ROH comes before AEW: a Ring of Honor league sometimes carries its
+        // parent company in the name, and the first match wins, so listing
+        // AEW first gave those events AEW queries that find no ROH release.
+        // The part detector orders them this way for the same reason.
+        ("ROH", new[] { "ROH", "Ring of Honor" }),
+        ("AEW", new[] { "AEW", "All Elite Wrestling" }),
+        ("TNA", new[] { "TNA", "Impact Wrestling", "Total Nonstop Action" }),
+        ("NJPW", new[] { "NJPW", "New Japan Pro-Wrestling", "New Japan" }),
+        ("MLW", new[] { "MLW", "Major League Wrestling" }),
+        ("GCW", new[] { "GCW", "Game Changer Wrestling" }),
+        ("NWA", new[] { "NWA", "National Wrestling Alliance" }),
+        ("Stardom", new[] { "Stardom" }),
+        ("DDT", new[] { "DDT" }),
+        ("CMLL", new[] { "CMLL" }),
+        ("AAA", new[] { "AAA", "Lucha Libre AAA" }),
+        ("wXw", new[] { "wXw", "Westside Xtreme" }),
+        ("PROGRESS", new[] { "PROGRESS Wrestling" }),
+    };
+
+    private static readonly string WrestlingOrgPrefixPattern =
+        "^(?:" + string.Join("|", WrestlingPromotions.SelectMany(p => p.Aliases).Select(Regex.Escape)) + @")\s+";
+
+    /// <summary>
+    /// Specials whose names carry a weekly show's word. "Strong Style Evolved"
+    /// contains "Strong", and plain containment filed the special under the
+    /// weekly show, so it was searched by date and never found.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> WeeklyShowExceptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "NJPW", new[] { "Strong Style" } },
+        { "AEW", new[] { "Dark Side" } },
+    };
+
+    /// <summary>
+    /// True when the title names the weekly show as a whole word and is not
+    /// one of the specials that merely contains it.
+    /// </summary>
+    internal static bool NamesWeeklyShow(string title, string org, string show)
+    {
+        if (!Regex.IsMatch(title, $@"\b{Regex.Escape(show)}\b", RegexOptions.IgnoreCase))
+        {
+            return false;
+        }
+
+        if (WeeklyShowExceptions.TryGetValue(org, out var exceptions) &&
+            exceptions.Any(phrase => title.Contains(phrase, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    internal static string ResolveWrestlingOrg(string? leagueName, string title)
+    {
+        foreach (var (org, aliases) in WrestlingPromotions)
+        {
+            foreach (var alias in aliases)
+            {
+                if (leagueName?.Contains(alias, StringComparison.OrdinalIgnoreCase) == true ||
+                    title.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+                {
+                    return org;
+                }
+            }
+        }
+
+        // Nothing recognized. The league's own name is what release groups
+        // are most likely to use, and guessing WWE never was.
+        var fallback = (leagueName ?? "").Trim();
+        return string.IsNullOrEmpty(fallback) ? "WWE" : fallback;
+    }
+
     private void BuildWrestlingQueries(Event evt, string? leagueName, List<string> queries)
     {
         var title = evt.Title ?? "";
 
-        // Determine organization prefix
-        var org = "WWE";
-        if (leagueName?.Contains("AEW", StringComparison.OrdinalIgnoreCase) == true ||
-            title.StartsWith("AEW", StringComparison.OrdinalIgnoreCase))
-        {
-            org = "AEW";
-        }
+        // Determine organization prefix. Anything that was not AEW used to be
+        // called WWE, so every other promotion was searched for under the
+        // wrong name and could not match a single release.
+        var org = ResolveWrestlingOrg(leagueName, title);
 
         // Known weekly shows
         var weeklyShows = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
             { "WWE", new[] { "Raw", "Monday Night Raw", "SmackDown", "Friday Night SmackDown", "NXT", "Main Event" } },
-            { "AEW", new[] { "Dynamite", "Rampage", "Collision", "Dark", "Elevation" } }
+            { "AEW", new[] { "Dynamite", "Rampage", "Collision", "Dark", "Elevation" } },
+            { "TNA", new[] { "Impact", "Xplosion" } },
+            { "NJPW", new[] { "Strong" } },
+            { "ROH", new[] { "Honor Club", "ROH TV" } },
+            { "MLW", new[] { "Fusion", "Underground" } },
+            { "NWA", new[] { "Powerrr" } },
         };
 
         // Check if this is a weekly show
@@ -468,7 +571,7 @@ public class EventQueryService
         {
             foreach (var show in shows)
             {
-                if (title.Contains(show, StringComparison.OrdinalIgnoreCase))
+                if (NamesWeeklyShow(title, org, show))
                 {
                     // Use the canonical short name
                     matchedShow = show switch
@@ -500,7 +603,8 @@ public class EventQueryService
         {
             // PPV or special event: name-based queries
             // Extract event name (strip org prefix and year)
-            var eventName = Regex.Replace(title, @"^(?:WWE|AEW)\s+", "", RegexOptions.IgnoreCase).Trim();
+            var eventName = Regex.Replace(title, $@"^{Regex.Escape(org)}\s+", "", RegexOptions.IgnoreCase).Trim();
+            eventName = Regex.Replace(eventName, WrestlingOrgPrefixPattern, "", RegexOptions.IgnoreCase).Trim();
             eventName = Regex.Replace(eventName, @"\s+\d{4}$", "").Trim();
 
             if (!string.IsNullOrEmpty(eventName))
@@ -538,15 +642,24 @@ public class EventQueryService
         string? primaryQuery = null;
         string? org = null;
 
+        var titleYear = (evt.BroadcastDate ?? evt.EventDate).Year;
+
         foreach (var (pattern, replacement) in patterns)
         {
             var match = Regex.Match(title, pattern, RegexOptions.IgnoreCase);
-            if (match.Success)
+            if (!match.Success) continue;
+
+            // A card number and a year look alike. "PFL 2026 World Tournament
+            // 3" matched as card 2026, so the query became "PFL 2026" and both
+            // the tournament name and the actual card number were thrown away.
+            if (int.TryParse(match.Groups[2].Value, out var number) && number == titleYear)
             {
-                primaryQuery = Regex.Replace(match.Value, pattern, replacement, RegexOptions.IgnoreCase);
-                org = match.Groups[1].Value.ToUpperInvariant();
-                break;
+                continue;
             }
+
+            primaryQuery = Regex.Replace(match.Value, pattern, replacement, RegexOptions.IgnoreCase);
+            org = match.Groups[1].Value.ToUpperInvariant();
+            break;
         }
 
         if (primaryQuery == null)
@@ -889,7 +1002,7 @@ public class EventQueryService
     /// For NFL: Week 1 starts first Thursday after Labor Day
     /// For NBA/NHL/MLB: Based on season start date
     /// </summary>
-    private int? GetWeekNumber(Event evt)
+    internal int? GetWeekNumber(Event evt)
     {
         var leagueName = evt.League?.Name?.ToLowerInvariant() ?? "";
         // Anchor week math to the broadcast-local date when available.

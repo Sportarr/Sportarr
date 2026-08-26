@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   PlusIcon,
   PencilIcon,
@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
+import { runSettingsSave } from '../../hooks/useSettings';
 import PageHeader from '../../components/PageHeader';
 import PageShell from '../../components/PageShell';
 import EpgSourcesPanel from '../../components/EpgSourcesPanel';
@@ -281,12 +282,16 @@ export default function IptvSettings() {
   const saveRefreshIntervals = async () => {
     setSavingRefresh(true);
     try {
-      // PUT expects the full settings object, so merge onto the current one.
-      const { data: current } = await apiClient.get('/settings');
-      await apiClient.put('/settings', {
-        ...current,
-        iptvPlaylistRefreshHours: Math.max(0, iptvRefreshHours),
-        epgRefreshHours: Math.max(0, epgRefreshHours),
+      // PUT expects the full settings object, so merge onto the current one,
+      // inside the shared chain so a save from another settings page cannot
+      // slip between this read and this write and be put back as it was.
+      await runSettingsSave(async () => {
+        const { data: current } = await apiClient.get('/settings');
+        return apiClient.put('/settings', {
+          ...current,
+          iptvPlaylistRefreshHours: Math.max(0, iptvRefreshHours),
+          epgRefreshHours: Math.max(0, epgRefreshHours),
+        });
       });
     } catch {
       setError('Failed to save refresh intervals');
@@ -368,7 +373,14 @@ export default function IptvSettings() {
     loadLinkedGuides();
   }, [epgRefreshKey]);
 
+  // Only the newest channel request may write to the list. Changing the
+  // filter, the group, the search or the source itself while one was in
+  // flight let the older answer land last, so the viewer showed the previous
+  // selection's channels under the new controls, or appended them to it.
+  const channelLoadSeq = useRef(0);
+
   const loadChannels = async (sourceId: number, page: number = 0, reset: boolean = true) => {
+    const seq = ++channelLoadSeq.current;
     try {
       setLoadingChannels(true);
       const offset = page * CHANNEL_PAGE_SIZE;
@@ -394,6 +406,7 @@ export default function IptvSettings() {
       }
 
       const results = await Promise.all(requests);
+      if (seq !== channelLoadSeq.current) return;
       const channelsData = Array.isArray(results[0].data) ? results[0].data : [];
 
       if (reset) {
@@ -410,9 +423,10 @@ export default function IptvSettings() {
         setGroups(Array.isArray(results[2].data) ? results[2].data : []);
       }
     } catch (err: any) {
+      if (seq !== channelLoadSeq.current) return;
       toast.error('Failed to load channels', { description: err.message });
     } finally {
-      setLoadingChannels(false);
+      if (seq === channelLoadSeq.current) setLoadingChannels(false);
     }
   };
 
@@ -420,8 +434,31 @@ export default function IptvSettings() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  /// Refuse a source that cannot possibly work. Switching a working playlist
+  /// to Xtream and saving it without credentials left an unusable source whose
+  /// every sync failed and whose channels quietly went missing.
+  const describeInvalidSource = (hasStoredPassword: boolean): string | null => {
+    if (!formData.name.trim()) return 'Give the source a name.';
+    if (!formData.url.trim()) return 'A URL is required.';
+    if (formData.type !== 'Xtream') return null;
+    if (!formData.username.trim()) return 'An Xtream source needs a username.';
+    const passwordSupplied = formData.password === EXISTING_PASSWORD_PLACEHOLDER
+      ? hasStoredPassword
+      : formData.password.trim().length > 0;
+    if (!passwordSupplied) return 'An Xtream source needs a password.';
+    return null;
+  };
+
   const handleAddSource = async () => {
     if (isSubmitting) return;
+
+    const invalid = describeInvalidSource(false);
+    if (invalid) {
+      setError(invalid);
+      toast.error('Cannot add this source', { description: invalid });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       setError(null);
@@ -464,8 +501,17 @@ export default function IptvSettings() {
     }
   };
 
+
   const handleUpdateSource = async () => {
     if (!editingSource || isSubmitting) return;
+
+    const invalid = describeInvalidSource(editingSource.hasPassword ?? false);
+    if (invalid) {
+      setError(invalid);
+      toast.error('Cannot save this source', { description: invalid });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       setError(null);
@@ -588,7 +634,17 @@ export default function IptvSettings() {
     try {
       setIsTesting(true);
       setTestResult(null);
-      const response = await apiClient.post<{ success: boolean; error?: string; channelCount?: number }>('/iptv/sources/test', formData);
+      // Send the stored password's stand-in as nothing at all and name the
+      // source instead, so the server tests the credentials it already has.
+      // Sending the placeholder reported a failure against credentials that
+      // were perfectly good.
+      const usingStoredPassword = formData.password === EXISTING_PASSWORD_PLACEHOLDER;
+      const testPayload = {
+        ...formData,
+        password: usingStoredPassword ? '' : formData.password,
+        sourceId: usingStoredPassword ? editingSource?.id ?? null : null,
+      };
+      const response = await apiClient.post<{ success: boolean; error?: string; channelCount?: number }>('/iptv/sources/test', testPayload);
       if (response.data.success) {
         setTestResult({
           success: true,

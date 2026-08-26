@@ -56,24 +56,19 @@ jobs:
           echo "version=v$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "version_number=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "base_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "base_version_tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
 
-          # Update Version.cs
+          # Update Version.cs in the working tree only. The commit, the tags
+          # and the push all happen once, later, in "Commit release changes",
+          # together with the Jellyfin manifest and the Kodi repository. That
+          # used to be three separate commits and three pushes to main per
+          # release. It also means a build that fails part way leaves main
+          # untouched, instead of stranding a version bump and two tags with
+          # no release behind them.
           sed -i "s/AppVersion = \"$CURRENT_VERSION\"/AppVersion = \"$NEW_VERSION\"/" src/Version.cs
 
-          # Configure git
           git config user.name "Sportarr"
           git config user.email "sportarr@users.noreply.github.com"
-
-          # Commit version bump with conventional commit format
-          git add src/Version.cs
-          git commit -m "chore: Bump version to $NEW_VERSION [skip ci]"
-
-          # Create and push tag
-          git tag "v$NEW_VERSION"
-          git tag "v$FULL_VERSION"
-          git push origin main
-          git push origin "v$NEW_VERSION"
-          git push origin "v$FULL_VERSION"
 
       - name: Generate release notes
         id: changelog
@@ -86,7 +81,7 @@ jobs:
 
           # Get all commit subjects since the previous tag, excluding version bumps
           if [ -n "$PREVIOUS_TAG" ]; then
-            RAW_COMMITS=$(git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep "$PREVIOUS_TAG"..HEAD~1 2>/dev/null || git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
+            RAW_COMMITS=$(git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep "$PREVIOUS_TAG"..HEAD 2>/dev/null || git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
           else
             RAW_COMMITS=$(git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
           fi
@@ -157,13 +152,17 @@ jobs:
           # run-on bullet under "Improvements".
           #
           # Detection rule: exactly one non-[skip ci] commit between PREVIOUS_TAG
-          # and HEAD~1 (HEAD is the bot's version-bump commit), AND that commit
-          # has a multi-line body (>= 3 non-empty lines). Anything else falls
-          # through and the auto-categorized output above stands.
+          # and HEAD, AND that commit has a multi-line body (>= 3 non-empty
+          # lines). Anything else falls through and the auto-categorized output
+          # above stands.
+          #
+          # HEAD, not HEAD~1: nothing is committed before this step any more, so
+          # HEAD is the squash commit itself. The old offset skipped straight
+          # past it and found nothing, which silently disabled the curated body.
           if [ -n "$PREVIOUS_TAG" ]; then
-            CURATED_RANGE="${PREVIOUS_TAG}..HEAD~1"
+            CURATED_RANGE="${PREVIOUS_TAG}..HEAD"
           else
-            CURATED_RANGE="HEAD~1"
+            CURATED_RANGE="HEAD"
           fi
           CANDIDATE_SHAS=$(git log --pretty=format:"%H" --no-merges --grep="\[skip ci\]" --invert-grep "$CURATED_RANGE" 2>/dev/null || true)
           CANDIDATE_COUNT=$(printf '%s\n' "$CANDIDATE_SHAS" | grep -c . || true)
@@ -247,6 +246,13 @@ jobs:
           ls -la src/wwwroot/assets/
           echo "Verifying index.html exists:"
           head -5 src/wwwroot/index.html
+
+      - name: Check every migration is discoverable
+        run: |
+          # A hand-written migration without its Designer file is invisible to
+          # EF and ships silently. The guard lives in the test suite, and the
+          # suite is not otherwise part of this build.
+          dotnet test tests/Sportarr.Api.Tests/Sportarr.Api.Tests.csproj -p:SkipFrontendBuild=true --nologo --filter "FullyQualifiedName~MigrationDiscoveryTests"
 
       - name: Build Windows x64
         run: |
@@ -401,6 +407,36 @@ jobs:
           # thin repository shim.
           cp repo/metadata.tvshows.sportarr/metadata.tvshows.sportarr-${BASE_VERSION}.zip ../../sportarr-kodi-plugin_${{ steps.bump_version.outputs.version_number }}.zip
 
+      - name: Commit release changes
+        run: |
+          # One commit and one push for everything this release changed:
+          # the version bump, the Jellyfin plugin manifest, and the Kodi
+          # addon repository. The tags are created here too, so they point
+          # at that commit, and pushed before the release below is cut
+          # (action-gh-release would otherwise create the tag itself at the
+          # commit that triggered the run, which is the wrong one).
+          git add src/Version.cs agents/jellyfin/manifest.json
+          git add agents/kodi/repo agents/kodi/metadata.tvshows.sportarr/addon.xml agents/kodi/metadata.tvshows.sportarr/resources/settings.xml agents/kodi/repository.sportarr/addon.xml || true
+
+          if git diff --staged --quiet; then
+            echo "Nothing to commit for this release"
+          else
+            git commit -m "chore: Release ${{ steps.bump_version.outputs.base_version }} [skip ci]"
+          fi
+
+          # main can move while the build runs, so land on top of it.
+          #
+          # --autostash because the plugin build steps sed the Jellyfin and Emby
+          # csproj files and meta.json in place. Those are tracked, deliberately
+          # never committed, and a rebase refuses to start with them dirty.
+          git pull --rebase --autostash origin main
+
+          git tag "${{ steps.bump_version.outputs.base_version_tag }}"
+          git tag "${{ steps.bump_version.outputs.version }}"
+          git push origin main
+          git push origin "${{ steps.bump_version.outputs.base_version_tag }}"
+          git push origin "${{ steps.bump_version.outputs.version }}"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -421,30 +457,6 @@ jobs:
             sportarr-kodi-plugin_${{ steps.bump_version.outputs.version_number }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit Jellyfin manifest update
-        run: |
-          git add agents/jellyfin/manifest.json
-          # Only commit if there are changes
-          if git diff --staged --quiet; then
-            echo "No manifest changes to commit"
-          else
-            # Pull any changes that may have been pushed during the build
-            git pull --rebase origin main || true
-            git commit -m "chore: Update Jellyfin plugin manifest to ${{ steps.bump_version.outputs.version }} [skip ci]" || true
-            git push origin main || echo "Failed to push manifest update - this is non-fatal"
-          fi
-
-      - name: Commit Kodi repository update
-        run: |
-          git add agents/kodi/repo agents/kodi/metadata.tvshows.sportarr/addon.xml agents/kodi/metadata.tvshows.sportarr/resources/settings.xml agents/kodi/repository.sportarr/addon.xml
-          if git diff --staged --quiet; then
-            echo "No Kodi repository changes to commit"
-          else
-            git pull --rebase origin main || true
-            git commit -m "chore: Update Kodi addon repository to ${{ steps.bump_version.outputs.version }} [skip ci]" || true
-            git push origin main || echo "Failed to push Kodi repository update - this is non-fatal"
-          fi
 
       # Build framework-dependent (non-self-contained) for Docker
       # These produce Sportarr.dll that runs on the aspnet runtime already in the Docker image

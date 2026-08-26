@@ -176,7 +176,13 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
   // Download client form plus the list already saved (this session or
   // before), each entry editable so a typo doesn't require Settings.
   const [dcType, setDcType] = useState(0);
+  // The host defaults to localhost, which is a helpful placeholder and a
+  // terrible thing to save on its own. Reopening the guide on a configured
+  // install and clicking past this step used to create a qBittorrent client
+  // at localhost:8080 that nobody asked for. The step is only saved once the
+  // user has actually touched it.
   const [dcHost, setDcHost] = useState('localhost');
+  const [dcFormTouched, setDcFormTouched] = useState(false);
   const [dcPort, setDcPort] = useState(8080);
   const [dcUser, setDcUser] = useState('');
   const [dcPass, setDcPass] = useState('');
@@ -475,6 +481,11 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
     try {
       await apiClient.post('/downloadclient/test', buildClientPayload());
       setDcTest({ ok: true, msg: 'Connected' });
+      // Testing the form is asking for this client to be kept. The prefilled
+      // localhost setup is right for most people, so they can test it without
+      // editing a field, and Save then walked past it and finished onboarding
+      // with no client at all.
+      setDcFormTouched(true);
     } catch (err: any) {
       setDcTest({ ok: false, msg: err?.response?.data?.error || err?.message || 'Could not connect' });
     } finally {
@@ -497,11 +508,17 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
 
   const saveQualityStep = async (): Promise<boolean> => {
     setBusy(true);
+    // Every failure here used to be swallowed and the step reported as done,
+    // so a user who picked 4K could go on to create leagues on the old HD
+    // default, and a naming change that never landed left imported files under
+    // a format that does not match reliably.
+    const failures: string[] = [];
     try {
       // 1) Make the chosen resolution the default profile.
       const id = qualityChoice === '4k' ? fourKProfileId : hdProfileId;
       if (id != null) {
-        try { await apiClient.post(`/qualityprofile/${id}/set-default`); } catch { /* leave default as-is */ }
+        try { await apiClient.post(`/qualityprofile/${id}/set-default`); }
+        catch (err: any) { failures.push(`quality profile (${err?.response?.data?.error || err?.message || 'unknown error'})`); }
       }
       // 2) Import the recommended TRaSH size limits.
       try { await apiClient.post('/qualitydefinition/trash/import', {}); } catch { /* non-fatal */ }
@@ -514,8 +531,18 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
           media.standardFileFormat = preset.format;
           media.renameEpisodes = true;
           await apiClient.put('/settings', { ...settings, mediaManagementSettings: JSON.stringify(media) });
-        } catch { /* non-fatal: keep existing naming */ }
+        } catch (err: any) {
+          failures.push(`file naming (${err?.response?.data?.error || err?.message || 'unknown error'})`);
+        }
       }
+
+      if (failures.length > 0) {
+        toast.error('Some of these settings were not saved', {
+          description: `${failures.join('; ')}. Fix this under Settings, or try again.`,
+        });
+        return false;
+      }
+
       return true;
     } finally {
       setBusy(false);
@@ -722,6 +749,42 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
       setBusy(true);
       try {
         await apiClient.put(`/iptv/sources/${editingProviderId}`, body);
+
+        // A guide URL typed while editing used to be dropped on the floor, so
+        // the provider kept whatever guide it had, or none, and recordings
+        // were scheduled against missing programme data.
+        const editedGuideUrl = pEpg.trim();
+        if (editedGuideUrl) {
+          try {
+            const { data: existingSources } = await apiClient.get<{ id: number; url: string; iptvSourceId: number | null }[]>('/epg/sources');
+            const linked = (Array.isArray(existingSources) ? existingSources : [])
+              .find((s) => s.iptvSourceId === editingProviderId);
+            if (linked) {
+              if (linked.url !== editedGuideUrl) {
+                await apiClient.put(`/epg/sources/${linked.id}`, {
+                  name: `${pName.trim()} Guide`,
+                  url: editedGuideUrl,
+                  isActive: true,
+                  priority: 25,
+                  iptvSourceId: editingProviderId,
+                });
+              }
+            } else {
+              await apiClient.post('/epg/sources', {
+                name: `${pName.trim()} Guide`,
+                url: editedGuideUrl,
+                priority: 25,
+                iptvSourceId: editingProviderId,
+              });
+            }
+            await apiClient.post('/epg/auto-map');
+          } catch (guideErr: any) {
+            toast.warning('Provider updated, but the guide could not be saved', {
+              description: guideErr?.response?.data?.error || guideErr?.message,
+            });
+          }
+        }
+
         setAddedProviders((prev) => prev.map((p) => (p.id === editingProviderId
           ? { id: editingProviderId, label: body.name, raw: { ...p.raw, ...body } }
           : p)));
@@ -815,9 +878,9 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
       return;
     }
     if (stepKey === 'client') {
-      // An untouched form is fine when at least one client was already
-      // added via "Add another" - don't force a phantom extra client.
-      if (!dcHost.trim() && addedClients.length > 0) { goTo(nextKey()); return; }
+      // An untouched form is not a client the user asked for, whether or not
+      // one was already added.
+      if (!dcFormTouched || !dcHost.trim()) { goTo(nextKey()); return; }
       if (await saveClient()) goTo(nextKey());
       return;
     }
@@ -1250,6 +1313,7 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
                     value={dcType}
                     onChange={(e) => {
                       const t = parseInt(e.target.value, 10);
+                      setDcFormTouched(true);
                       setDcType(t);
                       setDcPort(CLIENT_TYPES.find((c) => c.value === t)?.port ?? 8080);
                       setDcTest(null);
@@ -1264,27 +1328,27 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-2">
                     <label className={labelCls}>Host</label>
-                    <input type="text" value={dcHost} onChange={(e) => setDcHost(e.target.value)} placeholder="localhost" className={inputCls} />
+                    <input type="text" value={dcHost} onChange={(e) => { setDcFormTouched(true); setDcHost(e.target.value); }} placeholder="localhost" className={inputCls} />
                   </div>
                   <div>
                     <label className={labelCls}>Port</label>
-                    <input type="number" value={dcPort} onChange={(e) => setDcPort(parseInt(e.target.value, 10) || 0)} className={inputCls} />
+                    <input type="number" value={dcPort} onChange={(e) => { setDcFormTouched(true); setDcPort(parseInt(e.target.value, 10) || 0); }} className={inputCls} />
                   </div>
                 </div>
                 {clientAuth === 'apikey' ? (
                   <div>
                     <label className={labelCls}>API Key</label>
-                    <input type="text" value={dcApiKey} onChange={(e) => setDcApiKey(e.target.value)} className={inputCls} />
+                    <input type="text" value={dcApiKey} onChange={(e) => { setDcFormTouched(true); setDcApiKey(e.target.value); }} className={inputCls} />
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className={labelCls}>Username</label>
-                      <input type="text" value={dcUser} onChange={(e) => setDcUser(e.target.value)} className={inputCls} />
+                      <input type="text" value={dcUser} onChange={(e) => { setDcFormTouched(true); setDcUser(e.target.value); }} className={inputCls} />
                     </div>
                     <div>
                       <label className={labelCls}>Password</label>
-                      <input type="password" value={dcPass} onChange={(e) => setDcPass(e.target.value)} className={inputCls} />
+                      <input type="password" value={dcPass} onChange={(e) => { setDcFormTouched(true); setDcPass(e.target.value); }} className={inputCls} />
                     </div>
                   </div>
                 )}

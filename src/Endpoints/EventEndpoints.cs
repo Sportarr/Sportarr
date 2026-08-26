@@ -92,7 +92,7 @@ app.MapGet("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Create event (universal for all sports)
-app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext db, NotificationService notificationService) =>
+app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext db, NotificationService notificationService, SearchQueueService searchQueueService, ILogger<Program> logger) =>
 {
     var evt = new Event
     {
@@ -156,6 +156,21 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
         .FirstOrDefaultAsync(e => e.Id == evt.Id);
 
     if (createdEvent is null) return Results.Problem("Failed to create event");
+
+    // Honour the "Start search immediately" box. Nothing here read it before,
+    // so the box did nothing whichever way it was left and an event the user
+    // expected to be searched simply sat there.
+    if (request.SearchOnAdd && evt.Monitored)
+    {
+        try
+        {
+            await searchQueueService.QueueSearchAsync(evt.Id, part: null, isManualSearch: false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[EVENTS] Added {Title} but could not queue its search", evt.Title);
+        }
+    }
 
     return Results.Created($"/api/events/{evt.Id}", createdEvent);
 }).WithRequestValidation<CreateEventRequest>();
@@ -361,7 +376,7 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
             {
                 // Move to recycle bin instead of permanent deletion
                 var fileName = Path.GetFileName(file.FilePath);
-                var recyclePath = Path.Combine(recycleBinPath, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{fileName}");
+                var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath, fileName);
                 File.Move(file.FilePath, recyclePath);
                 logger.LogInformation("[FILES] Moved file to recycle bin: {RecyclePath}", recyclePath);
             }
@@ -551,12 +566,6 @@ app.MapDelete("/api/events/{id:int}/files", async (
     logger.LogInformation("[FILES] Deleting all {Count} files for event {EventId} (blocklistAction={BlocklistAction})",
         evt.Files.Count, id, blocklistAction ?? "none");
 
-    // Collect original titles for blocklisting before deletion
-    var releasesToBlocklist = evt.Files
-        .Select(f => f.OriginalTitle ?? Path.GetFileNameWithoutExtension(f.FilePath))
-        .Where(t => !string.IsNullOrEmpty(t))
-        .Distinct()
-        .ToList();
 
     // Capture every file's path/quality/size before deletion - both to point
     // the media-server rescan at the event's folder afterwards (all parts
@@ -576,8 +585,15 @@ app.MapDelete("/api/events/{id:int}/files", async (
     int deletedFromDisk = 0;
     int failedToDelete = 0;
 
+    // Rows for files that would not delete stay put. Removing them anyway
+    // left the file on disk with nothing tracking it, showed the event as
+    // missing, and let the next search import a second copy beside the
+    // first. The single-file endpoint has always kept the row on failure.
+    var removableFiles = new List<EventFile>();
+
     foreach (var file in evt.Files.ToList())
     {
+        var failed = false;
         if (File.Exists(file.FilePath))
         {
             try
@@ -585,7 +601,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
                 if (useRecycleBin)
                 {
                     var fileName = Path.GetFileName(file.FilePath);
-                    var recyclePath = Path.Combine(recycleBinPath!, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{fileName}");
+                    var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, fileName);
                     File.Move(file.FilePath, recyclePath);
                 }
                 else
@@ -598,8 +614,16 @@ app.MapDelete("/api/events/{id:int}/files", async (
             {
                 logger.LogError(ex, "[FILES] Failed to delete file: {FilePath}", file.FilePath);
                 failedToDelete++;
+                failed = true;
             }
         }
+
+        if (failed)
+        {
+            continue;
+        }
+
+        removableFiles.Add(file);
 
         try
         {
@@ -611,24 +635,55 @@ app.MapDelete("/api/events/{id:int}/files", async (
         }
     }
 
-    // Remove all files from database
-    db.RemoveRange(evt.Files);
+    db.RemoveRange(removableFiles);
 
-    // Update event status
-    evt.HasFile = false;
-    evt.FilePath = null;
-    evt.FileSize = null;
-    evt.Quality = null;
+    // Update event status. A file that would not delete is still the event's
+    // file, so the event keeps pointing at it.
+    var keptFiles = evt.Files.Except(removableFiles).ToList();
+    if (keptFiles.Count == 0)
+    {
+        evt.HasFile = false;
+        evt.FilePath = null;
+        evt.FileSize = null;
+        evt.Quality = null;
+    }
+    else
+    {
+        var kept = keptFiles[0];
+        evt.FilePath = kept.FilePath;
+        evt.FileSize = kept.Size;
+        evt.Quality = kept.Quality;
+    }
 
     await db.SaveChangesAsync();
 
-    // Tell media servers / webhooks the files are gone (see single-file delete).
-    await NotifyFileDeletedAsync(notificationService, logger, evt, representativeDeletedPath, deletedFilesData);
+    // Report only what actually went. Naming a file that refused to delete
+    // tells a media server to forget a file that is still there.
+    deletedFilesData = removableFiles
+        .Where(f => !string.IsNullOrEmpty(f.FilePath))
+        .Select(f => new NotificationFileData { Path = f.FilePath, Quality = f.Quality, Size = f.Size })
+        .ToList();
+    representativeDeletedPath = deletedFilesData.FirstOrDefault()?.Path;
+
+    if (deletedFilesData.Count > 0)
+    {
+        // Tell media servers / webhooks the files are gone (see single-file delete).
+        await NotifyFileDeletedAsync(notificationService, logger, evt, representativeDeletedPath, deletedFilesData);
+    }
 
     // Handle blocklist action if specified
     if (blocklistAction == "blocklistAndSearch" || blocklistAction == "blocklistOnly")
     {
-        // Add all releases to blocklist
+        // Only releases whose files actually went. A file that refused to
+        // delete is still this event's file, and blocklisting its release
+        // while it sits there invited the replacement search to download a
+        // second copy beside the one being kept.
+        var releasesToBlocklist = removableFiles
+            .Select(f => f.OriginalTitle ?? Path.GetFileNameWithoutExtension(f.FilePath))
+            .Where(t => !string.IsNullOrEmpty(t))
+            .Distinct()
+            .ToList();
+
         foreach (var releaseTitle in releasesToBlocklist)
         {
             var blocklistEntry = new BlocklistItem
@@ -645,8 +700,10 @@ app.MapDelete("/api/events/{id:int}/files", async (
         await db.SaveChangesAsync();
         logger.LogInformation("[FILES] Added {Count} releases to blocklist", releasesToBlocklist.Count);
 
-        // Trigger search for replacements if requested
-        if (blocklistAction == "blocklistAndSearch" && evt.Monitored)
+        // Trigger search for replacements if requested. Only once every
+        // file is really gone: a replacement grabbed while one still sits
+        // here lands beside it as a second copy.
+        if (blocklistAction == "blocklistAndSearch" && evt.Monitored && failedToDelete == 0)
         {
             // Use event's profile first, then league's, then let AutomaticSearchService handle fallback
             var qualityProfileId = evt.QualityProfileId ?? evt.League?.QualityProfileId;

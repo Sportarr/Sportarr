@@ -80,14 +80,27 @@ public class HealthCheckMonitorService : BackgroundService
         }
 
         var newIssues = issues.Where(i => !_activeIssues.Contains(IssueKey(i))).ToList();
-        var restored = EvaluateAnnouncedTransitions(currentKeys, newIssues.Select(IssueKey), _announcedIssues);
+
+        // Nothing is recorded as announced until its notification has actually
+        // gone out. Marking them up front meant a transient notification
+        // failure lost the alert for good, and worse, the issue counted as
+        // announced, so clearing it later fired "Health restored" for
+        // something the user was never told about.
+        var restored = EvaluateAnnouncedTransitions(currentKeys, Array.Empty<string>(), _announcedIssues);
+
+        // Whether anyone is listening at all. A send answers false both when
+        // no connection is subscribed and when a subscribed one failed, and
+        // only the second is worth offering again. Treating both as a retry
+        // re-logged every standing issue as new on every pass of an install
+        // with no notification connection, which is the default install.
+        var providerExists = await notificationService.HasProviderForTriggerAsync(NotificationTrigger.OnHealthIssue);
 
         foreach (var issue in newIssues)
         {
             _logger.LogWarning("[Health Monitor] New health issue ({Level}): {Message}", issue.Level, issue.Message);
             try
             {
-                await notificationService.SendNotificationAsync(
+                var delivered = await notificationService.SendNotificationAsync(
                     NotificationTrigger.OnHealthIssue,
                     $"Health issue: {issue.Type}",
                     issue.Message + (string.IsNullOrEmpty(issue.Details) ? "" : $"\n{issue.Details}"),
@@ -96,14 +109,33 @@ public class HealthCheckMonitorService : BackgroundService
                         HealthType = issue.Type.ToString(),
                         HealthLevel = issue.Level.ToString(),
                     });
+
+                // Only counts as told if something took it. Recording it
+                // anyway meant a provider failing lost the alert, and the
+                // all-clear later fired for an issue nobody had heard of.
+                if (delivered)
+                {
+                    _announcedIssues.Add(IssueKey(issue));
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "[Health Monitor] No notification provider accepted the health issue; it will be offered again next check");
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[Health Monitor] Failed to send health-issue notification");
+                // Left unannounced on purpose, so the next pass tries again
+                // rather than treating it as already reported.
+                _logger.LogWarning(ex, "[Health Monitor] Failed to send health-issue notification; will retry on the next check");
             }
         }
 
-        if (restored)
+        // No all-clear while a new issue stands in the same tick. The helper
+        // suppresses this when it is told about the new keys, but announcing
+        // only happens above once delivery succeeds, so the check is made
+        // here: an "everything cleared" beside a fresh alert contradicts it.
+        if (restored && newIssues.Count == 0)
         {
             _logger.LogInformation("[Health Monitor] All reported health issues resolved");
             try
@@ -119,6 +151,16 @@ public class HealthCheckMonitorService : BackgroundService
             }
         }
 
+        // An issue whose alert nobody took is left out of the active set, so
+        // the next pass treats it as new and offers it again. Folding it in
+        // regardless made the retry the comments above promise impossible.
+        var undelivered = providerExists
+            ? newIssues
+                .Select(IssueKey)
+                .Where(k => !_announcedIssues.Contains(k))
+                .ToHashSet()
+            : new HashSet<string>();
+        currentKeys.ExceptWith(undelivered);
         _activeIssues = currentKeys;
     }
 

@@ -60,6 +60,14 @@ public static class SystemEventEndpoints
 
         app.MapPost("/api/system/event/cleanup", async (SportarrDbContext db, int days = 30) =>
         {
+            // A zero or negative retention put the cutoff at or after now and
+            // deleted the whole audit history, which is the opposite of what
+            // asking to keep fewer days should ever do.
+            if (days < 1)
+            {
+                return Results.BadRequest(new { error = "days must be at least 1." });
+            }
+
             var cutoffDate = DateTime.UtcNow.AddDays(-days);
             var oldEvents = db.SystemEvents.Where(e => e.Timestamp < cutoffDate);
             db.SystemEvents.RemoveRange(oldEvents);

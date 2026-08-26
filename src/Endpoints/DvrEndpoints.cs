@@ -59,6 +59,23 @@ app.MapGet("/api/dvr/stats", async (SportarrDbContext db) =>
                 catch (IOException) { /* fall through to the recorded size */ }
             }
 
+            // A finished recording's size was trusted from the row whatever
+            // had happened to the file since, so a capture that was imported
+            // into the library, or simply deleted, went on being counted as
+            // bytes sitting in the DVR folders. When the row says where the
+            // file is, that is checked.
+            if (!string.IsNullOrEmpty(r.OutputPath))
+            {
+                try
+                {
+                    return File.Exists(r.OutputPath) ? new FileInfo(r.OutputPath).Length : 0L;
+                }
+                catch (IOException)
+                {
+                    return r.FileSize ?? 0L;
+                }
+            }
+
             return r.FileSize ?? 0L;
         })
     };

@@ -346,17 +346,74 @@ public class Aria2Client
         try
         {
             var dir = status.TryGetProperty("dir", out var dirEl) ? dirEl.GetString() : null;
-            var name = GetDownloadName(status);
-            if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(name)) return Task.CompletedTask;
+            if (string.IsNullOrEmpty(dir)) return Task.CompletedTask;
 
-            var path = Path.Combine(dir, name);
-            if (Directory.Exists(path))
+            // A multi-file torrent owns a folder named after itself, so that
+            // folder goes as a whole.
+            var name = GetDownloadName(status);
+            if (!string.IsNullOrEmpty(name))
             {
-                Directory.Delete(path, recursive: true);
+                var folder = Path.Combine(dir, name);
+                if (Directory.Exists(folder) && IsInside(dir, folder))
+                {
+                    try
+                    {
+                        Directory.Delete(folder, recursive: true);
+                        return Task.CompletedTask;
+                    }
+                    catch (Exception ex)
+                    {
+                        // The recursive delete stops at the first file that
+                        // refuses, which left everything after it on disk
+                        // with nothing tracking it. Fall through to the
+                        // per-file pass, which carries on past a refusal.
+                        _logger.LogWarning(ex,
+                            "[aria2] Could not delete {Folder} whole; removing its files one by one", folder);
+                    }
+                }
             }
-            else if (File.Exists(path))
+
+            // Otherwise delete exactly the files aria2 reports. Rebuilding a
+            // path from the directory and a bare file name hit whatever
+            // happened to carry that name in the download directory, which is
+            // shared with every other download in the category.
+            if (status.TryGetProperty("files", out var files) && files.ValueKind == JsonValueKind.Array)
             {
-                File.Delete(path);
+                foreach (var file in files.EnumerateArray())
+                {
+                    var filePath = file.TryGetProperty("path", out var p) ? p.GetString() : null;
+                    if (string.IsNullOrEmpty(filePath)) continue;
+
+                    var full = Path.IsPathRooted(filePath) ? filePath : Path.Combine(dir, filePath);
+
+                    // One file refusing to go is not a reason to leave the
+                    // rest behind. A locked or read-only file used to end the
+                    // loop, so everything after it stayed on disk with nothing
+                    // tracking it.
+                    try
+                    {
+                        if (IsInside(dir, full) && File.Exists(full))
+                        {
+                            File.Delete(full);
+                        }
+                    }
+                    catch (Exception fileEx)
+                    {
+                        _logger.LogWarning(fileEx, "[Aria2] Could not delete {Path}; continuing with the rest", full);
+                    }
+                }
+            }
+
+            // The folder itself, once the per-file pass has taken what it
+            // can. Only when it is empty; a refusing file still holds it.
+            if (!string.IsNullOrEmpty(name))
+            {
+                var folder = Path.Combine(dir, name);
+                if (Directory.Exists(folder) && IsInside(dir, folder) &&
+                    !Directory.EnumerateFileSystemEntries(folder).Any())
+                {
+                    Directory.Delete(folder);
+                }
             }
         }
         catch (Exception ex)
@@ -365,6 +422,32 @@ public class Aria2Client
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// True when candidate sits under root. Guards every delete, so a path
+    /// aria2 reports can never reach outside the download directory.
+    /// </summary>
+    private static bool IsInside(string root, string candidate)
+    {
+        try
+        {
+            var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var fullCandidate = Path.GetFullPath(candidate);
+
+            // Windows and macOS treat two spellings of one name as the same
+            // path, so comparing case-sensitively there refused a file that is
+            // genuinely inside the folder and left it on disk.
+            var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            return fullCandidate.StartsWith(fullRoot, comparison);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<bool> PauseTorrentAsync(DownloadClient config, string gid)

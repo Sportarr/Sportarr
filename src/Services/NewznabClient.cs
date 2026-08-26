@@ -32,11 +32,11 @@ public class NewznabClient
         {
             // Test with caps endpoint
             var url = BuildUrl(config, "caps");
-            using var response = await _httpClient.GetAsync(url);
+            using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
 
             if (response.IsSuccessStatusCode)
             {
-                var xml = await response.Content.ReadAsStringAsync();
+                var xml = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsStringAsync(response.Content, "The indexer response");
                 var doc = XDocument.Parse(xml);
 
                 // Verify it's a valid Newznab response
@@ -61,6 +61,10 @@ public class NewznabClient
     // client per search. Same shape as TorznabClient's (the caps document
     // format is shared between the two protocols).
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (TorznabCapabilities? Caps, DateTime FetchedAt)> CapsCache = new();
+    // One in-flight caps fetch per indexer. Concurrent searches all missed the
+    // cache at once and every one of them hit the caps endpoint, which walked
+    // straight past the configured request delay and burned quota.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> CapsFetchLocks = new();
     private static readonly TimeSpan CapsCacheTtl = TimeSpan.FromHours(12);
     private static readonly TimeSpan CapsFailureRetry = TimeSpan.FromMinutes(15);
 
@@ -74,26 +78,43 @@ public class NewznabClient
                 return cached.Caps;
         }
 
-        TorznabCapabilities? caps = null;
+        var gate = CapsFetchLocks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
         try
         {
-            var url = BuildUrl(config, "caps");
-            using var response = await _httpClient.GetAsync(url);
-            if (response.IsSuccessStatusCode)
+            // Whoever waited here can use what the first caller just stored.
+            if (CapsCache.TryGetValue(cacheKey, out var fresh))
             {
-                var xml = await response.Content.ReadAsStringAsync();
-                var parsed = new TorznabCapabilities();
-                TorznabClient.ParseCapabilitiesXml(xml, parsed);
-                caps = parsed;
+                var freshAge = DateTime.UtcNow - fresh.FetchedAt;
+                if (freshAge < (fresh.Caps != null ? CapsCacheTtl : CapsFailureRetry))
+                    return fresh.Caps;
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "[Newznab] Caps fetch failed for {Indexer}", config.Name);
-        }
 
-        CapsCache[cacheKey] = (caps, DateTime.UtcNow);
-        return caps;
+            TorznabCapabilities? caps = null;
+            try
+            {
+                var url = BuildUrl(config, "caps");
+                using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                if (response.IsSuccessStatusCode)
+                {
+                    var xml = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsStringAsync(response.Content, "The indexer response");
+                    var parsed = new TorznabCapabilities();
+                    TorznabClient.ParseCapabilitiesXml(xml, parsed);
+                    caps = parsed;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[Newznab] Caps fetch failed for {Indexer}", config.Name);
+            }
+
+            CapsCache[cacheKey] = (caps, DateTime.UtcNow);
+            return caps;
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>
@@ -131,13 +152,79 @@ public class NewznabClient
             parameters["cat"] = string.Join(",", categories);
         }
 
-        var url = BuildUrl(config, "search", parameters);
-
         _logger.LogInformation("[Newznab] Searching {Indexer} for: {Query}", config.Name, query);
-        _logger.LogDebug("[Newznab] Search URL: {Url}", string.IsNullOrEmpty(config.ApiKey) ? url : url.Replace(config.ApiKey, "***"));
         _logger.LogDebug("[Newznab] Categories: {Categories}", categories.Any() ? string.Join(",", categories) : "(none)");
 
-        // Create request with rate limit headers for RateLimitHandler
+        // Walk the indexer's pages.
+        //
+        // Only the first page was ever requested. An indexer that caps a page
+        // below the asked-for limit therefore hid every release past that cap,
+        // and no search could ever reach them. Extra pages are requested only
+        // when the indexer says it holds more than it just sent, so an
+        // ordinary search still costs exactly one request.
+        var results = new List<ReleaseSearchResult>();
+        var seenGuids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var offset = 0;
+
+        for (var page = 0; page < MaxSearchPages; page++)
+        {
+            if (offset > 0)
+            {
+                parameters["offset"] = offset.ToString();
+            }
+
+            var url = BuildUrl(config, "search", parameters);
+            _logger.LogDebug("[Newznab] Search URL: {Url}", SecretRedactor.Url(url));
+
+            var (pageResults, reportedTotal) = await FetchAndParseAsync(config, url, "Search");
+            if (pageResults.Count == 0) break;
+
+            var addedThisPage = 0;
+            foreach (var r in pageResults)
+            {
+                // An offset the indexer ignores would otherwise re-add the
+                // same releases until the page cap is hit.
+                var key = !string.IsNullOrEmpty(r.Guid) ? r.Guid : r.DownloadUrl ?? r.Title;
+                if (!string.IsNullOrEmpty(key) && !seenGuids.Add(key)) continue;
+                results.Add(r);
+                addedThisPage++;
+            }
+
+            // A page of nothing but repeats proves the offset is being
+            // ignored. The dedup kept the list clean but the loop still
+            // paid for every remaining page of the same answers.
+            if (addedThisPage == 0) break;
+
+            offset += pageResults.Count;
+            if (results.Count >= maxResults) break;
+            if (reportedTotal == null || offset >= reportedTotal.Value) break;
+        }
+
+        if (results.Count > maxResults)
+        {
+            results = results.Take(maxResults).ToList();
+        }
+
+        ApplyMultiLanguages(results, config);
+
+        _logger.LogInformation("[Newznab] Found {Count} results from {Indexer}", results.Count, config.Name);
+
+        return results;
+    }
+
+    /// <summary>
+    /// Hard ceiling on how many pages one search walks. A misreported total
+    /// must not turn a single search into an unbounded request loop.
+    /// </summary>
+    private const int MaxSearchPages = 5;
+
+    /// <summary>
+    /// Issue one request and parse it, applying the shared rate-limit headers
+    /// and the shared 429 / non-success handling.
+    /// </summary>
+    private async Task<(List<ReleaseSearchResult> Results, int? Total)> FetchAndParseAsync(
+        Indexer config, string url, string what)
+    {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("X-Indexer-Id", config.Id.ToString());
 
@@ -147,7 +234,7 @@ public class NewznabClient
             request.Headers.Add("X-Rate-Limit-Ms", config.RequestDelayMs.ToString());
         }
 
-        using var response = await _httpClient.SendAsync(request);
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
         // Handle HTTP 429 Too Many Requests
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
@@ -170,17 +257,12 @@ public class NewznabClient
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("[Newznab] Search failed for {Indexer}: {Status}", config.Name, response.StatusCode);
-            throw new IndexerRequestException($"Search failed for {config.Name}: {response.StatusCode}", response.StatusCode);
+            _logger.LogWarning("[Newznab] {What} failed for {Indexer}: {Status}", what, config.Name, response.StatusCode);
+            throw new IndexerRequestException($"{what} failed for {config.Name}: {response.StatusCode}", response.StatusCode);
         }
 
-        var xml = await response.Content.ReadAsStringAsync();
-        var results = ParseSearchResults(xml, config.Name);
-        ApplyMultiLanguages(results, config);
-
-        _logger.LogInformation("[Newznab] Found {Count} results from {Indexer}", results.Count, config.Name);
-
-        return results;
+        var xml = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsStringAsync(response.Content, "The indexer response");
+        return ParseSearchResults(xml, config.Name);
     }
 
     /// <summary>
@@ -221,7 +303,7 @@ public class NewznabClient
             request.Headers.Add("X-Rate-Limit-Ms", config.RequestDelayMs.ToString());
         }
 
-        using var response = await _httpClient.SendAsync(request);
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
         // Handle HTTP 429 Too Many Requests
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
@@ -248,8 +330,8 @@ public class NewznabClient
             throw new IndexerRequestException($"RSS fetch failed for {config.Name}: {response.StatusCode}", response.StatusCode);
         }
 
-        var xml = await response.Content.ReadAsStringAsync();
-        var results = ParseSearchResults(xml, config.Name);
+        var xml = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsStringAsync(response.Content, "The indexer response");
+        var (results, _) = ParseSearchResults(xml, config.Name);
         ApplyMultiLanguages(results, config);
 
         _logger.LogDebug("[Newznab] Fetched {Count} releases from {Indexer} RSS feed", results.Count, config.Name);
@@ -352,13 +434,36 @@ public class NewznabClient
         }
     }
 
-    private List<ReleaseSearchResult> ParseSearchResults(string xml, string indexerName)
+    /// <summary>
+    /// Parse a Newznab search response.
+    ///
+    /// A parse failure throws. Swallowing it returned an empty list, which is
+    /// indistinguishable from a search that legitimately found nothing, so a
+    /// truncated or malformed reply was recorded as a healthy indexer with no
+    /// matches and the normal failure handling never ran.
+    ///
+    /// The returned total is what the indexer says it holds for the query,
+    /// which is what tells the caller another page is worth asking for.
+    /// </summary>
+    private (List<ReleaseSearchResult> Results, int? Total) ParseSearchResults(string xml, string indexerName)
     {
         var results = new List<ReleaseSearchResult>();
+        int? reportedTotal = null;
+
+        XDocument doc;
+        try
+        {
+            doc = XDocument.Parse(xml);
+        }
+        catch (System.Xml.XmlException ex)
+        {
+            _logger.LogError(ex, "[Newznab] {Indexer} returned a response that is not valid XML", indexerName);
+            throw new IndexerRequestException(
+                $"{indexerName} returned a response that could not be parsed", HttpStatusCode.OK, ex);
+        }
 
         try
         {
-            var doc = XDocument.Parse(xml);
             var items = doc.Descendants("item");
 
             foreach (var item in items)
@@ -433,10 +538,14 @@ public class NewznabClient
             if (responseElement != null)
             {
                 var totalStr = responseElement.Attribute("total")?.Value;
-                if (int.TryParse(totalStr, out var total) && total > results.Count)
+                if (int.TryParse(totalStr, out var total))
                 {
-                    _logger.LogWarning("[Newznab] Results truncated for '{Indexer}': received {Count} of {Total} matches. Consider a more specific search query.",
-                        indexerName, results.Count, total);
+                    reportedTotal = total;
+                    if (total > results.Count)
+                    {
+                        _logger.LogDebug("[Newznab] '{Indexer}' returned {Count} of {Total} matches for this page.",
+                            indexerName, results.Count, total);
+                    }
                 }
             }
         }
@@ -445,7 +554,7 @@ public class NewznabClient
             _logger.LogError(ex, "[Newznab] Error parsing search results");
         }
 
-        return results;
+        return (results, reportedTotal);
     }
 
     private static readonly System.Text.RegularExpressions.Regex ReleaseGroupRegex =

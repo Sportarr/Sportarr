@@ -167,6 +167,13 @@ export default function LeaguesPage() {
     return matchesSport && matchesSearch;
   }) || []).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 
+  // Every league the user is meant to see, before the sport and search
+  // narrowing. The tiles below used to count the raw list, so internal and
+  // test records that are hidden from the grid and from the per-sport counts
+  // were still adding to Total Leagues, Monitored, Total Events, Monitored
+  // Events and Downloaded, and the page contradicted itself.
+  const visibleLeagues = leagues?.filter(l => !isInternalLeagueName(l.name ?? '')) ?? [];
+
   // Group leagues by sport for statistics (also excludes _ entries so counts stay accurate)
   const leaguesBySport = leagues?.reduce((acc, league) => {
     const name = league.name ?? '';
@@ -533,30 +540,30 @@ export default function LeaguesPage() {
       <div className="mb-3 md:mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 md:gap-4">
         <div className="rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Total Leagues</p>
-          <p className="text-xl md:text-3xl font-bold text-white">{leagues?.length || 0}</p>
+          <p className="text-xl md:text-3xl font-bold text-white">{visibleLeagues.length}</p>
         </div>
         <div className="rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Monitored</p>
           <p className="text-xl md:text-3xl font-bold text-white">
-            {leagues?.filter(l => l.monitored).length || 0}
+            {visibleLeagues.filter(l => l.monitored).length}
           </p>
         </div>
         <div className="rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Total Events</p>
           <p className="text-xl md:text-3xl font-bold text-white">
-            {leagues?.reduce((sum, league) => sum + (league.eventCount || 0), 0) || 0}
+            {visibleLeagues.reduce((sum, league) => sum + (league.eventCount || 0), 0)}
           </p>
         </div>
         <div className="rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Monitored Events</p>
           <p className="text-xl md:text-3xl font-bold text-white">
-            {leagues?.reduce((sum, league) => sum + (league.monitoredEventCount || 0), 0) || 0}
+            {visibleLeagues.reduce((sum, league) => sum + (league.monitoredEventCount || 0), 0)}
           </p>
         </div>
         <div className="col-span-2 rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4 sm:col-span-1">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Downloaded</p>
           <p className="text-xl md:text-3xl font-bold text-white">
-            {leagues?.reduce((sum, league) => sum + (league.fileCount || 0), 0) || 0}
+            {visibleLeagues.reduce((sum, league) => sum + (league.fileCount || 0), 0)}
           </p>
         </div>
       </div>

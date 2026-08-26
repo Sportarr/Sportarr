@@ -14,14 +14,20 @@ export const useEvents = () => {
   });
 };
 
-// Calendar events (date-windowed - used by CalendarPage)
-export const useCalendarEvents = (start: string | null, end: string | null) => {
+// Calendar events (date-windowed - used by CalendarPage).
+// Monitoring is filtered server-side, so the flag belongs in the query key.
+export const useCalendarEvents = (
+  start: string | null,
+  end: string | null,
+  includeUnmonitored = false,
+) => {
   return useQuery({
-    queryKey: ['calendar-events', start, end],
+    queryKey: ['calendar-events', start, end, includeUnmonitored],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (start) params.set('start', start);
       if (end) params.set('end', end);
+      if (includeUnmonitored) params.set('unmonitored', 'true');
       const { data } = await apiClient.get<Event[]>(`/calendar?${params}`);
       return data;
     },

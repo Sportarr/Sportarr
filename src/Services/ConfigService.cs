@@ -49,6 +49,21 @@ public class ConfigService : IConfigService
                 _cachedConfig = (_serializer.Deserialize(stream) as Config) ?? new Config();
                 _logger.LogInformation("[CONFIG] Configuration loaded successfully");
             }
+            else if (File.Exists(_configPath + ".backup"))
+            {
+                // A save that was interrupted between removing the old file and
+                // putting the new one in place used to leave nothing here, and
+                // starting with fresh defaults threw away the API key and the
+                // authentication settings while the previous copy sat unused
+                // beside them. The save is a single rename now, so this only
+                // ever recovers an install already left in that state.
+                _logger.LogWarning("[CONFIG] config.xml is missing but a backup copy is present; restoring it rather than starting fresh");
+                File.Copy(_configPath + ".backup", _configPath);
+
+                using var backupStream = File.OpenRead(_configPath);
+                _cachedConfig = (_serializer.Deserialize(backupStream) as Config) ?? new Config();
+                _logger.LogInformation("[CONFIG] Configuration restored from the backup copy");
+            }
             else
             {
                 _logger.LogInformation("[CONFIG] No config.xml found, creating default configuration");
@@ -78,37 +93,13 @@ public class ConfigService : IConfigService
         await _lock.WaitAsync();
         try
         {
-            _logger.LogInformation("[CONFIG] Saving config.xml to: {Path}", _configPath);
-
-            // Write to temporary file first (atomic write pattern)
-            var tempPath = _configPath + ".tmp";
-
-            var settings = new XmlWriterSettings
-            {
-                Indent = true,
-                IndentChars = "  ",
-                Async = true
-            };
-
-            using (var writer = XmlWriter.Create(tempPath, settings))
-            {
-                _serializer.Serialize(writer, config);
-            }
-
-            // Replace old config with new one atomically
-            if (File.Exists(_configPath))
-            {
-                var backupPath = _configPath + ".backup";
-                File.Copy(_configPath, backupPath, true);
-                File.Delete(_configPath);
-            }
-
-            File.Move(tempPath, _configPath);
-
-            // Update cache
-            _cachedConfig = config;
-
-            _logger.LogInformation("[CONFIG] Configuration saved successfully");
+            // One implementation, so both entry points get the single-rename
+            // swap. This one used to copy the config aside, delete it and then
+            // move the new one in, and a process that stopped between the
+            // delete and the move left no config.xml at all. The next start
+            // wrote fresh defaults and the install lost its API key, its
+            // authentication settings and its URL base.
+            await SaveConfigInternalAsync(config);
         }
         catch (Exception ex)
         {
@@ -120,6 +111,7 @@ public class ConfigService : IConfigService
             _lock.Release();
         }
     }
+
 
     /// <summary>
     /// Internal save method (assumes lock is already held)
@@ -143,15 +135,33 @@ public class ConfigService : IConfigService
             _serializer.Serialize(writer, config);
         }
 
-        // Replace old config with new one atomically
+        // Replace the old config in one step. Copying it aside, deleting it
+        // and then moving the new one in is three steps, and a process that
+        // stopped between the delete and the move left no config.xml at all.
+        // The next start then wrote fresh defaults and the install lost its API
+        // key, its authentication settings and its URL base, with the copy
+        // sitting right beside it unused. Replace and an overwriting Move both
+        // swap the file in a single rename.
+        var backupPath = _configPath + ".backup";
+
         if (File.Exists(_configPath))
         {
-            var backupPath = _configPath + ".backup";
-            File.Copy(_configPath, backupPath, true);
-            File.Delete(_configPath);
+            try
+            {
+                File.Replace(tempPath, _configPath, backupPath, ignoreMetadataErrors: true);
+            }
+            catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or UnauthorizedAccessException)
+            {
+                // Replace needs both paths on one volume and is not available
+                // everywhere. An overwriting move is still a single rename.
+                _logger.LogDebug(ex, "[CONFIG] Atomic replace unavailable; falling back to an overwriting move");
+                File.Move(tempPath, _configPath, overwrite: true);
+            }
         }
-
-        File.Move(tempPath, _configPath);
+        else
+        {
+            File.Move(tempPath, _configPath);
+        }
 
         // Update cache
         _cachedConfig = config;

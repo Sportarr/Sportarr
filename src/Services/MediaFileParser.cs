@@ -13,8 +13,26 @@ public class MediaFileParser
     private readonly MediaFileInspector? _inspector;
 
     // Quality patterns
-    private static readonly Regex QualityPattern = new(@"(?<quality>2160p|1080p|720p|480p|360p|4K|UHD|HD|SD)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex SourcePattern = new(@"(?<source>BluRay|Blu-Ray|BDREMUX|BD|WEB-DL|WEBDL|WEBRip|WEB|HDTV|PDTV|DVDRip|DVD|Telecine|HDCAM|CAM|TS|TELESYNC)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // Every token is fenced by letter/digit boundaries. Without them "HD"
+    // matches inside "HDTV" and "TS" matches inside team names like "Patriots"
+    // and "Nets", so an ordinary broadcast is filed as a camcorder rip.
+    private const string TokenStart = @"(?<![A-Za-z0-9])";
+    private const string TokenEnd = @"(?![A-Za-z0-9])";
+
+    // Named resolutions are searched on their own first. A generic "HD" or
+    // "SD" sits earlier in a name like "Event.HDTV.1080p" and would otherwise
+    // win on position and report the release as plain HD.
+    private static readonly Regex QualityPattern = new(
+        TokenStart + @"(?<quality>2160p|1080p|720p|480p|360p|4K|UHD)" + TokenEnd,
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex GenericQualityPattern = new(
+        TokenStart + @"(?<quality>HD|SD)" + TokenEnd,
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex SourcePattern = new(
+        TokenStart + @"(?<source>BluRay|Blu-Ray|BDREMUX|BD|WEB-DL|WEBDL|WEBRip|WEB|HDTV|PDTV|DVDRip|DVD|Telecine|HDCAM|CAM|TELESYNC|TS)" + TokenEnd,
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex VideoCodecPattern = new(@"(?<codec>x265|x264|h[\.\s]?265|h[\.\s]?264|HEVC|AVC|XviD|DivX|VP9|AV1)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex AudioCodecPattern = new(@"(?<audio>AAC(?:[\s\.]2[\s\.]0)?|AC3|E[\-\s]?AC[\-\s]?3|DDP|DD(?:[\s\.]5[\s\.]1)?|TrueHD|Atmos|DTS(?:[\s\-]HD)?(?:[\s\-]MA)?|FLAC|MP3|Opus)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ReleaseGroupPattern = new(@"-([A-Za-z0-9]+)(?:\[.*?\])?$", RegexOptions.Compiled);
@@ -326,7 +344,13 @@ public class MediaFileParser
     private string? ExtractResolution(string cleanName)
     {
         var match = QualityPattern.Match(cleanName);
-        return match.Success ? match.Groups["quality"].Value.ToUpper() : null;
+        if (match.Success)
+        {
+            return match.Groups["quality"].Value.ToUpper();
+        }
+
+        var generic = GenericQualityPattern.Match(cleanName);
+        return generic.Success ? generic.Groups["quality"].Value.ToUpper() : null;
     }
 
     private string? ExtractSource(string cleanName)

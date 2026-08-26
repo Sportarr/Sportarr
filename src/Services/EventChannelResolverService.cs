@@ -2,6 +2,7 @@ using FuzzySharp;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Helpers;
 
 namespace Sportarr.Api.Services;
 
@@ -109,11 +110,20 @@ public class EventChannelResolverService
         // come with their own 0-100 confidence; the resolver pipes that
         // through so a high-confidence mapping outranks a low-confidence
         // one even when both paths fire.
-        var leagueMappings = leagueId > 0
+        var allLeagueMappings = leagueId > 0
             ? await _db.ChannelLeagueMappings
                 .Where(m => m.LeagueId == leagueId)
                 .ToListAsync(ct)
             : new List<ChannelLeagueMapping>();
+
+        // A negative priority is an admin exclusion, not a mapping. Filtering
+        // it out of the query threw the exclusion away with it, so the channel
+        // only lost its mapping bonus and still scored through its guide entry
+        // or the event's broadcast name and came back as a candidate anyway.
+        var excludedChannelIds = new HashSet<int>(
+            allLeagueMappings.Where(m => m.Priority < 0).Select(m => m.ChannelId));
+
+        var leagueMappings = allLeagueMappings.Where(m => m.Priority >= 0).ToList();
         var preferredChannelIds = new HashSet<int>(leagueMappings.Where(m => m.IsPreferred).Select(m => m.ChannelId));
         var mappedChannelIds = new HashSet<int>(leagueMappings.Select(m => m.ChannelId));
         var mappingConfidenceByChannel = leagueMappings.ToDictionary(m => m.ChannelId, m => m.Confidence);
@@ -130,6 +140,8 @@ public class EventChannelResolverService
         var candidates = new List<EventChannelCandidate>();
         foreach (var ch in channels)
         {
+            if (excludedChannelIds.Contains(ch.Id)) continue;
+
             int score = 0;
             string source;
 
@@ -144,23 +156,38 @@ public class EventChannelResolverService
                 else if (minutesOff <= 15) score += 2;
                 source = "epg_program";
             }
-            else if (broadcastTokens.Count > 0)
+            else if (broadcastTokens.Count > 0 || mappedChannelIds.Contains(ch.Id))
             {
-                score = ScoreAgainstBroadcast(ch, broadcastTokens);
-                source = "broadcast";
-            }
-            else if (mappedChannelIds.Contains(ch.Id))
-            {
-                // No broadcast data and no EPG match, but the channel
-                // is mapped to the league. Use the mapping's own
-                // confidence (0-100) capped at a moderate ceiling so
-                // a mapping never outranks a real broadcast match.
-                var mappingConf = mappingConfidenceByChannel.GetValueOrDefault(ch.Id, 0);
-                // Translate the mapping's 0-100 score into a 65-85
-                // band so even weak mappings clear MinAcceptable but
-                // a great mapping still ranks just below broadcast.
-                score = 65 + (int)(20 * (Math.Clamp(mappingConf, 0, 100) / 100.0));
-                source = "league-mapping";
+                // Score both signals and keep the better one. These used to be
+                // ordered branches, so an event that carried any broadcast text
+                // never consulted the league mapping at all. A channel the user
+                // had mapped by hand, whose name shares no word with the
+                // broadcaster string, scored zero and dropped out of the
+                // candidates, and the event went unrecorded.
+                var broadcastScore = broadcastTokens.Count > 0
+                    ? ScoreAgainstBroadcast(ch, broadcastTokens)
+                    : 0;
+
+                var mappingScore = 0;
+                if (mappedChannelIds.Contains(ch.Id))
+                {
+                    // Translate the mapping's 0-100 confidence into a 65-85
+                    // band so even weak mappings clear MinAcceptable but a
+                    // great mapping still ranks just below broadcast.
+                    var mappingConf = mappingConfidenceByChannel.GetValueOrDefault(ch.Id, 0);
+                    mappingScore = 65 + (int)(20 * (Math.Clamp(mappingConf, 0, 100) / 100.0));
+                }
+
+                if (broadcastScore >= mappingScore)
+                {
+                    score = broadcastScore;
+                    source = "broadcast";
+                }
+                else
+                {
+                    score = mappingScore;
+                    source = "league-mapping";
+                }
             }
             else
             {
@@ -214,8 +241,14 @@ public class EventChannelResolverService
                 source));
         }
 
+        // A channel that a health check found dead goes to the back of
+        // the rotation, whatever its confidence. It still stays in the list
+        // as a last resort.
+        var health = channels.ToDictionary(c => c.Id, c => ChannelHealth.Rank(c.Status));
+
         return candidates
-            .OrderByDescending(c => c.Confidence)
+            .OrderByDescending(c => health.GetValueOrDefault(c.ChannelId, 1))
+            .ThenByDescending(c => c.Confidence)
             .ThenByDescending(c => c.QualityScore)
             .ToList();
     }
@@ -397,9 +430,16 @@ public class EventChannelResolverService
             .ToListAsync(ct);
 
         var leagueIds = events.Select(e => e.LeagueId).Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
-        var mappings = await _db.ChannelLeagueMappings
+        var allMappings = await _db.ChannelLeagueMappings
             .Where(m => leagueIds.Contains(m.LeagueId))
             .ToListAsync(ct);
+
+        // Same rule as ResolveAsync. A negative priority is an admin
+        // exclusion, and filtering it out of the query threw the exclusion
+        // away, so the channel still scored through the broadcast text.
+        var byLeagueExcluded = allMappings.Where(m => m.Priority < 0).GroupBy(m => m.LeagueId)
+            .ToDictionary(g => g.Key, g => new HashSet<int>(g.Select(m => m.ChannelId)));
+        var mappings = allMappings.Where(m => m.Priority >= 0).ToList();
 
         var byLeagueMapped = mappings.GroupBy(m => m.LeagueId)
             .ToDictionary(g => g.Key, g => new HashSet<int>(g.Select(m => m.ChannelId)));
@@ -417,21 +457,37 @@ public class EventChannelResolverService
             var broadcastTokens = TokenizeBroadcast(evt.Broadcast);
             var preferred = byLeaguePreferred.TryGetValue(leagueId, out var p) ? p : new HashSet<int>();
             var mapped = byLeagueMapped.TryGetValue(leagueId, out var m) ? m : new HashSet<int>();
+            var excluded = byLeagueExcluded.TryGetValue(leagueId, out var x) ? x : new HashSet<int>();
 
             EventChannelCandidate? best = null;
             foreach (var ch in channels)
             {
+                if (excluded.Contains(ch.Id)) continue;
+
                 int score;
                 string source;
-                if (broadcastTokens.Count > 0)
+                if (broadcastTokens.Count > 0 || mapped.Contains(ch.Id))
                 {
-                    score = ScoreAgainstBroadcast(ch, broadcastTokens);
-                    source = "broadcast";
-                }
-                else if (mapped.Contains(ch.Id))
-                {
-                    score = preferred.Contains(ch.Id) ? 80 : 70;
-                    source = "league-mapping";
+                    // Better of the two signals, not the first one available.
+                    // See ResolveAsync: ordering these meant broadcast text on
+                    // the event hid the user's own mapping completely.
+                    var broadcastScore = broadcastTokens.Count > 0
+                        ? ScoreAgainstBroadcast(ch, broadcastTokens)
+                        : 0;
+                    var mappingScore = mapped.Contains(ch.Id)
+                        ? (preferred.Contains(ch.Id) ? 80 : 70)
+                        : 0;
+
+                    if (broadcastScore >= mappingScore)
+                    {
+                        score = broadcastScore;
+                        source = "broadcast";
+                    }
+                    else
+                    {
+                        score = mappingScore;
+                        source = "league-mapping";
+                    }
                 }
                 else continue;
 

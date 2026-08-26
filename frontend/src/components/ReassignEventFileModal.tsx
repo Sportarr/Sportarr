@@ -67,6 +67,11 @@ export default function ReassignEventFileModal({
           },
         });
         setResults(response.data);
+        // Let go of a selection the new results no longer show. It used to
+        // survive a fresh search, so the confirm button was still armed with
+        // an event nobody could see on screen and the file was moved to it.
+        setSelected(current =>
+          current && response.data.some(r => r.id === current.id) ? current : null);
       } catch (err) {
         console.error('[Reassign] search failed', err);
       } finally {

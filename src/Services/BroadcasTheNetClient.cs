@@ -346,7 +346,7 @@ public partial class BroadcasTheNetClient
 
         if (moreAvailable)
             _logger.LogInformation("[BTN] '{Query}' returned more than {Cap} rows on {Indexer}; stopped at the {MaxPages}-page cap",
-                query, maxPages * pageSize, maxPages);
+                query, maxPages * pageSize, config.Name, maxPages);
 
         var matched = FilterByQueryTerms(fetched, query).Take(maxResults).ToList();
 
@@ -401,8 +401,16 @@ public partial class BroadcasTheNetClient
         if (terms.Count == 0)
             return results;
 
+        // Requiring every term dropped valid rows whenever BTN's release
+        // names use a different vocabulary from the query, which is normal:
+        // "Round13" and "Belgium" rarely both appear in one release name. The
+        // all-or-nothing fallback below only saved the case where nothing at
+        // all matched, so a handful of accidental full matches was enough to
+        // discard everything else. A majority of terms is enough to keep a
+        // row, and the downstream matcher still makes the real decision.
+        var required = (terms.Count + 1) / 2;
         var filtered = results
-            .Where(r => terms.All(term => r.Title.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .Where(r => terms.Count(term => r.Title.Contains(term, StringComparison.OrdinalIgnoreCase)) >= required)
             .ToList();
 
         return filtered.Count > 0 ? filtered : results;
@@ -463,6 +471,48 @@ public partial class BroadcasTheNetClient
     /// <summary>
     /// Send HTTP request with error handling
     /// </summary>
+    /// <summary>
+    /// BTN allows 150 API calls an hour and answers the rest with an error.
+    /// The five second spacing above permits more than seven hundred, so a
+    /// busy afternoon of searches burned the budget and then took RSS sync and
+    /// interactive search down with it until the hour rolled over. The window
+    /// is tracked here and callers wait rather than spend a request that is
+    /// going to be refused.
+    /// </summary>
+    private const int HourlyRequestBudget = 140;
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Queue<DateTime>> HourlyRequests = new();
+
+    private void EnforceHourlyBudget(Indexer config, string host)
+    {
+        TimeSpan wait;
+
+        var window = HourlyRequests.GetOrAdd(host, _ => new Queue<DateTime>());
+        lock (window)
+        {
+            var now = DateTime.UtcNow;
+            while (window.Count > 0 && now - window.Peek() >= TimeSpan.FromHours(1))
+            {
+                window.Dequeue();
+            }
+
+            if (window.Count < HourlyRequestBudget)
+            {
+                window.Enqueue(now);
+                return;
+            }
+
+            wait = TimeSpan.FromHours(1) - (now - window.Peek());
+        }
+
+        _logger.LogWarning(
+            "[BTN] {Indexer} has used its hourly allowance of {Budget} requests. Waiting {Wait} before the next one.",
+            config.Name, HourlyRequestBudget, wait);
+
+        throw new IndexerRateLimitException(
+            $"BTN hourly request budget reached for {config.Name}", wait);
+    }
+
     private async Task<T> SendRequestAsync<T>(Indexer config, JsonRpcRequest request)
     {
         var baseUrl = config.Url.TrimEnd('/');
@@ -475,6 +525,7 @@ public partial class BroadcasTheNetClient
         // Fall back to the raw URL if parsing fails (misconfigured Url field).
         var host = Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) ? uri.Host : baseUrl;
         await _rateLimitService.WaitAndPulseAsync(host, config.Id.ToString(), RateLimit);
+        EnforceHourlyBudget(config, host);
 
         var json = JsonSerializer.Serialize(request, RequestSerializerOptions);
         var redactedJson = string.IsNullOrEmpty(config.ApiKey) ? json : json.Replace(config.ApiKey, "[REDACTED]");
@@ -495,7 +546,7 @@ public partial class BroadcasTheNetClient
         // BTN's content negotiation expects both accept types.
         requestMessage.Headers.Accept.ParseAdd("application/json-rpc, application/json");
 
-        using var response = await _httpClient.SendAsync(requestMessage);
+        using var response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
             throw new IndexerRequestException($"BTN API key invalid for {config.Name}", HttpStatusCode.Unauthorized);
@@ -515,8 +566,11 @@ public partial class BroadcasTheNetClient
 
         if (!response.IsSuccessStatusCode)
         {
-            // Read body once and reuse for both the rate-limit check and generic error log.
-            var errorBody = await response.Content.ReadAsStringAsync();
+            // Read body once and reuse for both the rate-limit check and
+            // generic error log. Bounded like the happy path: a non-2xx
+            // status routed a body of any size around the ceiling.
+            var errorBody = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsStringAsync(
+                response.Content, "The indexer error response", maxBytes: 1024 * 1024);
             if (response.StatusCode == HttpStatusCode.ServiceUnavailable &&
                 errorBody.Contains("Call Limit Exceeded", StringComparison.OrdinalIgnoreCase))
             {
@@ -530,7 +584,8 @@ public partial class BroadcasTheNetClient
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
         if (contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
         {
-            var htmlSnippet = await response.Content.ReadAsStringAsync();
+            var htmlSnippet = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsStringAsync(
+                response.Content, "The indexer block page", maxBytes: 1024 * 1024);
             _logger.LogWarning("[BTN] HTML response from {Indexer} (HTTP {Status}): {Snippet} | Request: {Request}",
                 config.Name, (int)response.StatusCode,
                 htmlSnippet.Length > 200 ? htmlSnippet[..200] : htmlSnippet,
@@ -538,7 +593,7 @@ public partial class BroadcasTheNetClient
             throw new IndexerRequestException($"BTN returned HTML for {config.Name} - site may be blocked or behind a captcha", HttpStatusCode.ServiceUnavailable);
         }
 
-        var responseJson = await response.Content.ReadAsStringAsync();
+        var responseJson = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsStringAsync(response.Content, "The indexer response");
 
         // BTN sometimes returns plain-text errors with HTTP 200 (e.g. "Error: Invalid API Key")
         var trimmed = responseJson.TrimStart();

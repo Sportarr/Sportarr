@@ -38,6 +38,26 @@ namespace Jellyfin.Plugin.Sportarr
         /// <summary>
         /// Search for series (leagues) matching the query.
         /// </summary>
+        /// <summary>
+        /// Whether two series names refer to the same thing, ignoring case,
+        /// punctuation and spacing.
+        /// </summary>
+        private static bool NamesAgree(string? a, string? b)
+        {
+            if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+            return string.Equals(Simplify(a), Simplify(b), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string Simplify(string value)
+        {
+            var builder = new System.Text.StringBuilder(value.Length);
+            foreach (var ch in value)
+            {
+                if (char.IsLetterOrDigit(ch)) builder.Append(char.ToLowerInvariant(ch));
+            }
+            return builder.ToString();
+        }
+
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
         {
             var results = new List<RemoteSearchResult>();
@@ -112,12 +132,24 @@ namespace Jellyfin.Plugin.Sportarr
 
             if (string.IsNullOrEmpty(sportarrId) && !string.IsNullOrEmpty(info.Name))
             {
-                // Search for the series
+                // Search for the series. Taking whatever came back first, with
+                // no check that it is the same thing, wrote another league's
+                // title, year, ids and artwork onto the series. An automatic
+                // refresh did it silently, so a library could rewrite itself
+                // wrongly with nobody touching anything. The candidate has to
+                // agree on the name, and on the year when both are known.
                 var searchResults = await GetSearchResults(info, cancellationToken);
-                var firstResult = searchResults.GetEnumerator();
-                if (firstResult.MoveNext())
+                foreach (var candidate in searchResults)
                 {
-                    firstResult.Current.ProviderIds?.TryGetValue("Sportarr", out sportarrId);
+                    if (!NamesAgree(info.Name, candidate.Name)) continue;
+                    if (info.Year.HasValue && candidate.ProductionYear.HasValue &&
+                        info.Year.Value != candidate.ProductionYear.Value)
+                    {
+                        continue;
+                    }
+
+                    candidate.ProviderIds?.TryGetValue("Sportarr", out sportarrId);
+                    if (!string.IsNullOrEmpty(sportarrId)) break;
                 }
             }
 

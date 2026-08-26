@@ -76,14 +76,14 @@ app.MapGet("/api/search/queue/{queueId}", (
 });
 
 // API: Cancel a pending search
-app.MapDelete("/api/search/queue/{queueId}", (
+app.MapDelete("/api/search/queue/{queueId}", async (
     string queueId,
     SearchQueueService searchQueueService,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[SEARCH QUEUE API] Cancelling search {QueueId}", queueId);
 
-    var cancelled = searchQueueService.CancelSearch(queueId);
+    var cancelled = await searchQueueService.CancelSearchAsync(queueId);
     if (cancelled)
     {
         return Results.Ok(new { success = true, message = "Search cancelled" });
@@ -92,13 +92,13 @@ app.MapDelete("/api/search/queue/{queueId}", (
 });
 
 // API: Clear all pending searches
-app.MapDelete("/api/search/queue", (
+app.MapDelete("/api/search/queue", async (
     SearchQueueService searchQueueService,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[SEARCH QUEUE API] Clearing all pending searches");
 
-    var count = searchQueueService.ClearPendingSearches();
+    var count = await searchQueueService.ClearPendingSearchesAsync();
     return Results.Ok(new { success = true, message = $"Cleared {count} pending searches", count });
 });
 

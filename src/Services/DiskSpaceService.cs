@@ -47,9 +47,14 @@ public class DiskSpaceService
                     return mount.AvailableFreeSpace;
                 }
 
-                // Fallback to DriveInfo if mount detection fails
+                // Fallback to DriveInfo if mount detection fails. Ask about the
+                // path itself, not its root: on Linux every path roots at "/",
+                // so asking about the root reported the space on whatever
+                // filesystem the system happens to sit on rather than the one
+                // actually holding the library, and root folder capacity
+                // checks were made against the wrong disk entirely.
                 _logger.LogDebug("Mount detection failed for {Path}, falling back to DriveInfo", path);
-                var driveInfo = new DriveInfo(Path.GetPathRoot(realPath) ?? "/");
+                var driveInfo = new DriveInfo(realPath);
                 return driveInfo.AvailableFreeSpace;
             }
         }
@@ -89,9 +94,14 @@ public class DiskSpaceService
                     return mount.TotalSize;
                 }
 
-                // Fallback to DriveInfo if mount detection fails
+                // Fallback to DriveInfo if mount detection fails. Ask about the
+                // path itself, not its root: on Linux every path roots at "/",
+                // so asking about the root reported the space on whatever
+                // filesystem the system happens to sit on rather than the one
+                // actually holding the library, and root folder capacity
+                // checks were made against the wrong disk entirely.
                 _logger.LogDebug("Mount detection failed for {Path}, falling back to DriveInfo", path);
-                var driveInfo = new DriveInfo(Path.GetPathRoot(realPath) ?? "/");
+                var driveInfo = new DriveInfo(realPath);
                 return driveInfo.TotalSize;
             }
         }
@@ -131,9 +141,14 @@ public class DiskSpaceService
                     return (mount.AvailableFreeSpace, mount.TotalSize);
                 }
 
-                // Fallback to DriveInfo if mount detection fails
+                // Fallback to DriveInfo if mount detection fails. Ask about the
+                // path itself, not its root: on Linux every path roots at "/",
+                // so asking about the root reported the space on whatever
+                // filesystem the system happens to sit on rather than the one
+                // actually holding the library, and root folder capacity
+                // checks were made against the wrong disk entirely.
                 _logger.LogDebug("Mount detection failed for {Path}, falling back to DriveInfo", path);
-                var driveInfo = new DriveInfo(Path.GetPathRoot(realPath) ?? "/");
+                var driveInfo = new DriveInfo(realPath);
                 return (driveInfo.AvailableFreeSpace, driveInfo.TotalSize);
             }
         }
@@ -184,6 +199,55 @@ public class DiskSpaceService
     /// Returns the mount with the longest matching path (most specific mount).
     /// This is critical for Docker volumes to get the correct disk space.
     /// </summary>
+    /// <summary>
+    /// Whether two paths sit on the same filesystem.
+    ///
+    /// Deleting a file only gives its space back to the filesystem holding
+    /// it. Counting that space towards a transfer onto a different one lets a
+    /// check pass that should not, and the old file is gone by the time the
+    /// transfer runs out of room.
+    ///
+    /// Answers false when either path cannot be resolved, so an unknown
+    /// layout is treated as two separate filesystems rather than assumed to
+    /// be one.
+    /// </summary>
+    public bool AreOnSameVolume(string? first, string? second)
+    {
+        if (string.IsNullOrWhiteSpace(first) || string.IsNullOrWhiteSpace(second))
+        {
+            return false;
+        }
+
+        try
+        {
+            var firstFull = Path.GetFullPath(first);
+            var secondFull = Path.GetFullPath(second);
+
+            if (OperatingSystem.IsWindows())
+            {
+                var firstRoot = Path.GetPathRoot(firstFull);
+                var secondRoot = Path.GetPathRoot(secondFull);
+                return !string.IsNullOrEmpty(firstRoot)
+                    && string.Equals(firstRoot, secondRoot, StringComparison.OrdinalIgnoreCase);
+            }
+
+            var firstMount = FindMountPoint(firstFull);
+            var secondMount = FindMountPoint(secondFull);
+
+            if (firstMount == null || secondMount == null)
+            {
+                return false;
+            }
+
+            return string.Equals(firstMount.MountPoint, secondMount.MountPoint, StringComparison.Ordinal);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not compare the volumes of {First} and {Second}", first, second);
+            return false;
+        }
+    }
+
     private MountInfo? FindMountPoint(string path)
     {
         try

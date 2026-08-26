@@ -255,6 +255,36 @@ public class League
     public bool MonitorPreseason { get; set; } = false;
 
     /// <summary>
+    /// How far back the special-event toggles above reach.
+    ///
+    /// Those toggles do two things. They carry a special event past the team
+    /// filter, which is what they were written for, and they carry it past
+    /// the season rule as well. The second part had no limit of its own, so
+    /// switching on "finals and championships" monitored the championship of
+    /// every season the league has ever had, which is rarely what someone
+    /// picking it expects.
+    ///
+    /// This gives that reach the same choices the league itself has. It only
+    /// governs the season rule; carrying a special event past the team filter
+    /// is unchanged.
+    ///
+    /// New leagues follow the league default of Future. Leagues that already
+    /// existed take All, which is what they were doing before this setting
+    /// was here.
+    /// </summary>
+    public MonitorType SpecialEventsMonitorType { get; set; } = MonitorType.Future;
+
+    /// <summary>
+    /// Keep every event this league has, including games with none of the
+    /// monitored teams in them. Without this the sync refuses to create
+    /// those events and deletes any that already exist without a file, so
+    /// a one-off game can never be found. Kept events arrive unmonitored,
+    /// so nothing searches for them until the user asks. Costs disk: a
+    /// league can hold thousands of events per season.
+    /// </summary>
+    public bool KeepAllEvents { get; set; } = false;
+
+    /// <summary>
     /// Allow Highlights releases to match and grab for this league. By
     /// default highlights are hard-rejected as non-event content, which is
     /// right for most sports, but some (sumo notably) ship each day as a
@@ -389,6 +419,15 @@ public class AddLeagueRequest
     public bool EnableDvr { get; set; } = true;
 
     /// <summary>
+    /// Keep events that fall outside the monitored-team filter.
+    ///
+    /// This could only be turned on by editing the league afterwards, so a
+    /// caller who asked for every event at creation time had the ones outside
+    /// the filter dropped by the very first sync.
+    /// </summary>
+    public bool KeepAllEvents { get; set; }
+
+    /// <summary>
     /// How events should be monitored (All, Future, CurrentSeason, LatestSeason, etc.)
     /// </summary>
     public MonitorType MonitorType { get; set; } = MonitorType.Future;
@@ -461,6 +500,7 @@ public class AddLeagueRequest
 
     /// <summary>Monitor preseason/exhibition games even when monitored teams are not playing.</summary>
     public bool MonitorPreseason { get; set; } = false;
+    public MonitorType SpecialEventsMonitorType { get; set; } = MonitorType.Future;
 
     /// <summary>Allow Highlights releases to match and grab for this league.</summary>
     public bool AllowHighlights { get; set; } = false;
@@ -501,7 +541,9 @@ public class AddLeagueRequest
             MonitorFinals = MonitorFinals,
             MonitorPlayoffs = MonitorPlayoffs,
             MonitorPreseason = MonitorPreseason,
+            SpecialEventsMonitorType = SpecialEventsMonitorType,
             AllowHighlights = AllowHighlights,
+            KeepAllEvents = KeepAllEvents,
             RetentionDays = Math.Max(0, RetentionDays),
             SearchQueryTemplate = SearchQueryTemplate,
             LogoUrl = LogoUrl,
@@ -550,7 +592,34 @@ public class LeagueResponse
     public bool MonitorFinals { get; set; }
     public bool MonitorPlayoffs { get; set; }
     public bool MonitorPreseason { get; set; }
+    public MonitorType SpecialEventsMonitorType { get; set; }
     public bool AllowHighlights { get; set; }
+
+    /// <summary>
+    /// Whether the DVR auto-scheduler may record this league.
+    ///
+    /// The setting could be written but never read back, so after a reload no
+    /// client could tell an explicit opt-out from the default, and an edit
+    /// round trip switched automatic recording back on.
+    /// </summary>
+    public bool EnableDvr { get; set; } = true;
+
+    /// <summary>
+    /// Whether events outside the monitored-team filter are kept.
+    ///
+    /// Same problem: it could not be seen or set through the normal league
+    /// contract, so events the caller asked to keep were dropped by the next
+    /// sync anyway.
+    /// </summary>
+    public bool KeepAllEvents { get; set; }
+
+    /// <summary>
+    /// Extra names this league is known by, separated by commas, pipes or
+    /// slashes. Release matching already reads these, but with no way to see
+    /// or set them a release using a sponsor-branded name was simply missed.
+    /// </summary>
+    public string? AlternateName { get; set; }
+
     public string? SearchQueryTemplate { get; set; }
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
@@ -667,7 +736,11 @@ public class LeagueResponse
             MonitorFinals = league.MonitorFinals,
             MonitorPlayoffs = league.MonitorPlayoffs,
             MonitorPreseason = league.MonitorPreseason,
+            SpecialEventsMonitorType = league.SpecialEventsMonitorType,
             AllowHighlights = league.AllowHighlights,
+            EnableDvr = league.EnableDvr,
+            KeepAllEvents = league.KeepAllEvents,
+            AlternateName = league.AlternateName,
             RetentionDays = league.RetentionDays,
             SearchQueryTemplate = league.SearchQueryTemplate,
             LogoUrl = league.LogoUrl,

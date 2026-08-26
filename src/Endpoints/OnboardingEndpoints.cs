@@ -24,7 +24,13 @@ public static class OnboardingEndpoints
             var hasDownloadClient = await db.DownloadClients.AnyAsync(d => d.Enabled);
             var hasIptvSource = await db.IptvSources.AnyAsync();
             var hasEpgSource = await db.EpgSources.AnyAsync();
-            var hasChannelLeagueMappings = await db.ChannelLeagueMappings.AnyAsync();
+            // A mapping somewhere is not the same as a mapping for a league
+            // the user actually follows. Any mapping at all counted, so an
+            // install whose monitored league had no channel was reported ready
+            // to record when nothing it cared about could be recorded. Rows
+            // with a negative priority are admin exclusions, not mappings.
+            var hasChannelLeagueMappings = await db.ChannelLeagueMappings
+                .AnyAsync(m => m.Priority >= 0 && m.League != null && m.League.Monitored);
             var monitoredLeagueCount = await db.Leagues.CountAsync(l => l.Monitored);
 
             // Two independent ways to actually acquire an event: grab it from an

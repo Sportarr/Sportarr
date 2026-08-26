@@ -151,12 +151,25 @@ export default function ManualSearchModal({
   const [markFailedConfirm, setMarkFailedConfirm] = useState<HistoryItem | null>(null);
 
   // Clear search results and auto-start search when modal opens (Sonarr/Radarr behavior)
+  // Every open targets one event and one part. Indexer searches take tens of
+  // seconds, so a response can arrive after the user has closed the modal and
+  // reopened it on another event. Each open takes the next number and a
+  // response only writes state while its number is still current, otherwise
+  // one event's releases appear under another and a grab there attaches the
+  // wrong release to the current event.
+  const requestGeneration = useRef(0);
+
   useEffect(() => {
     if (isOpen) {
+      requestGeneration.current += 1;
       setSearchResults([]);
       setSearchError(null);
       setSkippedIndexers([]);
       setHasSearched(false);
+      // A pack search still in flight from the previous open never clears
+      // its flag once the generation moves on, and the stuck flag disabled
+      // every search button until a reload.
+      setIsSearchingPack(false);
       setDownloadingIndex(null);
       setBlocklistConfirm(null);
       setActiveTab('search');
@@ -201,26 +214,28 @@ export default function ManualSearchModal({
 
   // Separate function for auto-search to avoid dependency issues
   const handleSearchOnOpen = async () => {
-    // Debug: track search calls to identify duplicate sources
-    console.log('[ManualSearchModal] handleSearchOnOpen called for event:', eventId, 'part:', part);
+    const generation = requestGeneration.current;
 
     setIsSearching(true);
     setSearchError(null);
 
     try {
       const endpoint = `/api/event/${eventId}/search`;
-      console.log('[ManualSearchModal] Calling API:', endpoint);
       const response = await apiPost(endpoint, { part });
       const data = await response.json();
+      if (generation !== requestGeneration.current) return;
       const { results, skipped } = parseSearchResponse(data);
       setSearchResults(results);
       setSkippedIndexers(skipped);
     } catch (error) {
       console.error('Search failed:', error);
+      if (generation !== requestGeneration.current) return;
       setSearchError('Failed to search indexers. Please try again.');
     } finally {
-      setHasSearched(true);
-      setIsSearching(false);
+      if (generation === requestGeneration.current) {
+        setHasSearched(true);
+        setIsSearching(false);
+      }
     }
   };
 
@@ -251,9 +266,11 @@ export default function ManualSearchModal({
         : hasFiles;
       setHasExistingFile(!!hasCurrentPartFile);
 
+      const generation = requestGeneration.current;
       const queueResponse = await apiGet('/api/queue');
       if (queueResponse.ok) {
         const queue = await queueResponse.json();
+        if (generation !== requestGeneration.current) return;
         const relevantItems = queue.filter((item: QueueItem) => item.eventId === eventId);
         setQueueItems(relevantItems);
       }
@@ -264,6 +281,7 @@ export default function ManualSearchModal({
 
   // Load history for this event (filtered by part if specified)
   const loadHistory = async () => {
+    const generation = requestGeneration.current;
     setIsLoadingHistory(true);
     try {
       // Include part parameter if searching for a specific part of a multi-part event
@@ -273,12 +291,15 @@ export default function ManualSearchModal({
       const response = await apiGet(url);
       if (response.ok) {
         const data = await response.json();
+        if (generation !== requestGeneration.current) return;
         setHistory(data);
       }
     } catch (error) {
       console.error('Failed to load history:', error);
     } finally {
-      setIsLoadingHistory(false);
+      if (generation === requestGeneration.current) {
+        setIsLoadingHistory(false);
+      }
     }
   };
 
@@ -314,6 +335,7 @@ export default function ManualSearchModal({
   };
 
   const handleSearch = async (forceRefresh: boolean = false, useCustomQuery: boolean = false) => {
+    const generation = requestGeneration.current;
     setIsSearching(true);
     setSearchError(null);
     setSearchResults([]);
@@ -330,20 +352,25 @@ export default function ManualSearchModal({
 
       const response = await apiPost(endpoint, payload);
       const data = await response.json();
+      if (generation !== requestGeneration.current) return;
       const { results, skipped } = parseSearchResponse(data);
       setSearchResults(results);
       setSkippedIndexers(skipped);
     } catch (error) {
       console.error('Search failed:', error);
+      if (generation !== requestGeneration.current) return;
       setSearchError('Failed to search indexers. Please try again.');
     } finally {
-      setHasSearched(true);
-      setIsSearching(false);
+      if (generation === requestGeneration.current) {
+        setHasSearched(true);
+        setIsSearching(false);
+      }
     }
   };
 
   // Search for week packs (e.g., NFL-2025-Week15) that contain this event
   const handleSearchPack = async () => {
+    const generation = requestGeneration.current;
     setIsSearchingPack(true);
     setSearchError(null);
     setSearchResults([]);
@@ -359,6 +386,7 @@ export default function ManualSearchModal({
       }
 
       const data = await response.json();
+      if (generation !== requestGeneration.current) return;
       const { results, skipped } = parseSearchResponse(data);
       setSearchResults(results);
       setSkippedIndexers(skipped);
@@ -368,11 +396,14 @@ export default function ManualSearchModal({
       }
     } catch (error) {
       console.error('Pack search failed:', error);
+      if (generation !== requestGeneration.current) return;
       const errorMessage = error instanceof Error ? error.message : 'Failed to search for week packs. Please try again.';
       setSearchError(errorMessage);
     } finally {
-      setHasSearched(true);
-      setIsSearchingPack(false);
+      if (generation === requestGeneration.current) {
+        setHasSearched(true);
+        setIsSearchingPack(false);
+      }
     }
   };
 

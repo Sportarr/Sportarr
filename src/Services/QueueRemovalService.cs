@@ -14,6 +14,14 @@ public class QueueRemovalResult
     public bool Success { get; set; }
     public string? ErrorMessage { get; set; }
     public int StatusCode { get; set; } = 204;
+
+    /// <summary>
+    /// Set when the queue row went but the download client would not confirm
+    /// the removal. The row is still removed, otherwise a download the client
+    /// has already forgotten could never be cleared, but the caller is told so
+    /// it does not report a clean removal that did not happen.
+    /// </summary>
+    public bool ClientRemovalFailed { get; set; }
 }
 
 /// <summary>
@@ -47,8 +55,27 @@ public class QueueRemovalService
     /// Removal methods: removeFromClient | changeCategory | ignoreDownload.
     /// Blocklist actions: blocklistAndSearch | blocklistOnly | none.
     /// </summary>
+    private static readonly string[] RemovalMethods = { "removeFromClient", "changeCategory", "ignoreDownload" };
+    private static readonly string[] BlocklistActions = { "blocklistAndSearch", "blocklistOnly", "none" };
+
     public async Task<QueueRemovalResult> RemoveAsync(int id, string removalMethod, string blocklistAction)
     {
+        // Validate both inputs before anything is touched. The blocklist action
+        // was checked after the removal method had already run, so a request
+        // naming a good removal method and a bad blocklist action told the
+        // client to delete the download and its files, then returned 400 and
+        // left the queue row in place. The caller was told its request had
+        // failed while the data was already gone.
+        if (!RemovalMethods.Contains(removalMethod))
+        {
+            return new QueueRemovalResult { Success = false, StatusCode = 400, ErrorMessage = $"Invalid removal method: {removalMethod}" };
+        }
+
+        if (!BlocklistActions.Contains(blocklistAction))
+        {
+            return new QueueRemovalResult { Success = false, StatusCode = 400, ErrorMessage = $"Invalid blocklist action: {blocklistAction}" };
+        }
+
         var item = await _db.DownloadQueue
             .Include(dq => dq.DownloadClient)
             .Include(dq => dq.Event)
@@ -59,14 +86,25 @@ public class QueueRemovalService
             return new QueueRemovalResult { Success = false, StatusCode = 404, ErrorMessage = "Queue item not found" };
         }
 
+        var clientRemovalFailed = false;
+
         // Handle removal method.
         if (item.DownloadClient != null)
         {
             switch (removalMethod)
             {
                 case "removeFromClient":
-                    // Remove download and files from download client
-                    await _downloadClientService.RemoveDownloadAsync(item.DownloadClient, item.DownloadId, deleteFiles: true);
+                    // Remove download and files from download client. The
+                    // result was thrown away, so a client that refused the
+                    // removal still produced a clean 204: the queue row went,
+                    // the download stayed, and it went on seeding and taking
+                    // disk with nothing in Sportarr left to retry from.
+                    clientRemovalFailed = !await _downloadClientService.RemoveDownloadAsync(item.DownloadClient, item.DownloadId, deleteFiles: true);
+                    if (clientRemovalFailed)
+                    {
+                        _logger.LogWarning("[QUEUE] {Client} would not remove download {DownloadId}; the queue row is being removed anyway",
+                            item.DownloadClient.Name, item.DownloadId);
+                    }
                     break;
 
                 case "changeCategory":
@@ -157,6 +195,18 @@ public class QueueRemovalService
 
         _db.DownloadQueue.Remove(item);
         await _db.SaveChangesAsync();
+
+        if (clientRemovalFailed)
+        {
+            return new QueueRemovalResult
+            {
+                Success = true,
+                StatusCode = 200,
+                ClientRemovalFailed = true,
+                ErrorMessage = "Removed from the queue, but the download client did not confirm deleting the download. Check the client."
+            };
+        }
+
         return new QueueRemovalResult { Success = true, StatusCode = 204 };
     }
 }

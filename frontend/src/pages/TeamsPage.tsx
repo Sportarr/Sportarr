@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowPathIcon,
@@ -110,9 +110,16 @@ export default function TeamsPage() {
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
   const [discoveredLeagues, setDiscoveredLeagues] = useState<DiscoveredLeague[]>([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
+  // Which team the leagues on screen belong to, and a counter so only the
+  // newest discovery is allowed to write them.
+  const [discoveredForTeamId, setDiscoveredForTeamId] = useState<number | null>(null);
+  const discoverSeq = useRef(0);
   const [selectedLeagueIds, setSelectedLeagueIds] = useState<Set<string>>(new Set());
   const [monitorType, setMonitorType] = useState('Future');
-  const [qualityProfileId, setQualityProfileId] = useState<number>(1);
+  // Null until the profile list arrives. Assuming id 1 exists meant that on
+  // an install where it had been deleted, adding leagues failed with a profile
+  // the selector was not even offering.
+  const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [searchOnAdd, setSearchOnAdd] = useState(false);
   const [searchForUpgrades, setSearchForUpgrades] = useState(false);
   const [isAddingLeagues, setIsAddingLeagues] = useState(false);
@@ -171,6 +178,14 @@ export default function TeamsPage() {
       return response.data;
     },
   });
+
+  // Settle on a profile that actually exists as soon as the list arrives.
+  useEffect(() => {
+    if (!qualityProfiles || qualityProfiles.length === 0) return;
+    if (qualityProfileId != null && qualityProfiles.some((p) => p.id === qualityProfileId)) return;
+    const preferred = qualityProfiles.find((p) => (p as { isDefault?: boolean }).isDefault) ?? qualityProfiles[0];
+    setQualityProfileId(preferred.id);
+  }, [qualityProfiles, qualityProfileId]);
 
   const followedTeamIds = useMemo(() => {
     const ids = new Set<string>();
@@ -249,8 +264,10 @@ export default function TeamsPage() {
   });
 
   const discoverLeaguesById = async (followedTeamId: number) => {
+    const seq = ++discoverSeq.current;
     setIsDiscovering(true);
     setDiscoveredLeagues([]);
+    setDiscoveredForTeamId(followedTeamId);
     setSelectedLeagueIds(new Set());
 
     try {
@@ -260,13 +277,19 @@ export default function TeamsPage() {
         leagues: DiscoveredLeague[];
       }>(`/followed-teams/${followedTeamId}/leagues`);
 
+      // Expanding a second team while the first was still loading let the
+      // first team's leagues arrive last and be listed under the second, and
+      // adding them then submitted one team's leagues against the other.
+      if (seq !== discoverSeq.current) return;
+
       const leagues = Array.isArray(response.data?.leagues) ? response.data.leagues : [];
       setDiscoveredLeagues(leagues);
       setSelectedLeagueIds(new Set(leagues.filter((league: DiscoveredLeague) => !league.isAdded).map((league: DiscoveredLeague) => league.externalId)));
     } catch {
+      if (seq !== discoverSeq.current) return;
       toast.error('Failed to discover leagues');
     } finally {
-      setIsDiscovering(false);
+      if (seq === discoverSeq.current) setIsDiscovering(false);
     }
   };
 
@@ -307,6 +330,17 @@ export default function TeamsPage() {
     const followedTeam = followedTeams.find((team) => team.externalId === teamExternalId);
     if (!followedTeam) {
       toast.error('Team not found');
+      return;
+    }
+
+    // Refuse to submit one team's leagues against another.
+    if (discoveredForTeamId !== followedTeam.id) {
+      toast.error('These leagues belong to a different team. Reopen this team to load its leagues.');
+      return;
+    }
+
+    if (qualityProfileId == null) {
+      toast.error('Pick a quality profile first');
       return;
     }
 
@@ -412,7 +446,7 @@ export default function TeamsPage() {
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Quality Profile</label>
                 <select
-                  value={qualityProfileId}
+                  value={qualityProfileId ?? ''}
                   onChange={(event) => setQualityProfileId(Number(event.target.value))}
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
                 >

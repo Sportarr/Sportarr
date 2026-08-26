@@ -80,7 +80,8 @@ public class HealthCheckServiceTests : IDisposable
             Mock.Of<ILoggerFactory>(),
             Mock.Of<ILogger<DownloadClientService>>(),
             new MemoryCache(new MemoryCacheOptions()),
-            configService);
+            configService,
+            Mock.Of<Sportarr.Api.Services.Interfaces.IRemotePathMappingService>());
 
         var sportarrApiClient = new SportarrApiClient(
             new HttpClient(hubHandler ?? new StubHandler(HttpStatusCode.OK, "{}")),

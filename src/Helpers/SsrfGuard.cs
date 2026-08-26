@@ -219,6 +219,21 @@ public static class SsrfGuard
             if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return false;
             // 192.168.0.0/16
             if (bytes[0] == 192 && bytes[1] == 168) return false;
+            // The ranges below were missing, so a caller could still steer the
+            // proxy at plenty of things that are not the public internet.
+            // 192.0.0.0/24 (IETF protocol assignments, includes 192.0.0.8)
+            if (bytes[0] == 192 && bytes[1] == 0 && bytes[2] == 0) return false;
+            // 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24 (documentation)
+            if (bytes[0] == 192 && bytes[1] == 0 && bytes[2] == 2) return false;
+            if (bytes[0] == 198 && bytes[1] == 51 && bytes[2] == 100) return false;
+            if (bytes[0] == 203 && bytes[1] == 0 && bytes[2] == 113) return false;
+            // 192.88.99.0/24 (deprecated 6to4 relay anycast)
+            if (bytes[0] == 192 && bytes[1] == 88 && bytes[2] == 99) return false;
+            // 198.18.0.0/15 (benchmarking, routed on some networks)
+            if (bytes[0] == 198 && (bytes[1] == 18 || bytes[1] == 19)) return false;
+            // 224.0.0.0/4 (multicast) and 240.0.0.0/4 (reserved, and the
+            // 255.255.255.255 broadcast address with it)
+            if (bytes[0] >= 224) return false;
             return true;
         }
 
@@ -230,6 +245,36 @@ public static class SsrfGuard
             if ((bytes[0] & 0xFE) == 0xFC) return false;
             // Unspecified ::
             if (IPAddress.IPv6Any.Equals(address)) return false;
+            // 100::/64 discard-only
+            if (bytes[0] == 0x01 && bytes[1] == 0x00 &&
+                bytes[2] == 0 && bytes[3] == 0 && bytes[4] == 0 && bytes[5] == 0 &&
+                bytes[6] == 0 && bytes[7] == 0) return false;
+
+            // Forms that carry an IPv4 address inside an IPv6 one. Judged on
+            // the address they actually carry, or an internal target could be
+            // reached simply by writing it the other way round.
+            // 2002::/16 (6to4) embeds the IPv4 in bytes 2..5.
+            if (bytes[0] == 0x20 && bytes[1] == 0x02)
+            {
+                return IsPublicAddress(new IPAddress(new[] { bytes[2], bytes[3], bytes[4], bytes[5] }));
+            }
+            // 64:ff9b::/96 (NAT64) embeds the IPv4 in the last four bytes.
+            if (bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xFF && bytes[3] == 0x9B)
+            {
+                return IsPublicAddress(new IPAddress(new[] { bytes[12], bytes[13], bytes[14], bytes[15] }));
+            }
+            // ::a.b.c.d (deprecated IPv4-compatible), everything above the low
+            // four bytes is zero.
+            var leadingZero = true;
+            for (var i = 0; i < 12; i++)
+            {
+                if (bytes[i] != 0) { leadingZero = false; break; }
+            }
+            if (leadingZero)
+            {
+                return IsPublicAddress(new IPAddress(new[] { bytes[12], bytes[13], bytes[14], bytes[15] }));
+            }
+
             return true;
         }
 

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useIndexers, useCreateIndexer, useUpdateIndexer, useDeleteIndexer, useBulkDeleteIndexers } from '../../api/hooks';
 import type { Indexer as ApiIndexer } from '../../types';
 import { apiGet, apiPut, apiPost } from '../../utils/api';
+import { runSettingsSave } from '../../hooks/useSettings';
 import apiClient from '../../api/client';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
@@ -314,27 +315,29 @@ export default function IndexersSettings() {
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
-      // First fetch current settings
-      const response = await apiGet('/api/settings');
-      if (!response.ok) throw new Error('Failed to fetch current settings');
+      // Read and write inside the shared chain, so a save from another
+      // settings page cannot slip between this read and this write and be
+      // put back as it was.
+      await runSettingsSave(async () => {
+        const response = await apiGet('/api/settings');
+        if (!response.ok) throw new Error('Failed to fetch current settings');
 
-      const currentSettings = await response.json();
+        const currentSettings = await response.json();
 
-      // Update with new values
-      const updatedSettings = {
-        ...currentSettings,
-        indexerRetention: retention,
-        rssSyncInterval: Math.max(10, rssSyncInterval), // Enforce minimum of 10 minutes
-        preferIndexerFlags,
-        searchCacheDuration: Math.max(10, searchCacheDuration), // Enforce minimum of 10 seconds
-        indexerMinimumAgeMinutes: Math.max(0, minimumAge),
-        maxRssReleasesPerIndexer: Math.max(1, maxRssReleasesPerIndexer),
-        rssReleaseAgeLimit: Math.max(0, rssReleaseAgeLimit),
-        indexerHttpTimeoutSeconds: Math.max(5, indexerHttpTimeoutSeconds),
-      };
+        const updatedSettings = {
+          ...currentSettings,
+          indexerRetention: retention,
+          rssSyncInterval: Math.max(10, rssSyncInterval), // Enforce minimum of 10 minutes
+          preferIndexerFlags,
+          searchCacheDuration: Math.max(10, searchCacheDuration), // Enforce minimum of 10 seconds
+          indexerMinimumAgeMinutes: Math.max(0, minimumAge),
+          maxRssReleasesPerIndexer: Math.max(1, maxRssReleasesPerIndexer),
+          rssReleaseAgeLimit: Math.max(0, rssReleaseAgeLimit),
+          indexerHttpTimeoutSeconds: Math.max(5, indexerHttpTimeoutSeconds),
+        };
 
-      // Save to API
-      await apiPut('/api/settings', updatedSettings);
+        return apiPut('/api/settings', updatedSettings);
+      });
 
       // Update initial settings and reset unsaved changes flag
       initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge, maxRssReleasesPerIndexer, rssReleaseAgeLimit, indexerHttpTimeoutSeconds };
@@ -493,7 +496,7 @@ export default function IndexersSettings() {
       { name: 'apiPath', value: indexer.implementation === 'BroadcasTheNet' ? '' : (indexer.apiPath || '/api') },
       { name: 'apiKey', value: indexer.apiKey || '' },
       { name: 'categories', value: indexer.categories?.join(',') || '' },
-      { name: 'minimumSeeders', value: String(indexer.minimumSeeders || 1) },
+      { name: 'minimumSeeders', value: String(indexer.minimumSeeders ?? 1) },
     ];
 
     if (indexer.animeCategories && indexer.animeCategories.length > 0) {

@@ -29,6 +29,16 @@ public class IndexerRequestException : Exception
     {
         StatusCode = statusCode;
     }
+
+    /// <summary>
+    /// For a reply that arrived intact at the transport level and then turned
+    /// out to be unusable, so the status code is the one the server sent.
+    /// </summary>
+    public IndexerRequestException(string message, HttpStatusCode statusCode, Exception innerException)
+        : base(message, innerException)
+    {
+        StatusCode = statusCode;
+    }
 }
 
 /// <summary>
@@ -98,7 +108,7 @@ public class TorznabClient
         try
         {
             var url = BuildUrl(config, "caps");
-            _logger.LogInformation("[Torznab] Testing connection to {Indexer} at {Url}", config.Name, url);
+            _logger.LogInformation("[Torznab] Testing connection to {Indexer} at {Url}", config.Name, Sportarr.Api.Helpers.SecretRedactor.Url(url));
             using var response = await _httpClient.GetAsync(url);
 
             if (response.IsSuccessStatusCode)

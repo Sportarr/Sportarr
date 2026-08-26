@@ -36,14 +36,26 @@ public static class MetadataAgentEndpoints
                 return Results.Ok(new { results = Array.Empty<object>() });
 
             var term = title.Trim();
+            // LIKE is case sensitive on PostgreSQL and not on SQLite, so the
+            // same search worked on one and found nothing on the other unless
+            // the caller's capitalization happened to match what was stored.
+            // Lowering both sides behaves the same everywhere.
+            var loweredTerm = term.ToLowerInvariant();
+
+            // The year filter runs in memory because the stored value is free
+            // text. Taking twenty five rows before applying it meant a league
+            // that matched both the title and the year was thrown away
+            // whenever twenty five others matched the title first.
+            var candidateLimit = year == null ? 25 : 250;
             var leagues = await db.Leagues
-                .Where(l => EF.Functions.Like(l.Name, $"%{term}%"))
+                .Where(l => EF.Functions.Like(l.Name.ToLower(), $"%{loweredTerm}%"))
                 .OrderBy(l => l.Name)
-                .Take(25)
+                .Take(candidateLimit)
                 .ToListAsync();
 
             var results = leagues
                 .Where(l => year == null || ParseYear(l.FormedYear) == year)
+                .Take(25)
                 .Select(l => new
                 {
                     id = l.ExternalId,
@@ -96,7 +108,11 @@ public static class MetadataAgentEndpoints
                 .Where(sp => sp.LeagueId == league.Id)
                 .ToListAsync();
 
+            // A season made up entirely of cancelled or postponed events has
+            // no episodes to offer, and returning it as an empty season made
+            // the agent create a season shell with nothing in it.
             var seasons = events
+                .Where(e => !IsExcluded(e.Status))
                 .GroupBy(e => e.SeasonNumber!.Value)
                 .OrderBy(g => g.Key)
                 .Select(g =>

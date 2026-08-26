@@ -98,6 +98,22 @@ public class FileImportService : IFileImportService
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
+    internal static void MarkDownloadImported(DownloadQueueItem download, DateTime importedAt)
+    {
+        download.Status = DownloadStatus.Imported;
+        download.Progress = 100;
+        if (download.Size > 0)
+        {
+            download.Downloaded = Math.Max(download.Downloaded, download.Size);
+        }
+
+        download.TimeRemaining = null;
+        download.CompletedAt ??= importedAt;
+        download.ImportedAt = importedAt;
+        download.LastUpdate = importedAt;
+        download.ErrorMessage = null;
+    }
+
     public FileImportService(
         SportarrDbContext db,
         MediaFileParser parser,
@@ -441,6 +457,7 @@ public class FileImportService : IFileImportService
                 .Where(f => f.EventId == eventInfo.Id && f.Exists)
                 .ToListAsync();
 
+            var freeSpaceChecked = false;
             EventFile? upgradedFile = null;
 
             if (partInfo != null)
@@ -487,6 +504,51 @@ public class FileImportService : IFileImportService
                 _logger.LogInformation("[Import] Upgrade detected - replacing existing file: {OldPath} ({OldQuality}) with {NewQuality}",
                     upgradedFile.FilePath, upgradedFile.Quality, qualityString);
 
+                // Check free space now, before the delete below destroys the old
+                // file. A failure after the delete leaves the user with neither
+                // file. A hard delete gives its space back, so count it; a move
+                // to the recycle bin does not.
+                if (!settings.SkipFreeSpaceCheck)
+                {
+                    var upgradeRecycleBin = (await _configService.GetConfigAsync()).RecycleBin;
+                    long reclaimable = 0;
+                    var binInUse = !string.IsNullOrEmpty(upgradeRecycleBin) && Directory.Exists(upgradeRecycleBin);
+
+                    // A move into a recycle bin on the destination's own volume
+                    // frees nothing there. A bin on another volume does, the
+                    // same as a hard delete, and refusing to count that
+                    // rejected upgrades that had all the room they needed.
+                    var binFreesDestination = !binInUse
+                        || !_diskSpaceService.AreOnSameVolume(upgradeRecycleBin, destinationPath);
+
+                    if (binFreesDestination)
+                    {
+                        try
+                        {
+                            // Only space on the destination's own filesystem
+                            // counts. An upgrade that lands on a different root
+                            // frees nothing where the new file is going, and
+                            // counting it anyway passed a check that should have
+                            // failed, after which the old file was deleted and
+                            // the transfer could still run out of room, leaving
+                            // neither version.
+                            if (!string.IsNullOrEmpty(upgradedFile.FilePath)
+                                && File.Exists(upgradedFile.FilePath)
+                                && _diskSpaceService.AreOnSameVolume(upgradedFile.FilePath, destinationPath))
+                            {
+                                reclaimable = new FileInfo(upgradedFile.FilePath).Length;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug(ex, "[Import] Could not size the old file for the free space check: {Path}", upgradedFile.FilePath);
+                        }
+                    }
+
+                    CheckFreeSpace(destinationPath, actualFileSize, settings.MinimumFreeSpace, reclaimable);
+                    freeSpaceChecked = true;
+                }
+
                 // Remove the old file from disk BEFORE transferring the new one.
                 // The new file often resolves to the same destination path as the old one
                 // (same quality string = same filename). Deleting after transfer would kill
@@ -507,7 +569,7 @@ public class FileImportService : IFileImportService
                         var recycleBin = upgradeConfig.RecycleBin;
                         if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
                         {
-                            var recyclePath = Path.Combine(recycleBin, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(upgradedFile.FilePath)}");
+                            var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBin, Path.GetFileName(upgradedFile.FilePath));
                             File.Move(upgradedFile.FilePath, recyclePath);
                             _logger.LogInformation("[Import] Moved old file to recycle bin during upgrade: {Path} -> {RecyclePath}",
                                 upgradedFile.FilePath, recyclePath);
@@ -557,8 +619,8 @@ public class FileImportService : IFileImportService
                 });
             }
 
-            // Check free space
-            if (!settings.SkipFreeSpaceCheck)
+            // Check free space (the upgrade path above already checked it)
+            if (!settings.SkipFreeSpaceCheck && !freeSpaceChecked)
             {
                 CheckFreeSpace(destinationPath, actualFileSize, settings.MinimumFreeSpace);
             }
@@ -650,9 +712,9 @@ public class FileImportService : IFileImportService
 
             _db.ImportHistories.Add(history);
 
-            // Update download status
-            download.Status = DownloadStatus.Imported;
-            download.ImportedAt = DateTime.UtcNow;
+            // Imported queue items are no longer polled, so normalize every
+            // derived transfer field while the successful import is committed.
+            MarkDownloadImported(download, history.ImportedAt);
 
             // Create EventFile record
             // IMPORTANT: Use quality/codec/source from download queue item (parsed from original release title at grab time)
@@ -696,11 +758,22 @@ public class FileImportService : IFileImportService
                 .ToListAsync();
             foreach (var stale in stalePathRows)
             {
-                if (_db.Entry(stale).State != EntityState.Deleted)
+                if (_db.Entry(stale).State == EntityState.Deleted)
                 {
-                    _db.EventFiles.Remove(stale);
-                    _logger.LogWarning("[Import] Removed existing EventFile (id {Id}, event {EventId}) pointing at destination '{Path}' before re-insert",
-                        stale.Id, stale.EventId, destinationPath);
+                    continue;
+                }
+
+                _db.EventFiles.Remove(stale);
+                _logger.LogWarning("[Import] Removed existing EventFile (id {Id}, event {EventId}) pointing at destination '{Path}' before re-insert",
+                    stale.Id, stale.EventId, destinationPath);
+
+                // The row can belong to a different event. That event has just
+                // lost the file to this import, so its own pointers must follow.
+                // Left alone it still reports HasFile and points at a path the
+                // library now serves for another event.
+                if (stale.EventId != eventInfo.Id)
+                {
+                    await ReleaseFilePointersFromOtherEventAsync(stale, destinationPath, config);
                 }
             }
 
@@ -1329,6 +1402,47 @@ public class FileImportService : IFileImportService
         // upgrade" import can still delete whatever file was already there.
         return destinationPath;
     }
+
+    /// <summary>
+    /// Points an event away from a file that another event has just imported
+    /// over. The caller removed that event's EventFile row, so this recomputes
+    /// its file pointers from whatever rows remain.
+    /// </summary>
+    private async Task ReleaseFilePointersFromOtherEventAsync(EventFile stale, string destinationPath, Config config)
+    {
+        var otherEvent = await _db.Events
+            .Include(e => e.League)
+            .FirstOrDefaultAsync(e => e.Id == stale.EventId);
+        if (otherEvent == null)
+        {
+            return;
+        }
+
+        var remaining = await _db.EventFiles
+            .Where(f => f.EventId == otherEvent.Id && f.Exists && f.Id != stale.Id)
+            .ToListAsync();
+
+        if (string.Equals(otherEvent.FilePath, destinationPath, StringComparison.OrdinalIgnoreCase))
+        {
+            var replacement = remaining.FirstOrDefault();
+            otherEvent.FilePath = replacement?.FilePath;
+            otherEvent.FileSize = replacement?.Size;
+            otherEvent.Quality = replacement?.Quality;
+        }
+
+        otherEvent.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+            otherEvent.Sport,
+            otherEvent.Title,
+            otherEvent.League?.Name,
+            otherEvent.MonitoredParts,
+            otherEvent.League?.MonitoredParts,
+            remaining.Select(f => f.PartNumber).ToList(),
+            config.EnableMultiPartEpisodes);
+
+        _logger.LogWarning("[Import] Event {EventId} lost '{Path}' to another import; HasFile is now {HasFile}",
+            otherEvent.Id, destinationPath, otherEvent.HasFile);
+    }
+
 
     /// <summary>
     /// Removes a stale file already sitting at the computed destination path so the transfer
@@ -2133,8 +2247,11 @@ public class FileImportService : IFileImportService
     /// <summary>
     /// Check if there's enough free space.
     /// Uses DiskSpaceService which correctly handles Docker volumes by checking mount points.
+    /// reclaimableBytes is space the import itself gives back, such as the old
+    /// file an upgrade deletes. The caller passes it when the check must run
+    /// before that deletion.
     /// </summary>
-    private void CheckFreeSpace(string path, long fileSize, long minimumFreeSpaceMB)
+    private void CheckFreeSpace(string path, long fileSize, long minimumFreeSpaceMB, long reclaimableBytes = 0)
     {
         // Get the directory path (destination folder) to check space on the correct mount
         var dirPath = Path.GetDirectoryName(path) ?? path;
@@ -2149,7 +2266,7 @@ public class FileImportService : IFileImportService
             return;
         }
 
-        var availableSpaceMB = availableSpace.Value / 1024 / 1024;
+        var availableSpaceMB = (availableSpace.Value + reclaimableBytes) / 1024 / 1024;
         var fileSizeMB = fileSize / 1024 / 1024;
 
         _logger.LogDebug("Free space check: Available={AvailableMB} MB, File={FileSizeMB} MB, Minimum={MinMB} MB, Path={Path}",

@@ -475,7 +475,10 @@ public class IndexerSearchService : IIndexerSearchService
                     // query's terms. The feed only ever contains recent
                     // items, so this surfaces what's available right now;
                     // ongoing coverage still comes from RSS sync.
-                    IndexerType.Rss => await SearchPlainRssAsync(indexer, query, maxResults),
+                    // A plain torrent feed is a torrent RSS feed. This case was
+                    // absent, so every indexer of this type fell through to the
+                    // empty default and silently returned nothing, for ever.
+                    IndexerType.Rss or IndexerType.Torrent => await SearchPlainRssAsync(indexer, query, maxResults),
                     _ => new List<ReleaseSearchResult>()
                 };
 
@@ -612,7 +615,7 @@ public class IndexerSearchService : IIndexerSearchService
             {
                 IndexerType.Torznab => await TestTorznabAsync(indexer),
                 IndexerType.Newznab => await TestNewznabAsync(indexer),
-                IndexerType.Rss => await TestRssAsync(indexer),
+                IndexerType.Rss or IndexerType.Torrent => await TestRssAsync(indexer),
                 IndexerType.BroadcasTheNet => await TestBroadcasTheNetAsync(indexer),
                 _ => false
             };
@@ -702,7 +705,7 @@ public class IndexerSearchService : IIndexerSearchService
                 {
                     IndexerType.Torznab => await FetchTorznabRssAsync(indexer, maxResults),
                     IndexerType.Newznab => await FetchNewznabRssAsync(indexer, maxResults),
-                    IndexerType.Rss => await FetchPlainRssAsync(indexer, maxResults),
+                    IndexerType.Rss or IndexerType.Torrent => await FetchPlainRssAsync(indexer, maxResults),
                     IndexerType.BroadcasTheNet => await FetchBroadcasTheNetRecentAsync(indexer, maxResults),
                     _ => new List<ReleaseSearchResult>()
                 };
@@ -735,6 +738,11 @@ public class IndexerSearchService : IIndexerSearchService
             foreach (var result in results)
             {
                 result.Protocol = protocol;
+                // Stamp which indexer this came from. The search path did this
+                // and the feed path did not, so a release profile scoped to a
+                // particular indexer matched nothing during RSS sync and a
+                // release it should have rejected went through.
+                result.IndexerId = indexer.Id;
             }
 
             // Filter by minimum seeders (for torrents). Unknown seed counts

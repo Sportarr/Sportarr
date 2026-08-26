@@ -426,12 +426,19 @@ public static class TrashCategories
         "seadex",
         "dual-audio",
         "uncensored",
-        "v0",
-        "v1",
-        "v2",
-        "v3",
-        "v4",
     };
+
+    /// <summary>
+    /// Anime release-version tags, matched as whole words.
+    ///
+    /// These used to sit in the list above and be tested as plain substrings,
+    /// and "av1" contains "v1". The AV1 unwanted format was therefore thrown
+    /// out of every sport-relevant sync, so AV1 releases carried no negative
+    /// score and were grabbed by profiles written to reject them.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex AnimeVersionTag = new(
+        @"(?<![a-z0-9])v[0-4](?![a-z0-9])",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// Check if a filename/category is relevant for sports content
@@ -446,6 +453,9 @@ public static class TrashCategories
             if (lower.Contains(pattern))
                 return false;
         }
+
+        if (AnimeVersionTag.IsMatch(lower))
+            return false;
 
         // Check if it matches any sport-relevant category
         foreach (var category in SportRelevant)

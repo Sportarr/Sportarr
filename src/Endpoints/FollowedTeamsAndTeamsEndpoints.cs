@@ -202,9 +202,18 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
             return Results.BadRequest(new { error = $"Quality profile with ID {qualityProfileId} not found" });
         }
 
-        // Get the root folder path (use first root folder if none specified)
+        // The league needs a folder to import into. The path was worked out
+        // here and then never used, and the league was created with no root
+        // folder at all, so imports fell back to a guess or to a hard-coded
+        // path nobody had configured.
         var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
-        var rootFolderPath = rootFolder?.Path ?? "/media/sports";
+        if (rootFolder == null)
+        {
+            return Results.BadRequest(new
+            {
+                error = "Configure a root folder under Settings > Media Management before adding leagues."
+            });
+        }
 
         var addedLeagues = new List<object>();
         var skippedLeagues = new List<object>();
@@ -212,6 +221,11 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
 
         foreach (var externalId in leagueExternalIds)
         {
+            // Each league is all or nothing. The league row was saved first and
+            // the team link afterwards, so a failure in between left the league
+            // in the library, monitored, while the response reported it as an
+            // error and the team association it existed for was never made.
+            await using var leagueTransaction = await db.Database.BeginTransactionAsync();
             try
             {
                 // Check if league already exists
@@ -257,8 +271,23 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
                         db.LeagueTeams.Add(leagueTeam);
                         await db.SaveChangesAsync();
 
+                        // Following a team into a league the user already has
+                        // has to switch that league on for the events they now
+                        // care about. Adding only the join row left the league
+                        // unmonitored and unsearched, so their team's events
+                        // were never found.
+                        if (monitorEvents && existingLeague.MonitorType == MonitorType.None)
+                        {
+                            existingLeague.MonitorType = MonitorType.Future;
+                        }
+                        if (searchOnAdd) existingLeague.SearchForMissingEvents = true;
+                        if (searchForUpgrades) existingLeague.SearchForCutoffUnmetEvents = true;
+                        existingLeague.Monitored = true;
+                        await db.SaveChangesAsync();
+
                         addedLeagues.Add(new { externalId, name = existingLeague.Name, isNew = false });
                     }
+                    await leagueTransaction.CommitAsync();
                     continue;
                 }
 
@@ -286,6 +315,7 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
                     PosterUrl = leagueDetails.PosterUrl,
                     Website = leagueDetails.Website,
                     QualityProfileId = qualityProfileId,
+                    RootFolderId = rootFolder.Id,
                     Monitored = true,  // League is always monitored, MonitorType controls what events
                     MonitorType = monitorType,
                     SearchForMissingEvents = searchOnAdd,
@@ -325,12 +355,27 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
                 await db.SaveChangesAsync();
 
                 addedLeagues.Add(new { externalId, name = newLeague.Name, id = newLeague.Id, isNew = true });
+                await leagueTransaction.CommitAsync();
 
                 logger.LogInformation("[FOLLOWED-TEAMS] Added league {LeagueName} with team {TeamName} monitored", newLeague.Name, followedTeam.Name);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "[FOLLOWED-TEAMS] Error adding league {ExternalId}", externalId);
+                try { await leagueTransaction.RollbackAsync(); }
+                catch (Exception rollbackEx)
+                {
+                    logger.LogWarning(rollbackEx, "[FOLLOWED-TEAMS] Could not roll back the partial add for {ExternalId}", externalId);
+                }
+
+                // Rolling the database back leaves the change tracker as it was.
+                // The entity that failed is still marked for insert and the ones that
+                // did save still look saved, so the next league in the batch retries
+                // them and either recreates half of this league or fails on a key
+                // that no longer exists. Every league re-reads what it needs, so
+                // dropping the tracked state is safe.
+                db.ChangeTracker.Clear();
+
                 erroredLeagues.Add(new { externalId, reason = ex.Message });
             }
         }
@@ -365,7 +410,13 @@ app.MapGet("/api/teams", async (SportarrDbContext db, int? leagueId, string? spo
     // Filter by league if provided
     if (leagueId.HasValue)
     {
-        query = query.Where(t => t.LeagueId == leagueId.Value);
+        // A team's own LeagueId names one competition, but a team plays in
+        // several and the association that matters is the join table. Filtering
+        // on the column alone left out teams genuinely monitored in this
+        // league, simply because their primary league is another one.
+        var lid = leagueId.Value;
+        query = query.Where(t => t.LeagueId == lid ||
+            db.LeagueTeams.Any(lt => lt.LeagueId == lid && lt.TeamId == t.Id));
     }
 
     // Filter by sport if provided

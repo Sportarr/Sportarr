@@ -310,4 +310,4 @@ without the years of work that went into it first.
 
 Thank you to Mark McDowall, Keivan Beigi, Taloth Saldono and everyone who has contributed to
 Sonarr. Their copyright notices are retained in [COPYRIGHT.md](COPYRIGHT.md), and Sportarr is
-released under the same GPL-3.0 licence.
+released under the same GPL-3.0 license.

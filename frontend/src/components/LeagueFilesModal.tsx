@@ -104,6 +104,14 @@ export default function LeagueFilesModal({
   };
   const clearSelected = () => setSelectedIds(new Set());
 
+  // Drop the selection whenever this modal is pointed at a different league.
+  // It survived, invisible, so a bulk metadata edit could rewrite files from
+  // a league or season the user had already navigated away from.
+  useEffect(() => {
+    clearSelected();
+    setBulkEditOpen(false);
+  }, [leagueId, isOpen]);
+
   const fileToEditorValues = (f: LeagueFile): FileMetadataEditorValues => ({
     quality: f.quality,
     source: f.source,
@@ -148,6 +156,7 @@ export default function LeagueFilesModal({
 
   // Filter out deleted files from the display
   const displayFiles = data?.files.filter(f => !deletedFileIds.has(f.id)) || [];
+  const visibleFileIds = new Set(displayFiles.map(f => f.id));
 
   // Delete single file mutation
   const deleteFileMutation = useMutation({
@@ -562,9 +571,20 @@ export default function LeagueFilesModal({
         onSuccess={async () => {
           // Hide the moved file from this view immediately - it now belongs
           // to a different event and may be out of this league entirely.
-          setDeletedFileIds(prev => new Set(prev).add(reassignFile.id));
+          const movedId = reassignFile.id;
+          setDeletedFileIds(prev => new Set(prev).add(movedId));
           await queryClient.refetchQueries({ queryKey: ['leagues'] });
           await queryClient.refetchQueries({ queryKey: ['league-files', leagueId] });
+          // Now that fresh data has arrived, let it decide. The hide was
+          // permanent for the life of the modal, so a file moved to another
+          // event in this same league vanished from the list and the file
+          // count and total size stayed wrong until it was reopened.
+          setDeletedFileIds(prev => {
+            if (!prev.has(movedId)) return prev;
+            const next = new Set(prev);
+            next.delete(movedId);
+            return next;
+          });
         }}
       />
     )}
@@ -592,7 +612,9 @@ export default function LeagueFilesModal({
         key={`league-bulk-${[...selectedIds].sort().join('-')}`}
         isOpen={bulkEditOpen}
         onClose={() => setBulkEditOpen(false)}
-        fileIds={[...selectedIds]}
+        // Only files this view is actually showing. A selection that outlived
+        // the list it was made from would otherwise carry other files with it.
+        fileIds={[...selectedIds].filter(id => visibleFileIds.has(id))}
         initialValues={{}}
         showPartFields={true}
         leagueId={leagueId}

@@ -138,8 +138,13 @@ public static class ServiceCollectionExtensions
             });
 
         // Indexer searches with rate limiting and Polly retry policy
+        // The retry policy is registered before the rate limiter so that it
+        // sits outside it. Registered the other way round, the limiter only
+        // saw the first attempt and every retry went straight out, so a
+        // transient failure produced a burst of four requests at whatever
+        // speed the network allowed, right past the request delay the user
+        // configured for that indexer.
         services.AddHttpClient("IndexerClient")
-            .AddHttpMessageHandler<RateLimitHandler>()
             .AddTransientHttpErrorPolicy(policyBuilder =>
                 policyBuilder.WaitAndRetryAsync(
                     retryCount: 3,
@@ -148,6 +153,7 @@ public static class ServiceCollectionExtensions
                     {
                         Console.WriteLine($"[Indexer] Retry {retryCount} after {timespan.TotalSeconds}s due to {outcome.Exception?.Message ?? outcome.Result.StatusCode.ToString()}");
                     }))
+            .AddHttpMessageHandler<RateLimitHandler>()
             .ConfigureHttpClient((sp, client) =>
             {
                 // Config.IndexerHttpTimeoutSeconds, read fresh on every client
@@ -258,7 +264,12 @@ public static class ServiceCollectionExtensions
             })
             .ConfigureHttpClient(client =>
             {
-                client.Timeout = TimeSpan.FromSeconds(90);
+                // The ceiling for the whole attempt chain, not one request.
+                // At ninety seconds a slow endpoint burned the entire budget
+                // on the first two tries and the retries that would have
+                // succeeded never ran. Each individual attempt is capped at
+                // ninety seconds by the timeout policy below.
+                client.Timeout = TimeSpan.FromMinutes(8);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
             })
             .AddHttpMessageHandler<SyncHttpCountingHandler>()
@@ -271,6 +282,10 @@ public static class ServiceCollectionExtensions
             .AddPolicyHandler(HttpPolicyExtensions
                 .HandleTransientHttpError()
                 .OrResult(r => r.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                // An attempt cut short by the per-attempt timeout below is a
+                // transient failure like any other and has to be retried,
+                // otherwise adding that timeout would just fail faster.
+                .Or<Polly.Timeout.TimeoutRejectedException>()
                 .WaitAndRetryAsync(
                     retryCount: 4,
                     sleepDurationProvider: (attempt, outcome, _) =>
@@ -292,7 +307,11 @@ public static class ServiceCollectionExtensions
                         var status = outcome.Result?.StatusCode.ToString() ?? outcome.Exception?.GetType().Name ?? "unknown";
                         Console.WriteLine($"[SportarrAPI] Retry {retryAttempt} after {timespan.TotalSeconds:F1}s ({status})");
                         return Task.CompletedTask;
-                    }));
+                    }))
+            // Per-attempt ceiling, inside the retry above. Without it the
+            // client's own timeout covered every attempt together, so one
+            // slow response ate the budget the later attempts needed.
+            .AddPolicyHandler(Policy.TimeoutAsync<HttpResponseMessage>(TimeSpan.FromSeconds(90)));
 
         return services;
     }

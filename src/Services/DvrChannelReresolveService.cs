@@ -132,7 +132,7 @@ public class DvrChannelReresolveService : BackgroundService
 
             try
             {
-                if (await TryReresolveAsync(db, resolver, recording, minImprovement, ct))
+                if (await TryReresolveAsync(db, resolver, recording, minImprovement, lockWindow, ct))
                 {
                     moved++;
                 }
@@ -158,6 +158,7 @@ public class DvrChannelReresolveService : BackgroundService
         EventChannelResolverService resolver,
         DvrRecording recording,
         int minImprovement,
+        TimeSpan lockWindow,
         CancellationToken ct)
     {
         var ranked = await resolver.ResolveAsync(recording.EventId!.Value, ct);
@@ -183,6 +184,28 @@ public class DvrChannelReresolveService : BackgroundService
 
         if (best.Confidence < currentConfidence + minImprovement)
         {
+            return false;
+        }
+
+        // Ranking the candidates takes time, and the recording can start, be
+        // cancelled or enter its lock window while that is happening. Moving
+        // it then left the database describing a channel different from the
+        // stream actually being recorded. Confirm it is still eligible with
+        // the freshest copy of the row before touching it.
+        await db.Entry(recording).ReloadAsync(ct);
+        if (recording.Status != DvrRecordingStatus.Scheduled)
+        {
+            _logger.LogDebug(
+                "[DVR Re-resolve] Recording {Id} is {Status} now, leaving its channel alone",
+                recording.Id, recording.Status);
+            return false;
+        }
+
+        if (recording.ScheduledStart <= DateTime.UtcNow + lockWindow)
+        {
+            _logger.LogDebug(
+                "[DVR Re-resolve] Recording {Id} has entered its lock window, leaving its channel alone",
+                recording.Id);
             return false;
         }
 

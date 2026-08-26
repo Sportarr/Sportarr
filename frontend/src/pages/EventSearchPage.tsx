@@ -98,7 +98,11 @@ export default function EventSearchPage() {
       externalId: event.idEvent,
       title: event.strEvent,
       sport: event.strSport,
-      eventDate: event.dateEvent + (event.strTime ? `T${event.strTime}` : 'T00:00:00'),
+      // Anchored to UTC. The upstream time is UTC, and a string without a
+      // zone deserialises with no kind at all, leaving the instant to be
+      // guessed from wherever the server happens to be. The rest of the app
+      // reads event dates as UTC, so say so here.
+      eventDate: event.dateEvent + (event.strTime ? `T${event.strTime}` : 'T00:00:00') + 'Z',
       venue: event.strVenue,
       location: event.strCity && event.strCountry ? `${event.strCity}, ${event.strCountry}` : (event.strCountry || undefined),
       posterUrl: event.strPoster || event.strThumb || event.strBanner,

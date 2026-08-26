@@ -231,12 +231,19 @@ public static class FollowedAthletesEndpoints
 
             foreach (var leagueExternalId in leagueExternalIds)
             {
+                // Each league is all or nothing. The league row was saved
+                // first and the athlete's team link afterwards, so a failure
+                // in between left a half-configured league in the database
+                // that the response reported as an error, and every retry then
+                // answered "Already added" and never repaired it.
+                await using var leagueTransaction = await db.Database.BeginTransactionAsync();
                 try
                 {
                     var existing = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == leagueExternalId);
                     if (existing != null)
                     {
                         skipped.Add(new { externalId = leagueExternalId, name = existing.Name, reason = "Already added" });
+                        await leagueTransaction.CommitAsync();
                         continue;
                     }
 
@@ -244,6 +251,7 @@ public static class FollowedAthletesEndpoints
                     if (apiLeague == null)
                     {
                         errors.Add(new { externalId = leagueExternalId, reason = "League not found in metadata API" });
+                        await leagueTransaction.RollbackAsync();
                         continue;
                     }
 
@@ -296,6 +304,7 @@ public static class FollowedAthletesEndpoints
                     }
 
                     added.Add(new { externalId = leagueExternalId, name = league.Name, mode = teamMode ? "team" : "events" });
+                    await leagueTransaction.CommitAsync();
 
                     // Kick a background sync so the athlete's events appear
                     // (and get monitored by the athlete pass) without the
@@ -319,6 +328,20 @@ public static class FollowedAthletesEndpoints
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "[FOLLOWED-ATHLETES] Failed adding league {LeagueId}", leagueExternalId);
+                    try { await leagueTransaction.RollbackAsync(); }
+                    catch (Exception rollbackEx)
+                    {
+                        logger.LogWarning(rollbackEx, "[FOLLOWED-ATHLETES] Could not roll back the partial add for {LeagueId}", leagueExternalId);
+                    }
+
+                    // Rolling the database back leaves the change tracker as it was.
+                    // The entity that failed is still marked for insert and the ones that
+                    // did save still look saved, so the next league in the batch retries
+                    // them and either recreates half of this league or fails on a key
+                    // that no longer exists. Every league re-reads what it needs, so
+                    // dropping the tracked state is safe.
+                    db.ChangeTracker.Clear();
+
                     errors.Add(new { externalId = leagueExternalId, reason = ex.Message });
                 }
             }

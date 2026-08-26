@@ -525,7 +525,7 @@ public class DvrAutoSchedulerService : BackgroundService
             // name with the real broadcast and often air close enough in time to
             // land inside the matching window, but they are never the live event
             // itself - skip them regardless of how well the team names score.
-            if (IsWrapperShow(normalizedProgramTitle))
+            if (IsWrapperShow(normalizedProgramTitle, NormalizeForSearch(evt.Title)))
             {
                 _logger.LogDebug("[DVR Auto-Scheduler] Skipping EPG program '{Program}' - looks like pre/post-game wrapper content, not the live event '{Event}'",
                     program.Title, evt.Title);
@@ -710,20 +710,41 @@ public class DvrAutoSchedulerService : BackgroundService
     /// can land inside the time-proximity window too, so they need an explicit
     /// title-level exclusion rather than relying on scoring alone.
     /// </summary>
+    /// <summary>
+    /// Titles that share every keyword with the real broadcast but are not it.
+    ///
+    /// Two of an event's own words are enough to accept a programme, so a
+    /// countdown, a preview, a weigh-in or a rerun airing in the same hour
+    /// scored just as well as the event and got recorded in its place.
+    /// </summary>
     private static readonly string[] WrapperShowKeywords = new[]
     {
         "postgame", "post game", "pregame", "pre game",
         "post show", "pre show", "postshow", "preshow",
         "highlights", "recap", "press conference",
+        "countdown", "preview", "prelude", "build up", "buildup",
+        "weigh in", "weighin", "weigh ins",
+        "embedded", "behind the scenes", "the ultimate fighter",
+        "replay", "encore", "classic", "rewind", "best of",
+        "analysis", "review", "roundup", "round up", "wrap",
+        "magazine", "today at", "extra time", "post match", "prematch", "pre match",
     };
 
     /// <summary>
     /// Check if an EPG program's title identifies it as pre/post-game wrapper or
     /// highlights content rather than the live event broadcast itself.
     /// </summary>
-    private static bool IsWrapperShow(string normalizedProgramTitle)
+    /// <remarks>
+    /// A keyword that is part of the event's own name proves nothing. The NHL
+    /// Winter Classic and the MLB Field of Dreams Classic carry "classic" in
+    /// the name of the live broadcast, and every one of them was skipped as
+    /// wrapper content. Such a keyword is ignored for that event only, so
+    /// "Winter Classic Postgame" is still caught by "postgame".
+    /// </remarks>
+    private static bool IsWrapperShow(string normalizedProgramTitle, string normalizedEventTitle)
     {
-        return WrapperShowKeywords.Any(kw => normalizedProgramTitle.Contains(kw));
+        return WrapperShowKeywords.Any(kw =>
+            normalizedProgramTitle.Contains(kw) && !normalizedEventTitle.Contains(kw));
     }
 
     /// <summary>

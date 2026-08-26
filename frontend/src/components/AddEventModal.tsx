@@ -143,14 +143,9 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
       return;
     }
 
-    // VALIDATION: Check if a default quality profile exists
-    const hasDefaultProfile = qualityProfiles?.some((p: any) => p.isDefault);
-    if (!hasDefaultProfile) {
-      toast.error('Default Quality Profile Required', {
-        description: 'Please set a default quality profile in Settings → Profiles before adding events.',
-      });
-      return;
-    }
+    // The profile chosen above is the one this event will use, so whether some
+    // other profile happens to be marked default has nothing to do with it.
+    // Requiring one blocked adding an event on a perfectly good selection.
 
     setIsAdding(true);
     try {
@@ -163,6 +158,9 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
         location: event.location,
         monitored,
         qualityProfileId,
+        // The "Start search immediately" box was collected and never sent, so
+        // it did nothing whichever way it was left.
+        searchOnAdd,
         externalId: event.externalId, // Sportarr API event ID
         broadcast: event.broadcast,
         status: event.status,

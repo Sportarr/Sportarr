@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { XMarkIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { apiGet } from '../utils/api';
 
@@ -26,17 +26,32 @@ export default function TaskQueueFooter() {
     return () => clearInterval(interval);
   }, []);
 
+  // One request at a time, and only the newest answer counts. Firing every two
+  // seconds regardless meant a slow or stuck request piled the next one on top
+  // of it without limit, and answers that came back out of order replaced a
+  // newer list of tasks with an older one.
+  const inFlight = useRef(false);
+  const fetchSeq = useRef(0);
+
   const fetchTasks = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    const seq = ++fetchSeq.current;
+
     try {
       const response = await apiGet('/api/task?pageSize=10');
+      if (seq !== fetchSeq.current) return;
       if (response.ok) {
         const data = await response.json();
-        setTasks(data);
+        if (seq !== fetchSeq.current) return;
+        setTasks(Array.isArray(data) ? data : []);
         setLoading(false);
       }
     } catch (error) {
       console.error('Failed to fetch tasks:', error);
       setLoading(false);
+    } finally {
+      inFlight.current = false;
     }
   };
 

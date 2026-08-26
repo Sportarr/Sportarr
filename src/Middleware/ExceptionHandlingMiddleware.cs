@@ -32,7 +32,12 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unhandled exception occurred: {Message}", ex.Message);
+            // The message is not ours: it can carry a URL with a key in it,
+            // and it can carry line breaks that make one entry look like
+            // several. The stack trace still goes to the log in full through
+            // the exception argument, which the sink formats itself.
+            _logger.LogError(ex, "An unhandled exception occurred: {Message}",
+                Sportarr.Api.Helpers.SecretRedactor.Message(ex.Message));
             await HandleExceptionAsync(context, ex);
         }
     }

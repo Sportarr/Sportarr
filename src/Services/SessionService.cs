@@ -44,7 +44,7 @@ public class SessionService
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("[SESSION] Created session {SessionId} for user {Username} from IP {IP}",
-            sessionId.Substring(0, 8) + "...", username, ipAddress);
+            ShortSessionId(sessionId), username, ipAddress);
 
         return sessionId;
     }
@@ -56,6 +56,18 @@ public class SessionService
     /// 3. IP address matches (configurable)
     /// 4. User-Agent matches (configurable)
     /// </summary>
+    /// <summary>
+    /// A short, log-safe form of a session id. The cookie value comes from the
+    /// client, so taking a fixed eight characters threw on anything shorter and
+    /// turned a malformed cookie into a 500 on every request instead of an
+    /// ordinary rejection.
+    /// </summary>
+    private static string ShortSessionId(string sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId)) return "(empty)";
+        return sessionId.Length <= 8 ? sessionId + "..." : sessionId[..8] + "...";
+    }
+
     public async Task<(bool IsValid, string? Username)> ValidateSessionAsync(
         string sessionId,
         string currentIp,
@@ -74,7 +86,7 @@ public class SessionService
 
         if (session == null)
         {
-            _logger.LogWarning("[SESSION] Session not found: {SessionId}", sessionId.Substring(0, 8) + "...");
+            _logger.LogWarning("[SESSION] Session not found: {SessionId}", ShortSessionId(sessionId));
             return (false, null);
         }
 
@@ -82,7 +94,7 @@ public class SessionService
         if (session.ExpiresAt < DateTime.UtcNow)
         {
             _logger.LogWarning("[SESSION] Session expired: {SessionId} (expired at {ExpiresAt})",
-                sessionId.Substring(0, 8) + "...", session.ExpiresAt);
+                ShortSessionId(sessionId), session.ExpiresAt);
 
             // Clean up expired session
             _db.AuthSessions.Remove(session);
@@ -95,7 +107,7 @@ public class SessionService
         if (strictIpCheck && !string.Equals(session.IpAddress, currentIp, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogWarning("[SESSION SECURITY] IP mismatch for session {SessionId}. Original: {OriginalIP}, Current: {CurrentIP}",
-                sessionId.Substring(0, 8) + "...", session.IpAddress, currentIp);
+                ShortSessionId(sessionId), session.IpAddress, currentIp);
             return (false, null);
         }
 
@@ -103,7 +115,7 @@ public class SessionService
         if (strictUserAgentCheck && !string.Equals(session.UserAgent, currentUserAgent, StringComparison.Ordinal))
         {
             _logger.LogWarning("[SESSION SECURITY] User-Agent mismatch for session {SessionId}. Original: {OriginalUA}, Current: {CurrentUA}",
-                sessionId.Substring(0, 8) + "...", session.UserAgent.Substring(0, Math.Min(50, session.UserAgent.Length)) + "...",
+                ShortSessionId(sessionId), session.UserAgent.Substring(0, Math.Min(50, session.UserAgent.Length)) + "...",
                 currentUserAgent.Substring(0, Math.Min(50, currentUserAgent.Length)) + "...");
             return (false, null);
         }
@@ -123,7 +135,7 @@ public class SessionService
         {
             _db.AuthSessions.Remove(session);
             await _db.SaveChangesAsync();
-            _logger.LogInformation("[SESSION] Deleted session {SessionId}", sessionId.Substring(0, 8) + "...");
+            _logger.LogInformation("[SESSION] Deleted session {SessionId}", ShortSessionId(sessionId));
         }
     }
 

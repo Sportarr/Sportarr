@@ -106,9 +106,13 @@ public class SportarrDbContext : DbContext
             entity.Property(e => e.Round).HasMaxLength(100);
             entity.Property(e => e.Broadcast).HasMaxLength(500);
             entity.Property(e => e.Status).HasMaxLength(50);
+            // Stored as JSON. Joining on commas broke every image URL that
+            // contains one, and plenty do: the round trip split a single URL
+            // into several invalid ones and the artwork came back missing.
+            // Reading still understands the old comma-joined form.
             entity.Property(e => e.Images).HasConversion(
-                v => string.Join(',', v),
-                v => v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                v => StringListStorage.Serialize(v),
+                v => StringListStorage.Deserialize(v)
             ).Metadata.SetValueComparer(new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -880,11 +884,15 @@ public class SportarrDbContext : DbContext
             entity.Property(p => p.Title).IsRequired();
             entity.Property(p => p.DownloadId).IsRequired();
             entity.Property(p => p.FilePath).IsRequired();
+            // Removing a download client used to take every pending manual
+            // import with it. The downloaded files are still on disk and the
+            // user still has to place them, so the record survives with no
+            // client attached rather than disappearing.
             entity.HasOne(p => p.DownloadClient)
                   .WithMany()
                   .HasForeignKey(p => p.DownloadClientId)
                   .IsRequired(false)
-                  .OnDelete(DeleteBehavior.Cascade);
+                  .OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(p => p.SuggestedEvent)
                   .WithMany()
                   .HasForeignKey(p => p.SuggestedEventId)
@@ -1046,7 +1054,10 @@ public class SportarrDbContext : DbContext
             entity.Property(g => g.Source).HasMaxLength(50);
             entity.Property(g => g.PartName).HasMaxLength(100);
 
-            // Foreign key to Event - keep history when event is deleted
+            // Foreign key to Event. The rows go with the event: EventId is not
+            // nullable, so there is nowhere to hang history whose event no
+            // longer exists, and re-grabbing a deleted event is meaningless.
+            // The comment here used to claim the opposite of what it did.
             entity.HasOne(g => g.Event)
                   .WithMany()
                   .HasForeignKey(g => g.EventId)

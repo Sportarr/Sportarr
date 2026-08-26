@@ -246,9 +246,17 @@ public class TransmissionClient
 
             if (seedTimeLimitMinutes.HasValue && seedTimeLimitMinutes.Value > 0)
             {
-                setArgs["seedIdleLimit"] = seedTimeLimitMinutes.Value;
-                setArgs["seedIdleMode"] = 1; // 1 = use per-torrent limit
-                _logger.LogInformation("[Transmission] Setting seed idle limit: {Minutes} min for {Hash}", seedTimeLimitMinutes.Value, hash);
+                // Deliberately not sent to Transmission. Its only time control
+                // is seedIdleLimit, which stops a torrent after so many minutes
+                // with no activity, not after so many minutes of seeding.
+                // Mapping the two onto each other stopped quiet torrents far
+                // too early, in breach of tracker rules, while a busy one that
+                // never went idle seeded for ever. Sportarr enforces the real
+                // elapsed seed time itself, from the completion timestamp this
+                // client reports, so nothing is lost by leaving it alone.
+                _logger.LogDebug(
+                    "[Transmission] Seed time of {Minutes} min for {Hash} is enforced by Sportarr; Transmission has no elapsed seed time limit",
+                    seedTimeLimitMinutes.Value, hash);
             }
 
             // Only send if we have limits to set (not just ids)
@@ -505,16 +513,24 @@ public class TransmissionClient
                 return null;
             }
 
-            var status = torrent.Status switch
-            {
-                0 => "paused",  // stopped
-                1 or 2 => "queued",  // check pending or checking
-                3 => "queued",  // download pending
-                4 => "downloading",  // downloading
-                5 => "completed",  // seed pending
-                6 => "completed",  // seeding
-                _ => "downloading"
-            };
+            // A finished torrent that the client has stopped still reports
+            // status 0. That is the ordinary end state once a seed ratio or a
+            // seed time is met, and reading it as paused meant the download sat
+            // in the queue for ever and was never imported. Completion is
+            // decided on the data being there first, and the state only
+            // describes what the client is doing with it afterwards.
+            var status = torrent.PercentDone >= 1.0
+                ? "completed"
+                : torrent.Status switch
+                {
+                    0 => "paused",  // stopped
+                    1 or 2 => "queued",  // check pending or checking
+                    3 => "queued",  // download pending
+                    4 => "downloading",  // downloading
+                    5 => "completed",  // seed pending
+                    6 => "completed",  // seeding
+                    _ => "downloading"
+                };
 
             var timeRemaining = torrent.Eta > 0 && torrent.Eta < int.MaxValue
                 ? TimeSpan.FromSeconds(torrent.Eta)

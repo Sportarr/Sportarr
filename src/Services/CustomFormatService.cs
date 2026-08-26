@@ -11,6 +11,12 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class CustomFormatService
 {
+    /// <summary>
+    /// Ceiling on a single custom-format pattern evaluation. Matches the
+    /// release profile matcher.
+    /// </summary>
+    private static readonly TimeSpan CustomFormatRegexTimeout = TimeSpan.FromSeconds(1);
+
     private readonly MediaFileParser _parser;
 
     public CustomFormatService(MediaFileParser parser)
@@ -128,11 +134,59 @@ public class CustomFormatService
             "Resolution" => EvaluateResolution(spec, parsed),
             "Size" => EvaluateSize(spec, sizeInBytes),
             "ReleaseGroup" => EvaluateReleaseGroup(spec, parsed),
-            "Language" => EvaluateLanguage(spec, parsed),
+            "Language" => EvaluateLanguage(spec, releaseTitle),
             "IndexerFlag" => EvaluateIndexerFlag(spec, indexerFlags),
+            "QualityModifier" => EvaluateQualityModifier(spec, releaseTitle),
             "ReleaseType" => EvaluateReleaseType(spec, releaseTitle, parsed),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Match a QualityModifier specification (Remux, Proper, Repack and so on).
+    ///
+    /// This case was missing here while the grab-time evaluator had it, and an
+    /// unknown implementation answers no. Since a format only matches when
+    /// every specification kind in it matches something, any imported format
+    /// carrying a quality modifier could never match at rename or import time,
+    /// however well the release fit.
+    ///
+    /// Mirrors ReleaseEvaluator.EvaluateQualityModifierSpec.
+    /// </summary>
+    private bool EvaluateQualityModifier(FormatSpecification spec, string releaseTitle)
+    {
+        if (!spec.Fields.TryGetValue("value", out var raw)) return false;
+
+        var value = raw?.ToString();
+        if (string.IsNullOrEmpty(value)) return false;
+
+        if (int.TryParse(value, out var modifierId))
+        {
+            // The ids follow the enum these formats are exported with:
+            // 0 none, 1 regional, 2 screener, 3 raw HD, 4 disc, 5 remux.
+            // The old table paired the numbers with a different list
+            // entirely, so an imported remux condition matched the word
+            // "Regional" and scored the wrong releases at both ends.
+            var pattern = modifierId switch
+            {
+                1 => @"\bRegional\b",
+                2 => @"\b(Screener|SCR|DVDSCR|BDSCR)\b",
+                3 => @"\bRaw[-_. ]?HD\b",
+                4 => @"\b(BR[-_. ]?DISK|COMPLETE[-_. ]BLURAY|BD(25|50|66|100))\b",
+                5 => @"\bRemux\b",
+                _ => null
+            };
+
+            if (pattern == null) return false;
+
+            return System.Text.RegularExpressions.Regex.IsMatch(
+                releaseTitle, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        return System.Text.RegularExpressions.Regex.IsMatch(
+            releaseTitle,
+            $@"\b{System.Text.RegularExpressions.Regex.Escape(value)}\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
     /// <summary>
@@ -212,7 +266,17 @@ public class CustomFormatService
 
         try
         {
-            return Regex.IsMatch(releaseTitle, pattern, RegexOptions.IgnoreCase);
+            // Bounded, like the release profile matcher already is. These
+            // patterns are written by users or pulled from a guide, they are
+            // evaluated for every release of every search, and one that
+            // backtracks badly held a request thread for as long as it liked.
+            // Enough of them at once would take the pool with it.
+            return new Regex(pattern, RegexOptions.IgnoreCase, CustomFormatRegexTimeout).IsMatch(releaseTitle);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // No logger on this service; the pattern simply does not match.
+            return false;
         }
         catch
         {
@@ -257,7 +321,16 @@ public class CustomFormatService
 
     private bool EvaluateSize(FormatSpecification spec, long sizeInBytes)
     {
-        var sizeInMB = sizeInBytes / (1024.0 * 1024.0);
+        if (sizeInBytes <= 0)
+        {
+            return false;
+        }
+
+        // Custom format size bounds are gigabytes, which is what the grab-time
+        // evaluator has always used. Comparing them against megabytes here
+        // meant the same format scored one way at grab time and another at
+        // rename time, off by a factor of a thousand.
+        var sizeInGB = sizeInBytes / (1024.0 * 1024.0 * 1024.0);
 
         var hasMin = spec.Fields.ContainsKey("min");
         var hasMax = spec.Fields.ContainsKey("max");
@@ -278,7 +351,7 @@ public class CustomFormatService
                 _ => 0.0
             };
 
-            if (sizeInMB < min)
+            if (sizeInGB < min)
             {
                 return false;
             }
@@ -295,7 +368,7 @@ public class CustomFormatService
                 _ => double.MaxValue
             };
 
-            if (sizeInMB > max)
+            if (sizeInGB > max)
             {
                 return false;
             }
@@ -319,7 +392,7 @@ public class CustomFormatService
 
         try
         {
-            return Regex.IsMatch(parsed.ReleaseGroup, pattern, RegexOptions.IgnoreCase);
+            return new Regex(pattern, RegexOptions.IgnoreCase, CustomFormatRegexTimeout).IsMatch(parsed.ReleaseGroup);
         }
         catch
         {
@@ -327,10 +400,16 @@ public class CustomFormatService
         }
     }
 
-    private bool EvaluateLanguage(FormatSpecification spec, ParsedFileInfo parsed)
+    /// <summary>
+    /// Match a Language specification against the release's actual language.
+    ///
+    /// This used to answer "yes" for English no matter what the release was
+    /// and "no" for every other language. A French or Spanish release picked
+    /// up English scores it had not earned, and a format written to target
+    /// that language could never match anything.
+    /// </summary>
+    private bool EvaluateLanguage(FormatSpecification spec, string releaseTitle)
     {
-        // For now, assume English unless specified in filename
-        // This would need to be enhanced with proper language detection
         if (!spec.Fields.ContainsKey("value"))
         {
             return false;
@@ -342,8 +421,32 @@ public class CustomFormatService
             return false;
         }
 
-        // Default to English
-        return value.Equals("English", StringComparison.OrdinalIgnoreCase) ||
-               value.Equals("1", StringComparison.OrdinalIgnoreCase);
+        // Unmarked releases come back as English, which is the right default
+        // for sports.
+        var detected = LanguageDetector.DetectLanguage(releaseTitle) ?? "English";
+        var isMultiLanguage = detected == "Multi" || detected == "Dual Audio";
+
+        string? target;
+        if (int.TryParse(value, out var languageId))
+        {
+            // -1 means any language, so anything satisfies it.
+            if (languageId == -1) return true;
+            target = LanguageDetector.NameForCustomFormatId(languageId);
+        }
+        else
+        {
+            target = value;
+        }
+
+        if (string.IsNullOrEmpty(target)) return false;
+
+        // A multi-language release carries English alongside the rest, so it
+        // satisfies an English requirement.
+        if (isMultiLanguage && target.Equals("English", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return detected.Equals(target, StringComparison.OrdinalIgnoreCase);
     }
 }

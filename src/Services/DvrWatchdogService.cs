@@ -139,6 +139,16 @@ public class DvrWatchdogService : BackgroundService
         {
             seen.Add(row.Id);
 
+            // A recording being finished off has no process by design: it is
+            // past its capture and into revealing, remuxing and measuring,
+            // which for a large file runs for minutes. Reconciling it there
+            // stamped a failure on a recording that was ending normally.
+            if (recorder.IsFinalizing(row.Id))
+            {
+                _lastSize.Remove(row.Id);
+                continue;
+            }
+
             var processAlive = recorder.IsRecordingActive(row.Id);
 
             // Mode 1 - process is dead but row says Recording. Either
@@ -153,6 +163,19 @@ public class DvrWatchdogService : BackgroundService
                 if (row.Status != DvrRecordingStatus.Recording)
                 {
                     _lastSize.Remove(row.Id);
+                    continue;
+                }
+
+                // A recorder this app does not track can still be writing
+                // this file. An app restart leaves the previous instance's
+                // FFmpeg running and reparented, and finalising or rotating the
+                // row here would put a second recorder on the same output path.
+                // Growth is the only evidence available without a stored pid.
+                if (IsOutputStillGrowing(row, now, out var growingSize))
+                {
+                    _logger.LogWarning(
+                        "[DVR Watchdog] Recording {Id} has no tracked FFmpeg process but its output is still being written ({Size} bytes). Leaving it alone; a recorder from an earlier run is probably still writing it.",
+                        row.Id, growingSize);
                     continue;
                 }
 
@@ -266,5 +289,53 @@ public class DvrWatchdogService : BackgroundService
         {
             _logger.LogError(ex, "[DVR Watchdog] Failed to persist watchdog status updates");
         }
+    }
+
+    /// <summary>
+    /// True while the output file still looks like something is writing it.
+    ///
+    /// A single quiet tick is not evidence. An upstream stream can pause and a
+    /// write can sit in a buffer for longer than one tick, and treating that as
+    /// a dead writer would reconcile and rotate the row while the earlier
+    /// run's FFmpeg is still going, putting two recorders on one file. Only a
+    /// whole window with no growth counts, the same threshold the tracked
+    /// recordings use.
+    ///
+    /// No earlier sample counts as growth on purpose, because the tracker is
+    /// empty right after the restart that strands a recorder in the first
+    /// place.
+    /// </summary>
+    private bool IsOutputStillGrowing(DvrRecording row, DateTime now, out long size)
+    {
+        size = 0;
+        if (string.IsNullOrEmpty(row.OutputPath) || !File.Exists(row.OutputPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            size = new FileInfo(row.OutputPath).Length;
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (!_lastSize.TryGetValue(row.Id, out var prev))
+        {
+            _lastSize[row.Id] = (size, now);
+            return true;
+        }
+
+        if (size > prev.Size)
+        {
+            _lastSize[row.Id] = (size, now);
+            return true;
+        }
+
+        // The timestamp is when the file last grew, not when it was last
+        // looked at, so this measures a real quiet stretch.
+        return now - prev.At < StalledNoGrowthWindow;
     }
 }

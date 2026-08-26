@@ -79,7 +79,8 @@ public class DownloadClientServiceDecypharrTests : IDisposable
             NullLoggerFactory.Instance,
             NullLogger<DownloadClientService>.Instance,
             new MemoryCache(new MemoryCacheOptions()),
-            configService);
+            configService,
+            Mock.Of<Sportarr.Api.Services.Interfaces.IRemotePathMappingService>());
     }
 
     [Fact]

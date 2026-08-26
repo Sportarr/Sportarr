@@ -53,10 +53,14 @@ public class XmltvParserService
 
         try
         {
-            using var response = await _httpClient.GetAsync(url, cancellationToken);
+            using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            // A big guide over a slow line is legitimate, so the read gets
+            // the same five minutes the client itself is allowed.
+            var bytes = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsByteArrayAsync(
+                response.Content, "The EPG guide", ct: cancellationToken,
+                readTimeout: TimeSpan.FromMinutes(5));
             var content = DecodeEpgContent(bytes, url, response.Content.Headers.ContentType?.CharSet);
 
             return ParseContent(content, epgSourceId);
@@ -93,21 +97,75 @@ public class XmltvParserService
         var isGzip = (bytes.Length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B)
             || url.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
 
+        var raw = bytes;
         if (isGzip)
         {
             using var compressedStream = new System.IO.MemoryStream(bytes);
             using var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionMode.Decompress);
-            using var reader = new System.IO.StreamReader(gzipStream);
-            return reader.ReadToEnd();
+            using var decompressed = new System.IO.MemoryStream();
+            gzipStream.CopyTo(decompressed);
+            raw = decompressed.ToArray();
         }
 
-        var encoding = System.Text.Encoding.UTF8;
-        if (!string.IsNullOrWhiteSpace(charSet))
+        // A byte order mark settles it outright.
+        if (raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF)
+            return System.Text.Encoding.UTF8.GetString(raw, 3, raw.Length - 3);
+        if (raw.Length >= 2 && raw[0] == 0xFF && raw[1] == 0xFE)
+            return System.Text.Encoding.Unicode.GetString(raw, 2, raw.Length - 2);
+        if (raw.Length >= 2 && raw[0] == 0xFE && raw[1] == 0xFF)
+            return System.Text.Encoding.BigEndianUnicode.GetString(raw, 2, raw.Length - 2);
+
+        // Then the HTTP charset, then the declaration inside the document.
+        //
+        // The gzip branch used to hand the stream to a reader with no encoding
+        // at all, and the plain branch ignored the declaration entirely. Guides
+        // that say ISO-8859-1, which is most of the European ones and few of
+        // them send a charset header, came out with every accented channel
+        // name, title and description mangled, and team and event matching
+        // then had nothing to match against.
+        var encoding = ResolveEncoding(charSet) ?? SniffDeclaredEncoding(raw) ?? System.Text.Encoding.UTF8;
+        return encoding.GetString(raw);
+    }
+
+    private static System.Text.Encoding? ResolveEncoding(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        try
         {
-            try { encoding = System.Text.Encoding.GetEncoding(charSet.Trim('"', ' ')); }
-            catch { /* unknown charset - fall back to UTF-8 */ }
+            // The legacy code pages are not built in on .NET 8, and most of
+            // the guides that declare one are exactly the ones this matters
+            // for. Idempotent.
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+            return System.Text.Encoding.GetEncoding(name.Trim('"', ' '));
         }
-        return encoding.GetString(bytes);
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Read the encoding out of the XML declaration at the head of a document.
+    /// The declaration is ASCII by definition, so the first bytes can be read
+    /// as ASCII whatever the rest of the file turns out to be.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex XmlDeclarationEncoding = new(
+        @"<\?xml[^>]*?encoding\s*=\s*[""']([^""']+)[""']",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+        TimeSpan.FromMilliseconds(250));
+
+    private static System.Text.Encoding? SniffDeclaredEncoding(byte[] raw)
+    {
+        try
+        {
+            var head = System.Text.Encoding.ASCII.GetString(raw, 0, Math.Min(raw.Length, 256));
+            var match = XmlDeclarationEncoding.Match(head);
+            return match.Success ? ResolveEncoding(match.Groups[1].Value) : null;
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

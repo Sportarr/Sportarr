@@ -15,7 +15,12 @@ public class SimpleAuthService
 {
     private const int NUMBER_OF_BYTES = 256 / 8;
     private const int SALT_SIZE = 128 / 8;
-    private const int DEFAULT_ITERATIONS = 10000;
+    // PBKDF2 rounds for a new password. This is the service the forms login
+    // and the Basic handler actually use, so it is the number that decides how
+    // hard a stolen hash is to attack. A password stored under an older, lower
+    // count is rehashed the next time its owner signs in, which is the only
+    // moment the plaintext is available to do it with.
+    private const int DEFAULT_ITERATIONS = 210000;
 
     private readonly SportarrDbContext _db;
     private readonly ConfigService _configService;
@@ -86,12 +91,64 @@ public class SimpleAuthService
             // Constant-time comparison to avoid leaking how much of the hash matched.
             var isValid = CryptographicOperations.FixedTimeEquals(computed, stored);
             _logger.LogInformation("[AUTH] Password validation result: {Result}", isValid);
+
+            // The password is in hand and correct, which is the only time it
+            // can be rehashed. A stored hash left at an older round count
+            // stays weak for as long as the password lasts otherwise.
+            if (isValid && iterations < DEFAULT_ITERATIONS)
+            {
+                await UpgradeStoredHashAsync(settings!, password);
+            }
+
             return isValid;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AUTH] Error validating password");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Rehash a correct password at the current round count and store it.
+    ///
+    /// Best effort on purpose: the sign-in has already succeeded, so a write
+    /// that fails must not turn it into a failure. The next sign-in tries
+    /// again.
+    /// </summary>
+    private async Task UpgradeStoredHashAsync(SecuritySettings settings, string password)
+    {
+        try
+        {
+            var salt = new byte[SALT_SIZE];
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(salt);
+            }
+
+            settings.PasswordSalt = Convert.ToBase64String(salt);
+            settings.PasswordHash = HashPassword(password, salt, DEFAULT_ITERATIONS);
+            settings.PasswordIterations = DEFAULT_ITERATIONS;
+            settings.Password = "";
+
+            var appSettings = await _db.AppSettings.FirstOrDefaultAsync();
+            if (appSettings == null) return;
+
+            appSettings.SecuritySettings = JsonSerializer.Serialize(settings);
+            await _db.SaveChangesAsync();
+
+            await _configService.UpdateConfigAsync(config =>
+            {
+                config.PasswordHash = settings.PasswordHash;
+                config.PasswordSalt = settings.PasswordSalt;
+                config.PasswordIterations = DEFAULT_ITERATIONS;
+            });
+
+            _logger.LogInformation("[AUTH] Stored password rehashed at {Iterations} rounds", DEFAULT_ITERATIONS);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[AUTH] Could not rehash the stored password; the sign-in still stands");
         }
     }
 
@@ -151,7 +208,27 @@ public class SimpleAuthService
             config.PasswordIterations = securitySettings.PasswordIterations;
         });
 
+        await InvalidateAllSessionsAsync("credentials changed");
+
         _logger.LogInformation("[AUTH] Credentials saved to database and config.xml successfully");
+    }
+
+    /// <summary>
+    /// Drops every login session. A password change is how a user shuts out
+    /// someone holding a stolen cookie, so the old sessions must not survive
+    /// it. Everyone signs in again, including the user who made the change.
+    /// </summary>
+    private async Task InvalidateAllSessionsAsync(string reason)
+    {
+        var sessions = await _db.AuthSessions.ToListAsync();
+        if (sessions.Count == 0)
+        {
+            return;
+        }
+
+        _db.AuthSessions.RemoveRange(sessions);
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("[AUTH] Ended {Count} session(s) because {Reason}", sessions.Count, reason);
     }
 
     /// <summary>
@@ -193,6 +270,8 @@ public class SimpleAuthService
         // Save back to database
         appSettings.SecuritySettings = JsonSerializer.Serialize(securitySettings);
         await _db.SaveChangesAsync();
+
+        await InvalidateAllSessionsAsync("the username changed");
 
         _logger.LogInformation("[AUTH] Username updated successfully");
     }

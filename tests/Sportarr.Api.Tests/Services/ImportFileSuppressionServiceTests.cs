@@ -49,12 +49,20 @@ public class ImportFileSuppressionServiceTests
     }
 
     [Fact]
-    public void PathComparisonIgnoresCaseAndTrailingSeparator()
+    public void PathComparisonFollowsTheFilesystem()
     {
         var service = new ImportFileSuppressionService();
         service.SuppressDeletion("/sports/F1/Race.mkv");
 
-        service.IsSuppressed("/sports/f1/race.mkv").Should().BeTrue();
+        // Windows treats those two names as one file, so suppressing one has
+        // to suppress the other. Linux treats them as two, and silencing the
+        // watcher for a different real file there means a genuine deletion,
+        // creation or rename goes unnoticed.
+        service.IsSuppressed("/sports/f1/race.mkv")
+            .Should().Be(OperatingSystem.IsWindows());
+
+        // The path as written is always suppressed.
+        service.IsSuppressed("/sports/F1/Race.mkv").Should().BeTrue();
     }
 
     [Fact]

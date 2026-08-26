@@ -3,6 +3,7 @@ import { apiGet } from '../utils/api';
 
 interface UISettings {
   eventViewMode?: string;
+  theme?: string;
   timeZone?: string;
   queryBackoffCapMs?: number;
 }
@@ -31,6 +32,7 @@ export function useUISettings(): {
   eventViewMode: string;
   timezone: string | null;
   queryBackoffCapMs: number;
+  theme: 'auto' | 'light' | 'dark' | null;
   loading: boolean;
 } {
   const { data, isLoading } = useQuery({
@@ -44,6 +46,7 @@ export function useUISettings(): {
     eventViewMode: data?.eventViewMode ?? 'auto',
     timezone: data?.timeZone ?? null,
     queryBackoffCapMs: Math.min(Math.max(data?.queryBackoffCapMs ?? 120_000, 1_000), 600_000),
+    theme: (data?.theme === 'light' || data?.theme === 'dark' || data?.theme === 'auto') ? data.theme : null,
     loading: isLoading,
   };
 }

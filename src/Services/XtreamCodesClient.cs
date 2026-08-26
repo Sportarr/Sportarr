@@ -46,7 +46,7 @@ public class XtreamCodesClient
     {
         var (_, auth, error) = await ResolveAsync(serverUrl, username, password);
         if (auth == null)
-            _logger.LogError("[Xtream] Authentication failed for {Url}: {Error}", serverUrl, error);
+            _logger.LogError("[Xtream] Authentication failed for {Url}: {Error}", Sportarr.Api.Helpers.SecretRedactor.Url(serverUrl), error);
         return auth;
     }
 
@@ -222,7 +222,7 @@ public class XtreamCodesClient
         string password,
         int sourceId)
     {
-        _logger.LogInformation("[Xtream] Fetching channels from server: {Url}", serverUrl);
+        _logger.LogInformation("[Xtream] Fetching channels from server: {Url}", Sportarr.Api.Helpers.SecretRedactor.Url(serverUrl));
 
         // Resolve the working base URL once (handles http/https scheme mismatch),
         // then use that scheme for every follow-up call (categories, streams,

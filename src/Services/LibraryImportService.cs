@@ -501,22 +501,47 @@ public class LibraryImportService
                         // already has one replaces it, the same way a grab upgrade does.
                         // Keeping both leaves the event with two files named "Main Card",
                         // and an integration that keeps one record per part loses one.
+                        StagedPartReplacement? stagedPart = null;
                         if (existingFileRecord == null)
                         {
-                            await ReplaceOccupiedPartAsync(existingEvent, partNumber, request.FilePath);
+                            stagedPart = await StageOccupiedPartAsync(existingEvent, partNumber, request.FilePath);
                         }
 
                         // Build destination path and transfer file - pass part info and import mode
-                        var destinationPath = await TransferFileToLibraryAsync(
-                            request.FilePath,
-                            existingEvent,
-                            parsedInfo,
-                            settings,
-                            config,
-                            partName,
-                            partNumber,
-                            importMode,
-                            modeWasExplicit);
+                        string destinationPath;
+                        try
+                        {
+                            destinationPath = await TransferFileToLibraryAsync(
+                                request.FilePath,
+                                existingEvent,
+                                parsedInfo,
+                                settings,
+                                config,
+                                partName,
+                                partNumber,
+                                importMode,
+                                modeWasExplicit);
+                        }
+                        catch
+                        {
+                            RestoreStagedPart(stagedPart);
+                            throw;
+                        }
+
+                        // Declared out here so the rollback below and the
+                        // notification after it can both still see them.
+                        EventFile linkedFile;
+                        EventFile? newlyAdded = null;
+
+                        // The file it replaces is not discarded yet. The
+                        // transfer landing is only half of it: until the new
+                        // file has a record and the event points at it, the
+                        // old one is the only copy of this part there is.
+                        // Discarding it here meant a failure anywhere below
+                        // reported an unsuccessful import having already
+                        // destroyed the part that was working.
+                        try
+                        {
 
                         // Update event with new file info
                         existingEvent.FilePath = destinationPath;
@@ -527,8 +552,6 @@ public class LibraryImportService
 
                         // Part name/number already determined above before TransferFileToLibraryAsync
 
-                        EventFile linkedFile;
-                        EventFile? newlyAdded = null;
                         if (existingFileRecord != null)
                         {
                             // Update existing EventFile record (re-import)
@@ -610,6 +633,20 @@ public class LibraryImportService
                         {
                             await _db.SaveChangesAsync();
                         }
+
+                        }
+                        catch
+                        {
+                            // The new state never saved, so put the replaced
+                            // file back. Where the new file took the same name
+                            // this returns the part to what it was; where it
+                            // did not, both are on disk and nothing is lost.
+                            RestoreStagedPart(stagedPart);
+                            throw;
+                        }
+
+                        // Saved. Now the file it replaced can go.
+                        await CommitStagedPartAsync(stagedPart, linkedFile);
 
                         result.Imported.Add(destinationPath);
                         notifyQueue.Add((existingEvent, destinationPath,
@@ -1238,7 +1275,13 @@ public class LibraryImportService
         const int bufferSize = 81920; // 80KB buffer
 
         using var sourceStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
-        using var destStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
+
+        // CreateNew, not Create. GetUniqueFilePath proved this name was free a
+        // moment ago, and the move path already refuses to overwrite, so a file
+        // sitting here now means a second import claimed the same name in
+        // between. Truncating it destroyed whatever that import had written.
+        // Failing is the honest outcome, and the caller reports it per file.
+        using var destStream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
 
         await sourceStream.CopyToAsync(destStream);
         _logger.LogInformation("File copied successfully");
@@ -1369,33 +1412,132 @@ public class LibraryImportService
     }
 
     /// <summary>
-    /// Get media management settings
+    /// A file that an incoming import replaces. The file is renamed aside so
+    /// the transfer can take its name, and it stays on disk until the transfer
+    /// succeeds.
     /// </summary>
+    private sealed record StagedPartReplacement(EventFile Occupant, string OriginalPath, string? StagedPath);
+
     /// <summary>
-    /// Remove the file that already holds this part of the event, so the part
-    /// ends up with one file rather than two.
-    ///
-    /// A part is the unit of media. An event that shows "Main Card" twice is
-    /// wrong in the UI, and an integration that keeps one record per part drops
-    /// one of the two. The old file goes to the recycle bin when one is set, so
-    /// an import that replaces a good file stays recoverable.
+    /// Renames the file already holding this part out of the way. Nothing is
+    /// deleted here, so a failed transfer can put it back.
     /// </summary>
-    /// <param name="existingEvent">Event being imported into, with Files loaded.</param>
-    /// <param name="partNumber">Part the incoming file covers. Null means the whole event.</param>
-    /// <param name="incomingPath">Source path of the incoming file.</param>
-    private async Task ReplaceOccupiedPartAsync(Event existingEvent, int? partNumber, string incomingPath)
+    private async Task<StagedPartReplacement?> StageOccupiedPartAsync(Event existingEvent, int? partNumber, string incomingPath)
     {
         var occupant = existingEvent.Files
             .FirstOrDefault(f => f.PartNumber == partNumber &&
                                  !string.Equals(f.FilePath, incomingPath, StringComparison.OrdinalIgnoreCase));
 
-        if (occupant == null) return;
+        if (occupant == null) return null;
 
         _logger.LogInformation(
             "[Library Import] Part {Part} of event {EventId} already holds a file. Replacing it: {OldPath}",
             partNumber?.ToString() ?? "(whole event)", existingEvent.Id, occupant.FilePath);
 
-        if (!string.IsNullOrEmpty(occupant.FilePath) && File.Exists(occupant.FilePath))
+        var originalPath = occupant.FilePath ?? string.Empty;
+        string? stagedPath = null;
+
+        if (!string.IsNullOrEmpty(originalPath) && File.Exists(originalPath))
+        {
+            // A sidecar already sitting here is the original from a
+            // replacement that was interrupted before its new file landed,
+            // which can make it the only intact copy of the media. Deleting it
+            // to reuse the name destroyed it for good, so a free name is found
+            // instead and the older one is left for the user.
+            var candidate = FindFreeStagingPath(originalPath);
+            try
+            {
+                File.Move(originalPath, candidate);
+                stagedPath = candidate;
+            }
+            catch (Exception ex)
+            {
+                // The transfer still runs. It gets a numbered name instead of
+                // the one this file holds, which the next rename pass corrects.
+                _logger.LogWarning(ex, "[Library Import] Could not move the replaced file aside: {Path}", originalPath);
+            }
+        }
+
+        await Task.CompletedTask;
+        return new StagedPartReplacement(occupant, originalPath, stagedPath);
+    }
+
+    /// <summary>
+    /// A staging name beside the original that nothing is using yet.
+    ///
+    /// The name used to be fixed, so a second replacement wrote over the
+    /// sidecar the first one left. That sidecar holds the original file, and
+    /// after an interrupted replacement it can be the only copy there is.
+    /// </summary>
+    private static string FindFreeStagingPath(string originalPath)
+    {
+        var candidate = originalPath + ".sportarr-replacing";
+        if (!File.Exists(candidate)) return candidate;
+
+        for (var attempt = 2; attempt < 1000; attempt++)
+        {
+            var numbered = $"{originalPath}.sportarr-replacing-{attempt}";
+            if (!File.Exists(numbered)) return numbered;
+        }
+
+        // Nothing free after a thousand tries, which means something is very
+        // wrong. A unique name still beats writing over one of them.
+        return $"{originalPath}.sportarr-replacing-{Guid.NewGuid():N}";
+    }
+
+    /// <summary>
+    /// Puts a staged file back after a failed transfer.
+    /// </summary>
+    private void RestoreStagedPart(StagedPartReplacement? staged)
+    {
+        if (staged?.StagedPath == null || !File.Exists(staged.StagedPath)) return;
+
+        try
+        {
+            // Something sits where the replaced file belongs, and a plain move
+            // will not write over it. It is moved aside rather than deleted:
+            // on a move-mode import that file is the incoming media and its
+            // source is already gone, so deleting it destroyed the only copy
+            // while reporting a failed import.
+            if (File.Exists(staged.OriginalPath))
+            {
+                var setAside = FindFreeStagingPath(staged.OriginalPath);
+                try
+                {
+                    File.Move(staged.OriginalPath, setAside);
+                    _logger.LogWarning(
+                        "[Library Import] The failed import left a file where the replaced one belongs. It is at {Path}",
+                        setAside);
+                }
+                catch (Exception moveEx)
+                {
+                    // Nowhere to put it. The replaced file stays staged rather
+                    // than either of them being destroyed.
+                    _logger.LogError(moveEx,
+                        "[Library Import] Could not move {Path} aside, so the replaced file stays at {StagedPath}",
+                        staged.OriginalPath, staged.StagedPath);
+                    return;
+                }
+            }
+
+            File.Move(staged.StagedPath, staged.OriginalPath);
+            _logger.LogInformation("[Library Import] Import failed, so the replaced file is back: {Path}", staged.OriginalPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Library Import] Could not restore the replaced file. It is at {StagedPath}", staged.StagedPath);
+        }
+    }
+
+    /// <summary>
+    /// Discards a staged file once its replacement is in the library, and drops
+    /// the record that tracked it.
+    /// </summary>
+    private async Task CommitStagedPartAsync(StagedPartReplacement? staged, EventFile? reusedRecord = null)
+    {
+        if (staged == null) return;
+
+        if (staged.StagedPath != null && File.Exists(staged.StagedPath))
         {
             try
             {
@@ -1403,31 +1545,43 @@ public class LibraryImportService
                 var recycleBin = config.RecycleBin;
                 if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
                 {
-                    var recyclePath = Path.Combine(recycleBin,
-                        $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(occupant.FilePath)}");
-                    File.Move(occupant.FilePath, recyclePath);
+                    var recyclePath = Helpers.RecyclePaths.FindFree(
+                        recycleBin, Path.GetFileName(staged.OriginalPath));
+                    File.Move(staged.StagedPath, recyclePath);
                     _logger.LogInformation("[Library Import] Moved replaced file to recycle bin: {Path} -> {RecyclePath}",
-                        occupant.FilePath, recyclePath);
+                        staged.OriginalPath, recyclePath);
                 }
                 else
                 {
-                    File.Delete(occupant.FilePath);
-                    _logger.LogInformation("[Library Import] Deleted replaced file: {Path}", occupant.FilePath);
+                    File.Delete(staged.StagedPath);
+                    _logger.LogInformation("[Library Import] Deleted replaced file: {Path}", staged.OriginalPath);
                 }
             }
             catch (Exception ex)
             {
                 // Leave the record removed even when the file stays. A file the
                 // library no longer tracks is better than a duplicate part.
-                _logger.LogWarning(ex, "[Library Import] Failed to remove replaced file: {Path}", occupant.FilePath);
+                _logger.LogWarning(ex, "[Library Import] Failed to remove replaced file: {Path}", staged.StagedPath);
             }
         }
 
-        existingEvent.Files.Remove(occupant);
-        _db.EventFiles.Remove(occupant);
+        // A replacement landing on the same path finds the occupant's own row
+        // and updates it, so that row now describes the new file. Removing it
+        // here would leave the event pointing at media with nothing recording
+        // it.
+        if (reusedRecord != null && ReferenceEquals(reusedRecord, staged.Occupant))
+        {
+            return;
+        }
+
+        staged.Occupant.Event?.Files.Remove(staged.Occupant);
+        _db.EventFiles.Remove(staged.Occupant);
         await _db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Get media management settings
+    /// </summary>
     private async Task<MediaManagementSettings> GetMediaManagementSettingsAsync()
     {
         var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();

@@ -93,32 +93,38 @@ public static class DownloadFolderSweeper
                 }
             }
 
-            var files = Directory.GetFiles(fullPath, "*", SearchOption.AllDirectories);
-            if (files.Length > maxSweepFiles)
-            {
-                logger.LogDebug("[Cleanup] Not sweeping {Path}: {Count} files is more than leftover metadata", fullPath, files.Length);
-                return false;
-            }
-
+            // Walk lazily and stop as soon as any limit is passed. Building
+            // the whole list first meant an unexpectedly large directory was
+            // fully enumerated into memory before the hundred-file guard was
+            // ever consulted, which is the one case the guard exists for.
             long totalBytes = 0;
-            foreach (var file in files)
+            var fileCount = 0;
+
+            foreach (var file in Directory.EnumerateFiles(fullPath, "*", SearchOption.AllDirectories))
             {
+                fileCount++;
+                if (fileCount > maxSweepFiles)
+                {
+                    logger.LogDebug("[Cleanup] Not sweeping {Path}: more than {Count} files is more than leftover metadata", fullPath, maxSweepFiles);
+                    return false;
+                }
+
                 if (videoExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 {
                     logger.LogDebug("[Cleanup] Not sweeping {Path}: video file remains ({File})", fullPath, file);
                     return false;
                 }
-                totalBytes += new FileInfo(file).Length;
-            }
 
-            if (totalBytes > maxSweepBytes)
-            {
-                logger.LogDebug("[Cleanup] Not sweeping {Path}: {Bytes} bytes remaining is more than leftover metadata", fullPath, totalBytes);
-                return false;
+                totalBytes += new FileInfo(file).Length;
+                if (totalBytes > maxSweepBytes)
+                {
+                    logger.LogDebug("[Cleanup] Not sweeping {Path}: {Bytes} bytes remaining is more than leftover metadata", fullPath, totalBytes);
+                    return false;
+                }
             }
 
             Directory.Delete(fullPath, recursive: true);
-            logger.LogInformation("[Cleanup] Swept leftover download folder ({Count} metadata files): {Path}", files.Length, fullPath);
+            logger.LogInformation("[Cleanup] Swept leftover download folder ({Count} metadata files): {Path}", fileCount, fullPath);
             return true;
         }
         catch (Exception ex)

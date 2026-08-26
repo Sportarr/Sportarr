@@ -35,8 +35,22 @@ public class TvScheduleSyncService : BackgroundService
         // Wait before starting to allow app to fully initialize
         await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
 
-        // Initial sync
-        await PerformScheduleSyncAsync(stoppingToken);
+        // Initial sync. Guarded like the ones in the loop below: an
+        // exception escaping ExecuteAsync stops the whole host by default, so
+        // a transient database or upstream failure two minutes after boot used
+        // to take Sportarr down with it.
+        try
+        {
+            await PerformScheduleSyncAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TV Schedule] Error during initial sync");
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {

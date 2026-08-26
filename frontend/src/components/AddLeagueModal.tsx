@@ -74,12 +74,14 @@ interface AddLeagueModalProps {
     tags: number[],
     rootFolderId: number | null,
     monitorFinals: boolean,
+    specialEventsMonitorType: string,
     monitorPlayoffs: boolean,
     monitorPreseason: boolean,
     retentionDays: number,
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
-    enableDvr: boolean
+    enableDvr: boolean,
+    keepAllEvents: boolean
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -94,8 +96,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [selectAll, setSelectAll] = useState(false);
   const [monitorType, setMonitorType] = useState('All');
   const [monitorFinals, setMonitorFinals] = useState(false);
+  // How far back the special-event toggles reach. New leagues follow the
+  // league default rather than quietly meaning every season ever played.
+  const [specialEventsMonitorType, setSpecialEventsMonitorType] = useState('Future');
   const [monitorPlayoffs, setMonitorPlayoffs] = useState(false);
   const [monitorPreseason, setMonitorPreseason] = useState(false);
+  const [keepAllEvents, setKeepAllEvents] = useState(false);
   const [allowHighlights, setAllowHighlights] = useState(false);
   // Add-only (#204): whether the DVR auto-scheduler may touch this league at
   // all, including its EPG/broadcaster-matching fallback. Editing an
@@ -135,9 +141,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   };
   // Custom search query template
   const [searchQueryTemplate, setSearchQueryTemplate] = useState('');
-  const [searchTemplatePreview, setSearchTemplatePreview] = useState<{ template: string; samples: { eventTitle: string; eventDate: string; generatedQuery: string }[] } | null>(null);
+  const [searchTemplatePreview, setSearchTemplatePreview] = useState<{ template: string; samples: { eventTitle: string; eventDate: string; generatedQuery: string; generatedQueries?: string[] }[] } | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const searchTemplateInputRef = useRef<HTMLInputElement>(null);
+  const searchTemplateInputRef = useRef<HTMLTextAreaElement>(null);
   // Tags
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
@@ -204,7 +210,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   });
 
   // Fetch motorsport session types for the league
-  const { data: sessionTypesResponse } = useQuery({
+  const { data: sessionTypesResponse, isPending: sessionTypesPending } = useQuery({
     queryKey: ['motorsport-session-types', league?.strLeague],
     queryFn: async () => {
       if (!league?.strLeague) return [];
@@ -219,7 +225,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const availableSessionTypes: string[] = sessionTypesResponse || [];
 
   // Fetch fighting event types for UFC-style leagues (PPV, Fight Night, DWCS)
-  const { data: eventTypesResponse } = useQuery({
+  const { data: eventTypesResponse, isPending: eventTypesPending } = useQuery({
     queryKey: ['fighting-event-types', league?.strLeague],
     queryFn: async () => {
       if (!league?.strLeague) return [];
@@ -248,6 +254,20 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     enabled: isOpen && editMode && !!leagueId,
     refetchOnMount: 'always',
   });
+
+  // The initialization effect waits for these same queries, so until they
+  // land the settings state is still the empty placeholder. Submitting in
+  // that window saved "monitor nothing" for a motorsport or fighting league.
+  // Edit mode has the same window. Its initialisation waits on the stored
+  // league and on these lists too, and an Update in that window saved the
+  // placeholder state over the stored configuration. The gate is on the
+  // data being present, not on the query being pending: a fetch that errors
+  // stops being pending too, and the effect never runs without data.
+  const settingsNotReady = !!league && (
+    (editMode && !existingLeague) ||
+    (isMotorsport(league.strSport) && sessionTypesPending) ||
+    (usesFightingEventTypes(league.strSport, league.strLeague) && eventTypesPending)
+  );
 
   // Real-time filtering based on search query and selected team
   const filteredTeams = useMemo(() => {
@@ -301,8 +321,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         searchForMissingEvents: existingLeague.searchForMissingEvents,
         searchForCutoffUnmetEvents: existingLeague.searchForCutoffUnmetEvents,
         monitorFinals: existingLeague.monitorFinals,
+        specialEventsMonitorType: existingLeague.specialEventsMonitorType,
         monitorPlayoffs: existingLeague.monitorPlayoffs,
         monitorPreseason: existingLeague.monitorPreseason,
+        keepAllEvents: existingLeague.keepAllEvents,
         allowHighlights: existingLeague.allowHighlights,
         searchQueryTemplate: existingLeague.searchQueryTemplate,
         tags: existingLeague.tags,
@@ -324,8 +346,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
       setMonitorFinals(existingLeague.monitorFinals || false);
+      // A league saved before this setting existed reports All, which is what
+      // it was doing, so it stays as it was until changed here.
+      setSpecialEventsMonitorType(existingLeague.specialEventsMonitorType || 'All');
       setMonitorPlayoffs(existingLeague.monitorPlayoffs || false);
       setMonitorPreseason(existingLeague.monitorPreseason || false);
+      setKeepAllEvents(existingLeague.keepAllEvents || false);
       setAllowHighlights(existingLeague.allowHighlights || false);
       setSearchQueryTemplate(existingLeague.searchQueryTemplate || '');
       setSearchTemplatePreview(null);
@@ -412,6 +438,20 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   useEffect(() => {
     // Only initialize for add mode (not edit mode) when modal is open
     if (!editMode && isOpen && league?.idLeague) {
+      // The session and event type defaults come from their own queries. This
+      // effect runs once and then guards itself, so running before those
+      // arrive left both sets empty for good, and handleAdd saves an empty set
+      // as "monitor nothing" once the lists have loaded. A motorsport or
+      // fighting league added that way synced no events at all. Wait for a
+      // query still in flight rather than initialising without it.
+      const waitingForSessionTypes = isMotorsport(league.strSport) && sessionTypesPending;
+      const waitingForEventTypes =
+        usesFightingEventTypes(league.strSport, league.strLeague) && eventTypesPending;
+
+      if (waitingForSessionTypes || waitingForEventTypes) {
+        return;
+      }
+
       // Check if we've already initialized (use settingsRef for add mode too)
       if (initializedSettingsRef.current) {
         return; // Already initialized, don't reset state
@@ -469,7 +509,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         setSelectAllEventTypes(false);
       }
     }
-  }, [league?.idLeague, league?.strSport, league?.strLeague, editMode, isOpen, qualityProfiles, rootFolders, availableSessionTypes, availableEventTypes]);
+  }, [league?.idLeague, league?.strSport, league?.strLeague, editMode, isOpen, qualityProfiles, rootFolders, availableSessionTypes, availableEventTypes, sessionTypesPending, eventTypesPending]);
 
   // Clear initialization tracking when modal closes
   useEffect(() => {
@@ -651,12 +691,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       selectedTags,
       rootFolderId,
       monitorFinals,
+      specialEventsMonitorType,
       monitorPlayoffs,
       monitorPreseason,
       retentionDays,
       allowHighlights,
       sessionTypeQualityString,
-      enableDvr
+      enableDvr,
+      keepAllEvents
     );
   };
 
@@ -960,6 +1002,48 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                             <div>
                               <div className="text-sm font-medium text-white">Always monitor preseason</div>
                               <div className="text-xs text-gray-400">Warm-up games before the regular season - preseason weeks, exhibition games</div>
+                            </div>
+                          </label>
+
+
+                          {/* How far back the toggles above reach. Without
+                              this they silently meant every season the league
+                              has ever had, so switching on finals brought back
+                              a championship from decades ago. */}
+                          {(monitorFinals || monitorPlayoffs || monitorPreseason) && (
+                            <div className="p-3 rounded-lg bg-gray-800">
+                              <label className="block text-sm font-medium text-white mb-1">
+                                Monitor those special events from
+                              </label>
+                              <div className="text-xs text-gray-400 mb-2">
+                                How far back this reaches. It does not change which of your teams' games are monitored.
+                              </div>
+                              <select
+                                value={specialEventsMonitorType}
+                                onChange={(e) => setSpecialEventsMonitorType(e.target.value)}
+                                className="w-full px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                              >
+                                <option value="All">Every season (including seasons long finished)</option>
+                                <option value="Future">Future only (events that haven't happened yet)</option>
+                                <option value="CurrentSeason">Current season only</option>
+                                <option value="LatestSeason">Latest season only</option>
+                                <option value="NextSeason">Next season only</option>
+                                <option value="Recent">Recent (last 30 days)</option>
+                              </select>
+                            </div>
+                          )}
+                          <label className="flex items-start gap-3 p-3 rounded-lg bg-gray-800 hover:bg-gray-750 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={keepAllEvents}
+                              onChange={(e) => setKeepAllEvents(e.target.checked)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white">Keep every game in the library</div>
+                              <div className="text-xs text-gray-400">
+                                Games without one of your teams are normally not stored at all. Keep them, unmonitored, so you can find a one-off game and monitor it yourself. Uses more disk.
+                              </div>
                             </div>
                           </label>
                         </div>
@@ -1406,15 +1490,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     </label>
                     <p className="text-xs text-gray-500 mb-2">
                       Override the default search query pattern. Leave blank to use the built-in query logic.
+                      Put one template per line to cover release groups that name events differently. Every line is
+                      searched and the results are combined, starting with the first.
                     </p>
                     <div className="flex gap-2">
-                      <input
+                      <textarea
                         ref={searchTemplateInputRef}
-                        type="text"
+                        rows={Math.min(6, Math.max(2, searchQueryTemplate.split('\n').length + 1))}
                         value={searchQueryTemplate}
                         onChange={(e) => { setSearchQueryTemplate(e.target.value); setSearchTemplatePreview(null); }}
-                        placeholder="e.g. {League} {Year} {Month} {Day}"
-                        className="flex-1 px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-600 text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                        placeholder={'One template per line, e.g.\n{League} {Year} {Month} {Day}\n{League} {Year} {HomeTeam} vs {AwayTeam}'}
+                        className="flex-1 px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-600 text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 font-mono resize-y"
                       />
                       {editMode && leagueId && (
                         <button
@@ -1450,7 +1536,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     {searchTemplatePreview && (
                       <div className="mt-3 bg-gray-800/50 border border-gray-700 rounded-lg p-3">
                         <div className="text-xs font-medium text-gray-400 mb-2">
-                          Preview ({searchTemplatePreview.template === '(default)' ? 'Using default query generation' : `Template: ${searchTemplatePreview.template}`})
+                          Preview ({(() => {
+                            if (searchTemplatePreview.template === '(default)') return 'Using default query generation';
+                            const lines = searchTemplatePreview.template.split('\n').filter(l => l.trim());
+                            return lines.length > 1 ? `${lines.length} templates` : `Template: ${lines[0] ?? ''}`;
+                          })()})
                         </div>
                         {searchTemplatePreview.samples.length === 0 ? (
                           <p className="text-xs text-gray-500">No events found to preview</p>
@@ -1459,7 +1549,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                             {searchTemplatePreview.samples.map((sample, idx) => (
                               <div key={idx} className="text-xs">
                                 <div className="text-gray-400">{sample.eventTitle} ({sample.eventDate})</div>
-                                <div className="text-green-400 font-mono">&#x2192; {sample.generatedQuery}</div>
+                                {(sample.generatedQueries && sample.generatedQueries.length > 0 ? sample.generatedQueries : [sample.generatedQuery]).map((q, qi) => (
+                                  <div key={qi} className="text-green-400 font-mono">&#x2192; {q}</div>
+                                ))}
                               </div>
                             ))}
                           </div>
@@ -1515,7 +1607,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       </button>
                       <button
                         onClick={handleAdd}
-                        disabled={isAdding || (showTeamSelection && isLoadingTeams)}
+                        disabled={isAdding || (showTeamSelection && isLoadingTeams) || settingsNotReady}
                         className={BUTTON_PRIMARY}
                       >
                         {isAdding ? (editMode ? 'Updating...' : 'Adding...') : (editMode ? 'Update' : 'Add to Library')}

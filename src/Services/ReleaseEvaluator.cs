@@ -1019,13 +1019,18 @@ public class ReleaseEvaluator
         // Handle numeric IDs or string names
         if (int.TryParse(value, out var modifierId))
         {
+            // The ids follow the enum these formats are exported with:
+            // 0 none, 1 regional, 2 screener, 3 raw HD, 4 disc, 5 remux.
+            // The old table paired the numbers with a different list
+            // entirely, so an imported remux condition matched the word
+            // "Regional" and scored the wrong releases at both ends.
             var pattern = modifierId switch
             {
-                1 => @"\bRemux\b",
-                2 => @"\bProper\b",
-                3 => @"\bRepack\b",
-                4 => @"\bReal\b",
-                5 => @"\bRegional\b",
+                1 => @"\bRegional\b",
+                2 => @"\b(Screener|SCR|DVDSCR|BDSCR)\b",
+                3 => @"\bRaw[-_. ]?HD\b",
+                4 => @"\b(BR[-_. ]?DISK|COMPLETE[-_. ]BLURAY|BD(25|50|66|100))\b",
+                5 => @"\bRemux\b",
                 _ => null
             };
 

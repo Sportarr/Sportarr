@@ -368,7 +368,7 @@ public class ReleaseCacheService
         var parsed = new ParsedRelease();
 
         // Extract year (4 digits, 2020+)
-        var yearMatch = Regex.Match(title, @"\b(20[2-9]\d)\b");
+        var yearMatch = Regex.Match(title, @"\b((?:19[3-9]\d|20\d\d))\b");
         if (yearMatch.Success)
             parsed.Year = int.Parse(yearMatch.Groups[1].Value);
 
@@ -378,7 +378,7 @@ public class ReleaseCacheService
             parsed.RoundNumber = int.Parse(roundMatch.Groups[1].Value);
 
         // Extract date (YYYY.MM.DD or YYYY-MM-DD)
-        var dateMatch = Regex.Match(title, @"\b(20[2-9]\d)[.\-](\d{2})[.\-](\d{2})\b");
+        var dateMatch = Regex.Match(title, @"\b((?:19[3-9]\d|20\d\d))[.\-](\d{2})[.\-](\d{2})\b");
         if (dateMatch.Success)
         {
             parsed.Year = int.Parse(dateMatch.Groups[1].Value);

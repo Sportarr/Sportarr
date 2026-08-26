@@ -175,6 +175,7 @@ CLAUDE.md
 
 # Other AI/Agent tool configurations
 .agents/
+AGENTS.md
 .codex/
 .opencode/
 .github/skills/

@@ -389,7 +389,7 @@ public class LeagueEventSyncService
             // the cleanup predicates below so all sides classify
             // identically.
             var cupStageSizes = SpecialEventClassifier.ComputeCupStageSizes(events.Select(e => e.Round));
-            if (monitoredTeamIds.Any())
+            if (monitoredTeamIds.Any() && !league.KeepAllEvents)
             {
                 events = events.Where(e =>
                     (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
@@ -492,7 +492,7 @@ public class LeagueEventSyncService
                 {
                     ProcessEvent(apiEvent, league, result, currentSeason, latestSeasonWithData, apiEpisodeMap,
                         existingByExternalId, teamsByExternalId, scheduledRecordingsByEventId,
-                        localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes);
+                        localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes, monitoredTeamIds);
                 }
                 catch (Exception ex)
                 {
@@ -605,7 +605,13 @@ public class LeagueEventSyncService
             // cleanup would either delete events the filter keeps or never
             // remove cancelled special events. Filtered in memory because the
             // special-event classification isn't expressible in SQL.
-            var localEventsForSeason = monitoredTeamIds.Any()
+            //
+            // KeepAllEvents has to be part of the gate for the same reason.
+            // Without it the API side counted a whole season while the floor
+            // below counted only the monitored teams' games, so a badly
+            // truncated response for a KeepAll league cleared the floor and
+            // took those games with it.
+            var localEventsForSeason = monitoredTeamIds.Any() && !league.KeepAllEvents
                 ? allLocalSeasonEvents.Where(e =>
                         (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
                         (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
@@ -634,15 +640,24 @@ public class LeagueEventSyncService
             // catches the broken case (< 100 events = clearly not a
             // working MLB / NBA / NHL response) while letting the
             // legitimate-dedup case proceed.
+            //
+            // The floor is relative as well as absolute. A flat 100 events
+            // reads as healthy for a 30 event league and for a 2,400 event
+            // MLB season alike, so a badly truncated response for a big
+            // league passed the check and took most of the season with it.
+            // A quarter of the local season keeps the dedup case working,
+            // because that pass still returned about half of what was held
+            // locally.
             const int healthyApiThreshold = 100;
+            var healthyApiFloor = Math.Max(healthyApiThreshold, localEventsForSeason.Count / 4);
             if (localEventsForSeason.Count > 0 &&
                 orphanedEvents.Count > localEventsForSeason.Count / 2 &&
                 orphanedEvents.Count >= 20 &&
-                events.Count < healthyApiThreshold)
+                events.Count < healthyApiFloor)
             {
                 _logger.LogWarning(
-                    "[League Event Sync] Season {Season}: {Orphaned}/{Local} local events appear orphaned ({ApiCount} API ids returned only {EventCount} events). Refusing cleanup — API response looks unhealthy. Investigate the upstream response before retrying.",
-                    season, orphanedEvents.Count, localEventsForSeason.Count, apiExternalIds.Count, events.Count);
+                    "[League Event Sync] Season {Season}: {Orphaned}/{Local} local events appear orphaned ({ApiCount} API ids returned only {EventCount} events, {Floor} needed). Refusing cleanup. The API response looks unhealthy, so investigate the upstream response before retrying.",
+                    season, orphanedEvents.Count, localEventsForSeason.Count, apiExternalIds.Count, events.Count, healthyApiFloor);
                 continue;
             }
             if (localEventsForSeason.Count > 0 &&
@@ -651,7 +666,7 @@ public class LeagueEventSyncService
             {
                 _logger.LogInformation(
                     "[League Event Sync] Season {Season}: {Orphaned}/{Local} local events orphaned ({ApiCount} API ids returned {EventCount} events). API response is healthy (>= {Threshold} events), proceeding with cleanup -- treating upstream as authoritative.",
-                    season, orphanedEvents.Count, localEventsForSeason.Count, apiExternalIds.Count, events.Count, healthyApiThreshold);
+                    season, orphanedEvents.Count, localEventsForSeason.Count, apiExternalIds.Count, events.Count, healthyApiFloor);
             }
 
             if (orphanedEvents.Any())
@@ -759,7 +774,7 @@ public class LeagueEventSyncService
             // and get picked up here on the next sync). Rows holding files
             // are kept but unmonitored, so they stop upgrade-grabbing and
             // the user decides what to do with the media.
-            if (monitoredTeamIds.Any())
+            if (monitoredTeamIds.Any() && !league.KeepAllEvents)
             {
                 var orphanedIds = orphanedEvents.Select(e => e.Id).ToHashSet();
                 bool MatchesTeamFilter(Event e) =>
@@ -1453,7 +1468,8 @@ public class LeagueEventSyncService
         Dictionary<string, List<Event>> localByDateTitle,
         HashSet<string> apiIds,
         HashSet<int> adoptedLocalEventIds,
-        IReadOnlySet<int> cupStageSizes)
+        IReadOnlySet<int> cupStageSizes,
+        HashSet<string> monitoredTeamIds)
     {
         // Two-pass match against the preloaded existence dictionary (one
         // bulk query per season replaces the former one-to-two DB
@@ -1864,6 +1880,7 @@ public class LeagueEventSyncService
             // For motorsports, also check if the event matches the monitored session types
             // For UFC-style fighting leagues, also check if the event matches monitored event types
             Monitored = league.Monitored
+                && IsInsideTeamSelection(apiEvent, league, monitoredTeamIds, cupStageSizes)
                 && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
                     apiEvent.Round, apiEvent.Title, cupStageSizes)
                 && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
@@ -1934,6 +1951,30 @@ public class LeagueEventSyncService
     }
 
     /// <summary>
+    /// True when the event is one the user's team selection covers. Only
+    /// KeepAllEvents leagues ever see a false here, because every other
+    /// league drops these events before they reach this point. Kept events
+    /// must arrive unmonitored, or enabling the setting would start a search
+    /// for every game in the league.
+    /// </summary>
+    internal static bool IsInsideTeamSelection(Event apiEvent, League league,
+        HashSet<string> monitoredTeamIds, IReadOnlySet<int> cupStageSizes)
+    {
+        if (monitoredTeamIds.Count == 0)
+        {
+            return true;
+        }
+
+        var matchesTeam =
+            (!string.IsNullOrEmpty(apiEvent.HomeTeamExternalId) && monitoredTeamIds.Contains(apiEvent.HomeTeamExternalId!)) ||
+            (!string.IsNullOrEmpty(apiEvent.AwayTeamExternalId) && monitoredTeamIds.Contains(apiEvent.AwayTeamExternalId!));
+
+        return matchesTeam || SpecialEventClassifier.BypassesTeamFilter(
+            apiEvent.Round, apiEvent.Title,
+            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, cupStageSizes);
+    }
+
+    /// <summary>
     /// Determines if an event should be monitored based on the league's MonitorType setting
     /// </summary>
     internal static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason, string latestSeasonWithData,
@@ -1941,7 +1982,51 @@ public class LeagueEventSyncService
     {
         var now = DateTime.UtcNow;
 
-        var monitoredByType = league.MonitorType switch
+        // Nothing is monitored, and no toggle argues with that.
+        if (league.MonitorType == MonitorType.None)
+        {
+            return false;
+        }
+
+        var isSpecial = SpecialEventClassifier.BypassesTeamFilter(
+            round,
+            LeagueSportRules.IsTeamlessSport(league.Sport, league.Name) ? null : title,
+            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+            cupStageSizes);
+
+        // Special events only. Which kinds is the toggles above, how far back
+        // is the reach beside them, so this reads the same way as every other
+        // league whatever is chosen here.
+        if (league.MonitorType == MonitorType.SpecialsOnly)
+        {
+            return isSpecial && MatchesMonitorScope(league.SpecialEventsMonitorType, eventDate,
+                eventSeason, currentSeason, latestSeasonWithData, now);
+        }
+
+        if (MatchesMonitorScope(league.MonitorType, eventDate, eventSeason,
+                currentSeason, latestSeasonWithData, now))
+        {
+            return true;
+        }
+
+        // The event is outside the league's own window. The toggles carry a
+        // special event past that window, and how far they carry it is the
+        // reach beside them. Without one it silently meant every season the
+        // league has ever had, so switching on finals brought back a
+        // championship from decades ago. Carrying an event past the TEAM
+        // filter is a separate thing and is unchanged.
+        return isSpecial && MatchesMonitorScope(league.SpecialEventsMonitorType, eventDate,
+            eventSeason, currentSeason, latestSeasonWithData, now);
+    }
+
+    /// <summary>
+    /// Whether an event falls inside one scope, the same question the league
+    /// setting and the special-event reach both ask.
+    /// </summary>
+    private static bool MatchesMonitorScope(MonitorType scope, DateTime eventDate,
+        string? eventSeason, string currentSeason, string latestSeasonWithData, DateTime now)
+    {
+        return scope switch
         {
             MonitorType.All => true,
             MonitorType.Future => eventDate > now,
@@ -1956,40 +2041,12 @@ public class LeagueEventSyncService
                                       year == now.Year + 1,
             MonitorType.Recent => eventDate >= now.AddDays(-30),
             MonitorType.None => false,
-            // Only special events, across all seasons, per the league's
-            // finals/playoffs/preseason toggles. Teamless sports (tennis,
-            // fighting, motorsport) skip the title-keyword fallback: their
-            // event titles routinely contain words like "Championship", so
-            // only explicit round data classifies there.
-            MonitorType.SpecialsOnly => SpecialEventClassifier.BypassesTeamFilter(
-                round,
-                LeagueSportRules.IsTeamlessSport(league.Sport, league.Name) ? null : title,
-                league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
-                cupStageSizes),
+            // Not a season window. Which events count as special is asked
+            // separately, before this, and the answer here is only how far
+            // back to look.
+            MonitorType.SpecialsOnly => false,
             _ => true // Default to monitoring if unknown type
         };
-
-        if (monitoredByType)
-        {
-            return true;
-        }
-
-        // "Always monitor finals and championships" means always. The
-        // toggles used to only carry an event past the team filter, so a
-        // Super Bowl that had already been played was added under
-        // MonitorType.Future but arrived unmonitored, and the user saw the
-        // toggle do nothing. None stays absolute, and SpecialsOnly already
-        // is this rule.
-        if (league.MonitorType is MonitorType.None or MonitorType.SpecialsOnly)
-        {
-            return false;
-        }
-
-        return SpecialEventClassifier.BypassesTeamFilter(
-            round,
-            LeagueSportRules.IsTeamlessSport(league.Sport, league.Name) ? null : title,
-            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
-            cupStageSizes);
     }
 
     /// <summary>

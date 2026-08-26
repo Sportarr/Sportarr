@@ -53,6 +53,7 @@ export default function QualitySettings({ showAdvanced = false, embedded = false
       if (response.ok) {
         const data = await response.json();
         setQualityDefinitions(data);
+        liveDefinitions.current = data;
         initialDefinitions.current = data;
         setHasUnsavedChanges(false);
       }
@@ -70,16 +71,28 @@ export default function QualitySettings({ showAdvanced = false, embedded = false
     setHasUnsavedChanges(hasChanges);
   }, [qualityDefinitions]);
 
-  const handleQualityChange = (id: number, field: 'minSize' | 'maxSize' | 'preferredSize', value: number) => {
-    setQualityDefinitions((prev) =>
-      prev.map((q) => (q.id === id ? { ...q, [field]: value } : q))
-    );
+  const handleQualityChange = (
+    id: number,
+    field: 'minSize' | 'maxSize' | 'preferredSize',
+    value: number | null
+  ) => {
+    setQualityDefinitions((prev) => {
+      const next = prev.map((q) => (q.id === id ? { ...q, [field]: value } : q));
+      liveDefinitions.current = next;
+      return next;
+    });
   };
 
+  // What the form holds right now, readable at the moment a save finishes.
+  const liveDefinitions = useRef<QualityDefinition[] | null>(null);
+
   const handleSave = async () => {
+    // What is actually being sent.
+    const payload = qualityDefinitions;
+    liveDefinitions.current = payload;
     setSaving(true);
     try {
-      const response = await apiPut('/api/qualitydefinition/bulk', qualityDefinitions);
+      const response = await apiPut('/api/qualitydefinition/bulk', payload);
 
       if (response.ok) {
         // Show sync paused notification
@@ -88,11 +101,23 @@ export default function QualitySettings({ showAdvanced = false, embedded = false
           duration: 6000,
         });
 
-        // Reload from backend to get the saved data
-        // loadQualityDefinitions already sets both qualityDefinitions and initialDefinitions.current
-        await loadQualityDefinitions();
-        // Note: Don't set initialDefinitions.current here - loadQualityDefinitions handles it
-        // Setting it here with the stale qualityDefinitions value causes the unsaved indicator to flash
+        // Reloading unconditionally overwrote anything typed while the save
+        // was in flight, and cleared the unsaved marker with it, so the newer
+        // edit was gone with no sign it had ever existed.
+        const editedDuringSave =
+          JSON.stringify(liveDefinitions.current) !== JSON.stringify(payload);
+        if (editedDuringSave) {
+          // Keep what the user has on screen and treat the saved payload as
+          // the new baseline, so the unsaved marker still reads true.
+          initialDefinitions.current = payload;
+          setHasUnsavedChanges(true);
+        }
+        else
+        {
+          // Reload from backend to get the saved data
+          // loadQualityDefinitions already sets both qualityDefinitions and initialDefinitions.current
+          await loadQualityDefinitions();
+        }
       }
     } catch (error) {
       console.error('Failed to save quality definitions:', error);
@@ -306,7 +331,15 @@ export default function QualitySettings({ showAdvanced = false, embedded = false
                       type="number"
                       value={quality.maxSize ?? ''}
                       onChange={(e) =>
-                        handleQualityChange(quality.id, 'maxSize', Number(e.target.value))
+                        // An empty box means no maximum. Number('') is zero,
+                        // so clearing it used to save a maximum of zero, which
+                        // rejects every release that is not empty, while the
+                        // range beside it cheerfully showed unlimited.
+                        handleQualityChange(
+                          quality.id,
+                          'maxSize',
+                          e.target.value === '' ? null : Number(e.target.value)
+                        )
                       }
                       className="w-24 px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:outline-none focus:border-red-600"
                       step="0.5"
@@ -316,7 +349,7 @@ export default function QualitySettings({ showAdvanced = false, embedded = false
                   <td className="px-6 py-4">
                     <span className="text-gray-400 text-sm">
                       {((quality.minSize * 180) / 1024).toFixed(1)} -{' '}
-                      {quality.maxSize ? ((quality.maxSize * 180) / 1024).toFixed(1) : '∞'} GB
+                      {quality.maxSize != null ? ((quality.maxSize * 180) / 1024).toFixed(1) : '∞'} GB
                     </span>
                   </td>
                 </tr>

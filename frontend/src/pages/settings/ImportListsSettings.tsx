@@ -68,6 +68,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [syncingId, setSyncingId] = useState<number | null>(null);
+  const [savingList, setSavingList] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<ImportList>({
@@ -107,6 +108,12 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
   };
 
   const handleSave = async () => {
+    // One save at a time. A second click before the first answered created the
+    // list twice, and both copies then synced immediately and went on polling
+    // the same upstream source for ever, duplicating searches and grabs with
+    // them when search on add was set.
+    if (savingList) return;
+    setSavingList(true);
     try {
       const url = editingList ? `/api/importlist/${editingList.id}` : '/api/importlist';
       const response = editingList
@@ -130,6 +137,8 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
       }
     } catch (error) {
       console.error('Error saving import list:', error);
+    } finally {
+      setSavingList(false);
     }
   };
 
@@ -536,7 +545,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
               </button>
               <button
                 onClick={handleSave}
-                disabled={!formData.name || !formData.url}
+                disabled={!formData.name || !formData.url || savingList}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
               >
                 Save

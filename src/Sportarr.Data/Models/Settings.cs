@@ -205,6 +205,12 @@ public class UISettings
 
     // Timezone
     public string TimeZone { get; set; } = ""; // Empty = use system timezone, otherwise IANA timezone ID (e.g., "America/New_York")
+
+    // Longest delay the frontend backs off to when requests keep failing.
+    // The interface page offers it, so it has to survive a save: a property
+    // missing here is dropped on the way in and absent on the way out, and
+    // the setting silently returns to this default after a reload.
+    public int QueryBackoffCapMs { get; set; } = 120000;
 }
 
 // Media Management Configuration

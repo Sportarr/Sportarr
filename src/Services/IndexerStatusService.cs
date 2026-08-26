@@ -58,9 +58,76 @@ public class IndexerStatusService
     private bool IsInStartupGracePeriod => DateTime.UtcNow - _startupTime < StartupGracePeriod;
 
     /// <summary>
+    /// One gate per indexer around every read-modify-write of its status row.
+    ///
+    /// Each of these methods reads the row, changes a counter, and saves it
+    /// through its own DbContext. Concurrent searches and grabs against the
+    /// same indexer therefore read the same starting value and wrote the same
+    /// result. Two failures counted as one, so the backoff stayed a level
+    /// behind, and hourly query and grab counts undercounted, so the
+    /// configured limits let more requests through than the user allowed.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> StatusGates = new();
+
+    private static async Task<T> WithStatusLockAsync<T>(int indexerId, Func<Task<T>> action)
+    {
+        var gate = StatusGates.GetOrAdd(indexerId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
+        {
+            return await action();
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static async Task WithStatusLockAsync(int indexerId, Func<Task> action)
+    {
+        var gate = StatusGates.GetOrAdd(indexerId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public Task<IndexerStatus> GetOrCreateStatusAsync(int indexerId) =>
+        WithStatusLockAsync(indexerId, () => GetOrCreateStatusCoreAsync(indexerId));
+
+    public Task<(bool IsAvailable, string? Reason)> IsIndexerAvailableAsync(int indexerId) =>
+        WithStatusLockAsync(indexerId, () => IsIndexerAvailableCoreAsync(indexerId));
+
+    public Task<(bool IsAllowed, string? Reason)> CanGrabAsync(int indexerId) =>
+        WithStatusLockAsync(indexerId, () => CanGrabCoreAsync(indexerId));
+
+    public Task RecordSuccessAsync(int indexerId) =>
+        WithStatusLockAsync(indexerId, () => RecordSuccessCoreAsync(indexerId));
+
+    public Task RecordGrabAsync(int indexerId) =>
+        WithStatusLockAsync(indexerId, () => RecordGrabCoreAsync(indexerId));
+
+    public Task RecordQueryFailureAsync(int indexerId, string reason) =>
+        WithStatusLockAsync(indexerId, () => RecordQueryFailureCoreAsync(indexerId, reason));
+
+    public Task RecordGrabFailureAsync(int indexerId, string reason) =>
+        WithStatusLockAsync(indexerId, () => RecordGrabFailureCoreAsync(indexerId, reason));
+
+    public Task RecordConnectionErrorAsync(int indexerId, string reason) =>
+        WithStatusLockAsync(indexerId, () => RecordConnectionErrorCoreAsync(indexerId, reason));
+
+    public Task RecordRateLimitedAsync(int indexerId, TimeSpan? retryAfter = null) =>
+        WithStatusLockAsync(indexerId, () => RecordRateLimitedCoreAsync(indexerId, retryAfter));
+
+    /// <summary>
     /// Get or create status for an indexer
     /// </summary>
-    public async Task<IndexerStatus> GetOrCreateStatusAsync(int indexerId)
+    private async Task<IndexerStatus> GetOrCreateStatusCoreAsync(int indexerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -85,7 +152,7 @@ public class IndexerStatusService
     /// Check if an indexer is available for querying (searching/RSS)
     /// Uses QueryDisabledUntil for query-specific backoff
     /// </summary>
-    public async Task<(bool IsAvailable, string? Reason)> IsIndexerAvailableAsync(int indexerId)
+    private async Task<(bool IsAvailable, string? Reason)> IsIndexerAvailableCoreAsync(int indexerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -154,7 +221,7 @@ public class IndexerStatusService
     /// Check if an indexer is available for grabbing (downloading).
     /// Separate from query availability — grab failures shouldn't prevent searching.
     /// </summary>
-    public async Task<(bool IsAllowed, string? Reason)> CanGrabAsync(int indexerId)
+    private async Task<(bool IsAllowed, string? Reason)> CanGrabCoreAsync(int indexerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -186,6 +253,15 @@ public class IndexerStatusService
             return (false, $"Grab temporarily disabled for {remaining.TotalMinutes:F0} minutes after {status.GrabFailures} grab failures");
         }
 
+        // A 429 covers the whole indexer, not just searching. Grabs ignored it
+        // and kept knocking through the exact window the indexer asked us to
+        // stay away for, which is how a throttle turns into a ban.
+        if (status.RateLimitedUntil.HasValue && status.RateLimitedUntil.Value > DateTime.UtcNow)
+        {
+            var remaining = status.RateLimitedUntil.Value - DateTime.UtcNow;
+            return (false, $"Rate limited by indexer for {remaining.TotalSeconds:F0} seconds");
+        }
+
         // Reset hourly counters if needed
         if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
         {
@@ -208,7 +284,7 @@ public class IndexerStatusService
     /// <summary>
     /// Record a successful query to an indexer
     /// </summary>
-    public async Task RecordSuccessAsync(int indexerId)
+    private async Task RecordSuccessCoreAsync(int indexerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -237,8 +313,13 @@ public class IndexerStatusService
         status.LastFailureReason = null;
         status.DisabledUntil = null;
 
-        // Clear rate limiting on success
-        status.RateLimitedUntil = null;
+        // Clear rate limiting only once it has actually elapsed. A request
+        // already in flight when the 429 landed would finish, report success,
+        // and wipe a backoff the indexer had just asked for.
+        if (status.RateLimitedUntil.HasValue && status.RateLimitedUntil.Value <= DateTime.UtcNow)
+        {
+            status.RateLimitedUntil = null;
+        }
 
         // Reset connection error tracking on success
         status.ConnectionErrors = 0;
@@ -263,7 +344,7 @@ public class IndexerStatusService
     /// <summary>
     /// Record a successful grab from an indexer
     /// </summary>
-    public async Task RecordGrabAsync(int indexerId)
+    private async Task RecordGrabCoreAsync(int indexerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -304,7 +385,7 @@ public class IndexerStatusService
     /// Record a query failure for an indexer (implements exponential backoff)
     /// Only for actual indexer errors, NOT for connection/DNS issues
     /// </summary>
-    public async Task RecordQueryFailureAsync(int indexerId, string reason)
+    private async Task RecordQueryFailureCoreAsync(int indexerId, string reason)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -324,6 +405,16 @@ public class IndexerStatusService
         status.QueryFailures++;
         status.LastQueryFailure = DateTime.UtcNow;
         status.LastQueryFailureReason = reason;
+
+        // A failed query still consumed a request. Counting only successes let
+        // an indexer with a query limit be hit well past it.
+        if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
+        {
+            status.QueriesThisHour = 0;
+            status.GrabsThisHour = 0;
+            status.HourResetTime = DateTime.UtcNow.AddHours(1);
+        }
+        status.QueriesThisHour++;
 
         // Calculate backoff duration using exponential backoff
         var backoffIndex = Math.Min(status.QueryFailures - 1, BackoffDurations.Length - 1);
@@ -349,7 +440,7 @@ public class IndexerStatusService
     /// Record a grab failure for an indexer (separate from query failures).
     /// Grab failures shouldn't prevent searching.
     /// </summary>
-    public async Task RecordGrabFailureAsync(int indexerId, string reason)
+    private async Task RecordGrabFailureCoreAsync(int indexerId, string reason)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -369,6 +460,15 @@ public class IndexerStatusService
         status.GrabFailures++;
         status.LastGrabFailure = DateTime.UtcNow;
         status.LastGrabFailureReason = reason;
+
+        // A failed grab still consumed a request against the grab limit.
+        if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
+        {
+            status.QueriesThisHour = 0;
+            status.GrabsThisHour = 0;
+            status.HourResetTime = DateTime.UtcNow.AddHours(1);
+        }
+        status.GrabsThisHour++;
 
         // Calculate backoff duration using exponential backoff
         var backoffIndex = Math.Min(status.GrabFailures - 1, BackoffDurations.Length - 1);
@@ -395,7 +495,7 @@ public class IndexerStatusService
     /// Connection errors don't escalate backoff — they're likely user network
     /// issues, not indexer problems.
     /// </summary>
-    public async Task RecordConnectionErrorAsync(int indexerId, string reason)
+    private async Task RecordConnectionErrorCoreAsync(int indexerId, string reason)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -414,6 +514,15 @@ public class IndexerStatusService
 
         status.ConnectionErrors++;
         status.LastConnectionError = DateTime.UtcNow;
+
+        // The request went out even though it never landed, so it counts.
+        if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
+        {
+            status.QueriesThisHour = 0;
+            status.GrabsThisHour = 0;
+            status.HourResetTime = DateTime.UtcNow.AddHours(1);
+        }
+        status.QueriesThisHour++;
 
         await db.SaveChangesAsync();
 
@@ -449,7 +558,7 @@ public class IndexerStatusService
     /// Record HTTP 429 rate limit response.
     /// Uses ONLY Retry-After — does not add exponential backoff on top.
     /// </summary>
-    public async Task RecordRateLimitedAsync(int indexerId, TimeSpan? retryAfter = null)
+    private async Task RecordRateLimitedCoreAsync(int indexerId, TimeSpan? retryAfter = null)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 

@@ -3,6 +3,7 @@ import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon, CloudArrowDownIcon } from '
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import { runSettingsSave } from '../../hooks/useSettings';
 import FileBrowserModal from '../../components/FileBrowserModal';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
@@ -74,9 +75,68 @@ interface MediaManagementSettingsData {
   watchFolders: string[];
 }
 
+/**
+ * Every field the page knows about, with the value used when the stored
+ * settings do not carry it.
+ *
+ * The loader used to replace the whole settings object with whatever the
+ * server returned. An install saved before a field existed came back without
+ * it, and the render then read a property off nothing and the page died. The
+ * stored values are merged over these instead.
+ */
+const DEFAULT_MEDIA_MANAGEMENT_SETTINGS: MediaManagementSettingsData = {
+    renameEvents: false,
+    replaceIllegalCharacters: true,
+    downloadPropersAndRepacks: 'preferAndUpgrade',
+    enableMultiPartEpisodes: true,
+    standardFileFormat: '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} - {Sportarr Id}',
+    // Granular folder options - default: league/season enabled, event disabled
+    createLeagueFolders: true,
+    createSeasonFolders: true,
+    createEventFolders: false,
+    leagueFolderFormat: '{Series}',
+    seasonFolderFormat: 'Season {Season}',
+    eventFolderFormat: '{Event Title} ({Year}-{Month}-{Day}) E{Episode}',
+    deleteEmptyFolders: false,
+    unmonitorDeletedEvents: false,
+    reorganizeFolders: false,
+    skipFreeSpaceCheck: false,
+    minimumFreeSpace: 100,
+    minimumImportDurationMinutes: 0,
+    useHardlinks: true,
+    importExtraFiles: false,
+    extraFileExtensions: 'srt,nfo',
+    userRejectedExtensions: '',
+    downloadClientWorkingFolders: '_UNPACK_,_FAILED_',
+    changeFileDate: 'None',
+    recycleBin: '',
+    recycleBinCleanup: 7,
+    eventFileMissingDeleteAfterDays: 30,
+    setPermissions: false,
+    chmodFolder: '755',
+    chownGroup: '',
+    watchFolders: [],
+};
+
 export default function MediaManagementSettings({ showAdvanced: propShowAdvanced = false }: MediaManagementSettingsProps) {
   const queryClient = useQueryClient();
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
+  // What the server last confirmed, which is what a failed save must revert
+  // to. Reverting to the local copy restored the value the user had just
+  // typed, so a rejected change stayed on screen as though it had been saved.
+  const serverRootFolders = useRef<Map<number, RootFolder>>(new Map());
+  // The live local copy, read at send time so a queued save carries the
+  // newest edit rather than the one that was current when it was queued.
+  const rootFoldersRef = useRef<RootFolder[]>([]);
+  // One queue per folder. Two quick edits raced and the older one could land
+  // last, leaving the server holding a configuration the user had moved on
+  // from.
+  const rootFolderSaveChain = useRef<Map<number, Promise<void>>>(new Map());
+  // Counts edits per folder. A save that finishes after a later edit was made
+  // must not put the server's older copy back over it.
+  const rootFolderEditSeq = useRef<Map<number, number>>(new Map());
+  // The part-token effect below compares against the loaded value.
+  const prevEnableMultiPart = useRef<boolean | null>(null);
   const [qualityProfileOptions, setQualityProfileOptions] = useState<QualityProfileOption[]>([]);
   // Per-root cache for the unmapped-folders endpoint. The list is opt-in
   // so we don't walk the disk unsolicited every time the user opens the
@@ -113,39 +173,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
   // Media Management Settings stored in database
-  const [settings, setSettings] = useState<MediaManagementSettingsData>({
-    renameEvents: false,
-    replaceIllegalCharacters: true,
-    downloadPropersAndRepacks: 'preferAndUpgrade',
-    enableMultiPartEpisodes: true,
-    standardFileFormat: '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} - {Sportarr Id}',
-    // Granular folder options - default: league/season enabled, event disabled
-    createLeagueFolders: true,
-    createSeasonFolders: true,
-    createEventFolders: false,
-    leagueFolderFormat: '{Series}',
-    seasonFolderFormat: 'Season {Season}',
-    eventFolderFormat: '{Event Title} ({Year}-{Month}-{Day}) E{Episode}',
-    deleteEmptyFolders: false,
-    unmonitorDeletedEvents: false,
-    reorganizeFolders: false,
-    skipFreeSpaceCheck: false,
-    minimumFreeSpace: 100,
-    minimumImportDurationMinutes: 0,
-    useHardlinks: true,
-    importExtraFiles: false,
-    extraFileExtensions: 'srt,nfo',
-    userRejectedExtensions: '',
-    downloadClientWorkingFolders: '_UNPACK_,_FAILED_',
-    changeFileDate: 'None',
-    recycleBin: '',
-    recycleBinCleanup: 7,
-    eventFileMissingDeleteAfterDays: 30,
-    setPermissions: false,
-    chmodFolder: '755',
-    chownGroup: '',
-    watchFolders: [],
-  });
+  const [settings, setSettings] = useState<MediaManagementSettingsData>(() => ({ ...DEFAULT_MEDIA_MANAGEMENT_SETTINGS }));
   const [newWatchFolder, setNewWatchFolder] = useState('');
 
   // Load settings and root folders from API on mount
@@ -199,14 +227,32 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
           console.log('[MediaManagement] Folder settings - createLeagueFolders:', parsed.createLeagueFolders,
             ', createSeasonFolders:', parsed.createSeasonFolders,
             ', createEventFolders:', parsed.createEventFolders);
-          setSettings(parsed);
-          initialSettings.current = parsed;
+          // Merge over the defaults. Replacing the object wholesale left any
+          // field the stored settings predate undefined, and the render then
+          // read a property off nothing.
+          const merged: MediaManagementSettingsData = { ...DEFAULT_MEDIA_MANAGEMENT_SETTINGS, ...parsed };
+          setSettings(merged);
+          initialSettings.current = merged;
+          // The part-token effect compares against what was loaded. Without
+          // this it compared against the hard-coded default, so opening a page
+          // whose stored value differs rewrote the file name format on its own
+          // and the next unrelated save made that permanent.
+          prevEnableMultiPart.current = merged.enableMultiPartEpisodes;
           setHasUnsavedChanges(false);
         }
       }
     } catch (error) {
       console.error('Failed to load media management settings:', error);
     }
+  };
+
+  // Write the folder list through the mirror ref as well as through state.
+  // The ref has to be current the moment a save is queued, and a state update
+  // is not visible until the next render.
+  const applyRootFolders = (updater: (prev: RootFolder[]) => RootFolder[]) => {
+    const next = updater(rootFoldersRef.current);
+    rootFoldersRef.current = next;
+    setRootFolders(next);
   };
 
   // Detect changes
@@ -224,7 +270,10 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
       ]);
       if (foldersRes.ok) {
         const data = await foldersRes.json();
-        setRootFolders(data);
+        applyRootFolders(() => (Array.isArray(data) ? data : []));
+        serverRootFolders.current = new Map(
+          (Array.isArray(data) ? data : []).map((f: RootFolder) => [f.id, f]),
+        );
       }
       if (profilesRes && profilesRes.ok) {
         const profiles = await profilesRes.json();
@@ -241,28 +290,65 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
   // inline edits on each root folder card. We patch local state
   // optimistically so the UI doesn't flash stale values; any error from
   // the server reverts and surfaces a toast.
+  // Every change to a folder gets a number, whether it is being saved yet or
+  // not. A save already in flight compares against this before writing the
+  // server's answer back, so typing in another field on the same folder is not
+  // wiped by an answer to the edit before it.
+  const noteRootFolderEdit = (folderId: number) => {
+    const next = (rootFolderEditSeq.current.get(folderId) ?? 0) + 1;
+    rootFolderEditSeq.current.set(folderId, next);
+    return next;
+  };
+
   const updateRootFolderDefaults = async (
     folderId: number,
     patch: { defaultQualityProfileId?: number | null; defaultDownloadClientCategory?: string | null },
   ) => {
-    const original = rootFolders.find(rf => rf.id === folderId);
-    if (!original) return;
-    const optimistic: RootFolder = { ...original, ...patch };
-    setRootFolders(prev => prev.map(rf => (rf.id === folderId ? optimistic : rf)));
-    try {
-      const response = await apiPut(`/api/rootfolder/${folderId}`, optimistic);
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        window.alert(`Failed to save root-folder defaults: ${body?.error ?? response.statusText}`);
-        setRootFolders(prev => prev.map(rf => (rf.id === folderId ? original : rf)));
-      } else {
-        const fresh = await response.json();
-        setRootFolders(prev => prev.map(rf => (rf.id === folderId ? fresh : rf)));
+    const current = rootFoldersRef.current.find(rf => rf.id === folderId);
+    if (!current) return;
+    applyRootFolders(prev => prev.map(rf => (rf.id === folderId ? { ...rf, ...patch } : rf)));
+
+    const editSeq = noteRootFolderEdit(folderId);
+
+    const send = async () => {
+      // Read the latest local copy here, not when this save was queued, so an
+      // edit made while an earlier save was in flight is not sent stale.
+      const latest = rootFoldersRef.current.find(rf => rf.id === folderId);
+      if (!latest) return;
+      const baseline = serverRootFolders.current.get(folderId) ?? current;
+
+      // True while this save is still the newest thing the user asked for.
+      // Writing the server's answer back over a later edit would lose it, and
+      // the queued save behind this one would then read the overwritten value
+      // and send that instead.
+      const stillCurrent = () => rootFolderEditSeq.current.get(folderId) === editSeq;
+
+      try {
+        const response = await apiPut(`/api/rootfolder/${folderId}`, latest);
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          window.alert(`Failed to save root-folder defaults: ${body?.error ?? response.statusText}`);
+          if (stillCurrent()) {
+            applyRootFolders(prev => prev.map(rf => (rf.id === folderId ? baseline : rf)));
+          }
+        } else {
+          const fresh = await response.json();
+          serverRootFolders.current.set(folderId, fresh);
+          if (stillCurrent()) {
+            applyRootFolders(prev => prev.map(rf => (rf.id === folderId ? fresh : rf)));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to update root folder defaults:', err);
+        if (stillCurrent()) {
+          applyRootFolders(prev => prev.map(rf => (rf.id === folderId ? baseline : rf)));
+        }
       }
-    } catch (err) {
-      console.error('Failed to update root folder defaults:', err);
-      setRootFolders(prev => prev.map(rf => (rf.id === folderId ? original : rf)));
-    }
+    };
+
+    const queued = (rootFolderSaveChain.current.get(folderId) ?? Promise.resolve()).then(send, send);
+    rootFolderSaveChain.current.set(folderId, queued);
+    await queued;
   };
 
   const formatBytes = (bytes: number) => {
@@ -285,7 +371,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
 
       if (response.ok) {
         const newFolder = await response.json();
-        setRootFolders(prev => [...prev, newFolder]);
+        applyRootFolders(prev => [...prev, newFolder]);
         setShowAddFolderModal(false);
         setNewFolderPath('');
         setAddFolderError(null);
@@ -309,7 +395,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
       const response = await apiDelete(url);
 
       if (response.ok) {
-        setRootFolders(prev => prev.filter(f => f.id !== id));
+        applyRootFolders(prev => prev.filter(f => f.id !== id));
         setShowDeleteConfirm(null);
         return;
       }
@@ -348,21 +434,23 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Get current settings
-      const response = await apiGet('/api/settings');
-      if (!response.ok) {
-        throw new Error('Failed to fetch current settings');
-      }
-      const currentSettings = await response.json();
+      // Read and write inside the shared chain, so a save from another
+      // settings page cannot slip between this read and this write and be
+      // put back as it was.
+      const saveResponse = await runSettingsSave(async () => {
+        const response = await apiGet('/api/settings');
+        if (!response.ok) {
+          throw new Error('Failed to fetch current settings');
+        }
+        const currentSettings = await response.json();
 
-      // Update with new media management settings
-      const updatedSettings = {
-        ...currentSettings,
-        mediaManagementSettings: JSON.stringify(settings),
-      };
+        const updatedSettings = {
+          ...currentSettings,
+          mediaManagementSettings: JSON.stringify(settings),
+        };
 
-      // Save to API
-      const saveResponse = await apiPut('/api/settings', updatedSettings);
+        return apiPut('/api/settings', updatedSettings);
+      });
 
       if (!saveResponse.ok) {
         throw new Error('Failed to save settings');
@@ -391,14 +479,12 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  // Track previous enableMultiPartEpisodes value for toggle detection
-  const prevEnableMultiPart = useRef<boolean | null>(null);
-
-  // Auto-manage {Part} token when EnableMultiPartEpisodes is toggled
+  // Auto-manage {Part} token when EnableMultiPartEpisodes is toggled.
+  // prevEnableMultiPart is declared above loadSettings, which seeds it with
+  // the stored value so this only ever reacts to the user's own toggle.
   useEffect(() => {
-    // Skip the initial load (when prevEnableMultiPart hasn't been set yet)
+    // Nothing loaded yet, so there is no user toggle to react to.
     if (prevEnableMultiPart.current === null) {
-      prevEnableMultiPart.current = settings.enableMultiPartEpisodes;
       return;
     }
 
@@ -596,15 +682,16 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                     <input
                       type="text"
                       value={folder.defaultDownloadClientCategory ?? ''}
-                      onChange={(e) =>
-                        setRootFolders(prev =>
+                      onChange={(e) => {
+                        noteRootFolderEdit(folder.id);
+                        applyRootFolders(prev =>
                           prev.map(rf =>
                             rf.id === folder.id
                               ? { ...rf, defaultDownloadClientCategory: e.target.value }
                               : rf
                           )
-                        )
-                      }
+                        );
+                      }}
                       onBlur={(e) =>
                         updateRootFolderDefaults(folder.id, {
                           defaultDownloadClientCategory: e.target.value.trim() === '' ? null : e.target.value.trim(),

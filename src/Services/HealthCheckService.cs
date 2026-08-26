@@ -114,10 +114,49 @@ public class HealthCheckService
                     Message = $"Root folder is inaccessible: {folder.Path}",
                     Details = "The folder does not exist or Sportarr doesn't have permission to access it"
                 });
+                continue;
+            }
+
+            // Existing is not the same as usable. A read-only mount, or one
+            // owned by another user, passed this check as healthy while every
+            // import and every rename into it failed, and nothing warned
+            // anybody until files started going missing.
+            var writeError = DescribeWriteFailure(folder.Path);
+            if (writeError != null)
+            {
+                results.Add(new HealthCheckResult
+                {
+                    Type = HealthCheckType.RootFolderInaccessible,
+                    Level = HealthCheckLevel.Error,
+                    Message = $"Root folder is not writable: {folder.Path}",
+                    Details = $"Imports and renames into this folder will fail. {writeError}"
+                });
             }
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Try to create and remove a file in a folder. Returns null when that
+    /// worked, or a description of why it did not.
+    /// </summary>
+    private static string? DescribeWriteFailure(string path)
+    {
+        var probe = Path.Combine(path, $".sportarr-write-test-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllBytes(probe, Array.Empty<byte>());
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+        finally
+        {
+            try { if (File.Exists(probe)) File.Delete(probe); } catch { /* nothing left to do */ }
+        }
     }
 
     /// <summary>
@@ -346,6 +385,24 @@ public class HealthCheckService
                 Level = HealthCheckLevel.Notice,
                 Message = $"{orphanedCount} event(s) marked as having files but have no file path",
                 Details = "These events may have been imported incorrectly or their files were deleted"
+            });
+        }
+
+        // Files that were there and are not any more. Only the empty-path case
+        // was counted, so a file deleted or moved outside Sportarr left the
+        // event looking complete with nothing to say otherwise.
+        var vanishedCount = await _db.EventFiles
+            .Where(f => !f.Exists && f.MissingSince != null)
+            .CountAsync();
+
+        if (vanishedCount > 0)
+        {
+            results.Add(new HealthCheckResult
+            {
+                Type = HealthCheckType.OrphanedEvents,
+                Level = HealthCheckLevel.Warning,
+                Message = $"{vanishedCount} imported file(s) are no longer on disk",
+                Details = "These files were deleted or moved outside Sportarr. Run a disk scan if they have been moved, or unmonitor the events if they are gone for good."
             });
         }
 

@@ -18,7 +18,23 @@ public static class LeftoverFolderPolicy
         if (string.IsNullOrWhiteSpace(folder))
             return false;
 
-        var full = Path.GetFullPath(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        // Trimming the separators off a filesystem root leaves nothing, and
+        // asking for the full path of nothing throws. This is a safety check,
+        // so it has to answer no rather than take the caller's cleanup pass
+        // down with it.
+        var trimmed = folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return false;
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(trimmed);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
 
         if (!Directory.Exists(full))
             return false;
@@ -43,9 +59,19 @@ public static class LeftoverFolderPolicy
             }
         }
 
-        // Any file at any depth means this is not leftover scaffolding.
-        if (Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories).Any())
+        // Any file at any depth means this is not leftover scaffolding. A
+        // directory this cannot read might hold one, and a walk that throws
+        // part way through used to escape and abort the caller, so anything
+        // going wrong here answers no.
+        try
+        {
+            if (Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories).Any())
+                return false;
+        }
+        catch (Exception)
+        {
             return false;
+        }
 
         fullPath = full;
         return true;

@@ -191,6 +191,22 @@ const defaultDvrSettings: DvrSettings = {
   container: 'mp4',
 };
 
+/**
+ * The encoding editor keeps its own copy of the codec fields. This builds
+ * that copy from a settings record so load and reset agree on what the
+ * controls show.
+ */
+function encodingSettingsFrom(data: DvrSettings) {
+  return {
+    videoCodec: data.videoCodec || 'copy',
+    audioCodec: data.audioCodec || 'copy',
+    audioChannels: data.audioChannels || 'original',
+    audioBitrate: data.audioBitrate || 192,
+    videoBitrate: data.videoBitrate || 0,
+    container: data.container || 'mp4',
+  };
+}
+
 export default function DvrSettingsPage() {
   // State
   // FFmpeg state
@@ -230,6 +246,14 @@ export default function DvrSettingsPage() {
     container: 'mkv',
   });
 
+  // Whether the form differs from what was last loaded or saved, derived
+  // rather than set by hand. Every editor used to flip the flag itself, and a
+  // save then cleared it outright, so an edit made during a save was marked
+  // clean and lost.
+  useEffect(() => {
+    setSettingsHasChanges(JSON.stringify(dvrSettings) !== JSON.stringify(originalSettings));
+  }, [dvrSettings, originalSettings]);
+
   // Load settings on mount
   useEffect(() => {
     checkFfmpeg();
@@ -239,12 +263,20 @@ export default function DvrSettingsPage() {
     loadNamingPresets();
   }, []);
 
-  // Load score preview when quality profile is selected (including on initial load)
+  // Load score preview when the profile or the encoding settings change.
+  // Watching only the profile meant the first preview was calculated from the
+  // hard-coded editor defaults whenever the profile list arrived before the
+  // stored DVR settings, so the page described an encode nobody had chosen.
   useEffect(() => {
     if (selectedQualityProfileId) {
       loadScorePreviewForSettings(selectedQualityProfileId, currentEncodingSettings);
+    } else {
+      // Choosing the empty option used to reach the loader, which cleared
+      // the preview. Now that the effect is the only caller it has to do
+      // that itself, or the previous profile's score stays on screen.
+      setScorePreview(null);
     }
-  }, [selectedQualityProfileId]);
+  }, [selectedQualityProfileId, currentEncodingSettings]);
 
   const checkFfmpeg = async () => {
     try {
@@ -270,16 +302,8 @@ export default function DvrSettingsPage() {
         setEffectivePath(null);
       }
       setOriginalSettings(data);
-      setSettingsHasChanges(false);
       // Sync encoding settings from config to the inline editor
-      setCurrentEncodingSettings({
-        videoCodec: data.videoCodec || 'copy',
-        audioCodec: data.audioCodec || 'copy',
-        audioChannels: data.audioChannels || 'original',
-        audioBitrate: data.audioBitrate || 192,
-        videoBitrate: data.videoBitrate || 0,
-        container: data.container || 'mp4',
-      });
+      setCurrentEncodingSettings(encodingSettingsFrom(data));
       // Also update GB per hour slider based on video bitrate
       if (data.videoBitrate > 0) {
         setGbPerHour(kbpsToGbPerHour(data.videoBitrate));
@@ -356,9 +380,9 @@ export default function DvrSettingsPage() {
     setCurrentEncodingSettings(updated);
     // Also update dvrSettings so it gets saved
     setDvrSettings(prev => ({ ...prev, [field]: value }));
-    setSettingsHasChanges(true);
-    // Update score preview
-    loadScorePreviewForSettings(selectedQualityProfileId, updated);
+    // The preview effect above watches these states, so no explicit call.
+    // Calling here as well requested every preview twice, and the slower
+    // answer could overwrite the newer one.
   };
 
   // Handle GB per hour slider change for inline settings
@@ -369,8 +393,6 @@ export default function DvrSettingsPage() {
     setCurrentEncodingSettings(updated);
     // Also update dvrSettings so it gets saved
     setDvrSettings(prev => ({ ...prev, videoBitrate }));
-    setSettingsHasChanges(true);
-    loadScorePreviewForSettings(selectedQualityProfileId, updated);
   };
 
   // Load score preview for inline settings (not modal)
@@ -418,21 +440,29 @@ export default function DvrSettingsPage() {
   };
 
   const handleSettingsChange = (field: keyof DvrSettings, value: any) => {
-    setDvrSettings(prev => {
-      const updated = { ...prev, [field]: value };
-      // Check if settings have changed from original
-      setSettingsHasChanges(JSON.stringify(updated) !== JSON.stringify(originalSettings));
-      return updated;
-    });
+    setDvrSettings(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSaveSettings = async () => {
+    // What is actually being sent. Marking the form clean against the state
+    // read after the request meant an edit made while the save was in flight
+    // was reported as saved and then lost on navigation.
+    const payload = dvrSettings;
     try {
       setIsSavingSettings(true);
-      await apiClient.put('/dvr/settings', dvrSettings);
-      setOriginalSettings(dvrSettings);
-      setSettingsHasChanges(false);
+      await apiClient.put('/dvr/settings', payload);
+      setOriginalSettings(payload);
       toast.success('DVR Settings Saved', { description: 'Your DVR settings have been saved' });
+
+      // Where recordings land is derived from the path that was just saved.
+      // Leaving it alone had the page insisting recordings still went to the
+      // old location after the user had moved them.
+      try {
+        const { data: resolved } = await apiClient.get<{ path: string | null; source: string; accessible: boolean; warning?: string | null }>('/dvr/settings/effective-path');
+        setEffectivePath(resolved);
+      } catch {
+        setEffectivePath(null);
+      }
     } catch (err: any) {
       toast.error('Failed to save settings', { description: err.message });
     } finally {
@@ -442,7 +472,16 @@ export default function DvrSettingsPage() {
 
   const handleResetSettings = () => {
     setDvrSettings(originalSettings);
-    setSettingsHasChanges(false);
+    // The encoding controls read their own copy. Leaving it behind showed the
+    // abandoned encode while the save wrote the restored one.
+    setCurrentEncodingSettings(encodingSettingsFrom(originalSettings));
+    if (originalSettings.videoBitrate > 0) {
+      setGbPerHour(kbpsToGbPerHour(originalSettings.videoBitrate));
+    } else {
+      // Zero means auto. The slider showed whatever it was dragged to,
+      // which read as a cap that was not actually in effect.
+      setGbPerHour(4);
+    }
   };
 
   return (
@@ -510,7 +549,6 @@ export default function DvrSettingsPage() {
                         onChange={(e) => {
                           const newId = e.target.value ? parseInt(e.target.value) : null;
                           setSelectedQualityProfileId(newId);
-                          loadScorePreviewForSettings(newId);
                         }}
                         className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500"
                       >

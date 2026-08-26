@@ -184,6 +184,10 @@ interface RemoveQueueDialogItem {
 interface RemoveQueueDialog {
   type: 'queue';
   items: RemoveQueueDialogItem[];
+  // Pending imports picked in the same selection. They run on their own
+  // endpoints, but the dialog has to name them because confirming removes
+  // them too.
+  pendingItems: { id: number; title: string }[];
 }
 
 interface RemoveHistoryDialog {
@@ -612,16 +616,16 @@ export default function ActivityPage() {
         title: item.title,
         status: item.status,
         downloadClient: item.downloadClient
-      }]
+      }],
+      pendingItems: []
     });
     setRemovalMethod('removeFromClient'); // Reset to default
     setBlocklistAction('none'); // Reset to default
   };
 
-  // Open remove dialog for multiple selected items. Pending imports run on a
-  // separate code path (no blocklist routing, no per-client removal options),
-  // so they're handled in a Promise.all alongside the dialog confirmation
-  // rather than rolled into the queue-removal dialog UI.
+  // Open the remove dialog for the current selection. Pending imports have
+  // their own endpoints, so the dialog carries them separately, but it names
+  // and counts them because confirming removes them as well.
   const handleOpenBulkRemoveDialog = () => {
     const selectedItems = queueRows
       .filter(item => selectedQueueIds.has(item.id))
@@ -636,26 +640,10 @@ export default function ActivityPage() {
 
     if (selectedItems.length === 0 && selectedPendings.length === 0) return;
 
-    if (selectedItems.length === 0) {
-      // Pending imports only: skip the blocklist/removal-method dialog and
-      // remove straight away. Each pending import endpoint handles its own
-      // client-side removal; we run them in parallel and refresh once.
-      Promise.all(
-        selectedPendings.map(p =>
-          apiClient.post(`/pending-imports/${p.id}/remove-from-client`).catch(err => {
-            console.error('Failed to remove pending import:', err);
-          })
-        )
-      ).then(() => {
-        clearRowSelections();
-        loadQueue();
-      });
-      return;
-    }
-
     setRemoveQueueDialog({
       type: 'queue',
-      items: selectedItems
+      items: selectedItems,
+      pendingItems: selectedPendings.map(p => ({ id: p.id, title: p.title }))
     });
     setRemovalMethod('removeFromClient'); // Reset to default
     setBlocklistAction('none'); // Reset to default
@@ -685,13 +673,42 @@ export default function ActivityPage() {
     }
   };
 
+  // Ignoring a download and changing its category are things a pending import
+  // has no endpoint for. It is not a queue item in a download client, so there
+  // is no category to change and nothing to go on ignoring. Mapping either onto
+  // a plain delete looked like it worked and did something else, and the
+  // detector recreated the row on its next pass.
+  const pendingImportsSupported = removalMethod === 'removeFromClient';
+
+  // A pending import has two removal endpoints. Pick the one that matches what
+  // the dialog offered. Removing from the client always blocklists, because the
+  // detectors would otherwise re-add the download on the next poll.
+  const pendingImportRemoval = (id: number) => {
+    const search = blocklistAction === 'blocklistAndSearch';
+
+    if (removalMethod === 'removeFromClient') {
+      return { method: 'post' as const, url: `/pending-imports/${id}/remove-from-client?search=${search}` };
+    }
+
+    if (blocklistAction === 'none') {
+      return { method: 'delete' as const, url: `/pending-imports/${id}` };
+    }
+
+    // Carry the search half of the choice through. Rejecting always
+    // blocklists, so without this flag "blocklist and search" and "blocklist
+    // only" did exactly the same thing for a pending import.
+    return { method: 'post' as const, url: `/pending-imports/${id}/reject?search=${search}` };
+  };
+
   const handleRemoveQueue = async () => {
-    if (!removeQueueDialog || removeQueueDialog.items.length === 0) return;
+    if (!removeQueueDialog) return;
+    const { items, pendingItems } = removeQueueDialog;
+    if (items.length === 0 && pendingItems.length === 0) return;
 
     try {
       // Remove all items in parallel
       await Promise.all(
-        removeQueueDialog.items.map(item =>
+        items.map(item =>
           apiClient.delete(`/queue/${item.id}`, {
             params: {
               removalMethod,
@@ -700,13 +717,12 @@ export default function ActivityPage() {
           })
         )
       );
-      // After confirming the queue-row removal dialog, also fan out to any
-      // pending imports the user picked in the same selection — the dialog
-      // doesn't display them but they were part of the bulk action.
-      const pendingsToRemove = pendingImports.filter(p => selectedPendingIds.has(p.id));
-      if (pendingsToRemove.length > 0) {
-        await Promise.all(pendingsToRemove.map(p =>
-          apiClient.post(`/pending-imports/${p.id}/remove-from-client`).catch(err => {
+      // Pending imports the user picked in the same selection. They have their
+      // own endpoints, so map the dialog choices onto the matching one instead
+      // of always deleting their files.
+      if (pendingItems.length > 0 && pendingImportsSupported) {
+        await Promise.all(pendingItems.map(p =>
+          apiClient.request(pendingImportRemoval(p.id)).catch(err => {
             console.error('Failed to remove pending import:', err);
           })
         ));
@@ -1324,6 +1340,7 @@ export default function ActivityPage() {
   };
 
   // For multi-select, check if ANY item is completed and has post-import category option
+  const removeDialogTotal = (removeQueueDialog?.items.length ?? 0) + (removeQueueDialog?.pendingItems.length ?? 0);
   const anyCompleted = removeQueueDialog?.items.some(item => item.status === 3 || item.status === 7);
   const anyHasPostImportCategory = removeQueueDialog?.items.some(
     item => item.downloadClient?.postImportCategory != null && item.downloadClient?.postImportCategory !== ''
@@ -2606,9 +2623,9 @@ export default function ActivityPage() {
             <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
               <div className="flex items-start justify-between mb-6">
                 <h3 className="text-xl font-bold text-white">
-                  {removeQueueDialog.items.length === 1
+                  {removeDialogTotal === 1 && removeQueueDialog.items.length === 1
                     ? `Remove - ${removeQueueDialog.items[0].title.length > 60 ? removeQueueDialog.items[0].title.substring(0, 60) + '...' : removeQueueDialog.items[0].title}`
-                    : `Remove ${removeQueueDialog.items.length} Selected Downloads`
+                    : `Remove ${removeDialogTotal} Selected Downloads`
                   }
                 </h3>
                 <button
@@ -2619,19 +2636,24 @@ export default function ActivityPage() {
                 </button>
               </div>
 
-              {removeQueueDialog.items.length === 1 ? (
+              {removeDialogTotal === 1 && removeQueueDialog.items.length === 1 ? (
                 <p className="text-gray-300 mb-6">
                   Are you sure you want to remove '{removeQueueDialog.items[0].title}' from the queue?
                 </p>
               ) : (
                 <div className="mb-6">
                   <p className="text-gray-300 mb-3">
-                    Are you sure you want to remove the following {removeQueueDialog.items.length} downloads from the queue?
+                    Are you sure you want to remove the following {removeDialogTotal} downloads from the queue?
                   </p>
                   <div className="max-h-40 overflow-y-auto bg-gray-800/50 rounded-lg p-3 space-y-1">
                     {removeQueueDialog.items.map(item => (
                       <div key={item.id} className="text-sm text-gray-400 truncate" title={item.title}>
                         {item.title}
+                      </div>
+                    ))}
+                    {removeQueueDialog.pendingItems.map(item => (
+                      <div key={`pending-${item.id}`} className="text-sm text-yellow-500/80 truncate" title={item.title}>
+                        {item.title} <span className="text-gray-500">(pending import)</span>
                       </div>
                     ))}
                   </div>
@@ -2655,24 +2677,31 @@ export default function ActivityPage() {
                   {removalMethod === 'changeCategory' && 'Changes download to the \'Post-Import Category\' from Download Client'}
                   {removalMethod === 'ignoreDownload' && 'Stops Sportarr from processing this download further'}
                 </p>
+                {removeQueueDialog.pendingItems.length > 0 && (
+                  <p className="text-sm text-gray-400 mt-2">
+                    {pendingImportsSupported
+                      ? 'Pending imports are always blocklisted when removed this way, or the scanner finds them again on its next pass.'
+                      : `This method does not apply to pending imports, so the ${removeQueueDialog.pendingItems.length} listed above will be left alone. Choose Remove from Download Client to act on them.`}
+                  </p>
+                )}
               </div>
 
               {/* Blocklist Release */}
               <div className="mb-6">
-                <label className="block text-gray-300 font-medium mb-2">Blocklist Release{removeQueueDialog.items.length > 1 ? 's' : ''}</label>
+                <label className="block text-gray-300 font-medium mb-2">Blocklist Release{removeDialogTotal > 1 ? 's' : ''}</label>
                 <select
                   value={blocklistAction}
                   onChange={(e) => setBlocklistAction(e.target.value as BlocklistAction)}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
                 >
                   <option value="none">Do not Blocklist</option>
-                  <option value="blocklistAndSearch">Blocklist and Search for Replacement{removeQueueDialog.items.length > 1 ? 's' : ''}</option>
+                  <option value="blocklistAndSearch">Blocklist and Search for Replacement{removeDialogTotal > 1 ? 's' : ''}</option>
                   <option value="blocklistOnly">Blocklist Only</option>
                 </select>
                 <p className="text-sm text-gray-400 mt-2">
-                  {blocklistAction === 'none' && `The release${removeQueueDialog.items.length > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`}
-                  {blocklistAction === 'blocklistAndSearch' && `Blocklist release${removeQueueDialog.items.length > 1 ? 's' : ''} and search for replacement${removeQueueDialog.items.length > 1 ? 's' : ''}`}
-                  {blocklistAction === 'blocklistOnly' && `Blocklist release${removeQueueDialog.items.length > 1 ? 's' : ''} without searching for replacement${removeQueueDialog.items.length > 1 ? 's' : ''}`}
+                  {blocklistAction === 'none' && `The release${removeDialogTotal > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`}
+                  {blocklistAction === 'blocklistAndSearch' && `Blocklist release${removeDialogTotal > 1 ? 's' : ''} and search for replacement${removeDialogTotal > 1 ? 's' : ''}`}
+                  {blocklistAction === 'blocklistOnly' && `Blocklist release${removeDialogTotal > 1 ? 's' : ''} without searching for replacement${removeDialogTotal > 1 ? 's' : ''}`}
                 </p>
               </div>
 
@@ -2687,7 +2716,7 @@ export default function ActivityPage() {
                   onClick={handleRemoveQueue}
                   className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                 >
-                  Remove{removeQueueDialog.items.length > 1 ? ` ${removeQueueDialog.items.length} Downloads` : ''}
+                  Remove{removeDialogTotal > 1 ? ` ${removeDialogTotal} Downloads` : ''}
                 </button>
               </div>
             </div>

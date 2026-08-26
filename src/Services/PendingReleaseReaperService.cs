@@ -62,6 +62,9 @@ public class PendingReleaseReaperService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
+        var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+        var config = await configService.GetConfigAsync();
+        var qualityProfiles = await db.QualityProfiles.ToListAsync(cancellationToken);
 
         var now = DateTime.UtcNow;
 
@@ -71,14 +74,20 @@ public class PendingReleaseReaperService : BackgroundService
             .Include(p => p.Event)
                 .ThenInclude(e => e!.League)
                 .ThenInclude(l => l!.RootFolder)
+            .Include(p => p.Event)
+                .ThenInclude(e => e!.Files)
             .Where(p => p.Status == PendingReleaseStatus.Pending && p.ReleasableAt <= now)
             .ToListAsync(cancellationToken);
 
         if (ready.Count == 0) return;
 
-        // Group by event - the per-event winner is the highest combined score.
-        // Cancel the losers so they don't all get grabbed.
-        var groups = ready.GroupBy(p => p.EventId);
+        // Group by event and part. The winner is the highest combined score
+        // in its group and the losers are cancelled so they do not all get
+        // grabbed. Grouping by event alone put a fight card's prelims and
+        // main card in one group, so the main card's answer settled the
+        // prelims too: cancelled as superseded by a download for a part they
+        // were never competing with.
+        var groups = ready.GroupBy(p => (p.EventId, p.Part));
 
         foreach (var group in groups)
         {
@@ -111,24 +120,94 @@ public class PendingReleaseReaperService : BackgroundService
                 .ThenByDescending(p => p.Seeders ?? 0)
                 .First();
 
-            var grabbed = await TryGrabPendingAsync(db, downloadClientService, notificationService, evt, winner, cancellationToken);
-
-            if (grabbed)
+            // The event flag only turns true once every monitored part has a
+            // file. A part that gained its own file during the hold is decided
+            // by that file, as RSS sync decides it: the hold stands only if it
+            // still outscores what the part has. Left to the event flag, a held
+            // prelims release was grabbed after a better prelims file had
+            // already imported, downloaded in full, and was refused at import
+            // as not an upgrade. Dropping on any file at all went too far the
+            // other way and cancelled the upgrades RSS sync had let through.
+            var groupPart = group.Key.Part;
+            var partFile = string.IsNullOrEmpty(groupPart)
+                ? null
+                : evt.Files.FirstOrDefault(f => f.Exists && string.Equals(f.PartName, groupPart, StringComparison.OrdinalIgnoreCase));
+            if (partFile != null)
             {
-                winner.Status = PendingReleaseStatus.Released;
-                foreach (var loser in group.Where(p => p.Id != winner.Id))
+                // The same decision RSS sync makes, from the same helper.
+                // Comparing scores alone here grabbed over a file whose
+                // quality nobody could read, ignored a profile that forbids
+                // upgrades, took a trivial custom-format bump as an upgrade,
+                // and dropped a proper at equal score.
+                // The same profile RSS sync would pick: the event's own, else the
+                // league's, else the default, else the first. A separate lookup
+                // here skipped the default and gave the gate a null profile for
+                // an event pointing at a profile that no longer exists, which
+                // switched off the upgrades-allowed and increment rules.
+                var profile = RssSyncService.ResolveQualityProfile(evt, qualityProfiles);
+
+                var refusal = Helpers.ExistingFileUpgradeGate.RefusalReason(
+                    partFile, winner.Title, winner.Quality, winner.CustomFormatScore, profile, config);
+                if (refusal != null)
                 {
-                    loser.Status = PendingReleaseStatus.Cancelled;
-                    loser.Reason = $"Superseded by {winner.Title}";
+                    foreach (var p in group)
+                    {
+                        p.Status = PendingReleaseStatus.Cancelled;
+                        p.Reason = refusal;
+                    }
+                    continue;
                 }
+            }
+
+            // The whole group is settled before the grab runs, so the save
+            // inside it commits these statuses with the queue row. Setting
+            // them afterwards left a window where the download was already
+            // queued while the group still read as pending, and the next pass
+            // grabbed the same event a second time. Nothing is saved unless
+            // the grab succeeds, so the revert below is enough on failure.
+            var losers = group.Where(p => p.Id != winner.Id).ToList();
+            winner.Status = PendingReleaseStatus.Released;
+            foreach (var loser in losers)
+            {
+                loser.Status = PendingReleaseStatus.Cancelled;
+                loser.Reason = $"Superseded by {winner.Title}";
+            }
+
+            var outcome = await TryGrabPendingAsync(db, downloadClientService, notificationService, evt, winner, cancellationToken);
+
+            if (outcome == GrabOutcome.Grabbed)
+            {
                 _logger.LogInformation(
                     "[Pending Release Reaper] Released best-of-window for '{Event}': {Winner} (score {Score})",
                     evt.Title, winner.Title, winner.QualityScore + winner.CustomFormatScore);
+            }
+            else if (outcome == GrabOutcome.Superseded || outcome == GrabOutcome.Importing)
+            {
+                // Something better is already queued or being imported, the
+                // same answer RSS sync gives. Riding the failure path here
+                // marked the winner failed, put the losers back, and promoted
+                // the next one to hit the same download a minute later, one
+                // bogus grab failed warning per held release per pass.
+                var reason = outcome == GrabOutcome.Importing
+                    ? "Event already being imported"
+                    : "Better or equal release already queued";
+                foreach (var p in group)
+                {
+                    p.Status = PendingReleaseStatus.Cancelled;
+                    p.Reason = reason;
+                }
+                _logger.LogInformation("[Pending Release Reaper] Dropped {Count} held release(s) for '{Event}': {Reason}",
+                    group.Count(), evt.Title, reason);
             }
             else
             {
                 winner.Status = PendingReleaseStatus.Failed;
                 winner.Reason = "Grab attempt failed";
+                foreach (var loser in losers)
+                {
+                    loser.Status = PendingReleaseStatus.Pending;
+                    loser.Reason = "DelayProfile";
+                }
                 _logger.LogWarning("[Pending Release Reaper] Grab failed for '{Title}' - leaving losers pending for next pass",
                     winner.Title);
             }
@@ -137,7 +216,9 @@ public class PendingReleaseReaperService : BackgroundService
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<bool> TryGrabPendingAsync(
+    private enum GrabOutcome { Grabbed, Failed, Superseded, Importing }
+
+    private async Task<GrabOutcome> TryGrabPendingAsync(
         SportarrDbContext db,
         DownloadClientService downloadClientService,
         NotificationService notificationService,
@@ -149,7 +230,7 @@ public class PendingReleaseReaperService : BackgroundService
         if (supportedTypes.Count == 0)
         {
             _logger.LogWarning("[Pending Release Reaper] Unknown protocol '{Protocol}' for '{Title}'", pending.Protocol, pending.Title);
-            return false;
+            return GrabOutcome.Failed;
         }
 
         // Indexer record first - its assigned download client (if any) takes
@@ -170,13 +251,48 @@ public class PendingReleaseReaperService : BackgroundService
         {
             _logger.LogWarning("[Pending Release Reaper] No {Protocol} download client for '{Event}'",
                 pending.Protocol, evt.Title);
-            return false;
+            return GrabOutcome.Failed;
         }
 
         // Per-root override beats the download client's default category.
         var reaperGrabCategory = !string.IsNullOrWhiteSpace(evt.League?.RootFolder?.DefaultDownloadClientCategory)
             ? evt.League.RootFolder.DefaultDownloadClientCategory!
             : downloadClient.Category;
+
+        // The same rules RSS sync applies before it replaces a queued
+        // download. A hold ends here instead, where nothing knew about
+        // what was queued meanwhile, so both downloads ran and the event
+        // got two copies. Only a queued or running download is a loser,
+        // only when this release outscores it, and never while a finished
+        // one is being imported. A blanket cancel here tore out a manual
+        // 2160p grab in favour of a held 1080p release.
+        var importing = await db.DownloadQueue
+            .Where(q => q.EventId == evt.Id && q.Part == pending.Part)
+            .AnyAsync(q => q.Status == DownloadStatus.Completed || q.Status == DownloadStatus.Importing,
+                cancellationToken);
+        if (importing)
+        {
+            _logger.LogInformation("[Pending Release Reaper] A download for '{Event}' is being imported; '{Title}' is dropped",
+                evt.Title, pending.Title);
+            return GrabOutcome.Importing;
+        }
+
+        var losers = await db.DownloadQueue
+            .Where(q => q.EventId == evt.Id && q.Part == pending.Part)
+            .Where(q => q.Status == DownloadStatus.Queued || q.Status == DownloadStatus.Downloading)
+            .ToListAsync(cancellationToken);
+
+        var pendingScore = ReleaseEvaluator.CalculateQualityScoreFromName(pending.Quality) + pending.CustomFormatScore;
+        foreach (var queued in losers)
+        {
+            var queuedScore = ReleaseEvaluator.CalculateQualityScoreFromName(queued.Quality) + queued.CustomFormatScore;
+            if (queuedScore >= pendingScore)
+            {
+                _logger.LogInformation("[Pending Release Reaper] '{Queued}' already queued for '{Event}' scores {QueuedScore} against {PendingScore}; '{Title}' is dropped",
+                    queued.Title, evt.Title, queuedScore, pendingScore, pending.Title);
+                return GrabOutcome.Superseded;
+            }
+        }
 
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
@@ -189,7 +305,28 @@ public class PendingReleaseReaperService : BackgroundService
         if (string.IsNullOrEmpty(downloadId))
         {
             _logger.LogError("[Pending Release Reaper] Download client refused '{Title}'", pending.Title);
-            return false;
+            return GrabOutcome.Failed;
+        }
+
+        foreach (var loser in losers)
+        {
+            var loserClient = await db.DownloadClients
+                .FirstOrDefaultAsync(dc => dc.Id == loser.DownloadClientId, cancellationToken);
+            if (loserClient != null && !string.IsNullOrEmpty(loser.DownloadId))
+            {
+                try
+                {
+                    await downloadClientService.RemoveDownloadAsync(loserClient, loser.DownloadId, deleteFiles: true);
+                    _logger.LogInformation("[Pending Release Reaper] Cancelled queued download {DownloadId}; {Title} replaces it",
+                        loser.DownloadId, pending.Title);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Pending Release Reaper] Could not cancel download {DownloadId}; removing its queue row anyway",
+                        loser.DownloadId);
+                }
+            }
+            db.DownloadQueue.Remove(loser);
         }
 
         // Recent/older event queue priority (issue #220) - same logic as the
@@ -238,6 +375,12 @@ public class PendingReleaseReaperService : BackgroundService
             IsManualSearch = false
         });
 
+        // Save before anything optional runs. The client already holds this
+        // download, and the caller saved once after the whole loop, so a
+        // failure there orphaned every download the loop had added. Nothing
+        // would import them and the client would keep them for ever.
+        await db.SaveChangesAsync(cancellationToken);
+
         try
         {
             await notificationService.SendNotificationAsync(
@@ -263,6 +406,6 @@ public class PendingReleaseReaperService : BackgroundService
             _logger.LogWarning(notifyEx, "[Pending Release Reaper] Failed to send grab notification");
         }
 
-        return true;
+        return GrabOutcome.Grabbed;
     }
 }

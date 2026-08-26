@@ -47,6 +47,7 @@ public class IptvOrgSyncService
     private List<IptvOrgChannel> _cachedRows = new();
     private DateTime _cachedAt = DateTime.MinValue;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    private static readonly TimeSpan CacheLifetime = TimeSpan.FromHours(24);
 
     public IptvOrgSyncService(
         IHttpClientFactory httpClientFactory,
@@ -66,6 +67,16 @@ public class IptvOrgSyncService
         await _refreshLock.WaitAsync(ct);
         try
         {
+            // Whoever waited here can use what the first caller just fetched.
+            // The staleness test happens outside the lock, so a burst of
+            // callers all decided to refresh, queued up, and each in turn
+            // downloaded the entire upstream file while the rest sat blocked
+            // for up to two minutes apiece.
+            if (_cachedRows.Count > 0 && (DateTime.UtcNow - _cachedAt) < CacheLifetime)
+            {
+                return _cachedRows.Count;
+            }
+
             var http = _httpClientFactory.CreateClient();
             http.Timeout = TimeSpan.FromMinutes(2);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0 (+https://sportarr.net)");
@@ -89,7 +100,7 @@ public class IptvOrgSyncService
     /// </summary>
     public async Task<List<IptvOrgChannel>> GetCanonicalChannelsAsync(CancellationToken ct = default)
     {
-        if (_cachedRows.Count == 0 || (DateTime.UtcNow - _cachedAt) > TimeSpan.FromHours(24))
+        if (_cachedRows.Count == 0 || (DateTime.UtcNow - _cachedAt) > CacheLifetime)
         {
             try { await RefreshCacheAsync(ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "[iptv-org] Refresh failed, returning stale cache ({Count} rows)", _cachedRows.Count); }
@@ -158,6 +169,11 @@ public class IptvOrgSyncService
 
         string? bestId = null;
         int bestScore = 0;
+        // How many different canonical rows reached the best score. A generic
+        // name like "Sports 1" matches dozens of them equally well, and taking
+        // whichever came first in the file handed the channel an arbitrary
+        // identity along with the wrong guide, logo and country.
+        int bestCount = 0;
 
         foreach (var row in canonical)
         {
@@ -194,7 +210,20 @@ public class IptvOrgSyncService
             {
                 bestScore = score;
                 bestId = row.Id;
+                bestCount = 1;
             }
+            else if (score == bestScore && score > 0 && !string.Equals(row.Id, bestId, StringComparison.OrdinalIgnoreCase))
+            {
+                bestCount++;
+            }
+        }
+
+        if (bestCount > 1)
+        {
+            _logger.LogDebug(
+                "[iptv-org] '{Channel}' matches {Count} canonical rows equally well at {Score}. Leaving it unmatched rather than picking one at random.",
+                channel.Name, bestCount, bestScore);
+            return (null, 0);
         }
 
         return (bestId, bestScore);

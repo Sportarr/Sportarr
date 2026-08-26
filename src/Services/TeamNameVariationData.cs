@@ -149,7 +149,12 @@ public static class TeamNameVariationData
         { "St. Louis Blues", new[] { "STL Blues", "Blues" } },
         { "Tampa Bay Lightning", new[] { "TBL", "TB Lightning", "Lightning", "Bolts" } },
         { "Toronto Maple Leafs", new[] { "TOR Maple Leafs", "Maple Leafs", "Leafs" } },
-        { "Utah Hockey Club", new[] { "UTA Hockey", "Utah HC" } },
+        // The franchise renamed to the Utah Mammoth for 2025-26 while release
+        // groups went on using every earlier spelling. Whichever name the
+        // metadata carries, all of them have to find the others, or a search
+        // for the canonical name misses the releases that exist.
+        { "Utah Hockey Club", new[] { "UTA Hockey", "Utah HC", "Utah", "Mammoth", "Utah Mammoth" } },
+        { "Utah Mammoth", new[] { "UTA", "Utah HC", "Utah Hockey Club", "Mammoth", "Utah" } },
         { "Vancouver Canucks", new[] { "VAN", "Canucks" } },
         { "Vegas Golden Knights", new[] { "VGK", "Golden Knights", "Knights" } },
         { "Washington Capitals", new[] { "WSH Capitals", "Capitals", "Caps" } },

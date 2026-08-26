@@ -17,6 +17,7 @@ public class DownloadClientService : IDownloadClientService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _clientCache;
     private readonly ConfigService _configService;
+    private readonly Sportarr.Api.Services.Interfaces.IRemotePathMappingService _pathMappingService;
 
     // Cache expiration settings for download client instances
     private static readonly TimeSpan CacheSlidingExpiration = TimeSpan.FromMinutes(30);
@@ -31,8 +32,10 @@ public class DownloadClientService : IDownloadClientService
         ILoggerFactory loggerFactory,
         ILogger<DownloadClientService> logger,
         IMemoryCache clientCache,
-        ConfigService configService)
+        ConfigService configService,
+        Sportarr.Api.Services.Interfaces.IRemotePathMappingService pathMappingService)
     {
+        _pathMappingService = pathMappingService;
         _httpClientFactory = httpClientFactory;
         _loggerFactory = loggerFactory;
         _logger = logger;
@@ -53,7 +56,11 @@ public class DownloadClientService : IDownloadClientService
     /// </summary>
     private static string GetClientCacheKey(DownloadClient config)
     {
-        return $"{config.Type}:{config.Host}:{config.Port}";
+        // The TLS flags belong in the key. Two clients on the same host and
+        // port that disagree about certificate validation are not the same
+        // client, and sharing one wrapper gave the second whichever handler
+        // the first happened to create.
+        return $"{config.Type}:{config.Host}:{config.Port}:{config.UseSsl}:{config.DisableSslCertificateValidation}";
     }
 
     // Shared across all (scoped) instances so an invalidation triggered by a
@@ -188,7 +195,7 @@ public class DownloadClientService : IDownloadClientService
         return _clientCache.GetOrCreate(key, entry =>
         {
             entry.SetOptions(GetCacheEntryOptions());
-            return new RTorrentClient(CreateHttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+            return new RTorrentClient(CreateHttpClient(), _loggerFactory.CreateLogger<RTorrentClient>(), _pathMappingService);
         })!;
     }
 
@@ -809,21 +816,23 @@ public class DownloadClientService : IDownloadClientService
             if (!config.SaveMagnetFiles)
                 return AddDownloadResult.Failed("Release only offers a magnet link and Save Magnet Files is disabled for this client", AddDownloadErrorType.TorrentRejected);
 
+            var magnetBytes = System.Text.Encoding.UTF8.GetBytes(url);
+            var magnetName = ResolveBlackholeName(config.BlackholeFolder, name, ".magnet", magnetBytes);
             await WriteBlackholeFileAsync(
-                Path.Combine(config.BlackholeFolder, name + ".magnet"),
-                System.Text.Encoding.UTF8.GetBytes(url));
-            _logger.LogInformation("[Blackhole] Saved magnet file for '{Name}' to {Folder}", name, config.BlackholeFolder);
-            return AddDownloadResult.Succeeded(name);
+                Path.Combine(config.BlackholeFolder, magnetName + ".magnet"), magnetBytes);
+            _logger.LogInformation("[Blackhole] Saved magnet file for '{Name}' to {Folder}", magnetName, config.BlackholeFolder);
+            return AddDownloadResult.Succeeded(magnetName);
         }
 
         byte[] bytes;
         try
         {
             var http = CreateHttpClient(config.DisableSslCertificateValidation);
-            using var response = await http.GetAsync(url);
+            using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             if (!response.IsSuccessStatusCode)
                 return AddDownloadResult.Failed($"Failed to download {label} file: HTTP {(int)response.StatusCode}", AddDownloadErrorType.ConnectionFailed);
-            bytes = await response.Content.ReadAsByteArrayAsync();
+            bytes = await BoundedHttpContent.ReadAsByteArrayAsync(
+                response.Content, $"The {label} file", MaxBlackholePayloadBytes);
         }
         catch (Exception ex)
         {
@@ -839,16 +848,21 @@ public class DownloadClientService : IDownloadClientService
             return AddDownloadResult.Failed("Downloaded file is not a valid .torrent (the indexer may have returned an error page)", AddDownloadErrorType.InvalidTorrent);
         if (isUsenet)
         {
-            var head = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 512));
-            if (!head.Contains("<nzb", StringComparison.OrdinalIgnoreCase) &&
-                !head.Contains("<?xml", StringComparison.OrdinalIgnoreCase))
+            // An indexer error page is also XML, so accepting "<?xml" let one
+            // land in the drop folder as a .nzb and be reported as a good
+            // grab. Only the nzb element itself proves it is an nzb. The
+            // window is generous because a DOCTYPE can precede the element.
+            var head = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 4096));
+            if (!head.Contains("<nzb", StringComparison.OrdinalIgnoreCase))
                 return AddDownloadResult.Failed("Downloaded file is not a valid .nzb (the indexer may have returned an error page)", AddDownloadErrorType.InvalidTorrent);
         }
 
-        var path = Path.Combine(config.BlackholeFolder, name + (isUsenet ? ".nzb" : ".torrent"));
+        var extension = isUsenet ? ".nzb" : ".torrent";
+        var finalName = ResolveBlackholeName(config.BlackholeFolder, name, extension, bytes);
+        var path = Path.Combine(config.BlackholeFolder, finalName + extension);
         await WriteBlackholeFileAsync(path, bytes);
-        _logger.LogInformation("[Blackhole] Saved {Label} file for '{Name}' to {Path}", label, name, path);
-        return AddDownloadResult.Succeeded(name);
+        _logger.LogInformation("[Blackhole] Saved {Label} file for '{Name}' to {Path}", label, finalName, path);
+        return AddDownloadResult.Succeeded(finalName);
     }
 
     private DownloadClientStatus? GetBlackholeStatus(DownloadClient config, string downloadId)
@@ -921,6 +935,46 @@ public class DownloadClientService : IDownloadClientService
     /// Write to a temp name then move into place so folder watchers on the
     /// external downloader's side never pick up a partially written file.
     /// </summary>
+    /// <summary>
+    /// Ceiling on a blackhole payload. Torrent and nzb files are kilobytes to
+    /// low megabytes. Without a limit an indexer that streams forever took the
+    /// whole process down.
+    /// </summary>
+    private const long MaxBlackholePayloadBytes = 64L * 1024 * 1024;
+
+    /// <summary>
+    /// Pick a file name that does not overwrite a different release.
+    ///
+    /// The sanitized release title is both the dropped file name and the
+    /// download id. Two different releases can sanitize to the same string,
+    /// and the second one silently replaced the first. One download was lost
+    /// and two queue records pointed at one file. Re-grabbing the same release
+    /// must stay idempotent, so identical content keeps the name it already
+    /// has and only different content gets a suffix.
+    /// </summary>
+    internal static string ResolveBlackholeName(string folder, string name, string extension, byte[] bytes)
+    {
+        for (var attempt = 1; attempt <= 100; attempt++)
+        {
+            var candidate = attempt == 1 ? name : $"{name} ({attempt})";
+            var path = Path.Combine(folder, candidate + extension);
+            if (!File.Exists(path))
+                return candidate;
+
+            try
+            {
+                if (File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
+                    return candidate;
+            }
+            catch (IOException)
+            {
+                // Unreadable right now, so treat it as occupied and move on.
+            }
+        }
+
+        return $"{name} ({Guid.NewGuid():N})";
+    }
+
     private static async Task WriteBlackholeFileAsync(string path, byte[] bytes)
     {
         var temp = path + ".sportarr-tmp";

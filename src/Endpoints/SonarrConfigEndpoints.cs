@@ -1,3 +1,4 @@
+using Sportarr.Api.Helpers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -631,8 +632,19 @@ public static class SonarrConfigEndpoints
                 return Results.NotFound();
             }
 
-            var orphaned = await db.Set<ProfileFormatItem>().Where(fi => fi.FormatId == id).ToListAsync();
-            db.RemoveRange(orphaned);
+            // Score entries live inside each profile's JSON column, not in a
+            // table of their own, so asking the context for a set of them
+            // either threw or matched nothing and every profile was left
+            // scoring against a format that no longer exists.
+            var profiles = await db.QualityProfiles.ToListAsync();
+            foreach (var profile in profiles)
+            {
+                if (profile.FormatItems.RemoveAll(fi => fi.FormatId == id) > 0)
+                {
+                    db.Entry(profile).Property(p => p.FormatItems).IsModified = true;
+                }
+            }
+
             db.CustomFormats.Remove(format);
             await db.SaveChangesAsync();
             cfCache.InvalidateAll();
@@ -646,8 +658,17 @@ public static class SonarrConfigEndpoints
             logger.LogWarning("[V3-COMPAT] DELETE /api/v3/customformat/all - removing every custom format");
 
             var formats = await db.CustomFormats.ToListAsync();
-            var orphaned = await db.Set<ProfileFormatItem>().ToListAsync();
-            db.RemoveRange(orphaned);
+
+            // Same as the single delete above: the score entries are part of
+            // each profile, not rows to remove.
+            var allProfiles = await db.QualityProfiles.ToListAsync();
+            foreach (var profile in allProfiles)
+            {
+                if (profile.FormatItems.Count == 0) continue;
+                profile.FormatItems.Clear();
+                db.Entry(profile).Property(p => p.FormatItems).IsModified = true;
+            }
+
             db.CustomFormats.RemoveRange(formats);
             await db.SaveChangesAsync();
             cfCache.InvalidateAll();
@@ -730,7 +751,32 @@ public static class SonarrConfigEndpoints
             existing.Preferred = incoming.Preferred;
             existing.IncludePreferredWhenRenaming = incoming.IncludePreferredWhenRenaming;
             existing.Tags = incoming.Tags;
-            existing.IndexerId = incoming.IndexerId;
+            // A caller that only knows Sonarr's single indexerId field sends
+            // back the first of the profile's indexers. Taking that literally
+            // dropped the rest, and releases from them stopped being subject
+            // to this profile at all. When the payload names no more than the
+            // one we already had, the existing scope stands.
+            // A caller that sends the indexerIds array itself is speaking
+            // this API's own dialect and means exactly what it lists, an
+            // empty list included. Only the singular legacy field is
+            // ambiguous, so only that one keeps the existing scope. Treating
+            // both alike accepted a deliberate narrowing with 200 OK and
+            // silently kept the old scope.
+            bool explicitScope;
+            using (var scopeDoc = JsonDocument.Parse(json))
+            {
+                explicitScope = scopeDoc.RootElement.TryGetProperty("indexerIds", out var scopeEl)
+                    && scopeEl.ValueKind == JsonValueKind.Array;
+            }
+
+            var narrowingToExistingHead = !explicitScope
+                && incoming.IndexerId.Count <= 1
+                && existing.IndexerId.Count > 1
+                && (incoming.IndexerId.Count == 0 || existing.IndexerId.Contains(incoming.IndexerId[0]));
+            if (!narrowingToExistingHead)
+            {
+                existing.IndexerId = incoming.IndexerId;
+            }
             existing.LastModified = DateTime.UtcNow;
 
             await db.SaveChangesAsync();
@@ -792,7 +838,8 @@ public static class SonarrConfigEndpoints
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
-            logger.LogInformation("[V3-COMPAT] POST /api/v3/importlist - {Json}", json);
+            // The import list payload carries its API key.
+            logger.LogInformation("[V3-COMPAT] POST /api/v3/importlist - {Json}", SecretRedactor.Json(json));
 
             ImportList list;
             try
@@ -898,7 +945,8 @@ public static class SonarrConfigEndpoints
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
-            logger.LogInformation("[V3-COMPAT] POST /api/v3/notification - {Json}", json);
+            // The fields carry webhook URLs, tokens and passwords.
+            logger.LogInformation("[V3-COMPAT] POST /api/v3/notification - {Json}", SecretRedactor.Json(json));
 
             Notification notification;
             try
@@ -923,7 +971,7 @@ public static class SonarrConfigEndpoints
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
-            logger.LogDebug("[V3-COMPAT] PUT /api/v3/notification/{Id} - {Json}", id, json);
+            logger.LogDebug("[V3-COMPAT] PUT /api/v3/notification/{Id} - {Json}", id, SecretRedactor.Json(json));
 
             var existing = await db.Notifications.FindAsync(id);
             if (existing == null)
@@ -1137,7 +1185,11 @@ public static class SonarrConfigEndpoints
         {
             Name = root.TryGetProperty("name", out var n) ? n.GetString() ?? string.Empty : string.Empty,
             Implementation = root.TryGetProperty("implementation", out var impl) ? impl.GetString() ?? string.Empty : string.Empty,
-            Enabled = true,
+            // Hard-coding this to true switched a deliberately disabled
+            // connection back on the moment anything edited it, and the user
+            // started getting notifications they had turned off.
+            Enabled = !root.TryGetProperty("enabled", out var enabledProp)
+                || enabledProp.ValueKind != JsonValueKind.False,
         };
 
         var config = new Dictionary<string, object>();
@@ -1248,7 +1300,13 @@ public static class SonarrConfigEndpoints
         enabled = p.Enabled,
         required = SplitKeywords(p.Required),
         ignored = SplitKeywords(p.Ignored),
+        // indexerId is Sonarr's single-indexer field, kept for compatibility.
+        // A profile can be scoped to several here, and a client that read this
+        // back and wrote it again used to narrow it to the first one, quietly
+        // letting releases from the rest bypass the profile's rules.
+        // indexerIds carries the whole set for clients that understand it.
         indexerId = p.IndexerId.FirstOrDefault(),
+        indexerIds = p.IndexerId,
         tags = p.Tags,
         includePreferredWhenRenaming = p.IncludePreferredWhenRenaming,
         preferred = p.Preferred.Select(kw => new { key = kw.Key, value = kw.Value })
@@ -1282,7 +1340,15 @@ public static class SonarrConfigEndpoints
             profile.Ignored = string.Join(',', ign.EnumerateArray().Select(e => e.GetString()));
         }
 
-        if (root.TryGetProperty("indexerId", out var idxId) && idxId.ValueKind == JsonValueKind.Number)
+        if (root.TryGetProperty("indexerIds", out var idxList) && idxList.ValueKind == JsonValueKind.Array)
+        {
+            profile.IndexerId = idxList.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.Number)
+                .Select(e => e.GetInt32())
+                .Where(v => v > 0)
+                .ToList();
+        }
+        else if (root.TryGetProperty("indexerId", out var idxId) && idxId.ValueKind == JsonValueKind.Number)
         {
             var idx = idxId.GetInt64();
             profile.IndexerId = idx == 0 ? new List<int>() : new List<int> { (int)idx };

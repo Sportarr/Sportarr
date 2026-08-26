@@ -274,7 +274,55 @@ public class SynologyDownloadStationClient
             return taskId;
         }
 
-        _logger.LogWarning("[Synology] create succeeded but no task_id in response");
+        // Download Station does not always return the id it just created. The
+        // caller reads a null as a failed add and tries again, so the release
+        // went on twice and the first task was never tracked: bandwidth spent
+        // twice and an orphan left behind. Find the task it made instead.
+        _logger.LogWarning("[Synology] create succeeded but no task_id in response; looking the task up by its URL");
+        var recovered = await FindTaskIdByUrlAsync(config, url);
+        if (recovered != null)
+        {
+            _logger.LogInformation("[Synology] Matched the created task by URL: {TaskId}", recovered);
+        }
+        return recovered;
+    }
+
+    /// <summary>
+    /// Find a task by the URL it was created from, for the case where the
+    /// create call did not hand back an id.
+    /// </summary>
+    private async Task<string?> FindTaskIdByUrlAsync(DownloadClient config, string url)
+    {
+        try
+        {
+            var listResult = await CallTaskApiAsync(config, "list",
+                new Dictionary<string, string> { ["additional"] = JsonSerializer.Serialize(new[] { "detail" }) },
+                HttpMethod.Get);
+            if (listResult == null) return null;
+            if (!listResult.Value.TryGetProperty("tasks", out var tasks) || tasks.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var task in tasks.EnumerateArray())
+            {
+                if (!task.TryGetProperty("additional", out var additional) ||
+                    !additional.TryGetProperty("detail", out var detail) ||
+                    !detail.TryGetProperty("uri", out var uriEl))
+                {
+                    continue;
+                }
+
+                if (string.Equals(uriEl.GetString(), url, StringComparison.OrdinalIgnoreCase) &&
+                    task.TryGetProperty("id", out var idEl))
+                {
+                    return idEl.GetString();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Synology] Could not look the created task up by URL");
+        }
+
         return null;
     }
 
@@ -462,6 +510,22 @@ public class SynologyDownloadStationClient
             }
 
             if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(destination)) return;
+
+            // Download Station reports a destination relative to its own
+            // shares, such as "video/sports". Joining that to a title and
+            // deleting it resolved against Sportarr's working directory
+            // instead: usually nothing was there and the files were quietly
+            // left behind, and on an unlucky name collision it recursively
+            // deleted a local directory that had nothing to do with the
+            // download. Only an absolute path can mean anything here.
+            if (!Path.IsPathRooted(destination))
+            {
+                _logger.LogInformation(
+                    "[Synology] Removed the task but left its files. Download Station reports '{Destination}' relative to its own shares, " +
+                    "which is not a path this machine can act on. Set the download client's directory to the absolute local path if Sportarr should delete them.",
+                    destination);
+                return;
+            }
 
             var path = Path.Combine(destination, title);
             if (Directory.Exists(path)) Directory.Delete(path, recursive: true);

@@ -35,7 +35,14 @@ public class CustomFormatMatchCache : IDisposable
     /// Version number that increments when custom formats change.
     /// Cached entries with older versions are considered stale.
     /// </summary>
-    private long _formatVersion = 0;
+    // Read by every search thread and written by whichever request changed a
+    // custom format. A plain field gives no guarantee the readers ever see the
+    // new value, so searches could go on serving matches from before the edit
+    // and score releases against rules that no longer exist. Interlocked reads
+    // and writes make the change visible immediately.
+    private long _formatVersion;
+
+    private long CurrentFormatVersion => Interlocked.Read(ref _formatVersion);
 
     /// <summary>
     /// Maximum number of entries before triggering cleanup (reduced from 5000 for memory optimization).
@@ -136,7 +143,7 @@ public class CustomFormatMatchCache : IDisposable
         if (_cache.TryGetValue(key, out var cached))
         {
             // Check if cache entry is from current format version
-            if (cached.FormatVersion == _formatVersion)
+            if (cached.FormatVersion == CurrentFormatVersion)
             {
                 _logger.LogDebug("[CF Cache] HIT for '{Title}' - {Count} matched formats",
                     releaseTitle, cached.MatchedFormatIds.Count);
@@ -146,7 +153,7 @@ public class CustomFormatMatchCache : IDisposable
             {
                 // Stale entry - remove it
                 _logger.LogDebug("[CF Cache] STALE for '{Title}' (version {Cached} < {Current})",
-                    releaseTitle, cached.FormatVersion, _formatVersion);
+                    releaseTitle, cached.FormatVersion, CurrentFormatVersion);
                 _cache.TryRemove(key, out _);
             }
         }
@@ -168,7 +175,7 @@ public class CustomFormatMatchCache : IDisposable
             MatchedFormatIds = matchedFormats.Select(m => m.FormatId).ToList(),
             MatchedFormatNames = matchedFormats.Select(m => m.FormatName).ToList(),
             CachedAt = DateTime.UtcNow,
-            FormatVersion = _formatVersion
+            FormatVersion = CurrentFormatVersion
         };
 
         _cache[key] = cached;
@@ -291,11 +298,14 @@ public class CustomFormatMatchCache : IDisposable
     /// </summary>
     public void InvalidateAll()
     {
-        var previousVersion = _formatVersion;
-        _formatVersion = DateTime.UtcNow.Ticks; // Use timestamp as unique version
+        var previousVersion = Interlocked.Read(ref _formatVersion);
+        // Use a timestamp as the version, and never go backwards if two
+        // invalidations land in the same tick.
+        var newVersion = Math.Max(DateTime.UtcNow.Ticks, previousVersion + 1);
+        Interlocked.Exchange(ref _formatVersion, newVersion);
 
         _logger.LogInformation("[CF Cache] Invalidated all entries (version {Old} → {New})",
-            previousVersion, _formatVersion);
+            previousVersion, CurrentFormatVersion);
     }
 
     /// <summary>

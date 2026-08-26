@@ -172,7 +172,18 @@ public static class SystemUpdatesEndpoint
 
                     var currentParts = currentVersion.Split('.');
                     var currentBase = currentParts.Length >= 3 ? $"{currentParts[0]}.{currentParts[1]}.{currentParts[2]}" : currentVersion;
+                    // Compare the numbers, not the spelling. "4.1.0" and
+                    // "4.1.0.0" are the same build, and a string test called
+                    // the running release not installed whenever the two sides
+                    // wrote the same version with a different number of parts.
                     var isInstalled = version == currentBase || version == currentVersion;
+                    if (!isInstalled &&
+                        System.Version.TryParse(version, out var releaseParsed) &&
+                        (System.Version.TryParse(currentVersion, out var runningParsed) ||
+                         System.Version.TryParse(currentBase, out runningParsed)))
+                    {
+                        isInstalled = releaseParsed == runningParsed;
+                    }
 
                     releaseList.Add(new
                     {

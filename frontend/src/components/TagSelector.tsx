@@ -21,8 +21,14 @@ export default function TagSelector({ selectedTags, onChange, label = 'Tags', he
     const loadTags = async () => {
       try {
         const res = await apiGet('/api/tag');
+        if (!res.ok) return;
+
+        // These helpers hand back the response rather than throwing, so an
+        // error body is a plain object where an array is expected. Storing it
+        // made the render below call .map on an object and took the whole
+        // settings page down instead of showing no tags.
         const data = await res.json();
-        setTags(data);
+        if (Array.isArray(data)) setTags(data);
       } catch {
         // Tags are optional — don't block the UI
       }

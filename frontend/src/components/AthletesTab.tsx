@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDownIcon, ChevronUpIcon, MagnifyingGlassIcon, TrashIcon, UserGroupIcon, UserIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
@@ -107,24 +107,38 @@ export default function AthletesTab({ qualityProfiles }: { qualityProfiles: Qual
       setDiscovery(null);
       return;
     }
+    const seq = ++discoverSeq.current;
     setExpandedAthleteId(athlete.id);
     setDiscovery(null);
     setSelectedLeagueIds(new Set());
     setIsDiscovering(true);
     try {
       const response = await apiClient.get<AthleteDiscovery>(`/followed-athletes/${athlete.id}/leagues`);
+      // Expanding a second athlete while the first was still loading let the
+      // first one's leagues arrive last and be listed under the second, and
+      // the user then added leagues for an athlete they were not looking at.
+      if (seq !== discoverSeq.current) return;
       setDiscovery(response.data);
       setSelectedLeagueIds(new Set(response.data.leagues.filter((l) => !l.isAdded).map((l) => l.externalId)));
     } catch {
+      if (seq !== discoverSeq.current) return;
       toast.error('Failed to discover leagues for athlete');
       setExpandedAthleteId(null);
     } finally {
-      setIsDiscovering(false);
+      if (seq === discoverSeq.current) setIsDiscovering(false);
     }
   };
 
+  const discoverSeq = useRef(0);
+
   const addLeagues = async () => {
     if (!discovery || selectedLeagueIds.size === 0) return;
+
+    // Refuse to submit one athlete's leagues while another is expanded.
+    if (discovery.athleteId !== expandedAthleteId) {
+      toast.error('These leagues belong to a different athlete. Reopen this one to load theirs.');
+      return;
+    }
     setIsAdding(true);
     try {
       await apiClient.post(`/followed-athletes/${discovery.athleteId}/add-leagues`, {

@@ -98,7 +98,15 @@ public class ImportListService
             // predicate also wasn't sargable against the EventDate index). Matched
             // in-memory by (Title, calendar date) - GroupBy+First tolerates two
             // events sharing a title/date instead of throwing like ToDictionary would.
-            var existingByKey = new Dictionary<(string Title, DateOnly Date), Event>();
+            //
+            // Title and date alone were not enough to identify an event. Two
+            // events that share a title on one day, which is normal for a
+            // double header or a multi-venue round, collapsed onto the first
+            // match: the second was dropped and an unrelated existing row got
+            // marked monitored in its place. The venue separates them. Rows
+            // added during this pass go into the same index, because two
+            // identical discoveries in one feed were both inserted.
+            var existingByKey = new Dictionary<(string Title, DateOnly Date), List<Event>>();
             if (discoveredEvents.Count > 0)
             {
                 var rangeStart = discoveredEvents.Min(e => e.EventDate.Date);
@@ -107,13 +115,19 @@ public class ImportListService
                     .Where(e => e.EventDate >= rangeStart && e.EventDate < rangeEndExclusive)
                     .ToListAsync())
                     .GroupBy(e => (e.Title, DateOnly.FromDateTime(e.EventDate)))
-                    .ToDictionary(g => g.Key, g => g.First());
+                    .ToDictionary(g => g.Key, g => g.ToList());
             }
 
             foreach (var discovered in discoveredEvents)
             {
-                // Check if event already exists (by title and date)
-                existingByKey.TryGetValue((discovered.Title, DateOnly.FromDateTime(discovered.EventDate)), out var existing);
+                var key = (discovered.Title, DateOnly.FromDateTime(discovered.EventDate));
+                if (!existingByKey.TryGetValue(key, out var candidates))
+                {
+                    candidates = new List<Event>();
+                    existingByKey[key] = candidates;
+                }
+
+                var existing = MatchExistingEvent(candidates, discovered);
 
                 if (existing == null)
                 {
@@ -135,6 +149,7 @@ public class ImportListService
                     };
 
                     db.Events.Add(newEvent);
+                    candidates.Add(newEvent);
                     addedCount++;
 
                     _logger.LogInformation("[IMPORT LIST] Added event: {Title} ({Date})",
@@ -209,13 +224,22 @@ public class ImportListService
                                 item.Element("published")?.Value ??
                                 item.Element(XName.Get("published", "http://www.w3.org/2005/Atom"))?.Value ?? "";
 
-                DateTime.TryParse(pubDateStr, out var pubDate);
+                // An unparseable date used to fall through as DateTime's
+                // default, which stored the event on 0001-01-01 and searched
+                // for it on a day two thousand years in the past.
+                DateTime? pubDate = DateTime.TryParse(pubDateStr, out var parsedPubDate)
+                    ? parsedPubDate
+                    : null;
 
                 // Try to parse event information from title and description
                 var discoveredEvent = ParseRssItem(title, description, pubDate);
                 if (discoveredEvent != null)
                 {
                     events.Add(discoveredEvent);
+                }
+                else
+                {
+                    _logger.LogWarning("[RSS] Skipped an item with no usable title or date: '{Title}'", title);
                 }
             }
             catch (Exception ex)
@@ -240,48 +264,52 @@ public class ImportListService
 
         var events = new List<DiscoveredEvent>();
 
-        // Simple iCal parser - parses VEVENT blocks
-        var lines = icalContent.Split('\n');
         DiscoveredEvent? currentEvent = null;
 
-        foreach (var line in lines)
+        foreach (var line in UnfoldIcalLines(icalContent))
         {
-            var trimmed = line.Trim();
-
-            if (trimmed.StartsWith("BEGIN:VEVENT"))
+            if (line.StartsWith("BEGIN:VEVENT"))
             {
                 currentEvent = new DiscoveredEvent();
             }
-            else if (trimmed.StartsWith("END:VEVENT") && currentEvent != null)
+            else if (line.StartsWith("END:VEVENT") && currentEvent != null)
             {
                 if (!string.IsNullOrEmpty(currentEvent.Title) && currentEvent.EventDate != default)
                 {
                     events.Add(currentEvent);
                 }
+                else
+                {
+                    _logger.LogWarning("[ICAL] Skipped a calendar entry with no usable title or start time: '{Title}'",
+                        currentEvent.Title ?? "(no title)");
+                }
                 currentEvent = null;
             }
             else if (currentEvent != null)
             {
-                if (trimmed.StartsWith("SUMMARY:"))
+                if (line.StartsWith("SUMMARY:"))
                 {
-                    currentEvent.Title = trimmed.Substring(8).Trim();
+                    currentEvent.Title = UnescapeIcalText(line.Substring(8));
                 }
-                else if (trimmed.StartsWith("DTSTART"))
+                else if (line.StartsWith("DTSTART"))
                 {
-                    var dateStr = trimmed.Split(':')[1].Trim();
-                    if (DateTime.TryParseExact(dateStr, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var date))
+                    if (TryParseIcalDate(line, out var date))
                     {
-                        currentEvent.EventDate = DateTime.SpecifyKind(date, DateTimeKind.Utc);
+                        currentEvent.EventDate = date;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[ICAL] Could not read a start time from '{Line}'", line);
                     }
                 }
-                else if (trimmed.StartsWith("LOCATION:"))
+                else if (line.StartsWith("LOCATION:"))
                 {
-                    currentEvent.Venue = trimmed.Substring(9).Trim();
+                    currentEvent.Venue = UnescapeIcalText(line.Substring(9));
                 }
-                else if (trimmed.StartsWith("DESCRIPTION:"))
+                else if (line.StartsWith("DESCRIPTION:"))
                 {
                     // Could contain organization or other details
-                    var desc = trimmed.Substring(12).Trim();
+                    var desc = UnescapeIcalText(line.Substring(12));
                     if (string.IsNullOrEmpty(currentEvent.Organization))
                     {
                         currentEvent.Organization = ExtractOrganization(desc);
@@ -292,6 +320,140 @@ public class ImportListService
 
         _logger.LogInformation("[ICAL] Found {Count} events in calendar", events.Count);
         return events;
+    }
+
+    /// <summary>
+    /// Join iCalendar continuation lines back onto the line they belong to.
+    ///
+    /// iCalendar wraps any line past 75 octets and marks the continuation with
+    /// a leading space or tab. Reading the file line by line therefore chopped
+    /// long titles and locations in half and left the tail looking like an
+    /// unknown property.
+    /// </summary>
+    private static List<string> UnfoldIcalLines(string content)
+    {
+        var unfolded = new List<string>();
+        foreach (var raw in content.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (line.Length > 0 && (line[0] == ' ' || line[0] == '\t') && unfolded.Count > 0)
+            {
+                unfolded[^1] += line.Substring(1);
+                continue;
+            }
+
+            unfolded.Add(line.Trim());
+        }
+
+        return unfolded;
+    }
+
+    /// <summary>
+    /// Read the start time out of a DTSTART line.
+    ///
+    /// Only the all-day "yyyyMMdd" form was accepted, so every calendar that
+    /// publishes a real start time, which is nearly all of them, produced
+    /// events with no date and they were dropped without a word. The forms
+    /// below cover a UTC timestamp, a floating or zoned timestamp, and the
+    /// all-day date.
+    /// </summary>
+    internal static bool TryParseIcalDate(string line, out DateTime value)
+    {
+        value = default;
+
+        // "DTSTART;TZID=Europe/London:20260823T150000" -> the part after the
+        // last colon. A line with no colon at all is not a value.
+        var colon = line.IndexOf(':');
+        if (colon < 0 || colon == line.Length - 1) return false;
+        var raw = line.Substring(colon + 1).Trim();
+        if (raw.Length == 0) return false;
+
+        var styles = System.Globalization.DateTimeStyles.None;
+        var isUtc = raw.EndsWith("Z", StringComparison.Ordinal);
+
+        string[] formats = { "yyyyMMdd'T'HHmmss'Z'", "yyyyMMdd'T'HHmmss", "yyyyMMdd" };
+        if (!DateTime.TryParseExact(raw, formats, System.Globalization.CultureInfo.InvariantCulture, styles, out var parsed))
+        {
+            // Some publishers emit a plain ISO timestamp instead.
+            if (!DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                    out parsed))
+            {
+                return false;
+            }
+
+            isUtc = true;
+        }
+
+        if (isUtc)
+        {
+            value = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+            return true;
+        }
+
+        // The line carries the zone its time is written in. Reading 15:00 in
+        // New York as 15:00 UTC puts the event four hours early, which is
+        // enough to search and record at the wrong time.
+        var zone = ResolveIcalTimeZone(line.Substring(0, colon));
+        if (zone != null)
+        {
+            var local = DateTime.SpecifyKind(parsed, DateTimeKind.Unspecified);
+            try
+            {
+                value = TimeZoneInfo.ConvertTimeToUtc(local, zone);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                // A time that does not exist, on the morning a zone springs
+                // forward. Fall through and keep the event rather than lose it.
+            }
+        }
+
+        // Floating time, or a zone this host does not know. Treated as UTC,
+        // which is what the rest of this pipeline already assumed.
+        value = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+        return true;
+    }
+
+    /// <summary>
+    /// Pull the zone out of an iCalendar property's parameters, for example
+    /// the "Europe/London" in "DTSTART;TZID=Europe/London". Returns null when
+    /// there is no zone or this host does not recognise it.
+    /// </summary>
+    private static TimeZoneInfo? ResolveIcalTimeZone(string parameterSection)
+    {
+        foreach (var parameter in parameterSection.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!parameter.StartsWith("TZID=", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var id = parameter.Substring("TZID=".Length).Trim().Trim('"');
+            if (id.Length == 0) return null;
+
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(id);
+            }
+            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Undo iCalendar's text escaping for commas, semicolons and newlines.
+    /// </summary>
+    internal static string UnescapeIcalText(string value)
+    {
+        return value
+            .Replace("\\n", " ", StringComparison.OrdinalIgnoreCase)
+            .Replace("\\,", ",")
+            .Replace("\\;", ";")
+            .Replace("\\\\", "\\")
+            .Trim();
     }
 
     /// <summary>
@@ -609,15 +771,61 @@ public class ImportListService
 
     #region Helper Methods
 
-    private DiscoveredEvent? ParseRssItem(string title, string description, DateTime pubDate)
+    /// <summary>
+    /// Pick the stored event a discovered one refers to, from the rows that
+    /// already share its title and date.
+    ///
+    /// The venue is the tiebreaker. When the discovery names a venue, only a
+    /// row with the same venue is the same event, and a row with a different
+    /// venue is a different event that happens to share a name. When neither
+    /// side names one there is nothing left to tell them apart, so the first
+    /// row wins, which is the behaviour that was there before.
+    /// </summary>
+    internal static Event? MatchExistingEvent(List<Event> candidates, DiscoveredEvent discovered)
+    {
+        if (candidates.Count == 0) return null;
+
+        var venue = discovered.Venue?.Trim();
+        if (string.IsNullOrEmpty(venue))
+        {
+            return candidates[0];
+        }
+
+        var sameVenue = candidates.FirstOrDefault(c =>
+            string.Equals(c.Venue?.Trim(), venue, StringComparison.OrdinalIgnoreCase));
+        if (sameVenue != null) return sameVenue;
+
+        // A stored row with no venue at all is the same event seen before the
+        // feed started publishing one. Give it the venue as it is claimed: a
+        // second discovery at another venue would otherwise land on this same
+        // row, be treated as an event already stored, and be dropped, which is
+        // exactly the double header this venue check exists to keep.
+        var venueless = candidates.FirstOrDefault(c => string.IsNullOrWhiteSpace(c.Venue));
+        if (venueless != null)
+        {
+            venueless.Venue = venue;
+        }
+
+        return venueless;
+    }
+
+    private DiscoveredEvent? ParseRssItem(string title, string description, DateTime? pubDate)
     {
         // Basic RSS parsing - look for common patterns
         if (string.IsNullOrWhiteSpace(title)) return null;
 
+        // The feed item's publication date is when the feed said something,
+        // not when the event happens. A schedule feed published weeks ahead
+        // therefore filed every event under the publication day and searched
+        // for it on the wrong date. A date written in the title or the body is
+        // the event's own date, so it wins.
+        var eventDate = ExtractEventDate(title) ?? ExtractEventDate(description) ?? pubDate;
+        if (eventDate == null) return null;
+
         var discovered = new DiscoveredEvent
         {
             Title = title.Trim(),
-            EventDate = pubDate,
+            EventDate = eventDate.Value,
             Organization = ExtractOrganization(title + " " + description)
         };
 
@@ -631,6 +839,45 @@ public class ImportListService
         }
 
         return discovered;
+    }
+
+    /// <summary>
+    /// Pull an event date out of free text.
+    ///
+    /// Feed titles and bodies usually carry the date the event happens, which
+    /// is the one that matters. Only unambiguous forms are accepted, so a
+    /// stray number in a title cannot invent a date.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex EventDateRegex = new(
+        @"\b(?<iso>\d{4}-\d{2}-\d{2})\b" +
+        @"|\b(?<dmy>\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})\b" +
+        @"|\b(?<mdy>(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(250));
+
+    internal static DateTime? ExtractEventDate(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        try
+        {
+            var match = EventDateRegex.Match(text);
+            if (!match.Success) return null;
+
+            var raw = match.Value.Replace(",", " ");
+            if (!DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                    out var parsed))
+            {
+                return null;
+            }
+
+            return DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return null;
+        }
     }
 
     private DiscoveredEvent? ParseTheSportsDbEvent(System.Text.Json.JsonElement eventEl)

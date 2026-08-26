@@ -221,13 +221,26 @@ app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, IptvSourceServ
 });
 
 // Test IPTV source connection (without saving)
-app.MapPost("/api/iptv/sources/test", async (AddIptvSourceRequest request, IptvSourceService iptvService, ILogger<Program> logger) =>
+app.MapPost("/api/iptv/sources/test", async (AddIptvSourceRequest request, IptvSourceService iptvService, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
         logger.LogInformation("[IPTV] Testing source: {Name} ({Type})", request.Name, request.Type);
+
+        // Testing an existing source without retyping its password used to
+        // send whatever the form was showing in place of it and report the
+        // credentials as bad. Fall back to the stored one.
+        var password = request.Password;
+        if (string.IsNullOrEmpty(password) && request.SourceId is > 0)
+        {
+            password = await db.IptvSources
+                .Where(s => s.Id == request.SourceId.Value)
+                .Select(s => s.Password)
+                .FirstOrDefaultAsync();
+        }
+
         var (success, error, channelCount) = await iptvService.TestSourceAsync(
-            request.Type, request.Url, request.Username, request.Password, request.UserAgent);
+            request.Type, request.Url, request.Username, password, request.UserAgent);
 
         if (success)
         {
@@ -328,7 +341,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/mappings", async (int leagueId, Spo
     var rows = await db.ChannelLeagueMappings
         .Include(m => m.Channel)
         .ThenInclude(c => c!.Source)
-        .Where(m => m.LeagueId == leagueId)
+        .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
         .OrderByDescending(m => m.IsPreferred)
         .ThenByDescending(m => m.Confidence)
         .ThenByDescending(m => m.Priority)
@@ -501,6 +514,14 @@ app.MapPost("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}/manual",
         return Results.Ok(new { mapping.Id, mapping.IsManual, created = true });
     }
 
+    // Re-mapping a pair the admin had previously excluded clears the
+    // exclusion, otherwise the row stayed invisible to every resolver and
+    // the admin had no way to undo it from the UI.
+    if (mapping.IsExcluded)
+    {
+        mapping.Priority = 1;
+    }
+
     mapping.IsManual = isManual;
     if (isManual)
     {
@@ -513,21 +534,26 @@ app.MapPost("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}/manual",
     return Results.Ok(new { mapping.Id, mapping.IsManual, mapping.Confidence });
 });
 
-// Phase 4 — DELETE a mapping. Useful for "this channel is NOT for
-// this league" overrides. Auto-mapped rows can be deleted and will
-// stay gone as long as they don't re-cross the confidence threshold
-// on the next sweep; manual rows can also be deleted (admin intent
-// is "no mapping" — IsManual=true on a non-existent row doesn't
-// recover it).
+// Phase 4 — DELETE a mapping. This is the "this channel is NOT for this
+// league" override. Removing the row did not hold: the auto-mapper put it
+// straight back on the next sweep whenever the evidence still crossed the
+// confidence threshold, so the admin had to delete the same wrong mapping
+// again and again. The row is kept as an exclusion instead. It is flagged
+// manual so the mapper skips the pair, and pushed to a negative priority so
+// every resolver and coverage count filters it out. Re-mapping the pair
+// clears it.
 app.MapDelete("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}", async (
     int channelId, int leagueId, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var mapping = await db.ChannelLeagueMappings
         .FirstOrDefaultAsync(m => m.ChannelId == channelId && m.LeagueId == leagueId);
     if (mapping == null) return Results.NotFound();
-    db.ChannelLeagueMappings.Remove(mapping);
+    mapping.IsManual = true;
+    mapping.IsPreferred = false;
+    mapping.Confidence = 0;
+    mapping.Priority = ChannelLeagueMapping.ExcludedPriority;
     await db.SaveChangesAsync();
-    logger.LogInformation("[IPTV] Admin deleted mapping channel={Channel} league={League}", channelId, leagueId);
+    logger.LogInformation("[IPTV] Admin excluded mapping channel={Channel} league={League}", channelId, leagueId);
     return Results.NoContent();
 });
 
@@ -647,6 +673,7 @@ app.MapGet("/api/iptv/coverage-report", async (
 
     // One query for channel counts per league.
     var channelCounts = await db.ChannelLeagueMappings
+        .Where(m => m.Priority >= 0)
         .GroupBy(m => m.LeagueId)
         .Select(g => new
         {
@@ -765,7 +792,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/test-resolve", async (
 
     // Snapshot the inputs the resolver will rely on so the response
     // tells the full story when no candidate clears the threshold.
-    var mappingsCount = await db.ChannelLeagueMappings.CountAsync(m => m.LeagueId == leagueId);
+    var mappingsCount = await db.ChannelLeagueMappings.CountAsync(m => m.LeagueId == leagueId && m.Priority >= 0);
     var channelsCount = await db.IptvChannels.CountAsync(c => c.IsEnabled && c.Source != null && c.Source.IsActive);
     var hasBroadcast = !string.IsNullOrWhiteSpace(evt.Broadcast);
     var epgWindowStart = evt.EventDate.AddMinutes(-30);
@@ -1360,13 +1387,32 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
     // first claim on the budget. The lease is released when the response
     // completes, including client disconnects.
     var streamSource = await db.IptvSources.FindAsync(channel.SourceId);
-    if (streamSource is { MaxStreams: > 0 })
+
+    // One identity per viewer, shared by the cap accounting here and by the
+    // HLS entry below. The client name joins the address so two different
+    // players behind one router are not read as the same viewer.
+    var viewerKey = BuildViewerKey(context, channelId);
+
+    // Held here so the HLS branch below can hand it over to the persistent
+    // viewer entry. The same viewer must not be counted by both.
+    IDisposable? viewerLease = null;
+
+    // An HLS player refetches its playlist every few seconds. Those refreshes
+    // belong to a viewer that already holds a slot, so they must be recognised
+    // before anything tries to reserve a second one. Without this a one-stream
+    // source refuses its own only viewer on the second playlist and playback
+    // stops.
+    var alreadyCounted = streamSource is { MaxStreams: > 0 }
+        && sessionTracker.RefreshHlsViewer(channel.SourceId, viewerKey);
+
+    if (streamSource is { MaxStreams: > 0 } && !alreadyCounted)
     {
         var activeRecordings = await db.DvrRecordings
             .CountAsync(r => r.Status == DvrRecordingStatus.Recording &&
                              r.Channel != null && r.Channel.SourceId == channel.SourceId);
         var viewerSlots = Math.Max(0, streamSource.MaxStreams - activeRecordings);
         var lease = sessionTracker.TryAcquire(channel.SourceId, viewerSlots);
+        viewerLease = lease;
         if (lease == null)
         {
             logger.LogWarning(
@@ -1428,12 +1474,39 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
         // For HLS playlists, we need to rewrite the URLs to also go through our proxy
         if (contentType == "application/vnd.apple.mpegurl" || contentType == "application/x-mpegURL")
         {
+            // An HLS player keeps no connection open, so the lease taken above
+            // was released the moment this request finished and no HLS viewer
+            // counted against the source at all. Note the viewer here, on the
+            // playlist fetch they repeat every few seconds; the entry lapses
+            // shortly after they stop watching.
+            if (streamSource is { MaxStreams: > 0 })
+            {
+                // Release the request lease first. It reserved a slot for this
+                // very viewer, so counting it as well as the entry about to be
+                // made would refuse a one-stream source its only viewer on
+                // every playlist fetch. Disposing twice is harmless, so the
+                // registration on the response can stand.
+                viewerLease?.Dispose();
+
+                var hlsRecordings = await db.DvrRecordings
+                    .CountAsync(r => r.Status == DvrRecordingStatus.Recording &&
+                                     r.Channel != null && r.Channel.SourceId == channel.SourceId);
+                var hlsSlots = Math.Max(0, streamSource.MaxStreams - hlsRecordings);
+                if (!sessionTracker.TouchHlsViewer(channel.SourceId, viewerKey, hlsSlots))
+                {
+                    logger.LogWarning(
+                        "[StreamProxy] Source '{Source}' is at its {Max}-stream cap; refusing HLS viewer for channel {ChannelId}",
+                        streamSource.Name, streamSource.MaxStreams, channelId);
+                    return Results.StatusCode(503);
+                }
+            }
+
             var playlistContent = await response.Content.ReadAsStringAsync();
             logger.LogDebug("[StreamProxy] HLS playlist received, length: {Length}", playlistContent.Length);
 
             // Rewrite segment URLs to go through our proxy
             var baseUrl = new Uri(channel.StreamUrl);
-            var rewrittenPlaylist = Sportarr.Api.Helpers.HlsRewriter.RewritePlaylist(playlistContent, baseUrl, logger);
+            var rewrittenPlaylist = Sportarr.Api.Helpers.HlsRewriter.RewritePlaylist(playlistContent, baseUrl, logger, channelId);
 
             return Results.Content(rewrittenPlaylist, contentType);
         }
@@ -1464,12 +1537,26 @@ app.MapGet("/api/iptv/stream/url", async (
     string url,
     IHttpClientFactory httpClientFactory,
     ConfigService configService,
+    StreamSessionTracker sessionTracker,
     ILogger<Program> logger,
-    HttpContext context) =>
+    HttpContext context,
+    int? channelId = null) =>
 {
     if (string.IsNullOrEmpty(url))
     {
         return Results.BadRequest(new { error = "URL parameter required" });
+    }
+
+    // A master playlist sends the player here for the variant playlist and
+    // every segment after it, and it never returns to the channel endpoint.
+    // Only that endpoint kept the viewer entry alive, so the viewer stopped
+    // being counted a minute into watching and the source could hand out more
+    // streams than its cap allows. Refreshing here keeps the entry for as long
+    // as the player keeps asking. Nothing is reserved: admission stays with
+    // the channel endpoint, which is the one that knows the source.
+    if (channelId.HasValue)
+    {
+        sessionTracker.RefreshHlsViewer(BuildViewerKey(context, channelId.Value));
     }
 
     // SSRF guard: this endpoint is anonymous (HLS players send no API key), so a caller-
@@ -1674,5 +1761,28 @@ app.MapGet("/api/v1/stream/sessions", (FFmpegStreamService streamService) =>
 });
 
         return app;
+    }
+
+    /// <summary>
+    /// Identify one viewer of one channel for the stream cap.
+    ///
+    /// An HLS player holds no connection open, so it is recognised across its
+    /// repeated playlist fetches by what the request says about it. The client
+    /// name joins the address because several players commonly share one
+    /// address behind a router, and on the address alone they would count as a
+    /// single viewer while each opened its own upstream connection.
+    ///
+    /// Two identical players behind one address still read as one viewer.
+    /// Nothing in an HLS request separates them, which is why the cap is
+    /// enforced most strictly for the continuous streams that hold a
+    /// connection open.
+    /// </summary>
+    private static string BuildViewerKey(HttpContext context, int channelId)
+    {
+        var address = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var client = context.Request.Headers.UserAgent.ToString();
+        if (string.IsNullOrWhiteSpace(client)) client = "unknown";
+
+        return $"{address}|{client}|{channelId}";
     }
 }

@@ -215,17 +215,27 @@ public class MediaFileInspector
     {
         if (width is null || height is null) return null;
 
-        // Match against the larger dimension to handle vertical/rotated content.
-        var dim = Math.Max(width.Value, height.Value);
-        return dim switch
+        // Resolution is a line count, and comparing the width against
+        // widescreen widths got broadcast sports wrong in both directions.
+        // Anamorphic HD arrives 1440 wide by 1080 lines and was filed as 720p,
+        // so the library recorded a lower quality than the file actually has
+        // and the upgrade hunt went looking for something it already had.
+        // Letterboxed 1080p arrives 1920 by 800 and would be filed as 720p by
+        // lines alone. Taking the larger of the real line count and the line
+        // count a widescreen frame of that width implies reads both correctly.
+        var lines = Math.Max(
+            Math.Min(width.Value, height.Value),
+            (int)Math.Round(Math.Max(width.Value, height.Value) * 9.0 / 16.0));
+
+        return lines switch
         {
-            >= 3840 => "2160P",
-            >= 1920 => "1080P",
-            >= 1280 => "720P",
-            >= 1024 => "576P",
-            >= 854 => "540P",
-            >= 640 => "480P",
-            >= 480 => "360P",
+            >= 2160 => "2160P",
+            >= 1080 => "1080P",
+            >= 720 => "720P",
+            >= 576 => "576P",
+            >= 540 => "540P",
+            >= 480 => "480P",
+            >= 360 => "360P",
             _ => null
         };
     }

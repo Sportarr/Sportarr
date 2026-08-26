@@ -121,6 +121,8 @@ export default function TvGuidePage() {
     return () => clearInterval(interval);
   }, []);
 
+  const guideGeneration = useRef(0);
+
   // Load data
   useEffect(() => {
     loadGuideData();
@@ -130,6 +132,13 @@ export default function TvGuidePage() {
   }, [timeOffset, scheduledOnly, sportsOnly, enabledOnly, hasEpgOnly, selectedGroup, selectedCountry]);
 
   const loadGuideData = async () => {
+    // Each load takes the next number and only writes state while its number
+    // is still current. Changing a filter or the time window starts a new
+    // request without cancelling the last, so a slower earlier one could land
+    // afterwards and paint the guide with channels from the group, country or
+    // window the user had already moved off, which is a good way to schedule
+    // the wrong programme.
+    const generation = ++guideGeneration.current;
     setLoading(true);
     try {
       const startTime = new Date();
@@ -154,14 +163,26 @@ export default function TvGuidePage() {
       if (selectedCountry) params.set('country', selectedCountry);
 
       const response = await apiClient.get<TvGuideResponse>(`/epg/guide?${params}`);
+      if (generation !== guideGeneration.current) return;
       setGuideData(response.data);
     } catch (error) {
+      if (generation !== guideGeneration.current) return;
       console.error('Failed to load TV Guide:', error);
       toast.error('Failed to load TV Guide');
     } finally {
-      setLoading(false);
+      if (generation === guideGeneration.current) {
+        setLoading(false);
+      }
     }
   };
+
+  // The actions below reload the guide after their POST lands. Their
+  // closures are captured at click time, so a reload called directly from
+  // them read the window and filters as they were then, took a fresh
+  // generation number, and painted stale channels over a newer load. The
+  // ref always holds the loader from the latest render.
+  const loadGuideDataRef = useRef(loadGuideData);
+  loadGuideDataRef.current = loadGuideData;
 
   const loadEpgSources = async () => {
     try {
@@ -199,7 +220,7 @@ export default function TvGuidePage() {
       await apiClient.post('/epg/sync-all');
       toast.success('EPG sync started');
       await loadEpgSources();
-      await loadGuideData();
+      await loadGuideDataRef.current();
     } catch (error) {
       console.error('Failed to sync EPG:', error);
       toast.error('Failed to sync EPG sources');
@@ -216,7 +237,7 @@ export default function TvGuidePage() {
     try {
       await apiClient.post(`/epg/programs/${program.id}/schedule-dvr`);
       toast.success(`DVR scheduled for "${program.title}"`);
-      await loadGuideData();
+      await loadGuideDataRef.current();
     } catch (error: any) {
       console.error('Failed to schedule DVR:', error);
       toast.error(error.response?.data?.error || 'Failed to schedule DVR');
@@ -227,7 +248,7 @@ export default function TvGuidePage() {
     try {
       await apiClient.post(`/dvr/recordings/${recordingId}/cancel`);
       toast.success('DVR recording cancelled');
-      await loadGuideData();
+      await loadGuideDataRef.current();
     } catch (error) {
       console.error('Failed to cancel DVR:', error);
       toast.error('Failed to cancel DVR');

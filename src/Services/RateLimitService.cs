@@ -48,13 +48,29 @@ public class RateLimitService : IRateLimitService
         _logger = logger;
     }
 
+    /// <summary>
+    /// One gate per key, so callers for the same indexer queue behind each
+    /// other while callers for different indexers do not.
+    ///
+    /// The shared lock was released for the duration of the wait, which let
+    /// every caller for one key read the same last-request time, work out the
+    /// same delay, sleep through it together and then fire at the same moment.
+    /// The delay was applied once to the whole group instead of once per
+    /// request, which is how a configured rate limit still emptied a quota.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _keyGates = new();
+
     public async Task WaitAndPulseAsync(string baseKey, string? subKey, TimeSpan rateLimit)
     {
         var key = BuildKey(baseKey, subKey);
+        var gate = _keyGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
 
-        await _lock.WaitAsync();
+        await gate.WaitAsync();
         try
         {
+            // Re-read inside the gate: whoever went before has already stamped
+            // their own time, so this caller waits from that, not from an
+            // older reading taken before the queue formed.
             if (_lastRequestTimes.TryGetValue(key, out var lastRequest))
             {
                 var elapsed = DateTime.UtcNow - lastRequest;
@@ -63,16 +79,17 @@ public class RateLimitService : IRateLimitService
                     var waitTime = rateLimit - elapsed;
 
                     // Add random jitter to prevent predictable patterns
-                    var jitter = TimeSpan.FromMilliseconds(_random.Next(0, MaxJitterMs));
+                    TimeSpan jitter;
+                    lock (_random)
+                    {
+                        jitter = TimeSpan.FromMilliseconds(_random.Next(0, MaxJitterMs));
+                    }
                     waitTime += jitter;
 
                     _logger.LogDebug("[RateLimit] Waiting {WaitMs}ms for {Key} (includes {JitterMs}ms jitter)",
                         (int)waitTime.TotalMilliseconds, key, (int)jitter.TotalMilliseconds);
 
-                    // Release lock while waiting so other keys can proceed
-                    _lock.Release();
                     await Task.Delay(waitTime);
-                    await _lock.WaitAsync();
                 }
             }
 
@@ -81,7 +98,7 @@ public class RateLimitService : IRateLimitService
         }
         finally
         {
-            _lock.Release();
+            gate.Release();
         }
     }
 

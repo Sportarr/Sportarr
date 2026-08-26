@@ -36,7 +36,7 @@ public static class RootFolderValidator
         return new Result(true, null);
     }
 
-    private static bool IsSystemPath(string path)
+    internal static bool IsSystemPath(string path)
     {
         var normalized = NormalizeForCompare(path);
 
@@ -159,8 +159,46 @@ public static class RootFolderValidator
         }
     }
 
+    /// <summary>
+    /// Resolve a path to what it really points at before comparing it against
+    /// the blocked list. Comparing the text as typed let a path reach a blocked
+    /// tree without ever naming it: "/data/../etc" matches nothing in the list,
+    /// "//etc" matches nothing either, and a symbolic link names only itself.
+    /// All three resolve to a system folder once the filesystem is asked.
+    /// </summary>
     private static string NormalizeForCompare(string path)
     {
-        return path.TrimEnd(Path.DirectorySeparatorChar);
+        string resolved;
+
+        try
+        {
+            // Collapses "..", "." and repeated separators.
+            resolved = Path.GetFullPath(path);
+        }
+        catch
+        {
+            // Nothing better available, so compare it as written.
+            return path.TrimEnd(Path.DirectorySeparatorChar);
+        }
+
+        try
+        {
+            // Follow symbolic links to the directory this really is. Every
+            // level has to be followed, not just the last one: with
+            // "/safe/system" pointing at "/", the path "/safe/system/etc" is
+            // "/etc", and resolving only the final component left it looking
+            // like an ordinary folder and let a system directory through as a
+            // library root.
+            //
+            // Best effort: a path that does not exist yet resolves as far as
+            // it can, and the collapsed path above stands for the rest.
+            resolved = PathResolution.ResolveThroughLinks(resolved);
+        }
+        catch
+        {
+            // Keep the collapsed path.
+        }
+
+        return resolved.TrimEnd(Path.DirectorySeparatorChar);
     }
 }

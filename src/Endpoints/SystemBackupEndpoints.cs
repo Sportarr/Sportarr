@@ -99,31 +99,74 @@ public static class SystemBackupEndpoints
             string backupName,
             HttpRequest request,
             BackupService backupService,
-            RestoreReconciliationService reconcile,
             IServiceProvider rootProvider,
             ILogger<BackupService> logger) =>
         {
             try
             {
+                // No scope means restore everything, so anything that stops the
+                // body being read turns a config-only request into a full
+                // database restore. Requiring ContentLength did exactly that
+                // for a chunked request, where the length is unknown, and an
+                // empty scope array fell through to the same default.
                 IReadOnlySet<string>? scope = null;
-                if (request.ContentLength > 0
-                    && (request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) ?? false))
+                if (request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) ?? false)
                 {
-                    using var doc = await System.Text.Json.JsonDocument.ParseAsync(request.Body);
-                    if (doc.RootElement.TryGetProperty("scope", out var scopeEl)
-                        && scopeEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    // An empty body and a truncated one both fail to parse,
+                    // and treating them alike turned a damaged config-only
+                    // request into a full database restore. The body is read
+                    // first so the two can be told apart: only a genuinely
+                    // empty one falls back to restoring everything.
+                    string body;
+                    using (var reader = new StreamReader(request.Body, System.Text.Encoding.UTF8))
                     {
-                        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                        foreach (var item in scopeEl.EnumerateArray())
+                        body = await reader.ReadToEndAsync();
+                    }
+
+                    System.Text.Json.JsonDocument? doc = null;
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        try
                         {
-                            if (item.ValueKind == System.Text.Json.JsonValueKind.String
-                                && item.GetString() is { } s
-                                && !string.IsNullOrWhiteSpace(s))
-                            {
-                                set.Add(s.Trim());
-                            }
+                            doc = System.Text.Json.JsonDocument.Parse(body);
                         }
-                        if (set.Count > 0) scope = set;
+                        catch (System.Text.Json.JsonException ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                error = $"The restore request could not be read: {ex.Message}. " +
+                                        "Send valid JSON, or no body at all to restore everything."
+                            });
+                        }
+                    }
+
+                    using (doc)
+                    {
+                        if (doc != null
+                            && doc.RootElement.TryGetProperty("scope", out var scopeEl)
+                            && scopeEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var item in scopeEl.EnumerateArray())
+                            {
+                                if (item.ValueKind == System.Text.Json.JsonValueKind.String
+                                    && item.GetString() is { } s
+                                    && !string.IsNullOrWhiteSpace(s))
+                                {
+                                    set.Add(s.Trim());
+                                }
+                            }
+
+                            if (set.Count == 0)
+                            {
+                                return Results.BadRequest(new
+                                {
+                                    error = "scope was sent but names nothing. Use \"db\", \"config\", or leave scope out to restore everything."
+                                });
+                            }
+
+                            scope = set;
+                        }
                     }
                 }
 
@@ -136,7 +179,26 @@ public static class SystemBackupEndpoints
                 // scoped DbContext would be disposed the moment we return
                 // and the background work would crash. Errors inside the
                 // background scope land in the report row's Notes field.
-                var reportId = await reconcile.BeginAsync(backupName, manifest);
+                // The DbContext scoped to this request opened its connection
+                // before the database file was replaced, so writing the report
+                // row through it fails and the caller sees an error on a restore
+                // that worked. A fresh scope opens the file that was restored.
+                // The restored file carries whatever schema it was saved
+                // with, and nothing brings it forward because the app is not
+                // restarting. This is the same routine startup runs: it seeds
+                // the migration history on a database that predates it, so a
+                // legacy backup does not make a bare Migrate throw over
+                // tables that already exist, and it runs the data repairs
+                // the migrations alone do not cover.
+                await Sportarr.Api.Startup.DatabaseInitializer.InitializeAsync(rootProvider);
+
+                int reportId;
+                using (var reportScope = rootProvider.CreateScope())
+                {
+                    var scopedReconcile = reportScope.ServiceProvider
+                        .GetRequiredService<RestoreReconciliationService>();
+                    reportId = await scopedReconcile.BeginAsync(backupName, manifest);
+                }
                 _ = Task.Run(async () =>
                 {
                     using var bgScope = rootProvider.CreateScope();

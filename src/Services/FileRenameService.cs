@@ -650,7 +650,7 @@ public class FileRenameService
             return 0;
 
         // Phase 1: stage every source under a unique temp name, freeing all final names.
-        var staged = new List<(EventFile File, string TempPath, string ExpectedPath)>();
+        var staged = new List<(EventFile File, string CurrentPath, string TempPath, string ExpectedPath)>();
         foreach (var move in planned)
         {
             try
@@ -662,7 +662,7 @@ public class FileRenameService
                 var tempPath = move.ExpectedPath + ".sportarr-rename-" + Guid.NewGuid().ToString("N") + ".tmp";
                 SelfMoveTracker.Register(move.CurrentPath, tempPath);
                 File.Move(move.CurrentPath, tempPath);
-                staged.Add((move.File, tempPath, move.ExpectedPath));
+                staged.Add((move.File, move.CurrentPath, tempPath, move.ExpectedPath));
             }
             catch (Exception ex)
             {
@@ -673,25 +673,75 @@ public class FileRenameService
         // Phase 2: move each staged temp file to its final name and update the DB record.
         int totalRenamed = 0;
         var renamedDirs = new List<string?>();
+        var finalized = new List<(EventFile File, string CurrentPath, string ExpectedPath)>();
         foreach (var s in staged)
         {
             try
             {
                 if (File.Exists(s.ExpectedPath))
                 {
-                    _logger.LogWarning("[File Rename] Final destination unexpectedly exists; leaving staged file: {Path}", s.ExpectedPath);
+                    _logger.LogWarning("[File Rename] Final destination unexpectedly exists; putting {Path} back", s.CurrentPath);
+                    RestoreStagedRename(s.TempPath, s.CurrentPath);
                     continue;
                 }
 
                 SelfMoveTracker.Register(s.TempPath, s.ExpectedPath);
                 File.Move(s.TempPath, s.ExpectedPath);
                 s.File.FilePath = s.ExpectedPath;
+                finalized.Add((s.File, s.CurrentPath, s.ExpectedPath));
                 renamedDirs.Add(Path.GetDirectoryName(s.ExpectedPath));
                 totalRenamed++;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[File Rename] Finalize step failed for {Path}", s.ExpectedPath);
+
+                // In a renumbering chain the failed file's old name may now
+                // be held by a sibling that already finalised into it, so a
+                // plain restore had nowhere to go and the file stayed under
+                // its opaque temp name with a record pointing at nothing.
+                // Undo the finished moves first, then restore. No single
+                // order is safe: a chain that shifted names up wants the
+                // undo run one way and a chain that shifted them down
+                // wants the other, so the undo keeps passing over what is
+                // left until a pass frees nothing.
+                var toUndo = new List<(EventFile File, string CurrentPath, string ExpectedPath)>(finalized);
+                while (toUndo.Count > 0)
+                {
+                    var progressed = false;
+                    foreach (var done in toUndo.ToList())
+                    {
+                        if (File.Exists(done.CurrentPath)) continue;
+
+                        try
+                        {
+                            SelfMoveTracker.Register(done.ExpectedPath, done.CurrentPath);
+                            File.Move(done.ExpectedPath, done.CurrentPath);
+                            done.File.FilePath = done.CurrentPath;
+                            totalRenamed--;
+                            toUndo.Remove(done);
+                            progressed = true;
+                        }
+                        catch (Exception undoEx)
+                        {
+                            _logger.LogError(undoEx, "[File Rename] Could not undo {Path} while rolling back", done.ExpectedPath);
+                            toUndo.Remove(done);
+                            progressed = true;
+                        }
+                    }
+
+                    if (!progressed)
+                    {
+                        foreach (var stuck in toUndo)
+                        {
+                            _logger.LogError("[File Rename] {Path} stays renamed: its old name is still held while rolling back", stuck.ExpectedPath);
+                        }
+                        break;
+                    }
+                }
+                finalized.Clear();
+
+                RestoreStagedRename(s.TempPath, s.CurrentPath);
             }
         }
 
@@ -708,6 +758,35 @@ public class FileRenameService
         }
 
         return totalRenamed;
+    }
+
+    /// <summary>
+    /// Puts a staged file back under the name the database still records for
+    /// it. Renaming stages every file under a temporary name first so the final
+    /// names are all free, and the database is only updated once a file reaches
+    /// its final name. A file left staged is therefore invisible to the
+    /// library: it sits under an opaque .tmp name while its record points at a
+    /// path that no longer exists.
+    /// </summary>
+    private void RestoreStagedRename(string tempPath, string originalPath)
+    {
+        try
+        {
+            if (!File.Exists(tempPath))
+            {
+                return;
+            }
+
+            SelfMoveTracker.Register(tempPath, originalPath);
+            File.Move(tempPath, originalPath);
+            _logger.LogInformation("[File Rename] Restored {Path} after a failed rename", originalPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[File Rename] Could not restore {Original}. The file is still on disk as {Temp}",
+                originalPath, tempPath);
+        }
     }
 
     /// <summary>

@@ -488,6 +488,33 @@ public class DvrRecordingService
             return new RecordingResult { Success = false, Error = "Recording already in progress" };
         }
 
+        // A capture that already exists must not be written over. The output
+        // path is deterministic, so starting one of these again records on top
+        // of the file the library may already hold. Failed and cancelled rows
+        // stay startable, because retrying those is the point.
+        if (recording.Status is DvrRecordingStatus.Completed
+            or DvrRecordingStatus.Importing
+            or DvrRecordingStatus.Imported)
+        {
+            return new RecordingResult
+            {
+                Success = false,
+                Error = $"Recording is already {recording.Status.ToString().ToLowerInvariant()}. Delete it first to record the event again."
+            };
+        }
+
+        // Catchup rows pull the aired window from the provider archive after
+        // the event. CatchupDownloadService owns them, and the scheduler skips
+        // them for the same reason.
+        if (recording.Method != DvrRecordingMethod.Live)
+        {
+            return new RecordingResult
+            {
+                Success = false,
+                Error = "Catchup recordings download after the event and cannot be started as a live capture"
+            };
+        }
+
         if (recording.Channel == null)
         {
             return new RecordingResult { Success = false, Error = "Channel not found" };
@@ -640,21 +667,27 @@ public class DvrRecordingService
         // conflict — same MaxStreams-saturated source would just fail
         // again immediately).
         var sourceIdsAtCapacity = await GetSourceIdsAtCapacityAsync();
-        IptvChannel? nextChannel = null;
         var remainingBackups = new List<int>(backups);
-        while (remainingBackups.Count > 0)
+        var viable = new List<IptvChannel>();
+
+        foreach (var candidateId in remainingBackups)
         {
-            var candidateId = remainingBackups[0];
-            remainingBackups.RemoveAt(0);
             var candidate = await _db.IptvChannels
                 .Include(c => c.Source)
                 .FirstOrDefaultAsync(c => c.Id == candidateId);
             if (candidate == null || !candidate.IsEnabled) continue;
             if (candidate.Source == null || !candidate.Source.IsActive) continue;
             if (sourceIdsAtCapacity.Contains(candidate.SourceId)) continue;
-            nextChannel = candidate;
-            break;
+            viable.Add(candidate);
         }
+
+        // Keep the recorded order, but try a channel a health check has already
+        // found dead only once the others are exhausted. Rotating onto one of
+        // those just fails again and burns another attempt from the retry
+        // budget while the window is still open.
+        var nextChannel = viable
+            .OrderByDescending(c => Sportarr.Api.Helpers.ChannelHealth.Rank(c.Status))
+            .FirstOrDefault();
 
         if (nextChannel == null)
         {
@@ -662,6 +695,12 @@ public class DvrRecordingService
                 failed.Id, failed.Title, reason);
             return null;
         }
+
+        // Drop the channel just chosen. Carrying it forward means a second
+        // failure rotates onto the very same channel, and every retry after
+        // that does too, so the other fallbacks are never reached and the
+        // retry budget is spent on one dead channel.
+        remainingBackups.Remove(nextChannel.Id);
 
         // Create the rotated recording carrying forward times + padding.
         var rotated = new DvrRecording
@@ -861,7 +900,7 @@ public class DvrRecordingService
         // see it. This runs before the container check below, because a
         // recording that keeps its transport stream still has to be revealed,
         // and before the remux, so the remux writes a visible name.
-        recording.OutputPath = RevealFinishedCapture(recording.OutputPath);
+        recording.OutputPath = await RevealFinishedCaptureAsync(recording.OutputPath);
 
         if (string.IsNullOrEmpty(recording.OutputPath) ||
             !recording.OutputPath.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ||
@@ -896,6 +935,12 @@ public class DvrRecordingService
         {
             return new RecordingResult { Success = false, Error = "Recording not found" };
         }
+
+        // Hold the row off the watchdog for the whole stop, not just while the
+        // process is alive. Revealing and remuxing a large capture runs for
+        // minutes with no process behind it, which is the state the watchdog
+        // treats as a crashed recorder.
+        using var finalizing = _ffmpegRecorder.BeginFinalizing(recordingId);
 
         var result = await _ffmpegRecorder.StopRecordingAsync(recordingId);
 
@@ -1470,7 +1515,105 @@ public class DvrRecordingService
             _logger.LogDebug("[DVR] Created directory: {Directory}", directory);
         }
 
+        destinationPath = await ClaimFreeOutputPathAsync(destinationPath, recording);
+
         return HideWhileWriting(destinationPath);
+    }
+
+    /// <summary>
+    /// Pick a name no other recording has taken.
+    ///
+    /// The name is built from the event and the scheduled start, and a
+    /// fallback rotation carries both forward, so every attempt at one event
+    /// resolved to the same file. Each finished capture then remuxed onto it,
+    /// and a completed race was replaced by a forty second fragment from a
+    /// later rotation (issue #259).
+    ///
+    /// A recording keeps whatever name it already has: this is about two
+    /// recordings wanting one name, not about a retry of the same one.
+    /// </summary>
+    private async Task<string> ClaimFreeOutputPathAsync(string candidate, DvrRecording recording)
+    {
+        var directory = Path.GetDirectoryName(candidate) ?? string.Empty;
+        var stem = Path.GetFileNameWithoutExtension(candidate);
+        var extension = Path.GetExtension(candidate);
+
+        for (var attempt = 1; attempt < 100; attempt++)
+        {
+            var path = attempt == 1
+                ? candidate
+                : Path.Combine(directory, $"{stem} ({attempt}){extension}");
+
+            if (await IsOutputPathFreeAsync(path, recording))
+            {
+                if (attempt > 1)
+                {
+                    _logger.LogInformation(
+                        "[DVR] Recording {Id} writes to {Path}; the name it would have used belongs to another recording of the same event",
+                        recording.Id, path);
+                }
+
+                return path;
+            }
+        }
+
+        // A hundred recordings of one event is not a real situation, but a
+        // name nothing else holds still beats writing over one that exists.
+        return Path.Combine(directory, $"{stem} ({recording.Id}){extension}");
+    }
+
+    /// <summary>
+    /// True when no other recording holds this name and nothing sits there.
+    /// Both containers are checked, since a capture is written as .ts and may
+    /// then be remuxed to .mp4 under the same stem.
+    /// </summary>
+    private async Task<bool> IsOutputPathFreeAsync(string path, DvrRecording recording)
+    {
+        // The recording's own file is not in its way.
+        if (!string.IsNullOrEmpty(recording.OutputPath)
+            && PathsMatch(StripInProgressPrefix(recording.OutputPath), path))
+        {
+            return true;
+        }
+
+        foreach (var container in new[] { path, Path.ChangeExtension(path, ".ts"), Path.ChangeExtension(path, ".mp4") })
+        {
+            if (File.Exists(container) || File.Exists(HideWhileWriting(container)))
+            {
+                return false;
+            }
+        }
+
+        var stem = Path.Combine(Path.GetDirectoryName(path) ?? string.Empty, Path.GetFileNameWithoutExtension(path));
+        var taken = await _db.DvrRecordings
+            .Where(r => r.Id != recording.Id && r.OutputPath != null && r.OutputPath != "")
+            .Select(r => r.OutputPath!)
+            .ToListAsync();
+
+        return !taken.Any(other => PathsMatch(
+            Path.Combine(Path.GetDirectoryName(StripInProgressPrefix(other)) ?? string.Empty,
+                Path.GetFileNameWithoutExtension(StripInProgressPrefix(other))),
+            stem));
+    }
+
+    private static string StripInProgressPrefix(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        var filename = Path.GetFileName(path);
+        if (string.IsNullOrEmpty(filename) || !filename.StartsWith(InProgressPrefix, StringComparison.Ordinal))
+            return path;
+
+        var visible = filename.Substring(InProgressPrefix.Length);
+        return string.IsNullOrEmpty(directory) ? visible : Path.Combine(directory, visible);
+    }
+
+    private static bool PathsMatch(string a, string b)
+    {
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(a.TrimEnd(Path.DirectorySeparatorChar), b.TrimEnd(Path.DirectorySeparatorChar), comparison);
     }
 
     /// <summary>
@@ -1501,7 +1644,7 @@ public class DvrRecordingService
     /// Returns the path the file now has, which is unchanged when the file is
     /// already visible or the rename fails.
     /// </summary>
-    public string RevealFinishedCapture(string? path)
+    public async Task<string> RevealFinishedCaptureAsync(string? path)
     {
         if (string.IsNullOrEmpty(path))
             return path ?? string.Empty;
@@ -1513,6 +1656,35 @@ public class DvrRecordingService
 
         var visible = filename.Substring(InProgressPrefix.Length);
         var target = string.IsNullOrEmpty(directory) ? visible : Path.Combine(directory, visible);
+
+        // The name comes from event metadata alone, so a second capture of the
+        // same event lands on the same name. Never write over a file the
+        // library already tracks: a fallback rotation would otherwise destroy
+        // the capture the user has.
+        try
+        {
+            if (File.Exists(target) &&
+                await _db.EventFiles.AnyAsync(f => f.FilePath == target && f.Exists))
+            {
+                var unique = BuildUnusedCapturePath(target);
+                _logger.LogWarning("[DVR] {Target} is already in the library, so this capture is revealed as {Path} instead",
+                    target, unique);
+                target = unique;
+            }
+        }
+        catch (Exception ex)
+        {
+            // The library lookup failing must not abort the finalize around
+            // this call. It threw out of here before, which skipped marking
+            // the recording complete and left a playable capture dot-hidden
+            // from every media server. A numbered name is the safe answer
+            // when the question could not be asked.
+            _logger.LogWarning(ex, "[DVR] Could not check the library before revealing {Path}", target);
+            if (File.Exists(target))
+            {
+                target = BuildUnusedCapturePath(target);
+            }
+        }
 
         try
         {
@@ -1532,6 +1704,25 @@ public class DvrRecordingService
         }
 
         return path;
+    }
+
+    /// <summary>
+    /// Find a capture name nothing holds yet, by numbering it.
+    /// </summary>
+    private static string BuildUnusedCapturePath(string target)
+    {
+        var directory = Path.GetDirectoryName(target) ?? string.Empty;
+        var stem = Path.GetFileNameWithoutExtension(target);
+        var extension = Path.GetExtension(target);
+
+        for (var n = 2; n < 1000; n++)
+        {
+            var candidate = Path.Combine(directory, $"{stem} ({n}){extension}");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+
+        return Path.Combine(directory, $"{stem} ({Guid.NewGuid():N}){extension}");
     }
 
     /// <summary>

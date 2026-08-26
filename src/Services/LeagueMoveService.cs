@@ -423,7 +423,8 @@ public class LeagueMoveService
         _logger.LogInformation("[League Reorganize] Moving {Count} file(s) for league {LeagueId} ({Name}) into {Target}",
             plan.Count, league.Id, league.Name, targetRoot.Path);
 
-        var moved = new List<(string OldPath, string NewPath)>();
+        var moved = new List<(EventFile File, string OldPath, string NewPath)>();
+        var originalRootFolderId = league.RootFolderId;
         try
         {
             foreach (var (ef, oldPath, newPath) in plan)
@@ -445,7 +446,7 @@ public class LeagueMoveService
                     File.Delete(oldPath);
                 }
 
-                moved.Add((oldPath, newPath));
+                moved.Add((ef, oldPath, newPath));
                 ef.FilePath = newPath;
 
                 // Keep the denormalized Event.FilePath in sync for any
@@ -476,8 +477,11 @@ public class LeagueMoveService
             _logger.LogError(ex, "[League Reorganize] Failed for league {LeagueId}; rolling back {Count} on-disk move(s)",
                 leagueId, moved.Count);
 
-            foreach (var (oldPath, newPath) in moved)
+            league.RootFolderId = originalRootFolderId;
+
+            foreach (var (ef, oldPath, newPath) in moved)
             {
+                var restored = false;
                 try
                 {
                     if (File.Exists(newPath) && !File.Exists(oldPath))
@@ -489,13 +493,48 @@ public class LeagueMoveService
                         }
                         File.Move(newPath, oldPath);
                     }
+
+                    restored = File.Exists(oldPath);
                 }
                 catch (Exception rollbackEx)
                 {
                     _logger.LogCritical(rollbackEx,
-                        "[League Reorganize] CRITICAL: rollback failed for {OldPath} <- {NewPath}. Manual cleanup required.",
+                        "[League Reorganize] CRITICAL: rollback failed for {OldPath} <- {NewPath}.",
                         oldPath, newPath);
                 }
+
+                // Point the record at wherever the file actually ended up. A
+                // file that could not be moved back stays tracked at the new
+                // root instead of leaving the library pointing at an empty
+                // path, which is what turned a failed reorganize into files
+                // the library could no longer see.
+                var actualPath = restored ? oldPath : newPath;
+                ef.FilePath = actualPath;
+
+                if (ef.Event != null && ef.Event.FilePath != null &&
+                    (string.Equals(NormalizePath(ef.Event.FilePath), NormalizePath(oldPath), StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(NormalizePath(ef.Event.FilePath), NormalizePath(newPath), StringComparison.OrdinalIgnoreCase)))
+                {
+                    ef.Event.FilePath = actualPath;
+                }
+
+                if (!restored)
+                {
+                    _logger.LogWarning(
+                        "[League Reorganize] {Path} stayed at the new root; its record now points there.",
+                        newPath);
+                }
+            }
+
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (Exception saveEx)
+            {
+                _logger.LogCritical(saveEx,
+                    "[League Reorganize] CRITICAL: could not record where the files ended up after rollback. Run a disk scan for league {LeagueId}.",
+                    leagueId);
             }
 
             return new LeagueMoveResult

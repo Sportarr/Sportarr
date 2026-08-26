@@ -183,12 +183,36 @@ public class ImportMatchingService
             .Include(e => e.League)
             .AsQueryable();
 
-        // Strategy 1: Direct title match
+        // Strategy 1: Direct title match first. A second word-join pass only
+        // fills remaining slots, so a separator difference ("Monte Carlo" vs
+        // "Monte-Carlo") cannot hide an event, and broad wildcard hits cannot
+        // evict a direct substring match from the candidate cap.
         var titleMatches = await query
-            .Where(e => EF.Functions.Like(e.Title, $"%{cleanTitle}%"))
+            .Where(e => EF.Functions.Like(e.Title, $"%{EscapeLikePattern(cleanTitle)}%", "\\"))
             .OrderByDescending(e => e.EventDate)
             .Take(10)
             .ToListAsync();
+
+        var searchWords = cleanTitle.Split(new[] { ' ', '.', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+        if (titleMatches.Count < 10 && searchWords.Length > 0)
+        {
+            var wordPattern = "%" + string.Join("%", searchWords.Select(EscapeLikePattern)) + "%";
+            var wordJoinMatches = await query
+                .Where(e => EF.Functions.Like(e.Title, wordPattern, "\\"))
+                .OrderByDescending(e => e.EventDate)
+                .Take(10)
+                .ToListAsync();
+
+            foreach (var match in wordJoinMatches)
+            {
+                if (titleMatches.Count >= 10)
+                    break;
+                if (!titleMatches.Any(m => m.Id == match.Id))
+                {
+                    titleMatches.Add(match);
+                }
+            }
+        }
 
         // Strategy 2: If organization/league is known, search by league name
         if (!string.IsNullOrEmpty(organization))
@@ -285,7 +309,7 @@ public class ImportMatchingService
     /// <summary>
     /// Calculate confidence score (0-100) for how well a file matches an event
     /// </summary>
-    private int CalculateMatchConfidence(string searchTitle, string eventTitle, string? detectedPart, Event evt, SportsParseResult? sportsResult = null)
+    internal int CalculateMatchConfidence(string searchTitle, string eventTitle, string? detectedPart, Event evt, SportsParseResult? sportsResult = null)
     {
         int confidence = 0;
 
@@ -328,6 +352,26 @@ public class ImportMatchingService
             }
         }
 
+        // Special-stage token agreement (rally SSn releases, issue #102).
+        // The stage number is the only difference between sixteen otherwise
+        // identical stage titles, so it outweighs generic word overlap.
+        // Gated to motorsport so an SS-like token in another sport's title
+        // cannot swing an unrelated match.
+        if (EventPartDetector.IsMotorsport(evt.Sport ?? "") ||
+            (sportsResult != null && EventPartDetector.IsMotorsport(sportsResult.Sport ?? "")))
+        {
+            var searchStage = ExtractStageNumber(normalizedSearch);
+            var eventStage = ExtractStageNumber(normalizedEvent);
+            if (searchStage.HasValue && eventStage.HasValue)
+            {
+                confidence += searchStage == eventStage ? 15 : -40;
+            }
+            else if (searchStage.HasValue || eventStage.HasValue)
+            {
+                confidence -= 15;
+            }
+        }
+
         // Sport mismatch penalty: If sports parser detected a sport and event is a different sport, heavy penalty
         if (sportsResult != null && !string.IsNullOrEmpty(sportsResult.Sport) && !string.IsNullOrEmpty(evt.Sport))
         {
@@ -349,12 +393,27 @@ public class ImportMatchingService
             }
         }
 
-        // Date match bonus: If dates are within 3 days = +10 points
+        // Date match bonus.
+        //
+        // Compare broadcast-local dates, not raw timestamps. An evening game
+        // in the United States is stored in UTC as the following calendar day
+        // (a 19:05 first pitch is 00:05Z), so measuring from EventDate put
+        // every night game one day ahead of the date its release is named
+        // with. The previous day's game then scored higher than the right
+        // one, which is how a file landed on the wrong date (issue #256).
+        // The grab side already compares this way.
         if (sportsResult?.EventDate != null)
         {
-            var daysDiff = Math.Abs((evt.EventDate - sportsResult.EventDate.Value).TotalDays);
-            if (daysDiff <= 1) confidence += 15;
-            else if (daysDiff <= 3) confidence += 10;
+            var eventDate = (evt.BroadcastDate ?? evt.EventDate.Date).Date;
+            var daysDiff = Math.Abs((eventDate - sportsResult.EventDate.Value.Date).TotalDays);
+
+            // An exact date has to beat a neighbouring one outright. A
+            // baseball series puts the same two teams on the field on
+            // consecutive days, so the title says nothing that tells those
+            // events apart and the date is the only thing that does.
+            if (daysDiff == 0) confidence += 15;
+            else if (daysDiff <= 1) confidence += 10;
+            else if (daysDiff <= 3) confidence += 8;
             else if (daysDiff <= 7) confidence += 5;
         }
 
@@ -370,6 +429,33 @@ public class ImportMatchingService
             {
                 // Event specifically monitors this part
                 confidence += 20;
+            }
+        }
+
+        // Motorsport round match. The round only ever picked candidates out of
+        // the database. Candidates also arrive from the title, date and word
+        // searches, so an event from a different round competed on equal terms
+        // and collected the same session boost below, which is how a race file
+        // could import against the race of another round. Only compare a
+        // numeric round: other sports keep bracket names such as "Semi-final"
+        // in the same field.
+        if (sportsResult?.RoundNumber != null && int.TryParse(evt.Round, out var eventRound))
+        {
+            var parsedRound = sportsResult.RoundNumber.Value;
+            // Indexers number pre-season testing 0 where the API uses 500.
+            var roundsAgree = eventRound == parsedRound ||
+                              (parsedRound == 0 && eventRound == 500) ||
+                              (parsedRound == 500 && eventRound == 0);
+
+            if (roundsAgree)
+            {
+                confidence += 25;
+            }
+            else
+            {
+                confidence -= 100;
+                _logger.LogDebug("[Import Matching] Round mismatch REJECT: parsed round {Parsed} vs event round {EventRound} for {EventTitle}",
+                    parsedRound, eventRound, evt.Title);
             }
         }
 
@@ -417,6 +503,17 @@ public class ImportMatchingService
 
         return Math.Min(100, confidence);
     }
+
+    private static int? ExtractStageNumber(string normalizedTitle)
+    {
+        var match = Regex.Match(normalizedTitle, @"\bSS(\d+)\b", RegexOptions.IgnoreCase);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var stage) ? stage : null;
+    }
+
+    // LIKE metacharacters in a filename must stay literal, or an odd release
+    // name widens the pattern and floods the candidate cap.
+    private static string EscapeLikePattern(string input) =>
+        input.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
 
     /// <summary>
     /// Normalize title for better comparison

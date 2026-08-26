@@ -200,12 +200,19 @@ public class WindowsTrayIcon : IDisposable
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-            var exePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
-            if (!string.IsNullOrEmpty(exePath))
+            var command = BuildStartupCommand();
+            if (!string.IsNullOrEmpty(command))
             {
-                // Add --tray flag so it starts minimized to tray
-                key?.SetValue("Sportarr", $"\"{exePath}\" --tray");
+                key?.SetValue("Sportarr", command);
                 ShowBalloon("Sportarr", "Sportarr will start automatically with Windows", ToolTipIcon.Info);
+            }
+            else
+            {
+                MessageBox.Show(
+                    "Could not work out how Sportarr was launched, so it cannot be registered to start with Windows.",
+                    "Sportarr",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
             }
         }
         catch (Exception ex)
@@ -216,6 +223,35 @@ public class WindowsTrayIcon : IDisposable
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
+    }
+
+    /// <summary>
+    /// Build the command Windows should run at login.
+    ///
+    /// On a framework-dependent build the running process is dotnet.exe, the
+    /// .NET host, not Sportarr. Registering that on its own launched the host
+    /// with a flag it does not understand and Sportarr never started, while
+    /// the menu happily showed the option as enabled. The managed assembly has
+    /// to be named alongside it. A self-contained build has its own executable
+    /// and needs nothing extra.
+    /// </summary>
+    private static string BuildStartupCommand()
+    {
+        var processPath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+        if (string.IsNullOrEmpty(processPath)) return "";
+
+        var isDotnetHost = string.Equals(
+            Path.GetFileNameWithoutExtension(processPath), "dotnet", StringComparison.OrdinalIgnoreCase);
+
+        if (!isDotnetHost)
+        {
+            return $"\"{processPath}\" --tray";
+        }
+
+        var managedAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location;
+        if (string.IsNullOrEmpty(managedAssembly)) return "";
+
+        return $"\"{processPath}\" \"{managedAssembly}\" --tray";
     }
 
     private void DisableStartup()

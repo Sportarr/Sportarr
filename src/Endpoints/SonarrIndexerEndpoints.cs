@@ -22,7 +22,9 @@ app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program>
     // Read the test indexer payload from Prowlarr
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
-    logger.LogInformation("[PROWLARR] Test indexer payload: {Json}", json);
+    // The payload carries the indexer's API key. Logging it whole put private
+    // tracker credentials into anything that reads or ships the logs.
+    logger.LogInformation("[PROWLARR] Test indexer payload: {Json}", SecretRedactor.Json(json));
 
     // For now, just return success - Prowlarr is testing if we can receive indexer configs
     // In a real implementation, we might test the indexer URL, but for connection testing this is enough
@@ -486,7 +488,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
-    logger.LogInformation("[PROWLARR] POST /api/v3/indexer - Creating/updating indexer: {Json}", json);
+    logger.LogInformation("[PROWLARR] POST /api/v3/indexer - Creating/updating indexer: {Json}", SecretRedactor.Json(json));
 
     try
     {
@@ -539,7 +541,20 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
         // Check both with and without trailing slash to handle legacy data
         var normalizedBaseUrl = baseUrl.TrimEnd('/').ToLowerInvariant();
         var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
-        var existingIndexer = await db.Indexers
+
+        // Identity comes from the id when the caller supplies one. Matching on
+        // the URL alone meant editing an indexer's URL created a second copy
+        // rather than updating the first, and the stale one kept polling the
+        // old endpoint while both spent quota on the same upstream.
+        Indexer? existingIndexer = null;
+        if (prowlarrIndexer.TryGetProperty("id", out var idProp) &&
+            idProp.ValueKind == System.Text.Json.JsonValueKind.Number &&
+            idProp.TryGetInt32(out var incomingId) && incomingId > 0)
+        {
+            existingIndexer = await db.Indexers.FirstOrDefaultAsync(i => i.Id == incomingId);
+        }
+
+        existingIndexer ??= await db.Indexers
             .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl || i.Url.ToLower() == normalizedBaseUrlWithSlash);
 
         Indexer indexer;
@@ -551,13 +566,19 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             logger.LogInformation("[PROWLARR] Found existing indexer with same baseUrl, updating instead of creating duplicate. BaseUrl: {BaseUrl}, ExistingId: {Id}", baseUrl, existingIndexer.Id);
 
             existingIndexer.Name = name;
-            existingIndexer.Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
+            existingIndexer.Type = ResolveIndexerType(implementation);
+            existingIndexer.Url = baseUrl;
             existingIndexer.ApiKey = apiKey;
             existingIndexer.Categories = categories;
-            existingIndexer.Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp2) ? enableRssProp2.GetBoolean() : true;
             existingIndexer.EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss2) ? rss2.GetBoolean() : true;
             existingIndexer.EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch2) ? autoSearch2.GetBoolean() : true;
             existingIndexer.EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch2) ? intSearch2.GetBoolean() : true;
+            // Enabled used to be a copy of the RSS flag, so an indexer set up
+            // for searching but not for RSS was switched off entirely and
+            // never searched again.
+            existingIndexer.Enabled = existingIndexer.EnableRss
+                || existingIndexer.EnableAutomaticSearch
+                || existingIndexer.EnableInteractiveSearch;
             existingIndexer.Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp2) ? priorityProp2.GetInt32() : 25;
             existingIndexer.MinimumSeeders = minimumSeeders;
             existingIndexer.SeedRatio = seedRatio;
@@ -577,11 +598,15 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             indexer = new Indexer
             {
                 Name = name,
-                Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
+                Type = ResolveIndexerType(implementation),
                 Url = baseUrl,
                 ApiKey = apiKey,
                 Categories = categories,
-                Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
+                // Enabled is not the RSS flag. An indexer set up for searching
+                // but not for RSS used to arrive switched off entirely.
+                Enabled = (prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true)
+                    || (prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoProbe) ? autoProbe.GetBoolean() : true)
+                    || (prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intProbe) ? intProbe.GetBoolean() : true),
                 EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
                 EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
                 EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
@@ -682,7 +707,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
-    logger.LogInformation("[PROWLARR] PUT /api/v3/indexer/{Id} - Updating indexer: {Json}", id, json);
+    logger.LogInformation("[PROWLARR] PUT /api/v3/indexer/{Id} - Updating indexer: {Json}", id, SecretRedactor.Json(json));
 
     try
     {
@@ -707,12 +732,16 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
             return Results.BadRequest(new { error = "baseUrl is required" });
         }
 
-        // Find indexer by baseUrl (unique identifier) instead of by ID
-        // This prevents Prowlarr from overwriting indexers when IDs don't match
-        // URLs are normalized (no trailing slash) for consistent matching
-        // Check both with and without trailing slash to handle legacy data
+        // Look the indexer up by the id in the route first. Matching only on
+        // the URL meant an edit that changed the URL found nothing and made a
+        // second copy, leaving the old one polling an endpoint the user had
+        // moved away from. The URL is still the fallback for a caller whose
+        // ids do not line up with ours.
         var baseUrlWithSlash = baseUrl + "/";
-        var indexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl || i.Url == baseUrlWithSlash);
+        var indexer = id > 0
+            ? await db.Indexers.FirstOrDefaultAsync(i => i.Id == id)
+            : null;
+        indexer ??= await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl || i.Url == baseUrlWithSlash);
 
         if (indexer == null)
         {
@@ -755,16 +784,24 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
             indexer = new Indexer
             {
                 Name = name,
-                Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
                 Url = baseUrl,
                 ApiKey = apiKey,
                 Categories = categories,
-                Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
+                // Enabled is not the RSS flag. An indexer set up for searching
+                // but not for RSS used to arrive switched off entirely.
+                Enabled = (prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true)
+                    || (prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoProbe) ? autoProbe.GetBoolean() : true)
+                    || (prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intProbe) ? intProbe.GetBoolean() : true),
                 EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
                 EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
                 EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
                 Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
                 MinimumSeeders = minimumSeeders,
+                // Without this the enum's first value stands, so an indexer
+                // created through this branch was treated as Torznab whatever
+                // the payload said, and a Newznab one searched on the wrong
+                // protocol.
+                Type = ResolveIndexerType(implementation),
                 SeedRatio = seedRatio,
                 SeedTime = seedTime,
                 SeasonPackSeedTime = seasonPackSeedTime,
@@ -782,7 +819,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
         {
             // Update existing indexer
             indexer.Name = prowlarrIndexer.GetProperty("name").GetString() ?? indexer.Name;
-            indexer.Type = prowlarrIndexer.GetProperty("implementation").GetString() == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
+            indexer.Type = ResolveIndexerType(prowlarrIndexer.GetProperty("implementation").GetString());
 
             // Parse seedCriteria object if present (Prowlarr sends this for torrent indexers)
             if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteria))
@@ -844,6 +881,11 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
                 indexer.EnableAutomaticSearch = autoSearch.GetBoolean();
             if (prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch))
                 indexer.EnableInteractiveSearch = intSearch.GetBoolean();
+
+            // An indexer is on when any of its three uses is on.
+            indexer.Enabled = indexer.EnableRss
+                || indexer.EnableAutomaticSearch
+                || indexer.EnableInteractiveSearch;
 
             indexer.LastModified = DateTime.UtcNow;
             await db.SaveChangesAsync();
@@ -1027,4 +1069,18 @@ app.MapPost("/api/v3/indexer/bulk/delete", async (HttpRequest request, SportarrD
 
         return app;
     }
+
+    /// <summary>
+    /// Which protocol an indexer speaks, from the implementation name a
+    /// Prowlarr payload carries.
+    ///
+    /// This used to be written out at each call site, and the one that
+    /// creates an indexer from a PUT was missed. Torznab is the enum's first
+    /// value, so that indexer came out Torznab whatever the payload said, and
+    /// a Newznab one searched on the wrong protocol.
+    /// </summary>
+    internal static IndexerType ResolveIndexerType(string? implementation) =>
+        string.Equals(implementation, "Torznab", StringComparison.OrdinalIgnoreCase)
+            ? IndexerType.Torznab
+            : IndexerType.Newznab;
 }

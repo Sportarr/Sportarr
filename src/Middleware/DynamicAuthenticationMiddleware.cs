@@ -56,9 +56,15 @@ public class DynamicAuthenticationMiddleware
             {
                 securitySettings = JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings);
             }
-            catch
+            catch (Exception ex)
             {
-                // Use defaults if deserialization fails
+                // Falls through to authMethod "none", which leaves the API key
+                // as the only gate on /api. Say so: the key gate on
+                // /initialize.json treats unreadable settings as auth-enabled
+                // and withholds the key, so the two disagree and the UI loads
+                // with no key and every call it makes is refused. Silently
+                // that looks like the app is simply broken.
+                logger.LogError(ex, "[AUTH] Security settings could not be read. Treating authentication as disabled; the UI may be unable to obtain its API key until this is repaired.");
             }
         }
 
@@ -112,6 +118,21 @@ public class DynamicAuthenticationMiddleware
             if (!string.IsNullOrEmpty(externalUser))
             {
                 logger.LogDebug("[AUTH] External authentication: user={User}", externalUser);
+            }
+            else
+            {
+                // No proxy header, so the local-address exemption is what let
+                // this request through. Hold it to the same API key rule the
+                // other methods apply below. Without it, external auth was the
+                // one method that served settings and download client
+                // credentials to any local caller with no key at all.
+                var externalApiKey = configuration[Sportarr.Api.Constants.ConfigurationKeys.ApiKey];
+                if (context.Request.Path.StartsWithSegments("/api") && !string.IsNullOrWhiteSpace(externalApiKey))
+                {
+                    context.Response.StatusCode = 401;
+                    await context.Response.WriteAsJsonAsync(new { error = "Unauthorized", message = "API key required" });
+                    return;
+                }
             }
 
             // External auth - trust that the proxy handled authentication
@@ -349,7 +370,17 @@ public class DynamicAuthenticationMiddleware
         return headers.ContainsKey("X-Forwarded-For") ||
                headers.ContainsKey("X-Real-IP") ||
                headers.ContainsKey("Forwarded") ||
-               headers.ContainsKey("X-Forwarded-Host");
+               headers.ContainsKey("X-Forwarded-Host") ||
+               // UseForwardedHeaders runs before this and does not leave the
+               // headers behind: it applies X-Forwarded-For to the connection
+               // and renames it to X-Original-For. Checking only the incoming
+               // names therefore saw a clean request, while the address it went
+               // on to judge was one the caller had supplied. A caller sending
+               // X-Forwarded-For: 127.0.0.1 was read as loopback and handed the
+               // master API key by the /initialize.json gate.
+               headers.ContainsKey("X-Original-For") ||
+               headers.ContainsKey("X-Original-Proto") ||
+               headers.ContainsKey("X-Original-Host");
     }
 
     private static bool IsPrivateClass172(string ipString)

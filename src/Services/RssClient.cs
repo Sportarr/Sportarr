@@ -17,6 +17,12 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class RssClient
 {
+    /// <summary>
+    /// Ceiling on a feed body. Real RSS is text and even a very large feed stays
+    /// far inside this.
+    /// </summary>
+    private const long MaxFeedBytes = 64L * 1024 * 1024;
+
     private readonly HttpClient _httpClient;
     private readonly ILogger<RssClient> _logger;
 
@@ -246,13 +252,19 @@ public class RssClient
         HttpResponseMessage response;
         try
         {
-            response = await _httpClient.SendAsync(request);
+            response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[RSS] {Indexer}: HTTP fetch failed for {Url}", indexer.Name, indexer.Url);
+            _logger.LogWarning(ex, "[RSS] {Indexer}: HTTP fetch failed for {Url}", indexer.Name, Sportarr.Api.Helpers.SecretRedactor.Url(indexer.Url));
             throw new IndexerRequestException($"Fetch failed: {ex.Message}", HttpStatusCode.ServiceUnavailable);
         }
+
+        // Disposed on every path. The response streams now, so leaving it
+        // undisposed on a throw pinned the pooled connection with an
+        // undrained body behind it, and a feed answering 429 on every sync
+        // accumulated one dead socket per pass.
+        using var _ = response;
 
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
@@ -264,7 +276,59 @@ public class RssClient
             throw new IndexerRequestException($"RSS feed returned HTTP {(int)response.StatusCode}", response.StatusCode);
         }
 
-        var body = await response.Content.ReadAsStringAsync();
+        // Bounded read. An RSS feed is text and a large one is a few
+        // megabytes, but this took whatever arrived straight into a string, so
+        // an indexer serving an endless or enormous body could exhaust the
+        // process. The declared length is checked first and the read is capped
+        // as it goes, because a server can omit that header or lie about it.
+        var declaredLength = response.Content.Headers.ContentLength;
+        if (declaredLength > MaxFeedBytes)
+        {
+            throw new IndexerRequestException(
+                $"RSS feed is too large ({declaredLength} bytes); the ceiling is {MaxFeedBytes} bytes.",
+                response.StatusCode);
+        }
+
+        // The client timeout ends at the headers on a streamed response, so
+        // the body read carries its own deadline. Without one a feed that
+        // stalled after its headers held this sync open for ever, and the
+        // syncs run serially.
+        using var readDeadline = new CancellationTokenSource(Sportarr.Api.Helpers.BoundedHttpContent.DefaultReadTimeout);
+
+        string body;
+        await using (var feedStream = await response.Content.ReadAsStreamAsync(readDeadline.Token))
+        using (var bounded = new MemoryStream())
+        {
+            var chunk = new byte[81920];
+            int read;
+            try
+            {
+                while ((read = await feedStream.ReadAsync(chunk, readDeadline.Token)) > 0)
+                {
+                    if (bounded.Length + read > MaxFeedBytes)
+                    {
+                        throw new IndexerRequestException(
+                            $"RSS feed exceeded the {MaxFeedBytes} byte ceiling while downloading.",
+                            response.StatusCode);
+                    }
+
+                    bounded.Write(chunk, 0, read);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw new IndexerRequestException(
+                    "RSS feed stalled while downloading.", response.StatusCode);
+            }
+
+            // Indexers still publish feeds as ISO-8859-1 and similar. Reading
+            // every one as UTF-8 mangles accented titles and can break the XML
+            // parse outright, which the framework call this replaced avoided.
+            body = Sportarr.Api.Helpers.BoundedHttpContent
+                .ResolveEncoding(response.Content)
+                .GetString(bounded.ToArray());
+        }
+
         try
         {
             return XDocument.Parse(body);

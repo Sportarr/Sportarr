@@ -2,6 +2,694 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme palette.
+   Every Tailwind colour utility resolves through these variables (see
+   tailwind.config.js), so a theme swaps the whole app at once instead of
+   every component carrying a second set of classes. The dark values are
+   the stock Tailwind ones, so dark mode is byte for byte what it was.
+   Neutrals invert across the scale. Saturated hues keep their solid
+   action shades (500/600/700) so a red button stays the same red, and
+   swap only the dark tints used as surfaces and the pale shades used as
+   text on dark. */
+:root {
+    --c-gray-50: 249 250 251;
+    --c-gray-100: 243 244 246;
+    --c-gray-200: 229 231 235;
+    --c-gray-300: 209 213 219;
+    --c-gray-400: 156 163 175;
+    --c-gray-500: 107 114 128;
+    --c-gray-600: 75 85 99;
+    --c-gray-700: 55 65 81;
+    --c-gray-800: 31 41 55;
+    --c-gray-900: 17 24 39;
+    --c-gray-950: 3 7 18;
+    --c-red-50: 254 242 242;
+    --c-red-100: 254 226 226;
+    --c-red-200: 254 202 202;
+    --c-red-300: 252 165 165;
+    --c-red-400: 248 113 113;
+    --c-red-500: 239 68 68;
+    --c-red-600: 220 38 38;
+    --c-red-700: 185 28 28;
+    --c-red-800: 153 27 27;
+    --c-red-900: 127 29 29;
+    --c-red-950: 69 10 10;
+    --c-green-50: 240 253 244;
+    --c-green-100: 220 252 231;
+    --c-green-200: 187 247 208;
+    --c-green-300: 134 239 172;
+    --c-green-400: 74 222 128;
+    --c-green-500: 34 197 94;
+    --c-green-600: 22 163 74;
+    --c-green-700: 21 128 61;
+    --c-green-800: 22 101 52;
+    --c-green-900: 20 83 45;
+    --c-green-950: 5 46 22;
+    --c-blue-50: 239 246 255;
+    --c-blue-100: 219 234 254;
+    --c-blue-200: 191 219 254;
+    --c-blue-300: 147 197 253;
+    --c-blue-400: 96 165 250;
+    --c-blue-500: 59 130 246;
+    --c-blue-600: 37 99 235;
+    --c-blue-700: 29 78 216;
+    --c-blue-800: 30 64 175;
+    --c-blue-900: 30 58 138;
+    --c-blue-950: 23 37 84;
+    --c-yellow-50: 254 252 232;
+    --c-yellow-100: 254 249 195;
+    --c-yellow-200: 254 240 138;
+    --c-yellow-300: 253 224 71;
+    --c-yellow-400: 250 204 21;
+    --c-yellow-500: 234 179 8;
+    --c-yellow-600: 202 138 4;
+    --c-yellow-700: 161 98 7;
+    --c-yellow-800: 133 77 14;
+    --c-yellow-900: 113 63 18;
+    --c-yellow-950: 66 32 6;
+    --c-amber-50: 255 251 235;
+    --c-amber-100: 254 243 199;
+    --c-amber-200: 253 230 138;
+    --c-amber-300: 252 211 77;
+    --c-amber-400: 251 191 36;
+    --c-amber-500: 245 158 11;
+    --c-amber-600: 217 119 6;
+    --c-amber-700: 180 83 9;
+    --c-amber-800: 146 64 14;
+    --c-amber-900: 120 53 15;
+    --c-amber-950: 69 26 3;
+    --c-purple-50: 250 245 255;
+    --c-purple-100: 243 232 255;
+    --c-purple-200: 233 213 255;
+    --c-purple-300: 216 180 254;
+    --c-purple-400: 192 132 252;
+    --c-purple-500: 168 85 247;
+    --c-purple-600: 147 51 234;
+    --c-purple-700: 126 34 206;
+    --c-purple-800: 107 33 168;
+    --c-purple-900: 88 28 135;
+    --c-purple-950: 59 7 100;
+    --c-orange-50: 255 247 237;
+    --c-orange-100: 255 237 213;
+    --c-orange-200: 254 215 170;
+    --c-orange-300: 253 186 116;
+    --c-orange-400: 251 146 60;
+    --c-orange-500: 249 115 22;
+    --c-orange-600: 234 88 12;
+    --c-orange-700: 194 65 12;
+    --c-orange-800: 154 52 18;
+    --c-orange-900: 124 45 18;
+    --c-orange-950: 67 20 7;
+    --c-indigo-50: 238 242 255;
+    --c-indigo-100: 224 231 255;
+    --c-indigo-200: 199 210 254;
+    --c-indigo-300: 165 180 252;
+    --c-indigo-400: 129 140 248;
+    --c-indigo-500: 99 102 241;
+    --c-indigo-600: 79 70 229;
+    --c-indigo-700: 67 56 202;
+    --c-indigo-800: 55 48 163;
+    --c-indigo-900: 49 46 129;
+    --c-indigo-950: 30 27 75;
+    --c-emerald-50: 236 253 245;
+    --c-emerald-100: 209 250 229;
+    --c-emerald-200: 167 243 208;
+    --c-emerald-300: 110 231 183;
+    --c-emerald-400: 52 211 153;
+    --c-emerald-500: 16 185 129;
+    --c-emerald-600: 5 150 105;
+    --c-emerald-700: 4 120 87;
+    --c-emerald-800: 6 95 70;
+    --c-emerald-900: 6 78 59;
+    --c-emerald-950: 2 44 34;
+    --c-cyan-50: 236 254 255;
+    --c-cyan-100: 207 250 254;
+    --c-cyan-200: 165 243 252;
+    --c-cyan-300: 103 232 249;
+    --c-cyan-400: 34 211 238;
+    --c-cyan-500: 6 182 212;
+    --c-cyan-600: 8 145 178;
+    --c-cyan-700: 14 116 144;
+    --c-cyan-800: 21 94 117;
+    --c-cyan-900: 22 78 99;
+    --c-cyan-950: 8 51 68;
+    --c-rose-50: 255 241 242;
+    --c-rose-100: 255 228 230;
+    --c-rose-200: 254 205 211;
+    --c-rose-300: 253 164 175;
+    --c-rose-400: 251 113 133;
+    --c-rose-500: 244 63 94;
+    --c-rose-600: 225 29 72;
+    --c-rose-700: 190 18 60;
+    --c-rose-800: 159 18 57;
+    --c-rose-900: 136 19 55;
+    --c-rose-950: 76 5 25;
+    --c-violet-50: 245 243 255;
+    --c-violet-100: 237 233 254;
+    --c-violet-200: 221 214 254;
+    --c-violet-300: 196 181 253;
+    --c-violet-400: 167 139 250;
+    --c-violet-500: 139 92 246;
+    --c-violet-600: 124 58 237;
+    --c-violet-700: 109 40 217;
+    --c-violet-800: 91 33 182;
+    --c-violet-900: 76 29 149;
+    --c-violet-950: 46 16 101;
+    --c-slate-50: 248 250 252;
+    --c-slate-100: 241 245 249;
+    --c-slate-200: 226 232 240;
+    --c-slate-300: 203 213 225;
+    --c-slate-400: 148 163 184;
+    --c-slate-500: 100 116 139;
+    --c-slate-600: 71 85 105;
+    --c-slate-700: 51 65 85;
+    --c-slate-800: 30 41 59;
+    --c-slate-900: 15 23 42;
+    --c-slate-950: 2 6 23;
+    --c-fuchsia-50: 253 244 255;
+    --c-fuchsia-100: 250 232 255;
+    --c-fuchsia-200: 245 208 254;
+    --c-fuchsia-300: 240 171 252;
+    --c-fuchsia-400: 232 121 249;
+    --c-fuchsia-500: 217 70 239;
+    --c-fuchsia-600: 192 38 211;
+    --c-fuchsia-700: 162 28 175;
+    --c-fuchsia-800: 134 25 143;
+    --c-fuchsia-900: 112 26 117;
+    --c-fuchsia-950: 74 4 78;
+    --c-teal-50: 240 253 250;
+    --c-teal-100: 204 251 241;
+    --c-teal-200: 153 246 228;
+    --c-teal-300: 94 234 212;
+    --c-teal-400: 45 212 191;
+    --c-teal-500: 20 184 166;
+    --c-teal-600: 13 148 136;
+    --c-teal-700: 15 118 110;
+    --c-teal-800: 17 94 89;
+    --c-teal-900: 19 78 74;
+    --c-teal-950: 4 47 46;
+    --c-pink-50: 253 242 248;
+    --c-pink-100: 252 231 243;
+    --c-pink-200: 251 207 232;
+    --c-pink-300: 249 168 212;
+    --c-pink-400: 244 114 182;
+    --c-pink-500: 236 72 153;
+    --c-pink-600: 219 39 119;
+    --c-pink-700: 190 24 93;
+    --c-pink-800: 157 23 77;
+    --c-pink-900: 131 24 67;
+    --c-pink-950: 80 7 36;
+    --c-sky-50: 240 249 255;
+    --c-sky-100: 224 242 254;
+    --c-sky-200: 186 230 253;
+    --c-sky-300: 125 211 252;
+    --c-sky-400: 56 189 248;
+    --c-sky-500: 14 165 233;
+    --c-sky-600: 2 132 199;
+    --c-sky-700: 3 105 161;
+    --c-sky-800: 7 89 133;
+    --c-sky-900: 12 74 110;
+    --c-sky-950: 8 47 73;
+    --c-lime-50: 247 254 231;
+    --c-lime-100: 236 252 203;
+    --c-lime-200: 217 249 157;
+    --c-lime-300: 190 242 100;
+    --c-lime-400: 163 230 53;
+    --c-lime-500: 132 204 22;
+    --c-lime-600: 101 163 13;
+    --c-lime-700: 77 124 15;
+    --c-lime-800: 63 98 18;
+    --c-lime-900: 54 83 20;
+    --c-lime-950: 26 46 5;
+    --c-zinc-50: 250 250 250;
+    --c-zinc-100: 244 244 245;
+    --c-zinc-200: 228 228 231;
+    --c-zinc-300: 212 212 216;
+    --c-zinc-400: 161 161 170;
+    --c-zinc-500: 113 113 122;
+    --c-zinc-600: 82 82 91;
+    --c-zinc-700: 63 63 70;
+    --c-zinc-800: 39 39 42;
+    --c-zinc-900: 24 24 27;
+    --c-zinc-950: 9 9 11;
+    --c-neutral-50: 250 250 250;
+    --c-neutral-100: 245 245 245;
+    --c-neutral-200: 229 229 229;
+    --c-neutral-300: 212 212 212;
+    --c-neutral-400: 163 163 163;
+    --c-neutral-500: 115 115 115;
+    --c-neutral-600: 82 82 82;
+    --c-neutral-700: 64 64 64;
+    --c-neutral-800: 38 38 38;
+    --c-neutral-900: 23 23 23;
+    --c-neutral-950: 10 10 10;
+    --c-stone-50: 250 250 249;
+    --c-stone-100: 245 245 244;
+    --c-stone-200: 231 229 228;
+    --c-stone-300: 214 211 209;
+    --c-stone-400: 168 162 158;
+    --c-stone-500: 120 113 108;
+    --c-stone-600: 87 83 78;
+    --c-stone-700: 68 64 60;
+    --c-stone-800: 41 37 36;
+    --c-stone-900: 28 25 23;
+    --c-stone-950: 12 10 9;
+    --c-gray-750: 45 53 68;
+    --c-white: 255 255 255;
+    --c-black: 0 0 0;
+    color-scheme: dark;
+}
+
+[data-theme="light"] {
+    --c-gray-50: 3 7 18;
+    --c-gray-100: 17 24 39;
+    --c-gray-200: 31 41 55;
+    --c-gray-300: 55 65 81;
+    --c-gray-400: 75 85 99;
+    --c-gray-500: 107 114 128;
+    --c-gray-600: 156 163 175;
+    --c-gray-700: 209 213 219;
+    --c-gray-800: 229 231 235;
+    --c-gray-900: 243 244 246;
+    --c-gray-950: 249 250 251;
+    --c-red-50: 69 10 10;
+    --c-red-100: 127 29 29;
+    --c-red-200: 153 27 27;
+    --c-red-300: 153 27 27;
+    --c-red-400: 185 28 28;
+    --c-red-500: 239 68 68;
+    --c-red-600: 220 38 38;
+    --c-red-700: 185 28 28;
+    --c-red-800: 254 202 202;
+    --c-red-900: 254 226 226;
+    --c-red-950: 254 242 242;
+    --c-green-50: 5 46 22;
+    --c-green-100: 20 83 45;
+    --c-green-200: 22 101 52;
+    --c-green-300: 22 101 52;
+    --c-green-400: 21 128 61;
+    --c-green-500: 34 197 94;
+    --c-green-600: 22 163 74;
+    --c-green-700: 21 128 61;
+    --c-green-800: 187 247 208;
+    --c-green-900: 220 252 231;
+    --c-green-950: 240 253 244;
+    --c-blue-50: 23 37 84;
+    --c-blue-100: 30 58 138;
+    --c-blue-200: 30 64 175;
+    --c-blue-300: 30 64 175;
+    --c-blue-400: 29 78 216;
+    --c-blue-500: 59 130 246;
+    --c-blue-600: 37 99 235;
+    --c-blue-700: 29 78 216;
+    --c-blue-800: 191 219 254;
+    --c-blue-900: 219 234 254;
+    --c-blue-950: 239 246 255;
+    --c-yellow-50: 66 32 6;
+    --c-yellow-100: 113 63 18;
+    --c-yellow-200: 133 77 14;
+    --c-yellow-300: 133 77 14;
+    --c-yellow-400: 161 98 7;
+    --c-yellow-500: 234 179 8;
+    --c-yellow-600: 202 138 4;
+    --c-yellow-700: 161 98 7;
+    --c-yellow-800: 254 240 138;
+    --c-yellow-900: 254 249 195;
+    --c-yellow-950: 254 252 232;
+    --c-amber-50: 69 26 3;
+    --c-amber-100: 120 53 15;
+    --c-amber-200: 146 64 14;
+    --c-amber-300: 146 64 14;
+    --c-amber-400: 180 83 9;
+    --c-amber-500: 245 158 11;
+    --c-amber-600: 217 119 6;
+    --c-amber-700: 180 83 9;
+    --c-amber-800: 253 230 138;
+    --c-amber-900: 254 243 199;
+    --c-amber-950: 255 251 235;
+    --c-purple-50: 59 7 100;
+    --c-purple-100: 88 28 135;
+    --c-purple-200: 107 33 168;
+    --c-purple-300: 107 33 168;
+    --c-purple-400: 126 34 206;
+    --c-purple-500: 168 85 247;
+    --c-purple-600: 147 51 234;
+    --c-purple-700: 126 34 206;
+    --c-purple-800: 233 213 255;
+    --c-purple-900: 243 232 255;
+    --c-purple-950: 250 245 255;
+    --c-orange-50: 67 20 7;
+    --c-orange-100: 124 45 18;
+    --c-orange-200: 154 52 18;
+    --c-orange-300: 154 52 18;
+    --c-orange-400: 194 65 12;
+    --c-orange-500: 249 115 22;
+    --c-orange-600: 234 88 12;
+    --c-orange-700: 194 65 12;
+    --c-orange-800: 254 215 170;
+    --c-orange-900: 255 237 213;
+    --c-orange-950: 255 247 237;
+    --c-indigo-50: 30 27 75;
+    --c-indigo-100: 49 46 129;
+    --c-indigo-200: 55 48 163;
+    --c-indigo-300: 55 48 163;
+    --c-indigo-400: 67 56 202;
+    --c-indigo-500: 99 102 241;
+    --c-indigo-600: 79 70 229;
+    --c-indigo-700: 67 56 202;
+    --c-indigo-800: 199 210 254;
+    --c-indigo-900: 224 231 255;
+    --c-indigo-950: 238 242 255;
+    --c-emerald-50: 2 44 34;
+    --c-emerald-100: 6 78 59;
+    --c-emerald-200: 6 95 70;
+    --c-emerald-300: 6 95 70;
+    --c-emerald-400: 4 120 87;
+    --c-emerald-500: 16 185 129;
+    --c-emerald-600: 5 150 105;
+    --c-emerald-700: 4 120 87;
+    --c-emerald-800: 167 243 208;
+    --c-emerald-900: 209 250 229;
+    --c-emerald-950: 236 253 245;
+    --c-cyan-50: 8 51 68;
+    --c-cyan-100: 22 78 99;
+    --c-cyan-200: 21 94 117;
+    --c-cyan-300: 21 94 117;
+    --c-cyan-400: 14 116 144;
+    --c-cyan-500: 6 182 212;
+    --c-cyan-600: 8 145 178;
+    --c-cyan-700: 14 116 144;
+    --c-cyan-800: 165 243 252;
+    --c-cyan-900: 207 250 254;
+    --c-cyan-950: 236 254 255;
+    --c-rose-50: 76 5 25;
+    --c-rose-100: 136 19 55;
+    --c-rose-200: 159 18 57;
+    --c-rose-300: 159 18 57;
+    --c-rose-400: 190 18 60;
+    --c-rose-500: 244 63 94;
+    --c-rose-600: 225 29 72;
+    --c-rose-700: 190 18 60;
+    --c-rose-800: 254 205 211;
+    --c-rose-900: 255 228 230;
+    --c-rose-950: 255 241 242;
+    --c-violet-50: 46 16 101;
+    --c-violet-100: 76 29 149;
+    --c-violet-200: 91 33 182;
+    --c-violet-300: 91 33 182;
+    --c-violet-400: 109 40 217;
+    --c-violet-500: 139 92 246;
+    --c-violet-600: 124 58 237;
+    --c-violet-700: 109 40 217;
+    --c-violet-800: 221 214 254;
+    --c-violet-900: 237 233 254;
+    --c-violet-950: 245 243 255;
+    --c-slate-50: 2 6 23;
+    --c-slate-100: 15 23 42;
+    --c-slate-200: 30 41 59;
+    --c-slate-300: 51 65 85;
+    --c-slate-400: 71 85 105;
+    --c-slate-500: 100 116 139;
+    --c-slate-600: 148 163 184;
+    --c-slate-700: 203 213 225;
+    --c-slate-800: 226 232 240;
+    --c-slate-900: 241 245 249;
+    --c-slate-950: 248 250 252;
+    --c-fuchsia-50: 74 4 78;
+    --c-fuchsia-100: 112 26 117;
+    --c-fuchsia-200: 134 25 143;
+    --c-fuchsia-300: 134 25 143;
+    --c-fuchsia-400: 162 28 175;
+    --c-fuchsia-500: 217 70 239;
+    --c-fuchsia-600: 192 38 211;
+    --c-fuchsia-700: 162 28 175;
+    --c-fuchsia-800: 245 208 254;
+    --c-fuchsia-900: 250 232 255;
+    --c-fuchsia-950: 253 244 255;
+    --c-teal-50: 4 47 46;
+    --c-teal-100: 19 78 74;
+    --c-teal-200: 17 94 89;
+    --c-teal-300: 17 94 89;
+    --c-teal-400: 15 118 110;
+    --c-teal-500: 20 184 166;
+    --c-teal-600: 13 148 136;
+    --c-teal-700: 15 118 110;
+    --c-teal-800: 153 246 228;
+    --c-teal-900: 204 251 241;
+    --c-teal-950: 240 253 250;
+    --c-pink-50: 80 7 36;
+    --c-pink-100: 131 24 67;
+    --c-pink-200: 157 23 77;
+    --c-pink-300: 157 23 77;
+    --c-pink-400: 190 24 93;
+    --c-pink-500: 236 72 153;
+    --c-pink-600: 219 39 119;
+    --c-pink-700: 190 24 93;
+    --c-pink-800: 251 207 232;
+    --c-pink-900: 252 231 243;
+    --c-pink-950: 253 242 248;
+    --c-sky-50: 8 47 73;
+    --c-sky-100: 12 74 110;
+    --c-sky-200: 7 89 133;
+    --c-sky-300: 7 89 133;
+    --c-sky-400: 3 105 161;
+    --c-sky-500: 14 165 233;
+    --c-sky-600: 2 132 199;
+    --c-sky-700: 3 105 161;
+    --c-sky-800: 186 230 253;
+    --c-sky-900: 224 242 254;
+    --c-sky-950: 240 249 255;
+    --c-lime-50: 26 46 5;
+    --c-lime-100: 54 83 20;
+    --c-lime-200: 63 98 18;
+    --c-lime-300: 63 98 18;
+    --c-lime-400: 77 124 15;
+    --c-lime-500: 132 204 22;
+    --c-lime-600: 101 163 13;
+    --c-lime-700: 77 124 15;
+    --c-lime-800: 217 249 157;
+    --c-lime-900: 236 252 203;
+    --c-lime-950: 247 254 231;
+    --c-zinc-50: 9 9 11;
+    --c-zinc-100: 24 24 27;
+    --c-zinc-200: 39 39 42;
+    --c-zinc-300: 63 63 70;
+    --c-zinc-400: 82 82 91;
+    --c-zinc-500: 113 113 122;
+    --c-zinc-600: 161 161 170;
+    --c-zinc-700: 212 212 216;
+    --c-zinc-800: 228 228 231;
+    --c-zinc-900: 244 244 245;
+    --c-zinc-950: 250 250 250;
+    --c-neutral-50: 10 10 10;
+    --c-neutral-100: 23 23 23;
+    --c-neutral-200: 38 38 38;
+    --c-neutral-300: 64 64 64;
+    --c-neutral-400: 82 82 82;
+    --c-neutral-500: 115 115 115;
+    --c-neutral-600: 163 163 163;
+    --c-neutral-700: 212 212 212;
+    --c-neutral-800: 229 229 229;
+    --c-neutral-900: 245 245 245;
+    --c-neutral-950: 250 250 250;
+    --c-stone-50: 12 10 9;
+    --c-stone-100: 28 25 23;
+    --c-stone-200: 41 37 36;
+    --c-stone-300: 68 64 60;
+    --c-stone-400: 87 83 78;
+    --c-stone-500: 120 113 108;
+    --c-stone-600: 168 162 158;
+    --c-stone-700: 214 211 209;
+    --c-stone-800: 231 229 228;
+    --c-stone-900: 245 245 244;
+    --c-stone-950: 250 250 249;
+    --c-gray-750: 214 219 227;
+    /* White becomes the primary foreground, black the page. */
+    --c-white: 17 24 39;
+    --c-black: 255 255 255;
+    color-scheme: light;
+}
+
+/* Anything sitting on a saturated fill keeps white text in both themes.
+   The fill overrides the white variable on its own element, so every white
+   utility follows: text-white, text-white/70, hover:text-white, and the
+   important variants alike. */
+[data-theme="light"] :is(
+  .bg-red-500,
+  .hover\:bg-red-500:hover,
+  .focus\:bg-red-500:focus,
+  .bg-red-600,
+  .hover\:bg-red-600:hover,
+  .focus\:bg-red-600:focus,
+  .bg-red-700,
+  .hover\:bg-red-700:hover,
+  .focus\:bg-red-700:focus,
+  .bg-green-500,
+  .hover\:bg-green-500:hover,
+  .focus\:bg-green-500:focus,
+  .bg-green-600,
+  .hover\:bg-green-600:hover,
+  .focus\:bg-green-600:focus,
+  .bg-green-700,
+  .hover\:bg-green-700:hover,
+  .focus\:bg-green-700:focus,
+  .bg-blue-500,
+  .hover\:bg-blue-500:hover,
+  .focus\:bg-blue-500:focus,
+  .bg-blue-600,
+  .hover\:bg-blue-600:hover,
+  .focus\:bg-blue-600:focus,
+  .bg-blue-700,
+  .hover\:bg-blue-700:hover,
+  .focus\:bg-blue-700:focus,
+  .bg-yellow-500,
+  .hover\:bg-yellow-500:hover,
+  .focus\:bg-yellow-500:focus,
+  .bg-yellow-600,
+  .hover\:bg-yellow-600:hover,
+  .focus\:bg-yellow-600:focus,
+  .bg-yellow-700,
+  .hover\:bg-yellow-700:hover,
+  .focus\:bg-yellow-700:focus,
+  .bg-amber-500,
+  .hover\:bg-amber-500:hover,
+  .focus\:bg-amber-500:focus,
+  .bg-amber-600,
+  .hover\:bg-amber-600:hover,
+  .focus\:bg-amber-600:focus,
+  .bg-amber-700,
+  .hover\:bg-amber-700:hover,
+  .focus\:bg-amber-700:focus,
+  .bg-purple-500,
+  .hover\:bg-purple-500:hover,
+  .focus\:bg-purple-500:focus,
+  .bg-purple-600,
+  .hover\:bg-purple-600:hover,
+  .focus\:bg-purple-600:focus,
+  .bg-purple-700,
+  .hover\:bg-purple-700:hover,
+  .focus\:bg-purple-700:focus,
+  .bg-orange-500,
+  .hover\:bg-orange-500:hover,
+  .focus\:bg-orange-500:focus,
+  .bg-orange-600,
+  .hover\:bg-orange-600:hover,
+  .focus\:bg-orange-600:focus,
+  .bg-orange-700,
+  .hover\:bg-orange-700:hover,
+  .focus\:bg-orange-700:focus,
+  .bg-indigo-500,
+  .hover\:bg-indigo-500:hover,
+  .focus\:bg-indigo-500:focus,
+  .bg-indigo-600,
+  .hover\:bg-indigo-600:hover,
+  .focus\:bg-indigo-600:focus,
+  .bg-indigo-700,
+  .hover\:bg-indigo-700:hover,
+  .focus\:bg-indigo-700:focus,
+  .bg-emerald-500,
+  .hover\:bg-emerald-500:hover,
+  .focus\:bg-emerald-500:focus,
+  .bg-emerald-600,
+  .hover\:bg-emerald-600:hover,
+  .focus\:bg-emerald-600:focus,
+  .bg-emerald-700,
+  .hover\:bg-emerald-700:hover,
+  .focus\:bg-emerald-700:focus,
+  .bg-cyan-500,
+  .hover\:bg-cyan-500:hover,
+  .focus\:bg-cyan-500:focus,
+  .bg-cyan-600,
+  .hover\:bg-cyan-600:hover,
+  .focus\:bg-cyan-600:focus,
+  .bg-cyan-700,
+  .hover\:bg-cyan-700:hover,
+  .focus\:bg-cyan-700:focus,
+  .bg-rose-500,
+  .hover\:bg-rose-500:hover,
+  .focus\:bg-rose-500:focus,
+  .bg-rose-600,
+  .hover\:bg-rose-600:hover,
+  .focus\:bg-rose-600:focus,
+  .bg-rose-700,
+  .hover\:bg-rose-700:hover,
+  .focus\:bg-rose-700:focus,
+  .bg-violet-500,
+  .hover\:bg-violet-500:hover,
+  .focus\:bg-violet-500:focus,
+  .bg-violet-600,
+  .hover\:bg-violet-600:hover,
+  .focus\:bg-violet-600:focus,
+  .bg-violet-700,
+  .hover\:bg-violet-700:hover,
+  .focus\:bg-violet-700:focus,
+  .bg-fuchsia-500,
+  .hover\:bg-fuchsia-500:hover,
+  .focus\:bg-fuchsia-500:focus,
+  .bg-fuchsia-600,
+  .hover\:bg-fuchsia-600:hover,
+  .focus\:bg-fuchsia-600:focus,
+  .bg-fuchsia-700,
+  .hover\:bg-fuchsia-700:hover,
+  .focus\:bg-fuchsia-700:focus,
+  .bg-teal-500,
+  .hover\:bg-teal-500:hover,
+  .focus\:bg-teal-500:focus,
+  .bg-teal-600,
+  .hover\:bg-teal-600:hover,
+  .focus\:bg-teal-600:focus,
+  .bg-teal-700,
+  .hover\:bg-teal-700:hover,
+  .focus\:bg-teal-700:focus,
+  .bg-pink-500,
+  .hover\:bg-pink-500:hover,
+  .focus\:bg-pink-500:focus,
+  .bg-pink-600,
+  .hover\:bg-pink-600:hover,
+  .focus\:bg-pink-600:focus,
+  .bg-pink-700,
+  .hover\:bg-pink-700:hover,
+  .focus\:bg-pink-700:focus,
+  .bg-sky-500,
+  .hover\:bg-sky-500:hover,
+  .focus\:bg-sky-500:focus,
+  .bg-sky-600,
+  .hover\:bg-sky-600:hover,
+  .focus\:bg-sky-600:focus,
+  .bg-sky-700,
+  .hover\:bg-sky-700:hover,
+  .focus\:bg-sky-700:focus,
+  .bg-lime-500,
+  .hover\:bg-lime-500:hover,
+  .focus\:bg-lime-500:focus,
+  .bg-lime-600,
+  .hover\:bg-lime-600:hover,
+  .focus\:bg-lime-600:focus,
+  .bg-lime-700,
+  .hover\:bg-lime-700:hover,
+  .focus\:bg-lime-700:focus
+) {
+  --c-white: 255 255 255;
+}
+
+/* A neutral surface nested inside a fill takes the foreground back, so a
+   light card inside a coloured container is still readable. */
+[data-theme="light"] :is(
+  .bg-white,
+  .bg-black,
+  .bg-gray-50,
+  .bg-gray-100,
+  .bg-gray-200,
+  .bg-gray-700,
+  .bg-gray-750,
+  .bg-gray-800,
+  .bg-gray-900,
+  .bg-gray-950
+) {
+  --c-white: 17 24 39;
+}
+
+
 /* Custom animations for progress bars */
 @keyframes shimmer {
   0% {
