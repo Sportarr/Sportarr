@@ -562,9 +562,9 @@ export default function LeagueDetailPage() {
       // whole league-events list. On leagues with tens of thousands of events
       // a full refetch + re-render took 15-20s per click (#148); a targeted
       // cache update is instant.
-      // setQueriesData, not setQueryData: the list is cached per 'show every
-      // event' state, so an exact two-part key matches nothing and the toggle
-      // only appears after a refresh. This patches every cached variant.
+      // The list is cached per 'show every event' state, so an exact two-part
+      // key matches no cached query and the toggle only appears after a
+      // refresh. setQueriesData matches by prefix and patches every variant.
       queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-events', id] }, (prev) =>
         prev?.map((e) =>
           e.id === eventId
