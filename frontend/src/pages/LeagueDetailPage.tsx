@@ -562,7 +562,10 @@ export default function LeagueDetailPage() {
       // whole league-events list. On leagues with tens of thousands of events
       // a full refetch + re-render took 15-20s per click (#148); a targeted
       // cache update is instant.
-      queryClient.setQueryData<EventDetail[]>(['league-events', id], (prev) =>
+      // setQueriesData, not setQueryData: the list is cached per 'show every
+      // event' state, so an exact two-part key matches nothing and the toggle
+      // only appears after a refresh. This patches every cached variant.
+      queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-events', id] }, (prev) =>
         prev?.map((e) =>
           e.id === eventId
             ? { ...e, monitored, monitoredParts: monitored ? (updated?.monitoredParts ?? e.monitoredParts) : undefined }
@@ -594,7 +597,7 @@ export default function LeagueDetailPage() {
     onSuccess: (_updated, { eventId, qualityProfileId }) => {
       // Same as the monitor toggle: patch the single event rather than
       // refetching every event in the league (#148).
-      queryClient.setQueryData<EventDetail[]>(['league-events', id], (prev) =>
+      queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-events', id] }, (prev) =>
         prev?.map((e) =>
           e.id === eventId ? { ...e, qualityProfileId: qualityProfileId ?? undefined } : e
         )
