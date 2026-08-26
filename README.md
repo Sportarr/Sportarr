@@ -308,6 +308,6 @@ application was rewritten shortly afterwards and the great majority of the code 
 original, but parts of it are still derived from Sonarr and the project would not exist
 without the years of work that went into it first.
 
-Thank you to Mark McDowall, Keivan Beigi, Taloth Saldono and everyone who has contributed to
-Sonarr. Their copyright notices are retained in [COPYRIGHT.md](COPYRIGHT.md), and Sportarr is
-released under the same GPL-3.0 license.
+Thank you to the Sonarr Team and everyone who has contributed to Sonarr. Their copyright notices
+are retained in [COPYRIGHT.md](COPYRIGHT.md), and Sportarr is released under the same GPL-3.0
+license.
