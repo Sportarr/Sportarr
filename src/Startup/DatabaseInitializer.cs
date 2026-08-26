@@ -298,6 +298,30 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify Blocklist.FilePath column: {ex.Message}");
         }
 
+        // Events.ManuallyMonitored records that a person, not the sync,
+        // monitored an event. The sync's out-of-filter cleanup reads it before
+        // it removes anything, so a legacy database without the column would
+        // lose hand-picked games.
+        try
+        {
+            var checkManualMonitorSql = "SELECT COUNT(*) FROM pragma_table_info('Events') WHERE name='ManuallyMonitored'";
+            var manualMonitorExists = db.Database.SqlQueryRaw<int>(checkManualMonitorSql).AsEnumerable().FirstOrDefault();
+            if (manualMonitorExists == 0)
+            {
+                Console.WriteLine("[Sportarr] Events.ManuallyMonitored column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE Events ADD COLUMN ManuallyMonitored INTEGER NOT NULL DEFAULT 0");
+                // Same reason as the migration. Before this column there was
+                // no record of who monitored an event, so every monitored one
+                // counts as a person's choice.
+                db.Database.ExecuteSqlRaw("UPDATE Events SET ManuallyMonitored = Monitored");
+                Console.WriteLine("[Sportarr] Events.ManuallyMonitored column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify Events.ManuallyMonitored column: {ex.Message}");
+        }
+
         // Ensure the IPTV-org canonical-channel columns exist on
         // IptvChannels. Added when the iptv-org sync service started
         // assigning canonical "ESPN.us"-style ids to user channels;

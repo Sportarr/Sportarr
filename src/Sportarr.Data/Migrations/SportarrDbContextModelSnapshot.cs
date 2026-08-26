@@ -1240,6 +1240,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strCountry");
 
+                    b.Property<bool>("ManuallyMonitored")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("Monitored")
                         .HasColumnType("INTEGER");
 

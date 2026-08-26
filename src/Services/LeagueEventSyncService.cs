@@ -808,11 +808,31 @@ public class LeagueEventSyncService
                             .ToListAsync())
                         .ToHashSet();
 
+                    // A recording is as good a reason to keep a row as a
+                    // download in flight. The clean-up spares these too.
+                    var scheduledEventIds = (await _db.DvrRecordings
+                            .Where(r => r.EventId != null && outOfFilterIds.Contains(r.EventId.Value))
+                            .Select(r => r.EventId!.Value)
+                            .ToListAsync())
+                        .ToHashSet();
+
                     var strayRemovedCount = 0;
                     var strayUnmonitoredCount = 0;
+                    var strayKeptCount = 0;
                     foreach (var stray in outOfFilter)
                     {
-                        if (stray.HasFile || stray.Files.Any() || queuedEventIds.Contains(stray.Id))
+                        // A person asked for this one. It sits outside the
+                        // filter because that is what they asked for, so it
+                        // stays. The claim outlives an automatic unmonitor,
+                        // because switching a league off and on again must
+                        // not quietly make a picked game deletable.
+                        if (stray.ManuallyMonitored)
+                        {
+                            strayKeptCount++;
+                            continue;
+                        }
+
+                        if (stray.HasFile || stray.Files.Any() || queuedEventIds.Contains(stray.Id) || scheduledEventIds.Contains(stray.Id))
                         {
                             if (stray.Monitored)
                             {
@@ -831,11 +851,11 @@ public class LeagueEventSyncService
                             stray.Title, season);
                     }
 
-                    if (strayRemovedCount > 0 || strayUnmonitoredCount > 0)
+                    if (strayRemovedCount > 0 || strayUnmonitoredCount > 0 || strayKeptCount > 0)
                     {
                         result.RemovedCount += strayRemovedCount;
-                        _logger.LogInformation("[League Event Sync] Season {Season}: Out-of-filter cleanup removed {Removed} file-less event(s) and unmonitored {Unmonitored} with files/queue - events outside the monitored team selection",
-                            season, strayRemovedCount, strayUnmonitoredCount);
+                        _logger.LogInformation("[League Event Sync] Season {Season}: Out-of-filter cleanup removed {Removed} file-less event(s), unmonitored {Unmonitored} with files/queue, and kept {Kept} monitored by hand - events outside the monitored team selection",
+                            season, strayRemovedCount, strayUnmonitoredCount, strayKeptCount);
                     }
                 }
             }
@@ -1112,6 +1132,7 @@ public class LeagueEventSyncService
             foreach (var e in toMonitor)
             {
                 e.Monitored = true;
+                e.ManuallyMonitored = true;
             }
             await _db.SaveChangesAsync(cancellationToken);
 

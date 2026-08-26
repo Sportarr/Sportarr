@@ -276,6 +276,20 @@ public class Event
     public bool Monitored { get; set; } = true;
 
     /// <summary>
+    /// True when a person asked for this event rather than a filter matching
+    /// it. Events outside the league's team selection are removed on the next
+    /// sync, and this tells a deliberate choice apart from a leftover of an
+    /// older selection, which must not survive. Set by the event, season and
+    /// add-event controls, by the Sonarr compatibility surface, and by
+    /// followed-athlete monitoring, which is a standing choice of the same
+    /// kind. A sync's own matching never sets it. It outlives an automatic
+    /// unmonitor, so switching a league off and on again cannot quietly make
+    /// a picked game deletable. Only unmonitoring the event by hand, or the
+    /// retention window, releases it.
+    /// </summary>
+    public bool ManuallyMonitored { get; set; }
+
+    /// <summary>
     /// Which fight card parts to monitor for Fighting sports (comma-separated: "Early Prelims,Prelims,Main Card")
     /// If null or empty, uses league's MonitoredParts setting as default
     /// Only applies when EnableMultiPartEpisodes is true in config and Sport is Fighting/MMA/UFC/Boxing/etc.
@@ -553,6 +567,13 @@ public class EventResponse
     public string? Location { get; set; }
     public string? Broadcast { get; set; }
     public bool Monitored { get; set; }
+
+    /// <summary>
+    /// True when a person monitored this event rather than the sync. The
+    /// clean-up and the sync both leave these alone, so a consumer can tell
+    /// why a row outlived a clean-up.
+    /// </summary>
+    public bool ManuallyMonitored { get; set; }
     public string? MonitoredParts { get; set; }
     public bool HasFile { get; set; }
     public string? FilePath { get; set; }
@@ -619,6 +640,7 @@ public class EventResponse
             Location = evt.Location,
             Broadcast = evt.Broadcast,
             Monitored = evt.Monitored,
+            ManuallyMonitored = evt.ManuallyMonitored,
             MonitoredParts = evt.MonitoredParts,
             // Derive the badge from the files we actually return rather than
             // trusting only the denormalized HasFile flag. The two can drift
