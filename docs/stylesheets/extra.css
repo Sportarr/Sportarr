@@ -297,17 +297,40 @@
   color: var(--md-default-fg-color--light);
 }
 
-/* The header logo is the full Sportarr Wiki lockup, so the theme's own copy
-   of the site name beside it says the name twice. Hide that copy only where
-   Material shows the logo. Below this width it hides the logo instead, and
-   the site name is the only branding left. */
+/* The header logo is the Sportarr lockup, so the theme's own copy of the
+   name would say it twice. Read the header as a path instead: the brand
+   leads, the page name follows a slash and sits back. Material swaps the
+   site name for the page name on scroll, which is what keeps the second
+   half following the page you are on.
+
+   Only where Material shows the logo. Narrower than this it hides the logo
+   and the site name is the only branding left, so the rules stop. */
 .md-header__button.md-logo img {
   height: 1.5rem;
   width: auto;
 }
 
 @media screen and (min-width: 76.25em) {
-  .md-header__topic:first-child {
-    display: none;
+  .md-header__topic:first-child .md-ellipsis {
+    font-size: 0;
+  }
+
+  .md-header__topic:first-child .md-ellipsis::after {
+    content: "/ Wiki";
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--md-primary-bg-color--light);
+  }
+
+  .md-header__topic:nth-child(2) .md-ellipsis {
+    color: var(--md-primary-bg-color--light);
+    font-weight: 500;
+  }
+
+  .md-header__topic:nth-child(2) .md-ellipsis::before {
+    content: "/";
+    opacity: 0.38;
+    margin-right: 0.55rem;
+    font-weight: 400;
   }
 }
