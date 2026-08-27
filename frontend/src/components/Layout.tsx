@@ -19,6 +19,7 @@ import MobileTabBar from './MobileTabBar';
 import OnboardingWizard from './OnboardingWizard';
 import { useAuth } from '../contexts/AuthContext';
 import { SETTINGS_PAGES } from '../pages/settings/settingsPages';
+import { useResolvedTheme } from '../hooks/useTheme';
 
 interface MenuItem {
   label: string;
@@ -30,6 +31,11 @@ interface MenuItem {
 
 export default function Layout() {
   const location = useLocation();
+  // The lockup is a flat image, so it cannot pick up the palette the way
+  // text does. Each theme gets the artwork drawn in its own ink.
+  const lockupFile = useResolvedTheme() === 'light'
+    ? 'logo-lockup-animated-black.svg'
+    : 'logo-lockup-animated.svg';
   const navigate = useNavigate();
   const { data: systemStatus } = useSystemStatus();
   const { data: activityCounts } = useActivityCounts();
@@ -240,12 +246,10 @@ export default function Layout() {
             the user never leaves the current page just to see the options. */}
         <div className="flex items-center justify-between p-3">
           <Link to="/leagues" onClick={cleanupInertAttributes} className="flex items-center space-x-2">
-            <img
-              src={getImageUrl('logo-64.png')}
-              alt="Sportarr Logo"
-              className="w-8 h-8 rounded-lg"
-            />
-            <h1 className="text-lg font-bold text-white">Sportarr</h1>
+            <img src={getImageUrl(lockupFile)} alt="Sportarr" className="h-8 w-auto" />
+            {systemStatus && (
+              <span className="text-xs text-gray-400">v{systemStatus.version}</span>
+            )}
           </Link>
           <button
             onClick={() => { cleanupInertAttributes(); setSettingsMenuOpen(!settingsMenuOpen); }}
@@ -293,18 +297,15 @@ export default function Layout() {
       <aside className="hidden md:flex md:relative inset-y-0 left-0 z-40 w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex-col">
         {/* Logo - Hidden on mobile (shown in header instead) */}
         <div className="hidden md:block p-4 border-b border-red-900/30">
-          <Link to="/leagues" onClick={cleanupInertAttributes} className="flex items-center space-x-3">
+          <Link to="/leagues" onClick={cleanupInertAttributes} className="block">
             <img
-              src={getImageUrl('logo-64.png')}
-              alt="Sportarr Logo"
-              className="w-10 h-10 rounded-lg"
+              src={getImageUrl(lockupFile)}
+              alt="Sportarr"
+              className="mx-auto h-10 w-auto"
             />
-            <div>
-              <h1 className="text-xl font-bold text-white">Sportarr</h1>
-              {systemStatus && (
-                <p className="text-xs text-gray-400">v{systemStatus.version}</p>
-              )}
-            </div>
+            {systemStatus && (
+              <p className="mt-1 text-center text-xs text-gray-400">v{systemStatus.version}</p>
+            )}
           </Link>
         </div>
 
