@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4070 1024" role="img" aria-label="Sportarr">
 <style>
-  .ink { fill: var(--ink, #ffffff); }
-  .bs { stroke: var(--ink, #ffffff); fill: none; stroke-linecap: round; }
-  .bf { fill: var(--ink, #ffffff); }
-  .gs { stop-color: #000000; stop-opacity: 0; }
-  .gs-mid { stop-opacity: 0.16; }
+  .ink { fill: var(--ink, #141414); }
+  .bs { stroke: var(--ink, #141414); fill: none; stroke-linecap: round; }
+  .bf { fill: var(--ink, #141414); }
+  .gs { stop-color: #ffffff; stop-opacity: 0; }
+  .gs-mid { stop-opacity: 0.45; }
   .ball { opacity: 0; transform-box: view-box; transform-origin: 50% 50%; }
   .thump { transform-box: view-box; transform-origin: 50% 50%; }
 

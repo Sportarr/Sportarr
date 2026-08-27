@@ -5,7 +5,10 @@
   <a href="https://discord.gg/YjHVWGWjjG"><img src="https://img.shields.io/discord/1427430309653123105?style=flat&logo=discord&logoColor=white&label=discord&color=7289da" alt="Discord online"></a>
 </p>
 
-<img src="./Logo/512.png" width="200" alt="Sportarr">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./Logo/Sportarr-lockup-animated-white.svg">
+  <img src="./Logo/Sportarr-lockup-animated.svg" width="360" alt="Sportarr">
+</picture>
 
 <h3>Sports PVR for Usenet and Torrents</h3>
 

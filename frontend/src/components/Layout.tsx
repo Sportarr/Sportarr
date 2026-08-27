@@ -34,8 +34,8 @@ export default function Layout() {
   // The lockup is a flat image, so it cannot pick up the palette the way
   // text does. Each theme gets the artwork drawn in its own ink.
   const lockupFile = useResolvedTheme() === 'light'
-    ? 'logo-lockup-animated-black.svg'
-    : 'logo-lockup-animated.svg';
+    ? 'logo-lockup-animated.svg'
+    : 'logo-lockup-animated-white.svg';
   const navigate = useNavigate();
   const { data: systemStatus } = useSystemStatus();
   const { data: activityCounts } = useActivityCounts();
