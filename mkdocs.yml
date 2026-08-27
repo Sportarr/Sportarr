@@ -28,10 +28,13 @@ theme:
     - content.code.copy
     - toc.follow
 
+extra_javascript:
+  - javascripts/header-topic.js
+
 extra_css:
   # Bump the version when this file changes. The name never varies, so a
   # browser will otherwise keep serving the copy it already has.
-  - stylesheets/extra.css?v=2
+  - stylesheets/extra.css?v=3
 
 extra:
   social:

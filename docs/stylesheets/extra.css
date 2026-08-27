@@ -298,10 +298,9 @@
 }
 
 /* The header logo is the Sportarr lockup, so the theme's own copy of the
-   name would say it twice. Read the header as a path instead: the brand
-   leads, the page name follows a slash and sits back. Material swaps the
-   site name for the page name on scroll, which is what keeps the second
-   half following the page you are on.
+   name would say it twice. header-topic.js writes the page name into that
+   topic instead, and this reads it as a path: the brand leads, the page
+   follows a slash and sits back.
 
    Only where Material shows the logo. Narrower than this it hides the logo
    and the site name is the only branding left, so the rules stop. */
@@ -312,25 +311,19 @@
 
 @media screen and (min-width: 76.25em) {
   .md-header__topic:first-child .md-ellipsis {
-    font-size: 0;
-  }
-
-  .md-header__topic:first-child .md-ellipsis::after {
-    content: "/ Wiki";
-    font-size: 1rem;
-    font-weight: 500;
-    color: var(--md-primary-bg-color--light);
-  }
-
-  .md-header__topic:nth-child(2) .md-ellipsis {
     color: var(--md-primary-bg-color--light);
     font-weight: 500;
   }
 
-  .md-header__topic:nth-child(2) .md-ellipsis::before {
+  .md-header__topic:first-child .md-ellipsis::before {
     content: "/";
     opacity: 0.38;
     margin-right: 0.55rem;
     font-weight: 400;
+  }
+
+  /* Material's own page-title topic would repeat what is already there. */
+  .md-header__topic[data-md-component="header-topic"] {
+    display: none;
   }
 }
