@@ -1768,6 +1768,39 @@ export default function LeagueDetailPage() {
             </div>
           ) : (
             <div>
+              {/* Old seasons nobody has touched are hidden, and this says so
+                  before the list rather than under it. A season drops out of
+                  the list when nothing in it is monitored and it holds no
+                  files, which reads as a missing season unless the page says
+                  otherwise. */}
+              {hiddenSeasonCount > 0 && (
+                <p className="px-4 py-2 text-xs text-gray-400 border-b border-red-900/30">
+                  {showAllSeasons ? (
+                    <>
+                      Showing every season.{' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowAllSeasons(false)}
+                        className="text-red-400 underline underline-offset-2 hover:text-red-300"
+                      >
+                        Hide the {hiddenSeasonCount} older {hiddenSeasonCount === 1 ? 'one' : 'ones'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {hiddenSeasonCount} older {hiddenSeasonCount === 1 ? 'season is' : 'seasons are'} hidden, with nothing monitored and no files.{' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowAllSeasons(true)}
+                        className="text-red-400 underline underline-offset-2 hover:text-red-300"
+                      >
+                        Show {hiddenSeasonCount === 1 ? 'it' : 'them'}
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
+
               {/* Season Groups */}
               {visibleSeasons.map(season => {
                 const seasonEvents = groupedEvents[season];
@@ -2763,19 +2796,6 @@ export default function LeagueDetailPage() {
                 );
               })}
 
-              {/* Show/hide old untouched seasons */}
-              {hiddenSeasonCount > 0 && (
-                <div className="p-4 text-center">
-                  <button
-                    onClick={() => setShowAllSeasons(v => !v)}
-                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-sm rounded-lg transition-colors"
-                  >
-                    {showAllSeasons
-                      ? `Hide ${hiddenSeasonCount} older season${hiddenSeasonCount === 1 ? '' : 's'}`
-                      : `Show all ${sortedSeasons.length} seasons (${hiddenSeasonCount} hidden)`}
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>
