@@ -38,6 +38,35 @@ work differently under the hood:
     If you later want the whole promotion, open the league and change its
     Monitor setting.
 
+## Games your teams are not in
+
+A league you follow by team normally stores only your teams' games. **Keep
+every game in the library**, in the league's edit dialog, stores the rest as
+well, unmonitored, so you can find a one-off game and monitor it yourself.
+
+Turning the setting off stops new games arriving, but the games it already
+stored stay where they are. When that leaves games behind, a line appears
+under the setting saying how many, with a link to remove them. It only
+appears when there is something to remove.
+
+Removing takes the games the league would not store today. These always
+stay:
+
+- games you monitored yourself, including ones a followed athlete plays in
+- games holding a file
+- games with a download in flight, a recording scheduled, or a release
+  waiting out a delay
+- games you added by hand, which no sync can fetch back
+
+The confirmation says how many stay and why. Everything else comes back if
+you turn the setting on again and run a Deep Sync, because those games come
+from sportarr.net rather than from your install.
+
+!!! tip
+    A game you monitor yourself keeps its place even when it is nobody you
+    follow. Switching the league off and on again, or changing its settings,
+    leaves it alone. Unmonitoring it yourself gives it up again.
+
 ## How it stays current
 
 Every league refresh re-checks followed athletes and monitors any newly
