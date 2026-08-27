@@ -1809,6 +1809,43 @@ public class LeagueEventSyncService
                 }
             }
 
+            // A special event the league's settings say to monitor, that is not
+            // monitored, gets monitored. Deliberately one direction and one
+            // kind of event.
+            //
+            // One direction because the time-based scopes read "what to start
+            // monitoring", not "what should still be monitored": under the
+            // default Future scope every event stops matching the moment it
+            // airs, and unmonitoring it there would close the window in which
+            // anything can be downloaded for it.
+            //
+            // One kind because a setting like "always monitor finals" used to
+            // reach only the events created after it changed, which left the
+            // finals of every older season unmonitored with no way to repair
+            // them. Ordinary games are left alone, so a game somebody
+            // unmonitored on purpose stays that way even when nothing recorded
+            // that they chose it.
+            if (!existingEvent.ManuallyMonitored && !existingEvent.Monitored && league.Monitored)
+            {
+                var isSpecial = SpecialEventClassifier.BypassesTeamFilter(
+                    apiEvent.Round,
+                    LeagueSportRules.IsTeamlessSport(league.Sport, league.Name) ? null : apiEvent.Title,
+                    league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                    cupStageSizes);
+
+                if (isSpecial
+                    && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
+                        apiEvent.Round, apiEvent.Title, cupStageSizes)
+                    && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
+                    && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes))
+                {
+                    existingEvent.Monitored = true;
+                    needsUpdate = true;
+                    _logger.LogInformation("[League Event Sync] {Title} is now monitored, which the league's special-event settings ask for",
+                        apiEvent.Title);
+                }
+            }
+
             // NOTE: We do NOT update MonitoredParts for existing events during sync
             // This preserves any custom event-level MonitoredParts settings the user may have configured
             // MonitoredParts is only inherited from league when events are first created

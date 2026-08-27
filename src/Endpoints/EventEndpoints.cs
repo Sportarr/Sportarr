@@ -111,10 +111,11 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
         Broadcast = request.Broadcast,
         Status = request.Status,
         Monitored = request.Monitored,
-        // Added by a person, so the out-of-filter cleanup leaves it alone. A
-        // hand-added game usually carries no team ids at all, which is
-        // exactly what that filter rejects.
-        ManuallyMonitored = request.Monitored,
+        // Added by a person, so the out-of-filter cleanup leaves it alone and
+        // no sync argues with how they left it. A hand-added game usually
+        // carries no team ids at all, which is exactly what that filter
+        // rejects.
+        ManuallyMonitored = true,
         QualityProfileId = request.QualityProfileId,
         Images = request.Images ?? new List<string>()
     };
@@ -230,9 +231,11 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
     if (body.TryGetProperty("monitored", out var monitoredValue))
     {
         evt.Monitored = monitoredValue.GetBoolean();
-        // A person asked for this one, so the sync's out-of-filter cleanup
-        // must leave it alone. Unmonitoring drops the claim again.
-        evt.ManuallyMonitored = evt.Monitored;
+        // A person decided this one, either way, so the sync works out
+        // monitoring again for every event except this kind. Turning it off
+        // is as much a decision as turning it on, and the sync would
+        // otherwise put it straight back.
+        evt.ManuallyMonitored = true;
     }
 
     if (body.TryGetProperty("monitoredParts", out var monitoredPartsValue))
@@ -846,11 +849,11 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
         }
 
         evt.Monitored = shouldMonitor;
-        // Only the games the league would not store on its own need the
-        // claim, and only monitoring grants one. Unmonitoring a season must
-        // not quietly strip the claim from a game picked one by one, and an
-        // unmonitored row carries no claim anyway.
-        if (shouldMonitor && outsideTeamSelection.Contains(evt))
+        // A season somebody monitors or unmonitors by hand is their decision
+        // either way, so a sync leaves every game in it alone. Only the games
+        // the league would not store on its own take the claim, because the
+        // rest are what the league's own settings already say.
+        if (outsideTeamSelection.Contains(evt))
         {
             evt.ManuallyMonitored = true;
         }

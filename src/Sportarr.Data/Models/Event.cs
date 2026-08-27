@@ -276,16 +276,19 @@ public class Event
     public bool Monitored { get; set; } = true;
 
     /// <summary>
-    /// True when a person asked for this event rather than a filter matching
-    /// it. Events outside the league's team selection are removed on the next
-    /// sync, and this tells a deliberate choice apart from a leftover of an
-    /// older selection, which must not survive. Set by the event, season and
-    /// add-event controls, by the Sonarr compatibility surface, and by
-    /// followed-athlete monitoring, which is a standing choice of the same
-    /// kind. A sync's own matching never sets it. It outlives an automatic
-    /// unmonitor, so switching a league off and on again cannot quietly make
-    /// a picked game deletable. Only unmonitoring the event by hand, or the
-    /// retention window, releases it.
+    /// True when a person decided this event's monitoring rather than a filter
+    /// matching it. Two things read it. The sync works monitoring out again
+    /// from the league's settings for every other event, so a setting reaches
+    /// events that already existed, and this is what stops it overruling a
+    /// choice. The out-of-filter cleanup keeps these events, because an event
+    /// sits outside the filter for exactly the reason the person chose.
+    ///
+    /// Set by the event control either way, since turning monitoring off is
+    /// as much a decision as turning it on, and by the season and add-event
+    /// controls, the Sonarr compatibility surface and followed athletes when
+    /// they turn it on. A sync's own matching never sets it. It outlives an
+    /// automatic unmonitor, so switching a league off and on again cannot
+    /// quietly make a picked game deletable. The retention window releases it.
     /// </summary>
     public bool ManuallyMonitored { get; set; }
 

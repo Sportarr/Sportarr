@@ -246,6 +246,24 @@ public class UnfollowedEventCleanupTests
     }
 
     [Fact]
+    public void AGameSomebodyUnmonitoredIsStillTheirDecision()
+    {
+        // The claim records that a person decided this event's monitoring,
+        // either way, so a sync never argues with it. The clean-up keeps it
+        // for the same reason.
+        var league = TeamLeague("tm-cowboys");
+        var chosen = Ev("Chicago Bears vs Green Bay Packers", "tm-bears", "tm-packers", manuallyMonitored: true);
+        chosen.Monitored = false;
+        var events = new List<Event>
+        {
+            Ev("New York Giants vs Dallas Cowboys", "tm-giants", "tm-cowboys"),
+            chosen,
+        };
+
+        Classify(events, league).Removable.Should().NotContain(chosen.Id);
+    }
+
+    [Fact]
     public void ALeagueThatFollowsEveryTeamHasNothingToRemove()
     {
         var league = TeamLeague();

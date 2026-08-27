@@ -430,7 +430,7 @@ public static class SonarrEpisodeFileEndpoints
                         eventItem.Monitored = newMonitored;
                         // A tool asking for one event is as deliberate as a
                         // person clicking it, so the sync leaves it alone.
-                        eventItem.ManuallyMonitored = newMonitored;
+                        eventItem.ManuallyMonitored = true;
                         eventItem.LastUpdate = DateTime.UtcNow;
                         await db.SaveChangesAsync();
                     }
@@ -511,7 +511,7 @@ public static class SonarrEpisodeFileEndpoints
             foreach (var eventItem in events)
             {
                 eventItem.Monitored = monitored.Value;
-                eventItem.ManuallyMonitored = monitored.Value;
+                eventItem.ManuallyMonitored = true;
             }
             await db.SaveChangesAsync();
 
