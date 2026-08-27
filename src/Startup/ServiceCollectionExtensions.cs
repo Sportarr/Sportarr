@@ -531,6 +531,7 @@ public static class ServiceCollectionExtensions
         // SyncMetrics measured block (one AsyncLocal read otherwise), so it
         // is safe to attach to every context including the request path.
         var commandCounter = new Sportarr.Api.Data.CommandCountingInterceptor();
+        services.AddSingleton<SqliteIoErrorRecoveryInterceptor>();
         var dbSettings = DatabaseSettings.FromConfiguration(configuration);
 
         void ConfigureProvider(DbContextOptionsBuilder options)
@@ -560,10 +561,12 @@ public static class ServiceCollectionExtensions
             }
         }
 
-        services.AddDbContext<SportarrDbContext>(options =>
+        services.AddDbContext<SportarrDbContext>((serviceProvider, options) =>
         {
             ConfigureProvider(options);
-            options.AddInterceptors(commandCounter)
+            options.AddInterceptors(
+                       commandCounter,
+                       serviceProvider.GetRequiredService<SqliteIoErrorRecoveryInterceptor>())
                    .ConfigureWarnings(w => w
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
                        .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
