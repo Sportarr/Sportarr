@@ -296,3 +296,18 @@
   font-size: 0.7rem;
   color: var(--md-default-fg-color--light);
 }
+
+/* The header logo is the full Sportarr Wiki lockup, so the theme's own copy
+   of the site name beside it says the name twice. Hide that copy only where
+   Material shows the logo. Below this width it hides the logo instead, and
+   the site name is the only branding left. */
+.md-header__button.md-logo img {
+  height: 1.5rem;
+  width: auto;
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-header__topic:first-child {
+    display: none;
+  }
+}
