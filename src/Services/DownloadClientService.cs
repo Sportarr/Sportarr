@@ -520,6 +520,8 @@ public class DownloadClientService : IDownloadClientService
             {
                 DownloadClientType.QBittorrent => await FindQBittorrentDownloadByTitleAsync(config, title, category),
                 DownloadClientType.Decypharr => await FindDecypharrDownloadByTitleAsync(config, title, category),
+                DownloadClientType.Sabnzbd or DownloadClientType.NZBdav or DownloadClientType.DecypharrUsenet =>
+                    await FindSabnzbdDownloadByTitleAsync(config, title, category),
                 // DecypharrUsenet uses SABnzbd API which doesn't support title-based lookup
                 // Other clients can be added later - for now return null
                 _ => (null, null)
@@ -1449,6 +1451,13 @@ public class DownloadClientService : IDownloadClientService
     {
         var client = GetQBittorrentClient(config);
         return await client.FindTorrentByTitleAsync(config, title, category);
+    }
+
+    private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindSabnzbdDownloadByTitleAsync(
+        DownloadClient config, string title, string category)
+    {
+        var client = GetSabnzbdClient(config);
+        return await client.FindDownloadByTitleAsync(config, title, category);
     }
 
     // Aria2 client methods
