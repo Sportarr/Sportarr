@@ -21,6 +21,9 @@ Sportarr refuses 0-byte and still-growing files and retries until the transfer s
 **A release exists on my indexer but Sportarr rejects it?**
 Open the interactive search and read the rejection column. The usual suspects are the quality profile (the release's quality isn't enabled in the profile assigned to that league) and custom format scores (a format with a large negative score, like a no-release-group rule imported from movie-oriented guides, can push sports TV captures below the minimum). Sports releases often have no release group, so aggressive No-RlsGroup penalties will reject most of them.
 
+**The same event downloaded twice?**
+An event that is already downloading is not searched again, however long the transfer takes, so a second release cannot be grabbed while the first is on its way. If you do see two grabs for one event, check the Activity page for a download that failed or was removed outside Sportarr, since that frees the event to be searched again.
+
 **Nothing found for an event you can see on the tracker?**
 Check the league's quality profile allows the release's quality, and verify the indexer's categories include TV/Sport (5060). Movies categories (2000-series) help on indexers that file sports there.
 
