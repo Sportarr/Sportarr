@@ -342,7 +342,66 @@ app.MapDelete("/api/leagues/{id:int}/unfollowed-events", async (
 // showAll=true drops the monitoring-based filters so the caller sees every
 // event the league holds, including sessions and teams the user does not
 // follow. Used by the league page's "show every event" toggle.
-app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, bool? showAll, SportarrDbContext db, ILogger<Program> logger) =>
+// API: One row per season, so the league page can draw its season list without
+// pulling every event. A league with tens of thousands of events answered ~1.2 KB
+// per event before, for a page that shows collapsed seasons until you open one.
+app.MapGet("/api/leagues/{id:int}/seasons", async (int id, bool? showAll, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    var league = await db.Leagues
+        .Include(l => l.MonitoredTeams)
+        .ThenInclude(lt => lt.Team)
+        .FirstOrDefaultAsync(l => l.Id == id);
+
+    if (league == null)
+        return Results.NotFound(new { error = "League not found" });
+
+    // Only the columns the visibility rules read. The team filter needs the
+    // external ids, the specials bypass needs the round and the title, and the
+    // summary needs the rest.
+    var rows = await db.Events
+        .AsNoTracking()
+        .Where(e => e.LeagueId == id)
+        .Select(e => new Event
+        {
+            Id = e.Id,
+            Season = e.Season,
+            Title = e.Title,
+            Sport = e.Sport,
+            Round = e.Round,
+            HomeTeamExternalId = e.HomeTeamExternalId,
+            AwayTeamExternalId = e.AwayTeamExternalId,
+            HasFile = e.HasFile,
+            Monitored = e.Monitored,
+            EventDate = e.EventDate,
+            Status = e.Status,
+        })
+        .ToListAsync();
+
+    var visible = SelectVisibleEvents(rows, league, showAll == true);
+
+    var seasons = visible
+        .GroupBy(e => string.IsNullOrEmpty(e.Season) ? "Unknown" : e.Season!)
+        .Select(g => new
+        {
+            season = g.Key,
+            eventCount = g.Count(),
+            monitoredCount = g.Count(e => e.Monitored),
+            fileCount = g.Count(e => e.HasFile),
+            cancelledCount = g.Count(e => e.Status != null &&
+                (e.Status.ToUpper() == "CANCELLED" || e.Status.ToUpper() == "CANCELED" || e.Status.ToUpper() == "POSTPONED")),
+            firstEventDate = g.Min(e => e.EventDate),
+            lastEventDate = g.Max(e => e.EventDate),
+        })
+        .OrderByDescending(s => s.season == "Unknown" ? "" : s.season)
+        .ToList();
+
+    logger.LogDebug("[LEAGUES] {Seasons} seasons for league {LeagueId} from {Total} events",
+        seasons.Count, id, rows.Count);
+
+    return Results.Ok(new { totalEvents = visible.Count, seasons });
+});
+
+app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, bool? showAll, string? season, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting events for league ID: {LeagueId}", id);
 
@@ -358,12 +417,23 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // Get all events for this league
-    var events = await db.Events
+    // One season at a time when the caller asks for one. The visibility rules
+    // are per season anyway (cup stage sizes are computed within a season), so
+    // narrowing here gives the same answer for less.
+    var query = db.Events
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
         .Include(e => e.Files)
-        .Where(e => e.LeagueId == id)
+        .Where(e => e.LeagueId == id);
+
+    if (!string.IsNullOrEmpty(season))
+    {
+        query = season == "Unknown"
+            ? query.Where(e => e.Season == null || e.Season == "")
+            : query.Where(e => e.Season == season);
+    }
+
+    var events = await query
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
 

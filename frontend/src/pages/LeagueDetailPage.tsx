@@ -1,5 +1,5 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon, TagIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, CheckIcon } from '@heroicons/react/24/solid';
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -109,6 +109,21 @@ interface PartStatus {
   monitored: boolean;
   downloaded: boolean;
   file?: EventFile;
+}
+
+interface LeagueSeasonRow {
+  season: string;
+  eventCount: number;
+  monitoredCount: number;
+  fileCount: number;
+  cancelledCount: number;
+  firstEventDate: string;
+  lastEventDate: string;
+}
+
+interface LeagueSeasonSummary {
+  totalEvents: number;
+  seasons: LeagueSeasonRow[];
 }
 
 interface EventDetail {
@@ -315,12 +330,14 @@ export default function LeagueDetailPage() {
     }
   }, [league?.description, descriptionExpanded]);
 
-  // Fetch events for this league
-  const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['league-events', id, showAllEvents],
+  // Season summaries, not every event. The page shows collapsed seasons
+  // until one is opened, and a league with thousands of events answered
+  // megabytes for a list that only needs counts.
+  const { data: seasonSummary, isLoading: eventsLoading } = useQuery({
+    queryKey: ['league-seasons', id, showAllEvents],
     queryFn: async () => {
-      const response = await apiClient.get<EventDetail[]>(
-        `/leagues/${id}/events${showAllEvents ? '?showAll=true' : ''}`);
+      const response = await apiClient.get<LeagueSeasonSummary>(
+        `/leagues/${id}/seasons${showAllEvents ? '?showAll=true' : ''}`);
       return response.data;
     },
     enabled: !!id,
@@ -335,7 +352,7 @@ export default function LeagueDetailPage() {
       // Also poll while empty (covers the gap between page load and the
       // initial-add task appearing in the task list).
       const data = query.state.data;
-      return (!data || data.length === 0)
+      return (!data || data.seasons.length === 0)
         ? getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount)
         : false;
     },
@@ -345,14 +362,60 @@ export default function LeagueDetailPage() {
   // event's season, scrolls its row into view, and pulses a highlight so
   // the click lands on the exact event instead of the top of the league.
   const [highlightedEventId, setHighlightedEventId] = useState<number | null>(null);
+  const seasonRows = seasonSummary?.seasons ?? [];
+  const totalEventCount = seasonSummary?.totalEvents ?? 0;
+
+  // Events arrive a season at a time, when that season is opened. useQueries
+  // keeps the hook order stable whatever is expanded.
+  const expandedSeasonList = useMemo(() => [...expandedSeasons], [expandedSeasons]);
+  const seasonEventQueries = useQueries({
+    queries: expandedSeasonList.map((season) => ({
+      queryKey: ['league-season-events', id, season, showAllEvents],
+      queryFn: async () => {
+        const response = await apiClient.get<EventDetail[]>(
+          `/leagues/${id}/events?season=${encodeURIComponent(season)}${showAllEvents ? '&showAll=true' : ''}`);
+        return response.data;
+      },
+      enabled: !!id,
+      refetchInterval: leagueSyncActive ? 3000 : (false as const),
+    })),
+  });
+
+  const eventsBySeason = useMemo(() => {
+    const map: Record<string, EventDetail[]> = {};
+    expandedSeasonList.forEach((season, index) => {
+      map[season] = seasonEventQueries[index]?.data ?? [];
+    });
+    return map;
+  }, [expandedSeasonList, seasonEventQueries]);
+
+  const loadingSeasons = useMemo(() => {
+    const set = new Set<string>();
+    expandedSeasonList.forEach((season, index) => {
+      if (seasonEventQueries[index]?.isLoading) set.add(season);
+    });
+    return set;
+  }, [expandedSeasonList, seasonEventQueries]);
+
   const deepLinkedEventRef = useRef<string | null>(null);
+  const deepLinkParam = new URLSearchParams(location.search).get('event');
+
+  // The deep link names one event, so ask for that one rather than the
+  // league's whole list just to learn which season holds it.
+  const { data: deepLinkedEvent } = useQuery({
+    queryKey: ['event', deepLinkParam],
+    queryFn: async () => {
+      const response = await apiClient.get<EventDetail>(`/events/${deepLinkParam}`);
+      return response.data;
+    },
+    enabled: !!deepLinkParam,
+  });
 
   useEffect(() => {
-    const param = new URLSearchParams(location.search).get('event');
-    if (!param || events.length === 0) return;
+    const param = deepLinkParam;
+    if (!param || !deepLinkedEvent) return;
     if (deepLinkedEventRef.current === param) return;
-    const target = events.find(e => e.id === Number(param));
-    if (!target) return;
+    const target = deepLinkedEvent;
     deepLinkedEventRef.current = param;
 
     const season = target.season || 'Unknown';
@@ -366,7 +429,8 @@ export default function LeagueDetailPage() {
     // (mirrors the defaultVisibleSeasons filter, which is computed after
     // the loading returns and can't be referenced from up here).
     const startYear = parseInt(season.split('-')[0]);
-    const seasonHasActivity = events.some(e => (e.season || 'Unknown') === season && (e.hasFile || e.monitored));
+    const summaryRow = seasonRows.find(row => row.season === season);
+    const seasonHasActivity = (summaryRow?.monitoredCount ?? 0) > 0 || (summaryRow?.fileCount ?? 0) > 0;
     if (!Number.isNaN(startYear) && startYear < new Date().getFullYear() - 5 && !seasonHasActivity) {
       setShowAllSeasons(true);
     }
@@ -385,7 +449,7 @@ export default function LeagueDetailPage() {
       window.clearTimeout(scroll);
       window.clearTimeout(clear);
     };
-  }, [location.search, events]);
+  }, [deepLinkParam, deepLinkedEvent, seasonRows]);
 
   // Fetch quality profiles
   const { data: qualityProfiles = [] } = useQuery({
@@ -537,7 +601,7 @@ export default function LeagueDetailPage() {
     if (allCompleted.length > 0 && id) {
       // Delay slightly to ensure backend has updated
       setTimeout(() => {
-        queryClient.refetchQueries({ queryKey: ['league-events', id] });
+        queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
         queryClient.refetchQueries({ queryKey: ['league', id] });
       }, 500);
     }
@@ -565,7 +629,7 @@ export default function LeagueDetailPage() {
       // The list is cached per 'show every event' state, so an exact two-part
       // key matches no cached query and the toggle only appears after a
       // refresh. setQueriesData matches by prefix and patches every variant.
-      queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-events', id] }, (prev) =>
+      queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-season-events', id] }, (prev) =>
         prev?.map((e) =>
           e.id === eventId
             ? { ...e, monitored, monitoredParts: monitored ? (updated?.monitoredParts ?? e.monitoredParts) : undefined }
@@ -597,7 +661,7 @@ export default function LeagueDetailPage() {
     onSuccess: (_updated, { eventId, qualityProfileId }) => {
       // Same as the monitor toggle: patch the single event rather than
       // refetching every event in the league (#148).
-      queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-events', id] }, (prev) =>
+      queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-season-events', id] }, (prev) =>
         prev?.map((e) =>
           e.id === eventId ? { ...e, qualityProfileId: qualityProfileId ?? undefined } : e
         )
@@ -648,7 +712,7 @@ export default function LeagueDetailPage() {
     onSuccess: async () => {
       // Refetch all relevant data - backend updates all events when league monitored status changes
       await queryClient.refetchQueries({ queryKey: ['league', id] });
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] }); // Events are updated by backend
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] }); // Events are updated by backend
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
       toast.success('League monitoring updated');
     },
@@ -715,7 +779,7 @@ export default function LeagueDetailPage() {
       // Use refetchQueries to immediately fetch fresh data before closing modal
       // This ensures UI shows updated part statuses without requiring page refresh
       await queryClient.refetchQueries({ queryKey: ['league', id] });
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
 
       // Close modal if this was triggered from the edit modal (team changes)
@@ -759,7 +823,7 @@ export default function LeagueDetailPage() {
     },
     onSuccess: async () => {
       // Use refetchQueries for immediate UI update of part status checkboxes
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       toast.success('Event parts updated');
     },
@@ -775,7 +839,7 @@ export default function LeagueDetailPage() {
       return response.data;
     },
     onSuccess: async (data) => {
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
       toast.success(data.message || 'File deleted');
@@ -793,7 +857,7 @@ export default function LeagueDetailPage() {
     },
     onSuccess: async (data) => {
       // Use refetchQueries for immediate UI update
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       toast.success(data.message || 'Season monitoring updated');
     },
@@ -1112,7 +1176,7 @@ export default function LeagueDetailPage() {
           description: response.data.message || `Queued searches for all monitored events in ${season}`
         });
         // Refetch for immediate UI update
-        await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+        await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
         await queryClient.refetchQueries({ queryKey: ['league', id] });
       } else {
         toast.error('Season search failed', {
@@ -1156,7 +1220,7 @@ export default function LeagueDetailPage() {
         // of the footer; this just makes sure the cached league data
         // gets retried.
         queryClient.invalidateQueries({ queryKey: ['league', id] });
-        queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+        queryClient.invalidateQueries({ queryKey: ['league-season-events', id] });
         queryClient.invalidateQueries({ queryKey: ['leagues'] });
       } else {
         toast.error('Failed to queue sync', {
@@ -1220,7 +1284,7 @@ export default function LeagueDetailPage() {
     const s = (status || '').toUpperCase();
     return s === 'CANCELLED' || s === 'CANCELED' || s === 'POSTPONED';
   };
-  const groupedEvents = (events || []).reduce((acc, event) => {
+  const groupedEvents = Object.values(eventsBySeason).flat().reduce((acc, event) => {
     if (isHiddenStatus(event.status)) return acc;
     const season = event.season || 'Unknown';
     if (!acc[season]) {
@@ -1246,8 +1310,9 @@ export default function LeagueDetailPage() {
     });
   });
 
-  // Sort seasons newest first
-  const sortedSeasons = Object.keys(groupedEvents).sort((a, b) => {
+  // Sort seasons newest first. The list comes from the summary, so every
+  // season is listed whether or not its events have been loaded yet.
+  const sortedSeasons = seasonRows.map(row => row.season).sort((a, b) => {
     // Handle 'Unknown' season
     if (a === 'Unknown') return 1;
     if (b === 'Unknown') return -1;
@@ -1272,7 +1337,8 @@ export default function LeagueDetailPage() {
     if (index < 5) return true;
     const startYear = parseInt(season.split('-')[0]);
     if (!Number.isNaN(startYear) && startYear >= currentYear - 5) return true;
-    return groupedEvents[season].some(e => e.hasFile || e.monitored);
+    const row = seasonRows.find(r => r.season === season);
+    return (row?.monitoredCount ?? 0) > 0 || (row?.fileCount ?? 0) > 0;
   });
   const hiddenSeasonCount = sortedSeasons.length - defaultVisibleSeasons.length;
   const visibleSeasons = showAllSeasons ? sortedSeasons : defaultVisibleSeasons;
@@ -1713,17 +1779,14 @@ export default function LeagueDetailPage() {
           <div className="p-4 md:p-6 border-b border-red-900/30">
             <h2 className="text-xl md:text-2xl font-bold text-white">Events</h2>
             <p className="text-gray-400 text-xs md:text-sm mt-1">
-              {Array.isArray(events) ? events.length : 0} event{Array.isArray(events) && events.length !== 1 ? 's' : ''} in this league
+              {totalEventCount} event{totalEventCount !== 1 ? 's' : ''} in this league
             </p>
 
             {/* Show-cancelled toggle. Hidden by default because cancelled
                 / postponed games are noise for the day-to-day admin --
                 they never broadcast, nothing to record. Flip on to audit. */}
             {(() => {
-              const hiddenCount = (events || []).filter(e => {
-                const s = (e.status || '').toUpperCase();
-                return s === 'CANCELLED' || s === 'CANCELED' || s === 'POSTPONED';
-              }).length;
+              const hiddenCount = seasonRows.reduce((sum, row) => sum + row.cancelledCount, 0);
               if (hiddenCount === 0) return null;
               return (
                 <label className="inline-flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer select-none">
@@ -1760,7 +1823,7 @@ export default function LeagueDetailPage() {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
               <p className="text-gray-400">Loading events...</p>
             </div>
-          ) : !Array.isArray(events) || events.length === 0 ? (
+          ) : sortedSeasons.length === 0 ? (
             <div className="p-12 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
               <p className="text-gray-400 mb-2">Syncing events from Sportarr...</p>
@@ -1803,10 +1866,22 @@ export default function LeagueDetailPage() {
 
               {/* Season Groups */}
               {visibleSeasons.map(season => {
-                const seasonEvents = groupedEvents[season];
+                const seasonEvents = groupedEvents[season] ?? [];
                 const isExpanded = expandedSeasons.has(season);
-                const monitoredCount = seasonEvents.filter(e => e.monitored).length;
-                const hasFileCount = seasonEvents.filter(e => e.hasFile).length;
+                const summaryRow = seasonRows.find(row => row.season === season);
+                const seasonIsLoading = loadingSeasons.has(season);
+                // Counts come from the summary so a collapsed season still
+                // says what it holds. An open season prefers its own rows,
+                // which stay right the moment something is toggled.
+                const monitoredCount = isExpanded && !seasonIsLoading
+                  ? seasonEvents.filter(e => e.monitored).length
+                  : (summaryRow?.monitoredCount ?? 0);
+                const hasFileCount = isExpanded && !seasonIsLoading
+                  ? seasonEvents.filter(e => e.hasFile).length
+                  : (summaryRow?.fileCount ?? 0);
+                const seasonEventCount = isExpanded && !seasonIsLoading
+                  ? seasonEvents.length
+                  : (summaryRow?.eventCount ?? 0);
 
                 return (
                   <div key={season} className="border-b border-red-900/30 last:border-b-0">
@@ -1859,7 +1934,7 @@ export default function LeagueDetailPage() {
                             {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
                           </span>
                           <span className="text-xs text-gray-500 ml-1 truncate">
-                            {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
+                            {seasonEventCount} event{seasonEventCount !== 1 ? 's' : ''}
                             {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
                             {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
                           </span>
@@ -1969,7 +2044,7 @@ export default function LeagueDetailPage() {
                                 {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
                               </h3>
                               <p className="text-xs md:text-sm text-gray-400 mt-0.5 md:mt-1">
-                                {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
+                                {seasonEventCount} event{seasonEventCount !== 1 ? 's' : ''}
                                 {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
                                 {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
                               </p>
@@ -2046,7 +2121,12 @@ export default function LeagueDetailPage() {
                     )}
 
                     {/* Season Events */}
-                    {isExpanded && compactView && (
+                    {isExpanded && seasonIsLoading && (
+                      <div className="px-4 py-3 text-sm text-gray-400">
+                        Loading {seasonEventCount} event{seasonEventCount !== 1 ? 's' : ''}...
+                      </div>
+                    )}
+                    {isExpanded && !seasonIsLoading && compactView && (
                       <div>
                         {/* Column Headers - hidden on mobile because the row
                             wraps into two lines below sm width and the
@@ -2352,7 +2432,7 @@ export default function LeagueDetailPage() {
                     )}
 
                     {/* Season Events - Spacious View */}
-                    {isExpanded && !compactView && (
+                    {isExpanded && !seasonIsLoading && !compactView && (
                       <div className="divide-y divide-red-900/30">
                         {seasonEvents.map(event => {
                 const hasFile = event.hasFile;
@@ -2937,7 +3017,7 @@ export default function LeagueDetailPage() {
             setScanResults(prev => prev ? prev.filter(f => f.id !== importModalPendingImport.id) : null);
             // Refresh league data to show updated file status
             queryClient.invalidateQueries({ queryKey: ['league', id] });
-            queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+            queryClient.invalidateQueries({ queryKey: ['league-season-events', id] });
           }}
         />
       )}

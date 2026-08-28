@@ -123,7 +123,8 @@ export default function EventFileDetailModal({
   const handleEditSaved = async () => {
     // Refresh the list so the panel shows the latest stored values.
     if (leagueId) {
-      await queryClient.refetchQueries({ queryKey: ['league-events', leagueId] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', leagueId] });
+      queryClient.refetchQueries({ queryKey: ['league-seasons', leagueId] });
     }
     await queryClient.refetchQueries({ queryKey: ['leagues'] });
   };
@@ -155,7 +156,8 @@ export default function EventFileDetailModal({
       setLocalFiles(prev => prev.filter(f => f.id !== fileId));
       // Refetch events to update parent UI
       if (leagueId) {
-        await queryClient.refetchQueries({ queryKey: ['league-events', leagueId] });
+        await queryClient.refetchQueries({ queryKey: ['league-season-events', leagueId] });
+      queryClient.refetchQueries({ queryKey: ['league-seasons', leagueId] });
         await queryClient.refetchQueries({ queryKey: ['league', leagueId] });
       }
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
@@ -190,7 +192,8 @@ export default function EventFileDetailModal({
       setLocalFiles([]);
       // Refetch events to update parent UI
       if (leagueId) {
-        await queryClient.refetchQueries({ queryKey: ['league-events', leagueId] });
+        await queryClient.refetchQueries({ queryKey: ['league-season-events', leagueId] });
+      queryClient.refetchQueries({ queryKey: ['league-seasons', leagueId] });
         await queryClient.refetchQueries({ queryKey: ['league', leagueId] });
       }
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
@@ -674,7 +677,8 @@ export default function EventFileDetailModal({
           onSuccess={async () => {
             setLocalFiles(prev => prev.filter(f => f.id !== reassignFile.id));
             if (leagueId) {
-              await queryClient.refetchQueries({ queryKey: ['league-events', leagueId] });
+              await queryClient.refetchQueries({ queryKey: ['league-season-events', leagueId] });
+      queryClient.refetchQueries({ queryKey: ['league-seasons', leagueId] });
               await queryClient.refetchQueries({ queryKey: ['league', leagueId] });
             }
             await queryClient.refetchQueries({ queryKey: ['leagues'] });

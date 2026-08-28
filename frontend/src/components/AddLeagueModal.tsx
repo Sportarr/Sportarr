@@ -358,7 +358,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       // on screen are older than the league.
       void refetchUnfollowed();
       queryClient.invalidateQueries({ queryKey: ['league', leagueIdStr] });
-      queryClient.invalidateQueries({ queryKey: ['league-events', leagueIdStr], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['league-season-events', leagueIdStr], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['league-seasons', leagueIdStr], refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
     }
   };

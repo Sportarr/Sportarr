@@ -435,7 +435,8 @@ export default function LeagueSearchPage() {
       if (leagueIdStr) {
         // Refetch immediately (not just invalidate) to ensure UI shows fresh data
         await queryClient.refetchQueries({ queryKey: ['league', leagueIdStr] });
-        await queryClient.refetchQueries({ queryKey: ['league-events', leagueIdStr] });
+        await queryClient.refetchQueries({ queryKey: ['league-season-events', leagueIdStr] });
+      queryClient.refetchQueries({ queryKey: ['league-seasons', leagueIdStr] });
       }
       closeAddModal();
     },

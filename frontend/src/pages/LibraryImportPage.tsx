@@ -593,7 +593,8 @@ const LibraryImportPage: React.FC = () => {
       // Imported files change event Downloaded states across the app, but
       // the league/event queries are cached. Without this, freshly imported
       // events keep showing as missing until a full page refresh.
-      queryClient.invalidateQueries({ queryKey: ['league-events'] });
+      queryClient.invalidateQueries({ queryKey: ['league-season-events'] });
+      queryClient.invalidateQueries({ queryKey: ['league-seasons'] });
       queryClient.invalidateQueries({ queryKey: ['league'] });
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       queryClient.invalidateQueries({ queryKey: ['wanted'] });
