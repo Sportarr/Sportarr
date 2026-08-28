@@ -126,7 +126,14 @@ function EventThumb({
   className: string;
   iconClass: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  // Step down on failure: the small copy, then the full still, then the
+  // placeholder. A hub that has no /static/thumbs route just falls through.
+  const [step, setStep] = useState(0);
+  const small = src?.includes('/static/images/')
+    ? src.replace('/static/images/', '/static/thumbs/')
+    : null;
+  const sources = [small, src].filter((u): u is string => Boolean(u));
+  const failed = step >= sources.length;
 
   if (!src || failed) {
     return (
@@ -138,11 +145,11 @@ function EventThumb({
 
   return (
     <img
-      src={src}
+      src={sources[step]}
       alt=""
       loading="lazy"
       decoding="async"
-      onError={() => setFailed(true)}
+      onError={() => setStep((previous) => previous + 1)}
       className={`${className} flex-shrink-0 rounded bg-gray-800 object-cover`}
     />
   );
