@@ -15,6 +15,7 @@ import {
   ServerIcon as ServerSolidIcon,
 } from '@heroicons/react/24/solid';
 import { useActivityCounts } from '../api/hooks';
+import NavIcon from './NavIcon';
 
 interface TabChild {
   label: string;
@@ -138,12 +139,18 @@ export default function MobileTabBar() {
             // While a pill is open, only the open tab shows emphasis - otherwise
             // the current section and the browsed section both light up red.
             const emphasized = openMenu ? openMenu === tab.label : active;
-            const Icon = emphasized ? tab.activeIcon : tab.icon;
+
             const tint = emphasized ? 'text-red-500' : 'text-gray-400';
             const inner = (
               <>
                 <span className="relative">
-                  <Icon className="h-6 w-6" />
+                  <NavIcon
+                      chip
+                    icon={tab.icon}
+                    activeIcon={tab.activeIcon}
+                    active={emphasized}
+                    className="h-6 w-6"
+                  />
                   {tab.badge !== undefined && tab.badge > 0 && (
                     <span className="absolute -right-2.5 -top-1.5 min-w-[16px] rounded-full bg-red-600 px-1 text-center text-[9px] font-bold leading-4 text-white">
                       {tab.badge > 99 ? '99+' : tab.badge}

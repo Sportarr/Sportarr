@@ -1,5 +1,14 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus, useActivityCounts } from '../api/hooks';
+import {
+  TrophyIcon as TrophySolidIcon,
+  CalendarIcon as CalendarSolidIcon,
+  ClockIcon as ClockSolidIcon,
+  SignalIcon as SignalSolidIcon,
+  Cog6ToothIcon as Cog6ToothSolidIcon,
+  ServerIcon as ServerSolidIcon,
+} from '@heroicons/react/24/solid';
+import NavIcon from './NavIcon';
 import { getImageUrl } from '../utils/request';
 import { apiGet, apiPost } from '../utils/api';
 import {
@@ -24,6 +33,7 @@ import { useResolvedTheme } from '../hooks/useTheme';
 interface MenuItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  activeIcon: React.ComponentType<{ className?: string }>;
   path?: string;
   children?: { label: string; path: string }[];
   badge?: number;
@@ -103,6 +113,7 @@ export default function Layout() {
     {
       label: 'Library',
       icon: TrophyIcon,
+      activeIcon: TrophySolidIcon,
       path: '/leagues',
       children: [
         { label: 'Leagues', path: '/leagues' },
@@ -111,11 +122,12 @@ export default function Layout() {
         { label: 'Import', path: '/library-import' },
       ],
     },
-    { label: 'Calendar', icon: CalendarIcon, path: '/calendar' },
-    { label: 'Activity', icon: ClockIcon, path: '/activity', badge: activityCounts ? ((activityCounts.queueCount + (activityCounts.pendingImportCount ?? 0)) || undefined) : undefined },
+    { label: 'Calendar', icon: CalendarIcon, activeIcon: CalendarSolidIcon, path: '/calendar' },
+    { label: 'Activity', icon: ClockIcon, activeIcon: ClockSolidIcon, path: '/activity', badge: activityCounts ? ((activityCounts.queueCount + (activityCounts.pendingImportCount ?? 0)) || undefined) : undefined },
     {
       label: 'IPTV',
       icon: SignalIcon,
+      activeIcon: SignalSolidIcon,
       path: '/iptv',
       children: [
         { label: 'Sources', path: '/iptv/sources' },
@@ -128,6 +140,7 @@ export default function Layout() {
     {
       label: 'Settings',
       icon: Cog6ToothIcon,
+      activeIcon: Cog6ToothSolidIcon,
       path: '/settings',
       children: [
         { label: 'Media Management', path: '/settings/mediamanagement' },
@@ -146,6 +159,7 @@ export default function Layout() {
     {
       label: 'System',
       icon: ServerIcon,
+      activeIcon: ServerSolidIcon,
       path: '/system',
       children: [
         { label: 'Status', path: '/system/status' },
@@ -321,7 +335,12 @@ export default function Layout() {
                     className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors text-gray-300 hover:bg-red-900/10 hover:text-white"
                   >
                     <div className="flex items-center space-x-3">
-                      <item.icon className="w-5 h-5" />
+                      <NavIcon
+                      chip
+                        icon={item.icon}
+                        activeIcon={item.activeIcon}
+                        active={item.children.some((child) => location.pathname === child.path)}
+                      />
                       <span>{item.label}</span>
                     </div>
                     <ChevronDownIcon
@@ -361,7 +380,12 @@ export default function Layout() {
                   }`}
                 >
                   <div className="flex items-center space-x-3">
-                    <item.icon className="w-5 h-5" />
+                    <NavIcon
+                      chip
+                      icon={item.icon}
+                      activeIcon={item.activeIcon}
+                      active={location.pathname === item.path}
+                    />
                     <span>{item.label}</span>
                   </div>
                   {item.badge !== undefined && item.badge > 0 && (
