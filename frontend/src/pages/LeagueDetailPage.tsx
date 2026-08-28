@@ -111,6 +111,43 @@ interface PartStatus {
   file?: EventFile;
 }
 
+/**
+ * An event still. Loads lazily, because a season can hold a thousand rows and
+ * every one of them asking for its picture at once is tens of megabytes the
+ * reader cannot even see yet. A broken image falls back to the placeholder,
+ * which used to hide itself and leave an empty slot.
+ */
+function EventThumb({
+  src,
+  className,
+  iconClass,
+}: {
+  src?: string | null;
+  className: string;
+  iconClass: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) {
+    return (
+      <div className={`${className} flex flex-shrink-0 items-center justify-center rounded bg-gray-800`}>
+        <FilmIcon className={`${iconClass} text-gray-600`} />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className={`${className} flex-shrink-0 rounded bg-gray-800 object-cover`}
+    />
+  );
+}
+
 interface LeagueSeasonRow {
   season: string;
   eventCount: number;
@@ -2203,18 +2240,11 @@ export default function LeagueDetailPage() {
                                       the poster: posters are 2:3 and crop badly
                                       in a wide slot, and TSDB has a thumb for
                                       almost every event */}
-                                  {(event.thumbUrl || (event.images && event.images.length > 0)) ? (
-                                    <img
-                                      src={event.thumbUrl || event.images[0]}
-                                      alt=""
-                                      className="w-10 h-6 rounded object-cover flex-shrink-0 bg-gray-800"
-                                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                    />
-                                  ) : (
-                                    <div className="w-10 h-6 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
-                                      <FilmIcon className="w-3.5 h-3.5 text-gray-600" />
-                                    </div>
-                                  )}
+                                  <EventThumb
+                                    src={event.thumbUrl || event.images?.[0]}
+                                    className="w-10 h-6"
+                                    iconClass="w-3.5 h-3.5"
+                                  />
 
                                   {/* Title — flex-1 with min-w-0 so truncation
                                       kicks in instead of forcing the row to
@@ -2471,21 +2501,11 @@ export default function LeagueDetailPage() {
                         {/* Event Thumbnail - prefer the 16:9 event still over the
                             poster so nothing gets cropped; TSDB carries a thumb
                             for almost every event while posters are sparser */}
-                        {(event.thumbUrl || (event.images && event.images.length > 0)) ? (
-                          <img
-                            src={event.thumbUrl || event.images[0]}
-                            alt={event.title}
-                            className="w-16 h-9 md:w-[4.9rem] md:h-11 rounded object-cover flex-shrink-0 bg-gray-800"
-                            onError={(e) => {
-                              // Hide broken images
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="w-16 h-9 md:w-[4.9rem] md:h-11 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
-                            <FilmIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-600" />
-                          </div>
-                        )}
+                        <EventThumb
+                          src={event.thumbUrl || event.images?.[0]}
+                          className="w-16 h-9 md:w-[4.9rem] md:h-11"
+                          iconClass="w-5 h-5 md:w-6 md:h-6"
+                        />
 
                         {/* Event Title */}
                         <div className="flex-1 min-w-0">
