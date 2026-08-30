@@ -170,10 +170,7 @@ export default function MobileTabBar() {
             return tab.children ? (
               <button
                 key={tab.label}
-                onClick={() => {
-                  setOpenMenu(openMenu === tab.label ? null : tab.label);
-                  tab.children?.forEach((child) => preloadRoute(child.path));
-                }}
+                onClick={() => setOpenMenu(openMenu === tab.label ? null : tab.label)}
                 className={`relative flex flex-1 flex-col items-center justify-center gap-1 ${tint}`}
               >
                 {inner}
