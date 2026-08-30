@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import IptvCoveragePage from '../iptv/IptvCoveragePage';
 import {
@@ -26,7 +26,6 @@ import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import PageHeader from '../../components/PageHeader';
 import PageShell from '../../components/PageShell';
-import StreamPlayerModal from '../../components/StreamPlayerModal';
 
 // Types
 interface IptvChannel {
@@ -77,6 +76,32 @@ interface LeagueMapping {
 }
 
 const PAGE_SIZE = 100; // Load channels in pages for better performance
+
+
+/**
+ * The player carries hls.js and mpegts.js, which is by far the largest chunk
+ * in the app. Loading it with this page made every visit pay for a player
+ * most visits never open, so it is fetched on the first play instead. It
+ * stays mounted afterwards so closing still runs its exit transition.
+ */
+const StreamPlayerModal = lazy(() => import('../../components/StreamPlayerModal'));
+
+/**
+ * Stands in for the player while its code loads on the first play. Without
+ * it a click on a slow connection changed nothing on screen, so it read as
+ * a click that had not registered.
+ */
+function StreamPlayerLoading() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-red-600" />
+        <p className="text-sm text-gray-300">Starting player...</p>
+      </div>
+    </div>
+  );
+}
+
 
 export default function IptvChannelsSettings() {
   // Which view is active: the channel-centric list, or the league-centric
@@ -133,6 +158,13 @@ export default function IptvChannelsSettings() {
 
   // Stream player state
   const [playerChannel, setPlayerChannel] = useState<IptvChannel | null>(null);
+  // The player is mounted from the first time it opens and stays mounted, so
+  // closing still animates out instead of vanishing. Latched here rather than
+  // at each play button so no route into the player can miss it.
+  const [playerEverOpened, setPlayerEverOpened] = useState(false);
+  if (playerChannel && !playerEverOpened) {
+    setPlayerEverOpened(true);
+  }
 
   // Load data on mount
   useEffect(() => {
@@ -1583,13 +1615,17 @@ export default function IptvChannelsSettings() {
         </div>
 
         {/* Stream Player Modal */}
-        <StreamPlayerModal
-          isOpen={!!playerChannel}
-          onClose={() => setPlayerChannel(null)}
-          streamUrl={playerChannel?.streamUrl || null}
-          channelId={playerChannel?.id}
-          channelName={playerChannel?.name || ''}
-        />
+        {playerEverOpened && (
+          <Suspense fallback={playerChannel ? <StreamPlayerLoading /> : null}>
+            <StreamPlayerModal
+              isOpen={!!playerChannel}
+              onClose={() => setPlayerChannel(null)}
+              streamUrl={playerChannel?.streamUrl || null}
+              channelId={playerChannel?.id}
+              channelName={playerChannel?.name || ''}
+            />
+          </Suspense>
+        )}
 
         {/* Manual EPG Picker Modal */}
         {epgPickerChannel && (
