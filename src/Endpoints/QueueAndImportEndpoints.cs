@@ -22,6 +22,7 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
     // and show "Imported" notification before the item disappears from queue
     var recentlyImportedCutoff = DateTime.UtcNow.AddSeconds(-30);
     var queue = await db.DownloadQueue
+        .AsNoTracking()
         .Include(dq => dq.Event)
         .Include(dq => dq.DownloadClient)
         .Where(dq => dq.Status != DownloadStatus.Imported ||
