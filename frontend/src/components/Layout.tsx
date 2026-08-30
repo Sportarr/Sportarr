@@ -9,6 +9,7 @@ import {
   ServerIcon as ServerSolidIcon,
 } from '@heroicons/react/24/solid';
 import NavIcon from './NavIcon';
+import { useNavTarget, setNavTarget, setNavTargetFromClick } from '../hooks/useNavTarget';
 import { getImageUrl } from '../utils/request';
 import { apiGet, apiPost } from '../utils/api';
 import {
@@ -41,6 +42,7 @@ interface MenuItem {
 
 export default function Layout() {
   const location = useLocation();
+  const navPath = useNavTarget();
   // The lockup is a flat image, so it cannot pick up the palette the way
   // text does. Each theme gets the artwork drawn in its own ink.
   const lockupFile = useResolvedTheme() === 'light'
@@ -209,13 +211,14 @@ export default function Layout() {
     toggleMenu(item.label);
     // Navigate to the path if it exists
     if (item.path) {
+      setNavTarget(item.path);
       navigate(item.path);
     }
   };
 
   const isActive = (path?: string, children?: { path: string }[]) => {
-    if (path) return location.pathname === path;
-    if (children) return children.some((child) => location.pathname === child.path);
+    if (path) return navPath === path;
+    if (children) return children.some((child) => navPath === child.path);
     return false;
   };
 
@@ -279,12 +282,13 @@ export default function Layout() {
           <div className="absolute right-3 top-full z-50 mt-2 w-64 animate-pill-down">
             <div className="max-h-[75dvh] overflow-y-auto rounded-2xl border border-red-900/40 bg-gradient-to-b from-gray-900 to-black shadow-2xl shadow-black/70">
               {SETTINGS_PAGES.map(({ to, title }) => {
-                const current = location.pathname === to;
+                const current = navPath === to;
                 return (
                   <button
                     key={to}
                     onClick={() => {
                       setSettingsMenuOpen(false);
+                      setNavTarget(to);
                       navigate(to);
                     }}
                     className={`flex w-full items-center justify-between border-b border-gray-800/60 px-5 py-2.5 text-left text-sm font-medium last:border-b-0 ${
@@ -339,7 +343,7 @@ export default function Layout() {
                       chip
                         icon={item.icon}
                         activeIcon={item.activeIcon}
-                        active={item.children.some((child) => location.pathname === child.path)}
+                        active={item.children.some((child) => navPath === child.path)}
                       />
                       <span>{item.label}</span>
                     </div>
@@ -355,9 +359,9 @@ export default function Layout() {
                         <Link
                           key={child.path}
                           to={child.path}
-                          onClick={cleanupInertAttributes}
+                          onClick={(e) => { cleanupInertAttributes(); setNavTargetFromClick(e, child.path); }}
                           className={`block px-4 py-2.5 pl-12 text-sm transition-colors ${
-                            location.pathname === child.path
+                            navPath === child.path
                               ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                               : 'text-gray-400 hover:bg-red-900/10 hover:text-white'
                           }`}
@@ -372,9 +376,9 @@ export default function Layout() {
                 // Single menu item
                 <Link
                   to={item.path!}
-                  onClick={cleanupInertAttributes}
+                  onClick={(e) => { cleanupInertAttributes(); setNavTargetFromClick(e, item.path!); }}
                   className={`flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${
-                    location.pathname === item.path
+                    navPath === item.path
                       ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                       : 'text-gray-300 hover:bg-red-900/10 hover:text-white'
                   }`}
@@ -384,7 +388,7 @@ export default function Layout() {
                       chip
                       icon={item.icon}
                       activeIcon={item.activeIcon}
-                      active={location.pathname === item.path}
+                      active={navPath === item.path}
                     />
                     <span>{item.label}</span>
                   </div>

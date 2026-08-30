@@ -51,12 +51,12 @@ export default function NavIcon({
   const art = (
     <span className={`relative inline-flex shrink-0 ${className}`}>
       <Icon
-        className={`absolute inset-0 h-full w-full transition-[opacity,transform] duration-200 ease-out ${
+        className={`absolute inset-0 h-full w-full transition-[opacity,transform] duration-150 ease-out ${
           active ? 'scale-90 opacity-0' : 'scale-100 opacity-100'
         }`}
       />
       <ActiveIcon
-        className={`absolute inset-0 h-full w-full transition-[opacity,transform] duration-200 ease-out ${
+        className={`absolute inset-0 h-full w-full transition-[opacity,transform] duration-150 ease-out ${
           active ? 'scale-100 opacity-100' : 'scale-110 opacity-0'
         }`}
       />
@@ -73,7 +73,7 @@ export default function NavIcon({
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 transition-colors duration-200 ${
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 transition-colors duration-100 ${
         active ? 'bg-red-600 text-white' : 'bg-transparent'
       } ${pressed ? 'motion-safe:animate-nav-press' : ''}`}
     >
