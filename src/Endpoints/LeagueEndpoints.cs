@@ -978,11 +978,8 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
-    // Special-event monitoring opt-ins: finals/championships and playoff
-    // rounds bypassing the monitored-team filter. Changing either flag
-    // affects which events the next sync admits, so both count as an
-    // Display only. No resync, because it changes nothing about which events
-    // the league holds.
+    // Which end of a season the event list starts at. Display only. No
+    // resync, because it changes nothing about which events the league holds.
     if (body.TryGetProperty("eventSortOrder", out var sortOrderProp) &&
         sortOrderProp.ValueKind == JsonValueKind.String)
     {
@@ -995,6 +992,9 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Special-event monitoring opt-ins: finals/championships and playoff
+    // rounds bypassing the monitored-team filter. Changing either flag
+    // affects which events the next sync admits, so both count as an
     // event-affecting change (rides the same resync trigger as event types).
     if (body.TryGetProperty("monitorFinals", out var monitorFinalsProp) &&
         (monitorFinalsProp.ValueKind == JsonValueKind.True || monitorFinalsProp.ValueKind == JsonValueKind.False))
