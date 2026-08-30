@@ -17,6 +17,7 @@ import {
 import { useActivityCounts } from '../api/hooks';
 import NavIcon from './NavIcon';
 import { useNavTarget, setNavTarget, setNavTargetFromClick } from '../hooks/useNavTarget';
+import { preloadRoute } from '../utils/preloadRoute';
 
 interface TabChild {
   label: string;
@@ -118,6 +119,7 @@ export default function MobileTabBar() {
                 return (
                   <button
                     key={child.path}
+                    onTouchStart={() => preloadRoute(child.path)}
                     onClick={() => {
                       setOpenMenu(null);
                       setNavTarget(child.path);
@@ -168,7 +170,10 @@ export default function MobileTabBar() {
             return tab.children ? (
               <button
                 key={tab.label}
-                onClick={() => setOpenMenu(openMenu === tab.label ? null : tab.label)}
+                onClick={() => {
+                  setOpenMenu(openMenu === tab.label ? null : tab.label);
+                  tab.children?.forEach((child) => preloadRoute(child.path));
+                }}
                 className={`relative flex flex-1 flex-col items-center justify-center gap-1 ${tint}`}
               >
                 {inner}
@@ -178,6 +183,7 @@ export default function MobileTabBar() {
                 key={tab.label}
                 to={tab.path}
                 onClick={(e) => { setOpenMenu(null); setNavTargetFromClick(e, tab.path); }}
+                onTouchStart={() => preloadRoute(tab.path)}
                 className={`relative flex flex-1 flex-col items-center justify-center gap-1 ${tint}`}
               >
                 {inner}

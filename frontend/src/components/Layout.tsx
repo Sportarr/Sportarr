@@ -10,6 +10,7 @@ import {
 } from '@heroicons/react/24/solid';
 import NavIcon from './NavIcon';
 import { useNavTarget, setNavTarget, setNavTargetFromClick } from '../hooks/useNavTarget';
+import { preloadRoute } from '../utils/preloadRoute';
 import { getImageUrl } from '../utils/request';
 import { apiGet, apiPost } from '../utils/api';
 import {
@@ -23,7 +24,7 @@ import {
   SignalIcon,
   ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import FooterStatusBar from './FooterStatusBar';
 import MobileTabBar from './MobileTabBar';
 import OnboardingWizard from './OnboardingWizard';
@@ -38,6 +39,15 @@ interface MenuItem {
   path?: string;
   children?: { label: string; path: string }[];
   badge?: number;
+}
+
+/** Shown in the content area while a page's chunk is on its way. */
+function PageFallback() {
+  return (
+    <div className="flex h-[60vh] w-full items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-red-600" />
+    </div>
+  );
 }
 
 export default function Layout() {
@@ -286,6 +296,7 @@ export default function Layout() {
                 return (
                   <button
                     key={to}
+                    onMouseEnter={() => preloadRoute(to)}
                     onClick={() => {
                       setSettingsMenuOpen(false);
                       setNavTarget(to);
@@ -336,6 +347,8 @@ export default function Layout() {
                 <div>
                   <button
                     onClick={(e) => handleMenuClick(item, e)}
+                    onMouseEnter={() => preloadRoute(item.path)}
+                    onFocus={() => preloadRoute(item.path)}
                     className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors text-gray-300 hover:bg-red-900/10 hover:text-white"
                   >
                     <div className="flex items-center space-x-3">
@@ -360,6 +373,8 @@ export default function Layout() {
                           key={child.path}
                           to={child.path}
                           onClick={(e) => { cleanupInertAttributes(); setNavTargetFromClick(e, child.path); }}
+                          onMouseEnter={() => preloadRoute(child.path)}
+                          onFocus={() => preloadRoute(child.path)}
                           className={`block px-4 py-2.5 pl-12 text-sm transition-colors ${
                             navPath === child.path
                               ? 'bg-red-900/30 text-white border-l-4 border-red-600'
@@ -377,6 +392,8 @@ export default function Layout() {
                 <Link
                   to={item.path!}
                   onClick={(e) => { cleanupInertAttributes(); setNavTargetFromClick(e, item.path!); }}
+                  onMouseEnter={() => preloadRoute(item.path)}
+                  onFocus={() => preloadRoute(item.path)}
                   className={`flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${
                     navPath === item.path
                       ? 'bg-red-900/30 text-white border-l-4 border-red-600'
@@ -458,7 +475,12 @@ export default function Layout() {
         style={{ scrollbarGutter: 'stable' }}
       >
         <HealthBanner />
-        <Outlet />
+        {/* The shell stays put while a page's chunk loads, so only the
+            content area waits. A boundary above the shell would blank the
+            sidebar and header too. */}
+        <Suspense fallback={<PageFallback />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       {/* Phone-only bottom tab bar - covers every destination; no drawer on phones */}
