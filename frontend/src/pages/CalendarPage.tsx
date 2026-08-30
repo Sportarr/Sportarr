@@ -10,6 +10,7 @@ import { useCalendarEvents } from '../api/hooks';
 import type { Event } from '../types';
 import { useSettings } from '../hooks/useSettings';
 import { createRequestUrl } from '../utils/request';
+import { applyCalendarMonitorChange } from '../utils/calendarCache';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -578,28 +579,8 @@ export default function CalendarPage() {
       return data;
     },
     onSuccess: (_updated, { eventId, monitored }) => {
-      // Patch every cached range rather than refetching the month. Each cache
-      // is judged by its OWN key, not by the switch the page happens to be on:
-      // ['calendar-events', start, end, includeUnmonitored]. Reading the page's
-      // value instead dropped the event from the "all events" ranges too, so
-      // unmonitoring from a monitored-only view made it vanish from both.
-      const cached = queryClient.getQueriesData<Event[]>({ queryKey: ['calendar-events'] });
-      for (const [key] of cached) {
-        const includeUnmonitored = key[3] === true;
-        queryClient.setQueryData<Event[]>(key, (prev) => {
-          if (!prev) return prev;
-          if (!monitored && !includeUnmonitored) return prev.filter((e) => e.id !== eventId);
-          return prev.map((e) => (e.id === eventId ? { ...e, monitored } : e));
-        });
-      }
-      // A monitored-only range that never held this event cannot gain it by
-      // patching, so those ranges refetch when an event becomes monitored.
-      if (monitored) {
-        queryClient.invalidateQueries({
-          queryKey: ['calendar-events'],
-          predicate: (q) => q.queryKey[3] !== true,
-        });
-      }
+      // Patch every cached range rather than refetching the month.
+      applyCalendarMonitorChange(queryClient, eventId, monitored);
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       toast.success(monitored ? 'Event monitored' : 'Event unmonitored');
     },
