@@ -124,10 +124,22 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // Get event count and stats
-    var events = await db.Events
+    // Counts only. Loading every event row of a long-running league just to
+    // count three things read the whole history into memory on each visit to
+    // the league page. One grouped query answers all three at once, so a sync
+    // running alongside cannot be seen half-done, the way separate counts
+    // could. The filter leaves a single group, and none at all when the
+    // league has no events yet.
+    var stats = await db.Events
         .Where(e => e.LeagueId == id)
-        .ToListAsync();
+        .GroupBy(e => e.LeagueId)
+        .Select(g => new
+        {
+            EventCount = g.Count(),
+            MonitoredEventCount = g.Count(e => e.Monitored),
+            FileCount = g.Count(e => e.HasFile)
+        })
+        .FirstOrDefaultAsync();
 
     // Same rule as the list endpoint. Null when league folders are off, since
     // the league then has no folder of its own.
@@ -202,9 +214,9 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
             } : null
         }).ToList(),
         // Stats
-        EventCount = events.Count,
-        MonitoredEventCount = events.Count(e => e.Monitored),
-        FileCount = events.Count(e => e.HasFile)
+        EventCount = stats?.EventCount ?? 0,
+        MonitoredEventCount = stats?.MonitoredEventCount ?? 0,
+        FileCount = stats?.FileCount ?? 0
     });
 });
 
