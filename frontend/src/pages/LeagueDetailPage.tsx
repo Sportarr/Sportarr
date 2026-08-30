@@ -71,6 +71,8 @@ interface LeagueDetail {
   monitoredParts?: string;
   monitoredSessionTypes?: string;
   monitoredEventTypes?: string;
+  // "desc" starts at the newest event, "asc" at episode one.
+  eventSortOrder?: string;
   logoUrl?: string;
   bannerUrl?: string;
   posterUrl?: string;
@@ -129,6 +131,10 @@ function EventThumb({
   // Step down on failure: the small copy, then the full still, then the
   // placeholder. A hub that has no /static/thumbs route just falls through.
   const [step, setStep] = useState(0);
+  // A new url deserves a fresh run at the small copy. Without this an event
+  // whose art arrives later stays a placeholder, because the step counter was
+  // still parked past the end of the previous url's list.
+  useEffect(() => { setStep(0); }, [src]);
   const small = src?.includes('/static/images/')
     ? src.replace('/static/images/', '/static/thumbs/')
     : null;
@@ -154,6 +160,10 @@ function EventThumb({
     />
   );
 }
+
+// About a minute of three-second polls. Long enough to cover a slow first
+// sync, short enough that an empty league settles instead of spinning.
+const EMPTY_LEAGUE_POLLS = 20;
 
 interface LeagueSeasonRow {
   season: string;
@@ -328,6 +338,9 @@ export default function LeagueDetailPage() {
   // user does not follow, and games without a followed team. Needed to find
   // a one-off event and monitor it by hand.
   const [showAllEvents, setShowAllEvents] = useState(false);
+  // Held locally so the list reorders on click, then saved to the league so it
+  // survives a reload and follows the user to another browser.
+  const [sortOldestFirst, setSortOldestFirst] = useState(false);
   const [dvrChannelSearch, setDvrChannelSearch] = useState('');
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [isDescClamped, setIsDescClamped] = useState(false);
@@ -367,6 +380,25 @@ export default function LeagueDetailPage() {
     ),
   });
 
+  // Adopt the league's saved order once it arrives. Keyed on the league id so
+  // switching leagues picks up that league's choice.
+  useEffect(() => {
+    if (league) setSortOldestFirst(league.eventSortOrder === 'asc');
+  }, [league?.id, league?.eventSortOrder]);
+
+  const toggleSortOrder = async () => {
+    const next = !sortOldestFirst;
+    setSortOldestFirst(next);
+    try {
+      await apiClient.put(`/leagues/${id}`, { eventSortOrder: next ? 'asc' : 'desc' });
+      queryClient.setQueryData<LeagueDetail>(['league', id], prev =>
+        prev ? { ...prev, eventSortOrder: next ? 'asc' : 'desc' } : prev);
+    } catch {
+      // Put the switch back so it never claims a preference that was not saved.
+      setSortOldestFirst(!next);
+    }
+  };
+
   useEffect(() => {
     const el = descRef.current;
     if (el && !descriptionExpanded) {
@@ -393,10 +425,13 @@ export default function LeagueDetailPage() {
       if (leagueSyncActive) {
         return getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount);
       }
-      // Also poll while empty (covers the gap between page load and the
-      // initial-add task appearing in the task list).
+      // Also poll while empty, to cover the gap between page load and the
+      // initial-add task appearing in the task list. Give up after a minute:
+      // a league that genuinely holds no events used to poll for ever and sit
+      // on "Syncing events" that would never finish.
       const data = query.state.data;
-      return (!data || data.seasons.length === 0)
+      const stillWaitingToStart = query.state.dataUpdateCount <= EMPTY_LEAGUE_POLLS;
+      return (!data || data.seasons.length === 0) && stillWaitingToStart
         ? getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount)
         : false;
     },
@@ -485,15 +520,30 @@ export default function LeagueDetailPage() {
     }
 
     setHighlightedEventId(target.id);
-    const scroll = window.setTimeout(() => {
-      document.getElementById(`event-row-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 150);
     const clear = window.setTimeout(() => setHighlightedEventId(null), 4000);
-    return () => {
-      window.clearTimeout(scroll);
-      window.clearTimeout(clear);
-    };
+    return () => window.clearTimeout(clear);
   }, [deepLinkParam, deepLinkedEvent, seasonRows]);
+
+  // Scroll only once the row exists. The season's events arrive on their own
+  // query, so a fixed delay after expanding raced it and simply missed on a
+  // slow fetch, with nothing to try again.
+  useEffect(() => {
+    if (highlightedEventId == null) return;
+    let attempts = 0;
+    const findRow = () => {
+      const row = document.getElementById(`event-row-${highlightedEventId}`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.clearInterval(timer);
+        return;
+      }
+      // Give up after about three seconds rather than spin for ever.
+      if (++attempts > 30) window.clearInterval(timer);
+    };
+    const timer = window.setInterval(findRow, 100);
+    findRow();
+    return () => window.clearInterval(timer);
+  }, [highlightedEventId]);
 
   // Fetch quality profiles
   const { data: qualityProfiles = [] } = useQuery({
@@ -646,6 +696,7 @@ export default function LeagueDetailPage() {
       // Delay slightly to ensure backend has updated
       setTimeout(() => {
         queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+        queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
         queryClient.refetchQueries({ queryKey: ['league', id] });
       }, 500);
     }
@@ -687,6 +738,11 @@ export default function LeagueDetailPage() {
           ? { ...prev, monitoredEventCount: Math.max(0, (prev.monitoredEventCount ?? 0) + (monitored ? 1 : -1)) }
           : prev
       );
+      // The season row shows its own monitored count. Patching only the event
+      // list left that header stale until the page was reloaded, and a season
+      // toggled while collapsed never corrected itself at all. The summary is
+      // small, so refetching it is cheaper than mirroring the count by hand.
+      queryClient.invalidateQueries({ queryKey: ['league-seasons', id] });
       // Refresh the leagues-list stats in the background; don't block the click.
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       toast.success('Event updated');
@@ -756,7 +812,8 @@ export default function LeagueDetailPage() {
     onSuccess: async () => {
       // Refetch all relevant data - backend updates all events when league monitored status changes
       await queryClient.refetchQueries({ queryKey: ['league', id] });
-      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] }); // Events are updated by backend
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] }); // Events are updated by backend
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
       toast.success('League monitoring updated');
     },
@@ -824,6 +881,7 @@ export default function LeagueDetailPage() {
       // This ensures UI shows updated part statuses without requiring page refresh
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
 
       // Close modal if this was triggered from the edit modal (team changes)
@@ -868,6 +926,7 @@ export default function LeagueDetailPage() {
     onSuccess: async () => {
       // Use refetchQueries for immediate UI update of part status checkboxes
       await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       toast.success('Event parts updated');
     },
@@ -884,6 +943,7 @@ export default function LeagueDetailPage() {
     },
     onSuccess: async (data) => {
       await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
       toast.success(data.message || 'File deleted');
@@ -902,6 +962,7 @@ export default function LeagueDetailPage() {
     onSuccess: async (data) => {
       // Use refetchQueries for immediate UI update
       await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       toast.success(data.message || 'Season monitoring updated');
     },
@@ -1221,6 +1282,7 @@ export default function LeagueDetailPage() {
         });
         // Refetch for immediate UI update
         await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
         await queryClient.refetchQueries({ queryKey: ['league', id] });
       } else {
         toast.error('Season search failed', {
@@ -1265,6 +1327,7 @@ export default function LeagueDetailPage() {
         // gets retried.
         queryClient.invalidateQueries({ queryKey: ['league', id] });
         queryClient.invalidateQueries({ queryKey: ['league-season-events', id] });
+            queryClient.invalidateQueries({ queryKey: ['league-seasons', id] });
         queryClient.invalidateQueries({ queryKey: ['leagues'] });
       } else {
         toast.error('Failed to queue sync', {
@@ -1344,13 +1407,19 @@ export default function LeagueDetailPage() {
   // whether they carry an episode number, so postponed / cancelled events
   // (which have no episode number) are interleaved at their real date instead
   // of being dumped at the bottom below episode 1.
+  //
+  // The league can flip this to ascending, which starts the list at episode
+  // one and reads down to the newest. Only the direction changes: date stays
+  // the key, so a postponed game still lands on the day it was played.
   Object.keys(groupedEvents).forEach(season => {
     groupedEvents[season].sort((a, b) => {
       const dateB = new Date(b.eventDate).getTime();
       const dateA = new Date(a.eventDate).getTime();
-      if (dateB !== dateA) return dateB - dateA;
-      // Same date: order by episode number descending as a stable tiebreaker.
-      return (b.episodeNumber ?? 0) - (a.episodeNumber ?? 0);
+      if (dateB !== dateA) return sortOldestFirst ? dateA - dateB : dateB - dateA;
+      // Same date: episode number as a stable tiebreaker, same direction.
+      const epA = a.episodeNumber ?? 0;
+      const epB = b.episodeNumber ?? 0;
+      return sortOldestFirst ? epA - epB : epB - epA;
     });
   });
 
@@ -1858,6 +1927,19 @@ export default function LeagueDetailPage() {
               Show every event
               <span className="text-gray-500">
                 (including sessions and teams you do not follow)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={sortOldestFirst}
+                onChange={toggleSortOrder}
+                className="rounded text-red-600 focus:ring-red-500 bg-gray-800 border-gray-600"
+              />
+              Oldest first
+              <span className="text-gray-500">
+                (start each season at episode one)
               </span>
             </label>
           </div>
@@ -3045,6 +3127,7 @@ export default function LeagueDetailPage() {
             // Refresh league data to show updated file status
             queryClient.invalidateQueries({ queryKey: ['league', id] });
             queryClient.invalidateQueries({ queryKey: ['league-season-events', id] });
+            queryClient.invalidateQueries({ queryKey: ['league-seasons', id] });
           }}
         />
       )}

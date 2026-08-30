@@ -2268,6 +2268,10 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<bool>("EnableDvr")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("EventSortOrder")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("ExternalId")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")

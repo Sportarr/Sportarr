@@ -31,17 +31,21 @@ export default function NavIcon({
   const wasActive = useRef(active);
 
   useEffect(() => {
-    if (active && !wasActive.current) {
-      setPressed(true);
-      const timer = window.setTimeout(() => setPressed(false), 320);
-      return () => window.clearTimeout(timer);
-    }
+    const justActivated = active && !wasActive.current;
     wasActive.current = active;
-    return undefined;
-  }, [active]);
 
-  useEffect(() => {
-    wasActive.current = active;
+    // Leaving the tab mid-animation used to cancel the timer without clearing
+    // the flag, so the press class stayed on and the next visit had nothing
+    // left to animate.
+    if (!active) {
+      setPressed(false);
+      return undefined;
+    }
+    if (!justActivated) return undefined;
+
+    setPressed(true);
+    const timer = window.setTimeout(() => setPressed(false), 320);
+    return () => window.clearTimeout(timer);
   }, [active]);
 
   const art = (
