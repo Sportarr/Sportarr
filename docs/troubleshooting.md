@@ -19,6 +19,12 @@ Sportarr does not unpack archives for torrents. Point [Unpackerr](integrations/u
 **Import happened but the file was tiny or empty?**
 Sportarr refuses 0-byte and still-growing files and retries until the transfer settles, so if you see this on an old version, update. With remote seedbox mirrors, give the sync tool time to finish before expecting imports.
 
+## Drives never spin down
+
+The full disk scan wakes every drive holding library content, and older versions ran it hourly, which is shorter than most drives' spin-down timers. The default is now 720 minutes, and upgrading applies it once to every install. If you prefer more frequent scans, lower **Disk Scan Interval** under **Settings > Download Clients**; a value you set after the upgrade is never touched again.
+
+Day-to-day discovery does not depend on the scan. The filesystem watcher picks up changes as they happen and downloads import through the client queue, so raising the interval costs nothing on local storage. Only root folders on network shares, where the watcher cannot see writes from other machines, benefit from a shorter interval. See [Background scanning and drive activity](features/download-clients.md#background-scanning-and-drive-activity).
+
 ## Search
 
 **A release exists on my indexer but Sportarr rejects it?**
