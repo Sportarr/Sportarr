@@ -17,6 +17,7 @@ public static class SystemStatusEndpoints
         app.MapGet("/api/stats/library", async (SportarrDbContext db) =>
         {
             var perLeague = await db.EventFiles
+                .AsNoTracking()
                 .Where(f => f.Exists && f.Event != null && f.Event.League != null)
                 .GroupBy(f => f.Event!.League!.Name)
                 .Select(g => new
@@ -76,6 +77,7 @@ public static class SystemStatusEndpoints
         app.MapGet("/api/stats", async (SportarrDbContext db) =>
         {
             var wantedCount = await db.Events
+                .AsNoTracking()
                 .Where(e => e.Monitored && !e.HasFile)
                 .CountAsync();
 
@@ -208,6 +210,7 @@ public static class SystemStatusEndpoints
         app.MapGet("/api/system/health/orphaned-events", async (SportarrDbContext db) =>
         {
             var orphaned = await db.Events
+                .AsNoTracking()
                 .Where(e => e.HasFile && (e.FilePath == null || e.FilePath == ""))
                 .OrderByDescending(e => e.EventDate)
                 .Select(e => new

@@ -7,7 +7,7 @@ edit_uri: edit/dev/docs/
 
 theme:
   name: material
-  logo: assets/logo.svg
+  logo: assets/logo-lockup.svg
   favicon: assets/favicon.ico
   palette:
     scheme: slate
@@ -28,8 +28,13 @@ theme:
     - content.code.copy
     - toc.follow
 
+extra_javascript:
+  - javascripts/header-topic.js
+
 extra_css:
-  - stylesheets/extra.css
+  # Bump the version when this file changes. The name never varies, so a
+  # browser will otherwise keep serving the copy it already has.
+  - stylesheets/extra.css?v=4
 
 extra:
   social:
@@ -95,6 +100,7 @@ nav:
       - SABnzbd: integrations/sabnzbd.md
       - Synology Download Station: integrations/download-station.md
       - Transmission: integrations/transmission.md
+      - Unpackerr: integrations/unpackerr.md
       - Vuze: integrations/vuze.md
   - Features:
       - Following Teams & Athletes: features/following.md

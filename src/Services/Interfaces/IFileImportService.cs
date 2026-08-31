@@ -13,6 +13,15 @@ public interface IFileImportService
     /// </summary>
     /// <param name="download">The download queue item to import</param>
     /// <param name="overridePath">Optional override path for manual imports</param>
+    /// <param name="manualImportMode">
+    /// Set when a person accepted this import by hand. The transfer then reads
+    /// the media management settings instead of asking a download client
+    /// whether the file is still needed, because on a manual import the client
+    /// cannot answer that.
+    /// </param>
     /// <returns>Import history record</returns>
-    Task<ImportHistory> ImportDownloadAsync(DownloadQueueItem download, string? overridePath = null);
+    Task<ImportHistory> ImportDownloadAsync(
+        DownloadQueueItem download,
+        string? overridePath = null,
+        PostImportMode? manualImportMode = null);
 }

@@ -5,7 +5,7 @@ import { apiGet, apiPut } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { applyTheme, type ThemeChoice } from '../../hooks/useTheme';
-import { UI_SETTINGS_QUERY_KEY } from '../../hooks/useUISettings';
+import { UI_SETTINGS_QUERY_KEY, type UISettings } from '../../hooks/useUISettings';
 import { setGlobalBackoffCap } from '../../utils/queryBackoff';
 
 interface TimezoneInfo {
@@ -146,11 +146,16 @@ export default function UISettings({ showAdvanced: propShowAdvanced = false }: U
         initialSettings.current = settings;
         setHasUnsavedChanges(false);
         setGlobalBackoffCap(settings.queryBackoffCapMs);
-        queryClient.setQueryData(UI_SETTINGS_QUERY_KEY, {
+        // Merged onto what is cached rather than replacing it. Written as a
+        // fresh object this dropped the theme, and the hook that follows the
+        // system theme in auto mode stops listening once it reads none.
+        queryClient.setQueryData<UISettings>(UI_SETTINGS_QUERY_KEY, (prev) => ({
+          ...prev,
           timeZone: settings.timeZone,
           eventViewMode: settings.eventViewMode,
           queryBackoffCapMs: settings.queryBackoffCapMs,
-        });
+          theme: settings.theme,
+        }));
       } else {
         console.error('Failed to save UI settings');
       }

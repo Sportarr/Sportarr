@@ -808,11 +808,31 @@ public class LeagueEventSyncService
                             .ToListAsync())
                         .ToHashSet();
 
+                    // A recording is as good a reason to keep a row as a
+                    // download in flight. The clean-up spares these too.
+                    var scheduledEventIds = (await _db.DvrRecordings
+                            .Where(r => r.EventId != null && outOfFilterIds.Contains(r.EventId.Value))
+                            .Select(r => r.EventId!.Value)
+                            .ToListAsync())
+                        .ToHashSet();
+
                     var strayRemovedCount = 0;
                     var strayUnmonitoredCount = 0;
+                    var strayKeptCount = 0;
                     foreach (var stray in outOfFilter)
                     {
-                        if (stray.HasFile || stray.Files.Any() || queuedEventIds.Contains(stray.Id))
+                        // A person asked for this one. It sits outside the
+                        // filter because that is what they asked for, so it
+                        // stays. The claim outlives an automatic unmonitor,
+                        // because switching a league off and on again must
+                        // not quietly make a picked game deletable.
+                        if (stray.ManuallyMonitored)
+                        {
+                            strayKeptCount++;
+                            continue;
+                        }
+
+                        if (stray.HasFile || stray.Files.Any() || queuedEventIds.Contains(stray.Id) || scheduledEventIds.Contains(stray.Id))
                         {
                             if (stray.Monitored)
                             {
@@ -831,11 +851,11 @@ public class LeagueEventSyncService
                             stray.Title, season);
                     }
 
-                    if (strayRemovedCount > 0 || strayUnmonitoredCount > 0)
+                    if (strayRemovedCount > 0 || strayUnmonitoredCount > 0 || strayKeptCount > 0)
                     {
                         result.RemovedCount += strayRemovedCount;
-                        _logger.LogInformation("[League Event Sync] Season {Season}: Out-of-filter cleanup removed {Removed} file-less event(s) and unmonitored {Unmonitored} with files/queue - events outside the monitored team selection",
-                            season, strayRemovedCount, strayUnmonitoredCount);
+                        _logger.LogInformation("[League Event Sync] Season {Season}: Out-of-filter cleanup removed {Removed} file-less event(s), unmonitored {Unmonitored} with files/queue, and kept {Kept} monitored by hand - events outside the monitored team selection",
+                            season, strayRemovedCount, strayUnmonitoredCount, strayKeptCount);
                     }
                 }
             }
@@ -1112,6 +1132,7 @@ public class LeagueEventSyncService
             foreach (var e in toMonitor)
             {
                 e.Monitored = true;
+                e.ManuallyMonitored = true;
             }
             await _db.SaveChangesAsync(cancellationToken);
 
@@ -1788,6 +1809,43 @@ public class LeagueEventSyncService
                 }
             }
 
+            // A special event the league's settings say to monitor, that is not
+            // monitored, gets monitored. Deliberately one direction and one
+            // kind of event.
+            //
+            // One direction because the time-based scopes read "what to start
+            // monitoring", not "what should still be monitored": under the
+            // default Future scope every event stops matching the moment it
+            // airs, and unmonitoring it there would close the window in which
+            // anything can be downloaded for it.
+            //
+            // One kind because a setting like "always monitor finals" used to
+            // reach only the events created after it changed, which left the
+            // finals of every older season unmonitored with no way to repair
+            // them. Ordinary games are left alone, so a game somebody
+            // unmonitored on purpose stays that way even when nothing recorded
+            // that they chose it.
+            if (!existingEvent.ManuallyMonitored && !existingEvent.Monitored && league.Monitored)
+            {
+                var isSpecial = SpecialEventClassifier.BypassesTeamFilter(
+                    apiEvent.Round,
+                    LeagueSportRules.IsTeamlessSport(league.Sport, league.Name) ? null : apiEvent.Title,
+                    league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                    cupStageSizes);
+
+                if (isSpecial
+                    && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
+                        apiEvent.Round, apiEvent.Title, cupStageSizes)
+                    && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
+                    && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes))
+                {
+                    existingEvent.Monitored = true;
+                    needsUpdate = true;
+                    _logger.LogInformation("[League Event Sync] {Title} is now monitored, which the league's special-event settings ask for",
+                        apiEvent.Title);
+                }
+            }
+
             // NOTE: We do NOT update MonitoredParts for existing events during sync
             // This preserves any custom event-level MonitoredParts settings the user may have configured
             // MonitoredParts is only inherited from league when events are first created
@@ -1845,7 +1903,12 @@ public class LeagueEventSyncService
             ExternalId = apiEvent.ExternalId,
             TsdbId = apiEvent.TsdbId,
             Title = apiEvent.Title,
-            Sport = apiEvent.Sport,
+            // The league decides the sport. The API sends a per-event value that
+            // drifts from the league it belongs to, so NFL events arrived as
+            // "Football" under a league named "American Football" and UFC events
+            // as "Combat" under "Fighting". Anything comparing the two then
+            // disagreed with itself.
+            Sport = !string.IsNullOrWhiteSpace(league.Sport) ? league.Sport : apiEvent.Sport,
             LeagueId = league.Id,
 
             // Team relationships (internal database IDs)

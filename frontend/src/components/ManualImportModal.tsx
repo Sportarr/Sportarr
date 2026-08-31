@@ -1,5 +1,6 @@
 import { formatEventDate } from '../utils/timezone';
 import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   XMarkIcon,
   CheckCircleIcon,
@@ -20,6 +21,7 @@ interface League {
   name: string;
   sport: string;
   logoUrl?: string;
+  monitored?: boolean;
 }
 
 interface EventOption {
@@ -62,8 +64,18 @@ interface Event {
     name: string;
     sport: string;
   };
+  // The events API returns these flat, the search API nests them under league.
+  leagueId?: number;
+  leagueName?: string;
   season?: string;
 }
+
+// Accepts either shape so a suggestion reads the same from both endpoints.
+const leagueNameOf = (event?: Event | null): string | undefined =>
+  event?.league?.name ?? event?.leagueName ?? event?.organization ?? undefined;
+
+const leagueIdOf = (event?: Event | null): number | undefined =>
+  event?.league?.id ?? event?.leagueId ?? undefined;
 
 interface ImportSuggestion {
   eventId?: number;
@@ -76,6 +88,9 @@ interface ImportSuggestion {
   qualityScore?: number;
   part?: string;
   confidence: number;
+  // Null when the release name carried no date, which is why several dates of
+  // the same fixture can appear together.
+  parsedEventDate?: string | null;
 }
 
 interface PendingImport {
@@ -97,7 +112,20 @@ interface Props {
   pendingImport: PendingImport;
   onClose: () => void;
   onSuccess: () => void;
+  // Set when the user has just come back from adding the league this file
+  // needs, so the dropdown opens on it instead of on nothing.
+  initialLeagueId?: number | null;
 }
+
+// A file can belong to a league the user has not added yet, and until they do
+// there is nothing in the dropdown to import it against. This sentinel sends
+// them to the real add-league search and brings them back here.
+const ADD_LEAGUE_OPTION = '__add_league__';
+
+// Adding a league only queues its sync, so a league picked seconds ago still
+// reads back with no events. Keep asking for about a minute before giving up.
+const EVENT_SYNC_POLL_MS = 3000;
+const EVENT_SYNC_MAX_ATTEMPTS = 20;
 
 // Drop fields the user didn't fill in so the import endpoint doesn't apply
 // blank string overrides over good parser values. Languages is treated
@@ -122,12 +150,14 @@ function stripEmptyOverrides(v: FileMetadataEditorValues) {
   return out;
 }
 
-export default function ManualImportModal({ pendingImport, onClose, onSuccess }: Props) {
+export default function ManualImportModal({ pendingImport, onClose, onSuccess, initialLeagueId }: Props) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isLoading, setIsLoading] = useState(false);
 
   // Selection state - hierarchical selection
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(
-    pendingImport.suggestedEvent?.league?.id || null
+    initialLeagueId ?? pendingImport.suggestedEvent?.league?.id ?? null
   );
   const [selectedSeason, setSelectedSeason] = useState<string | null>(
     pendingImport.suggestedEvent?.season || null
@@ -155,8 +185,31 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
     partNumber: undefined,
   });
   const [showEditor, setShowEditor] = useState(false);
+  // Same choice the library importer offers. Auto reads the media management
+  // settings, so hardlinks stay on for people who turned them on.
+  const [importMode, setImportMode] = useState<'auto' | 'copy' | 'hardlink' | 'move'>('auto');
+  // Shown beside Auto so the choice is not a guess.
+  const [autoModeLabel, setAutoModeLabel] = useState('follow media management settings');
 
   // Data state
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiGet('/api/settings');
+        if (!res.ok) return;
+        const data = await res.json();
+        const mm = data.mediaManagementSettings ? JSON.parse(data.mediaManagementSettings) : null;
+        if (!cancelled && mm) {
+          setAutoModeLabel(mm.useHardlinks ? 'hardlink' : mm.copyFiles ? 'copy' : 'move');
+        }
+      } catch {
+        // Keep the generic label if settings cannot load.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const [leagues, setLeagues] = useState<League[]>([]);
   const [seasons, setSeasons] = useState<string[]>([]);
   const [events, setEvents] = useState<EventOption[]>([]);
@@ -167,6 +220,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const [loadingLeagues, setLoadingLeagues] = useState(true);
   const [loadingSeasons, setLoadingSeasons] = useState(false);
   const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventSyncAttempts, setEventSyncAttempts] = useState(0);
   const [loadingParts, setLoadingParts] = useState(false);
 
   // Search state for events
@@ -205,8 +259,9 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
           if (response.ok) {
             const event = await response.json();
             setResolvedSuggestedEvent(event);
-            if (event.league?.id && !selectedLeagueId) {
-              setSelectedLeagueId(event.league.id);
+            const leagueId = leagueIdOf(event);
+            if (leagueId && !selectedLeagueId) {
+              setSelectedLeagueId(leagueId);
             }
             if (event.season && !selectedSeason) {
               setSelectedSeason(event.season);
@@ -218,6 +273,8 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
       })();
     }
   }, [pendingImport.suggestedEventId]);
+
+  useEffect(() => { setEventSyncAttempts(0); }, [selectedLeagueId]);
 
   // Load seasons when league changes
   useEffect(() => {
@@ -390,7 +447,9 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
       // EventFile lands with the corrected Quality / ReleaseGroup / Languages
       // / etc. instead of whatever the parser guessed.
       const metadataOverrides = stripEmptyOverrides(editorValues);
-      const acceptBody = Object.keys(metadataOverrides).length > 0 ? { metadataOverrides } : {};
+      const acceptBody: Record<string, unknown> = {};
+      if (Object.keys(metadataOverrides).length > 0) acceptBody.metadataOverrides = metadataOverrides;
+      if (importMode !== 'auto') acceptBody.importMode = importMode;
       const acceptResponse = await apiPost(`/api/pending-imports/${pendingImport.id}/accept`, acceptBody);
 
       if (!acceptResponse.ok) {
@@ -469,6 +528,24 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId);
 
+  const leagueHasNoEvents = !!selectedLeagueId && !loadingEvents && events.length === 0 && !eventSearch;
+  // A team league added with no teams monitored syncs nothing at all, so
+  // waiting for events would never end.
+  const leagueSyncsNothing = leagueHasNoEvents && selectedLeague?.monitored === false;
+  const waitingForEventSync =
+    leagueHasNoEvents && !leagueSyncsNothing && eventSyncAttempts < EVENT_SYNC_MAX_ATTEMPTS;
+
+  useEffect(() => {
+    if (!waitingForEventSync || !selectedLeagueId) return;
+
+    const timer = setTimeout(() => {
+      setEventSyncAttempts(attempts => attempts + 1);
+      loadEvents(selectedLeagueId, selectedSeason, eventSearch);
+    }, EVENT_SYNC_POLL_MS);
+
+    return () => clearTimeout(timer);
+  }, [waitingForEventSync, eventSyncAttempts, selectedLeagueId, selectedSeason, eventSearch]);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
       <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-4xl w-full max-h-[85dvh] overflow-y-auto">
@@ -543,8 +620,8 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
                   onClick={() => selectFromSuggestion({
                     eventId: pendingImport.suggestedEventId,
                     eventTitle: suggestedEvent?.title,
-                    league: suggestedEvent?.league?.name,
-                    leagueId: suggestedEvent?.league?.id,
+                    league: leagueNameOf(suggestedEvent),
+                    leagueId: leagueIdOf(suggestedEvent),
                     season: suggestedEvent?.season,
                     part: pendingImport.suggestedPart,
                     confidence: pendingImport.suggestionConfidence
@@ -557,9 +634,11 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-white font-medium">{suggestedEvent.title}</div>
+                      <div className="text-white font-medium">
+                        {suggestedEvent.title || `Event #${pendingImport.suggestedEventId}`}
+                      </div>
                       <div className="text-sm text-gray-400">
-                        {suggestedEvent.league?.name || suggestedEvent.organization}
+                        {leagueNameOf(suggestedEvent)}
                         {suggestedEvent.season && ` • ${suggestedEvent.season}`}
                       </div>
                       {pendingImport.suggestedPart && (
@@ -582,6 +661,12 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
               {allMatches.length > 0 && (
                 <div className="mt-3">
                   <p className="text-xs text-gray-400 mb-2">Other potential matches:</p>
+                  {allMatches.length > 1 && !allMatches.some(m => m.parsedEventDate) && (
+                    <p className="text-xs text-amber-400/90 mb-2">
+                      No date was found in the file name, so the same fixture is
+                      listed for every date it was played. Pick the one you want.
+                    </p>
+                  )}
                   <div className="max-h-32 overflow-y-auto space-y-1">
                     {allMatches
                       .filter(m => m.eventId !== pendingImport.suggestedEventId)
@@ -600,6 +685,13 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
                             <div className="truncate">
                               <span className="text-white">{match.eventTitle}</span>
                               <span className="text-gray-500 ml-2">{match.league}</span>
+                              {match.eventDate && (
+                                <span className="text-gray-400 ml-2">
+                                  {new Date(match.eventDate).toLocaleDateString(undefined, {
+                                    year: 'numeric', month: 'short', day: 'numeric',
+                                  })}
+                                </span>
+                              )}
                             </div>
                             <span className={`text-xs font-medium ${getConfidenceColor(match.confidence)}`}>
                               {match.confidence}%
@@ -639,7 +731,27 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
                 </label>
                 <select
                   value={selectedLeagueId ?? ''}
-                  onChange={(e) => setSelectedLeagueId(e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) => {
+                    if (e.target.value === ADD_LEAGUE_OPTION) {
+                      // Leave the resume marker on the entry behind us so the
+                      // browser Back button reopens this file too, not only
+                      // the page's own return button.
+                      navigate(location.pathname + location.search, {
+                        replace: true,
+                        state: { resumeImport: { pendingImportId: pendingImport.id } },
+                      });
+                      navigate('/add-league/search', {
+                        state: {
+                          importReturn: {
+                            pendingImportId: pendingImport.id,
+                            fileName: pendingImport.title,
+                          },
+                        },
+                      });
+                      return;
+                    }
+                    setSelectedLeagueId(e.target.value ? Number(e.target.value) : null);
+                  }}
                   className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
                   disabled={loadingLeagues}
                 >
@@ -649,6 +761,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
                       {league.name} ({league.sport})
                     </option>
                   ))}
+                  <option value={ADD_LEAGUE_OPTION}>+ Add a new league...</option>
                 </select>
                 {loadingLeagues && (
                   <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
@@ -724,6 +837,21 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
                         <>
                           <p>No events found matching "{eventSearch}"</p>
                           <p className="text-xs mt-1">Try a different search term or check if the event exists in this league</p>
+                        </>
+                      ) : leagueSyncsNothing ? (
+                        <>
+                          <p>This league is not monitored, so none of its events were synced</p>
+                          <p className="text-xs mt-1">
+                            Monitor a team on the league page and its events appear here
+                          </p>
+                        </>
+                      ) : waitingForEventSync ? (
+                        <>
+                          <p className="flex items-center justify-center gap-2">
+                            <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                            Syncing this league's events
+                          </p>
+                          <p className="text-xs mt-1">They appear here as they arrive</p>
                         </>
                       ) : (
                         <>
@@ -883,25 +1011,46 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gradient-to-br from-gray-900 to-black border-t border-gray-700 px-6 py-4 flex justify-end gap-3">
+        <div className="sticky bottom-0 bg-gradient-to-br from-gray-900 to-black border-t border-gray-700 px-6 py-4 flex flex-wrap items-end justify-end gap-3">
+          {/* Same choice the library importer offers, so a file that is still
+              seeding can be linked instead of moved. */}
+          <div className="w-full sm:mr-auto sm:w-auto">
+            <label htmlFor="manual-import-mode" className="block text-xs font-medium text-gray-400 mb-1">
+              Import Mode
+            </label>
+            <select
+              id="manual-import-mode"
+              value={importMode}
+              onChange={(e) => setImportMode(e.target.value as 'auto' | 'copy' | 'hardlink' | 'move')}
+              disabled={isLoading}
+              className="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-white focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-500 disabled:opacity-50"
+              title="Hardlink/Copy and Copy leave the original file where it is, so a seeding torrent keeps working"
+            >
+              <option value="auto">Auto ({autoModeLabel})</option>
+              <option value="move">Move</option>
+              <option value="hardlink">Hardlink/Copy</option>
+              <option value="copy">Copy</option>
+            </select>
+          </div>
+          <div className="flex w-full flex-1 justify-end gap-3 sm:w-auto sm:flex-none">
           <button
             onClick={handleReject}
             disabled={isLoading}
-            className="px-6 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="px-4 sm:px-6 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white rounded-lg transition-colors"
             title="Permanently dismiss this file — it won't appear in future scans"
           >
             Dismiss
           </button>
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            className="px-4 sm:px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleAccept}
             disabled={isLoading || !selectedEventId}
-            className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
+            className="px-4 sm:px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
           >
             {isLoading ? (
               <span className="flex items-center gap-2">
@@ -912,6 +1061,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
               'Import'
             )}
           </button>
+          </div>
         </div>
       </div>
     </div>

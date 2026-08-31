@@ -278,6 +278,15 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         download.DownloadId,
                         download.GrabCategory);
 
+                    // An ImportPending row never reaches CheckDownloadStatus
+                    // again, so this is the only poll left that can learn the
+                    // path. It matters most here: ImportPending is the state an
+                    // external extractor watches for.
+                    if (!string.IsNullOrWhiteSpace(clientStatus?.SavePath))
+                    {
+                        download.OutputPath = clientStatus.SavePath;
+                    }
+
                     var clientReportsFailure = clientStatus != null &&
                         string.Equals(clientStatus.Status, "failed", StringComparison.OrdinalIgnoreCase);
 
@@ -370,6 +379,12 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
                 // Update the download ID to the new one (debrid proxy changed it)
                 download.DownloadId = newDownloadId;
+                // The row now stands for a different job in the client, so the
+                // path recorded for the old one is wrong. Drop it before the
+                // update below, which only overwrites it when the new status
+                // actually carries a path. Serving the old path to an external
+                // extractor points it at someone else's folder.
+                download.OutputPath = null;
                 status = titleMatchStatus;
             }
             else
@@ -444,6 +459,16 @@ public class EnhancedDownloadMonitorService : BackgroundService
         download.Size = status.Size;
         download.TimeRemaining = status.TimeRemaining;
         download.LastUpdate = DateTime.UtcNow;
+
+        // Keep the last path the client reported. The v3 queue shim serves it
+        // as outputPath so an external extractor can find the job folder when
+        // its name does not match the release title. Never overwrite a known
+        // path with null: clients stop reporting it once the job leaves their
+        // history, and losing it there is exactly when the extractor needs it.
+        if (!string.IsNullOrWhiteSpace(status.SavePath))
+        {
+            download.OutputPath = status.SavePath;
+        }
 
         // Update status based on client response
         // Special handling for Decypharr: "paused" with 100% progress means completed

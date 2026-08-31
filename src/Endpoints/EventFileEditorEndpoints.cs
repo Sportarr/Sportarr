@@ -236,6 +236,7 @@ public static class EventFileEditorEndpoints
             // surfaces the user's actual library, not a hard-coded guess.
             // Order by frequency so the most-used groups appear first.
             var releaseGroups = await db.EventFiles
+                .AsNoTracking()
                 .Where(f => f.ReleaseGroup != null && f.ReleaseGroup != "")
                 .GroupBy(f => f.ReleaseGroup!)
                 .Select(g => new { Group = g.Key, Count = g.Count() })

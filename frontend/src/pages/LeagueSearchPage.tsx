@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, GlobeAltIcon, TrophyIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
@@ -14,7 +14,7 @@ import { apiGet, apiPost, apiPut, apiDelete } from '../utils/api';
 import { PAGE_PADDING, TABLE_ROW_HOVER } from '../utils/designTokens';
 import { isMotorsport, isGolf, isIndividualTennis, isTeamlessSport, usesFightingEventTypes } from '../utils/leagueSportRules';
 import { getSportIcon } from '../utils/sportIcons';
-import { BUTTON_PRIMARY, BUTTON_INFO } from '../utils/designTokens';
+import { BUTTON_PRIMARY, BUTTON_INFO, BUTTON_SECONDARY } from '../utils/designTokens';
 
 interface League {
   // Sportarr API field names
@@ -53,8 +53,17 @@ const isInternalLeagueName = (name: string) => {
   return normalized.startsWith('_') || normalized.endsWith('_');
 };
 
+// Set when the user reached this page from a manual import that had no league
+// to import against. Adding one sends them straight back to that file.
+interface ImportReturn {
+  pendingImportId: number;
+  fileName: string;
+}
+
 export default function LeagueSearchPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const importReturn = (location.state as { importReturn?: ImportReturn } | null)?.importReturn ?? null;
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -298,6 +307,20 @@ export default function LeagueSearchPage() {
       closeAddModal();
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       queryClient.invalidateQueries({ queryKey: ['sportarr-leagues'] });
+
+      // A team-based league added with no teams selected answers
+      // { leagueId, monitored: false } instead of the full league, so both
+      // shapes have to be read or the user is stranded here after a
+      // successful add.
+      const addedLeagueId: number | undefined = data?.id ?? data?.leagueId;
+
+      if (importReturn && addedLeagueId) {
+        navigate('/activity', {
+          state: {
+            resumeImport: { pendingImportId: importReturn.pendingImportId, leagueId: addedLeagueId },
+          },
+        });
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -435,7 +458,8 @@ export default function LeagueSearchPage() {
       if (leagueIdStr) {
         // Refetch immediately (not just invalidate) to ensure UI shows fresh data
         await queryClient.refetchQueries({ queryKey: ['league', leagueIdStr] });
-        await queryClient.refetchQueries({ queryKey: ['league-events', leagueIdStr] });
+        await queryClient.refetchQueries({ queryKey: ['league-season-events', leagueIdStr] });
+      queryClient.refetchQueries({ queryKey: ['league-seasons', leagueIdStr] });
       }
       closeAddModal();
     },
@@ -703,6 +727,27 @@ export default function LeagueSearchPage() {
           title="Add League"
           subtitle="Browse and add leagues from the Sportarr database to monitor their events"
         />
+
+        {importReturn && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-yellow-700 bg-yellow-900/20 px-4 py-3">
+            <p className="min-w-0 text-sm text-yellow-200">
+              Add the league for{' '}
+              <span className="font-medium break-all">{importReturn.fileName}</span>. You return to
+              the import as soon as it is added.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                navigate('/activity', {
+                  state: { resumeImport: { pendingImportId: importReturn.pendingImportId } },
+                })
+              }
+              className={BUTTON_SECONDARY}
+            >
+              Back to import
+            </button>
+          </div>
+        )}
 
         {/* Search + sport filter - one row, same pattern as the Leagues page */}
         <div className="mb-2 flex flex-wrap gap-2 md:gap-3">

@@ -118,6 +118,7 @@ app.MapGet("/api/rootfolder/{id:int}/unmappedfolders", async (int id, SportarrDb
     // FileNamingService does) so a league called "UFC" matches a folder
     // called "ufc/" or "UFC " etc. without false positives.
     var leagueNames = await db.Leagues
+        .AsNoTracking()
         .Select(l => l.Name)
         .ToListAsync();
     var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

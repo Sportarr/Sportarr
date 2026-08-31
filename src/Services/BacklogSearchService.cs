@@ -88,6 +88,16 @@ public class BacklogSearchService : BackgroundService
             ? DateTime.UtcNow.AddDays(-config.BacklogSearchMaxAgeDays)
             : null;
 
+        // Events with a download in flight are not candidates for anything: the
+        // grab exists, it just has not landed yet. Without this a large event
+        // stayed "missing" for the hours its torrent took and every pass
+        // grabbed another release for it (issue #194).
+        var busyEventIds = await db.DownloadQueue
+            .Where(d => ActiveDownloadGate.InFlightStatuses.Contains(d.Status))
+            .Select(d => d.EventId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
         // Pull candidates: monitored events on monitored, opted-in leagues that
         // have already aired (past grace) and don't yet have a file. Cutoff
         // upgrade candidates with files are gathered separately below.
@@ -104,7 +114,8 @@ public class BacklogSearchService : BackgroundService
                 && e.Status != "Postponed" && e.Status != "postponed"
                 && e.Status != "Cancelled" && e.Status != "cancelled"
                 && e.Status != "Canceled" && e.Status != "canceled"
-                && e.EventDate <= searchableBefore);
+                && e.EventDate <= searchableBefore
+                && !busyEventIds.Contains(e.Id));
 
         if (oldestAllowed.HasValue)
             missingQuery = missingQuery.Where(e => e.EventDate >= oldestAllowed.Value);
@@ -124,7 +135,8 @@ public class BacklogSearchService : BackgroundService
                 && e.Status != "Postponed" && e.Status != "postponed"
                 && e.Status != "Cancelled" && e.Status != "cancelled"
                 && e.Status != "Canceled" && e.Status != "canceled"
-                && e.EventDate <= searchableBefore);
+                && e.EventDate <= searchableBefore
+                && !busyEventIds.Contains(e.Id));
 
         if (oldestAllowed.HasValue)
             cutoffQuery = cutoffQuery.Where(e => e.EventDate >= oldestAllowed.Value);

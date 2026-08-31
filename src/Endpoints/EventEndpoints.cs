@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using Sportarr.Api.Services.Interfaces;
@@ -20,6 +21,7 @@ public static class EventEndpoints
 app.MapGet("/api/events", async (SportarrDbContext db) =>
 {
     var events = await db.Events
+        .AsNoTracking()
         .Include(e => e.League)        // Universal (UFC, Premier League, NBA, etc.)
         .Include(e => e.HomeTeam)      // Universal (team sports and combat sports)
         .Include(e => e.AwayTeam)      // Universal (team sports and combat sports)
@@ -79,6 +81,7 @@ app.MapGet("/api/events/search", async (string? q, int? limit, int? excludeEvent
 app.MapGet("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var evt = await db.Events
+        .AsNoTracking()
         .Include(e => e.League)        // Universal (UFC, Premier League, NBA, etc.)
         .Include(e => e.HomeTeam)      // Universal (team sports and combat sports)
         .Include(e => e.AwayTeam)      // Universal (team sports and combat sports)
@@ -110,9 +113,27 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
         Broadcast = request.Broadcast,
         Status = request.Status,
         Monitored = request.Monitored,
+        // Added by a person, so the out-of-filter cleanup leaves it alone and
+        // no sync argues with how they left it. A hand-added game usually
+        // carries no team ids at all, which is exactly what that filter
+        // rejects.
+        ManuallyMonitored = true,
         QualityProfileId = request.QualityProfileId,
         Images = request.Images ?? new List<string>()
     };
+
+    // The team filter reads external ids, so carry them over from the teams
+    // the request named. Without them the event fails every filter it meets.
+    if (evt.HomeTeamId != null || evt.AwayTeamId != null)
+    {
+        var teamIds = new[] { evt.HomeTeamId, evt.AwayTeamId }.Where(t => t != null).Select(t => t!.Value).ToList();
+        var teams = await db.Teams
+            .Where(t => teamIds.Contains(t.Id))
+            .Select(t => new { t.Id, t.ExternalId })
+            .ToListAsync();
+        evt.HomeTeamExternalId ??= teams.FirstOrDefault(t => t.Id == evt.HomeTeamId)?.ExternalId;
+        evt.AwayTeamExternalId ??= teams.FirstOrDefault(t => t.Id == evt.AwayTeamId)?.ExternalId;
+    }
 
     // Check if event already exists (by ExternalId OR by Title + EventDate)
     var existingEvent = await db.Events
@@ -210,7 +231,14 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
         evt.Location = locationValue.GetString();
 
     if (body.TryGetProperty("monitored", out var monitoredValue))
+    {
         evt.Monitored = monitoredValue.GetBoolean();
+        // A person decided this one, either way, so the sync works out
+        // monitoring again for every event except this kind. Turning it off
+        // is as much a decision as turning it on, and the sync would
+        // otherwise put it straight back.
+        evt.ManuallyMonitored = true;
+    }
 
     if (body.TryGetProperty("monitoredParts", out var monitoredPartsValue))
     {
@@ -310,6 +338,7 @@ app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db, Notif
 app.MapGet("/api/events/{id:int}/files", async (int id, SportarrDbContext db) =>
 {
     var evt = await db.Events
+        .AsNoTracking()
         .Include(e => e.Files)
         .FirstOrDefaultAsync(e => e.Id == id);
 
@@ -786,6 +815,26 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
     logger.LogInformation("[SEASON TOGGLE] {Action} season {Season} for league {LeagueName} ({EventCount} events)",
         monitored ? "Monitoring" : "Unmonitoring", season, league.Name, events.Count);
 
+    // The games the league's team selection would reject. Only these need a
+    // claim, and the claim reads the team filter alone, so a game held only
+    // because it has a file still gets one. Teamless sports never filter by
+    // team, so nothing there is at risk.
+    var monitoredTeamIds = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name)
+        ? new HashSet<string>()
+        : (await db.LeagueTeams
+            .Where(lt => lt.LeagueId == leagueId && lt.Monitored && lt.Team != null && lt.Team.ExternalId != null)
+            .Select(lt => lt.Team!.ExternalId!)
+            .ToListAsync()).ToHashSet();
+    // Computed once for the season, not once per event, the same way every
+    // other caller of this predicate does it.
+    var cupStageSizes = SpecialEventClassifier.ComputeCupStageSizes(events.Select(e => e.Round));
+    var outsideTeamSelection = monitoredTeamIds.Count == 0
+        ? new HashSet<Event>()
+        : events
+            .Where(e => !LeagueEndpoints.MatchesMonitoredTeams(e, monitoredTeamIds)
+                && !SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title, league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, cupStageSizes))
+            .ToHashSet();
+
     foreach (var evt in events)
     {
         // Determine if this specific event should be monitored
@@ -803,6 +852,14 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
         }
 
         evt.Monitored = shouldMonitor;
+        // A season somebody monitors or unmonitors by hand is their decision
+        // either way, so a sync leaves every game in it alone. Only the games
+        // the league would not store on its own take the claim, because the
+        // rest are what the league's own settings already say.
+        if (outsideTeamSelection.Contains(evt))
+        {
+            evt.ManuallyMonitored = true;
+        }
 
         if (shouldMonitor)
         {

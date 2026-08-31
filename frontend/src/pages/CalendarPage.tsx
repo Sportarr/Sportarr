@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
-import { CheckCircleIcon } from '@heroicons/react/24/solid';
+import { CheckCircleIcon, EyeIcon as EyeSolidIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import apiClient from '../api/client';
 import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
 import { useCalendarEvents } from '../api/hooks';
 import type { Event } from '../types';
 import { useSettings } from '../hooks/useSettings';
 import { createRequestUrl } from '../utils/request';
+import { applyCalendarMonitorChange } from '../utils/calendarCache';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -182,14 +186,58 @@ const getAdjacentDate = (date: Date, view: CalendarView, direction: -1 | 1) => {
   }
 };
 
+/**
+ * The monitor toggle that rides on an event card. It sits over the card
+ * rather than inside it, because the card itself is a button and a button
+ * cannot hold another one.
+ */
+function MonitorToggleOverlay({
+  monitored,
+  onToggle,
+  disabled,
+  className,
+  iconClass,
+}: {
+  monitored: boolean;
+  onToggle: () => void;
+  disabled: boolean;
+  className: string;
+  iconClass: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(clickEvent) => {
+        clickEvent.stopPropagation();
+        onToggle();
+      }}
+      disabled={disabled}
+      aria-pressed={monitored}
+      aria-label={monitored ? 'Monitored, click to unmonitor' : 'Unmonitored, click to monitor'}
+      title={monitored ? 'Monitored, click to unmonitor' : 'Unmonitored, click to monitor'}
+      className={`absolute z-20 rounded bg-black/50 p-1 leading-none opacity-0 transition-opacity hover:bg-black/80 focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50 [@media(hover:none)]:opacity-100 focus:outline-none focus:ring-1 focus:ring-red-500 ${className}`}
+    >
+      {monitored ? (
+        <EyeSolidIcon className={`${iconClass} text-white`} />
+      ) : (
+        <EyeSlashIcon className={`${iconClass} text-gray-300`} />
+      )}
+    </button>
+  );
+}
+
 function EventCard({
   event,
   timezone,
   onClick,
+  onToggleMonitor,
+  toggling = false,
 }: {
   event: Event;
   timezone: string | null;
   onClick: () => void;
+  onToggleMonitor?: (event: Event) => void;
+  toggling?: boolean;
 }) {
   const sportColors = getSportColors(event.sport || 'default');
   const isLive = isEventLive(event, timezone);
@@ -201,6 +249,7 @@ function EventCard({
   const leagueLogoUrl = getLeagueLogoUrl(event);
 
   return (
+    <div className="group relative">
     <button
       type="button"
       onClick={onClick}
@@ -251,10 +300,20 @@ function EventCard({
       </div>
 
       {/* Title */}
-      <p className="relative z-10 whitespace-normal break-words text-[11px] font-normal leading-tight text-white transition-colors md:text-[12px]">
+      <p className={`relative z-10 whitespace-normal break-words text-[11px] font-normal leading-tight text-white transition-colors md:text-[12px] ${onToggleMonitor ? 'pr-5' : ''}`}>
         {event.title}
       </p>
     </button>
+      {onToggleMonitor && (
+        <MonitorToggleOverlay
+          monitored={event.monitored}
+          onToggle={() => onToggleMonitor(event)}
+          disabled={toggling}
+          className="bottom-0.5 right-0.5"
+          iconClass="h-3.5 w-3.5"
+        />
+      )}
+    </div>
   );
 }
 
@@ -262,10 +321,14 @@ function SpaciousAgendaEventCard({
   event,
   timezone,
   onClick,
+  onToggleMonitor,
+  toggling = false,
 }: {
   event: Event;
   timezone: string | null;
   onClick: () => void;
+  onToggleMonitor?: (event: Event) => void;
+  toggling?: boolean;
 }) {
   const sportColors = getSportColors(event.sport || 'default');
   const isLive = isEventLive(event, timezone);
@@ -276,6 +339,7 @@ function SpaciousAgendaEventCard({
   const leagueLogoUrl = getLeagueLogoUrl(event);
 
   return (
+    <div className="group relative">
     <button
       type="button"
       onClick={onClick}
@@ -299,7 +363,7 @@ function SpaciousAgendaEventCard({
             {isLive && (
               <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded animate-pulse">LIVE</span>
             )}
-            {!event.monitored && (
+            {!event.monitored && !onToggleMonitor && (
               <span className="flex items-center gap-1 text-xs text-gray-400">
                 <EyeSlashIcon className="w-3.5 h-3.5 flex-shrink-0" />
                 Not monitored
@@ -323,9 +387,19 @@ function SpaciousAgendaEventCard({
             <p className="text-sm text-gray-500 mt-0.5">{event.venue}</p>
           )}
         </div>
-        <span className="text-sm text-gray-400 flex-shrink-0 whitespace-nowrap">{timeLabel}</span>
+        <span className={`text-sm text-gray-400 flex-shrink-0 whitespace-nowrap ${onToggleMonitor ? 'pr-7' : ''}`}>{timeLabel}</span>
       </div>
     </button>
+      {onToggleMonitor && (
+        <MonitorToggleOverlay
+          monitored={event.monitored}
+          onToggle={() => onToggleMonitor(event)}
+          disabled={toggling}
+          className="right-3 top-3"
+          iconClass="h-5 w-5"
+        />
+      )}
+    </div>
   );
 }
 
@@ -335,12 +409,16 @@ function AgendaSection({
   timezone,
   isToday,
   compact,
+  onToggleMonitor,
+  togglingId,
 }: {
   date: Date;
   events: Event[];
   timezone: string | null;
   isToday: boolean;
   compact: boolean;
+  onToggleMonitor: (event: Event) => void;
+  togglingId: number | null;
 }) {
   const navigate = useNavigate();
 
@@ -366,6 +444,8 @@ function AgendaSection({
                   event={event}
                   timezone={timezone}
                   onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); }}
+                  onToggleMonitor={onToggleMonitor}
+                  toggling={togglingId === event.id}
                 />
               ) : (
                 <SpaciousAgendaEventCard
@@ -373,6 +453,8 @@ function AgendaSection({
                   event={event}
                   timezone={timezone}
                   onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); }}
+                  onToggleMonitor={onToggleMonitor}
+                  toggling={togglingId === event.id}
                 />
               )
             ))}
@@ -396,6 +478,8 @@ function AgendaSection({
                   event={event}
                   timezone={timezone}
                   onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); }}
+                  onToggleMonitor={onToggleMonitor}
+                  toggling={togglingId === event.id}
                 />
               ) : (
                 <SpaciousAgendaEventCard
@@ -403,6 +487,8 @@ function AgendaSection({
                   event={event}
                   timezone={timezone}
                   onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); }}
+                  onToggleMonitor={onToggleMonitor}
+                  toggling={togglingId === event.id}
                 />
               )
             ))}
@@ -483,6 +569,33 @@ export default function CalendarPage() {
   }, [currentDate, currentView]);
 
   const { data: events, isLoading, error } = useCalendarEvents(calStart, calEnd, showUnmonitored);
+  const queryClient = useQueryClient();
+
+  // Monitor an event from the calendar, the same PUT the league page uses, so
+  // the claim that survives an automatic unmonitor is recorded here too.
+  const toggleMonitorMutation = useMutation({
+    mutationFn: async ({ eventId, monitored }: { eventId: number; monitored: boolean }) => {
+      const { data } = await apiClient.put(`/events/${eventId}`, { monitored });
+      return data;
+    },
+    onSuccess: (_updated, { eventId, monitored }) => {
+      // Patch every cached range rather than refetching the month.
+      applyCalendarMonitorChange(queryClient, eventId, monitored);
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      toast.success(monitored ? 'Event monitored' : 'Event unmonitored');
+    },
+    onError: () => {
+      toast.error('Failed to update event');
+    },
+  });
+
+  const pendingMonitorId = toggleMonitorMutation.isPending
+    ? (toggleMonitorMutation.variables?.eventId ?? null)
+    : null;
+
+  const handleToggleMonitor = useCallback((event: Event) => {
+    toggleMonitorMutation.mutate({ eventId: event.id, monitored: !event.monitored });
+  }, [toggleMonitorMutation]);
 
   // Get unique sport categories from events for filter
   const uniqueSports = useMemo(() => {
@@ -813,6 +926,8 @@ export default function CalendarPage() {
                   timezone={timezone}
                   isToday={isToday(group.date)}
                   compact={compactView}
+                  onToggleMonitor={handleToggleMonitor}
+                  togglingId={pendingMonitorId}
                 />
               ))
             ) : (
@@ -916,6 +1031,8 @@ export default function CalendarPage() {
                                         navigate(`/leagues/${event.leagueId}?event=${event.id}`);
                                       }
                                     }}
+                                    onToggleMonitor={handleToggleMonitor}
+                                    toggling={pendingMonitorId === event.id}
                                   />
                                 ))}
                               </div>
@@ -947,6 +1064,10 @@ export default function CalendarPage() {
               <div className="flex items-center gap-2">
                 <XCircleIcon className="h-3 w-3 text-gray-500" />
                 <span>Missed</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <EyeSolidIcon className="h-3 w-3 text-white" />
+                <span>Monitored</span>
               </div>
               <div className="flex items-center gap-2">
                 <TvIcon className="h-3 w-3 text-green-400" />

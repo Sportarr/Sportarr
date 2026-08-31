@@ -368,7 +368,7 @@ jobs:
           refreshenv
 
           $env:Path = "C:\Program Files\ImageMagick-7.1.1-Q16-HDRI;$env:Path"
-          magick Logo/256.png Logo/128.png Logo/64.png Logo/48.png Logo/32.png Logo/16.png Logo/sportarr.ico
+          magick Logo/white/256-white.png Logo/white/128-white.png Logo/white/64-white.png Logo/white/48-white.png Logo/white/32-white.png Logo/white/16-white.png Logo/sportarr.ico
 
           Write-Host "Created sportarr.ico"
           Get-Item Logo/sportarr.ico

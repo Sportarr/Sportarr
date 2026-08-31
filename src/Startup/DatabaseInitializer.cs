@@ -298,6 +298,30 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify Blocklist.FilePath column: {ex.Message}");
         }
 
+        // Events.ManuallyMonitored records that a person, not the sync,
+        // monitored an event. The sync's out-of-filter cleanup reads it before
+        // it removes anything, so a legacy database without the column would
+        // lose hand-picked games.
+        try
+        {
+            var checkManualMonitorSql = "SELECT COUNT(*) FROM pragma_table_info('Events') WHERE name='ManuallyMonitored'";
+            var manualMonitorExists = db.Database.SqlQueryRaw<int>(checkManualMonitorSql).AsEnumerable().FirstOrDefault();
+            if (manualMonitorExists == 0)
+            {
+                Console.WriteLine("[Sportarr] Events.ManuallyMonitored column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE Events ADD COLUMN ManuallyMonitored INTEGER NOT NULL DEFAULT 0");
+                // Same reason as the migration. Before this column there was
+                // no record of who monitored an event, so every monitored one
+                // counts as a person's choice.
+                db.Database.ExecuteSqlRaw("UPDATE Events SET ManuallyMonitored = Monitored");
+                Console.WriteLine("[Sportarr] Events.ManuallyMonitored column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify Events.ManuallyMonitored column: {ex.Message}");
+        }
+
         // Ensure the IPTV-org canonical-channel columns exist on
         // IptvChannels. Added when the iptv-org sync service started
         // assigning canonical "ESPN.us"-style ids to user channels;
@@ -2038,6 +2062,72 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not drop retired Event Mapping tables: {ex.Message}");
         }
         } // end: if (!db.Database.IsNpgsql()) - SQLite schema drift repairs/backfills
+
+        // Bring league sports onto the hub's canonical names first, so the
+        // event alignment below inherits them. The hub treats Combat as the
+        // umbrella sport and spells the others "American Football", "Ice
+        // Hockey" and "Motorsport". Sportarr held the TheSportsDB spellings, so
+        // the two apps disagreed about the same league. Idempotent.
+        try
+        {
+            var renames = new (string From, string To)[]
+            {
+                ("Football", "American Football"),
+                ("Gridiron", "American Football"),
+                ("Hockey", "Ice Hockey"),
+                ("Racing", "Motorsport"),
+                ("Motorsports", "Motorsport"),
+                ("MMA", "Combat"),
+                ("Mixed Martial Arts", "Combat"),
+                ("Fighting", "Combat"),
+                ("Boxing", "Combat"),
+                ("Wrestling", "Combat"),
+                ("Association Football", "Soccer"),
+            };
+            var renamed = 0;
+            foreach (var (from, to) in renames)
+            {
+                renamed += db.Database.ExecuteSqlRaw(
+                    "UPDATE \"Leagues\" SET \"Sport\" = {0} WHERE \"Sport\" = {1}", to, from);
+            }
+            if (renamed > 0)
+            {
+                Console.WriteLine($"[Sportarr] Renamed {renamed} league sport(s) to the hub's canonical names");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not canonicalise League.Sport: {ex.Message}");
+        }
+
+        // Align every event's sport with its league. This is a DATA repair, not
+        // a legacy-schema one, so it runs on both providers. Identifiers are
+        // quoted because Postgres folds unquoted names to lower case; SQLite
+        // accepts the same quoting. The API supplies a per-event sport that
+        // drifts from the league it belongs to, so a library held NFL events
+        // reading "Football" under a league reading "American Football", and
+        // UFC events reading "Combat" under "Fighting". Import matching
+        // compares a parsed sport against this field, so a correctly named
+        // release was penalised against its own event. The league row is
+        // curated, so it wins. Idempotent: once aligned, nothing matches again.
+        try
+        {
+            var rows = db.Database.ExecuteSqlRaw(
+                "UPDATE \"Events\" SET \"Sport\" = " +
+                "  (SELECT L.\"Sport\" FROM \"Leagues\" L WHERE L.\"Id\" = \"Events\".\"LeagueId\") " +
+                "WHERE \"LeagueId\" IS NOT NULL AND EXISTS (" +
+                "  SELECT 1 FROM \"Leagues\" L WHERE L.\"Id\" = \"Events\".\"LeagueId\" " +
+                "    AND L.\"Sport\" IS NOT NULL AND L.\"Sport\" <> '' " +
+                "    AND (\"Events\".\"Sport\" IS NULL OR \"Events\".\"Sport\" <> L.\"Sport\"))");
+            if (rows > 0)
+            {
+                Console.WriteLine($"[Sportarr] Aligned Sport with the owning league on {rows} event row(s)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not align Events.Sport with League.Sport: {ex.Message}");
+        }
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
 
@@ -2627,6 +2717,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "Notifications", "LastNotificationError", "TEXT NULL");
         EnsureColumn(db, "Notifications", "LastNotificationAt", "TEXT NULL");
         EnsureColumn(db, "Events", "TsdbId", "TEXT NULL");
+        EnsureColumn(db, "DownloadQueue", "OutputPath", "TEXT NULL");
 
         RelaxLegacyRootFolderColumns(db);
     }

@@ -480,6 +480,13 @@ app.MapPost("/api/release/grab", async (
                 item.Downloaded = status.Downloaded;
                 item.Size = status.Size > 0 ? status.Size : release.Size;
                 item.LastUpdate = DateTime.UtcNow;
+                // A cached debrid grab can already be complete on this first
+                // check. Record the path now so the queue shim has an
+                // outputPath immediately instead of after the next poll.
+                if (!string.IsNullOrWhiteSpace(status.SavePath))
+                {
+                    item.OutputPath = status.SavePath;
+                }
             }
             await db.SaveChangesAsync();
             logger.LogInformation("[GRAB] Initial status: {Status}, Progress: {Progress:F1}%",

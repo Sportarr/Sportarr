@@ -10,6 +10,8 @@
 
 **Debrid/Proxy:** Decypharr (torrents and usenet)
 
+Sportarr does not unpack archives for torrents. Where an indexer delivers packed releases, run [Unpackerr](../integrations/unpackerr.md) against the same download folder and it extracts them before Sportarr imports.
+
 ## Post-import behavior
 
 Each download client has a **Post-Import Mode** controlling how files reach your library:

@@ -3,9 +3,7 @@ Copyright (C) 2025-2026 KYBERLINK LLC and contributors
 Portions of this program are derived from Sonarr, and remain under the copyright of their
 original authors:
 
-Copyright (C)
-2014-2017 Mark McDowall, Keivan Beigi, Taloth Saldono and contributors
-2010-2014 Mark McDowall, Keivan Beigi and contributors
+Copyright (C) 2010-2017 Sonarr Team and contributors
 
 Sportarr began as a fork of Sonarr in October 2025. The application was rewritten shortly
 afterwards, and the great majority of the current code is original work, but parts of it are

@@ -915,6 +915,8 @@ public class SportsFileNameParser
             { @"^(?:Formula[\.\-\s]+3|F3)[\.\-\s]", ("Motorsport", "Formula 3") },
             { @"^IndyCar[\.\-\s]", ("Motorsport", "IndyCar") },
             { @"^WSBK[\.\-\s]", ("Motorsport", "WSBK") },
+            { @"^(?:WorldSSP|World[\.\-\s]*Supersport)[\.\-\s]", ("Motorsport", "WorldSSP") },
+            { @"^(?:MVP[\.\-\s]*MMA)[\.\-\s]", ("Fighting", "MVP MMA") },
             { @"^WRC[\.\-\s]", ("Motorsport", "WRC") },
             { @"^DTM[\.\-\s]", ("Motorsport", "DTM") },
         };
@@ -932,6 +934,13 @@ public class SportsFileNameParser
                 var remaining = cleanName.Substring(match.Length).Trim();
                 // Remove quality/source markers
                 remaining = Regex.Replace(remaining, @"\b(2160p|1080p|720p|480p|4K|BluRay|WEB-DL|WEBRip|HDTV|x264|x265|HEVC)\b.*$", "", RegexOptions.IgnoreCase).Trim();
+                // Drop the season/episode code. It names the file, never the
+                // event, and it kept a title like "MLB - S2026E135 - Giants vs
+                // Astros -" from matching the event it belongs to.
+                remaining = Regex.Replace(remaining, @"\bS\d{2,4}\s*E\d{1,4}\b", " ", RegexOptions.IgnoreCase);
+                // Trim the separators the removals leave behind.
+                remaining = Regex.Replace(remaining, @"[\s\.\-_]{2,}", " ");
+                remaining = remaining.Trim(' ', '.', '-', '_');
 
                 if (!string.IsNullOrEmpty(remaining))
                 {

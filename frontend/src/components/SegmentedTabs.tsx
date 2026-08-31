@@ -19,9 +19,9 @@ export default function SegmentedTabs<T extends string>({
 }: SegmentedTabsProps<T>) {
   return (
     <div className={`mb-6 ${className}`.trim()}>
-      {/* Phones: pills wrap onto extra rows so no label ever clips off-screen.
-          sm and up keeps the single row. */}
-      <div className="inline-flex flex-wrap gap-1 rounded-lg bg-gray-900 p-1 sm:flex-nowrap sm:min-w-max">
+      {/* Pills wrap onto extra rows so no label ever clips off-screen. Only
+          lg and up is wide enough to hold a long strip on one row. */}
+      <div className="inline-flex flex-wrap gap-1 rounded-lg bg-gray-900 p-1 lg:flex-nowrap lg:min-w-max">
         {items.map((item) => (
           <button
             key={item.key}

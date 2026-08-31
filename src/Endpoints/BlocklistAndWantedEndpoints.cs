@@ -18,6 +18,7 @@ app.MapGet("/api/blocklist", async (SportarrDbContext db, int page = 1, int page
 {
     var totalCount = await db.Blocklist.CountAsync();
     var blocklist = await db.Blocklist
+        .AsNoTracking()
         .Include(b => b.Event)
             .ThenInclude(e => e!.League)
         .OrderByDescending(b => b.BlockedAt)
@@ -55,6 +56,7 @@ app.MapGet("/api/blocklist", async (SportarrDbContext db, int page = 1, int page
 app.MapGet("/api/blocklist/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.Blocklist
+        .AsNoTracking()
         .Include(b => b.Event)
         .FirstOrDefaultAsync(b => b.Id == id);
     return item is null ? Results.NotFound() : Results.Ok(item);
@@ -121,6 +123,7 @@ app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbConte
 
         var now = DateTime.UtcNow;
         var query = db.Events
+            .AsNoTracking()
             .Include(e => e.League)
             .Include(e => e.HomeTeam)
             .Include(e => e.AwayTeam)
@@ -172,6 +175,7 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
         // down. Only the three columns the test needs are read here; the page
         // itself is loaded in full afterwards.
         var candidates = await db.Events
+            .AsNoTracking()
             .Where(e => e.Monitored && e.HasFile && e.Quality != null)
             .OrderBy(e => e.EventDate)
             .Select(e => new { e.Id, e.QualityProfileId, e.Quality })

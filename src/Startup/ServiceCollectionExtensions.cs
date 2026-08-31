@@ -255,6 +255,12 @@ public static class ServiceCollectionExtensions
         // request into the ambient SyncMetrics counter (registered before
         // the Polly policy below so retries aren't double-counted).
         services.AddTransient<SyncHttpCountingHandler>();
+        // The gate is shared, because pacing only works if every hub call
+        // waits on the same one. The handler around it must NOT be, because
+        // IHttpClientFactory rebuilds its pipeline on a timer and a
+        // DelegatingHandler accepts an InnerHandler only once.
+        services.AddSingleton<HubPacingGate>();
+        services.AddTransient<HubRequestPacer>();
 
         services.AddHttpClient<SportarrApiClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
@@ -308,6 +314,19 @@ public static class ServiceCollectionExtensions
                         Console.WriteLine($"[SportarrAPI] Retry {retryAttempt} after {timespan.TotalSeconds:F1}s ({status})");
                         return Task.CompletedTask;
                     }))
+            // Order matters here, because each handler added is nested
+            // inside the one before it.
+            //
+            // The pacer sits below the retry policy, so a retried attempt
+            // waits its turn like any other call. Above it, retries would
+            // jump the queue and keep the flood going.
+            //
+            // It sits ABOVE the per-attempt timeout, so waiting for a slot is
+            // not counted as time spent on the request. Nested the other way,
+            // a Retry-After longer than the ceiling, or a deep enough queue,
+            // timed the call out before it was ever sent, and the retry
+            // policy then treated that as a failure worth repeating.
+            .AddHttpMessageHandler<HubRequestPacer>()
             // Per-attempt ceiling, inside the retry above. Without it the
             // client's own timeout covered every attempt together, so one
             // slow response ate the budget the later attempts needed.

@@ -276,6 +276,23 @@ public class Event
     public bool Monitored { get; set; } = true;
 
     /// <summary>
+    /// True when a person decided this event's monitoring rather than a filter
+    /// matching it. Two things read it. The sync works monitoring out again
+    /// from the league's settings for every other event, so a setting reaches
+    /// events that already existed, and this is what stops it overruling a
+    /// choice. The out-of-filter cleanup keeps these events, because an event
+    /// sits outside the filter for exactly the reason the person chose.
+    ///
+    /// Set by the event control either way, since turning monitoring off is
+    /// as much a decision as turning it on, and by the season and add-event
+    /// controls, the Sonarr compatibility surface and followed athletes when
+    /// they turn it on. A sync's own matching never sets it. It outlives an
+    /// automatic unmonitor, so switching a league off and on again cannot
+    /// quietly make a picked game deletable. The retention window releases it.
+    /// </summary>
+    public bool ManuallyMonitored { get; set; }
+
+    /// <summary>
     /// Which fight card parts to monitor for Fighting sports (comma-separated: "Early Prelims,Prelims,Main Card")
     /// If null or empty, uses league's MonitoredParts setting as default
     /// Only applies when EnableMultiPartEpisodes is true in config and Sport is Fighting/MMA/UFC/Boxing/etc.
@@ -553,6 +570,13 @@ public class EventResponse
     public string? Location { get; set; }
     public string? Broadcast { get; set; }
     public bool Monitored { get; set; }
+
+    /// <summary>
+    /// True when a person monitored this event rather than the sync. The
+    /// clean-up and the sync both leave these alone, so a consumer can tell
+    /// why a row outlived a clean-up.
+    /// </summary>
+    public bool ManuallyMonitored { get; set; }
     public string? MonitoredParts { get; set; }
     public bool HasFile { get; set; }
     public string? FilePath { get; set; }
@@ -619,6 +643,7 @@ public class EventResponse
             Location = evt.Location,
             Broadcast = evt.Broadcast,
             Monitored = evt.Monitored,
+            ManuallyMonitored = evt.ManuallyMonitored,
             MonitoredParts = evt.MonitoredParts,
             // Derive the badge from the files we actually return rather than
             // trusting only the denormalized HasFile flag. The two can drift

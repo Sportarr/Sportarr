@@ -81,6 +81,7 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, FileNamingService naming
     // 4x CountAsync + 1x AnyAsync per league - 200-250 round trips for a
     // 40-50 league library on every load of the main library view).
     var statsByLeague = await db.Events
+        .AsNoTracking()
         .Where(e => e.LeagueId != null && leagueIds.Contains(e.LeagueId.Value))
         .GroupBy(e => e.LeagueId!.Value)
         .Select(g => new
@@ -115,6 +116,7 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, FileNamingService naming
 app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNamingService naming) =>
 {
     var league = await db.Leagues
+        .AsNoTracking()
         .Include(l => l.MonitoredTeams)
         .ThenInclude(lt => lt.Team)
         .FirstOrDefaultAsync(l => l.Id == id);
@@ -124,10 +126,23 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // Get event count and stats
-    var events = await db.Events
+    // Counts only. Loading every event row of a long-running league just to
+    // count three things read the whole history into memory on each visit to
+    // the league page. One grouped query answers all three at once, so a sync
+    // running alongside cannot be seen half-done, the way separate counts
+    // could. The filter leaves a single group, and none at all when the
+    // league has no events yet.
+    var stats = await db.Events
+        .AsNoTracking()
         .Where(e => e.LeagueId == id)
-        .ToListAsync();
+        .GroupBy(e => e.LeagueId)
+        .Select(g => new
+        {
+            EventCount = g.Count(),
+            MonitoredEventCount = g.Count(e => e.Monitored),
+            FileCount = g.Count(e => e.HasFile)
+        })
+        .FirstOrDefaultAsync();
 
     // Same rule as the list endpoint. Null when league folders are off, since
     // the league then has no folder of its own.
@@ -168,6 +183,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.MonitorFinals,
         league.MonitorPlayoffs,
         league.MonitorPreseason,
+        league.EventSortOrder,
         league.SpecialEventsMonitorType,
         league.KeepAllEvents,
         league.AllowHighlights,
@@ -201,9 +217,141 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
             } : null
         }).ToList(),
         // Stats
-        EventCount = events.Count,
-        MonitoredEventCount = events.Count(e => e.Monitored),
-        FileCount = events.Count(e => e.HasFile)
+        EventCount = stats?.EventCount ?? 0,
+        MonitoredEventCount = stats?.MonitoredEventCount ?? 0,
+        FileCount = stats?.FileCount ?? 0
+    });
+});
+
+// API: What a clean-up would remove, and what it would keep. The edit
+// dialog offers the clean-up only when there is something to remove, so it
+// asks this first. The signature travels to the delete, which refuses to run
+// against a different set than the one the user agreed to.
+app.MapGet("/api/leagues/{id:int}/unfollowed-events", async (
+    int id,
+    SportarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var league = await db.Leagues
+        .AsNoTracking()
+        .Include(l => l.MonitoredTeams)
+        .ThenInclude(lt => lt.Team)
+        .AsNoTracking()
+        .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    var summary = await ClassifyUnfollowedEventsAsync(db, league, cancellationToken);
+
+    return Results.Ok(new
+    {
+        total = summary.Total,
+        removable = summary.Removable.Count,
+        keptManuallyMonitored = summary.KeptManuallyMonitored,
+        keptWithFiles = summary.KeptWithFiles,
+        keptBusy = summary.KeptBusy,
+        keptLocalOnly = summary.KeptLocalOnly,
+        signature = summary.Signature
+    });
+});
+
+// API: Remove the events this league would not store today. Everything a
+// person asked for stays, and anything removed comes back from a deep sync,
+// so the only cost of a mistake is that sync.
+app.MapDelete("/api/leagues/{id:int}/unfollowed-events", async (
+    int id,
+    string? signature,
+    SportarrDbContext db,
+    TaskService taskService,
+    EventStreamService eventStream,
+    ILogger<Program> logger,
+    CancellationToken cancellationToken) =>
+{
+    var league = await db.Leagues
+        .Include(l => l.MonitoredTeams)
+        .ThenInclude(lt => lt.Team)
+        .AsNoTracking()
+        .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // A sync writes the same rows this removes, and it decides what to keep
+    // from the upstream season rather than from what is stored, so the two
+    // must not run together.
+    if (await taskService.IsLeagueSyncRunningAsync(id))
+    {
+        return Results.Json(
+            new { error = "This league is syncing. Try again once it finishes." },
+            statusCode: StatusCodes.Status409Conflict);
+    }
+
+    var summary = await ClassifyUnfollowedEventsAsync(db, league, cancellationToken);
+
+    // The count in front of the user came from the preview, which names the
+    // set it counted. Anything that changed that set since, a team added in
+    // another tab most of all, changes what this would remove, so ask again
+    // rather than remove a set nobody agreed to. A caller with no signature
+    // never saw a count at all.
+    if (signature != summary.Signature)
+    {
+        return Results.Json(
+            new { error = "The league changed since this was counted. Reopen the dialog." },
+            statusCode: StatusCodes.Status409Conflict);
+    }
+
+    if (summary.Removable.Count > 0)
+    {
+        // Read before the delete, so open pages can be told which rows went.
+        // The sync says the same thing about its own removals.
+        var removed = await db.Events
+            .Where(e => summary.Removable.Contains(e.Id))
+            .Select(e => new { e.Id, e.ExternalId })
+            .ToListAsync(cancellationToken);
+
+        {
+            // ExecuteDelete rather than a tracked RemoveRange: these rows hold
+            // no files by definition, and the database's own cascade rules
+            // clear what points at them. Chunked, and each chunk stands on its
+            // own, because one transaction across a league of tens of
+            // thousands would hold the write lock for the whole run and every
+            // other writer would wait it out. A run that stops half way leaves
+            // a smaller set that this same call finishes.
+            foreach (var chunk in summary.Removable.Chunk(500))
+            {
+                var ids = chunk.ToList();
+                await db.Events.Where(e => ids.Contains(e.Id)).ExecuteDeleteAsync(cancellationToken);
+            }
+
+            await eventStream.PublishBatchAsync(removed
+                .Select(e => new StreamEvent
+                {
+                    ResourceType = "event",
+                    Action = "removed",
+                    EventId = e.Id,
+                    ExternalId = e.ExternalId,
+                    LeagueId = league.Id,
+                })
+                .ToList());
+        }
+    }
+
+    logger.LogInformation(
+        "[LEAGUES] Clean-up removed {Removed} unfollowed event(s) from {Name}, kept {Manual} monitored by hand, {Files} with files, {Busy} downloading or scheduled",
+        summary.Removable.Count, league.Name, summary.KeptManuallyMonitored, summary.KeptWithFiles, summary.KeptBusy);
+
+    return Results.Ok(new
+    {
+        removed = summary.Removable.Count,
+        keptManuallyMonitored = summary.KeptManuallyMonitored,
+        keptWithFiles = summary.KeptWithFiles,
+        keptBusy = summary.KeptBusy,
+        keptLocalOnly = summary.KeptLocalOnly
     });
 });
 
@@ -211,12 +359,73 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
 // showAll=true drops the monitoring-based filters so the caller sees every
 // event the league holds, including sessions and teams the user does not
 // follow. Used by the league page's "show every event" toggle.
-app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, bool? showAll, SportarrDbContext db, ILogger<Program> logger) =>
+// API: One row per season, so the league page can draw its season list without
+// pulling every event. A league with tens of thousands of events answered ~1.2 KB
+// per event before, for a page that shows collapsed seasons until you open one.
+app.MapGet("/api/leagues/{id:int}/seasons", async (int id, bool? showAll, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    var league = await db.Leagues
+        .AsNoTracking()
+        .Include(l => l.MonitoredTeams)
+        .ThenInclude(lt => lt.Team)
+        .FirstOrDefaultAsync(l => l.Id == id);
+
+    if (league == null)
+        return Results.NotFound(new { error = "League not found" });
+
+    // Only the columns the visibility rules read. The team filter needs the
+    // external ids, the specials bypass needs the round and the title, and the
+    // summary needs the rest.
+    var rows = await db.Events
+        .AsNoTracking()
+        .Where(e => e.LeagueId == id)
+        .Select(e => new Event
+        {
+            Id = e.Id,
+            Season = e.Season,
+            Title = e.Title,
+            Sport = e.Sport,
+            Round = e.Round,
+            HomeTeamExternalId = e.HomeTeamExternalId,
+            AwayTeamExternalId = e.AwayTeamExternalId,
+            HasFile = e.HasFile,
+            Monitored = e.Monitored,
+            EventDate = e.EventDate,
+            Status = e.Status,
+        })
+        .ToListAsync();
+
+    var visible = SelectVisibleEvents(rows, league, showAll == true);
+
+    var seasons = visible
+        .GroupBy(e => string.IsNullOrEmpty(e.Season) ? "Unknown" : e.Season!)
+        .Select(g => new
+        {
+            season = g.Key,
+            eventCount = g.Count(),
+            monitoredCount = g.Count(e => e.Monitored),
+            fileCount = g.Count(e => e.HasFile),
+            cancelledCount = g.Count(e => e.Status != null &&
+                (e.Status.ToUpper() == "CANCELLED" || e.Status.ToUpper() == "CANCELED" || e.Status.ToUpper() == "POSTPONED")),
+            firstEventDate = g.Min(e => e.EventDate),
+            lastEventDate = g.Max(e => e.EventDate),
+        })
+        .OrderByDescending(s => s.season == "Unknown" ? "" : s.season)
+        .ToList();
+
+    logger.LogDebug("[LEAGUES] {Seasons} seasons for league {LeagueId} from {Total} events",
+        seasons.Count, id, rows.Count);
+
+    return Results.Ok(new { totalEvents = visible.Count, seasons });
+});
+
+app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, bool? showAll, string? season, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting events for league ID: {LeagueId}", id);
 
     // Get league with monitored teams for filtering
     var league = await db.Leagues
+        .AsNoTracking()
         .Include(l => l.MonitoredTeams)
         .ThenInclude(lt => lt.Team)
         .FirstOrDefaultAsync(l => l.Id == id);
@@ -227,12 +436,24 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // Get all events for this league
-    var events = await db.Events
+    // One season at a time when the caller asks for one. The visibility rules
+    // are per season anyway (cup stage sizes are computed within a season), so
+    // narrowing here gives the same answer for less.
+    var query = db.Events
+        .AsNoTracking()
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
         .Include(e => e.Files)
-        .Where(e => e.LeagueId == id)
+        .Where(e => e.LeagueId == id);
+
+    if (!string.IsNullOrEmpty(season))
+    {
+        query = season == "Unknown"
+            ? query.Where(e => e.Season == null || e.Season == "")
+            : query.Where(e => e.Season == season);
+    }
+
+    var events = await query
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
 
@@ -293,6 +514,7 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
 
     // Get all files for events in this league by querying EventFiles directly with join
     var files = await db.EventFiles
+        .AsNoTracking()
         .Where(f => f.Exists && f.Event != null && f.Event.LeagueId == id)
         .Include(f => f.Event)
         .OrderByDescending(f => f.Event!.EventDate)
@@ -403,6 +625,7 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
 
     // Get all files for events in this league and season by querying EventFiles directly
     var files = await db.EventFiles
+        .AsNoTracking()
         .Where(f => f.Exists && f.Event != null && f.Event.LeagueId == id && f.Event.Season == season)
         .Include(f => f.Event)
         .OrderByDescending(f => f.Event!.EventDate)
@@ -776,6 +999,20 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Which end of a season the event list starts at. Display only. No
+    // resync, because it changes nothing about which events the league holds.
+    if (body.TryGetProperty("eventSortOrder", out var sortOrderProp) &&
+        sortOrderProp.ValueKind == JsonValueKind.String)
+    {
+        var requested = sortOrderProp.GetString();
+        var newSortOrder = string.Equals(requested, "asc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
+        if (league.EventSortOrder != newSortOrder)
+        {
+            logger.LogInformation("[LEAGUES] EventSortOrder changing from {Old} to {New}", league.EventSortOrder, newSortOrder);
+            league.EventSortOrder = newSortOrder;
+        }
+    }
+
     // Special-event monitoring opt-ins: finals/championships and playoff
     // rounds bypassing the monitored-team filter. Changing either flag
     // affects which events the next sync admits, so both count as an
@@ -966,9 +1203,18 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             foreach (var evt in allEvents)
             {
                 // Base monitoring: is the league monitored?
+                //
+                // A person who picked this game overrode the team selection,
+                // and that is the only rule they overrode. So it stands in for
+                // the team side alone, and every other rule below still
+                // applies. Switching the whole league off still switches it
+                // off, and switching it back on brings the picked games back
+                // with it, which is what makes the claim worth keeping.
+                var handPicked = evt.ManuallyMonitored;
                 bool shouldMonitor = league.Monitored
-                    && LeagueEventSyncService.IsInsideTeamSelection(evt, league, recalcTeamIds,
-                        cupStageSizesBySeason[evt.Season ?? ""]);
+                    && (handPicked
+                        || LeagueEventSyncService.IsInsideTeamSelection(evt, league, recalcTeamIds,
+                            cupStageSizesBySeason[evt.Season ?? ""]));
 
                 // Which season rule applies, and how far the special-event
                 // toggles reach past it, is one decision and it lives in one
@@ -2421,6 +2667,205 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
         static string Normalize(string p) =>
             Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
+    /// <summary>
+    /// Events the league stores but would not store today, split by what
+    /// keeps each one. This mirrors what the sync ingests, not what the page
+    /// shows. A session type the page hides is still stored, so removing it
+    /// would only make the next sync fetch it again.
+    /// </summary>
+    internal static async Task<UnfollowedEventSummary> ClassifyUnfollowedEventsAsync(
+        SportarrDbContext db, League league, CancellationToken cancellationToken)
+    {
+        var summary = new UnfollowedEventSummary
+        {
+            Total = await db.Events.CountAsync(e => e.LeagueId == league.Id, cancellationToken)
+        };
+
+        // The sync stores every game while this is on, and stores every game
+        // of a teamless sport or a league with no team selection. Answered
+        // before the events are read, because these are the common cases.
+        if (league.KeepAllEvents || LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
+        {
+            return summary;
+        }
+
+        var monitoredTeamIds = MonitoredTeamExternalIds(league);
+        if (monitoredTeamIds.Count == 0)
+        {
+            return summary;
+        }
+
+        var events = await db.Events
+            .Where(e => e.LeagueId == league.Id)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        // Files are read as a set of ids rather than a loaded graph. A league
+        // holds tens of thousands of events and this runs on every dialog.
+        var eventIdsWithFiles = (await db.EventFiles
+                .Where(f => f.Event != null && f.Event.LeagueId == league.Id)
+                .Select(f => f.EventId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        var busyEventIds = await BusyEventIdsAsync(db, league.Id, cancellationToken);
+
+        ClassifyUnfollowedEvents(events, league, busyEventIds, eventIdsWithFiles, summary);
+        return summary;
+    }
+
+    internal static HashSet<string> MonitoredTeamExternalIds(League league) =>
+        league.MonitoredTeams
+            .Where(lt => lt.Monitored && lt.Team != null)
+            .Select(lt => lt.Team!.ExternalId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Select(id => id!)
+            .ToHashSet();
+
+    internal static bool MatchesMonitoredTeams(Event evt, HashSet<string> monitoredTeamIds) =>
+        (evt.HomeTeamExternalId != null && monitoredTeamIds.Contains(evt.HomeTeamExternalId)) ||
+        (evt.AwayTeamExternalId != null && monitoredTeamIds.Contains(evt.AwayTeamExternalId));
+
+    /// <summary>
+    /// The classification itself, season by season, so a broken team mapping
+    /// in one season cannot offer up another.
+    /// </summary>
+    internal static void ClassifyUnfollowedEvents(
+        List<Event> events,
+        League league,
+        HashSet<int> busyEventIds,
+        HashSet<int> eventIdsWithFiles,
+        UnfollowedEventSummary summary)
+    {
+        // Repeated from the caller, which skips reading the events at all in
+        // these cases. The rule belongs with the classification, not with the
+        // query that avoids it.
+        if (league.KeepAllEvents || LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
+        {
+            return;
+        }
+
+        var monitoredTeamIds = MonitoredTeamExternalIds(league);
+        if (monitoredTeamIds.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var season in events.GroupBy(e => e.Season))
+        {
+            // A season the events do not name cannot be classified. Cup rounds
+            // are read from the shape of a whole season, and there is no
+            // season here to read.
+            if (string.IsNullOrWhiteSpace(season.Key))
+            {
+                continue;
+            }
+
+            var seasonEvents = season.ToList();
+
+            // Same guard the sync applies, and per season for the same reason.
+            // Every event failing the team side means the team ids do not line
+            // up, not that the user follows nobody who plays.
+            if (!seasonEvents.Any(e => MatchesMonitoredTeams(e, monitoredTeamIds)))
+            {
+                continue;
+            }
+
+            // Held by reference, not by id, so an event that has never been
+            // saved still classifies correctly.
+            var stored = FilterEventsByMonitoredTeams(seasonEvents, monitoredTeamIds, league).ToHashSet();
+
+            foreach (var evt in seasonEvents.Where(e => !stored.Contains(e)))
+            {
+                // Nothing upstream to fetch it back with. A game added by hand
+                // or created by a library import is gone for good, so it is
+                // never on offer.
+                if (string.IsNullOrEmpty(evt.ExternalId))
+                {
+                    summary.KeptLocalOnly++;
+                }
+                else if (evt.ManuallyMonitored)
+                {
+                    summary.KeptManuallyMonitored++;
+                }
+                else if (evt.HasFile || eventIdsWithFiles.Contains(evt.Id))
+                {
+                    summary.KeptWithFiles++;
+                }
+                else if (busyEventIds.Contains(evt.Id))
+                {
+                    summary.KeptBusy++;
+                }
+                else
+                {
+                    summary.Removable.Add(evt.Id);
+                }
+            }
+        }
+    }
+
+    internal sealed class UnfollowedEventSummary
+    {
+        public int Total { get; set; }
+        public List<int> Removable { get; } = new();
+        public int KeptManuallyMonitored { get; set; }
+        public int KeptWithFiles { get; set; }
+        public int KeptBusy { get; set; }
+        public int KeptLocalOnly { get; set; }
+
+        /// <summary>
+        /// Names this exact set of events, so a removal can tell that the set
+        /// changed between the count and the click.
+        /// </summary>
+        public string Signature
+        {
+            get
+            {
+                var ids = string.Join(",", Removable.OrderBy(id => id));
+                var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(ids));
+                return Convert.ToHexString(hash)[..16];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Events with something in flight against them: a download, a release
+    /// waiting out a delay profile, an import waiting on a decision, or a
+    /// recording. Also events with grab history, because that history is how
+    /// a file that went missing is fetched again and the database cascades it
+    /// away with the event.
+    /// </summary>
+    internal static async Task<HashSet<int>> BusyEventIdsAsync(
+        SportarrDbContext db, int leagueId, CancellationToken cancellationToken)
+    {
+        var queued = await db.DownloadQueue
+            .Where(q => q.Event != null && q.Event.LeagueId == leagueId)
+            .Select(q => q.EventId)
+            .ToListAsync(cancellationToken);
+
+        var scheduled = await db.DvrRecordings
+            .Where(r => r.Event != null && r.Event.LeagueId == leagueId)
+            .Select(r => r.EventId!.Value)
+            .ToListAsync(cancellationToken);
+
+        // Only history that still means something. An import records how a
+        // file that later went missing is fetched again, and the database
+        // cascades that record away with the event. A grab that never landed
+        // pins nothing.
+        var grabbed = await db.GrabHistory
+            .Where(g => g.Event != null && g.Event.LeagueId == leagueId && g.WasImported)
+            .Select(g => g.EventId)
+            .ToListAsync(cancellationToken);
+
+        var pending = await db.PendingReleases
+            .Where(r => r.Event != null && r.Event.LeagueId == leagueId)
+            .Select(r => r.EventId)
+            .ToListAsync(cancellationToken);
+
+        return queued.Concat(scheduled).Concat(grabbed).Concat(pending).ToHashSet();
+    }
+
     internal static List<Event> SelectVisibleEvents(List<Event> events, League league, bool showAll)
     {
         if (showAll)

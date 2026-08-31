@@ -895,12 +895,19 @@ public class QBittorrentClient
             if (torrents == null || torrents.Count == 0)
                 return (null, null);
 
-            // Find torrent by title match in the specified category
-            // Try exact match first, then partial/contains match
-            var matchingTorrent = torrents
+            // Find torrent by title match in the specified category. The exact
+            // match must be its own pass. One FirstOrDefault over an OR of the
+            // three rules returns whichever torrent comes first in the client's
+            // list, so a loose substring hit on a sibling release beat the exact
+            // match sitting further down. The row then adopts that torrent's
+            // hash and path, which the queue shim publishes as outputPath.
+            var candidates = torrents
                 .Where(t => string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase))
-                .FirstOrDefault(t =>
-                    string.Equals(t.Name, title, StringComparison.OrdinalIgnoreCase) ||
+                .ToList();
+
+            var matchingTorrent =
+                candidates.FirstOrDefault(t => string.Equals(t.Name, title, StringComparison.OrdinalIgnoreCase))
+                ?? candidates.FirstOrDefault(t =>
                     t.Name.Contains(title, StringComparison.OrdinalIgnoreCase) ||
                     title.Contains(t.Name, StringComparison.OrdinalIgnoreCase));
 
@@ -995,6 +1002,21 @@ public class QBittorrentClient
                 _logger.LogDebug("[qBittorrent] Single file output path: {OutputPath}", outputPath);
                 return outputPath;
             }
+        }
+
+        // The file list is the only thing that failed here, so build the path
+        // qBittorrent itself uses: the save directory plus the torrent name.
+        // That holds for both single-file and multi-file torrents. Returning
+        // the bare SavePath instead names the whole download directory, which
+        // is a shared root on most setups. The queue shim publishes this value
+        // as outputPath, and an external extractor pointed at a shared root
+        // scans (and with delete-original turned on, deletes) every unrelated
+        // download in it.
+        if (!string.IsNullOrWhiteSpace(torrent.Name))
+        {
+            var namedPath = Path.Combine(torrent.SavePath, torrent.Name);
+            _logger.LogDebug("[qBittorrent] File list unavailable, using SavePath + name: {OutputPath}", namedPath);
+            return namedPath;
         }
 
         // Ultimate fallback: just use SavePath

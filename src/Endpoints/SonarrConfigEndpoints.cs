@@ -107,6 +107,7 @@ public static class SonarrConfigEndpoints
 
             var tags = await db.Tags.ToListAsync();
             var leagueTags = await db.Leagues
+                .AsNoTracking()
                 .Select(l => new { l.Id, l.Tags })
                 .ToListAsync();
 

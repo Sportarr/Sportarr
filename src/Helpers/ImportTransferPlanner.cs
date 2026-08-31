@@ -76,4 +76,59 @@ public static class ImportTransferPlanner
         return new TransferPlan(TransferAction.Move, PreserveSource: false,
             isTorrent ? "torrent is no longer tracked by the download client" : "usenet download - nothing needs the source");
     }
+
+    /// <summary>
+    /// Decides how a manually accepted import transfers into the library.
+    ///
+    /// A person accepting an import is pointing at a file that already exists
+    /// and that Sportarr did not download. Whether a download client still
+    /// tracks it says nothing useful here, because the file may be seeding in
+    /// a client Sportarr does not manage, or belong to the user outright.
+    /// Asking the client and reading silence as "safe to move" is how an
+    /// accepted import broke an active seed.
+    ///
+    /// So this reads the settings the way the library importer already does.
+    /// Hardlinks on means hardlink. An explicit choice from the import screen
+    /// wins over both, and is honoured literally, because Copy and Hardlink
+    /// are separate choices there.
+    /// </summary>
+    public static TransferPlan ResolveManual(
+        PostImportMode requestedMode,
+        bool useHardlinks,
+        bool copyFiles,
+        bool sourceIsSymlink)
+    {
+        if (sourceIsSymlink)
+        {
+            return new TransferPlan(TransferAction.Symlink, PreserveSource: true,
+                "source is a symlink (debrid/virtual mount) - re-linking preserves streaming");
+        }
+
+        switch (requestedMode)
+        {
+            case PostImportMode.Copy:
+                return new TransferPlan(TransferAction.Copy, PreserveSource: true, "import was set to Copy");
+            case PostImportMode.Hardlink:
+                return new TransferPlan(TransferAction.Hardlink, PreserveSource: true, "import was set to Hardlink");
+            case PostImportMode.Symlink:
+                return new TransferPlan(TransferAction.Symlink, PreserveSource: true, "import was set to Symlink");
+            case PostImportMode.Move:
+                return new TransferPlan(TransferAction.Move, PreserveSource: false, "import was set to Move");
+        }
+
+        if (useHardlinks)
+        {
+            return new TransferPlan(TransferAction.Hardlink, PreserveSource: true,
+                "manual import with hardlinks enabled - the source stays where it is");
+        }
+
+        if (copyFiles)
+        {
+            return new TransferPlan(TransferAction.Copy, PreserveSource: true,
+                "manual import with CopyFiles enabled");
+        }
+
+        return new TransferPlan(TransferAction.Move, PreserveSource: false,
+            "manual import with neither hardlinks nor copy enabled");
+    }
 }

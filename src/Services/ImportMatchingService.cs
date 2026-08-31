@@ -17,6 +17,27 @@ public class ImportMatchingService
     private readonly EventPartDetector _partDetector;
     private readonly ILogger<ImportMatchingService> _logger;
 
+    /// <summary>Built on first use, then reused for the rest of this scope.</summary>
+    private IReadOnlyList<(string Needle, string Sport)>? _leagueSports;
+
+    /// <summary>
+    /// Single words that say nothing about which league a file belongs to.
+    ///
+    /// A league really is named ONE, and "Race One" appears in motorsport
+    /// releases, so matching that league on the bare word turned a superbike
+    /// round into a fight card. The parser already refuses to read a trailing
+    /// "one" as ONE Championship, and this fallback has to refuse it too. A
+    /// league whose whole name is one of these needs the filename patterns,
+    /// because the name alone cannot identify it.
+    /// </summary>
+    private static readonly HashSet<string> AmbiguousLeagueNames = new(StringComparer.Ordinal)
+    {
+        "one", "two", "three", "race", "round", "cup", "open", "final", "finals",
+        "world", "super", "pro", "elite", "league", "series", "tour", "master",
+        "masters", "classic", "national", "international", "championship",
+        "championships", "game", "games", "match", "event", "night", "week"
+    };
+
     public ImportMatchingService(
         SportarrDbContext db,
         MediaFileParser parser,
@@ -29,6 +50,133 @@ public class ImportMatchingService
         _sportsParser = sportsParser;
         _partDetector = partDetector;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// The sport for a file: what the filename patterns recognise, else what
+    /// the library says, else nothing.
+    ///
+    /// Nothing means nothing. This used to answer "Fighting" when it could
+    /// not tell, so an unrecognised league was read as a fight card and cut
+    /// into segments no other sport has. Saying we do not know is both
+    /// honest and harmless, because the caller then skips the sport-specific
+    /// work instead of doing the wrong sport's.
+    /// </summary>
+    private async Task<string?> ResolveSportAsync(string title, string? parsedSport)
+    {
+        if (!string.IsNullOrEmpty(parsedSport)) return parsedSport;
+        return await DetectSportFromLibraryAsync(title);
+    }
+
+    /// <summary>
+    /// Work out a sport by finding which of this library's leagues the name
+    /// belongs to.
+    ///
+    /// The league is the authority on its own sport, so a league that exists
+    /// locally never needs a hand-written filename pattern. Matching is on
+    /// whole words so "ONE" does not match "Bones" and a short league name
+    /// cannot claim an unrelated file. The longest league name wins, which
+    /// keeps "Premier League Darts" away from "Premier League".
+    /// </summary>
+    private async Task<string?> DetectSportFromLibraryAsync(string title)
+    {
+        var haystack = NormalizeForLeagueMatch(title);
+        if (string.IsNullOrWhiteSpace(haystack)) return null;
+
+        var leagues = await GetLeagueSportsAsync();
+
+        string? best = null;
+        var bestLength = 0;
+
+        foreach (var (needle, sport) in leagues)
+        {
+            if (!ContainsWholeWords(haystack, needle)) continue;
+
+            if (needle.Length > bestLength)
+            {
+                bestLength = needle.Length;
+                best = sport;
+            }
+        }
+
+        if (best != null)
+        {
+            _logger.LogDebug(
+                "[Import Matching] No filename pattern matched; the library says this is {Sport}", best);
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// The library's leagues, normalised once per scope.
+    ///
+    /// A library scan calls this for every file the patterns do not
+    /// recognise, and a folder of unfamiliar files is exactly the case this
+    /// exists for. Reading the whole league table each time turned one scan
+    /// into thousands of identical queries. The service is scoped, so this
+    /// lasts for the scan and is rebuilt for the next one.
+    /// </summary>
+    private async Task<IReadOnlyList<(string Needle, string Sport)>> GetLeagueSportsAsync()
+    {
+        if (_leagueSports != null) return _leagueSports;
+
+        var rows = await _db.Leagues
+            .AsNoTracking()
+            .Where(l => l.Sport != null && l.Sport != "")
+            .Select(l => new { l.Name, l.AlternateName, l.Sport })
+            .ToListAsync();
+
+        var built = new List<(string Needle, string Sport)>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.Sport)) continue;
+
+            Add(row.Name, row.Sport);
+
+            // Release groups publish the sponsor-branded name as often as the
+            // plain one, and the league stores those aliases. Same delimiters
+            // the channel mapper splits on.
+            if (!string.IsNullOrEmpty(row.AlternateName))
+            {
+                foreach (var alias in row.AlternateName.Split(
+                    new[] { ',', '|', '/' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    Add(alias, row.Sport);
+                }
+            }
+        }
+
+        void Add(string? name, string sport)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return;
+            var needle = NormalizeForLeagueMatch(name);
+            if (needle.Length < 2) return;
+
+            // A one-word name that is also an ordinary word cannot identify a
+            // file on its own. Names of two words or more are specific enough.
+            if (!needle.Contains(' ') && AmbiguousLeagueNames.Contains(needle)) return;
+
+            built.Add((needle, sport));
+        }
+
+        _leagueSports = built;
+        return _leagueSports;
+    }
+
+    /// <summary>Separators in release names become spaces so words line up.</summary>
+    private static string NormalizeForLeagueMatch(string value)
+    {
+        var chars = value.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : ' ');
+        return string.Join(" ", new string(chars.ToArray())
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    /// <summary>True when every word of the needle appears in order in the haystack.</summary>
+    private static bool ContainsWholeWords(string haystack, string needle)
+    {
+        var padded = " " + haystack + " ";
+        return padded.Contains(" " + needle + " ", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -53,8 +201,15 @@ public class ImportMatchingService
 
         // Try to detect part for fighting sports
         string? detectedPart = null;
-        var sportType = sportsResult.Sport ?? "Fighting";
-        var partInfo = _partDetector.DetectPart(title, sportType);
+        // The filename patterns only know the leagues someone wrote a
+        // pattern for. Anything else used to be called Fighting, which is
+        // wrong for most of a library and made the part detector read a
+        // soccer file as though it had rounds. Ask the library what league
+        // the name belongs to before falling back.
+        var sportType = await ResolveSportAsync(title, sportsResult.Sport);
+        // No sport, no part. Guessing one here is how a soccer file came back
+        // with a fight card's segments.
+        var partInfo = sportType is null ? null : _partDetector.DetectPart(title, sportType);
         if (partInfo != null)
         {
             detectedPart = partInfo.SegmentName;
@@ -372,14 +527,43 @@ public class ImportMatchingService
             }
         }
 
-        // Sport mismatch penalty: If sports parser detected a sport and event is a different sport, heavy penalty
-        if (sportsResult != null && !string.IsNullOrEmpty(sportsResult.Sport) && !string.IsNullOrEmpty(evt.Sport))
+        // Sport mismatch penalty: If sports parser detected a sport and event is a different sport, heavy penalty.
+        //
+        // Fall back to the league's sport when the event has none. An event
+        // with a blank Sport skipped this check completely, so it stayed a
+        // candidate for every release and the manual import dialog offered
+        // NFL games for a baseball file (reported 2026-08-29).
+        // The league's sport wins. Event rows and League rows disagree on a real
+        // library: NFL events say "Football" while the NFL league says "American
+        // Football", and UFC events say "Combat" while the league says
+        // "Fighting". The parser speaks the league's vocabulary, so comparing
+        // against the event penalised a release 50 points against its own
+        // correct event.
+        var eventSport = !string.IsNullOrEmpty(evt.League?.Sport) ? evt.League!.Sport : evt.Sport;
+        if (sportsResult != null && !string.IsNullOrEmpty(sportsResult.Sport) && !string.IsNullOrEmpty(eventSport))
         {
-            if (!evt.Sport.Equals(sportsResult.Sport, StringComparison.OrdinalIgnoreCase))
+            if (!LeagueSportRules.AreEquivalentSports(eventSport, sportsResult.Sport))
             {
                 confidence -= 50;
                 _logger.LogDebug("[Import Matching] Sport mismatch penalty: parsed '{ParsedSport}' vs event '{EventSport}' for '{EventTitle}'",
-                    sportsResult.Sport, evt.Sport, evt.Title);
+                    sportsResult.Sport, eventSport, evt.Title);
+            }
+        }
+        // Neither the event nor its league names a sport, so the league itself
+        // is the only signal left. A release that names one competition does
+        // not belong to a different one.
+        else if (sportsResult != null && string.IsNullOrEmpty(eventSport) &&
+                 !string.IsNullOrEmpty(sportsResult.Organization) && evt.League != null &&
+                 !string.IsNullOrEmpty(evt.League.Name))
+        {
+            var org = sportsResult.Organization;
+            var leagueName = evt.League.Name;
+            if (!leagueName.Contains(org, StringComparison.OrdinalIgnoreCase) &&
+                !org.Contains(leagueName, StringComparison.OrdinalIgnoreCase))
+            {
+                confidence -= 50;
+                _logger.LogDebug("[Import Matching] League mismatch penalty: parsed '{ParsedOrg}' vs league '{League}' for '{EventTitle}'",
+                    org, leagueName, evt.Title);
             }
         }
 
@@ -589,7 +773,13 @@ public class ImportMatchingService
             ? sportsResult.EventTitle
             : parsed.EventTitle;
 
-        var detectedPart = _partDetector.DetectPart(title, sportsResult.Sport ?? "Fighting")?.SegmentName;
+        // The candidate picker has to read a file the same way the first scan
+        // did. Left on the old default it called an unfamiliar league a fight
+        // card and scored its parts as though it had rounds.
+        var sportType = await ResolveSportAsync(title, sportsResult.Sport);
+        var detectedPart = sportType is null
+            ? null
+            : _partDetector.DetectPart(title, sportType)?.SegmentName;
 
         var events = await FindEventMatchesAsync(
             eventTitle, detectedPart, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);
@@ -610,7 +800,11 @@ public class ImportMatchingService
                 Part = detectedPart,
                 Confidence = confidence,
                 ParsedSport = sportsResult.Sport,
-                ParsedOrganization = sportsResult.Organization
+                ParsedOrganization = sportsResult.Organization,
+                // Null when the release name carries no date. The dialog says so,
+                // because that is why the same fixture appears on several dates
+                // and why the person has to pick one.
+                ParsedEventDate = sportsResult.EventDate
             });
         }
 

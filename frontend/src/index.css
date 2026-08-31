@@ -803,3 +803,14 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-pill-down { animation: none; }
 }
+
+/* A navigation icon presses in and comes back when its page becomes the
+   current one, so a tap is answered even when the destination takes a moment
+   to paint. */
+@keyframes navPress {
+  0% { transform: scale(1); }
+  35% { transform: scale(0.82); }
+  100% { transform: scale(1); }
+}
+
+.animate-nav-press { animation: navPress 320ms cubic-bezier(0.16, 1, 0.3, 1); }

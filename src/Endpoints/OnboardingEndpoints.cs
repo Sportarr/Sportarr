@@ -30,6 +30,7 @@ public static class OnboardingEndpoints
             // to record when nothing it cared about could be recorded. Rows
             // with a negative priority are admin exclusions, not mappings.
             var hasChannelLeagueMappings = await db.ChannelLeagueMappings
+                .AsNoTracking()
                 .AnyAsync(m => m.Priority >= 0 && m.League != null && m.League.Monitored);
             var monitoredLeagueCount = await db.Leagues.CountAsync(l => l.Monitored);
 

@@ -42,6 +42,78 @@ public static class LeagueSportRules
     }
 
     /// <summary>
+    /// Sports that mean the same thing under different names. TheSportsDB, the
+    /// hub and release naming each pick a different word for the same sport, so
+    /// a straight string compare reports a mismatch between a league and its own
+    /// events. Every group here is one sport.
+    /// </summary>
+    private static readonly string[][] EquivalentSports = new[]
+    {
+        new[] { "Fighting", "Combat", "MMA", "Mixed Martial Arts" },
+        new[] { "Motorsport", "Racing", "Motorsports", "Auto Racing" },
+        new[] { "American Football", "Football", "Gridiron" },
+        new[] { "Ice Hockey", "Hockey" },
+        new[] { "Association Football", "Soccer" },
+    };
+
+    /// <summary>
+    /// The hub's canonical sport names, mirroring SPORT_SYNONYMS in the hub's
+    /// sync_pipeline. One vocabulary across both apps means no translation
+    /// layer between them. Combat is the umbrella sport; UFC, Bellator, ONE,
+    /// Boxing and the wrestling promotions are leagues inside it.
+    /// </summary>
+    private static readonly Dictionary<string, string> CanonicalSportNames =
+        new(System.StringComparer.OrdinalIgnoreCase)
+        {
+            ["football"] = "American Football",
+            ["gridiron"] = "American Football",
+            ["hockey"] = "Ice Hockey",
+            ["racing"] = "Motorsport",
+            ["motorsports"] = "Motorsport",
+            ["auto racing"] = "Motorsport",
+            ["mma"] = "Combat",
+            ["mixed martial arts"] = "Combat",
+            ["fighting"] = "Combat",
+            ["boxing"] = "Combat",
+            ["wrestling"] = "Combat",
+            ["association football"] = "Soccer",
+        };
+
+    /// <summary>
+    /// Returns the hub's canonical name for a sport, or the input unchanged
+    /// when it is already canonical or unknown.
+    /// </summary>
+    public static string? CanonicalSport(string? sport)
+    {
+        if (string.IsNullOrWhiteSpace(sport)) return sport;
+        return CanonicalSportNames.TryGetValue(sport.Trim(), out var canonical) ? canonical : sport;
+    }
+
+    /// <summary>
+    /// True when two sport names describe the same sport. Use this instead of
+    /// comparing the strings, or a correctly named release is judged against
+    /// its own event as if it came from another sport.
+    /// </summary>
+    public static bool AreEquivalentSports(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        if (a.Equals(b, System.StringComparison.OrdinalIgnoreCase)) return true;
+
+        foreach (var group in EquivalentSports)
+        {
+            var hasA = false;
+            var hasB = false;
+            foreach (var name in group)
+            {
+                if (a.Equals(name, System.StringComparison.OrdinalIgnoreCase)) hasA = true;
+                if (b.Equals(name, System.StringComparison.OrdinalIgnoreCase)) hasB = true;
+            }
+            if (hasA && hasB) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Returns true for sports/leagues that do not have meaningful home/away
     /// teams. Individual tennis tours (ATP/WTA) also qualify, but team-based
     /// tennis competitions (Fed Cup, Davis Cup, Olympics, Billie Jean King Cup)

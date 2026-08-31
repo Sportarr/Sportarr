@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../utils/api';
 
-interface UISettings {
+export interface UISettings {
   eventViewMode?: string;
   theme?: string;
   timeZone?: string;

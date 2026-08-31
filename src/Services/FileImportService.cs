@@ -152,7 +152,10 @@ public class FileImportService : IFileImportService
     /// <param name="download">The download queue item to import</param>
     /// <param name="overridePath">Optional: Use this path instead of querying download client.
     /// Used for manual imports where we already know the file path.</param>
-    public async Task<ImportHistory> ImportDownloadAsync(DownloadQueueItem download, string? overridePath = null)
+    public async Task<ImportHistory> ImportDownloadAsync(
+        DownloadQueueItem download,
+        string? overridePath = null,
+        PostImportMode? manualImportMode = null)
     {
         _logger.LogInformation("Starting import for download: {Title} (ID: {DownloadId})",
             download.Title, download.DownloadId);
@@ -651,16 +654,34 @@ public class FileImportService : IFileImportService
             // overrides win, and Auto preserves any torrent its client still
             // tracks so an import can never break seeding.
             var isTorrentDownload = string.Equals(download.Protocol, "Torrent", StringComparison.OrdinalIgnoreCase);
-            var stillInClient = isTorrentDownload && await IsStillInClientAsync(download);
-            var plan = blackholeReadOnly
-                ? new TransferPlan(TransferAction.Copy, PreserveSource: true, "read-only blackhole - external client owns the watch folder")
-                : ImportTransferPlanner.Resolve(
+            TransferPlan plan;
+            if (blackholeReadOnly)
+            {
+                plan = new TransferPlan(TransferAction.Copy, PreserveSource: true,
+                    "read-only blackhole - external client owns the watch folder");
+            }
+            else if (manualImportMode is { } requested)
+            {
+                // A person accepting an import is pointing at a file that
+                // already exists. Whether a client still tracks it says
+                // nothing about whether it is safe to move.
+                plan = ImportTransferPlanner.ResolveManual(
+                    requested,
+                    settings.UseHardlinks,
+                    settings.CopyFiles,
+                    IsSymbolicLink(sourceFile));
+            }
+            else
+            {
+                var stillInClient = isTorrentDownload && await IsStillInClientAsync(download);
+                plan = ImportTransferPlanner.Resolve(
                     download.DownloadClient?.PostImportMode ?? PostImportMode.Auto,
                     isTorrentDownload,
                     stillInClient,
                     settings.UseHardlinks,
                     settings.CopyFiles,
                     IsSymbolicLink(sourceFile));
+            }
             _logger.LogInformation("[Import] Transfer plan: {Action} (preserve source: {Preserve}) - {Reason}",
                 plan.Action, plan.PreserveSource, plan.Reason);
 

@@ -5,7 +5,10 @@
   <a href="https://discord.gg/YjHVWGWjjG"><img src="https://img.shields.io/discord/1427430309653123105?style=flat&logo=discord&logoColor=white&label=discord&color=7289da" alt="Discord online"></a>
 </p>
 
-<img src="./Logo/512.png" width="200" alt="Sportarr">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./Logo/white/Sportarr-lockup-animated-white.svg">
+  <img src="./Logo/black/Sportarr-lockup-animated.svg" width="360" alt="Sportarr">
+</picture>
 
 <h3>Sports PVR for Usenet and Torrents</h3>
 
@@ -297,6 +300,20 @@ Sportarr is free and self-funded. If it saves you time, a [one-time or monthly c
 
 <a href="https://opencollective.com/sportarr"><img src="https://opencollective.com/sportarr/sponsors.svg?width=800" alt="Sponsors" /></a>
 
+---
+
+<p align="center">
+Sportarr is supported by:
+<br/>
+<br/>
+<a href="https://hexos.com/">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/hexos-white.png">
+    <img src="assets/sponsors/hexos.png" width="280" alt="HexOS">
+  </picture>
+</a>
+</p>
+
 ## License
 
 GNU GPL v3 - see [LICENSE.md](LICENSE.md) and [COPYRIGHT.md](COPYRIGHT.md).
@@ -308,6 +325,6 @@ application was rewritten shortly afterwards and the great majority of the code 
 original, but parts of it are still derived from Sonarr and the project would not exist
 without the years of work that went into it first.
 
-Thank you to Mark McDowall, Keivan Beigi, Taloth Saldono and everyone who has contributed to
-Sonarr. Their copyright notices are retained in [COPYRIGHT.md](COPYRIGHT.md), and Sportarr is
-released under the same GPL-3.0 license.
+Thank you to the Sonarr Team and everyone who has contributed to Sonarr. Their copyright notices
+are retained in [COPYRIGHT.md](COPYRIGHT.md), and Sportarr is released under the same GPL-3.0
+license.

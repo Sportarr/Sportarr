@@ -134,6 +134,7 @@ public static class SonarrWantedEndpoint
                 .ToDictionary(p => p.Id, p => GetCutoffQualityScore(p, p.CutoffQuality!.Value));
 
             var candidates = await db.Events
+                .AsNoTracking()
                 .Include(e => e.League)
                 .Where(e => e.Monitored && e.HasFile && e.LeagueId != null)
                 .Select(e => new

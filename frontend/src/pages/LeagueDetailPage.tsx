@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon, TagIcon } from '@heroicons/react/24/outline';
+import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon, TagIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, CheckIcon } from '@heroicons/react/24/solid';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import apiClient from '../api/client';
@@ -19,7 +19,12 @@ import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
 import { formatDateInTimezone, formatEventDate } from '../utils/timezone';
 import { getRefetchIntervalWithBackoff } from '../utils/queryBackoff';
-import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_INFO, BUTTON_DESTRUCTIVE } from '../utils/designTokens';
+import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_INFO, BUTTON_DESTRUCTIVE } from '../utils/designTokens';
+
+// The three league header buttons share one grid cell each, so they stay the
+// same size. A phone gets a smaller label and tighter padding rather than a
+// row that runs off the card.
+const HEADER_ACTION = 'w-full min-w-0 max-sm:gap-1 max-sm:px-1.5 max-sm:text-[11px]';
 import { isFightingSport, isTeamlessSport, usesFightingEventTypes } from '../utils/leagueSportRules';
 
 // Type for the league prop passed to AddLeagueModal
@@ -71,6 +76,8 @@ interface LeagueDetail {
   monitoredParts?: string;
   monitoredSessionTypes?: string;
   monitoredEventTypes?: string;
+  // "desc" starts at the newest event, "asc" at episode one.
+  eventSortOrder?: string;
   logoUrl?: string;
   bannerUrl?: string;
   posterUrl?: string;
@@ -109,6 +116,73 @@ interface PartStatus {
   monitored: boolean;
   downloaded: boolean;
   file?: EventFile;
+}
+
+/**
+ * An event still. Loads lazily, because a season can hold a thousand rows and
+ * every one of them asking for its picture at once is tens of megabytes the
+ * reader cannot even see yet. A broken image falls back to the placeholder,
+ * which used to hide itself and leave an empty slot.
+ */
+function EventThumb({
+  src,
+  className,
+  iconClass,
+}: {
+  src?: string | null;
+  className: string;
+  iconClass: string;
+}) {
+  // Step down on failure: the small copy, then the full still, then the
+  // placeholder. A hub that has no /static/thumbs route just falls through.
+  const [step, setStep] = useState(0);
+  // A new url deserves a fresh run at the small copy. Without this an event
+  // whose art arrives later stays a placeholder, because the step counter was
+  // still parked past the end of the previous url's list.
+  useEffect(() => { setStep(0); }, [src]);
+  const small = src?.includes('/static/images/')
+    ? src.replace('/static/images/', '/static/thumbs/')
+    : null;
+  const sources = [small, src].filter((u): u is string => Boolean(u));
+  const failed = step >= sources.length;
+
+  if (!src || failed) {
+    return (
+      <div className={`${className} flex flex-shrink-0 items-center justify-center rounded bg-gray-800`}>
+        <FilmIcon className={`${iconClass} text-gray-600`} />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={sources[step]}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setStep((previous) => previous + 1)}
+      className={`${className} flex-shrink-0 rounded bg-gray-800 object-cover`}
+    />
+  );
+}
+
+// About a minute of three-second polls. Long enough to cover a slow first
+// sync, short enough that an empty league settles instead of spinning.
+const EMPTY_LEAGUE_POLLS = 20;
+
+interface LeagueSeasonRow {
+  season: string;
+  eventCount: number;
+  monitoredCount: number;
+  fileCount: number;
+  cancelledCount: number;
+  firstEventDate: string;
+  lastEventDate: string;
+}
+
+interface LeagueSeasonSummary {
+  totalEvents: number;
+  seasons: LeagueSeasonRow[];
 }
 
 interface EventDetail {
@@ -234,6 +308,7 @@ export default function LeagueDetailPage() {
   const [isEditTeamsModalOpen, setIsEditTeamsModalOpen] = useState(false);
   const [isRefreshScopeModalOpen, setIsRefreshScopeModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [leagueMenuOpen, setLeagueMenuOpen] = useState(false);
   const [deleteLeagueFolder, setDeleteLeagueFolder] = useState(false);
   const [revealedScores, setRevealedScores] = useState<Set<number>>(new Set());
   // Move league modal state. Lives at the page level so the existing
@@ -269,6 +344,9 @@ export default function LeagueDetailPage() {
   // user does not follow, and games without a followed team. Needed to find
   // a one-off event and monitor it by hand.
   const [showAllEvents, setShowAllEvents] = useState(false);
+  // Held locally so the list reorders on click, then saved to the league so it
+  // survives a reload and follows the user to another browser.
+  const [sortOldestFirst, setSortOldestFirst] = useState(false);
   const [dvrChannelSearch, setDvrChannelSearch] = useState('');
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [isDescClamped, setIsDescClamped] = useState(false);
@@ -308,6 +386,25 @@ export default function LeagueDetailPage() {
     ),
   });
 
+  // Adopt the league's saved order once it arrives. Keyed on the league id so
+  // switching leagues picks up that league's choice.
+  useEffect(() => {
+    if (league) setSortOldestFirst(league.eventSortOrder === 'asc');
+  }, [league?.id, league?.eventSortOrder]);
+
+  const toggleSortOrder = async () => {
+    const next = !sortOldestFirst;
+    setSortOldestFirst(next);
+    try {
+      await apiClient.put(`/leagues/${id}`, { eventSortOrder: next ? 'asc' : 'desc' });
+      queryClient.setQueryData<LeagueDetail>(['league', id], prev =>
+        prev ? { ...prev, eventSortOrder: next ? 'asc' : 'desc' } : prev);
+    } catch {
+      // Put the switch back so it never claims a preference that was not saved.
+      setSortOldestFirst(!next);
+    }
+  };
+
   useEffect(() => {
     const el = descRef.current;
     if (el && !descriptionExpanded) {
@@ -315,12 +412,14 @@ export default function LeagueDetailPage() {
     }
   }, [league?.description, descriptionExpanded]);
 
-  // Fetch events for this league
-  const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['league-events', id, showAllEvents],
+  // Season summaries, not every event. The page shows collapsed seasons
+  // until one is opened, and a league with thousands of events answered
+  // megabytes for a list that only needs counts.
+  const { data: seasonSummary, isLoading: eventsLoading } = useQuery({
+    queryKey: ['league-seasons', id, showAllEvents],
     queryFn: async () => {
-      const response = await apiClient.get<EventDetail[]>(
-        `/leagues/${id}/events${showAllEvents ? '?showAll=true' : ''}`);
+      const response = await apiClient.get<LeagueSeasonSummary>(
+        `/leagues/${id}/seasons${showAllEvents ? '?showAll=true' : ''}`);
       return response.data;
     },
     enabled: !!id,
@@ -332,10 +431,13 @@ export default function LeagueDetailPage() {
       if (leagueSyncActive) {
         return getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount);
       }
-      // Also poll while empty (covers the gap between page load and the
-      // initial-add task appearing in the task list).
+      // Also poll while empty, to cover the gap between page load and the
+      // initial-add task appearing in the task list. Give up after a minute:
+      // a league that genuinely holds no events used to poll for ever and sit
+      // on "Syncing events" that would never finish.
       const data = query.state.data;
-      return (!data || data.length === 0)
+      const stillWaitingToStart = query.state.dataUpdateCount <= EMPTY_LEAGUE_POLLS;
+      return (!data || data.seasons.length === 0) && stillWaitingToStart
         ? getRefetchIntervalWithBackoff(3000, query.state.fetchFailureCount)
         : false;
     },
@@ -345,14 +447,60 @@ export default function LeagueDetailPage() {
   // event's season, scrolls its row into view, and pulses a highlight so
   // the click lands on the exact event instead of the top of the league.
   const [highlightedEventId, setHighlightedEventId] = useState<number | null>(null);
+  const seasonRows = seasonSummary?.seasons ?? [];
+  const totalEventCount = seasonSummary?.totalEvents ?? 0;
+
+  // Events arrive a season at a time, when that season is opened. useQueries
+  // keeps the hook order stable whatever is expanded.
+  const expandedSeasonList = useMemo(() => [...expandedSeasons], [expandedSeasons]);
+  const seasonEventQueries = useQueries({
+    queries: expandedSeasonList.map((season) => ({
+      queryKey: ['league-season-events', id, season, showAllEvents],
+      queryFn: async () => {
+        const response = await apiClient.get<EventDetail[]>(
+          `/leagues/${id}/events?season=${encodeURIComponent(season)}${showAllEvents ? '&showAll=true' : ''}`);
+        return response.data;
+      },
+      enabled: !!id,
+      refetchInterval: leagueSyncActive ? 3000 : (false as const),
+    })),
+  });
+
+  const eventsBySeason = useMemo(() => {
+    const map: Record<string, EventDetail[]> = {};
+    expandedSeasonList.forEach((season, index) => {
+      map[season] = seasonEventQueries[index]?.data ?? [];
+    });
+    return map;
+  }, [expandedSeasonList, seasonEventQueries]);
+
+  const loadingSeasons = useMemo(() => {
+    const set = new Set<string>();
+    expandedSeasonList.forEach((season, index) => {
+      if (seasonEventQueries[index]?.isLoading) set.add(season);
+    });
+    return set;
+  }, [expandedSeasonList, seasonEventQueries]);
+
   const deepLinkedEventRef = useRef<string | null>(null);
+  const deepLinkParam = new URLSearchParams(location.search).get('event');
+
+  // The deep link names one event, so ask for that one rather than the
+  // league's whole list just to learn which season holds it.
+  const { data: deepLinkedEvent } = useQuery({
+    queryKey: ['event', deepLinkParam],
+    queryFn: async () => {
+      const response = await apiClient.get<EventDetail>(`/events/${deepLinkParam}`);
+      return response.data;
+    },
+    enabled: !!deepLinkParam,
+  });
 
   useEffect(() => {
-    const param = new URLSearchParams(location.search).get('event');
-    if (!param || events.length === 0) return;
+    const param = deepLinkParam;
+    if (!param || !deepLinkedEvent) return;
     if (deepLinkedEventRef.current === param) return;
-    const target = events.find(e => e.id === Number(param));
-    if (!target) return;
+    const target = deepLinkedEvent;
     deepLinkedEventRef.current = param;
 
     const season = target.season || 'Unknown';
@@ -366,7 +514,8 @@ export default function LeagueDetailPage() {
     // (mirrors the defaultVisibleSeasons filter, which is computed after
     // the loading returns and can't be referenced from up here).
     const startYear = parseInt(season.split('-')[0]);
-    const seasonHasActivity = events.some(e => (e.season || 'Unknown') === season && (e.hasFile || e.monitored));
+    const summaryRow = seasonRows.find(row => row.season === season);
+    const seasonHasActivity = (summaryRow?.monitoredCount ?? 0) > 0 || (summaryRow?.fileCount ?? 0) > 0;
     if (!Number.isNaN(startYear) && startYear < new Date().getFullYear() - 5 && !seasonHasActivity) {
       setShowAllSeasons(true);
     }
@@ -377,15 +526,30 @@ export default function LeagueDetailPage() {
     }
 
     setHighlightedEventId(target.id);
-    const scroll = window.setTimeout(() => {
-      document.getElementById(`event-row-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 150);
     const clear = window.setTimeout(() => setHighlightedEventId(null), 4000);
-    return () => {
-      window.clearTimeout(scroll);
-      window.clearTimeout(clear);
+    return () => window.clearTimeout(clear);
+  }, [deepLinkParam, deepLinkedEvent, seasonRows]);
+
+  // Scroll only once the row exists. The season's events arrive on their own
+  // query, so a fixed delay after expanding raced it and simply missed on a
+  // slow fetch, with nothing to try again.
+  useEffect(() => {
+    if (highlightedEventId == null) return;
+    let attempts = 0;
+    const findRow = () => {
+      const row = document.getElementById(`event-row-${highlightedEventId}`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.clearInterval(timer);
+        return;
+      }
+      // Give up after about three seconds rather than spin for ever.
+      if (++attempts > 30) window.clearInterval(timer);
     };
-  }, [location.search, events]);
+    const timer = window.setInterval(findRow, 100);
+    findRow();
+    return () => window.clearInterval(timer);
+  }, [highlightedEventId]);
 
   // Fetch quality profiles
   const { data: qualityProfiles = [] } = useQuery({
@@ -537,7 +701,8 @@ export default function LeagueDetailPage() {
     if (allCompleted.length > 0 && id) {
       // Delay slightly to ensure backend has updated
       setTimeout(() => {
-        queryClient.refetchQueries({ queryKey: ['league-events', id] });
+        queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+        queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
         queryClient.refetchQueries({ queryKey: ['league', id] });
       }, 500);
     }
@@ -562,7 +727,10 @@ export default function LeagueDetailPage() {
       // whole league-events list. On leagues with tens of thousands of events
       // a full refetch + re-render took 15-20s per click (#148); a targeted
       // cache update is instant.
-      queryClient.setQueryData<EventDetail[]>(['league-events', id], (prev) =>
+      // The list is cached per 'show every event' state, so an exact two-part
+      // key matches no cached query and the toggle only appears after a
+      // refresh. setQueriesData matches by prefix and patches every variant.
+      queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-season-events', id] }, (prev) =>
         prev?.map((e) =>
           e.id === eventId
             ? { ...e, monitored, monitoredParts: monitored ? (updated?.monitoredParts ?? e.monitoredParts) : undefined }
@@ -576,6 +744,11 @@ export default function LeagueDetailPage() {
           ? { ...prev, monitoredEventCount: Math.max(0, (prev.monitoredEventCount ?? 0) + (monitored ? 1 : -1)) }
           : prev
       );
+      // The season row shows its own monitored count. Patching only the event
+      // list left that header stale until the page was reloaded, and a season
+      // toggled while collapsed never corrected itself at all. The summary is
+      // small, so refetching it is cheaper than mirroring the count by hand.
+      queryClient.invalidateQueries({ queryKey: ['league-seasons', id] });
       // Refresh the leagues-list stats in the background; don't block the click.
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       toast.success('Event updated');
@@ -594,7 +767,7 @@ export default function LeagueDetailPage() {
     onSuccess: (_updated, { eventId, qualityProfileId }) => {
       // Same as the monitor toggle: patch the single event rather than
       // refetching every event in the league (#148).
-      queryClient.setQueryData<EventDetail[]>(['league-events', id], (prev) =>
+      queryClient.setQueriesData<EventDetail[]>({ queryKey: ['league-season-events', id] }, (prev) =>
         prev?.map((e) =>
           e.id === eventId ? { ...e, qualityProfileId: qualityProfileId ?? undefined } : e
         )
@@ -645,7 +818,8 @@ export default function LeagueDetailPage() {
     onSuccess: async () => {
       // Refetch all relevant data - backend updates all events when league monitored status changes
       await queryClient.refetchQueries({ queryKey: ['league', id] });
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] }); // Events are updated by backend
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] }); // Events are updated by backend
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
       toast.success('League monitoring updated');
     },
@@ -712,7 +886,8 @@ export default function LeagueDetailPage() {
       // Use refetchQueries to immediately fetch fresh data before closing modal
       // This ensures UI shows updated part statuses without requiring page refresh
       await queryClient.refetchQueries({ queryKey: ['league', id] });
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
 
       // Close modal if this was triggered from the edit modal (team changes)
@@ -756,7 +931,8 @@ export default function LeagueDetailPage() {
     },
     onSuccess: async () => {
       // Use refetchQueries for immediate UI update of part status checkboxes
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       toast.success('Event parts updated');
     },
@@ -772,7 +948,8 @@ export default function LeagueDetailPage() {
       return response.data;
     },
     onSuccess: async (data) => {
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
       toast.success(data.message || 'File deleted');
@@ -790,7 +967,8 @@ export default function LeagueDetailPage() {
     },
     onSuccess: async (data) => {
       // Use refetchQueries for immediate UI update
-      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
       await queryClient.refetchQueries({ queryKey: ['league', id] });
       toast.success(data.message || 'Season monitoring updated');
     },
@@ -889,6 +1067,9 @@ export default function LeagueDetailPage() {
   };
 
   // Helper to open delete confirmation with stable data
+  // Everything the header used to show as its own button. Delete is not here:
+  // it sits below a divider in its own destructive styling, so it cannot be
+  // hit while reaching for Move.
   const openDeleteConfirm = () => {
     if (league) {
       deleteModalDataRef.current = {
@@ -1097,6 +1278,55 @@ export default function LeagueDetailPage() {
     }
   };
 
+  const leagueMenuActions = [
+    {
+      key: 'sync',
+      label: 'Sync',
+      icon: ArrowPathIcon,
+      onSelect: () => setIsRefreshScopeModalOpen(true),
+      hint: 'Sync events from Sportarr API',
+    },
+    {
+      key: 'scan',
+      label: isScanningFiles ? 'Scanning...' : 'Scan Files',
+      icon: FolderOpenIcon,
+      onSelect: handleScanFiles,
+      disabled: isScanningFiles,
+      hint: 'Scan root folders for new files',
+    },
+    ...(league && league.fileCount > 0
+      ? [{
+          key: 'files',
+          label: `All Files (${league.fileCount})`,
+          icon: FolderOpenIcon,
+          onSelect: () => setLeagueFilesModal({ isOpen: true }),
+          hint: 'View all downloaded files for this league',
+        }]
+      : []),
+    {
+      key: 'edit',
+      label: 'Edit',
+      icon: UsersIcon,
+      onSelect: openEditModal,
+      hint: 'Edit monitored teams and monitoring settings',
+    },
+    {
+      key: 'aliases',
+      label: 'Aliases',
+      icon: TagIcon,
+      onSelect: () => setShowTeamAliasesModal(true),
+      hint: 'Add the team names your release groups use so releases match and download automatically',
+    },
+    {
+      key: 'move',
+      label: 'Move',
+      icon: FolderOpenIcon,
+      onSelect: openMoveModal,
+      disabled: rootFolders.length === 0,
+      hint: "Move this league's media folder to a different root folder",
+    },
+  ];
+
   const handleSeasonSearch = async (season: string) => {
     if (!league?.id || searchingSeasons.has(season)) return;
 
@@ -1109,7 +1339,8 @@ export default function LeagueDetailPage() {
           description: response.data.message || `Queued searches for all monitored events in ${season}`
         });
         // Refetch for immediate UI update
-        await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+        await queryClient.refetchQueries({ queryKey: ['league-season-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-seasons', id] });
         await queryClient.refetchQueries({ queryKey: ['league', id] });
       } else {
         toast.error('Season search failed', {
@@ -1153,7 +1384,8 @@ export default function LeagueDetailPage() {
         // of the footer; this just makes sure the cached league data
         // gets retried.
         queryClient.invalidateQueries({ queryKey: ['league', id] });
-        queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+        queryClient.invalidateQueries({ queryKey: ['league-season-events', id] });
+            queryClient.invalidateQueries({ queryKey: ['league-seasons', id] });
         queryClient.invalidateQueries({ queryKey: ['leagues'] });
       } else {
         toast.error('Failed to queue sync', {
@@ -1217,7 +1449,7 @@ export default function LeagueDetailPage() {
     const s = (status || '').toUpperCase();
     return s === 'CANCELLED' || s === 'CANCELED' || s === 'POSTPONED';
   };
-  const groupedEvents = (events || []).reduce((acc, event) => {
+  const groupedEvents = Object.values(eventsBySeason).flat().reduce((acc, event) => {
     if (isHiddenStatus(event.status)) return acc;
     const season = event.season || 'Unknown';
     if (!acc[season]) {
@@ -1233,18 +1465,25 @@ export default function LeagueDetailPage() {
   // whether they carry an episode number, so postponed / cancelled events
   // (which have no episode number) are interleaved at their real date instead
   // of being dumped at the bottom below episode 1.
+  //
+  // The league can flip this to ascending, which starts the list at episode
+  // one and reads down to the newest. Only the direction changes: date stays
+  // the key, so a postponed game still lands on the day it was played.
   Object.keys(groupedEvents).forEach(season => {
     groupedEvents[season].sort((a, b) => {
       const dateB = new Date(b.eventDate).getTime();
       const dateA = new Date(a.eventDate).getTime();
-      if (dateB !== dateA) return dateB - dateA;
-      // Same date: order by episode number descending as a stable tiebreaker.
-      return (b.episodeNumber ?? 0) - (a.episodeNumber ?? 0);
+      if (dateB !== dateA) return sortOldestFirst ? dateA - dateB : dateB - dateA;
+      // Same date: episode number as a stable tiebreaker, same direction.
+      const epA = a.episodeNumber ?? 0;
+      const epB = b.episodeNumber ?? 0;
+      return sortOldestFirst ? epA - epB : epB - epA;
     });
   });
 
-  // Sort seasons newest first
-  const sortedSeasons = Object.keys(groupedEvents).sort((a, b) => {
+  // Sort seasons newest first. The list comes from the summary, so every
+  // season is listed whether or not its events have been loaded yet.
+  const sortedSeasons = seasonRows.map(row => row.season).sort((a, b) => {
     // Handle 'Unknown' season
     if (a === 'Unknown') return 1;
     if (b === 'Unknown') return -1;
@@ -1269,7 +1508,8 @@ export default function LeagueDetailPage() {
     if (index < 5) return true;
     const startYear = parseInt(season.split('-')[0]);
     if (!Number.isNaN(startYear) && startYear >= currentYear - 5) return true;
-    return groupedEvents[season].some(e => e.hasFile || e.monitored);
+    const row = seasonRows.find(r => r.season === season);
+    return (row?.monitoredCount ?? 0) > 0 || (row?.fileCount ?? 0) > 0;
   });
   const hiddenSeasonCount = sortedSeasons.length - defaultVisibleSeasons.length;
   const visibleSeasons = showAllSeasons ? sortedSeasons : defaultVisibleSeasons;
@@ -1384,10 +1624,10 @@ export default function LeagueDetailPage() {
         </button>
 
         {/* League Header */}
-        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden mb-4 md:mb-8">
+        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg mb-4 md:mb-8">
           {/* Banner/Logo */}
           {(league.bannerUrl || league.logoUrl || league.posterUrl) && (
-            <div className="relative h-40 md:h-64 bg-gray-800">
+            <div className="relative h-40 md:h-64 overflow-hidden rounded-t-lg bg-gray-800">
               <img
                 src={league.bannerUrl || league.logoUrl || league.posterUrl}
                 alt={league.name}
@@ -1399,23 +1639,19 @@ export default function LeagueDetailPage() {
 
           <div className="p-4 md:p-6">
             {/* Action buttons row */}
-            <div className="flex flex-wrap gap-2 mb-3">
+            <div className="relative mb-3 grid grid-cols-3 items-center gap-2">
               <button
                 onClick={() => toggleLeagueMonitorMutation.mutate(!league.monitored)}
                 disabled={toggleLeagueMonitorMutation.isPending}
-                className={`px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-colors ${
-                  league.monitored
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-gray-600 hover:bg-gray-700'
-                } ${toggleLeagueMonitorMutation.isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`${league.monitored ? BUTTON_SUCCESS : BUTTON_SECONDARY} ${HEADER_ACTION}`}
                 title="Toggle league monitoring"
               >
-                {league.monitored ? 'Monitored' : 'Not Monitored'}
+                <span className="truncate">{league.monitored ? 'Monitored' : 'Not Monitored'}</span>
               </button>
               <button
                 onClick={handleLeagueAutomaticSearch}
                 disabled={isLeagueSearching}
-                className={BUTTON_PRIMARY}
+                className={`${BUTTON_PRIMARY} ${HEADER_ACTION}`}
                 title="Search all monitored events for missing files and quality upgrades"
               >
                 {isLeagueSearching ? (
@@ -1423,72 +1659,66 @@ export default function LeagueDetailPage() {
                 ) : (
                   <MagnifyingGlassIcon className="h-4 w-4" />
                 )}
-                <span>{isLeagueSearching ? 'Searching...' : 'Search League'}</span>
+                <span className="truncate">
+                  {isLeagueSearching ? 'Searching...' : 'Search'}
+                  <span className="hidden sm:inline"> League</span>
+                </span>
               </button>
+
+              {/* Everything else lives behind one control. Nine buttons of equal
+                  weight said nothing about which two people actually use, and
+                  on a phone they filled four rows. */}
               <button
-                onClick={() => setIsRefreshScopeModalOpen(true)}
-                className={BUTTON_INFO}
-                title="Sync events from Sportarr API"
+                onClick={() => setLeagueMenuOpen(open => !open)}
+                className={`${BUTTON_SECONDARY} ${HEADER_ACTION}`}
+                aria-haspopup="menu"
+                aria-expanded={leagueMenuOpen}
+                title="More league actions"
               >
-                <ArrowPathIcon className="h-4 w-4" />
-                Sync
+                <EllipsisHorizontalIcon className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">More</span>
               </button>
-              <button
-                onClick={handleScanFiles}
-                disabled={isScanningFiles}
-                className={BUTTON_SECONDARY}
-                title="Scan root folders for new files"
-              >
-                {isScanningFiles ? (
-                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FolderOpenIcon className="h-4 w-4" />
-                )}
-                <span>{isScanningFiles ? 'Scanning...' : 'Scan Files'}</span>
-              </button>
-              {league.fileCount > 0 && (
-                <button
-                  onClick={() => setLeagueFilesModal({ isOpen: true })}
-                  className={BUTTON_SECONDARY}
-                  title="View all downloaded files for this league"
-                >
-                  <FolderOpenIcon className="h-4 w-4" />
-                  All Files ({league.fileCount})
-                </button>
+
+              {leagueMenuOpen && (
+                <>
+                  {/* Tap anywhere else to dismiss. */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setLeagueMenuOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute left-0 top-full z-50 mt-2 w-64 animate-pill-down">
+                    <div
+                      role="menu"
+                      className="max-h-[75dvh] overflow-y-auto rounded-2xl border-2 border-red-900/70 bg-gradient-to-b from-gray-900 to-black shadow-2xl shadow-black/40"
+                    >
+                      {leagueMenuActions.map(({ key, label, icon: Icon, onSelect, disabled, hint }) => (
+                        <button
+                          key={key}
+                          role="menuitem"
+                          disabled={disabled}
+                          onClick={() => { setLeagueMenuOpen(false); onSelect(); }}
+                          className="flex w-full items-center gap-3 border-b border-gray-800/60 px-5 py-3 text-left text-sm font-medium text-gray-200 last:border-b-0 hover:bg-red-900/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          title={hint}
+                        >
+                          <Icon className="h-4 w-4 flex-shrink-0" />
+                          {label}
+                        </button>
+                      ))}
+                      <button
+                        role="menuitem"
+                        onClick={() => { setLeagueMenuOpen(false); openDeleteConfirm(); }}
+                        disabled={deleteLeagueMutation.isPending}
+                        className="flex w-full items-center gap-3 border-t border-red-900/40 px-5 py-3 text-left text-sm font-medium text-red-400 hover:bg-red-900/30 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                        title="Remove league from library"
+                      >
+                        <TrashIcon className="h-4 w-4 flex-shrink-0" />
+                        {deleteLeagueMutation.isPending ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
-              <button
-                onClick={openEditModal}
-                className={BUTTON_INFO}
-                title="Edit monitored teams and monitoring settings"
-              >
-                <UsersIcon className="h-4 w-4" />
-                Edit
-              </button>
-              <button
-                onClick={() => setShowTeamAliasesModal(true)}
-                className={BUTTON_SECONDARY}
-                title="Add the team names your release groups use so releases match and download automatically"
-              >
-                <TagIcon className="h-4 w-4" />
-                Aliases
-              </button>
-              <button
-                onClick={openMoveModal}
-                disabled={rootFolders.length === 0}
-                className={BUTTON_SECONDARY}
-                title="Move this league's media folder to a different root folder"
-              >
-                <FolderOpenIcon className="h-4 w-4" />
-                Move
-              </button>
-              <button
-                onClick={openDeleteConfirm}
-                disabled={deleteLeagueMutation.isPending}
-                className={BUTTON_DESTRUCTIVE}
-                title="Remove league from library"
-              >
-                {deleteLeagueMutation.isPending ? 'Deleting...' : 'Delete'}
-              </button>
             </div>
 
             {/* Title + Sport Badge inline */}
@@ -1710,17 +1940,14 @@ export default function LeagueDetailPage() {
           <div className="p-4 md:p-6 border-b border-red-900/30">
             <h2 className="text-xl md:text-2xl font-bold text-white">Events</h2>
             <p className="text-gray-400 text-xs md:text-sm mt-1">
-              {Array.isArray(events) ? events.length : 0} event{Array.isArray(events) && events.length !== 1 ? 's' : ''} in this league
+              {totalEventCount} event{totalEventCount !== 1 ? 's' : ''} in this league
             </p>
 
             {/* Show-cancelled toggle. Hidden by default because cancelled
                 / postponed games are noise for the day-to-day admin --
                 they never broadcast, nothing to record. Flip on to audit. */}
             {(() => {
-              const hiddenCount = (events || []).filter(e => {
-                const s = (e.status || '').toUpperCase();
-                return s === 'CANCELLED' || s === 'CANCELED' || s === 'POSTPONED';
-              }).length;
+              const hiddenCount = seasonRows.reduce((sum, row) => sum + row.cancelledCount, 0);
               if (hiddenCount === 0) return null;
               return (
                 <label className="inline-flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer select-none">
@@ -1750,6 +1977,19 @@ export default function LeagueDetailPage() {
                 (including sessions and teams you do not follow)
               </span>
             </label>
+
+            <label className="flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={sortOldestFirst}
+                onChange={toggleSortOrder}
+                className="rounded text-red-600 focus:ring-red-500 bg-gray-800 border-gray-600"
+              />
+              Oldest first
+              <span className="text-gray-500">
+                (start each season at episode one)
+              </span>
+            </label>
           </div>
 
           {eventsLoading ? (
@@ -1757,7 +1997,7 @@ export default function LeagueDetailPage() {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
               <p className="text-gray-400">Loading events...</p>
             </div>
-          ) : !Array.isArray(events) || events.length === 0 ? (
+          ) : sortedSeasons.length === 0 ? (
             <div className="p-12 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
               <p className="text-gray-400 mb-2">Syncing events from Sportarr...</p>
@@ -1765,12 +2005,57 @@ export default function LeagueDetailPage() {
             </div>
           ) : (
             <div>
+              {/* Old seasons nobody has touched are hidden, and this says so
+                  before the list rather than under it. A season drops out of
+                  the list when nothing in it is monitored and it holds no
+                  files, which reads as a missing season unless the page says
+                  otherwise. */}
+              {hiddenSeasonCount > 0 && (
+                <p className="px-4 py-2 text-xs text-gray-400 border-b border-red-900/30">
+                  {showAllSeasons ? (
+                    <>
+                      Showing every season.{' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowAllSeasons(false)}
+                        className="text-red-400 underline underline-offset-2 hover:text-red-300"
+                      >
+                        Hide the {hiddenSeasonCount} older {hiddenSeasonCount === 1 ? 'one' : 'ones'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {hiddenSeasonCount} older {hiddenSeasonCount === 1 ? 'season is' : 'seasons are'} hidden, with nothing monitored and no files.{' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowAllSeasons(true)}
+                        className="text-red-400 underline underline-offset-2 hover:text-red-300"
+                      >
+                        Show {hiddenSeasonCount === 1 ? 'it' : 'them'}
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
+
               {/* Season Groups */}
               {visibleSeasons.map(season => {
-                const seasonEvents = groupedEvents[season];
+                const seasonEvents = groupedEvents[season] ?? [];
                 const isExpanded = expandedSeasons.has(season);
-                const monitoredCount = seasonEvents.filter(e => e.monitored).length;
-                const hasFileCount = seasonEvents.filter(e => e.hasFile).length;
+                const summaryRow = seasonRows.find(row => row.season === season);
+                const seasonIsLoading = loadingSeasons.has(season);
+                // Counts come from the summary so a collapsed season still
+                // says what it holds. An open season prefers its own rows,
+                // which stay right the moment something is toggled.
+                const monitoredCount = isExpanded && !seasonIsLoading
+                  ? seasonEvents.filter(e => e.monitored).length
+                  : (summaryRow?.monitoredCount ?? 0);
+                const hasFileCount = isExpanded && !seasonIsLoading
+                  ? seasonEvents.filter(e => e.hasFile).length
+                  : (summaryRow?.fileCount ?? 0);
+                const seasonEventCount = isExpanded && !seasonIsLoading
+                  ? seasonEvents.length
+                  : (summaryRow?.eventCount ?? 0);
 
                 return (
                   <div key={season} className="border-b border-red-900/30 last:border-b-0">
@@ -1823,7 +2108,7 @@ export default function LeagueDetailPage() {
                             {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
                           </span>
                           <span className="text-xs text-gray-500 ml-1 truncate">
-                            {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
+                            {seasonEventCount} event{seasonEventCount !== 1 ? 's' : ''}
                             {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
                             {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
                           </span>
@@ -1933,7 +2218,7 @@ export default function LeagueDetailPage() {
                                 {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
                               </h3>
                               <p className="text-xs md:text-sm text-gray-400 mt-0.5 md:mt-1">
-                                {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
+                                {seasonEventCount} event{seasonEventCount !== 1 ? 's' : ''}
                                 {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
                                 {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
                               </p>
@@ -2010,12 +2295,17 @@ export default function LeagueDetailPage() {
                     )}
 
                     {/* Season Events */}
-                    {isExpanded && compactView && (
+                    {isExpanded && seasonIsLoading && (
+                      <div className="px-4 py-3 text-sm text-gray-400">
+                        Loading {seasonEventCount} event{seasonEventCount !== 1 ? 's' : ''}...
+                      </div>
+                    )}
+                    {isExpanded && !seasonIsLoading && compactView && (
                       <div>
                         {/* Column Headers - hidden on mobile because the row
                             wraps into two lines below sm width and the
                             single-row header would no longer align. */}
-                        <div className="hidden sm:flex items-center gap-2 px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wider bg-gray-800/50 border-b border-red-900/20">
+                        <div className="hidden xl:flex items-center gap-2 px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wider bg-gray-800/50 border-b border-red-900/20">
                           <div className="w-5 flex-shrink-0" />
                           <div className="w-20 flex-shrink-0">#</div>
                           <div className="flex-1">Title</div>
@@ -2057,7 +2347,7 @@ export default function LeagueDetailPage() {
                                     without horizontal scrolling. The zero-
                                     height spacer with basis-full + sm:hidden
                                     forces the wrap break only on mobile. */}
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1.5 hover:bg-gray-800/50 transition-colors text-sm sm:flex-nowrap">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1.5 hover:bg-gray-800/50 transition-colors text-sm xl:flex-nowrap">
                                   {/* Monitor Toggle */}
                                   <button
                                     onClick={() => toggleMonitorMutation.mutate({
@@ -2087,29 +2377,22 @@ export default function LeagueDetailPage() {
                                       the poster: posters are 2:3 and crop badly
                                       in a wide slot, and TSDB has a thumb for
                                       almost every event */}
-                                  {(event.thumbUrl || (event.images && event.images.length > 0)) ? (
-                                    <img
-                                      src={event.thumbUrl || event.images[0]}
-                                      alt=""
-                                      className="w-10 h-6 rounded object-cover flex-shrink-0 bg-gray-800"
-                                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                    />
-                                  ) : (
-                                    <div className="w-10 h-6 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
-                                      <FilmIcon className="w-3.5 h-3.5 text-gray-600" />
-                                    </div>
-                                  )}
+                                  <EventThumb
+                                    src={event.thumbUrl || event.images?.[0]}
+                                    className="w-10 h-6"
+                                    iconClass="w-3.5 h-3.5"
+                                  />
 
                                   {/* Title — flex-1 with min-w-0 so truncation
                                       kicks in instead of forcing the row to
                                       overflow on narrow viewports */}
-                                  <span className="flex-1 min-w-0 text-white truncate">{event.title}</span>
+                                  <span className="flex-1 truncate text-white xl:min-w-[10rem]">{event.title}</span>
 
                                   {/* Status — moved up next to title so on
                                       mobile it stays on the first line and
                                       the user sees the at-a-glance state
                                       without having to scroll or wrap. */}
-                                  <div className="flex-shrink-0 sm:w-24">
+                                  <div className="flex-shrink-0 xl:w-24">
                                     {hasFile ? (
                                       <button
                                         onClick={() => setFileDetailModal({
@@ -2149,12 +2432,12 @@ export default function LeagueDetailPage() {
                                       second visual line on mobile. Removed
                                       on sm+ so the row stays single-line
                                       and aligns with the header above. */}
-                                  <div className="basis-full h-0 sm:hidden" aria-hidden="true" />
+                                  <div className="basis-full h-0 xl:hidden" aria-hidden="true" />
 
                                   {/* Date — desktop fixed col, mobile shrinks
                                       to its content (left-aligned with the
                                       indent of the second line). */}
-                                  <span className="text-xs text-gray-400 sm:w-28 sm:flex-shrink-0">
+                                  <span className="text-xs text-gray-400 xl:w-28 xl:flex-shrink-0">
                                     {formatEventDate(event, timezone, {
                                       month: 'short',
                                       day: 'numeric',
@@ -2166,7 +2449,7 @@ export default function LeagueDetailPage() {
                                       space on mobile (flex-1) so the select
                                       is wide enough to read; fixed 144px on
                                       desktop to keep header alignment. */}
-                                  <div className="flex-1 min-w-0 sm:flex-none sm:w-36">
+                                  <div className="min-w-0 max-w-[16rem] flex-1 xl:max-w-none xl:flex-none xl:w-36">
                                     <select
                                       value={event.qualityProfileId || league?.qualityProfileId || ''}
                                       onChange={(e) => updateQualityMutation.mutate({
@@ -2197,7 +2480,7 @@ export default function LeagueDetailPage() {
                                       dense p-1 hover-only style so the
                                       compact table layout doesn't grow. */}
                                   {!hasParts && (
-                                    <div className="flex items-center justify-end gap-1.5 sm:gap-1 flex-shrink-0 sm:w-20">
+                                    <div className="flex items-center justify-end gap-1.5 xl:gap-1 flex-shrink-0 xl:w-20">
                                       <button
                                         onClick={() => handleManualSearch(event.id, event.title, undefined, event.files)}
                                         className="p-2 sm:p-1 bg-gray-700 sm:bg-transparent text-white sm:text-gray-400 hover:bg-gray-600 sm:hover:bg-gray-700 sm:hover:text-white rounded transition-colors"
@@ -2316,7 +2599,7 @@ export default function LeagueDetailPage() {
                     )}
 
                     {/* Season Events - Spacious View */}
-                    {isExpanded && !compactView && (
+                    {isExpanded && !seasonIsLoading && !compactView && (
                       <div className="divide-y divide-red-900/30">
                         {seasonEvents.map(event => {
                 const hasFile = event.hasFile;
@@ -2330,8 +2613,8 @@ export default function LeagueDetailPage() {
                     className={`hover:bg-gray-800/50 transition-colors ${highlightedEventId === event.id ? 'bg-red-900/30 ring-1 ring-red-500/60' : ''}`}
                   >
                     {/* Event Row */}
-                    <div className="p-3 md:p-4 md:flex md:items-start md:gap-4">
-                      <div className="flex-1 min-w-0">
+                    <div className="p-3 md:p-4 md:flex md:flex-wrap md:items-start md:gap-4">
+                      <div className="min-w-0 flex-1 md:basis-80">
                       {/* Event Header */}
                       <div className="flex items-center gap-2 md:gap-4">
                         {/* Monitor Toggle */}
@@ -2355,21 +2638,11 @@ export default function LeagueDetailPage() {
                         {/* Event Thumbnail - prefer the 16:9 event still over the
                             poster so nothing gets cropped; TSDB carries a thumb
                             for almost every event while posters are sparser */}
-                        {(event.thumbUrl || (event.images && event.images.length > 0)) ? (
-                          <img
-                            src={event.thumbUrl || event.images[0]}
-                            alt={event.title}
-                            className="w-16 h-9 md:w-[4.9rem] md:h-11 rounded object-cover flex-shrink-0 bg-gray-800"
-                            onError={(e) => {
-                              // Hide broken images
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="w-16 h-9 md:w-[4.9rem] md:h-11 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
-                            <FilmIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-600" />
-                          </div>
-                        )}
+                        <EventThumb
+                          src={event.thumbUrl || event.images?.[0]}
+                          className="w-16 h-9 md:w-[4.9rem] md:h-11"
+                          iconClass="w-5 h-5 md:w-6 md:h-6"
+                        />
 
                         {/* Event Title */}
                         <div className="flex-1 min-w-0">
@@ -2576,7 +2849,7 @@ export default function LeagueDetailPage() {
                           {/* Fight Card Parts (for fighting sports with multi-part episodes enabled) */}
                           {/* DWCS/Contender Series events don't have parts - eventHasMultiPart returns false for them */}
                           {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event) && (
-                            <div className="mt-3 md:mt-4 ml-7 md:ml-10 space-y-2 md:space-y-3">
+                            <div className="mt-3 space-y-2 ml-7 md:ml-10 md:mt-4 md:basis-full md:space-y-3">
                               {getEventParts(event).map((part) => {
                                 // monitoredParts values:
                                 // - null/undefined = ALL parts monitored (default)
@@ -2760,19 +3033,6 @@ export default function LeagueDetailPage() {
                 );
               })}
 
-              {/* Show/hide old untouched seasons */}
-              {hiddenSeasonCount > 0 && (
-                <div className="p-4 text-center">
-                  <button
-                    onClick={() => setShowAllSeasons(v => !v)}
-                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-sm rounded-lg transition-colors"
-                  >
-                    {showAllSeasons
-                      ? `Hide ${hiddenSeasonCount} older season${hiddenSeasonCount === 1 ? '' : 's'}`
-                      : `Show all ${sortedSeasons.length} seasons (${hiddenSeasonCount} hidden)`}
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -2914,7 +3174,8 @@ export default function LeagueDetailPage() {
             setScanResults(prev => prev ? prev.filter(f => f.id !== importModalPendingImport.id) : null);
             // Refresh league data to show updated file status
             queryClient.invalidateQueries({ queryKey: ['league', id] });
-            queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+            queryClient.invalidateQueries({ queryKey: ['league-season-events', id] });
+            queryClient.invalidateQueries({ queryKey: ['league-seasons', id] });
           }}
         />
       )}

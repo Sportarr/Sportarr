@@ -182,4 +182,84 @@ Then load it:
 launchctl load ~/Library/LaunchAgents/net.sportarr.plist
 ```
 
+## Updating
+
+**System > Updates** tells you when a new release is out. It checks GitHub
+and reports what it finds; it does not install anything, so the update
+itself is the same job as the install.
+
+Your settings and database live in the data directory, not beside the
+program, so replacing the program leaves them alone. Where that directory
+is depends on how you started Sportarr: the path you passed to `-data`, or
+the one in `Sportarr__DataPath`, or a `data` folder next to the executable
+if you set neither.
+
+### Docker
+
+Pull the new image and recreate the container. Nothing else changes,
+because `/config` is a volume.
+
+```bash
+docker pull sportarr/sportarr:latest
+docker stop sportarr && docker rm sportarr
+# then run your original docker run command again
+```
+
+With Compose:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Unraid, TrueNAS SCALE, HexOS, Runtipi and DockSTARTer handle this
+themselves. Use their own update button rather than the commands above.
+
+### Linux
+
+Stop it, replace the files, start it again. The tarball holds only the
+program, so extracting it over the install directory cannot touch your
+`data` folder.
+
+```bash
+sudo systemctl stop sportarr
+tar -xzf Sportarr-linux-x64-<version>.tar.gz -C /opt/sportarr
+sudo systemctl start sportarr
+```
+
+Take the `linux-x64` or `linux-arm64` tarball from the
+[releases page](https://github.com/Sportarr/Sportarr/releases/latest). The
+version is part of the filename, so there is no fixed "latest" URL to
+download from a script.
+
+If you run Sportarr by hand rather than under systemd, stop the process
+first. Extracting over a running program leaves you with a mix of two
+versions.
+
+### macOS
+
+```bash
+launchctl unload ~/Library/LaunchAgents/net.sportarr.plist
+tar -xzf Sportarr-osx-arm64-<version>.tar.gz -C /Applications/Sportarr
+launchctl load ~/Library/LaunchAgents/net.sportarr.plist
+```
+
+Use `osx-arm64` for Apple Silicon and `osx-x64` for Intel.
+
+### Windows
+
+Run the new `Sportarr-Setup-<version>.exe` over the top. It keeps your
+data directory.
+
+For the portable build, close Sportarr, extract the new
+`Sportarr-win-x64-<version>.zip` over the folder, and start it again. Keep
+the `data` folder if it sits inside that same folder.
+
+### After an update
+
+Sportarr applies any database changes on first start, so the first launch
+after an update can take a little longer than usual. Check **System >
+Status** to confirm the version, and **System > Logs** if it does not come
+back up.
+
 Next step: the [Initial Setup](initial-setup.md) walkthrough.

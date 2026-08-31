@@ -24,6 +24,7 @@ import PageShell from '../components/PageShell';
 import SegmentedTabs from '../components/SegmentedTabs';
 import WantedPage from './WantedPage';
 import { useCompactView } from '../hooks/useCompactView';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { BADGE_BLUE, BADGE_PURPLE, BUTTON_DESTRUCTIVE, BUTTON_ICON_DESTRUCTIVE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_SUCCESS, BUTTON_ICON_WARNING, BUTTON_INFO, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_WARNING } from '../utils/designTokens';
 import { formatRelativeDate } from '../utils/timezone';
 
@@ -239,7 +240,18 @@ const cfScoreBadge = (score?: number) => {
   );
 };
 
+// Handed back by the add-league page when the user left this page to add the
+// league a file needed. leagueId is absent if they came back without adding.
+interface ResumeImportState {
+  pendingImportId: number;
+  leagueId?: number;
+}
+
 export default function ActivityPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const resumeImport = (location.state as { resumeImport?: ResumeImportState } | null)?.resumeImport ?? null;
+  const [resumeLeagueId, setResumeLeagueId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('queue');
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [pendingImports, setPendingImports] = useState<PendingImport[]>([]);
@@ -507,6 +519,26 @@ export default function ActivityPage() {
       loadGrabHistory(true);
     }
   }, [grabHistoryMissingOnly, grabHistoryShowReplaced]);
+
+  // Coming back from adding a league, reopen the file that sent the user
+  // there. The history entry is replaced so a refresh does not reopen it, and
+  // a file that has since gone leaves the user on a plain queue.
+  React.useEffect(() => {
+    if (!resumeImport) return;
+
+    const match = pendingImports.find(p => p.id === resumeImport.pendingImportId);
+    if (!match) {
+      if (pendingImports.length > 0) {
+        navigate(location.pathname, { replace: true, state: null });
+      }
+      return;
+    }
+
+    setActiveTab('queue');
+    setResumeLeagueId(resumeImport.leagueId ?? null);
+    setSelectedPendingImport(match);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [resumeImport, pendingImports]);
 
   const handleRegrab = async (id: number) => {
     try {
@@ -922,18 +954,37 @@ export default function ActivityPage() {
   // weight because they show long text; badge / numeric columns get less.
   const COLUMN_WIDTH_WEIGHTS: Record<keyof ColumnVisibility, number> = {
     event: 14,
-    title: 18,
-    quality: 6,
+    title: 14,
+    quality: 8,
     protocol: 7,
     indexer: 8,
-    status: 9,
+    status: 13,
     progress: 7,
     size: 7,
     timeLeft: 6,
     client: 9,
     added: 7,
-    actions: 7,
+    actions: 12,
   };
+
+  // The checkbox column is narrow but still shares the weight pool, so the
+  // percentages add up to exactly 100 and no column is handed the remainder.
+  const CHECKBOX_WIDTH_WEIGHT = 3;
+
+  // Roughly the narrowest a weight unit can get before its column stops being
+  // readable. Below the total the table scrolls sideways instead of crushing
+  // every column, so no column is ever dropped.
+  const PIXELS_PER_WIDTH_UNIT = 10;
+
+  const visibleQueueColumns = columnOrder.filter(column => columnVisibility[column]);
+
+  const totalQueueWidthUnits = visibleQueueColumns.reduce(
+    (sum, column) => sum + COLUMN_WIDTH_WEIGHTS[column],
+    CHECKBOX_WIDTH_WEIGHT
+  );
+
+  const queueColumnWidth = (weight: number) =>
+    `${(weight / totalQueueWidthUnits) * 100}%`;
 
   const toggleShowUnknownEvents = () => {
     const newValue = !showUnknownEvents;
@@ -1339,6 +1390,289 @@ export default function ActivityPage() {
     }
   };
 
+  // The queue is a table in both view modes so every value sits under its
+  // own column header. The view mode only sets the row height.
+  //
+  // table-fixed plus a colgroup of weighted widths keeps the table at 100%
+  // of the available width. Cells truncate inside their column instead of
+  // forcing a horizontal scrollbar.
+  const renderQueueTable = (dense: boolean) => {
+    const rowPadding = dense ? '' : '[&>td]:py-3';
+
+    return (
+      <div className="overflow-x-auto">
+        <table
+          className="w-full table-fixed"
+          style={{ minWidth: `${totalQueueWidthUnits * PIXELS_PER_WIDTH_UNIT}px` }}
+        >
+          <colgroup>
+            <col style={{ width: queueColumnWidth(CHECKBOX_WIDTH_WEIGHT) }} />
+            {visibleQueueColumns.map(column => (
+              <col key={column} style={{ width: queueColumnWidth(COLUMN_WIDTH_WEIGHTS[column]) }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr className="bg-gray-800 text-gray-300 text-xs">
+              {/* Select All Checkbox */}
+              <th className="px-3 py-1.5 w-10 text-left">
+                <input
+                  type="checkbox"
+                  checked={isAllQueueSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = isSomeQueueSelected;
+                  }}
+                  onChange={toggleSelectAllQueue}
+                  className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
+                  title={isAllQueueSelected ? 'Deselect all' : 'Select all'}
+                />
+              </th>
+              {visibleQueueColumns.map(column => {
+                const align = column === 'event' || column === 'title' ? 'text-left' : column === 'actions' ? 'text-right' : 'text-center';
+                // Map column key → sort field. Not every column is
+                // sortable: protocol/indexer/timeLeft/actions don't
+                // have a meaningful sort, so they render as plain
+                // labels.
+                const sortFieldForColumn: Partial<Record<keyof ColumnVisibility, QueueSortField>> = {
+                  event: 'event', title: 'title', quality: 'quality',
+                  status: 'status', progress: 'progress', size: 'size',
+                  client: 'client', added: 'added',
+                };
+                const sortField = sortFieldForColumn[column];
+                const isSorted = sortField && sortField === queueSortField;
+                const SortIcon = !sortField
+                  ? null
+                  : isSorted
+                    ? (queueSortDirection === 'asc' ? ChevronUpIcon : ChevronDownIcon)
+                    : ChevronUpDownIcon;
+                const justify = align === 'text-left' ? 'justify-start' : align === 'text-right' ? 'justify-end' : 'justify-center';
+                return (
+                  <th
+                    key={column}
+                    className={`${align === 'text-left' ? 'px-3' : 'px-2'} py-1.5 ${align} font-medium ${sortField ? 'cursor-pointer hover:text-white select-none' : ''}`}
+                    onClick={sortField ? () => handleSortFieldChange(sortField) : undefined}
+                    title={sortField ? `Sort by ${getColumnLabel(column)}` : undefined}
+                  >
+                    <span className={`inline-flex items-center gap-1 ${justify}`}>
+                      {getColumnLabel(column)}
+                      {SortIcon && (
+                        <SortIcon className={`w-3 h-3 ${isSorted ? 'text-white' : 'text-gray-500'}`} />
+                      )}
+                    </span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-700">
+            {/* Pending Imports - External downloads needing manual mapping */}
+            {visiblePendingImports.map((pendingImport) => (
+              <tr
+                key={`pending-${pendingImport.id}`}
+                className={`${pendingImport.isPack ? 'bg-purple-900/10 hover:bg-purple-900/20 border-l-4 border-purple-500' : 'bg-yellow-900/10 hover:bg-yellow-900/20 border-l-4 border-yellow-500'} transition-colors ${rowPadding} ${selectedPendingIds.has(pendingImport.id) ? 'ring-1 ring-red-600' : ''}`}
+              >
+                <td className="px-3 py-1.5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selectedPendingIds.has(pendingImport.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSelectRow('p', pendingImport.id, e.shiftKey);
+                    }}
+                    onChange={() => { /* handled by onClick to read shiftKey */ }}
+                    className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
+                  />
+                </td>
+                {visibleQueueColumns.map(column => {
+                  switch (column) {
+                    case 'event':
+                      return (
+                        <td key="event" className="px-3 py-1.5 overflow-hidden">
+                          <div className="text-white text-xs font-medium flex items-center gap-1.5 min-w-0">
+                            {pendingImport.isPack && (
+                              <span className="px-1.5 py-0.5 bg-purple-600 text-white text-xs rounded-full flex-shrink-0">PACK</span>
+                            )}
+                            <span className="truncate min-w-0" title={pendingImport.suggestedEvent?.title}>
+                              {pendingImport.suggestedEvent?.title
+                                ? <>
+                                    {pendingImport.suggestedEvent.title}
+                                    {!pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">({pendingImport.suggestionConfidence}%)</span>}
+                                    {pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">· {pendingImport.fileCount} files, {pendingImport.matchedEventsCount} matched</span>}
+                                  </>
+                                : pendingImport.isPack
+                                  ? <span className="text-gray-400">{pendingImport.fileCount} files · {pendingImport.matchedEventsCount} matched</span>
+                                  : <span className="text-gray-500 italic">No match found</span>
+                              }
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500">Manual Import</div>
+                        </td>
+                      );
+                    case 'title':
+                      return (
+                        <td key="title" className="px-3 py-1.5 overflow-hidden">
+                          <div className="text-gray-300 text-xs truncate" title={pendingImport.title}>{pendingImport.title}</div>
+                        </td>
+                      );
+                    case 'quality':
+                      return (
+                        <td key="quality" className="px-2 py-1.5 text-center">
+                          {pendingImport.quality
+                            ? <span className={BADGE_PURPLE}>{pendingImport.quality}</span>
+                            : <span className="text-gray-600 text-xs">—</span>}
+                        </td>
+                      );
+                    case 'protocol':
+                      return (
+                        <td key="protocol" className="px-2 py-1.5 text-center">
+                          {pendingImport.protocol
+                            ? <span className={`${BADGE_BLUE} uppercase`}>{pendingImport.protocol}</span>
+                            : <span className="text-gray-600 text-xs">—</span>}
+                        </td>
+                      );
+                    case 'indexer':
+                      return (
+                        <td key="indexer" className="px-2 py-1.5 text-center">
+                          <span className="text-gray-600 text-xs">—</span>
+                        </td>
+                      );
+                    case 'status':
+                      return (
+                        <td key="status" className="px-2 py-1.5 text-center">
+                          <div className={`flex items-center justify-center gap-1 ${pendingImport.isPack ? 'text-purple-400' : 'text-yellow-400'}`}>
+                            <ExclamationCircleIcon className="w-4 h-4" />
+                            <span className="text-xs">{pendingImport.isPack ? 'Pack Import' : 'Manual Import'}</span>
+                          </div>
+                        </td>
+                      );
+                    case 'progress':
+                      return (
+                        <td key="progress" className="px-2 py-1.5 text-center">
+                          <span className="text-gray-600 text-xs">—</span>
+                        </td>
+                      );
+                    case 'size':
+                      return (
+                        <td key="size" className="px-2 py-1.5 text-center">
+                          <div className="text-gray-300 text-xs whitespace-nowrap">
+                            {pendingImport.size ? formatBytes(pendingImport.size) : '—'}
+                          </div>
+                        </td>
+                      );
+                    case 'timeLeft':
+                      return (
+                        <td key="timeLeft" className="px-2 py-1.5 text-center">
+                          <span className="text-gray-600 text-xs">—</span>
+                        </td>
+                      );
+                    case 'client':
+                      return (
+                        <td key="client" className="px-2 py-1.5 text-center">
+                          <span className="text-gray-400 text-xs">{pendingImport.downloadClient?.name || '—'}</span>
+                        </td>
+                      );
+                    case 'added':
+                      return (
+                        <td key="added" className="px-2 py-1.5 text-center">
+                          <span className="text-gray-400 text-xs">{pendingImport.detected ? formatDate(pendingImport.detected) : '—'}</span>
+                        </td>
+                      );
+                    case 'actions':
+                      return (
+                        <td key="actions" className="px-2 py-1.5">
+                          <div className="flex items-center justify-end gap-1">
+                            {pendingImport.isPack ? (
+                              <>
+                                <button
+                                  onClick={() => handleShowPackPreview(pendingImport)}
+                                  className={BUTTON_ICON_SECONDARY}
+                                  title="Preview which files will be imported"
+                                >
+                                  <EyeIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleImportPack(pendingImport)}
+                                  disabled={importingPack === pendingImport.id}
+                                  className={BUTTON_ICON_INFO}
+                                  title="Import all matching files from this pack"
+                                >
+                                  {importingPack === pendingImport.id
+                                    ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                                    : <DocumentCheckIcon className="w-4 h-4" />}
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => setSelectedPendingImport(pendingImport)}
+                                className={BUTTON_ICON_WARNING}
+                                title="Manual Import"
+                              >
+                                <DocumentCheckIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleIgnorePendingImport(pendingImport.id)}
+                              className={BUTTON_ICON_SECONDARY}
+                              title="Ignore this file: it stays on disk but Sportarr stops detecting or suggesting it (undo from the Blocklist tab)"
+                            >
+                              <NoSymbolIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  // Remove from download client AND pending imports list
+                                  await apiClient.post(`/pending-imports/${pendingImport.id}/remove-from-client`);
+                                  loadQueue();
+                                } catch (error) {
+                                  console.error('Failed to remove pending import from client:', error);
+                                }
+                              }}
+                              className={BUTTON_ICON_DESTRUCTIVE}
+                              title="Remove download from client and delete files"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      );
+                    default:
+                      return null;
+                  }
+                })}
+              </tr>
+            ))}
+
+            {/* Regular Queue Items */}
+            {queueRows.map((item) => (
+              <tr
+                key={item.id}
+                className={`hover:bg-gray-800/50 transition-colors ${rowPadding} ${selectedQueueIds.has(item.id) ? 'bg-red-900/20 ring-1 ring-red-600/40' : ''}`}
+              >
+                {/* Row Checkbox - shift-click extends selection from
+                    the previous click anchor across both queue rows
+                    and pending imports. */}
+                <td className="px-3 py-1.5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selectedQueueIds.has(item.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSelectRow('q', item.id, e.shiftKey);
+                    }}
+                    onChange={() => { /* handled by onClick to read shiftKey */ }}
+                    className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
+                  />
+                </td>
+                {visibleQueueColumns.map(column => {
+                  return renderCell(column, item);
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   // For multi-select, check if ANY item is completed and has post-import category option
   const removeDialogTotal = (removeQueueDialog?.items.length ?? 0) + (removeQueueDialog?.pendingItems.length ?? 0);
   const anyCompleted = removeQueueDialog?.items.some(item => item.status === 3 || item.status === 7);
@@ -1444,293 +1778,13 @@ export default function ActivityPage() {
                 </div>
               )}
               {compactView ? (
-                <div>
-                  {/* table-fixed + a colgroup of weighted widths means the
-                      table always fills 100% of the available horizontal
-                      space without overflowing the viewport. Cells truncate
-                      with ellipses inside their assigned column width
-                      instead of forcing a horizontal scrollbar. */}
-                  <table className="w-full table-fixed">
-                    <colgroup>
-                      <col style={{ width: '40px' }} />
-                      {columnOrder.map(column => {
-                        if (!columnVisibility[column]) return null;
-                        return <col key={column} style={{ width: `${COLUMN_WIDTH_WEIGHTS[column]}%` }} />;
-                      })}
-                    </colgroup>
-                    <thead>
-                      <tr className="bg-gray-800 text-gray-300 text-xs">
-                        {/* Select All Checkbox */}
-                        <th className="px-3 py-1.5 w-10">
-                          <input
-                            type="checkbox"
-                            checked={isAllQueueSelected}
-                            ref={(el) => {
-                              if (el) el.indeterminate = isSomeQueueSelected;
-                            }}
-                            onChange={toggleSelectAllQueue}
-                            className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
-                            title={isAllQueueSelected ? 'Deselect all' : 'Select all'}
-                          />
-                        </th>
-                        {columnOrder.map(column => {
-                          if (!columnVisibility[column]) return null;
-                          const align = column === 'event' || column === 'title' ? 'text-left' : column === 'actions' ? 'text-right' : 'text-center';
-                          // Map column key → sort field. Not every column is
-                          // sortable: protocol/indexer/timeLeft/actions don't
-                          // have a meaningful sort, so they render as plain
-                          // labels.
-                          const sortFieldForColumn: Partial<Record<keyof ColumnVisibility, QueueSortField>> = {
-                            event: 'event', title: 'title', quality: 'quality',
-                            status: 'status', progress: 'progress', size: 'size',
-                            client: 'client', added: 'added',
-                          };
-                          const sortField = sortFieldForColumn[column];
-                          const isSorted = sortField && sortField === queueSortField;
-                          const SortIcon = !sortField
-                            ? null
-                            : isSorted
-                              ? (queueSortDirection === 'asc' ? ChevronUpIcon : ChevronDownIcon)
-                              : ChevronUpDownIcon;
-                          const justify = align === 'text-left' ? 'justify-start' : align === 'text-right' ? 'justify-end' : 'justify-center';
-                          return (
-                            <th
-                              key={column}
-                              className={`${align === 'text-left' ? 'px-3' : 'px-2'} py-1.5 ${align} font-medium ${sortField ? 'cursor-pointer hover:text-white select-none' : ''}`}
-                              onClick={sortField ? () => handleSortFieldChange(sortField) : undefined}
-                              title={sortField ? `Sort by ${getColumnLabel(column)}` : undefined}
-                            >
-                              <span className={`inline-flex items-center gap-1 ${justify}`}>
-                                {getColumnLabel(column)}
-                                {SortIcon && (
-                                  <SortIcon className={`w-3 h-3 ${isSorted ? 'text-white' : 'text-gray-500'}`} />
-                                )}
-                              </span>
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                      {/* Pending Imports - External downloads needing manual mapping */}
-                      {visiblePendingImports.map((pendingImport) => (
-                        <tr
-                          key={`pending-${pendingImport.id}`}
-                          className={`${pendingImport.isPack ? 'bg-purple-900/10 hover:bg-purple-900/20 border-l-4 border-purple-500' : 'bg-yellow-900/10 hover:bg-yellow-900/20 border-l-4 border-yellow-500'} transition-colors ${selectedPendingIds.has(pendingImport.id) ? 'ring-1 ring-red-600' : ''}`}
-                        >
-                          <td className="px-3 py-1.5 w-10">
-                            <input
-                              type="checkbox"
-                              checked={selectedPendingIds.has(pendingImport.id)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSelectRow('p', pendingImport.id, e.shiftKey);
-                              }}
-                              onChange={() => { /* handled by onClick to read shiftKey */ }}
-                              className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
-                            />
-                          </td>
-                          {columnOrder.map(column => {
-                            if (!columnVisibility[column]) return null;
-                            switch (column) {
-                              case 'event':
-                                return (
-                                  <td key="event" className="px-3 py-1.5 overflow-hidden">
-                                    <div className="text-white text-xs font-medium flex items-center gap-1.5 min-w-0">
-                                      {pendingImport.isPack && (
-                                        <span className="px-1.5 py-0.5 bg-purple-600 text-white text-xs rounded-full flex-shrink-0">PACK</span>
-                                      )}
-                                      <span className="truncate min-w-0" title={pendingImport.suggestedEvent?.title}>
-                                        {pendingImport.suggestedEvent?.title
-                                          ? <>
-                                              {pendingImport.suggestedEvent.title}
-                                              {!pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">({pendingImport.suggestionConfidence}%)</span>}
-                                              {pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">· {pendingImport.fileCount} files, {pendingImport.matchedEventsCount} matched</span>}
-                                            </>
-                                          : pendingImport.isPack
-                                            ? <span className="text-gray-400">{pendingImport.fileCount} files · {pendingImport.matchedEventsCount} matched</span>
-                                            : <span className="text-gray-500 italic">No match found</span>
-                                        }
-                                      </span>
-                                    </div>
-                                    <div className="text-xs text-gray-500">Manual Import</div>
-                                  </td>
-                                );
-                              case 'title':
-                                return (
-                                  <td key="title" className="px-3 py-1.5 overflow-hidden">
-                                    <div className="text-gray-300 text-xs truncate" title={pendingImport.title}>{pendingImport.title}</div>
-                                  </td>
-                                );
-                              case 'quality':
-                                return (
-                                  <td key="quality" className="px-2 py-1.5 text-center">
-                                    {pendingImport.quality
-                                      ? <span className={BADGE_PURPLE}>{pendingImport.quality}</span>
-                                      : <span className="text-gray-600 text-xs">—</span>}
-                                  </td>
-                                );
-                              case 'protocol':
-                                return (
-                                  <td key="protocol" className="px-2 py-1.5 text-center">
-                                    {pendingImport.protocol
-                                      ? <span className={`${BADGE_BLUE} uppercase`}>{pendingImport.protocol}</span>
-                                      : <span className="text-gray-600 text-xs">—</span>}
-                                  </td>
-                                );
-                              case 'indexer':
-                                return (
-                                  <td key="indexer" className="px-2 py-1.5 text-center">
-                                    <span className="text-gray-600 text-xs">—</span>
-                                  </td>
-                                );
-                              case 'status':
-                                return (
-                                  <td key="status" className="px-2 py-1.5 text-center">
-                                    <div className={`flex items-center justify-center gap-1 ${pendingImport.isPack ? 'text-purple-400' : 'text-yellow-400'}`}>
-                                      <ExclamationCircleIcon className="w-4 h-4" />
-                                      <span className="text-xs">{pendingImport.isPack ? 'Pack Import' : 'Manual Import'}</span>
-                                    </div>
-                                  </td>
-                                );
-                              case 'progress':
-                                return (
-                                  <td key="progress" className="px-2 py-1.5 text-center">
-                                    <span className="text-gray-600 text-xs">—</span>
-                                  </td>
-                                );
-                              case 'size':
-                                return (
-                                  <td key="size" className="px-2 py-1.5 text-center">
-                                    <div className="text-gray-300 text-xs whitespace-nowrap">
-                                      {pendingImport.size ? formatBytes(pendingImport.size) : '—'}
-                                    </div>
-                                  </td>
-                                );
-                              case 'timeLeft':
-                                return (
-                                  <td key="timeLeft" className="px-2 py-1.5 text-center">
-                                    <span className="text-gray-600 text-xs">—</span>
-                                  </td>
-                                );
-                              case 'client':
-                                return (
-                                  <td key="client" className="px-2 py-1.5 text-center">
-                                    <span className="text-gray-400 text-xs">{pendingImport.downloadClient?.name || '—'}</span>
-                                  </td>
-                                );
-                              case 'added':
-                                return (
-                                  <td key="added" className="px-2 py-1.5 text-center">
-                                    <span className="text-gray-400 text-xs">{pendingImport.detected ? formatDate(pendingImport.detected) : '—'}</span>
-                                  </td>
-                                );
-                              case 'actions':
-                                return (
-                                  <td key="actions" className="px-2 py-1.5">
-                                    <div className="flex items-center justify-end gap-1">
-                                      {pendingImport.isPack ? (
-                                        <>
-                                          <button
-                                            onClick={() => handleShowPackPreview(pendingImport)}
-                                            className={BUTTON_ICON_SECONDARY}
-                                            title="Preview which files will be imported"
-                                          >
-                                            <EyeIcon className="w-4 h-4" />
-                                          </button>
-                                          <button
-                                            onClick={() => handleImportPack(pendingImport)}
-                                            disabled={importingPack === pendingImport.id}
-                                            className={BUTTON_ICON_INFO}
-                                            title="Import all matching files from this pack"
-                                          >
-                                            {importingPack === pendingImport.id
-                                              ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                                              : <DocumentCheckIcon className="w-4 h-4" />}
-                                          </button>
-                                        </>
-                                      ) : (
-                                        <button
-                                          onClick={() => setSelectedPendingImport(pendingImport)}
-                                          className={BUTTON_ICON_WARNING}
-                                          title="Manual Import"
-                                        >
-                                          <DocumentCheckIcon className="w-4 h-4" />
-                                        </button>
-                                      )}
-                                      <button
-                                        onClick={() => handleIgnorePendingImport(pendingImport.id)}
-                                        className={BUTTON_ICON_SECONDARY}
-                                        title="Ignore this file: it stays on disk but Sportarr stops detecting or suggesting it (undo from the Blocklist tab)"
-                                      >
-                                        <NoSymbolIcon className="w-4 h-4" />
-                                      </button>
-                                      <button
-                                        onClick={async () => {
-                                          try {
-                                            // Remove from download client AND pending imports list
-                                            await apiClient.post(`/pending-imports/${pendingImport.id}/remove-from-client`);
-                                            loadQueue();
-                                          } catch (error) {
-                                            console.error('Failed to remove pending import from client:', error);
-                                          }
-                                        }}
-                                        className={BUTTON_ICON_DESTRUCTIVE}
-                                        title="Remove download from client and delete files"
-                                      >
-                                        <TrashIcon className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                );
-                              default:
-                                return null;
-                            }
-                          })}
-                        </tr>
-                      ))}
-
-                      {/* Regular Queue Items */}
-                      {queueRows.map((item) => (
-                        <tr
-                          key={item.id}
-                          className={`hover:bg-gray-800/50 transition-colors ${selectedQueueIds.has(item.id) ? 'bg-red-900/20 ring-1 ring-red-600/40' : ''}`}
-                        >
-                          {/* Row Checkbox - shift-click extends selection from
-                              the previous click anchor across both queue rows
-                              and pending imports. */}
-                          <td className="px-3 py-1.5 w-10">
-                            <input
-                              type="checkbox"
-                              checked={selectedQueueIds.has(item.id)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSelectRow('q', item.id, e.shiftKey);
-                              }}
-                              onChange={() => { /* handled by onClick to read shiftKey */ }}
-                              className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
-                            />
-                          </td>
-                          {columnOrder.map(column => {
-                            if (!columnVisibility[column]) return null;
-                            return renderCell(column, item);
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                renderQueueTable(true)
               ) : (
-                /* Spacious: card grid */
+                /* Spacious: taller rows above sm, cards on a phone */
                 <div>
-                  {/* Mobile-only sort + select-all bar. The full table-style
-                      header below would cram its column labels into ~40 px
-                      each on a phone viewport (labels overlapping each
-                      other), and the cards under it already display every
-                      field anyway, so on mobile we collapse the header into
-                      a single Sort select + direction toggle + Select All
-                      checkbox. The desktop table header continues to be
-                      the source of truth above sm. */}
+                  {/* Phones get a Sort select instead of column headers. Nine
+                      column labels at ~40 px each overlap on a phone viewport,
+                      and the cards below already show every field. */}
                   <div className="sm:hidden flex items-center gap-2 bg-gray-800 text-gray-300 text-xs px-3 py-2">
                     <input
                       type="checkbox"
@@ -1767,81 +1821,20 @@ export default function ActivityPage() {
                         : <ChevronDownIcon className="w-4 h-4" />}
                     </button>
                   </div>
-                  {/* Desktop header table: same table-fixed + colgroup +
-                      thead used by compact mode, but with no tbody. Re-using
-                      the table structure (rather than emulating it with a
-                      flex bar) means the header is visually identical to
-                      compact — full-width gray bar that goes edge-to-edge
-                      with column labels distributed by the same column
-                      weights. Hidden below sm because the labels don't fit
-                      on a phone-width viewport. */}
-                  <table className="hidden sm:table w-full table-fixed">
-                    <colgroup>
-                      <col style={{ width: '40px' }} />
-                      {columnOrder.map(column => {
-                        if (!columnVisibility[column]) return null;
-                        return <col key={column} style={{ width: `${COLUMN_WIDTH_WEIGHTS[column]}%` }} />;
-                      })}
-                    </colgroup>
-                    <thead>
-                      <tr className="bg-gray-800 text-gray-300 text-xs">
-                        <th className="px-3 py-1.5 w-10">
-                          <input
-                            type="checkbox"
-                            checked={isAllQueueSelected}
-                            ref={(el) => {
-                              if (el) el.indeterminate = isSomeQueueSelected;
-                            }}
-                            onChange={toggleSelectAllQueue}
-                            className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
-                            title={isAllQueueSelected ? 'Deselect all' : 'Select all'}
-                          />
-                        </th>
-                        {columnOrder.map(column => {
-                          if (!columnVisibility[column]) return null;
-                          const align = column === 'event' || column === 'title' ? 'text-left' : column === 'actions' ? 'text-right' : 'text-center';
-                          const sortFieldForColumn: Partial<Record<keyof ColumnVisibility, QueueSortField>> = {
-                            event: 'event', title: 'title', quality: 'quality',
-                            status: 'status', progress: 'progress', size: 'size',
-                            client: 'client', added: 'added',
-                          };
-                          const sortField = sortFieldForColumn[column];
-                          const isSorted = sortField && sortField === queueSortField;
-                          const SortIcon = !sortField
-                            ? null
-                            : isSorted
-                              ? (queueSortDirection === 'asc' ? ChevronUpIcon : ChevronDownIcon)
-                              : ChevronUpDownIcon;
-                          const justify = align === 'text-left' ? 'justify-start' : align === 'text-right' ? 'justify-end' : 'justify-center';
-                          return (
-                            <th
-                              key={column}
-                              className={`${align === 'text-left' ? 'px-3' : 'px-2'} py-1.5 ${align} font-medium ${sortField ? 'cursor-pointer hover:text-white select-none' : ''}`}
-                              onClick={sortField ? () => handleSortFieldChange(sortField) : undefined}
-                              title={sortField ? `Sort by ${getColumnLabel(column)}` : undefined}
-                            >
-                              <span className={`inline-flex items-center gap-1 ${justify}`}>
-                                {getColumnLabel(column)}
-                                {SortIcon && (
-                                  <SortIcon className={`w-3 h-3 ${isSorted ? 'text-white' : 'text-gray-500'}`} />
-                                )}
-                              </span>
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                  </table>
-                  {/* Card list — independent flow below the header so cards
-                      don't have to align to the column grid above. */}
-                  <div className="space-y-3 mt-3">
+                  {/* Above sm the queue is the same table compact mode uses, so
+                      every value sits under its own column header. The card list
+                      below is the phone layout, where nine columns cannot fit. */}
+                  <div className="hidden sm:block">
+                    {renderQueueTable(false)}
+                  </div>
+                  <div className="space-y-3 mt-3 sm:hidden">
                   {/* Pending Import Cards */}
                   {visiblePendingImports.map((pendingImport) => (
                     <div
                       key={`pending-${pendingImport.id}`}
                       className={`bg-gray-800 border rounded-lg p-4 hover:bg-gray-750 transition-colors ${selectedPendingIds.has(pendingImport.id) ? 'border-red-600' : pendingImport.isPack ? 'border-purple-700' : 'border-yellow-700'}`}
                     >
-                      <div className="flex items-start justify-between">
+                      <div className="flex flex-wrap items-start justify-between gap-y-3">
                         <input
                           type="checkbox"
                           checked={selectedPendingIds.has(pendingImport.id)}
@@ -1880,7 +1873,7 @@ export default function ActivityPage() {
                             {pendingImport.detected && <><span className="text-gray-600">•</span><span>{formatDate(pendingImport.detected)}</span></>}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 ml-4">
+                        <div className="flex flex-wrap items-center gap-2 w-full justify-end sm:w-auto sm:ml-4">
                           {pendingImport.isPack ? (
                             <>
                               <button
@@ -1947,7 +1940,7 @@ export default function ActivityPage() {
                         key={item.id}
                         className={`bg-gray-800 border rounded-lg p-4 hover:bg-gray-750 transition-colors ${selectedQueueIds.has(item.id) ? 'border-red-600' : 'border-gray-700'}`}
                       >
-                        <div className="flex items-start justify-between">
+                        <div className="flex flex-wrap items-start justify-between gap-y-3">
                           <div className="flex items-start gap-3 flex-1 min-w-0">
                             <input
                               type="checkbox"
@@ -1999,7 +1992,7 @@ export default function ActivityPage() {
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 ml-4">
+                          <div className="flex flex-wrap items-center gap-2 w-full justify-end sm:w-auto sm:ml-4">
                             {canRetryImportCard && (
                               <button onClick={() => handleRetryImport(item)} className={BUTTON_WARNING}>
                                 <ArrowPathIcon className="w-4 h-4" />
@@ -2121,7 +2114,7 @@ export default function ActivityPage() {
                   <div className="space-y-3">
                     {historyItems.map((item) => (
                       <div key={item.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:bg-gray-750 transition-colors">
-                        <div className="flex items-start justify-between">
+                        <div className="flex flex-wrap items-start justify-between gap-y-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-2 flex-wrap">
                               <h3 className={`text-lg font-semibold ${item.event ? 'text-white' : 'text-gray-500 italic'}`}>
@@ -2149,7 +2142,7 @@ export default function ActivityPage() {
                               <span>{formatDate(item.importedAt)}</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 ml-4">
+                          <div className="flex flex-wrap items-center gap-2 w-full justify-end sm:w-auto sm:ml-4">
                             <button
                               onClick={() => handleOpenRemoveHistoryDialog(item)}
                               className={BUTTON_DESTRUCTIVE}
@@ -2305,7 +2298,7 @@ export default function ActivityPage() {
                   <div className="space-y-3">
                     {blocklistItems.map((item) => (
                       <div key={item.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:bg-gray-750 transition-colors">
-                        <div className="flex items-start justify-between">
+                        <div className="flex flex-wrap items-start justify-between gap-y-3">
                           <input
                             type="checkbox"
                             checked={selectedBlocklistIds.has(item.id)}
@@ -2335,7 +2328,7 @@ export default function ActivityPage() {
                               {item.torrentInfoHash && <><span className="text-gray-600">•</span><span className="font-mono">{item.torrentInfoHash.substring(0, 12)}…</span></>}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 ml-4">
+                          <div className="flex flex-wrap items-center gap-2 w-full justify-end sm:w-auto sm:ml-4">
                             <button
                               onClick={() => handleOpenRemoveBlocklistDialog(item)}
                               className={BUTTON_DESTRUCTIVE}
@@ -2527,7 +2520,7 @@ export default function ActivityPage() {
                   <div className="space-y-3 pt-4">
                     {grabHistoryItems.map((item) => (
                       <div key={item.id} className={`bg-gray-800 border rounded-lg p-4 hover:bg-gray-750 transition-colors ${!item.fileExists && item.wasImported ? 'border-orange-900/50' : 'border-gray-700'}`}>
-                        <div className="flex items-start justify-between">
+                        <div className="flex flex-wrap items-start justify-between gap-y-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-2 flex-wrap">
                               <h3 className="text-lg font-semibold text-white">
@@ -2562,7 +2555,7 @@ export default function ActivityPage() {
                               {item.regrabCount > 0 && <><span className="text-gray-600">•</span><span>Re-grabbed {item.regrabCount}x</span></>}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 ml-4">
+                          <div className="flex flex-wrap items-center gap-2 w-full justify-end sm:w-auto sm:ml-4">
                             {item.kind !== 'import' && (
                               <button
                                 onClick={() => handleRegrab(item.id)}
@@ -3005,9 +2998,11 @@ export default function ActivityPage() {
         {selectedPendingImport && (
           <ManualImportModal
             pendingImport={selectedPendingImport}
-            onClose={() => setSelectedPendingImport(null)}
+            initialLeagueId={resumeLeagueId}
+            onClose={() => { setSelectedPendingImport(null); setResumeLeagueId(null); }}
             onSuccess={() => {
               setSelectedPendingImport(null);
+              setResumeLeagueId(null);
               loadQueue(); // Refresh queue to remove imported item
             }}
           />

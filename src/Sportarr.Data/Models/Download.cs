@@ -235,6 +235,19 @@ public class DownloadQueueItem
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
 
     /// <summary>
+    /// Where the download client says the job landed on disk, captured from
+    /// DownloadClientStatus.SavePath on each status poll. The Sonarr v3 queue
+    /// shim reports it as the record's outputPath, which is how external
+    /// extractors find the folder when its name differs from the release
+    /// title (Unpackerr joins its configured paths with the title first and
+    /// falls back to this). Sticky: a poll that reports no path leaves the
+    /// last known one in place, because a client drops the path as soon as
+    /// the job leaves its history. Null until the first poll that carries a
+    /// path, and for rows created before this field existed.
+    /// </summary>
+    public string? OutputPath { get; set; }
+
+    /// <summary>
     /// Indexer flags carried over from the release that was grabbed (e.g.
     /// "freeleech", "internal", "scene"), so Custom Format IndexerFlag
     /// conditions can be re-evaluated consistently at rename/import time.
@@ -1235,4 +1248,78 @@ public class DownloadClientStatus
     // Seed tracking fields for torrent clients
     public double? Ratio { get; set; } // Current upload/download ratio
     public DateTime? CompletedAt { get; set; } // When the download completed
+}
+
+/// <summary>
+/// Response DTO for a pending import.
+/// </summary>
+/// <remarks>
+/// The Event entity carries TheSportsDB JsonPropertyName attributes, so its
+/// Title serializes as "strEvent". Returning the entity gave the manual import
+/// dialog a suggestion object with no readable title. Map through
+/// EventResponse instead, the same way the events endpoint does.
+/// This DTO also keeps download client secrets out of the response.
+/// </remarks>
+public class PendingImportResponse
+{
+    public int Id { get; set; }
+    public int? DownloadClientId { get; set; }
+    public PendingImportClientResponse? DownloadClient { get; set; }
+    public string DownloadId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
+    public long Size { get; set; }
+    public string? Quality { get; set; }
+    public int QualityScore { get; set; }
+    public PendingImportStatus Status { get; set; }
+    public string? ErrorMessage { get; set; }
+    public int? SuggestedEventId { get; set; }
+    public EventResponse? SuggestedEvent { get; set; }
+    public string? SuggestedPart { get; set; }
+    public int SuggestionConfidence { get; set; }
+    public DateTime Detected { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+    public string? Protocol { get; set; }
+    public string? TorrentInfoHash { get; set; }
+
+    public static PendingImportResponse FromPendingImport(PendingImport import) => new()
+    {
+        Id = import.Id,
+        DownloadClientId = import.DownloadClientId,
+        DownloadClient = import.DownloadClient is null
+            ? null
+            : new PendingImportClientResponse
+            {
+                Id = import.DownloadClient.Id,
+                Name = import.DownloadClient.Name,
+                PostImportCategory = import.DownloadClient.PostImportCategory
+            },
+        DownloadId = import.DownloadId,
+        Title = import.Title,
+        FilePath = import.FilePath,
+        Size = import.Size,
+        Quality = import.Quality,
+        QualityScore = import.QualityScore,
+        Status = import.Status,
+        ErrorMessage = import.ErrorMessage,
+        SuggestedEventId = import.SuggestedEventId,
+        SuggestedEvent = import.SuggestedEvent is null ? null : EventResponse.FromEvent(import.SuggestedEvent),
+        SuggestedPart = import.SuggestedPart,
+        SuggestionConfidence = import.SuggestionConfidence,
+        Detected = import.Detected,
+        ResolvedAt = import.ResolvedAt,
+        Protocol = import.Protocol,
+        TorrentInfoHash = import.TorrentInfoHash
+    };
+}
+
+/// <summary>
+/// The download client fields the UI needs. Deliberately excludes the
+/// password and API key that the full entity would expose.
+/// </summary>
+public class PendingImportClientResponse
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? PostImportCategory { get; set; }
 }

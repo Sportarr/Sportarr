@@ -23,6 +23,7 @@ public static class SonarrEpisodeFileEndpoints
             }
 
             var eventFiles = await db.EventFiles
+                .AsNoTracking()
                 .Include(ef => ef.Event)
                 .Where(ef => ef.Event != null && ef.Event.LeagueId == seriesId.Value && ef.Exists)
                 .ToListAsync();
@@ -82,6 +83,7 @@ public static class SonarrEpisodeFileEndpoints
             logger.LogDebug("[V3-COMPAT] GET /api/v3/episodefile/{Id}", id);
 
             var eventFile = await db.EventFiles
+                .AsNoTracking()
                 .Include(ef => ef.Event)
                 .ThenInclude(e => e!.League)
                 .FirstOrDefaultAsync(ef => ef.Id == id);
@@ -364,6 +366,7 @@ public static class SonarrEpisodeFileEndpoints
             logger.LogDebug("[V3-COMPAT] GET /api/v3/episode/{Id}", id);
 
             var eventItem = await db.Events
+                .AsNoTracking()
                 .Include(e => e.Files)
                 .Include(e => e.League)
                 .FirstOrDefaultAsync(e => e.Id == id);
@@ -428,6 +431,9 @@ public static class SonarrEpisodeFileEndpoints
                         logger.LogInformation("[V3-COMPAT] Event {Id} '{Title}' monitored: {Old} -> {New}",
                             eventItem.Id, eventItem.Title, eventItem.Monitored, newMonitored);
                         eventItem.Monitored = newMonitored;
+                        // A tool asking for one event is as deliberate as a
+                        // person clicking it, so the sync leaves it alone.
+                        eventItem.ManuallyMonitored = true;
                         eventItem.LastUpdate = DateTime.UtcNow;
                         await db.SaveChangesAsync();
                     }
@@ -508,6 +514,7 @@ public static class SonarrEpisodeFileEndpoints
             foreach (var eventItem in events)
             {
                 eventItem.Monitored = monitored.Value;
+                eventItem.ManuallyMonitored = true;
             }
             await db.SaveChangesAsync();
 

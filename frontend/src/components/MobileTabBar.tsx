@@ -15,6 +15,9 @@ import {
   ServerIcon as ServerSolidIcon,
 } from '@heroicons/react/24/solid';
 import { useActivityCounts } from '../api/hooks';
+import NavIcon from './NavIcon';
+import { useNavTarget, setNavTarget, setNavTargetFromClick } from '../hooks/useNavTarget';
+import { preloadRoute } from '../utils/preloadRoute';
 
 interface TabChild {
   label: string;
@@ -31,6 +34,7 @@ interface TabChild {
  */
 export default function MobileTabBar() {
   const location = useLocation();
+  const navPath = useNavTarget();
   const navigate = useNavigate();
   const { data: activityCounts } = useActivityCounts();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -110,13 +114,15 @@ export default function MobileTabBar() {
           <div className="absolute inset-x-3 bottom-full mb-2 animate-pill-up">
             <div className="max-h-[70dvh] overflow-y-auto rounded-2xl border border-red-900/40 bg-gradient-to-b from-gray-900 to-black shadow-2xl shadow-black/70">
               {openTab.children.map((child) => {
-                const current = location.pathname === child.path
-                  || (child.path !== '/leagues' && location.pathname.startsWith(child.path));
+                const current = navPath === child.path
+                  || (child.path !== '/leagues' && navPath.startsWith(child.path));
                 return (
                   <button
                     key={child.path}
+                    onTouchStart={() => preloadRoute(child.path)}
                     onClick={() => {
                       setOpenMenu(null);
+                      setNavTarget(child.path);
                       navigate(child.path);
                     }}
                     className={`flex w-full items-center justify-between px-5 py-2.5 text-left text-sm font-medium border-b border-gray-800/60 last:border-b-0 ${
@@ -134,16 +140,22 @@ export default function MobileTabBar() {
 
         <div className="flex h-16">
           {tabs.map((tab) => {
-            const active = tab.match.some((m) => location.pathname.startsWith(m));
+            const active = tab.match.some((m) => navPath.startsWith(m));
             // While a pill is open, only the open tab shows emphasis - otherwise
             // the current section and the browsed section both light up red.
             const emphasized = openMenu ? openMenu === tab.label : active;
-            const Icon = emphasized ? tab.activeIcon : tab.icon;
+
             const tint = emphasized ? 'text-red-500' : 'text-gray-400';
             const inner = (
               <>
                 <span className="relative">
-                  <Icon className="h-6 w-6" />
+                  <NavIcon
+                      chip
+                    icon={tab.icon}
+                    activeIcon={tab.activeIcon}
+                    active={emphasized}
+                    className="h-6 w-6"
+                  />
                   {tab.badge !== undefined && tab.badge > 0 && (
                     <span className="absolute -right-2.5 -top-1.5 min-w-[16px] rounded-full bg-red-600 px-1 text-center text-[9px] font-bold leading-4 text-white">
                       {tab.badge > 99 ? '99+' : tab.badge}
@@ -167,7 +179,8 @@ export default function MobileTabBar() {
               <Link
                 key={tab.label}
                 to={tab.path}
-                onClick={() => setOpenMenu(null)}
+                onClick={(e) => { setOpenMenu(null); setNavTargetFromClick(e, tab.path); }}
+                onTouchStart={() => preloadRoute(tab.path)}
                 className={`relative flex flex-1 flex-col items-center justify-center gap-1 ${tint}`}
               >
                 {inner}

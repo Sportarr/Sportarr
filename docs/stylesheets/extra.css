@@ -296,3 +296,34 @@
   font-size: 0.7rem;
   color: var(--md-default-fg-color--light);
 }
+
+/* The header logo is the Sportarr lockup, so the theme's own copy of the
+   name would say it twice. header-topic.js writes the page name into that
+   topic instead, and this reads it as a path: the brand leads, the page
+   follows a slash and sits back.
+
+   Only where Material shows the logo. Narrower than this it hides the logo
+   and the site name is the only branding left, so the rules stop. */
+.md-header__button.md-logo img {
+  height: 1.5rem;
+  width: auto;
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-header__topic:first-child .md-ellipsis {
+    color: var(--md-primary-bg-color--light);
+    font-weight: 500;
+  }
+
+  .md-header__topic:first-child .md-ellipsis::before {
+    content: "/";
+    opacity: 0.38;
+    margin-right: 0.55rem;
+    font-weight: 400;
+  }
+
+  /* Material's own page-title topic would repeat what is already there. */
+  .md-header__topic[data-md-component="header-topic"] {
+    display: none;
+  }
+}

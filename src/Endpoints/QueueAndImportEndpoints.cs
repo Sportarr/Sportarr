@@ -22,6 +22,7 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
     // and show "Imported" notification before the item disappears from queue
     var recentlyImportedCutoff = DateTime.UtcNow.AddSeconds(-30);
     var queue = await db.DownloadQueue
+        .AsNoTracking()
         .Include(dq => dq.Event)
         .Include(dq => dq.DownloadClient)
         .Where(dq => dq.Status != DownloadStatus.Imported ||
@@ -88,6 +89,7 @@ app.MapGet("/api/activity/counts", async (SportarrDbContext db) =>
 {
     // Count active queue items (not imported)
     var queueCount = await db.DownloadQueue
+        .AsNoTracking()
         .Where(dq => dq.Status != DownloadStatus.Imported)
         .CountAsync();
 
@@ -115,6 +117,7 @@ app.MapGet("/api/activity/counts", async (SportarrDbContext db) =>
 app.MapGet("/api/queue/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var dq = await db.DownloadQueue
+        .AsNoTracking()
         .Include(dq => dq.Event)
         .Include(dq => dq.DownloadClient)
         .FirstOrDefaultAsync(dq => dq.Id == id);
@@ -341,23 +344,28 @@ app.MapGet("/api/pending-imports", async (SportarrDbContext db) =>
 {
     // Get all pending imports (external downloads needing manual mapping)
     var imports = await db.PendingImports
+        .AsNoTracking()
         .Include(pi => pi.DownloadClient)
         .Include(pi => pi.SuggestedEvent)
             .ThenInclude(e => e!.League)
         .Where(pi => pi.Status == PendingImportStatus.Pending)
         .OrderByDescending(pi => pi.Detected)
         .ToListAsync();
-    return Results.Ok(imports);
+    // DTO, because the Event entity serializes Title as "strEvent"
+    return Results.Ok(imports.Select(PendingImportResponse.FromPendingImport));
 });
 
 app.MapGet("/api/pending-imports/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var import = await db.PendingImports
+        .AsNoTracking()
         .Include(pi => pi.DownloadClient)
         .Include(pi => pi.SuggestedEvent)
             .ThenInclude(e => e!.League)
         .FirstOrDefaultAsync(pi => pi.Id == id);
-    return import is null ? Results.NotFound() : Results.Ok(import);
+    return import is null
+        ? Results.NotFound()
+        : Results.Ok(PendingImportResponse.FromPendingImport(import));
 });
 
 app.MapGet("/api/pending-imports/{id:int}/matches", async (
@@ -403,6 +411,8 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     // which the editor modal sends so user-corrected values land on the EventFile
     // before it goes live in the library.
     Sportarr.Api.Endpoints.EventFileEditorEndpoints.EventFileEditRequest? overrides = null;
+    // Auto unless the import screen asked for something specific.
+    var importMode = PostImportMode.Auto;
     if (req.ContentLength > 0)
     {
         try
@@ -416,6 +426,13 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                     <Sportarr.Api.Endpoints.EventFileEditorEndpoints.EventFileEditRequest>(
                     ov.GetRawText(),
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("importMode", out var modeProp) &&
+                modeProp.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                importMode = ParseImportMode(modeProp.GetString());
             }
         }
         catch
@@ -495,28 +512,12 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
         else
         {
             // Download client import: use FileImportService to move/copy/hardlink
-            var tempQueueItem = new DownloadQueueItem
-            {
-                DownloadClientId = import.DownloadClientId,
-                DownloadId = import.DownloadId,
-                EventId = import.SuggestedEventId.Value,
-                Title = import.Title,
-                Size = import.Size,
-                Downloaded = import.Size,
-                Progress = 100,
-                Quality = import.Quality ?? "Unknown",
-                Indexer = "Manual Import",
-                Status = DownloadStatus.Completed,
-                Added = import.Detected,
-                CompletedAt = DateTime.UtcNow,
-                Protocol = import.Protocol ?? "Unknown",
-                TorrentInfoHash = import.TorrentInfoHash
-            };
+            var tempQueueItem = BuildManualImportQueueItem(import);
 
             // Import the download using FileImportService
             // Pass the stored FilePath directly since we already have it from the pending import
             // This avoids re-querying the download client which may return incomplete path info
-            await fileImportService.ImportDownloadAsync(tempQueueItem, import.FilePath);
+            await fileImportService.ImportDownloadAsync(tempQueueItem, import.FilePath, importMode);
         }
 
         // Mark as completed
@@ -870,6 +871,7 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
         ILogger logger)
     {
         var evt = await db.Events
+            .AsNoTracking()
             .Include(e => e.League)
             .FirstOrDefaultAsync(e => e.Id == eventId);
 
@@ -899,4 +901,48 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
             }
         });
     }
+
+    /// <summary>
+    /// Read the import mode the import screen sent. Anything unrecognised
+    /// falls back to Auto, which reads the media management settings.
+    /// </summary>
+    public static PostImportMode ParseImportMode(string? mode) => mode?.Trim().ToLowerInvariant() switch
+    {
+        "copy" => PostImportMode.Copy,
+        "hardlink" => PostImportMode.Hardlink,
+        "move" => PostImportMode.Move,
+        "symlink" => PostImportMode.Symlink,
+        _ => PostImportMode.Auto
+    };
+
+    /// <summary>
+    /// Build the queue item a manually accepted import is transferred with.
+    ///
+    /// The download client has to travel with it, not just its id. The import
+    /// service asks the client whether the torrent is still seeding, and with
+    /// no client to ask it answers no. An accepted import then moved a file
+    /// that was still being seeded, which broke the seed.
+    /// </summary>
+    public static DownloadQueueItem BuildManualImportQueueItem(PendingImport import) => new()
+    {
+        DownloadClientId = import.DownloadClientId,
+        DownloadClient = import.DownloadClient,
+        DownloadId = import.DownloadId,
+        EventId = import.SuggestedEventId!.Value,
+        Title = import.Title,
+        Size = import.Size,
+        Downloaded = import.Size,
+        Progress = 100,
+        Quality = import.Quality ?? "Unknown",
+        Indexer = "Manual Import",
+        Status = DownloadStatus.Completed,
+        Added = import.Detected,
+        CompletedAt = DateTime.UtcNow,
+        // A hash means a torrent even when the protocol was never recorded.
+        // Read as usenet, the transfer plan moves the file and the seed dies.
+        Protocol = !string.IsNullOrEmpty(import.Protocol)
+            ? import.Protocol
+            : (!string.IsNullOrEmpty(import.TorrentInfoHash) ? "Torrent" : "Unknown"),
+        TorrentInfoHash = import.TorrentInfoHash
+    };
 }

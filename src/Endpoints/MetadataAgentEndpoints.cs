@@ -48,6 +48,7 @@ public static class MetadataAgentEndpoints
             // whenever twenty five others matched the title first.
             var candidateLimit = year == null ? 25 : 250;
             var leagues = await db.Leagues
+                .AsNoTracking()
                 .Where(l => EF.Functions.Like(l.Name.ToLower(), $"%{loweredTerm}%"))
                 .OrderBy(l => l.Name)
                 .Take(candidateLimit)
@@ -101,10 +102,12 @@ public static class MetadataAgentEndpoints
                 return Results.Ok(new { error = "Series not found" });
 
             var events = await db.Events
+                .AsNoTracking()
                 .Where(e => e.LeagueId == league.Id && e.SeasonNumber != null)
                 .ToListAsync();
 
             var seasonPosters = await db.SeasonPosters
+                .AsNoTracking()
                 .Where(sp => sp.LeagueId == league.Id)
                 .ToListAsync();
 
@@ -144,6 +147,7 @@ public static class MetadataAgentEndpoints
                 return Results.Ok(new { episodes = Array.Empty<object>(), count = 0, leagueId, seasonNumber });
 
             var events = await db.Events
+                .AsNoTracking()
                 .Where(e => e.LeagueId == league.Id && e.SeasonNumber == sn)
                 .ToListAsync();
 
@@ -188,6 +192,7 @@ public static class MetadataAgentEndpoints
                 return Results.Ok(new { error = "Invalid season" });
 
             var events = await db.Events
+                .AsNoTracking()
                 .Where(e => e.LeagueId == league.Id && e.SeasonNumber == sn)
                 .ToListAsync();
 

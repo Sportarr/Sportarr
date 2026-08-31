@@ -724,6 +724,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<int?>("MissingFromClientCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("OutputPath")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("PackGroupId")
                         .HasColumnType("TEXT");
 
@@ -1239,6 +1242,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("Location")
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strCountry");
+
+                    b.Property<bool>("ManuallyMonitored")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("Monitored")
                         .HasColumnType("INTEGER");
@@ -2202,6 +2208,10 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<bool>("EnableDvr")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("EventSortOrder")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ExternalId")
                         .HasMaxLength(50)

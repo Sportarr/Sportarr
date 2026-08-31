@@ -378,6 +378,7 @@ app.MapGet("/api/calendar", async (
     var rangeEnd = end ?? DateTime.UtcNow.AddMonths(2);
 
     var query = db.Events
+        .AsNoTracking()
         .Include(e => e.League)
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)

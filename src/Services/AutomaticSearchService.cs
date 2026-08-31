@@ -223,6 +223,34 @@ public class AutomaticSearchService : IAutomaticSearchService
                     .FirstOrDefaultAsync();
             }
 
+            // An event that is already downloading is not missing, however long
+            // the download takes. RSS sync has always checked this before
+            // grabbing (RssSyncService, "Better or equal release already
+            // queued"), and the scheduled searches did not, so a large event
+            // still transferring stayed a missing candidate and every pass
+            // grabbed another release for it (issue #194). The anti-churn guard
+            // could not catch that: each grab was a different release.
+            // A manual search is the user asking on purpose, so it still runs.
+            if (!isManualSearch)
+            {
+                var activeDownload = await _db.DownloadQueue
+                    .Where(d => d.EventId == eventId &&
+                                ActiveDownloadGate.InFlightStatuses.Contains(d.Status))
+                    .Where(d => part == null ? d.Part == null : d.Part == part)
+                    .OrderByDescending(d => d.LastUpdate)
+                    .FirstOrDefaultAsync();
+
+                if (activeDownload != null)
+                {
+                    result.Success = false;
+                    result.Message = $"Already downloading '{activeDownload.Title}' for this event ({activeDownload.Status})";
+                    _logger.LogInformation(
+                        "[{SearchType}] Skipping {Title} - '{Release}' is already {Status} for this event",
+                        searchType, evt.Title, activeDownload.Title, activeDownload.Status);
+                    return result;
+                }
+            }
+
             var searchTarget = part != null ? $"{evt.Title} ({part})" : evt.Title;
             _logger.LogInformation("[Automatic Search] Starting search for event: {Title} ({Sport})",
                 searchTarget, evt.Sport);
@@ -1422,6 +1450,13 @@ public class AutomaticSearchService : IAutomaticSearchService
                     queueItem.Downloaded = status.Downloaded;
                     queueItem.Size = status.Size > 0 ? status.Size : bestRelease.Size;
                     queueItem.LastUpdate = DateTime.UtcNow;
+                    // A cached debrid grab can already be complete on this first
+                    // check. Record the path now so the queue shim has an
+                    // outputPath immediately instead of after the next poll.
+                    if (!string.IsNullOrWhiteSpace(status.SavePath))
+                    {
+                        queueItem.OutputPath = status.SavePath;
+                    }
                     await _db.SaveChangesAsync();
                     _logger.LogInformation("[Automatic Search] Initial status: {Status}, Progress: {Progress:F1}%",
                         queueItem.Status, queueItem.Progress);

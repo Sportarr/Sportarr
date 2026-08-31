@@ -255,6 +255,14 @@ public class League
     public bool MonitorPreseason { get; set; } = false;
 
     /// <summary>
+    /// Which end of a season the event list starts at. "desc" puts the newest
+    /// event first, "asc" starts at episode one. Kept per league because a
+    /// person follows a long-running league from the start and a current
+    /// season from the latest game.
+    /// </summary>
+    public string EventSortOrder { get; set; } = "desc";
+
+    /// <summary>
     /// How far back the special-event toggles above reach.
     ///
     /// Those toggles do two things. They carry a special event past the team

@@ -214,6 +214,7 @@ public static class LibraryEndpoints
             try
             {
                 var seasons = await db.Events
+                    .AsNoTracking()
                     .Where(e => e.LeagueId == leagueId && !string.IsNullOrEmpty(e.Season))
                     .Select(e => e.Season)
                     .Distinct()
@@ -241,6 +242,7 @@ public static class LibraryEndpoints
             try
             {
                 var query = db.Events
+                    .AsNoTracking()
                     .Include(e => e.League)
                     .Include(e => e.HomeTeam)
                     .Include(e => e.AwayTeam)

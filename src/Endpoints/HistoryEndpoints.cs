@@ -27,6 +27,7 @@ app.MapGet("/api/history", async (SportarrDbContext db, int page = 1, int pageSi
 
     // Use explicit projection to avoid circular reference issues with navigation properties
     var history = await db.ImportHistories
+        .AsNoTracking()
         .OrderByDescending(h => h.ImportedAt)
         .Skip((page - 1) * pageSize)
         .Take(pageSize)
@@ -79,6 +80,7 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
 {
     // Get import history for this event (optionally filtered by part)
     var importQuery = db.ImportHistories
+        .AsNoTracking()
         .Where(h => h.EventId == eventId);
 
     // Filter by part if specified - only show records matching that exact part
@@ -109,6 +111,7 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
 
     // Get blocklist entries for this event (optionally filtered by part)
     var blocklistQuery = db.Blocklist
+        .AsNoTracking()
         .Where(b => b.EventId == eventId);
 
     if (!string.IsNullOrEmpty(part))
@@ -137,6 +140,7 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
 
     // Get download queue history (grabbed items) - both current and completed (optionally filtered by part)
     var queueQuery = db.DownloadQueue
+        .AsNoTracking()
         .Where(q => q.EventId == eventId);
 
     if (!string.IsNullOrEmpty(part))
@@ -168,6 +172,7 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
     // Get file-removal history (upgrades and manual deletions) so the timeline
     // shows the full chain: grabbed -> imported -> deleted -> re-grabbed.
     var fileHistoryQuery = db.EventFileHistory
+        .AsNoTracking()
         .Where(h => h.EventId == eventId);
 
     if (!string.IsNullOrEmpty(part))
@@ -217,6 +222,7 @@ app.MapGet("/api/leagues/{leagueId:int}/seasons/{season}/history", async (int le
     const int PerSourceCap = 100;
 
     var eventIds = await db.Events
+        .AsNoTracking()
         .Where(e => e.LeagueId == leagueId && e.Season == season)
         .Select(e => e.Id)
         .ToListAsync();
@@ -225,6 +231,7 @@ app.MapGet("/api/leagues/{leagueId:int}/seasons/{season}/history", async (int le
         return Results.Ok(new List<object>());
 
     var importHistory = await db.ImportHistories
+        .AsNoTracking()
         .Where(h => h.EventId != null && eventIds.Contains(h.EventId.Value))
         .OrderByDescending(h => h.ImportedAt)
         .Take(PerSourceCap)
@@ -246,6 +253,7 @@ app.MapGet("/api/leagues/{leagueId:int}/seasons/{season}/history", async (int le
         .ToListAsync();
 
     var blocklistHistory = await db.Blocklist
+        .AsNoTracking()
         .Where(b => b.EventId != null && eventIds.Contains(b.EventId.Value))
         .OrderByDescending(b => b.BlockedAt)
         .Take(PerSourceCap)
@@ -267,6 +275,7 @@ app.MapGet("/api/leagues/{leagueId:int}/seasons/{season}/history", async (int le
         .ToListAsync();
 
     var queueHistory = await db.DownloadQueue
+        .AsNoTracking()
         .Where(q => eventIds.Contains(q.EventId))
         .OrderByDescending(q => q.Added)
         .Take(PerSourceCap)
@@ -290,6 +299,7 @@ app.MapGet("/api/leagues/{leagueId:int}/seasons/{season}/history", async (int le
         .ToListAsync();
 
     var fileHistory = await db.EventFileHistory
+        .AsNoTracking()
         .Where(h => h.EventId != null && eventIds.Contains(h.EventId.Value))
         .OrderByDescending(h => h.Date)
         .Take(PerSourceCap)
@@ -325,6 +335,7 @@ app.MapGet("/api/leagues/{leagueId:int}/seasons/{season}/history", async (int le
 app.MapGet("/api/history/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.ImportHistories
+        .AsNoTracking()
         .Include(h => h.Event)
         .Include(h => h.DownloadQueueItem)
         .FirstOrDefaultAsync(h => h.Id == id);
@@ -464,6 +475,7 @@ app.MapGet("/api/grab-history", async (SportarrDbContext db, int page = 1, int p
         // direction.
         FileExists = db.EventFiles.Any(f => f.EventId == g.EventId && f.FilePath == g.DestinationPath),
         EventFileId = db.EventFiles
+            .AsNoTracking()
             .Where(f => f.EventId == g.EventId && f.FilePath == g.DestinationPath)
             .Select(f => (int?)f.Id).FirstOrDefault(),
         LastRegrabAttempt = g.LastRegrabAttempt,
@@ -536,6 +548,7 @@ app.MapGet("/api/grab-history", async (SportarrDbContext db, int page = 1, int p
 app.MapGet("/api/grab-history/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.GrabHistory
+        .AsNoTracking()
         .Include(g => g.Event)
             .ThenInclude(e => e!.League)
         .FirstOrDefaultAsync(g => g.Id == id);

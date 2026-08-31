@@ -31,6 +31,7 @@ app.MapGet("/api/followed-teams/supported-sports", () =>
 app.MapGet("/api/followed-teams", async (SportarrDbContext db) =>
 {
     var followedTeams = await db.FollowedTeams
+        .AsNoTracking()
         .OrderBy(ft => ft.Sport)
         .ThenBy(ft => ft.Name)
         .ToListAsync();
@@ -129,6 +130,7 @@ app.MapGet("/api/followed-teams/{id:int}/leagues", async (int id, SportarrDbCont
 
         // Check which leagues are already added to Sportarr
         var existingLeagueIds = await db.Leagues
+            .AsNoTracking()
             .Where(l => l.ExternalId != null)
             .Select(l => l.ExternalId!)
             .ToListAsync();
@@ -404,6 +406,7 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
 app.MapGet("/api/teams", async (SportarrDbContext db, int? leagueId, string? sport) =>
 {
     var query = db.Teams
+        .AsNoTracking()
         .Include(t => t.League)
         .AsQueryable();
 
@@ -490,6 +493,7 @@ app.MapPut("/api/teams/{id:int}/aliases", async (int id, System.Text.Json.JsonEl
 app.MapGet("/api/teams/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var team = await db.Teams
+        .AsNoTracking()
         .Include(t => t.League)
         .FirstOrDefaultAsync(t => t.Id == id);
 

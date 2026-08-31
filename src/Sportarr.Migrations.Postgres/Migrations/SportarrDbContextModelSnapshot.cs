@@ -748,6 +748,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<int?>("MissingFromClientCount")
                         .HasColumnType("integer");
 
+                    b.Property<string>("OutputPath")
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("PackGroupId")
                         .HasColumnType("uuid");
 
@@ -1275,6 +1278,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("Location")
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "strCountry");
+
+                    b.Property<bool>("ManuallyMonitored")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("Monitored")
                         .HasColumnType("boolean");
@@ -2264,6 +2270,10 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<bool>("EnableDvr")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("EventSortOrder")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("ExternalId")
                         .HasMaxLength(50)

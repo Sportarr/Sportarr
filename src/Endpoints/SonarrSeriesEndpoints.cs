@@ -182,6 +182,7 @@ public static class SonarrSeriesEndpoints
             }
 
             var stats = await db.Events
+                .AsNoTracking()
                 .Where(e => e.LeagueId == id)
                 .GroupBy(e => 1)
                 .Select(g => new
@@ -193,6 +194,7 @@ public static class SonarrSeriesEndpoints
                 .FirstOrDefaultAsync();
 
             var seasonEntries = await db.Events
+                .AsNoTracking()
                 .Where(e => e.LeagueId == id && e.SeasonNumber.HasValue)
                 .GroupBy(e => e.SeasonNumber)
                 .Select(g => new

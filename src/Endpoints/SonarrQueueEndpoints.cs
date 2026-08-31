@@ -95,6 +95,7 @@ public static class SonarrQueueEndpoints
             logger.LogDebug("[V3-COMPAT] GET /api/v3/queue/status");
 
             var pending = await db.DownloadQueue
+                .AsNoTracking()
                 .Where(dq => dq.Status != DownloadStatus.Imported)
                 .Select(dq => dq.Status)
                 .ToListAsync();
@@ -230,7 +231,12 @@ public static class SonarrQueueEndpoints
         : skipRedownload ? "blocklistOnly"
         : "blocklistAndSearch";
 
-    private static object ToQueueRecord(DownloadQueueItem item)
+    /// <summary>
+    /// Maps a tracked queue row onto a Sonarr v3 queue record. Public for the
+    /// same reason MapStatus is: the wire shape is a frozen contract external
+    /// consumers parse, so it is worth asserting on directly in tests.
+    /// </summary>
+    public static object ToQueueRecord(DownloadQueueItem item)
     {
         var (status, trackedDownloadState, trackedDownloadStatus) = MapStatus(item.Status);
 
@@ -268,7 +274,11 @@ public static class SonarrQueueEndpoints
             downloadClient = item.DownloadClient?.Name,
             indexer = item.Indexer,
             added = item.Added.ToString("o"),
-            outputPath = (string?)null,
+            // Where the download client last said the job landed. External
+            // extractors resolve the folder as <configured path>/<title> first
+            // and only fall back to this, so it is what rescues a download
+            // whose folder on disk is not named after the release.
+            outputPath = string.IsNullOrWhiteSpace(item.OutputPath) ? null : item.OutputPath,
         };
     }
 
@@ -365,10 +375,13 @@ public static class SonarrQueueEndpoints
 
     /// <summary>
     /// Map Sportarr's DownloadStatus to Sonarr's three-field queue status vocabulary
-    /// (status / trackedDownloadState / trackedDownloadStatus). The Completed and
-    /// ImportPending/ImportWarning cases map to trackedDownloadState "importPending" -
-    /// that's the specific state Unpackerr watches for to know a download finished but
-    /// needs help (e.g. packed archives) before Sportarr can import it.
+    /// (status / trackedDownloadState / trackedDownloadStatus). Completed,
+    /// Importing, ImportPending and ImportWarning all report status "completed",
+    /// which is the field an archive extractor actually keys on: Unpackerr treats
+    /// any record whose status is "completed" and whose protocol it was told to
+    /// handle as ready to unpack. trackedDownloadState "importPending" alongside
+    /// it is what dashboards and queue cleaners read to tell a finished download
+    /// apart from one Sportarr is actively importing.
     /// </summary>
     public static (string Status, string TrackedDownloadState, string TrackedDownloadStatus) MapStatus(DownloadStatus status) => status switch
     {

@@ -175,7 +175,8 @@ export default function LeagueFilesModal({
         await queryClient.refetchQueries({ queryKey: ['league-files', leagueId] });
       }
       // Also refresh league events and league data
-      await queryClient.refetchQueries({ queryKey: ['league-events', leagueId.toString()] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', leagueId.toString()] });
+      queryClient.refetchQueries({ queryKey: ['league-seasons', leagueId.toString()] });
       await queryClient.refetchQueries({ queryKey: ['league', leagueId.toString()] });
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
     },
@@ -224,7 +225,8 @@ export default function LeagueFilesModal({
         await queryClient.refetchQueries({ queryKey: ['league-files', leagueId] });
       }
       // Also refresh league events and league data
-      await queryClient.refetchQueries({ queryKey: ['league-events', leagueId.toString()] });
+      await queryClient.refetchQueries({ queryKey: ['league-season-events', leagueId.toString()] });
+      queryClient.refetchQueries({ queryKey: ['league-seasons', leagueId.toString()] });
       await queryClient.refetchQueries({ queryKey: ['league', leagueId.toString()] });
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
     } catch (error) {

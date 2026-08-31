@@ -510,6 +510,7 @@ app.MapPost("/api/dvr/profiles/compare", async (HttpRequest request, DvrQualityS
 app.MapGet("/api/dvr/recordings/failed-captures", async (SportarrDbContext db) =>
 {
     var failed = await db.DvrRecordings
+        .AsNoTracking()
         .Include(r => r.Event)
         .Include(r => r.Channel)
         .Where(r => r.Status == DvrRecordingStatus.Failed && r.OutputPath != null)

@@ -1156,6 +1156,43 @@ public class TaskService : ITaskService
             });
     }
 
+    /// <summary>
+    /// Whether a queued refresh for this league is running right now. A
+    /// removal and a sync write the same rows, and the sync decides what to
+    /// keep from the upstream season rather than from what is stored, so they
+    /// should not run together. Scheduled and hub-driven syncs do not queue a
+    /// task, so this narrows the window rather than closing it. Losing that
+    /// race costs a failed background sync, not data.
+    /// </summary>
+    public async Task<bool> IsLeagueSyncRunningAsync(int leagueId)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+
+        var running = await db.Tasks
+            .Where(t => t.CommandName == "RefreshLeague" && t.Status == Models.TaskStatus.Running)
+            .Select(t => t.Body)
+            .ToListAsync();
+
+        foreach (var body in running)
+        {
+            try
+            {
+                var element = System.Text.Json.JsonDocument.Parse(body ?? "{}").RootElement;
+                if (element.TryGetProperty("leagueId", out var value) && value.GetInt32() == leagueId)
+                {
+                    return true;
+                }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // A task body we cannot read tells us nothing about this league.
+            }
+        }
+
+        return false;
+    }
+
     private async Task RefreshLeagueAsync(AppTask task, CancellationToken cancellationToken)
     {
         int leagueId;

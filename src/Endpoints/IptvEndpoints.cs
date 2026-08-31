@@ -339,6 +339,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/channels", async (int leagueId, Ipt
 app.MapGet("/api/iptv/leagues/{leagueId:int}/mappings", async (int leagueId, SportarrDbContext db) =>
 {
     var rows = await db.ChannelLeagueMappings
+        .AsNoTracking()
         .Include(m => m.Channel)
         .ThenInclude(c => c!.Source)
         .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
@@ -438,6 +439,7 @@ app.MapGet("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}/explain",
     int channelId, int leagueId, SportarrDbContext db) =>
 {
     var mapping = await db.ChannelLeagueMappings
+        .AsNoTracking()
         .Include(m => m.Channel)
         .Include(m => m.League)
         .FirstOrDefaultAsync(m => m.ChannelId == channelId && m.LeagueId == leagueId);
@@ -566,6 +568,7 @@ app.MapGet("/api/iptv/channels/{channelId:int}/team-mappings", async (
     int channelId, SportarrDbContext db) =>
 {
     var mappings = await db.ChannelTeamMappings
+        .AsNoTracking()
         .Where(m => m.ChannelId == channelId)
         .Include(m => m.Team)
         .Select(m => new
@@ -584,6 +587,7 @@ app.MapGet("/api/iptv/channels/{channelId:int}/team-mappings", async (
 app.MapGet("/api/iptv/team-mappings", async (SportarrDbContext db) =>
 {
     var mappings = await db.ChannelTeamMappings
+        .AsNoTracking()
         .Include(m => m.Team)
         .Include(m => m.Channel)
         .Select(m => new
@@ -668,6 +672,7 @@ app.MapGet("/api/iptv/coverage-report", async (
     var horizon = now.AddDays(Math.Clamp(days, 1, 90));
 
     var leagues = await db.Leagues
+        .AsNoTracking()
         .Where(l => l.Monitored)
         .ToListAsync();
 
@@ -766,6 +771,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/test-resolve", async (
         // event if no future one exists. Mirrors what the auto-scheduler
         // would actually try to resolve.
         evt = await db.Events
+            .AsNoTracking()
             .Include(e => e.League)
             .Where(e => e.LeagueId == leagueId)
             .Where(e => e.EventDate >= now)
@@ -774,6 +780,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/test-resolve", async (
         if (evt == null)
         {
             evt = await db.Events
+                .AsNoTracking()
                 .Include(e => e.League)
                 .Where(e => e.LeagueId == leagueId)
                 .OrderByDescending(e => e.EventDate)
@@ -798,6 +805,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/test-resolve", async (
     var epgWindowStart = evt.EventDate.AddMinutes(-30);
     var epgWindowEnd = evt.EventDate.AddMinutes(30);
     var epgProgramsInWindow = await db.EpgPrograms
+        .AsNoTracking()
         .Where(p => p.StartTime >= epgWindowStart && p.StartTime <= epgWindowEnd)
         .CountAsync();
 
@@ -1052,6 +1060,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/channels-by-quality", async (int le
 
     // Get the currently preferred channel mapping for this league
     var preferredMapping = await db.ChannelLeagueMappings
+        .AsNoTracking()
         .Where(m => m.LeagueId == leagueId && m.IsPreferred)
         .FirstOrDefaultAsync();
 
@@ -1408,6 +1417,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
     if (streamSource is { MaxStreams: > 0 } && !alreadyCounted)
     {
         var activeRecordings = await db.DvrRecordings
+            .AsNoTracking()
             .CountAsync(r => r.Status == DvrRecordingStatus.Recording &&
                              r.Channel != null && r.Channel.SourceId == channel.SourceId);
         var viewerSlots = Math.Max(0, streamSource.MaxStreams - activeRecordings);
@@ -1489,6 +1499,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
                 viewerLease?.Dispose();
 
                 var hlsRecordings = await db.DvrRecordings
+                    .AsNoTracking()
                     .CountAsync(r => r.Status == DvrRecordingStatus.Recording &&
                                      r.Channel != null && r.Channel.SourceId == channel.SourceId);
                 var hlsSlots = Math.Max(0, streamSource.MaxStreams - hlsRecordings);

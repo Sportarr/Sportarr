@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import { MagnifyingGlassIcon, XMarkIcon, CheckIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import { useQuery } from '@tanstack/react-query';
-import { apiGet, apiPost } from '../utils/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiDelete, apiGet, apiPost } from '../utils/api';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../utils/designTokens';
 import {
   isFightingSport,
@@ -16,6 +17,7 @@ import {
   usesFightingEventTypes,
   getPartOptions,
 } from '../utils/leagueSportRules';
+import ConfirmationModal from './ConfirmationModal';
 import TagSelector from './TagSelector';
 
 interface Team {
@@ -254,6 +256,113 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     enabled: isOpen && editMode && !!leagueId,
     refetchOnMount: 'always',
   });
+
+  // Events the league holds but would not add today. Only asked for in edit
+  // mode, and only used to offer the clean-up when there is something to
+  // remove.
+  const queryClient = useQueryClient();
+  const [confirmingCleanup, setConfirmingCleanup] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const { data: unfollowed, refetch: refetchUnfollowed } = useQuery<{
+    total: number;
+    removable: number;
+    keptManuallyMonitored: number;
+    keptWithFiles: number;
+    keptBusy: number;
+    keptLocalOnly: number;
+    signature: string;
+  } | null>({
+    queryKey: ['league-unfollowed-events', leagueIdStr],
+    queryFn: async () => {
+      if (!leagueId) return null;
+      const response = await apiGet(`/api/leagues/${leagueId}/unfollowed-events`);
+      if (!response.ok) throw new Error('Failed to count unfollowed events');
+      return response.json();
+    },
+    enabled: isOpen && editMode && !!leagueId,
+    refetchOnMount: 'always',
+  });
+
+  const removableCount = unfollowed?.removable ?? 0;
+
+  // The confirmation lives outside the dialog's transition so it can sit on
+  // top of it, which also means closing the dialog does not unmount it.
+  useEffect(() => {
+    if (!isOpen) {
+      setConfirmingCleanup(false);
+      setCleaningUp(false);
+    }
+  }, [isOpen]);
+
+  // The count and the removal both read the saved league, so the offer only
+  // stands while the dialog agrees with it. Editing the teams or the setting
+  // hides it until the change is saved and the count is asked for again.
+  const savedTeamIds = useMemo(
+    () => new Set<string>(
+      (existingLeague?.monitoredTeams ?? [])
+        .filter((lt: { monitored: boolean }) => lt.monitored)
+        .map((lt: { team?: { externalId?: string } }) => lt.team?.externalId)
+        .filter((id: string | undefined): id is string => !!id),
+    ),
+    [existingLeague],
+  );
+  const cleanupOfferStands =
+    editMode &&
+    !isAdding &&
+    !keepAllEvents &&
+    existingLeague?.keepAllEvents === false &&
+    existingLeague?.monitorFinals === monitorFinals &&
+    existingLeague?.monitorPlayoffs === monitorPlayoffs &&
+    existingLeague?.monitorPreseason === monitorPreseason &&
+    selectedTeamIds.size === savedTeamIds.size &&
+    [...selectedTeamIds].every((id) => savedTeamIds.has(id));
+
+  const cleanupMessage = [
+    `This removes ${removableCount.toLocaleString()} ${removableCount === 1 ? 'game' : 'games'} that are not part of what you follow.`,
+    (unfollowed?.keptManuallyMonitored ?? 0) > 0
+      ? `${unfollowed!.keptManuallyMonitored.toLocaleString()} stay because you monitored them yourself.`
+      : '',
+    (unfollowed?.keptWithFiles ?? 0) > 0
+      ? `${unfollowed!.keptWithFiles.toLocaleString()} stay because they hold files.`
+      : '',
+    (unfollowed?.keptBusy ?? 0) > 0
+      ? `${unfollowed!.keptBusy.toLocaleString()} stay because they are downloading or have a recording scheduled.`
+      : '',
+    (unfollowed?.keptLocalOnly ?? 0) > 0
+      ? `${unfollowed!.keptLocalOnly.toLocaleString()} stay because they were added here rather than fetched.`
+      : '',
+    'They come back if you turn this setting on again and run a deep sync.',
+  ].filter(Boolean).join(' ');
+
+  const handleCleanup = async () => {
+    if (!leagueId) return;
+    setCleaningUp(true);
+    try {
+      const response = await apiDelete(
+        `/api/leagues/${leagueId}/unfollowed-events?signature=${encodeURIComponent(unfollowed?.signature ?? '')}`,
+      );
+      if (response.status === 409) {
+        const conflict = await response.json().catch(() => null);
+        toast.error(conflict?.error ?? 'The league changed. Reopen the dialog.');
+        return;
+      }
+      if (!response.ok) throw new Error('Clean-up failed');
+      const result = await response.json();
+      toast.success(`Removed ${result.removed.toLocaleString()} ${result.removed === 1 ? 'game' : 'games'}`);
+    } catch {
+      toast.error('Could not remove the games');
+    } finally {
+      setCleaningUp(false);
+      setConfirmingCleanup(false);
+      // Runs either way, because a refused removal still means the counts
+      // on screen are older than the league.
+      void refetchUnfollowed();
+      queryClient.invalidateQueries({ queryKey: ['league', leagueIdStr] });
+      queryClient.invalidateQueries({ queryKey: ['league-season-events', leagueIdStr], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['league-seasons', leagueIdStr], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+    }
+  };
 
   // The initialization effect waits for these same queries, so until they
   // land the settings state is still the empty placeholder. Submitting in
@@ -782,6 +891,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   // Always render Transition to ensure cleanup callback runs
   // Use isOpen AND league existence to control visibility
   return (
+    <>
     <Transition
       appear
       show={isOpen && !!league}
@@ -1046,6 +1156,23 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               </div>
                             </div>
                           </label>
+                          {/* Turning the setting off stops new games being
+                              stored but leaves the ones already here, so the
+                              way out sits with the setting that put them
+                              there. Shown only when there is something to
+                              remove. */}
+                          {cleanupOfferStands && removableCount > 0 && (
+                            <p className="px-3 text-xs text-gray-400">
+                              {removableCount.toLocaleString()} stored {removableCount === 1 ? 'game is' : 'games are'} not part of what you follow.{' '}
+                              <button
+                                type="button"
+                                onClick={() => setConfirmingCleanup(true)}
+                                className="text-red-400 underline underline-offset-2 hover:text-red-300"
+                              >
+                                Remove them
+                              </button>
+                            </p>
+                          )}
                         </div>
                       </>
                     )}
@@ -1620,6 +1747,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
           </div>
         </div>
       </Dialog>
-    </Transition>
+      </Transition>
+
+      <ConfirmationModal
+        isOpen={confirmingCleanup && cleanupOfferStands}
+        onClose={() => setConfirmingCleanup(false)}
+        onConfirm={() => void handleCleanup()}
+        title="Remove the games you do not follow"
+        message={cleanupMessage}
+        confirmText={cleaningUp ? 'Removing...' : `Remove ${removableCount.toLocaleString()} ${removableCount === 1 ? 'game' : 'games'}`}
+        isLoading={cleaningUp}
+      />
+    </>
   );
 }

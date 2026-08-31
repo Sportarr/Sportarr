@@ -1,5 +1,16 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus, useActivityCounts } from '../api/hooks';
+import {
+  TrophyIcon as TrophySolidIcon,
+  CalendarIcon as CalendarSolidIcon,
+  ClockIcon as ClockSolidIcon,
+  SignalIcon as SignalSolidIcon,
+  Cog6ToothIcon as Cog6ToothSolidIcon,
+  ServerIcon as ServerSolidIcon,
+} from '@heroicons/react/24/solid';
+import NavIcon from './NavIcon';
+import { useNavTarget, setNavTarget, setNavTargetFromClick } from '../hooks/useNavTarget';
+import { preloadRoute } from '../utils/preloadRoute';
 import { getImageUrl } from '../utils/request';
 import { apiGet, apiPost } from '../utils/api';
 import {
@@ -13,23 +24,40 @@ import {
   SignalIcon,
   ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import FooterStatusBar from './FooterStatusBar';
 import MobileTabBar from './MobileTabBar';
 import OnboardingWizard from './OnboardingWizard';
 import { useAuth } from '../contexts/AuthContext';
 import { SETTINGS_PAGES } from '../pages/settings/settingsPages';
+import { useResolvedTheme } from '../hooks/useTheme';
 
 interface MenuItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  activeIcon: React.ComponentType<{ className?: string }>;
   path?: string;
   children?: { label: string; path: string }[];
   badge?: number;
 }
 
+/** Shown in the content area while a page's chunk is on its way. */
+function PageFallback() {
+  return (
+    <div className="flex h-[60vh] w-full items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-red-600" />
+    </div>
+  );
+}
+
 export default function Layout() {
   const location = useLocation();
+  const navPath = useNavTarget();
+  // The lockup is a flat image, so it cannot pick up the palette the way
+  // text does. Each theme gets the artwork drawn in its own ink.
+  const lockupFile = useResolvedTheme() === 'light'
+    ? 'logo-lockup-animated.svg'
+    : 'logo-lockup-animated-white.svg';
   const navigate = useNavigate();
   const { data: systemStatus } = useSystemStatus();
   const { data: activityCounts } = useActivityCounts();
@@ -97,6 +125,7 @@ export default function Layout() {
     {
       label: 'Library',
       icon: TrophyIcon,
+      activeIcon: TrophySolidIcon,
       path: '/leagues',
       children: [
         { label: 'Leagues', path: '/leagues' },
@@ -105,11 +134,12 @@ export default function Layout() {
         { label: 'Import', path: '/library-import' },
       ],
     },
-    { label: 'Calendar', icon: CalendarIcon, path: '/calendar' },
-    { label: 'Activity', icon: ClockIcon, path: '/activity', badge: activityCounts ? ((activityCounts.queueCount + (activityCounts.pendingImportCount ?? 0)) || undefined) : undefined },
+    { label: 'Calendar', icon: CalendarIcon, activeIcon: CalendarSolidIcon, path: '/calendar' },
+    { label: 'Activity', icon: ClockIcon, activeIcon: ClockSolidIcon, path: '/activity', badge: activityCounts ? ((activityCounts.queueCount + (activityCounts.pendingImportCount ?? 0)) || undefined) : undefined },
     {
       label: 'IPTV',
       icon: SignalIcon,
+      activeIcon: SignalSolidIcon,
       path: '/iptv',
       children: [
         { label: 'Sources', path: '/iptv/sources' },
@@ -122,6 +152,7 @@ export default function Layout() {
     {
       label: 'Settings',
       icon: Cog6ToothIcon,
+      activeIcon: Cog6ToothSolidIcon,
       path: '/settings',
       children: [
         { label: 'Media Management', path: '/settings/mediamanagement' },
@@ -140,6 +171,7 @@ export default function Layout() {
     {
       label: 'System',
       icon: ServerIcon,
+      activeIcon: ServerSolidIcon,
       path: '/system',
       children: [
         { label: 'Status', path: '/system/status' },
@@ -189,13 +221,14 @@ export default function Layout() {
     toggleMenu(item.label);
     // Navigate to the path if it exists
     if (item.path) {
+      setNavTarget(item.path);
       navigate(item.path);
     }
   };
 
   const isActive = (path?: string, children?: { path: string }[]) => {
-    if (path) return location.pathname === path;
-    if (children) return children.some((child) => location.pathname === child.path);
+    if (path) return navPath === path;
+    if (children) return children.some((child) => navPath === child.path);
     return false;
   };
 
@@ -240,12 +273,10 @@ export default function Layout() {
             the user never leaves the current page just to see the options. */}
         <div className="flex items-center justify-between p-3">
           <Link to="/leagues" onClick={cleanupInertAttributes} className="flex items-center space-x-2">
-            <img
-              src={getImageUrl('logo-64.png')}
-              alt="Sportarr Logo"
-              className="w-8 h-8 rounded-lg"
-            />
-            <h1 className="text-lg font-bold text-white">Sportarr</h1>
+            <img src={getImageUrl(lockupFile)} alt="Sportarr" className="h-8 w-auto" />
+            {systemStatus && (
+              <span className="text-xs text-gray-400">v{systemStatus.version}</span>
+            )}
           </Link>
           <button
             onClick={() => { cleanupInertAttributes(); setSettingsMenuOpen(!settingsMenuOpen); }}
@@ -261,12 +292,14 @@ export default function Layout() {
           <div className="absolute right-3 top-full z-50 mt-2 w-64 animate-pill-down">
             <div className="max-h-[75dvh] overflow-y-auto rounded-2xl border border-red-900/40 bg-gradient-to-b from-gray-900 to-black shadow-2xl shadow-black/70">
               {SETTINGS_PAGES.map(({ to, title }) => {
-                const current = location.pathname === to;
+                const current = navPath === to;
                 return (
                   <button
                     key={to}
+                    onMouseEnter={() => preloadRoute(to)}
                     onClick={() => {
                       setSettingsMenuOpen(false);
+                      setNavTarget(to);
                       navigate(to);
                     }}
                     className={`flex w-full items-center justify-between border-b border-gray-800/60 px-5 py-2.5 text-left text-sm font-medium last:border-b-0 ${
@@ -293,18 +326,15 @@ export default function Layout() {
       <aside className="hidden md:flex md:relative inset-y-0 left-0 z-40 w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex-col">
         {/* Logo - Hidden on mobile (shown in header instead) */}
         <div className="hidden md:block p-4 border-b border-red-900/30">
-          <Link to="/leagues" onClick={cleanupInertAttributes} className="flex items-center space-x-3">
+          <Link to="/leagues" onClick={cleanupInertAttributes} className="block">
             <img
-              src={getImageUrl('logo-64.png')}
-              alt="Sportarr Logo"
-              className="w-10 h-10 rounded-lg"
+              src={getImageUrl(lockupFile)}
+              alt="Sportarr"
+              className="mx-auto h-10 w-auto"
             />
-            <div>
-              <h1 className="text-xl font-bold text-white">Sportarr</h1>
-              {systemStatus && (
-                <p className="text-xs text-gray-400">v{systemStatus.version}</p>
-              )}
-            </div>
+            {systemStatus && (
+              <p className="mt-1 text-center text-xs text-gray-400">v{systemStatus.version}</p>
+            )}
           </Link>
         </div>
 
@@ -317,10 +347,17 @@ export default function Layout() {
                 <div>
                   <button
                     onClick={(e) => handleMenuClick(item, e)}
+                    onMouseEnter={() => preloadRoute(item.path)}
+                    onFocus={() => preloadRoute(item.path)}
                     className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors text-gray-300 hover:bg-red-900/10 hover:text-white"
                   >
                     <div className="flex items-center space-x-3">
-                      <item.icon className="w-5 h-5" />
+                      <NavIcon
+                      chip
+                        icon={item.icon}
+                        activeIcon={item.activeIcon}
+                        active={item.children.some((child) => navPath === child.path)}
+                      />
                       <span>{item.label}</span>
                     </div>
                     <ChevronDownIcon
@@ -335,9 +372,11 @@ export default function Layout() {
                         <Link
                           key={child.path}
                           to={child.path}
-                          onClick={cleanupInertAttributes}
+                          onClick={(e) => { cleanupInertAttributes(); setNavTargetFromClick(e, child.path); }}
+                          onMouseEnter={() => preloadRoute(child.path)}
+                          onFocus={() => preloadRoute(child.path)}
                           className={`block px-4 py-2.5 pl-12 text-sm transition-colors ${
-                            location.pathname === child.path
+                            navPath === child.path
                               ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                               : 'text-gray-400 hover:bg-red-900/10 hover:text-white'
                           }`}
@@ -352,15 +391,22 @@ export default function Layout() {
                 // Single menu item
                 <Link
                   to={item.path!}
-                  onClick={cleanupInertAttributes}
+                  onClick={(e) => { cleanupInertAttributes(); setNavTargetFromClick(e, item.path!); }}
+                  onMouseEnter={() => preloadRoute(item.path)}
+                  onFocus={() => preloadRoute(item.path)}
                   className={`flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${
-                    location.pathname === item.path
+                    navPath === item.path
                       ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                       : 'text-gray-300 hover:bg-red-900/10 hover:text-white'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
-                    <item.icon className="w-5 h-5" />
+                    <NavIcon
+                      chip
+                      icon={item.icon}
+                      activeIcon={item.activeIcon}
+                      active={navPath === item.path}
+                    />
                     <span>{item.label}</span>
                   </div>
                   {item.badge !== undefined && item.badge > 0 && (
@@ -429,7 +475,12 @@ export default function Layout() {
         style={{ scrollbarGutter: 'stable' }}
       >
         <HealthBanner />
-        <Outlet />
+        {/* The shell stays put while a page's chunk loads, so only the
+            content area waits. A boundary above the shell would blank the
+            sidebar and header too. */}
+        <Suspense fallback={<PageFallback />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       {/* Phone-only bottom tab bar - covers every destination; no drawer on phones */}

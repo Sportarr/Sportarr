@@ -221,6 +221,14 @@ public class EventRetentionService : BackgroundService
 
             evt.Monitored = false;
 
+            // Retention is the user's own policy saying to stop caring about this
+
+
+            // one, so it releases the claim that kept it out of the clean-up.
+
+
+            evt.ManuallyMonitored = false;
+
             _logger.LogInformation(
                 "[Event Retention] Unmonitored{FileNote} event {EventId} ({Title}) - past the league's {Days}-day retention window (event date {EventDate:yyyy-MM-dd})",
                 hadFiles ? " and deleted files for" : "", evt.Id, evt.Title, retentionDays, evt.EventDate);

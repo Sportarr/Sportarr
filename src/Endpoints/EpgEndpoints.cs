@@ -265,6 +265,7 @@ app.MapGet("/api/epg/guide", async (
 app.MapGet("/api/epg/groups", async (SportarrDbContext db) =>
 {
     var groups = await db.IptvChannels
+        .AsNoTracking()
         .Where(c => !c.IsHidden && c.IsEnabled && !string.IsNullOrEmpty(c.Group))
         .Select(c => c.Group)
         .Distinct()
@@ -278,6 +279,7 @@ app.MapGet("/api/epg/groups", async (SportarrDbContext db) =>
 app.MapGet("/api/iptv/countries", async (SportarrDbContext db) =>
 {
     var countries = await db.IptvChannels
+        .AsNoTracking()
         .Where(c => !c.IsHidden && !string.IsNullOrEmpty(c.Country))
         .Select(c => c.Country)
         .Distinct()
@@ -291,6 +293,7 @@ app.MapGet("/api/iptv/countries", async (SportarrDbContext db) =>
 app.MapGet("/api/iptv/groups", async (SportarrDbContext db) =>
 {
     var groups = await db.IptvChannels
+        .AsNoTracking()
         .Where(c => !c.IsHidden && !string.IsNullOrEmpty(c.Group))
         .Select(c => c.Group)
         .Distinct()

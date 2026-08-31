@@ -32,6 +32,7 @@ public static class FollowedAthletesEndpoints
         app.MapGet("/api/followed-athletes", async (SportarrDbContext db) =>
         {
             var followed = await db.FollowedAthletes
+                .AsNoTracking()
                 .OrderBy(fa => fa.Name)
                 .ToListAsync();
             return Results.Ok(followed);
@@ -106,6 +107,7 @@ public static class FollowedAthletesEndpoints
             }
 
             var existingLeagueIds = await db.Leagues
+                .AsNoTracking()
                 .Where(l => l.ExternalId != null)
                 .Select(l => l.ExternalId!)
                 .ToListAsync();

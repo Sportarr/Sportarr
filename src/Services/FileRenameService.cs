@@ -183,6 +183,17 @@ public class FileRenameService
             // No API data available - use local chronological ordering.
             // Events are already sorted by EventDate (ascending) + ExternalId tiebreaker.
             // Assign sequential episode numbers starting from 1.
+            //
+            // Only when the season holds no files. Local ordering counts the
+            // rows that are here, and rows come and go, so numbering a season
+            // this way would rename files to numbers the hub disagrees with
+            // as soon as it answers again.
+            if (events.Any(e => e.HasFile))
+            {
+                _logger.LogInformation("[File Rename] No API episode data available and this season holds files, so numbers are left as they are");
+                return renumberedCount;
+            }
+
             _logger.LogInformation("[File Rename] No API episode data available, using local chronological ordering for {Count} events",
                 events.Count);
 
