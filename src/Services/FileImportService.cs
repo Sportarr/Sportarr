@@ -1004,7 +1004,7 @@ public class FileImportService : IFileImportService
             }
             else if (shouldRemoveCompleted)
             {
-                await CleanupDownloadAsync(downloadPath, sourceFile);
+                await CleanupDownloadAsync(downloadPath, sourceFile, download.Title);
             }
 
             return history;
@@ -2418,21 +2418,21 @@ public class FileImportService : IFileImportService
     /// Clean up download folder after successful import: delete the source file
     /// and its containing folder (the release-specific subfolder inside the category folder).
     /// </summary>
-    private async Task CleanupDownloadAsync(string downloadPath, string importedFile)
+    private async Task CleanupDownloadAsync(string downloadPath, string importedFile, string? downloadTitle = null)
     {
-        // Removing a download's data is delegated to the download client via
-        // RemoveDownloadAsync(deleteFiles: true) (see EnhancedDownloadMonitorService), which is
-        // scoped to this download's own torrent hash / nzb id and therefore only ever removes
-        // the files that one download owns. But that delegation has a gap: when the client no
-        // longer knows the download (the user removed it, or qBittorrent's share-limit action
-        // removed the torrent without deleting files), a move-mode import relocates the video
-        // and the folder is orphaned with its metadata leftovers (nfo, screens) forever.
+        // The download client removes its own data via RemoveDownloadAsync
+        // (see EnhancedDownloadMonitorService), but that delegation has gaps:
+        // SABnzbd keeps a completed job's files, and a client the user
+        // already removed the download from cleans nothing. A move-mode
+        // import relocates the video, so whatever remains here is the job's
+        // own leftovers (nfo, samples, archives) and the folder goes with
+        // them.
         //
-        // Directory deletion from here caused real data loss once - a single-file torrent's
-        // path resolved to the shared save root and a recursive delete wiped every other
-        // download in it - so the sweep below is heavily guarded (own directory only, no
-        // protected roots, nothing video remaining, metadata-sized payload). See
-        // DownloadFolderSweeper for the full guard list.
+        // Directory deletion from here caused real data loss once - a
+        // single-file torrent's path resolved to the shared save root and a
+        // recursive delete wiped every other download in it - so the delete
+        // stays guarded. The folder must be the job's own by resolution, and
+        // never a configured path or one that contains a configured path.
         try
         {
             // If a move-mode import left the original source file behind (e.g. an import
@@ -2452,22 +2452,45 @@ public class FileImportService : IFileImportService
         {
             var rootFolders = await _db.RootFolders.Select(r => r.Path).ToListAsync();
             var clients = await _db.DownloadClients
-                .Select(c => new { c.Directory, c.BlackholeFolder, c.WatchFolder })
+                .Select(c => new { c.Directory, c.BlackholeFolder, c.WatchFolder, c.Category, c.PostImportCategory })
                 .ToListAsync();
 
-            var protectedRoots = new List<string>(rootFolders);
+            var clientFolders = new List<string>();
+            var categoryNames = new List<string>();
             foreach (var client in clients)
             {
-                protectedRoots.Add(client.Directory ?? "");
-                protectedRoots.Add(client.BlackholeFolder ?? "");
-                protectedRoots.Add(client.WatchFolder ?? "");
+                clientFolders.Add(client.Directory ?? "");
+                clientFolders.Add(client.BlackholeFolder ?? "");
+                clientFolders.Add(client.WatchFolder ?? "");
+                categoryNames.Add(client.Category ?? "");
+                categoryNames.Add(client.PostImportCategory ?? "");
+                if (!string.IsNullOrWhiteSpace(client.Directory))
+                {
+                    if (!string.IsNullOrWhiteSpace(client.Category))
+                        clientFolders.Add(Path.Combine(client.Directory, client.Category));
+                    if (!string.IsNullOrWhiteSpace(client.PostImportCategory))
+                        clientFolders.Add(Path.Combine(client.Directory, client.PostImportCategory));
+                }
             }
 
-            DownloadFolderSweeper.TrySweep(downloadPath, protectedRoots, rootFolders, VideoExtensions, _logger);
+            // A single-file job resolves to the file itself, which the move
+            // has already taken away. Step up to the folder that owns it,
+            // and only to a folder named after this download's own release.
+            var target = LeftoverFolderPolicy.ResolveOwnedFolder(downloadPath, downloadTitle);
+            if (target == null
+                || !LeftoverFolderPolicy.IsSafeTarget(target, rootFolders, clientFolders, categoryNames, out var full)
+                || full == null)
+            {
+                _logger.LogDebug("[Cleanup] Leaving the download folder alone: {Path}", downloadPath);
+                return;
+            }
+
+            Directory.Delete(full, recursive: true);
+            _logger.LogInformation("[Cleanup] Removed the download folder after import: {Path}", full);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Cleanup] Leftover folder sweep failed for: {Path}", downloadPath);
+            _logger.LogWarning(ex, "[Cleanup] Leftover folder removal failed for: {Path}", downloadPath);
         }
     }
 

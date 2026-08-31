@@ -646,36 +646,56 @@ public class EnhancedDownloadMonitorService : BackgroundService
     }
 
     /// <summary>
-    /// Delete the job folder the download client left behind, but only when it
-    /// holds no files at all.
+    /// Delete the job folder the download client left behind, together with
+    /// whatever the import did not take (nfo, samples, leftover archives).
+    /// Users expect the whole folder to be gone once the import is in the
+    /// library. The folder is the job's own by resolution, and the policy
+    /// still refuses a configured path or anything that contains one.
     ///
-    /// Import moves the video out, then the client deletes what it still tracks
-    /// and leaves the directory. Sonarr leaves these too, so this goes a step
-    /// further than the app we are compared to. It deletes ONLY an empty
-    /// directory, never a library root, and it refuses anything it cannot
-    /// prove is empty, because the cost of being wrong here is a user's media.
+    /// The caller resolves the client-reported path to the owned folder
+    /// before it removes the job from the client, while the directory can
+    /// still be seen.
     /// </summary>
-    private async Task TryRemoveEmptyCompletedFolderAsync(string? folder, string title, SportarrDbContext? db)
+    private async Task TryRemoveCompletedFolderAsync(string? folder, string title, SportarrDbContext? db)
     {
         if (string.IsNullOrWhiteSpace(folder))
             return;
 
         try
         {
-            var rootFolders = db != null
-                ? await db.RootFolders.Select(r => r.Path).ToListAsync()
-                : new List<string>();
+            var rootFolders = new List<string>();
+            var clientFolders = new List<string>();
+            var categoryNames = new List<string>();
+            if (db != null)
+            {
+                rootFolders.AddRange(await db.RootFolders.Select(r => r.Path).ToListAsync());
+                foreach (var client in await db.DownloadClients
+                    .Select(c => new { c.Directory, c.BlackholeFolder, c.WatchFolder, c.Category, c.PostImportCategory })
+                    .ToListAsync())
+                {
+                    clientFolders.Add(client.Directory ?? "");
+                    clientFolders.Add(client.BlackholeFolder ?? "");
+                    clientFolders.Add(client.WatchFolder ?? "");
+                    categoryNames.Add(client.Category ?? "");
+                    categoryNames.Add(client.PostImportCategory ?? "");
+                    if (!string.IsNullOrWhiteSpace(client.Directory))
+                    {
+                        if (!string.IsNullOrWhiteSpace(client.Category))
+                            clientFolders.Add(Path.Combine(client.Directory, client.Category));
+                        if (!string.IsNullOrWhiteSpace(client.PostImportCategory))
+                            clientFolders.Add(Path.Combine(client.Directory, client.PostImportCategory));
+                    }
+                }
+            }
 
-            if (!LeftoverFolderPolicy.MayRemove(folder, rootFolders, out var full) || full == null)
+            if (!LeftoverFolderPolicy.IsSafeTarget(folder, rootFolders, clientFolders, categoryNames, out var full) || full == null)
             {
                 _logger.LogDebug("[Enhanced Download Monitor] Leaving the leftover folder alone for {Title}: {Folder}", title, folder);
                 return;
             }
 
-            // Recursive only clears empty subdirectories; the policy above
-            // proved there is nothing else left.
             Directory.Delete(full, recursive: true);
-            _logger.LogInformation("[Enhanced Download Monitor] Removed the empty folder left behind for {Title}: {Folder}", title, full);
+            _logger.LogInformation("[Enhanced Download Monitor] Removed the leftover download folder for {Title}: {Folder}", title, full);
         }
         catch (Exception ex)
         {
@@ -809,11 +829,30 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     var statusForPath = await downloadClientService.GetDownloadStatusAsync(
                         download.DownloadClient, download.DownloadId, download.GrabCategory);
                     completedFolder = statusForPath?.SavePath;
+
+                    // The client reports its own view of the path. Behind a
+                    // remote path mapping the local view differs, and only a
+                    // local path can be resolved and removed.
+                    if (!string.IsNullOrWhiteSpace(completedFolder))
+                    {
+                        using var mapScope = _serviceProvider.CreateScope();
+                        var pathMapping = mapScope.ServiceProvider.GetRequiredService<IRemotePathMappingService>();
+                        completedFolder = await pathMapping.RemapRemoteToLocalAsync(
+                            download.DownloadClient.Host, completedFolder);
+                    }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogDebug(ex, "[Enhanced Download Monitor] Could not read the completed path for {Title}", download.Title);
                 }
+
+                // SABnzbd reports a single-file job as the file itself, which
+                // the move-mode import has already taken away. Resolve to the
+                // job folder that owns it now, while the directory still
+                // exists. The removal below can delete the directory, and a
+                // path that stopped existing reads as a vanished file, whose
+                // parent would then be judged in its place.
+                completedFolder = LeftoverFolderPolicy.ResolveOwnedFolder(completedFolder, download.Title);
 
                 try
                 {
@@ -826,9 +865,13 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     // cleaned up is the question every "empty folders left
                     // behind" support thread turns on, and at Debug the
                     // default log couldn't answer it in either direction.
-                    _logger.LogInformation("[Enhanced Download Monitor] Removed completed download and its files from client: {Title}", download.Title);
+                    // SABnzbd only deletes files for FAILED history entries;
+                    // del_files on a completed job removes the history row
+                    // and nothing else. The folder tidy-up below is what
+                    // actually cleans the disk for usenet.
+                    _logger.LogInformation("[Enhanced Download Monitor] Removed completed download from client: {Title}", download.Title);
 
-                    await TryRemoveEmptyCompletedFolderAsync(completedFolder, download.Title, db);
+                    await TryRemoveCompletedFolderAsync(completedFolder, download.Title, db);
                 }
                 catch (Exception ex)
                 {

@@ -24,6 +24,8 @@ Each download client has a **Post-Import Mode** controlling how files reach your
 
 If you manage seeding manually and never want Sportarr to move files out of your download folder, set the client's Post-Import Mode to **Hardlink**.
 
+With **Remove Completed Downloads** enabled on a client, a move import finishes by removing the job from the client and deleting the job's leftover folder, including nfo, sample, and archive leftovers, so nothing of the release stays behind in the download directory. With the setting off, Sportarr leaves the client's jobs and folders completely alone.
+
 ## Per-indexer client assignment
 
 Under an indexer's advanced settings you can pin a specific download client, so grabs from that indexer always go to that client regardless of priority order. Useful when one tracker should hit a dedicated seedbox client.

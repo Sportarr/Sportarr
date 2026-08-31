@@ -1054,6 +1054,48 @@ public class LibraryImportService
         return destinationPath;
     }
 
+    private async Task SweepEmptiedSourceFolderAsync(string movedSource)
+    {
+        try
+        {
+            var candidate = LeftoverFolderPolicy.ResolveOwnedFolder(
+                movedSource, Path.GetFileNameWithoutExtension(movedSource));
+            if (candidate == null)
+                return;
+
+            var rootFolders = await _db.RootFolders.Select(r => r.Path).ToListAsync();
+            var clients = await _db.DownloadClients
+                .Select(c => new { c.Directory, c.BlackholeFolder, c.WatchFolder })
+                .ToListAsync();
+
+            var protectedPaths = new List<string>(rootFolders);
+            foreach (var client in clients)
+            {
+                protectedPaths.Add(client.Directory ?? "");
+                protectedPaths.Add(client.BlackholeFolder ?? "");
+                protectedPaths.Add(client.WatchFolder ?? "");
+            }
+
+            // A library import's source is whatever folder the user chose, so
+            // unlike a download client's own directory there is no telling
+            // leftover release metadata from someone's notes sitting beside
+            // an archived video. Only a folder holding nothing at all is
+            // removed here; the metadata-tolerant sweep is reserved for
+            // paths a download client reported.
+            if (!LeftoverFolderPolicy.MayRemove(candidate, protectedPaths, out var full) || full == null)
+            {
+                return;
+            }
+
+            Directory.Delete(full, recursive: true);
+            _logger.LogInformation("[Transfer] Removed the emptied source folder: {Folder}", full);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Transfer] Leftover folder sweep failed for: {Path}", movedSource);
+        }
+    }
+
     /// <summary>
     /// Resolve the root folder a league's media should be written into.
     /// Prefers the explicit binding stored on the league, falls back to
@@ -1158,6 +1200,16 @@ public class LibraryImportService
         {
             File.Move(source, destination, overwrite: false);
             _logger.LogInformation("[Transfer] File moved: {Source} -> {Destination}", source, destination);
+
+            // The move empties the release's own folder and nothing else ever
+            // looked back at it, so a bulk import from a download directory
+            // left one dead folder per release behind. The sweep considers
+            // the parent only when it is named after this file's release, so
+            // the folder the user pointed the import at, a category folder,
+            // or any shared directory can never match. The sweeper's own
+            // guards then refuse anything holding video, a protected path,
+            // or more than metadata.
+            await SweepEmptiedSourceFolderAsync(source);
             return;
         }
 
@@ -1216,6 +1268,7 @@ public class LibraryImportService
                     _logger.LogInformation("[Transfer] CopyFiles=false, falling back to MOVE instead of copy");
                     File.Move(source, destination, overwrite: false);
                     _logger.LogInformation("[Transfer] File moved (hardlink fallback): {Source} -> {Destination}", source, destination);
+                    await SweepEmptiedSourceFolderAsync(source);
                     return;
                 }
                 else
