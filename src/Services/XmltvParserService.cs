@@ -45,86 +45,252 @@ public class XmltvParserService
     }
 
     /// <summary>
-    /// Parse XMLTV content from a URL
+    /// How many parsed elements are handed to a callback at a time. Small
+    /// enough that a batch is a few hundred kilobytes, large enough that a
+    /// two-hundred-thousand-programme guide is a hundred saves, not two
+    /// hundred thousand.
     /// </summary>
-    public async Task<XmltvParseResult> ParseFromUrlAsync(string url, int epgSourceId, CancellationToken cancellationToken = default)
+    public const int StreamBatchSize = 2000;
+
+    /// <summary>
+    /// Ceiling on what a guide may expand to. The whole-buffer path bounded
+    /// only the compressed download, so a small archive that opened into
+    /// gigabytes went straight past its limit and was then held in memory
+    /// several times over.
+    /// </summary>
+    private const long MaxDecompressedBytes = 512L * 1024 * 1024;
+
+    /// <summary>
+    /// Ceiling on the download itself, matching the bound the whole-buffer
+    /// path applied to the fetched bytes.
+    /// </summary>
+    private const long MaxDownloadBytes = 128L * 1024 * 1024;
+
+    private static readonly TimeSpan DownloadDeadline = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Download a guide to a temporary file and report where it landed.
+    ///
+    /// The download happens before the caller opens its replace transaction,
+    /// because on SQLite that transaction holds the write lock. Parsing off
+    /// the wire inside it meant one slow provider blocked every unrelated
+    /// write for as long as the download took. The copy is asynchronous and
+    /// carries a deadline, so a provider that sends headers and then stalls
+    /// is cut off rather than holding the sync forever, which is what a
+    /// blocking read could do.
+    /// </summary>
+    public async Task<XmltvSpool> SpoolFromUrlAsync(string url, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("[XMLTV Parser] Fetching EPG from URL: {Url}", url);
 
+        var path = Path.Combine(Path.GetTempPath(), $"sportarr-epg-{Guid.NewGuid():N}.spool");
+
         try
         {
-            using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(DownloadDeadline);
+
+            using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             response.EnsureSuccessStatusCode();
 
-            // A big guide over a slow line is legitimate, so the read gets
-            // the same five minutes the client itself is allowed.
-            var bytes = await Sportarr.Api.Helpers.BoundedHttpContent.ReadAsByteArrayAsync(
-                response.Content, "The EPG guide", ct: cancellationToken,
-                readTimeout: TimeSpan.FromMinutes(5));
-            var content = DecodeEpgContent(bytes, url, response.Content.Headers.ContentType?.CharSet);
-
-            return ParseContent(content, epgSourceId);
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "[XMLTV Parser] Failed to fetch EPG from URL: {Url}", url);
-            return new XmltvParseResult
+            await using var body = await response.Content.ReadAsStreamAsync(deadline.Token);
+            await using (var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
             {
-                Success = false,
-                Error = $"Failed to fetch EPG: {ex.Message}"
+                var buffer = new byte[81920];
+                long total = 0;
+                int read;
+                while ((read = await body.ReadAsync(buffer, deadline.Token)) > 0)
+                {
+                    total += read;
+                    if (total > MaxDownloadBytes)
+                    {
+                        throw new InvalidDataException($"The EPG guide is larger than the {MaxDownloadBytes / (1024 * 1024)} MB download limit.");
+                    }
+
+                    await file.WriteAsync(buffer.AsMemory(0, read), deadline.Token);
+                }
+            }
+
+            return new XmltvSpool
+            {
+                Success = true,
+                FilePath = path,
+                CharSet = response.Content.Headers.ContentType?.CharSet
             };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutdown or a user cancel propagates, but the partial file it
+            // interrupted does not get to stay behind in the temp directory.
+            TryDelete(path);
+            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[XMLTV Parser] Error parsing EPG from URL: {Url}", url);
-            return new XmltvParseResult
+            TryDelete(path);
+
+            // Both the client's own timeout and the spool deadline land here,
+            // so the message names neither number; whichever fired, the
+            // download took too long.
+            var reason = ex is OperationCanceledException
+                ? "The EPG guide download timed out before it completed."
+                : ex.Message;
+            _logger.LogError(ex, "[XMLTV Parser] Failed to fetch EPG from URL: {Url}", url);
+            return new XmltvSpool { Success = false, Error = $"Failed to fetch EPG: {reason}" };
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); } catch { /* best effort */ }
+    }
+
+    /// <summary>
+    /// The streaming core, separated from HTTP so a test can feed it any
+    /// stream. Gzip is still detected by the magic bytes as well as the URL
+    /// suffix, because providers serve gzip without saying so.
+    /// </summary>
+    public async Task<XmltvStreamResult> StreamParseAsync(
+        Stream source,
+        int epgSourceId,
+        string url,
+        string? charSet,
+        Func<IReadOnlyList<XmltvChannel>, Task> onChannels,
+        Func<IReadOnlyList<EpgProgram>, Task> onPrograms,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new XmltvStreamResult();
+
+        try
+        {
+            var head = new byte[2];
+            var headRead = 0;
+            while (headRead < 2)
             {
-                Success = false,
-                Error = $"Error parsing EPG: {ex.Message}"
-            };
+                var n = await source.ReadAsync(head.AsMemory(headRead, 2 - headRead), cancellationToken);
+                if (n == 0) break;
+                headRead += n;
+            }
+
+            var isGzip = (headRead == 2 && head[0] == 0x1F && head[1] == 0x8B)
+                || url.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
+
+            Stream stream = new Helpers.EpgStreamGuards.PushbackStream(head, headRead, source);
+            if (isGzip)
+            {
+                stream = new System.IO.Compression.GZipStream(stream, System.IO.Compression.CompressionMode.Decompress);
+            }
+
+            stream = new Helpers.EpgStreamGuards.GuardedReadStream(stream, MaxDecompressedBytes, "The EPG guide");
+
+            using var reader = CreateReader(stream, charSet);
+
+            var channels = new List<XmltvChannel>(StreamBatchSize);
+            var programs = new List<EpgProgram>(StreamBatchSize);
+
+            reader.MoveToContent();
+            if (reader.NodeType != System.Xml.XmlNodeType.Element || reader.Name != "tv")
+            {
+                result.Success = false;
+                result.Error = "Invalid XMLTV: Missing <tv> root element";
+                return result;
+            }
+            reader.Read();
+
+            // XNode.ReadFrom and Skip both leave the reader on the node that
+            // follows, so the loop advances itself only when neither ran. An
+            // unconditional Read here skipped the sibling after every parsed
+            // element, which is every second entry of the guide.
+            while (!reader.EOF)
+            {
+                if (reader.NodeType != System.Xml.XmlNodeType.Element || reader.Depth != 1)
+                {
+                    if (!reader.Read()) break;
+                    continue;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (reader.Name == "channel")
+                {
+                    var channel = ParseChannel((XElement)XNode.ReadFrom(reader));
+                    if (channel != null)
+                    {
+                        channels.Add(channel);
+                        result.ChannelCount++;
+
+                        if (channels.Count >= StreamBatchSize)
+                        {
+                            await onChannels(channels);
+                            channels.Clear();
+                        }
+                    }
+                }
+                else if (reader.Name == "programme")
+                {
+                    var program = ParseProgram((XElement)XNode.ReadFrom(reader), epgSourceId);
+                    if (program != null)
+                    {
+                        programs.Add(program);
+                        result.ProgramCount++;
+
+                        if (programs.Count >= StreamBatchSize)
+                        {
+                            await onPrograms(programs);
+                            programs.Clear();
+                        }
+                    }
+                }
+                else
+                {
+                    reader.Skip();
+                }
+            }
+
+            if (channels.Count > 0) await onChannels(channels);
+            if (programs.Count > 0) await onPrograms(programs);
+
+            _logger.LogInformation("[XMLTV Parser] Parsed {ChannelCount} channels and {ProgramCount} programs",
+                result.ChannelCount, result.ProgramCount);
+
+            result.Success = true;
+            return result;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "[XMLTV Parser] Error parsing XMLTV stream");
+            result.Success = false;
+            result.Error = $"Error parsing XMLTV: {ex.Message}";
+            return result;
         }
     }
 
     /// <summary>
-    /// Decode fetched EPG bytes to text, decompressing gzip content. Gzip is
-    /// detected by the magic bytes (0x1F 0x8B) as well as a .gz URL suffix, so
-    /// providers that serve gzip without a .gz extension are decompressed instead
-    /// of parsed as raw bytes (which failed with "0x1F is an invalid character").
-    /// Non-gzip content is decoded with the response charset, falling back to UTF-8.
+    /// Precedence is unchanged from the whole-buffer path: a byte order mark
+    /// wins, then the HTTP charset, then the declaration inside the document,
+    /// then UTF-8. The reader handles the mark and the declaration natively;
+    /// the HTTP charset is applied through a StreamReader, whose own mark
+    /// detection keeps the mark on top.
     /// </summary>
-    public static string DecodeEpgContent(byte[] bytes, string url, string? charSet)
+    private static System.Xml.XmlReader CreateReader(Stream stream, string? charSet)
     {
-        var isGzip = (bytes.Length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B)
-            || url.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
+        // The legacy code pages are not built in on .NET 8, and European
+        // guides declare them constantly. Idempotent.
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 
-        var raw = bytes;
-        if (isGzip)
+        var settings = new System.Xml.XmlReaderSettings
         {
-            using var compressedStream = new System.IO.MemoryStream(bytes);
-            using var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionMode.Decompress);
-            using var decompressed = new System.IO.MemoryStream();
-            gzipStream.CopyTo(decompressed);
-            raw = decompressed.ToArray();
-        }
+            DtdProcessing = System.Xml.DtdProcessing.Ignore,
+            IgnoreComments = true,
+            IgnoreProcessingInstructions = true,
+            IgnoreWhitespace = true,
+            CloseInput = true
+        };
 
-        // A byte order mark settles it outright.
-        if (raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF)
-            return System.Text.Encoding.UTF8.GetString(raw, 3, raw.Length - 3);
-        if (raw.Length >= 2 && raw[0] == 0xFF && raw[1] == 0xFE)
-            return System.Text.Encoding.Unicode.GetString(raw, 2, raw.Length - 2);
-        if (raw.Length >= 2 && raw[0] == 0xFE && raw[1] == 0xFF)
-            return System.Text.Encoding.BigEndianUnicode.GetString(raw, 2, raw.Length - 2);
-
-        // Then the HTTP charset, then the declaration inside the document.
-        //
-        // The gzip branch used to hand the stream to a reader with no encoding
-        // at all, and the plain branch ignored the declaration entirely. Guides
-        // that say ISO-8859-1, which is most of the European ones and few of
-        // them send a charset header, came out with every accented channel
-        // name, title and description mangled, and team and event matching
-        // then had nothing to match against.
-        var encoding = ResolveEncoding(charSet) ?? SniffDeclaredEncoding(raw) ?? System.Text.Encoding.UTF8;
-        return encoding.GetString(raw);
+        var encoding = ResolveEncoding(charSet);
+        return encoding == null
+            ? System.Xml.XmlReader.Create(stream, settings)
+            : System.Xml.XmlReader.Create(new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true), settings);
     }
 
     private static System.Text.Encoding? ResolveEncoding(string? name)
@@ -142,88 +308,6 @@ public class XmltvParserService
         {
             return null;
         }
-    }
-
-    /// <summary>
-    /// Read the encoding out of the XML declaration at the head of a document.
-    /// The declaration is ASCII by definition, so the first bytes can be read
-    /// as ASCII whatever the rest of the file turns out to be.
-    /// </summary>
-    private static readonly System.Text.RegularExpressions.Regex XmlDeclarationEncoding = new(
-        @"<\?xml[^>]*?encoding\s*=\s*[""']([^""']+)[""']",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase,
-        TimeSpan.FromMilliseconds(250));
-
-    private static System.Text.Encoding? SniffDeclaredEncoding(byte[] raw)
-    {
-        try
-        {
-            var head = System.Text.Encoding.ASCII.GetString(raw, 0, Math.Min(raw.Length, 256));
-            var match = XmlDeclarationEncoding.Match(head);
-            return match.Success ? ResolveEncoding(match.Groups[1].Value) : null;
-        }
-        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Parse XMLTV content string
-    /// </summary>
-    public XmltvParseResult ParseContent(string xmlContent, int epgSourceId)
-    {
-        var result = new XmltvParseResult();
-
-        try
-        {
-            _logger.LogDebug("[XMLTV Parser] Parsing XMLTV content ({Length} bytes)", xmlContent.Length);
-
-            var doc = XDocument.Parse(xmlContent);
-            var tv = doc.Element("tv");
-
-            if (tv == null)
-            {
-                result.Success = false;
-                result.Error = "Invalid XMLTV: Missing <tv> root element";
-                return result;
-            }
-
-            // Parse channels
-            foreach (var channelElement in tv.Elements("channel"))
-            {
-                var channel = ParseChannel(channelElement);
-                if (channel != null)
-                {
-                    result.Channels.Add(channel);
-                }
-            }
-
-            _logger.LogDebug("[XMLTV Parser] Parsed {Count} channels", result.Channels.Count);
-
-            // Parse programs
-            foreach (var programElement in tv.Elements("programme"))
-            {
-                var program = ParseProgram(programElement, epgSourceId);
-                if (program != null)
-                {
-                    result.Programs.Add(program);
-                }
-            }
-
-            _logger.LogInformation("[XMLTV Parser] Parsed {ChannelCount} channels and {ProgramCount} programs",
-                result.Channels.Count, result.Programs.Count);
-
-            result.Success = true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[XMLTV Parser] Error parsing XMLTV content");
-            result.Success = false;
-            result.Error = $"Error parsing XMLTV: {ex.Message}";
-        }
-
-        return result;
     }
 
     private XmltvChannel? ParseChannel(XElement element)
@@ -400,14 +484,33 @@ public class XmltvParserService
 }
 
 /// <summary>
-/// Result of parsing an XMLTV file
+/// Where a downloaded guide landed on disk. The caller parses it from here
+/// inside its own transaction and deletes it afterwards.
 /// </summary>
-public class XmltvParseResult
+public class XmltvSpool
 {
     public bool Success { get; set; }
     public string? Error { get; set; }
-    public List<XmltvChannel> Channels { get; set; } = new();
-    public List<EpgProgram> Programs { get; set; } = new();
+    public string? FilePath { get; set; }
+    public string? CharSet { get; set; }
+
+    public void Delete()
+    {
+        if (FilePath == null) return;
+        try { File.Delete(FilePath); } catch { /* best effort */ }
+    }
+}
+
+/// <summary>
+/// Outcome of streaming an XMLTV file. The elements themselves went to the
+/// callbacks; only the counts and the verdict come back.
+/// </summary>
+public class XmltvStreamResult
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public int ChannelCount { get; set; }
+    public int ProgramCount { get; set; }
 }
 
 /// <summary>

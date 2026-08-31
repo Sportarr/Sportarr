@@ -167,29 +167,27 @@ public class EpgService
         }
 
         _logger.LogInformation("[EPG] Syncing EPG source: {Id} ({Name})", source.Id, source.Name);
+        var sourceUrl = source.Url;
+
+        // The download happens before the transaction opens. On SQLite the
+        // replace transaction holds the write lock, and a slow provider
+        // inside it blocked every unrelated write for the whole download.
+        var spool = await _xmltvParser.SpoolFromUrlAsync(sourceUrl, cancellationToken);
+        if (!spool.Success)
+        {
+            await RecordSyncErrorAsync(sourceId, spool.Error);
+            return new EpgSyncResult { Success = false, Error = spool.Error };
+        }
 
         try
         {
-            var parseResult = await _xmltvParser.ParseFromUrlAsync(source.Url, source.Id, cancellationToken);
-
-            if (!parseResult.Success)
-            {
-                source.LastError = parseResult.Error;
-                await _db.SaveChangesAsync();
-
-                return new EpgSyncResult
-                {
-                    Success = false,
-                    Error = parseResult.Error
-                };
-            }
-
             // Replace the old guide inside a transaction. ExecuteDelete runs
             // straight away, so without one a failed insert below left the
             // deletes committed and the source holding no channels and no
-            // future programs at all. The catch already knows this save can
-            // fail, and the guide going empty stops EPG matching and every
-            // recording that depends on it until a later sync succeeds.
+            // future programs at all. The guide going empty stops EPG
+            // matching and every recording that depends on it until a later
+            // sync succeeds. The guide is already on local disk, so the
+            // transaction only spans the parse and the inserts.
             await using var syncTransaction = await _db.Database.BeginTransactionAsync(cancellationToken);
 
             var now = DateTime.UtcNow;
@@ -200,35 +198,74 @@ public class EpgService
                 .Where(p => p.EpgSourceId == sourceId && p.EndTime > now)
                 .ExecuteDeleteAsync(cancellationToken);
 
-            // Add EPG channels
-            var epgChannels = parseResult.Channels.Select(c => new EpgChannel
+            // The guide is parsed as it downloads and saved a batch at a
+            // time, with the tracker cleared after each save. The old path
+            // held every row of the guide tracked at once, which for a large
+            // provider was the biggest single allocation in the app. Nothing
+            // is left tracked from here on, the source row included; it is
+            // read back fresh once the outcome is known.
+            _db.ChangeTracker.Clear();
+
+            var channelCount = 0;
+            var programCount = 0;
+
+            await using var spoolFile = new FileStream(
+                spool.FilePath!, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: false);
+
+            var streamResult = await _xmltvParser.StreamParseAsync(
+                spoolFile, sourceId, sourceUrl, spool.CharSet,
+                onChannels: async batch =>
+                {
+                    _db.EpgChannels.AddRange(batch.Select(c => new EpgChannel
+                    {
+                        EpgSourceId = sourceId,
+                        ChannelId = c.Id,
+                        DisplayName = c.DisplayName,
+                        NormalizedName = c.NormalizedName,
+                        IconUrl = c.IconUrl
+                    }));
+                    await _db.SaveChangesAsync(cancellationToken);
+                    _db.ChangeTracker.Clear();
+                    channelCount += batch.Count;
+                },
+                onPrograms: async batch =>
+                {
+                    // Only future programs are kept, matching the delete above.
+                    var future = batch.Where(p => p.EndTime > now).ToList();
+                    programCount += future.Count;
+                    if (future.Count == 0) return;
+
+                    _db.EpgPrograms.AddRange(future);
+                    await _db.SaveChangesAsync(cancellationToken);
+                    _db.ChangeTracker.Clear();
+                },
+                cancellationToken);
+
+            if (!streamResult.Success)
             {
-                EpgSourceId = sourceId,
-                ChannelId = c.Id,
-                DisplayName = c.DisplayName,
-                NormalizedName = c.NormalizedName,
-                IconUrl = c.IconUrl
-            }).ToList();
+                // Nothing was committed, so the old guide is intact.
+                await syncTransaction.RollbackAsync(cancellationToken);
+                _db.ChangeTracker.Clear();
+                await RecordSyncErrorAsync(sourceId, streamResult.Error);
 
-            _db.EpgChannels.AddRange(epgChannels);
+                return new EpgSyncResult
+                {
+                    Success = false,
+                    Error = streamResult.Error
+                };
+            }
 
-            // Add new programs (only future programs)
-            var futurePrograms = parseResult.Programs
-                .Where(p => p.EndTime > now)
-                .ToList();
-
-            _db.EpgPrograms.AddRange(futurePrograms);
-
-            // Update source metadata
-            source.LastUpdated = DateTime.UtcNow;
-            source.LastError = null;
-            source.ProgramCount = futurePrograms.Count;
-
+            // Stamp the source inside the same transaction, on a fresh read,
+            // because the batching cleared the tracked copy.
+            var syncedSource = await _db.EpgSources.FirstAsync(s => s.Id == sourceId, cancellationToken);
+            syncedSource.LastUpdated = DateTime.UtcNow;
+            syncedSource.LastError = null;
+            syncedSource.ProgramCount = programCount;
             await _db.SaveChangesAsync(cancellationToken);
             await syncTransaction.CommitAsync(cancellationToken);
 
             _logger.LogInformation("[EPG] Synced {ChannelCount} channels and {ProgramCount} programs for source {Id}",
-                epgChannels.Count, futurePrograms.Count, source.Id);
+                channelCount, programCount, sourceId);
 
             // Auto-map IPTV channels to EPG channels
             var mappedCount = await AutoMapChannelsAsync(sourceId);
@@ -237,45 +274,47 @@ public class EpgService
             return new EpgSyncResult
             {
                 Success = true,
-                ChannelCount = parseResult.Channels.Count,
-                ProgramCount = futurePrograms.Count,
+                ChannelCount = channelCount,
+                ProgramCount = programCount,
                 MappedChannelCount = mappedCount
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[EPG] Failed to sync EPG source: {Id}", source.Id);
+            _logger.LogError(ex, "[EPG] Failed to sync EPG source: {Id}", sourceId);
 
-            // The failed SaveChangesAsync above (e.g. issue #221's Postgres
-            // varchar overflow) leaves every newly-added EpgChannel/
-            // EpgProgram still tracked in the Added state. Saving again
-            // without clearing them just retries the same failed insert and
-            // throws again, so source.LastError never actually persists.
-            // Detach everything added-but-unsaved; source itself was
-            // already tracked as Unchanged/Modified, not Added, so it's
-            // unaffected and the LastError update still goes through.
-            foreach (var entry in _db.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).ToList())
-            {
-                entry.State = EntityState.Detached;
-            }
-
-            // The stamps written inside the transaction are still on the
-            // tracked entity even though the transaction rolled back, so
-            // saving the error alone persisted a fresh LastUpdated and the
-            // count of programs that never landed. The sources page then
-            // showed a healthy, freshly synced source over stale data.
-            var sourceEntry = _db.Entry(source);
-            sourceEntry.Property(s => s.LastUpdated).CurrentValue = sourceEntry.Property(s => s.LastUpdated).OriginalValue;
-            sourceEntry.Property(s => s.ProgramCount).CurrentValue = sourceEntry.Property(s => s.ProgramCount).OriginalValue;
-
-            source.LastError = ex.Message;
-            await _db.SaveChangesAsync();
+            // The transaction never committed, so the database still holds
+            // the old guide and the old stamps. Forget everything tracked and
+            // record the failure on a fresh read, so the sources page shows
+            // the error over data that is genuinely still there.
+            _db.ChangeTracker.Clear();
+            await RecordSyncErrorAsync(sourceId, ex.Message);
 
             return new EpgSyncResult
             {
                 Success = false,
                 Error = ex.Message
             };
+        }
+        finally
+        {
+            spool.Delete();
+        }
+    }
+
+    private async Task RecordSyncErrorAsync(int sourceId, string? error)
+    {
+        try
+        {
+            var source = await _db.EpgSources.FirstOrDefaultAsync(s => s.Id == sourceId);
+            if (source == null) return;
+
+            source.LastError = string.IsNullOrWhiteSpace(error) ? "EPG sync failed" : error;
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[EPG] Could not record the sync error for source {Id}", sourceId);
         }
     }
 
