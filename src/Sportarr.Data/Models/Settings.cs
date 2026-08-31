@@ -89,7 +89,12 @@ public class AppSettings
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public int DownloadMonitorPollSeconds { get; set; } = 30;
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public int DiskScanIntervalMinutes { get; set; } = 60;
+    // Twelve hours, not one. The scan walks every directory of every root
+    // folder and stats every tracked file, so an hourly default meant
+    // library drives were woken forever and never reached their spin-down
+    // timers. The file watcher reports changes as they happen; this walk is
+    // the safety net behind it. A stored setting keeps whatever it says.
+    public int DiskScanIntervalMinutes { get; set; } = 720;
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public int IndexerHttpTimeoutSeconds { get; set; } = 30;
 

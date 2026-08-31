@@ -181,13 +181,23 @@ public class Config
     public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags (Freeleech, Scene, etc.)
 
     /// <summary>
-    /// Minutes between full disk scan passes (DiskScanService). Default 60
-    /// (hourly). Widen this for slow network storage (NFS/SMB) with many
-    /// root folders, where a full library walk every hour is unnecessary
-    /// churn. A manual scan can still be triggered on demand regardless of
-    /// this interval.
+    /// Minutes between full disk scan passes (DiskScanService). Default 720
+    /// (twice a day). The file watcher reports changes as they happen; this
+    /// walk is the safety net behind it, and at an hourly default it kept
+    /// library drives awake around the clock. Lower it on network storage
+    /// (NFS/SMB) where change events from other machines never arrive. A
+    /// manual scan can still be triggered on demand regardless.
     /// </summary>
-    public int DiskScanIntervalMinutes { get; set; } = 60;
+    public int DiskScanIntervalMinutes { get; set; } = 720;
+
+    /// <summary>
+    /// One-time settings upgrades already applied to this config file. Kept
+    /// at zero by the initializer on purpose: XmlSerializer only overwrites
+    /// properties the file contains, so a config written before this field
+    /// existed reads back as level zero and receives the upgrades once. A
+    /// value the user changes after an upgrade is theirs and stays.
+    /// </summary>
+    public int SettingsUpgradeLevel { get; set; }
 
     /// <summary>
     /// RETIRED: event retention moved to League.RetentionDays (per-league).

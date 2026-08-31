@@ -183,7 +183,7 @@ public class HealthCheckService
         {
             try
             {
-                var (canConnect, errorMessage) = await _downloadClientService.TestConnectionAsync(client);
+                var (canConnect, errorMessage) = await _downloadClientService.TestConnectionAsync(client, writeProbe: false);
                 if (!canConnect)
                 {
                     results.Add(new HealthCheckResult

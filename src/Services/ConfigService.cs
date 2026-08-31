@@ -45,9 +45,16 @@ public class ConfigService : IConfigService
             if (File.Exists(_configPath))
             {
                 _logger.LogInformation("[CONFIG] Loading config.xml from: {Path}", _configPath);
-                using var stream = File.OpenRead(_configPath);
-                _cachedConfig = (_serializer.Deserialize(stream) as Config) ?? new Config();
+                using (var stream = File.OpenRead(_configPath))
+                {
+                    _cachedConfig = (_serializer.Deserialize(stream) as Config) ?? new Config();
+                }
                 _logger.LogInformation("[CONFIG] Configuration loaded successfully");
+
+                if (ApplyOneTimeUpgrades(_cachedConfig))
+                {
+                    await SaveConfigInternalAsync(_cachedConfig);
+                }
             }
             else if (File.Exists(_configPath + ".backup"))
             {
@@ -60,14 +67,22 @@ public class ConfigService : IConfigService
                 _logger.LogWarning("[CONFIG] config.xml is missing but a backup copy is present; restoring it rather than starting fresh");
                 File.Copy(_configPath + ".backup", _configPath);
 
-                using var backupStream = File.OpenRead(_configPath);
-                _cachedConfig = (_serializer.Deserialize(backupStream) as Config) ?? new Config();
+                using (var backupStream = File.OpenRead(_configPath))
+                {
+                    _cachedConfig = (_serializer.Deserialize(backupStream) as Config) ?? new Config();
+                }
                 _logger.LogInformation("[CONFIG] Configuration restored from the backup copy");
+
+                if (ApplyOneTimeUpgrades(_cachedConfig))
+                {
+                    await SaveConfigInternalAsync(_cachedConfig);
+                }
             }
             else
             {
                 _logger.LogInformation("[CONFIG] No config.xml found, creating default configuration");
                 _cachedConfig = new Config();
+                ApplyOneTimeUpgrades(_cachedConfig);
                 await SaveConfigInternalAsync(_cachedConfig);
             }
 
@@ -116,6 +131,39 @@ public class ConfigService : IConfigService
     /// <summary>
     /// Internal save method (assumes lock is already held)
     /// </summary>
+    private const int CurrentSettingsUpgradeLevel = 1;
+
+    /// <summary>
+    /// Upgrades applied once per config file, stamped by SettingsUpgradeLevel
+    /// so a later start never re-imposes a default the user has since
+    /// changed back.
+    /// </summary>
+    private bool ApplyOneTimeUpgrades(Config config)
+    {
+        if (config.SettingsUpgradeLevel >= CurrentSettingsUpgradeLevel)
+        {
+            return false;
+        }
+
+        if (config.SettingsUpgradeLevel < 1)
+        {
+            // The disk scan default moved from hourly to twice a day so
+            // library drives can reach their spin-down timers. Existing
+            // installs carry the old default in their config file, so the
+            // move is applied here, once.
+            if (config.DiskScanIntervalMinutes < 720)
+            {
+                _logger.LogInformation(
+                    "[CONFIG] Disk scan interval raised from {Old} to 720 minutes so idle drives can spin down; lower it under Settings > Download Clients if you prefer more frequent scans",
+                    config.DiskScanIntervalMinutes);
+                config.DiskScanIntervalMinutes = 720;
+            }
+        }
+
+        config.SettingsUpgradeLevel = CurrentSettingsUpgradeLevel;
+        return true;
+    }
+
     private Task SaveConfigInternalAsync(Config config)
     {
         _logger.LogInformation("[CONFIG] Saving config.xml to: {Path}", _configPath);

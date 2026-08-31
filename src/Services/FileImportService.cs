@@ -1627,7 +1627,7 @@ public class FileImportService : IFileImportService
             // torrents out from under their client on any transient blip.
             // Only trust "gone" when the client is provably reachable right
             // now, and even then confirm with a second lookup.
-            var (reachable, _) = await _downloadClientService.TestConnectionAsync(download.DownloadClient);
+            var (reachable, _) = await _downloadClientService.TestConnectionAsync(download.DownloadClient, writeProbe: false);
             if (!reachable)
             {
                 _logger.LogWarning("[Import] {Client} is unreachable while checking whether the download is still seeding - assuming it is, to protect seeding",

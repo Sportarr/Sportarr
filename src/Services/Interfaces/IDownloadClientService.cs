@@ -12,7 +12,7 @@ public interface IDownloadClientService
     /// Test connection to a download client
     /// </summary>
     /// <returns>Tuple of success status and message</returns>
-    Task<(bool Success, string Message)> TestConnectionAsync(DownloadClient client);
+    Task<(bool Success, string Message)> TestConnectionAsync(DownloadClient client, bool writeProbe = true);
 
     /// <summary>
     /// Add a download to the client

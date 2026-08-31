@@ -419,7 +419,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     // mean five minutes of timeouts from an overloaded client
                     // (a SABnzbd instance chewing through a big batch, say), and
                     // removing on that evidence wiped whole healthy queues.
-                    var (reachable, _) = await downloadClientService.TestConnectionAsync(download.DownloadClient);
+                    var (reachable, _) = await downloadClientService.TestConnectionAsync(download.DownloadClient, writeProbe: false);
                     if (!reachable)
                     {
                         _logger.LogWarning("[Enhanced Download Monitor] Download missing for {Count} checks but client {Client} is unreachable; deferring removal: {Title}",

@@ -13,7 +13,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DiskScanService> _logger;
-    private const int ScanIntervalMinutes = 60; // Fallback if config can't be read; normally overridden by Config.DiskScanIntervalMinutes
+    private const int ScanIntervalMinutes = 720; // Fallback if config can't be read; normally overridden by Config.DiskScanIntervalMinutes
 
     // Semaphore used as an async-friendly trigger. Initialized to 0 so the
     // first WaitAsync inside ExecuteAsync blocks until either the interval

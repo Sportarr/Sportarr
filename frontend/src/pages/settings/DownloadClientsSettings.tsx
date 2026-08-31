@@ -331,7 +331,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
           backlogSearchMaxAgeDays: data.backlogSearchMaxAgeDays ?? 365,
           autoSearchRetryBackoffMinutes: data.autoSearchRetryBackoffMinutes ?? '30,60,120,240,480',
           downloadMonitorPollSeconds: data.downloadMonitorPollSeconds ?? 30,
-          diskScanIntervalMinutes: data.diskScanIntervalMinutes ?? 60
+          diskScanIntervalMinutes: data.diskScanIntervalMinutes ?? 720
         };
 
         setEnableCompletedDownloadHandling(loadedSettings.enableCompletedDownloadHandling);
@@ -449,7 +449,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
 
   // Background service cadence knobs
   const [downloadMonitorPollSeconds, setDownloadMonitorPollSeconds] = useState(30);
-  const [diskScanIntervalMinutes, setDiskScanIntervalMinutes] = useState(60);
+  const [diskScanIntervalMinutes, setDiskScanIntervalMinutes] = useState(720);
 
   // Save state
   const [saving, setSaving] = useState(false);

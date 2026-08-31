@@ -311,7 +311,11 @@ public class DownloadClientService : IDownloadClientService
     /// <summary>
     /// Test connection to any download client type
     /// </summary>
-    public async Task<(bool Success, string Message)> TestConnectionAsync(DownloadClient config)
+    /// <param name="writeProbe">When false, a blackhole client is checked by
+    /// existence only. The recurring health check asks every fifteen minutes,
+    /// and a probe file written and deleted on that cadence is exactly what
+    /// keeps a download drive from ever spinning down.</param>
+    public async Task<(bool Success, string Message)> TestConnectionAsync(DownloadClient config, bool writeProbe = true)
     {
         try
         {
@@ -329,7 +333,7 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Decypharr => await TestDecypharrAsync(config),
                 DownloadClientType.DecypharrUsenet => await TestSabnzbdAsync(config), // Decypharr usenet uses SABnzbd API emulation
                 DownloadClientType.NZBdav => await TestSabnzbdAsync(config), // NZBdav uses SABnzbd-compatible API
-                DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => TestBlackhole(config), // throws with a specific message on failure
+                DownloadClientType.TorrentBlackhole or DownloadClientType.UsenetBlackhole => TestBlackhole(config, writeProbe), // throws with a specific message on failure
                 DownloadClientType.Aria2 => await TestAria2Async(config),
                 DownloadClientType.SynologyDownloadStation or DownloadClientType.SynologyDownloadStationUsenet => await TestSynologyDownloadStationAsync(config),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
@@ -774,13 +778,24 @@ public class DownloadClientService : IDownloadClientService
     /// drop folder writable. Throws with a specific message on failure so the
     /// test endpoint surfaces the actual problem instead of "Connection failed".
     /// </summary>
-    private bool TestBlackhole(DownloadClient config)
+    private bool TestBlackhole(DownloadClient config, bool writeProbe = true)
     {
         var label = config.Type == DownloadClientType.UsenetBlackhole ? "Nzb" : "Torrent";
         if (string.IsNullOrWhiteSpace(config.BlackholeFolder))
             throw new InvalidOperationException($"{label} Folder is not set");
         if (string.IsNullOrWhiteSpace(config.WatchFolder))
             throw new InvalidOperationException("Watch Folder is not set");
+
+        // A recurring check only confirms the folders are there. Writing is
+        // proven on the explicit Test button and by every real grab.
+        if (!writeProbe)
+        {
+            if (!Directory.Exists(config.BlackholeFolder))
+                throw new InvalidOperationException($"{label} Folder does not exist: {config.BlackholeFolder}");
+            if (!Directory.Exists(config.WatchFolder))
+                throw new InvalidOperationException($"Watch Folder does not exist: {config.WatchFolder}");
+            return true;
+        }
 
         Directory.CreateDirectory(config.BlackholeFolder);
         Directory.CreateDirectory(config.WatchFolder);

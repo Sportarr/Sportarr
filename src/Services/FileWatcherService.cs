@@ -60,14 +60,20 @@ public class FileWatcherService : BackgroundService
         }
 
         // Keep running and periodically refresh watchers (in case root folders change)
+        var refreshCount = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
+            refreshCount++;
 
-            // Refresh watchers in case root folders were added/removed
+            // Refresh watchers in case root folders were added/removed. The
+            // full sweep behind it exists for events the watchers missed, so
+            // it runs on a fraction of the refreshes; on every one, it re-read
+            // whole folder trees twice an hour and the drives underneath never
+            // rested.
             try
             {
-                await RefreshWatchersAsync(stoppingToken);
+                await RefreshWatchersAsync(stoppingToken, sweep: refreshCount % 4 == 0);
             }
             catch (Exception ex)
             {
@@ -225,7 +231,7 @@ public class FileWatcherService : BackgroundService
         }
     }
 
-    private async Task RefreshWatchersAsync(CancellationToken cancellationToken)
+    private async Task RefreshWatchersAsync(CancellationToken cancellationToken, bool sweep = true)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
@@ -259,8 +265,12 @@ public class FileWatcherService : BackgroundService
         }
 
         // Poll fallback: watcher events are best-effort on network mounts,
-        // and a watch folder has no other scan covering it.
-        SweepWatchFolders(watchFolders);
+        // and a watch folder has no other scan covering it. Only some
+        // refreshes carry it, so an idle download drive gets to rest.
+        if (sweep)
+        {
+            SweepWatchFolders(watchFolders);
+        }
     }
 
     private void OnFileCreated(object sender, FileSystemEventArgs e)
