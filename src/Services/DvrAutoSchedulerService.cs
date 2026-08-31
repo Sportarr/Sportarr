@@ -104,6 +104,7 @@ public class DvrAutoSchedulerService : BackgroundService
         // 3. Have a league assigned
         // 4. Don't already have an active/scheduled recording
         var eventsToSchedule = await db.Events
+            .AsNoTracking()
             .Include(e => e.League)
             .Where(e => e.Monitored)
             // Per-league DVR opt-out: leagues with EnableDvr off never get
@@ -271,6 +272,7 @@ public class DvrAutoSchedulerService : BackgroundService
         // Get monitored future events that don't have recordings yet
         // (including those without league-channel mappings - EPG might have them)
         var eventsWithoutRecordings = await db.Events
+            .AsNoTracking()
             .Include(e => e.League)
             .Where(e => e.Monitored)
             // Per-league DVR opt-out applies to EPG-matched scheduling too.
@@ -292,6 +294,7 @@ public class DvrAutoSchedulerService : BackgroundService
 
         // Get all IPTV channels with TvgIds (needed for EPG matching)
         var channels = await db.IptvChannels
+            .AsNoTracking()
             .Include(c => c.Source)
             .Where(c => c.IsEnabled && !string.IsNullOrEmpty(c.TvgId))
             .Where(c => c.Source != null && c.Source.IsActive)

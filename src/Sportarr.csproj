@@ -9,6 +9,14 @@
     <RootNamespace>Sportarr</RootNamespace>
     <!-- Skip frontend build in CI (CI builds frontend separately) -->
     <SkipFrontendBuild Condition="'$(SkipFrontendBuild)' == ''">false</SkipFrontendBuild>
+  
+    <!-- Server GC gives every core its own heap and delays collection to
+         favour throughput. On a many-core host with no container memory
+         limit that alone kept the resting footprint several times what the
+         app actually needs, and it buys nothing on the one or two cores a
+         small VPS has. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <!-- Restore frontend dependencies.

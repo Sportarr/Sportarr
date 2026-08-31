@@ -17,6 +17,39 @@ public class CustomFormatService
     /// </summary>
     private static readonly TimeSpan CustomFormatRegexTimeout = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// Compiled patterns, held per pattern string.
+    ///
+    /// Passing an explicit timeout to Regex opts out of the framework's own
+    /// cache, so every spec built a fresh Regex for every release. A sync with
+    /// a full guide installed runs a few hundred specs across hundreds of
+    /// releases, which came to hundreds of thousands of parses per search.
+    ///
+    /// Bounded because patterns come from user input and from guides, so the
+    /// set is not fixed. Beyond the ceiling a pattern is still matched, just
+    /// without being kept.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> PatternCache = new();
+
+    private const int MaxCachedPatterns = 1000;
+
+    private static Regex GetPatternRegex(string pattern)
+    {
+        if (PatternCache.TryGetValue(pattern, out var cached))
+        {
+            return cached;
+        }
+
+        var regex = new Regex(pattern, RegexOptions.IgnoreCase, CustomFormatRegexTimeout);
+
+        if (PatternCache.Count < MaxCachedPatterns)
+        {
+            PatternCache.TryAdd(pattern, regex);
+        }
+
+        return regex;
+    }
+
     private readonly MediaFileParser _parser;
 
     public CustomFormatService(MediaFileParser parser)
@@ -271,7 +304,7 @@ public class CustomFormatService
             // evaluated for every release of every search, and one that
             // backtracks badly held a request thread for as long as it liked.
             // Enough of them at once would take the pool with it.
-            return new Regex(pattern, RegexOptions.IgnoreCase, CustomFormatRegexTimeout).IsMatch(releaseTitle);
+            return GetPatternRegex(pattern).IsMatch(releaseTitle);
         }
         catch (RegexMatchTimeoutException)
         {
@@ -392,7 +425,7 @@ public class CustomFormatService
 
         try
         {
-            return new Regex(pattern, RegexOptions.IgnoreCase, CustomFormatRegexTimeout).IsMatch(parsed.ReleaseGroup);
+            return GetPatternRegex(pattern).IsMatch(parsed.ReleaseGroup);
         }
         catch
         {
