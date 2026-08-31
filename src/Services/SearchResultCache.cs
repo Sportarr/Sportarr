@@ -23,10 +23,47 @@ namespace Sportarr.Api.Services;
 /// - MatchScore (how well release matches specific event)
 /// - IsBlocklisted (needs fresh DB check)
 /// </summary>
-public class SearchResultCache
+public class SearchResultCache : IDisposable
 {
     private readonly ILogger<SearchResultCache> _logger;
     private readonly ConcurrentDictionary<string, CachedSearchResults> _cache = new();
+
+    /// <summary>
+    /// Gates so only the first caller for a query goes to the indexers. A
+    /// fighting event searches once per part, and the parts build the same
+    /// query because the part is not in it, so all of them missed the cache
+    /// together and each ran the whole search. The later parts wait here and
+    /// then find the answer already stored.
+    ///
+    /// The gates are a fixed set of stripes rather than one per key. A
+    /// per-key set needs pruning, and a pruner can retire a gate between a
+    /// caller's lookup and its wait, which splits one flight in two, the
+    /// exact failure this exists to stop. Two different queries can land on
+    /// the same stripe and take turns; that costs a wait, never correctness,
+    /// and with this many stripes it is rare.
+    /// </summary>
+    private readonly SemaphoreSlim[] _fillGates =
+        Enumerable.Range(0, FillGateStripes).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
+    private const int FillGateStripes = 256;
+
+    private readonly System.Threading.Timer _cleanupTimer;
+
+    /// <summary>
+    /// Hard ceiling on cached queries. A backlog sweep asks for thousands of
+    /// distinct queries, and every entry holds a full release list, so the
+    /// time limit alone let this grow to hundreds of megabytes.
+    /// </summary>
+    private const int MaxCacheEntries = 500;
+
+    private const int CleanupThreshold = 400;
+
+    /// <summary>
+    /// How long an empty answer is trusted. Long enough to absorb the parts
+    /// of one event searching together, short enough that an indexer blip
+    /// cannot hide a release for long.
+    /// </summary>
+    public const int EmptyResultLifetimeSeconds = 60;
 
     /// <summary>
     /// Represents cached raw results from indexers
@@ -161,6 +198,32 @@ public class SearchResultCache
     public SearchResultCache(ILogger<SearchResultCache> logger)
     {
         _logger = logger;
+
+        // Cleanup used to run only inside Store, so a burst of searches that
+        // then stopped left everything it had cached in memory until the next
+        // search arrived, which could be hours.
+        _cleanupTimer = new System.Threading.Timer(
+            _ => PeriodicCleanup(),
+            null,
+            TimeSpan.FromMinutes(5),
+            TimeSpan.FromMinutes(5));
+    }
+
+    private void PeriodicCleanup()
+    {
+        try
+        {
+            CleanupExpired(0);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[ReleaseCache] Periodic cleanup failed");
+        }
+    }
+
+    public void Dispose()
+    {
+        _cleanupTimer.Dispose();
     }
 
     /// <summary>
@@ -186,6 +249,34 @@ public class SearchResultCache
     }
 
     /// <summary>
+    /// Take the fill slot for one query. The caller checks the cache again
+    /// after this returns, because the caller it waited for has usually
+    /// stored the answer by then.
+    /// </summary>
+    public async Task<IDisposable> EnterFillAsync(string query, CancellationToken cancellationToken = default)
+    {
+        var key = NormalizeKey(query);
+        var gate = _fillGates[(int)((uint)key.GetHashCode() % FillGateStripes)];
+        await gate.WaitAsync(cancellationToken);
+        return new FillSlot(gate);
+    }
+
+    private sealed class FillSlot : IDisposable
+    {
+        private readonly SemaphoreSlim _gate;
+        private bool _released;
+
+        public FillSlot(SemaphoreSlim gate) => _gate = gate;
+
+        public void Dispose()
+        {
+            if (_released) return;
+            _released = true;
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
     /// Try to get cached results for a query
     /// </summary>
     /// <param name="query">The search query (e.g., "UFC.300", "NFL.2025")</param>
@@ -198,7 +289,11 @@ public class SearchResultCache
         if (_cache.TryGetValue(key, out var cached))
         {
             var age = DateTime.UtcNow - cached.CachedAt;
-            if (age.TotalSeconds <= cacheDurationSeconds)
+            // An entry is only served inside its own lifetime as well as the
+            // caller's window. An empty answer is stored with a short one,
+            // and judging it by the caller's window alone would keep serving
+            // it long after it stopped being trustworthy.
+            if (age.TotalSeconds <= Math.Min(cacheDurationSeconds, cached.LifetimeSeconds))
             {
                 _logger.LogInformation("[ReleaseCache] Cache HIT for '{Query}' - {Count} raw releases (age: {Age:F1}s)",
                     query, cached.RawReleases.Count, age.TotalSeconds);
@@ -236,23 +331,22 @@ public class SearchResultCache
         var key = NormalizeKey(query);
         var rawReleases = results.Select(RawRelease.FromSearchResult).ToList();
 
-        // Refuse to cache empty result sets. A transient indexer outage that
-        // returns 0 hits should NOT shadow real results for the entire TTL —
-        // every retry within the cache window would short-circuit to "0 results"
-        // and the user would see a stuck "no releases found" until the entry
-        // expires. Only cache successful, non-empty fetches.
-        if (rawReleases.Count == 0)
-        {
-            _logger.LogDebug("[ReleaseCache] Not caching empty result for '{Query}' (avoids negative-cache lockout)", query);
-            CleanupExpired(cacheDurationSeconds);
-            return;
-        }
+        // An empty result is cached briefly rather than not at all. Refusing
+        // it outright protected against a transient indexer outage shadowing
+        // real results for the whole TTL, but it also meant the parts of an
+        // unreleased event queued behind one empty search each ran the whole
+        // search again the moment the gate opened. A short lifetime keeps
+        // both: the burst coalesces, and an outage shadows nothing for more
+        // than a minute.
+        var lifetime = rawReleases.Count == 0
+            ? Math.Min(EmptyResultLifetimeSeconds, cacheDurationSeconds)
+            : cacheDurationSeconds;
 
         var cached = new CachedSearchResults
         {
             RawReleases = rawReleases,
             CachedAt = DateTime.UtcNow,
-            LifetimeSeconds = cacheDurationSeconds,
+            LifetimeSeconds = lifetime,
             Query = query,
             IndexersQueried = indexersQueried?.ToList() ?? new List<string>()
         };
@@ -264,6 +358,7 @@ public class SearchResultCache
 
         // Clean up old entries (simple periodic cleanup) using the configured duration
         CleanupExpired(cacheDurationSeconds);
+        EnforceCeiling();
     }
 
     /// <summary>
@@ -319,6 +414,34 @@ public class SearchResultCache
         {
             _logger.LogDebug("[ReleaseCache] Cleaned up {Count} expired cache entries", expiredKeys.Count);
         }
+    }
+
+    /// <summary>
+    /// Drop the oldest entries once the cache is over its ceiling. Age alone
+    /// cannot bound this, because a sweep can cache thousands of distinct
+    /// queries well inside one lifetime.
+    /// </summary>
+    private void EnforceCeiling()
+    {
+        // Trimming starts at the ceiling and cuts back to the threshold, so
+        // a sweep gets a hundred entries of headroom between trims. Trimming
+        // at the threshold made every insert past it sort the whole cache
+        // and evict exactly one entry.
+        if (_cache.Count <= MaxCacheEntries) return;
+
+        var overBy = _cache.Count - CleanupThreshold;
+        var oldest = _cache
+            .OrderBy(kvp => kvp.Value.CachedAt)
+            .Take(overBy)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in oldest)
+        {
+            _cache.TryRemove(key, out _);
+        }
+
+        _logger.LogDebug("[ReleaseCache] Trimmed {Count} entries to stay under {Max}", oldest.Count, MaxCacheEntries);
     }
 
     /// <summary>

@@ -323,6 +323,15 @@ public class AutomaticSearchService : IAutomaticSearchService
             // event reuses the other's merged releases.
             var cacheKey = SearchResultCache.ScopeKey(string.Join("\u001f", queries), evt.League?.Tags);
 
+            // Only one caller fills a given key. A fighting event searches
+            // once per part and the part is not in the query, so all of its
+            // parts asked for the same thing at the same moment, all missed,
+            // and each ran the whole search against every indexer. The parts
+            // behind the first one now find the answer waiting.
+            using var fillSlot = string.IsNullOrEmpty(primaryQuery)
+                ? null
+                : await _searchResultCache.EnterFillAsync(cacheKey);
+
             if (!string.IsNullOrEmpty(primaryQuery))
             {
                 var cachedResults = _searchResultCache.TryGetCached(cacheKey, config.SearchCacheDuration);
@@ -350,7 +359,10 @@ public class AutomaticSearchService : IAutomaticSearchService
             // Supplementary queries (Skip(1)) target alternative naming conventions (e.g. BILLIE-style
             // F1 location releases) that the primary query may not reach. They must run even when the
             // primary query hit the cache or returned enough results.
-            var queriesToRun = usedCache ? queries.Skip(1).ToList() : queries.ToList();
+            // What is stored is the merge of every query, so a hit already
+            // holds the supplementary results. Re-running them sent the same
+            // queries back to the indexers on every cache hit.
+            var queriesToRun = usedCache ? new List<string>() : queries.ToList();
 
             if (queriesToRun.Any())
             {
@@ -412,6 +424,13 @@ public class AutomaticSearchService : IAutomaticSearchService
                         allReleases.Count, primaryQuery);
                 }
             }
+
+            // The gate only has to cover the fetch and the store. Held past
+            // this point it would also serialise scoring, selection and the
+            // download client call, so a slow grab on one part would stall
+            // the parts waiting behind it for no reason. Disposing twice is
+            // safe, so the using declaration stays as the failure backstop.
+            fillSlot?.Dispose();
 
             if (!allReleases.Any())
             {
