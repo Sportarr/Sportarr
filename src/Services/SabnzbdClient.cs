@@ -252,6 +252,11 @@ public class SabnzbdClient
                 content.Add(new StringContent("addfile"), "mode");
                 content.Add(new StringContent("json"), "output");
                 content.Add(new StringContent(category), "cat");
+                // NZBdav and some SAB-compatible clients only honour category
+                // when it is also present in the query string and/or sent as
+                // "category" (not just SABnzbd's standard "cat").
+                if (!string.IsNullOrWhiteSpace(category))
+                    content.Add(new StringContent(category), "category");
 
                 if (!string.IsNullOrWhiteSpace(apiKey))
                     content.Add(new StringContent(apiKey), "apikey");
@@ -279,11 +284,21 @@ public class SabnzbdClient
             content.Add(fileContent, "nzbfile", filename);
 
             var requestUrl = $"{baseUrl}/api";
-            if (useQueryControlParams)
+            if (!useQueryControlParams && !string.IsNullOrWhiteSpace(category))
+            {
+                // Mirror cat in the query string without duplicating mode/output
+                // (CherryPy merges duplicated params into a list and SABnzbd
+                // crashes on it — see issues #183 and #263).
+                requestUrl += $"?cat={Uri.EscapeDataString(category)}&category={Uri.EscapeDataString(category)}";
+            }
+            else if (useQueryControlParams)
             {
                 var addFileQuery = new System.Text.StringBuilder("?mode=addfile&output=json");
                 if (!string.IsNullOrWhiteSpace(category))
+                {
                     addFileQuery.Append($"&cat={Uri.EscapeDataString(category)}");
+                    addFileQuery.Append($"&category={Uri.EscapeDataString(category)}");
+                }
                 if (!string.IsNullOrWhiteSpace(apiKey))
                     addFileQuery.Append($"&apikey={Uri.EscapeDataString(apiKey)}");
                 else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
@@ -685,7 +700,7 @@ public class SabnzbdClient
                     {
                         DownloadId = item.nzo_id,
                         Title = item.filename,
-                        Category = item.category,
+                        Category = item.CategoryName,
                         FilePath = "", // Queue items don't have a storage path yet
                         Size = (long)(sizeMb * 1024 * 1024),
                         IsCompleted = false,
@@ -702,7 +717,7 @@ public class SabnzbdClient
         if (history != null)
         {
             foreach (var item in history.Where(h =>
-                h.category.Equals(category, StringComparison.OrdinalIgnoreCase) &&
+                h.CategoryName.Equals(category, StringComparison.OrdinalIgnoreCase) &&
                 h.status.Equals("Completed", StringComparison.OrdinalIgnoreCase)))
             {
                 if (seenIds.Add(item.nzo_id))
@@ -711,7 +726,7 @@ public class SabnzbdClient
                     {
                         DownloadId = item.nzo_id,
                         Title = item.name,
-                        Category = item.category,
+                        Category = item.CategoryName,
                         FilePath = item.storage,
                         Size = item.bytes,
                         IsCompleted = true,
@@ -726,6 +741,50 @@ public class SabnzbdClient
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Find a download by release title in queue or history. Used when the
+    /// client changed or mis-filed the category (NZBdav/Decypharr quirk).
+    /// </summary>
+    public async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindDownloadByTitleAsync(
+        DownloadClient config, string title, string? expectedCategory)
+    {
+        try
+        {
+            var normalizedTitle = title.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedTitle))
+                return (null, null);
+
+            bool TitleMatches(string candidate) =>
+                !string.IsNullOrWhiteSpace(candidate) &&
+                (candidate.Equals(normalizedTitle, StringComparison.OrdinalIgnoreCase) ||
+                 candidate.StartsWith(normalizedTitle, StringComparison.OrdinalIgnoreCase) ||
+                 normalizedTitle.StartsWith(candidate, StringComparison.OrdinalIgnoreCase));
+
+            var queue = await GetQueueAsync(config);
+            var queueMatch = queue?.FirstOrDefault(q => TitleMatches(q.filename));
+            if (queueMatch != null)
+            {
+                var status = await GetDownloadStatusAsync(config, queueMatch.nzo_id, expectedCategory);
+                return status != null ? (status, queueMatch.nzo_id) : (null, null);
+            }
+
+            var history = await GetHistoryAsync(config);
+            var historyMatch = history?.FirstOrDefault(h => TitleMatches(h.name));
+            if (historyMatch != null)
+            {
+                var status = await GetDownloadStatusAsync(config, historyMatch.nzo_id, expectedCategory);
+                return status != null ? (status, historyMatch.nzo_id) : (null, null);
+            }
+
+            return (null, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SABnzbd] Error finding download by title: {Title}", title);
+            return (null, null);
+        }
     }
 
     /// <summary>
@@ -855,10 +914,20 @@ public class SabnzbdClient
                 };
             }
 
+            var queueMatchedById = queueItem != null;
             if (queueItem != null && !string.IsNullOrWhiteSpace(categoryToMatch) &&
                 !string.Equals(queueItem.CategoryName, categoryToMatch, StringComparison.OrdinalIgnoreCase))
             {
-                queueItem = null;
+                if (queueMatchedById)
+                {
+                    _logger.LogWarning(
+                        "[SABnzbd] Download {NzoId} found in queue with category '{Actual}' (expected '{Expected}'); tracking by nzo_id anyway",
+                        nzoId, queueItem.CategoryName, categoryToMatch);
+                }
+                else
+                {
+                    queueItem = null;
+                }
             }
 
             if (queueItem != null)
@@ -925,9 +994,11 @@ public class SabnzbdClient
             var historyItem = history?.FirstOrDefault(h => string.Equals(h.nzo_id, nzoId, StringComparison.OrdinalIgnoreCase));
 
             if (historyItem != null && !string.IsNullOrWhiteSpace(categoryToMatch) &&
-                !string.Equals(historyItem.category, categoryToMatch, StringComparison.OrdinalIgnoreCase))
+                !string.Equals(historyItem.CategoryName, categoryToMatch, StringComparison.OrdinalIgnoreCase))
             {
-                historyItem = null;
+                _logger.LogWarning(
+                    "[SABnzbd] Download {NzoId} found in history with category '{Actual}' (expected '{Expected}'); tracking by nzo_id anyway",
+                    nzoId, historyItem.CategoryName, categoryToMatch);
             }
 
             if (historyItem != null)
@@ -1279,6 +1350,8 @@ public class SabnzbdClient
             }
 
             var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/api";
+            if (!string.IsNullOrWhiteSpace(category))
+                baseUrl += $"?cat={Uri.EscapeDataString(category)}&category={Uri.EscapeDataString(category)}";
 
             // Build multipart form data for addfile request
             using var content = new MultipartFormDataContent();
@@ -1286,8 +1359,10 @@ public class SabnzbdClient
             // Add mode parameter
             content.Add(new StringContent("addfile"), "mode");
 
-            // Add category
+            // Add category — send both aliases for SAB-compatible clients.
             content.Add(new StringContent(category), "cat");
+            if (!string.IsNullOrWhiteSpace(category))
+                content.Add(new StringContent(category), "category");
 
             // Add output format
             content.Add(new StringContent("json"), "output");
@@ -1409,6 +1484,10 @@ public class SabnzbdClient
             // authenticate from there and reject form-only auth; real SABnzbd
             // accepts either.
             var addUrlQuery = new System.Text.StringBuilder("?mode=addurl&output=json");
+            // NZBdav reads the "category" alias from the query string; keep "cat"
+            // in the form body only so nothing is duplicated between the two.
+            if (!string.IsNullOrWhiteSpace(category))
+                addUrlQuery.Append($"&category={Uri.EscapeDataString(category)}");
             if (hasApiKey)
             {
                 addUrlQuery.Append($"&apikey={Uri.EscapeDataString(config.ApiKey!)}");
@@ -1598,8 +1677,14 @@ public class SabnzbdHistoryItem
     public string name { get; set; } = "";
     public string status { get; set; } = "";
     public long bytes { get; set; }
+    // SABnzbd history usually sends "category"; some SAB-compatible clients
+    // (including NZBdav queue snapshots) may send "cat" instead.
+    public string cat { get; set; } = "";
     public string category { get; set; } = "";
     public string storage { get; set; } = "";
     public long completed { get; set; } // Unix timestamp
     public string fail_message { get; set; } = ""; // Why it failed (if status is Failed)
+
+    [JsonIgnore]
+    public string CategoryName => !string.IsNullOrEmpty(category) ? category : cat;
 }
