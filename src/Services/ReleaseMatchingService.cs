@@ -828,6 +828,29 @@ public class ReleaseMatchingService
                     result.Rejections.Add($"Event is '{normalizedEventSession}' but release has no session indicator");
                 }
             }
+            else if (eventSession == null && releaseSession != null
+                     && EventPartDetector.GetMotorsportSessionTypes(evt.League?.Name ?? "").Count > 0)
+            {
+                // The league models its sessions as separate events (it has a
+                // session table), yet this event's title names no session: it is
+                // the round itself, titled by sponsor or circuit — "Coke Zero
+                // Sugar 400", "Freedom 250". A release that explicitly says it is
+                // practice or qualifying is therefore not this event.
+                //
+                // Without this, the mismatch check above never runs for such an
+                // event and any session of the right weekend satisfies it: an
+                // IndyCar race event imported Saturday's qualifying three minutes
+                // after the race started.
+                var normalizedReleaseSession = EventPartDetector.NormalizeMotorsportSession(releaseSession);
+                if (normalizedReleaseSession != null && !normalizedReleaseSession.StartsWith("Race", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Confidence -= 100;
+                    result.Rejections.Add($"Release is '{normalizedReleaseSession}' but the event is the round itself");
+                    result.IsHardRejection = true;
+                    _logger.LogTrace("[Release Matching] Hard rejection: release is '{ReleaseSession}' for round event '{Event}'",
+                        normalizedReleaseSession, evt.Title);
+                }
+            }
 
             // VALIDATION 6b: Motorsport round number validation
             // For motorsport events, Round 20 release should NOT match Round 22 event
