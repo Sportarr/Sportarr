@@ -280,11 +280,17 @@ public class ImportMatchingService
         }
 
         // Calculate confidence score for each match, boosting if sports parser matched
-        var scoredMatches = matches.Select(evt => new
+        var scoredMatches = matches.Select(evt =>
         {
-            Event = evt,
-            Score = CalculateMatchConfidence(eventTitle, evt.Title, detectedPart, evt, sportsResult)
-        }).OrderByDescending(m => m.Score).ToList();
+            var score = ScoreMatch(eventTitle, evt.Title, detectedPart, evt, sportsResult);
+            return new
+            {
+                Event = evt,
+                Score = Math.Min(100, score.Core + score.TieBreak),
+                score.Core,
+                score.TieBreak
+            };
+        }).OrderByDescending(m => m.Core).ThenByDescending(m => m.TieBreak).ToList();
 
         var bestMatch = scoredMatches.First();
 
@@ -362,6 +368,61 @@ public class ImportMatchingService
             {
                 if (titleMatches.Count >= 10)
                     break;
+                if (!titleMatches.Any(m => m.Id == match.Id))
+                {
+                    titleMatches.Add(match);
+                }
+            }
+        }
+
+        // Strategy 1b: the events played on the date in the name. The window
+        // pass further down keeps the ten latest events within three days,
+        // and in a league that plays fifteen games a day those all sit at
+        // the far edge of the window. The game the file names was never a
+        // candidate, so the scorer chose among the wrong ones (issue #256
+        // follow-up). A release is named with the broadcast-local date.
+        if (eventDate.HasValue)
+        {
+            var day = eventDate.Value.Date;
+            var nextDay = day.AddDays(1);
+            var previousDay = day.AddDays(-1);
+            // A row whose date is not yet verified may still hold the UTC
+            // day from a legacy backfill, one day either side of the date
+            // in the name. The scorer keeps its grace for those rows, so
+            // the search has to reach them too. Exact days come first,
+            // then the next day, which is the UTC day of a game played
+            // west of UTC.
+            var sameDayQuery = query
+                .Where(e => e.BroadcastDate == day ||
+                            (e.BroadcastDate == null && e.EventDate >= day && e.EventDate < nextDay) ||
+                            (!e.BroadcastDateVerified && (e.BroadcastDate == nextDay || e.BroadcastDate == previousDay)))
+                .OrderBy(e => e.BroadcastDate == day ? 0 : e.BroadcastDate == nextDay ? 1 : 2)
+                .ThenBy(e => e.EventDate);
+
+            // A library with several leagues can hold more events on one
+            // date than the cap, so the named league's games come first.
+            if (!string.IsNullOrEmpty(organization))
+            {
+                var leagueDayMatches = await sameDayQuery
+                    .Where(e => e.League != null && EF.Functions.Like(e.League.Name, $"%{organization}%"))
+                    .Take(40)
+                    .ToListAsync();
+
+                foreach (var match in leagueDayMatches)
+                {
+                    if (!titleMatches.Any(m => m.Id == match.Id))
+                    {
+                        titleMatches.Add(match);
+                    }
+                }
+            }
+
+            var sameDayMatches = await sameDayQuery
+                .Take(40)
+                .ToListAsync();
+
+            foreach (var match in sameDayMatches)
+            {
                 if (!titleMatches.Any(m => m.Id == match.Id))
                 {
                     titleMatches.Add(match);
@@ -458,7 +519,9 @@ public class ImportMatchingService
             }
         }
 
-        return titleMatches.Take(20).ToList();
+        // The cap bounds scoring work. It has to hold a full day of a busy
+        // league behind the title matches, or the on-date pass is cut off.
+        return titleMatches.Take(60).ToList();
     }
 
     /// <summary>
@@ -466,7 +529,23 @@ public class ImportMatchingService
     /// </summary>
     internal int CalculateMatchConfidence(string searchTitle, string eventTitle, string? detectedPart, Event evt, SportsParseResult? sportsResult = null)
     {
+        var score = ScoreMatch(searchTitle, eventTitle, detectedPart, evt, sportsResult);
+        return Math.Min(100, score.Core + score.TieBreak);
+    }
+
+    /// <summary>
+    /// Score a candidate in two parts. Core holds the evidence in the name:
+    /// title, league, sport, date, part, round and session. TieBreak holds
+    /// what the library knows about the event: recency and whether it has
+    /// a file. Candidates rank by core first, so the tie-break separates
+    /// only events the name cannot tell apart. Added into one number it
+    /// outweighed the date, and a file re-imported over an earlier mistake
+    /// landed on the next game along, the one still empty.
+    /// </summary>
+    internal ImportMatchScore ScoreMatch(string searchTitle, string eventTitle, string? detectedPart, Event evt, SportsParseResult? sportsResult = null)
+    {
         int confidence = 0;
+        int tieBreak = 0;
 
         // Normalize titles for comparison
         var normalizedSearch = NormalizeTitle(searchTitle);
@@ -477,24 +556,35 @@ public class ImportMatchingService
         // (string.Contains("") is true).
         if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
         {
-            return 0;
+            return new ImportMatchScore(0, 0);
         }
 
+        // The parser prefixes a dated fixture with its league and date, and
+        // event titles carry neither, so the prefix only dilutes the word
+        // overlap. Compare the fixture itself.
+        var searchFixture = StripDatedPrefix(normalizedSearch);
+
         // Exact title match = 60 points
-        if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        var fixturePoints = FixturePoints(searchFixture, normalizedEvent);
+        if (searchFixture.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
         {
             confidence += 60;
         }
+        // The same two clubs, side by side = 50 to 55 points
+        else if (fixturePoints > 0)
+        {
+            confidence += fixturePoints;
+        }
         // Contains match = 40 points
-        else if ((normalizedSearch.Length >= 3 && normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)) ||
-                 (normalizedEvent.Length >= 3 && normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
+        else if ((searchFixture.Length >= 3 && normalizedEvent.Contains(searchFixture, StringComparison.OrdinalIgnoreCase)) ||
+                 (normalizedEvent.Length >= 3 && searchFixture.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
         {
             confidence += 40;
         }
         // Partial word match = up to 30 points
         else
         {
-            var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var searchWords = searchFixture.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var matchingWords = searchWords.Intersect(eventWords, StringComparer.OrdinalIgnoreCase).Count();
             var totalWords = Math.Max(searchWords.Length, eventWords.Length);
@@ -594,8 +684,24 @@ public class ImportMatchingService
             // An exact date has to beat a neighbouring one outright. A
             // baseball series puts the same two teams on the field on
             // consecutive days, so the title says nothing that tells those
-            // events apart and the date is the only thing that does.
-            if (daysDiff == 0) confidence += 15;
+            // events apart and the date is the only thing that does. The
+            // lead is ten points so a title with a suffix on the named day
+            // still beats a plain-titled neighbour.
+            if (daysDiff == 0)
+            {
+                confidence += 20;
+            }
+            // A fixture with a verified broadcast date is the game played on
+            // that date, and the day beside it is the next game of the same
+            // series, not a near miss. The grab side applies the same rule.
+            // An unverified date keeps the grace because a legacy backfill
+            // may still hold the UTC day.
+            else if (evt.BroadcastDateVerified && evt.HomeTeamId.HasValue && evt.AwayTeamId.HasValue)
+            {
+                confidence -= 100;
+                _logger.LogDebug("[Import Matching] Date mismatch REJECT: release {ReleaseDate} vs fixture {EventDate} for '{EventTitle}'",
+                    sportsResult.EventDate.Value.ToString("yyyy-MM-dd"), eventDate.ToString("yyyy-MM-dd"), evt.Title);
+            }
             else if (daysDiff <= 1) confidence += 10;
             else if (daysDiff <= 3) confidence += 8;
             else if (daysDiff <= 7) confidence += 5;
@@ -676,16 +782,16 @@ public class ImportMatchingService
         // Event is recent (within 30 days) = 10 points
         if (Math.Abs((DateTime.UtcNow - evt.EventDate).TotalDays) <= 30)
         {
-            confidence += 10;
+            tieBreak += 10;
         }
 
         // Event doesn't have file yet = 10 points (more likely to want this)
         if (!evt.HasFile)
         {
-            confidence += 10;
+            tieBreak += 10;
         }
 
-        return Math.Min(100, confidence);
+        return new ImportMatchScore(confidence, tieBreak);
     }
 
     private static int? ExtractStageNumber(string normalizedTitle)
@@ -698,6 +804,53 @@ public class ImportMatchingService
     // name widens the pattern and floods the candidate cap.
     private static string EscapeLikePattern(string input) =>
         input.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
+
+    // "MLB 2026 08 12 " and its kin, as NormalizeTitle leaves them.
+    private static readonly Regex DatedPrefix = new(@"^[A-Za-z0-9]{1,6}\s+\d{4}\s+\d{2}\s+\d{2}\s+", RegexOptions.Compiled);
+
+    private static readonly Regex FixtureSides = new(@"^(?<a>.+?)\s+(?:vs?|@)\s+(?<b>.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static string StripDatedPrefix(string normalizedTitle)
+    {
+        var stripped = DatedPrefix.Replace(normalizedTitle, "", 1).Trim();
+        return stripped.Length > 0 ? stripped : normalizedTitle;
+    }
+
+    /// <summary>
+    /// How two fixtures relate, side by side. A release names the away
+    /// side first as often as the home side, so the same clubs the other
+    /// way round are the same fixture, a shade behind the home order so a
+    /// dateless name still prefers the leg it names. A name that gives
+    /// only the nicknames ("Cubs vs Pirates") sits inside each side of
+    /// the full title, which word overlap alone scored too low to pass
+    /// the suggestion gate.
+    /// </summary>
+    private static int FixturePoints(string search, string eventTitle)
+    {
+        var a = FixtureSides.Match(search);
+        var b = FixtureSides.Match(eventTitle);
+        if (!a.Success || !b.Success) return 0;
+
+        var searchHome = Words(a.Groups["a"].Value);
+        var searchAway = Words(a.Groups["b"].Value);
+        var eventHome = Words(b.Groups["a"].Value);
+        var eventAway = Words(b.Groups["b"].Value);
+        if (searchHome.Length == 0 || searchAway.Length == 0 || eventHome.Length == 0 || eventAway.Length == 0) return 0;
+
+        if (SameWords(searchHome, eventHome) && SameWords(searchAway, eventAway)) return 60;
+        if (SameWords(searchHome, eventAway) && SameWords(searchAway, eventHome)) return 55;
+        if (Subset(searchHome, eventHome) && Subset(searchAway, eventAway)) return 52;
+        if (Subset(searchHome, eventAway) && Subset(searchAway, eventHome)) return 50;
+        return 0;
+    }
+
+    private static string[] Words(string side) => side.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+    private static bool SameWords(string[] first, string[] second) =>
+        first.SequenceEqual(second, StringComparer.OrdinalIgnoreCase);
+
+    private static bool Subset(string[] part, string[] whole) =>
+        part.All(word => whole.Contains(word, StringComparer.OrdinalIgnoreCase));
 
     /// <summary>
     /// Normalize title for better comparison
@@ -784,13 +937,14 @@ public class ImportMatchingService
         var events = await FindEventMatchesAsync(
             eventTitle, detectedPart, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);
 
-        var suggestions = new List<ImportSuggestion>();
+        var suggestions = new List<(ImportSuggestion Suggestion, ImportMatchScore Score)>();
 
         foreach (var evt in events)
         {
-            var confidence = CalculateMatchConfidence(eventTitle, evt.Title, detectedPart, evt, sportsResult);
+            var score = ScoreMatch(eventTitle, evt.Title, detectedPart, evt, sportsResult);
+            var confidence = Math.Min(100, score.Core + score.TieBreak);
 
-            suggestions.Add(new ImportSuggestion
+            suggestions.Add((new ImportSuggestion
             {
                 EventId = evt.Id,
                 EventTitle = evt.Title,
@@ -805,12 +959,25 @@ public class ImportMatchingService
                 // because that is why the same fixture appears on several dates
                 // and why the person has to pick one.
                 ParsedEventDate = sportsResult.EventDate
-            });
+            }, score));
         }
 
-        return suggestions.Where(s => s.Confidence > 0).OrderByDescending(s => s.Confidence).ToList();
+        // Same order as the automatic pick, so the list leads with the
+        // event the importer would choose.
+        return suggestions
+            .Where(s => s.Suggestion.Confidence > 0)
+            .OrderByDescending(s => s.Score.Core)
+            .ThenByDescending(s => s.Score.TieBreak)
+            .Select(s => s.Suggestion)
+            .ToList();
     }
 }
+
+/// <summary>
+/// The two halves of a candidate's score. Core is the evidence in the name.
+/// TieBreak is what the library knows about the event.
+/// </summary>
+internal readonly record struct ImportMatchScore(int Core, int TieBreak);
 
 /// <summary>
 /// Suggested event match for an import

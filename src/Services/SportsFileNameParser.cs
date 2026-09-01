@@ -188,8 +188,17 @@ public class SportsFileNameParser
         {
             Sport = "Baseball",
             Organization = "MLB",
-            Pattern = new Regex(@"MLB[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<team1>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)[\.\-\s]+(?:vs?|@)[\.\-\s]+(?<team2>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
-            TitleBuilder = (match) => $"MLB {match.Groups["year"].Value}-{match.Groups["month"].Value}-{match.Groups["day"].Value}: {match.Groups["team1"].Value.Replace(".", " ")} vs {match.Groups["team2"].Value.Replace(".", " ")}"
+            // A club name runs to three words (Boston Red Sox, Toronto Blue
+            // Jays). Capped at two, those names failed this pattern and the
+            // file fell to the generic parser, whose title carried the raw
+            // dotted name and matched nothing. The second club has no "vs"
+            // to end it, so it ends at one of the thirty club nicknames. A
+            // name outside that list grows a word at a time until a quality,
+            // source, broadcaster or event id token follows, the boundary
+            // the NBA and NHL patterns use, and takes up to three words when
+            // none is in reach.
+            Pattern = new Regex(@"MLB[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<team1>[A-Za-z]+(?:[\.\-\s]+(?!(?:vs?|@)\b)[A-Za-z]+){0,2})[\.\-\s]+(?:vs?|@)[\.\-\s]+(?:(?<team2>(?:[A-Za-z]+[\.\-\s]+){0,2}?(?:Angels|Astros|Athletics|Jays|Braves|Brewers|Cardinals|Cubs|Diamondbacks|Dbacks|Dodgers|Giants|Guardians|Mariners|Marlins|Mets|Nationals|Nats|Orioles|Padres|Phillies|Pirates|Rangers|Rays|Reds|Sox|Rockies|Royals|Tigers|Twins|Yankees))\b|(?<team2>(?:[A-Za-z]+[\.\-\s]*){1,3}?)(?=[\.\-\s]*(?:\d{3,4}p|WEB|HDTV|BluRay|ESPN|FOX|FS1|MASN|NESN|SNY|TSN|MLBTV|MLB|TV|PROPER|REPACK|iNTERNAL|ev-\d)|$)|(?<team2>(?:[A-Za-z]+[\.\-\s]*){1,3}))", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            TitleBuilder = (match) => $"MLB {match.Groups["year"].Value}-{match.Groups["month"].Value}-{match.Groups["day"].Value}: {CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
         },
 
         // Soccer/Football patterns
