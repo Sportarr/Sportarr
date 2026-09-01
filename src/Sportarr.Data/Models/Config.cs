@@ -310,6 +310,7 @@ public class Config
     public bool DvrEnableReconnect { get; set; } = true; // Enable stream reconnection on failures
     public int DvrMaxReconnectAttempts { get; set; } = 5; // Maximum reconnection attempts
     public int DvrReconnectDelaySeconds { get; set; } = 5; // Delay between reconnection attempts
+    public int DvrReadTimeoutSeconds { get; set; } = 0; // Seconds ffmpeg waits for stream data before giving up. 0 (the default) sets no ffmpeg-level timeout, the DVR watchdog's two-minute rule alone applies, which is the long-standing behavior
     public int StalledDownloadTimeoutMinutes { get; set; } = 60; // Fail, blocklist, and re-search torrents with no progress for this long (0 = never)
     public string DownloadPropersAndRepacks { get; set; } = "preferAndUpgrade"; // preferAndUpgrade | doNotUpgrade | doNotPrefer
     public bool DvrOvertimeGuardEnabled { get; set; } = true; // Keep recording past the scheduled end while livescore says the event is still in progress

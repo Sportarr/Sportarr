@@ -635,7 +635,10 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         reresolveMinImprovement = config.DvrReresolveMinImprovement,
         enableReconnect = config.DvrEnableReconnect,
         maxReconnectAttempts = config.DvrMaxReconnectAttempts,
-        reconnectDelaySeconds = config.DvrReconnectDelaySeconds,
+        // Values stored before the 5-300 clamp existed display as the
+        // effective value the recorder uses.
+        reconnectDelaySeconds = Math.Clamp(config.DvrReconnectDelaySeconds, 5, 300),
+        readTimeoutSeconds = config.DvrReadTimeoutSeconds,
         // Catchup settings
         useCatchupWhenAvailable = config.DvrUseCatchupWhenAvailable,
         catchupReadyGraceMinutes = config.DvrCatchupReadyGraceMinutes,
@@ -723,7 +726,14 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
     if (settings.TryGetProperty("maxReconnectAttempts", out var maxReconnect))
         config.DvrMaxReconnectAttempts = maxReconnect.GetInt32();
     if (settings.TryGetProperty("reconnectDelaySeconds", out var reconnectDelay))
-        config.DvrReconnectDelaySeconds = reconnectDelay.GetInt32();
+        // Clamped on save so the page never shows a value the recorder
+        // would silently correct.
+        config.DvrReconnectDelaySeconds = Math.Clamp(reconnectDelay.GetInt32(), 5, 300);
+    if (settings.TryGetProperty("readTimeoutSeconds", out var readTimeout))
+        // 0 disables the ffmpeg-level read timeout. The cap matches the DVR
+        // watchdog's two-minute no-growth kill, which makes any larger value
+        // a dead letter.
+        config.DvrReadTimeoutSeconds = Math.Clamp(readTimeout.GetInt32(), 0, 120);
 
     // Catchup settings
     if (settings.TryGetProperty("useCatchupWhenAvailable", out var useCatchup))

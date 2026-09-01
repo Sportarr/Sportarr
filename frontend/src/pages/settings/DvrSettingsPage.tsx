@@ -63,6 +63,7 @@ interface DvrSettings {
   enableReconnect: boolean;
   maxReconnectAttempts: number;
   reconnectDelaySeconds: number;
+  readTimeoutSeconds: number;
   // Catchup: download finished events from the provider's timeshift
   // archive (channels with tv_archive) instead of recording live.
   useCatchupWhenAvailable: boolean;
@@ -177,6 +178,7 @@ const defaultDvrSettings: DvrSettings = {
   enableReconnect: true,
   maxReconnectAttempts: 5,
   reconnectDelaySeconds: 5,
+  readTimeoutSeconds: 0,
   // Catchup
   useCatchupWhenAvailable: true,
   catchupReadyGraceMinutes: 15,
@@ -451,7 +453,26 @@ export default function DvrSettingsPage() {
     try {
       setIsSavingSettings(true);
       await apiClient.put('/dvr/settings', payload);
-      setOriginalSettings(payload);
+      // The server clamps these two on save. Mirroring the clamps here keeps
+      // the page from claiming a value the recorder does not use, without
+      // reloading the whole form over an in-flight edit.
+      const clamped = {
+        ...payload,
+        reconnectDelaySeconds: Math.min(300, Math.max(5, payload.reconnectDelaySeconds)),
+        readTimeoutSeconds: Math.min(120, Math.max(0, payload.readTimeoutSeconds)),
+      };
+      setOriginalSettings(clamped);
+      // An edit made to either field while the save was in flight wins
+      // over the clamp of the older submitted value.
+      setDvrSettings((current) => ({
+        ...current,
+        reconnectDelaySeconds: current.reconnectDelaySeconds === payload.reconnectDelaySeconds
+          ? clamped.reconnectDelaySeconds
+          : current.reconnectDelaySeconds,
+        readTimeoutSeconds: current.readTimeoutSeconds === payload.readTimeoutSeconds
+          ? clamped.readTimeoutSeconds
+          : current.readTimeoutSeconds,
+      }));
       toast.success('DVR Settings Saved', { description: 'Your DVR settings have been saved' });
 
       // Where recordings land is derived from the path that was just saved.
@@ -1299,7 +1320,7 @@ export default function DvrSettingsPage() {
               {/* Reconnection Settings */}
               <div className="mb-6">
                 <h4 className="text-lg font-semibold text-white mb-4">Stream Reconnection</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="flex items-center">
                     <label className="flex items-center cursor-pointer">
                       <input
@@ -1324,16 +1345,38 @@ export default function DvrSettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Reconnect Delay (seconds)</label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Max Retry Wait (seconds)</label>
                     <input
                       type="number"
                       value={dvrSettings.reconnectDelaySeconds}
-                      onChange={(e) => handleSettingsChange('reconnectDelaySeconds', parseInt(e.target.value) || 1)}
-                      min="1"
-                      max="60"
+                      onChange={(e) => handleSettingsChange('reconnectDelaySeconds', parseInt(e.target.value) || 5)}
+                      min="5"
+                      max="300"
                       disabled={!dvrSettings.enableReconnect}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 disabled:opacity-50"
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Caps the wait between retries after a stream drops. Waits grow
+                      from one second up to this cap, and retries stop once the next
+                      wait would pass it.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Read Timeout (seconds)</label>
+                    <input
+                      type="number"
+                      value={dvrSettings.readTimeoutSeconds}
+                      onChange={(e) => handleSettingsChange('readTimeoutSeconds', parseInt(e.target.value) || 0)}
+                      min="0"
+                      max="120"
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Bounds how long ffmpeg waits for stream data, to catch a dead
+                      source faster than the recording watchdog's two minutes. 0 sets
+                      no limit. If your sources start cold streams slowly, keep this
+                      at 0 or above the slowest start you see.
+                    </p>
                   </div>
                 </div>
               </div>

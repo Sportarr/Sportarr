@@ -132,7 +132,7 @@ public class FFmpegRecorderService
             }
 
             // Build FFmpeg arguments using config settings
-            var arguments = await BuildFFmpegArgumentsFromConfigAsync(streamUrl, outputPath, userAgent, extraInputArgs);
+            var arguments = await BuildFFmpegArgumentsFromConfigAsync(ffmpegPath, streamUrl, outputPath, userAgent, extraInputArgs);
 
             _logger.LogInformation("[DVR] FFmpeg command: {FFmpegPath} {Arguments}", ffmpegPath, arguments);
 
@@ -172,7 +172,7 @@ public class FFmpegRecorderService
                     _logger.LogWarning("[DVR] Hardware acceleration failed (QSV/NVENC/VAAPI not available in container), retrying with software encoding...");
 
                     // Retry without hardware acceleration
-                    var softwareArguments = await BuildFFmpegArgumentsFromConfigAsync(streamUrl, outputPath, userAgent, extraInputArgs, forceNoHwAccel: true);
+                    var softwareArguments = await BuildFFmpegArgumentsFromConfigAsync(ffmpegPath, streamUrl, outputPath, userAgent, extraInputArgs, forceNoHwAccel: true);
                     _logger.LogInformation("[DVR] FFmpeg retry command (software): {FFmpegPath} {Arguments}", ffmpegPath, softwareArguments);
 
                     var retryProcessInfo = new ProcessStartInfo
@@ -833,11 +833,75 @@ public class FFmpegRecorderService
         return null;
     }
 
+    // One probe per ffmpeg path for the life of the process. The path is
+    // the key so a changed custom path re-probes.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _reconnectOnNetworkErrorSupport = new();
+
+    /// <summary>
+    /// True when this ffmpeg build knows -reconnect_on_network_error. The
+    /// http protocol help lists every option the build accepts, so one
+    /// probe run answers it without risking a recording on an unknown
+    /// option, which aborts ffmpeg before the input even opens.
+    /// </summary>
+    private async Task<bool> SupportsReconnectOnNetworkErrorAsync(string ffmpegPath)
+    {
+        // The caller passes the executable it will launch, so the probe can
+        // never answer for a different binary than the recording runs.
+        if (string.IsNullOrEmpty(ffmpegPath))
+            return false;
+
+        if (_reconnectOnNetworkErrorSupport.TryGetValue(ffmpegPath, out var cached))
+            return cached;
+
+        var supported = false;
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = "-hide_banner -h protocol=http",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var probe = Process.Start(psi);
+            if (probe != null)
+            {
+                var stdoutTask = probe.StandardOutput.ReadToEndAsync();
+                var stderrTask = probe.StandardError.ReadToEndAsync();
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await probe.WaitForExitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Cancellation only stops the wait. A hung wrapper must
+                    // be killed, or every recording start could leak another
+                    // copy of it.
+                    try { probe.Kill(entireProcessTree: true); } catch (Exception) { }
+                }
+
+                // The kill closes the pipes, so the drains complete either way.
+                supported = (await stdoutTask).Contains("reconnect_on_network_error", StringComparison.Ordinal);
+                await stderrTask;
+            }
+        }
+        catch (Exception)
+        {
+            supported = false;
+        }
+
+        _reconnectOnNetworkErrorSupport[ffmpegPath] = supported;
+        return supported;
+    }
+
     /// <summary>
     /// Build FFmpeg arguments for DVR recording with hardware acceleration support.
     /// Supports Intel QSV, AMD VAAPI, NVIDIA NVENC, AMD AMF, and Apple VideoToolbox.
     /// </summary>
-    private async Task<string> BuildFFmpegArgumentsFromConfigAsync(string streamUrl, string outputPath, string? userAgent, string? extraInputArgs = null, bool forceNoHwAccel = false)
+    private async Task<string> BuildFFmpegArgumentsFromConfigAsync(string ffmpegPath, string streamUrl, string outputPath, string? userAgent, string? extraInputArgs = null, bool forceNoHwAccel = false)
     {
         var config = await _configService.GetConfigAsync();
 
@@ -927,10 +991,15 @@ public class FFmpegRecorderService
             args.Add("-user_agent \"VLC/3.0.18 LibVLC/3.0.18\"");
         }
 
-        // Connection options for streams
-        args.Add("-reconnect 1");
-        args.Add("-reconnect_streamed 1");
-        args.Add("-reconnect_delay_max 5");
+        // Connection options for streams. These settings sat on the DVR
+        // settings page while the recorder kept its flags fixed at their
+        // defaults; the recorder now reads them.
+        Helpers.FfmpegConnectionArgs.Append(
+            args,
+            config.DvrEnableReconnect,
+            config.DvrReconnectDelaySeconds,
+            config.DvrEnableReconnect && await SupportsReconnectOnNetworkErrorAsync(ffmpegPath),
+            config.DvrReadTimeoutSeconds);
 
         // Source-configured extra input options (e.g. custom headers, probe sizes).
         // Quotes are stripped so a stored value can never smuggle a quoted blob
