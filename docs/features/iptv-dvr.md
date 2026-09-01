@@ -39,6 +39,14 @@ Sportarr includes experimental support for recording live sports events directly
 !!! tip "Keeping a league off DVR"
     Each league has an **Automatic DVR scheduling** toggle, available as an **Enable IPTV DVR** checkbox when adding the league and as its own toggle on the league detail page (DVR section) afterward. Turn it off to keep a league on indexer downloads only; the auto-scheduler will never resolve a channel or schedule recordings for it, including through EPG/broadcaster matching with no channel manually mapped, while manual recordings still work. This is what lets you run, say, Formula 1 through indexers only while recording football over IPTV.
 
+## Stream reconnection
+
+The **Stream Reconnection** section of **Settings > DVR Recordings** controls how a recording rides out a dropped or slow stream.
+
+- **Enable auto-reconnect** tells ffmpeg to retry when the stream drops. Retrying a failure during connection setup needs an ffmpeg build of 4.4 or newer. Older builds still retry once the stream has started.
+- **Max Retry Wait** (5 to 300 seconds) caps the wait between retries. Waits grow from one second up to this cap, and retries stop once the next wait would pass it. Raise it for sources that refuse a cold stream for the first few seconds.
+- **Read Timeout** (0 to 120 seconds) bounds how long ffmpeg waits for stream data, to catch a dead source faster than the recording watchdog's two minutes. 0 sets no limit and is the default. If your sources start cold streams slowly, keep it at 0 or above the slowest start you see, or the recording aborts during that wait.
+
 ## TV Guide
 
 The TV Guide provides an EPG-style grid of your IPTV channels and their programming:
@@ -101,7 +109,7 @@ Sportarr implements the three endpoints the HDHomeRun HTTP API requires (`/disco
 ## Known limitations
 
 - Recording quality depends entirely on your IPTV source
-- Stream reconnection may not work reliably with all providers
+- Stream reconnection depends on the provider and on your ffmpeg build (see Stream reconnection above)
 - Limited error handling for stream failures
 - No hardware acceleration support yet
 - File size estimation is approximate
