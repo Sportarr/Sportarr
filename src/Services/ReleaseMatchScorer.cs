@@ -262,8 +262,8 @@ public class ReleaseMatchScorer
     private static readonly Regex _yearRegex = new(@"\b((?:19[3-9]\d|20\d\d))\b", RegexOptions.Compiled);
     private static readonly Regex _parseRoundRegex = new(@"(?:Round|R|Week|W)[\.\s]*(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _gameNumberRegex = new(@"\bGame[\.\s_-]*(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex _isoDateRegex = new(@"\b((?:19[3-9]\d|20\d\d))[.\-](\d{2})[.\-](\d{2})\b", RegexOptions.Compiled);
-    private static readonly Regex _euroDateRegex = new(@"\b(\d{2})[.\-](\d{2})[.\-]((?:19[3-9]\d|20\d\d))\b", RegexOptions.Compiled);
+    private static readonly Regex _isoDateRegex = new(@"\b((?:19[3-9]\d|20\d\d))[.\-\s](\d{2})[.\-\s](\d{2})\b", RegexOptions.Compiled);
+    private static readonly Regex _euroDateRegex = new(@"\b(\d{2})[.\-\s](\d{2})[.\-\s]((?:19[3-9]\d|20\d\d))\b", RegexOptions.Compiled);
 
     // DetectSportPrefix patterns - hit per release in the parse pass.
     private static readonly Regex _formula3WordRegex = new(@"\bFORMULA[\.\-\s]*3\b", RegexOptions.Compiled);
@@ -1353,7 +1353,11 @@ public class ReleaseMatchScorer
         {
             try
             {
-                var parsedDate = new DateTime(eventDate.Year, parsed.Month.Value, parsed.Day.Value);
+                // The release's own year decides which season's meeting this
+                // is. Rebuilding with the event's year made last season's
+                // game on another day look like a wrong day at worst, and a
+                // game on the same calendar day a year apart look identical.
+                var parsedDate = new DateTime(parsed.Year ?? eventDate.Year, parsed.Month.Value, parsed.Day.Value);
                 var diffDays = Math.Abs((parsedDate - eventDate).TotalDays);
                 if (diffDays == 0)
                 {

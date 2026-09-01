@@ -80,6 +80,24 @@ public class ReleaseCacheService
                     existing.Seeders = release.Seeders;
                     existing.Leechers = release.Leechers;
                     existing.ExpiresAt = DateTime.UtcNow.Add(DefaultCacheTtl);
+
+                    // Rows cached before the parser learned space-separated
+                    // dates carry no month and day, and an indexer that keeps
+                    // serving the same release refreshes the TTL forever, so
+                    // such a row never expired into a reparse. Re-read the
+                    // date so an old row cannot keep dodging the wrong-date
+                    // veto.
+                    if (existing.Month == null)
+                    {
+                        var reparsed = ParseReleaseTitle(existing.Title);
+                        if (reparsed.Month.HasValue)
+                        {
+                            existing.Year = reparsed.Year;
+                            existing.Month = reparsed.Month;
+                            existing.Day = reparsed.Day;
+                        }
+                    }
+
                     updatedCount++;
                     continue;
                 }
@@ -377,8 +395,9 @@ public class ReleaseCacheService
         if (roundMatch.Success)
             parsed.RoundNumber = int.Parse(roundMatch.Groups[1].Value);
 
-        // Extract date (YYYY.MM.DD or YYYY-MM-DD)
-        var dateMatch = Regex.Match(title, @"\b((?:19[3-9]\d|20\d\d))[.\-](\d{2})[.\-](\d{2})\b");
+        // Extract date. Dots, hyphens, and spaces all appear in the wild
+        // (YYYY.MM.DD, YYYY-MM-DD, YYYY MM DD).
+        var dateMatch = Regex.Match(title, @"\b((?:19[3-9]\d|20\d\d))[.\-\s](\d{2})[.\-\s](\d{2})\b");
         if (dateMatch.Success)
         {
             parsed.Year = int.Parse(dateMatch.Groups[1].Value);
