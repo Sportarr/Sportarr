@@ -1664,6 +1664,15 @@ public class LeagueEventSyncService
             // when leagues.broadcast_timezone changes). Flag the season for
             // renumber + rename so existing files pick up the new branding
             // calendar date in their filename.
+            // An equal wire-served date still upgrades provenance: a legacy
+            // UTC backfill that happened to match must not keep the
+            // exact-day matching rule disarmed forever.
+            if (apiEvent.BroadcastDate.HasValue && !apiEvent.BroadcastDateIsFallback
+                && !existingEvent.BroadcastDateVerified
+                && existingEvent.BroadcastDate == apiEvent.BroadcastDate)
+            {
+                existingEvent.BroadcastDateVerified = true;
+            }
             if (apiEvent.BroadcastDate.HasValue && existingEvent.BroadcastDate != apiEvent.BroadcastDate)
             {
                 _logger.LogInformation("[League Event Sync] Broadcast date changed for '{EventTitle}': {OldDate} → {NewDate}",
@@ -1671,6 +1680,7 @@ public class LeagueEventSyncService
                     existingEvent.BroadcastDate?.ToString("yyyy-MM-dd") ?? "null",
                     apiEvent.BroadcastDate.Value.ToString("yyyy-MM-dd"));
                 existingEvent.BroadcastDate = apiEvent.BroadcastDate;
+                existingEvent.BroadcastDateVerified = !apiEvent.BroadcastDateIsFallback;
                 dateChanged = true;
                 needsUpdate = true;
 
@@ -1949,6 +1959,7 @@ public class LeagueEventSyncService
             Round = apiEvent.Round,
             EventDate = apiEvent.EventDate,
             BroadcastDate = apiEvent.BroadcastDate,
+            BroadcastDateVerified = apiEvent.BroadcastDate.HasValue && !apiEvent.BroadcastDateIsFallback,
             Venue = apiEvent.Venue,
             Location = apiEvent.Location,
             Broadcast = apiEvent.Broadcast,

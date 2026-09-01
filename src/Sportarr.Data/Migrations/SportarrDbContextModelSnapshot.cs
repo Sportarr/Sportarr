@@ -1189,6 +1189,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "broadcastDate");
 
+                    b.Property<bool>("BroadcastDateVerified")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Description")
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strDescriptionEN");

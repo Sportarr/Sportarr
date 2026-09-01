@@ -578,8 +578,12 @@ public class ReleaseMatchScorer
         // Date matching (for team sports with specific dates)
         // CRITICAL: a definite different date is a wrong-event signal, the same
         // way a wrong team or a wrong fighter is, so it rejects rather than
-        // scoring low.
-        if (IsDateBasedSport(eventSportPrefix))
+        // scoring low. Any fixture with both teams known is date-told:
+        // the prefix list alone left every league outside it (NRL, AFL,
+        // Bundesliga) with no date check at all, while the validation
+        // service applies one to every sport.
+        if (IsDateBasedSport(eventSportPrefix)
+            || (evt.HomeTeamId.HasValue && evt.AwayTeamId.HasValue))
         {
             var dateScore = GetDateMatchScore(parsed, evt);
             if (dateScore < 0)
@@ -1363,9 +1367,13 @@ public class ReleaseMatchScorer
                 {
                     score += 10;                  // exact day
                 }
-                else if (diffDays <= 1)
+                else if (diffDays <= 1 && !(evt.BroadcastDate.HasValue && evt.BroadcastDateVerified && evt.HomeTeamId.HasValue && evt.AwayTeamId.HasValue))
                 {
-                    score += 8;                   // off-by-one (timezone rollover)
+                    // Off-by-one absorbs the UTC-vs-venue rollover, but only
+                    // while the broadcast-local date is unknown. With it in
+                    // hand and both teams known, the neighboring day is the
+                    // neighboring game of a series that can play daily.
+                    score += 8;
                 }
                 else if (evt.HomeTeamId.HasValue && evt.AwayTeamId.HasValue)
                 {

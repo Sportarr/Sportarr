@@ -322,10 +322,21 @@ public class SportarrApiClient
     {
         if (evt == null) return;
         if (evt.BroadcastDate.HasValue) return;
+        // Both tiers are approximations: legacy dateEvent is a UTC
+        // calendar date, and the UTC instant obviously is. The flag keeps
+        // the matchers from treating either as the authoritative
+        // broadcast-local date, so display and query building keep their
+        // fallback while the exact-day matching rule stays disarmed.
         if (evt.DateEventFallback != DateTime.MinValue)
+        {
             evt.BroadcastDate = evt.DateEventFallback.Date;
+            evt.BroadcastDateIsFallback = true;
+        }
         else if (evt.EventDate != DateTime.MinValue)
+        {
             evt.BroadcastDate = evt.EventDate.Date;
+            evt.BroadcastDateIsFallback = true;
+        }
     }
 
     /// <summary>
@@ -721,6 +732,7 @@ public class SportarrApiClient
                     if (!evt.BroadcastDate.HasValue && evt.DateEventFallback != DateTime.MinValue)
                     {
                         evt.BroadcastDate = evt.DateEventFallback.Date;
+                        evt.BroadcastDateIsFallback = true;
                     }
                 }
             }
