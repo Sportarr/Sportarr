@@ -239,7 +239,7 @@ public class LibraryImportService
                     int matchConfidence = 0;
 
                     // AUTHORITATIVE ID TOKEN (docs/RELEASE_NAMING.md): a file
-                    // named with {sportarr-ev-XXXXXXX}, or carrying an
+                    // named with sportarr-ev-XXXXXXX, or carrying an
                     // embedded SPORTARR tag (surfaced via ffprobe on
                     // parsedInfo), identifies its event exactly - look it up
                     // directly and skip fuzzy scoring. The same

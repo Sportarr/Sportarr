@@ -965,7 +965,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                       .replace(/{League}/g, 'MMA League')
                       .replace(/{Event Date}/g, '2024-11-16')
                       .replace(/{Quality Full}/g, 'Bluray-1080p')
-                      .replace(/{Sportarr Id}/g, '{sportarr-ev-2338110}')
+                      .replace(/{Sportarr Id}/g, 'sportarr-ev-2338110')
                       .replace(/{Release Group}/g, 'GROUP')
                     }.mkv
                   </p>

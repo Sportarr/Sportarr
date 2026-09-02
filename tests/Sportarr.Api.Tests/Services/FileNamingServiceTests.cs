@@ -593,7 +593,7 @@ public class FileNamingServiceTests
 
         var result = _service.BuildFileName(format, tokens, ".mkv");
 
-        result.Should().Be("Formula 1 - S2026E12 - British Grand Prix - WEBDL-1080p - {sportarr-ev-2338110}.mkv");
+        result.Should().Be("Formula 1 - S2026E12 - British Grand Prix - WEBDL-1080p - sportarr-ev-2338110.mkv");
     }
 
     [Fact]

@@ -48,7 +48,9 @@ sportarr.ev.2336155
 ev-2336155
 ```
 
-The canonical form groups should emit is the first one.
+The canonical form groups should emit is the first one. Files Sportarr
+names itself carry the branded form without braces, `sportarr-ev-2336155`,
+and both forms parse.
 
 The bare short form (`ev-2336155` with no braces and no brand, added in
 v1.1) has nothing marking it as a token, so its rules are stricter than

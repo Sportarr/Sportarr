@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
@@ -230,7 +231,8 @@ public class FileRenameService
     /// <param name="eventId">Event ID</param>
     /// <param name="settings">Media management settings (optional, will load from DB if not provided)</param>
     /// <returns>Number of files renamed</returns>
-    public async Task<int> RenameEventFilesAsync(int eventId, MediaManagementSettings? settings = null)
+    public async Task<int> RenameEventFilesAsync(
+        int eventId, MediaManagementSettings? settings = null, IReadOnlyCollection<int>? onlyFileIds = null)
     {
         // A null settings param marks a top-level invocation (endpoints pass
         // null; the league-wide rename passes settings to its per-event
@@ -270,6 +272,8 @@ public class FileRenameService
 
         foreach (var file in evt.Files)
         {
+            if (onlyFileIds != null && !onlyFileIds.Contains(file.Id))
+                continue;
             if (!file.Exists || string.IsNullOrEmpty(file.FilePath))
             {
                 _logger.LogDebug("[File Rename] Skipping missing file: {FilePath}", file.FilePath);
@@ -608,11 +612,35 @@ public class FileRenameService
         };
     }
 
+    // A format may separate the season and episode tokens (S2026.E13,
+    // S2026 - E13). The media servers allow any run of separators there,
+    // and so does this.
+    private static readonly Regex EpisodeMarker = new(@"S(?<s>\d{2,4})[ ._-]*E(?<e>\d{1,4})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// True when a file's name no longer says which episode it is: its
+    /// season or episode marker differs from the expected name. A naming
+    /// format change on its own does not count, and an expected name with
+    /// no marker cannot be compared.
+    /// </summary>
+    internal static bool NumberingChanged(string currentPath, string expectedPath)
+    {
+        var expected = EpisodeMarker.Match(Path.GetFileName(expectedPath));
+        if (!expected.Success)
+            return false;
+        var current = EpisodeMarker.Match(Path.GetFileName(currentPath));
+        if (!current.Success)
+            return true;
+        return int.Parse(current.Groups["s"].Value) != int.Parse(expected.Groups["s"].Value)
+            || int.Parse(current.Groups["e"].Value) != int.Parse(expected.Groups["e"].Value);
+    }
+
     /// <summary>
     /// Rename all files for all events in a league/season.
-    /// Typically called after episode renumbering.
+    /// Typically called after episode renumbering. With numberingOnly, only
+    /// files whose season or episode marker no longer matches are renamed.
     /// </summary>
-    public async Task<int> RenameAllFilesInSeasonAsync(int leagueId, string? season)
+    public async Task<int> RenameAllFilesInSeasonAsync(int leagueId, string? season, bool numberingOnly = false)
     {
         if (string.IsNullOrEmpty(season))
             return 0;
@@ -651,6 +679,8 @@ public class FileRenameService
                 var expectedPath = await BuildExpectedPathAsync(evt, file, settings, rootFolders);
                 if (string.IsNullOrEmpty(expectedPath) ||
                     string.Equals(file.FilePath, expectedPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (numberingOnly && !NumberingChanged(file.FilePath, expectedPath))
                     continue;
 
                 planned.Add((file, file.FilePath, expectedPath));
@@ -882,12 +912,14 @@ public class FileRenameService
     /// Preview rename for all files in a league.
     /// Returns list of files that would be renamed.
     /// </summary>
-    public async Task<List<FileRenamePreview>> PreviewLeagueRenamesAsync(int leagueId)
+    public async Task<List<FileRenamePreview>> PreviewLeagueRenamesAsync(
+        int leagueId, string? season = null, IReadOnlyCollection<int>? fileIds = null)
     {
         var events = await _db.Events
             .Include(e => e.League)
             .Include(e => e.Files)
             .Where(e => e.LeagueId == leagueId && e.Files.Any())
+            .Where(e => season == null || e.Season == season)
             .ToListAsync();
 
         if (!events.Any())
@@ -901,6 +933,8 @@ public class FileRenameService
         {
             foreach (var file in evt.Files.Where(f => f.Exists && !string.IsNullOrEmpty(f.FilePath)))
             {
+                if (fileIds != null && !fileIds.Contains(file.Id))
+                    continue;
                 var currentPath = file.FilePath;
                 var currentDir = Path.GetDirectoryName(currentPath);
                 var currentExtension = Path.GetExtension(currentPath);
@@ -963,7 +997,8 @@ public class FileRenameService
     /// <summary>
     /// Rename all files in a league based on current naming settings.
     /// </summary>
-    public async Task<int> RenameAllFilesInLeagueAsync(int leagueId)
+    public async Task<int> RenameAllFilesInLeagueAsync(
+        int leagueId, string? season = null, IReadOnlyCollection<int>? fileIds = null)
     {
         var settings = await LoadMediaManagementSettingsAsync();
 
@@ -971,13 +1006,16 @@ public class FileRenameService
             .Include(e => e.League)
             .Include(e => e.Files)
             .Where(e => e.LeagueId == leagueId && e.Files.Any())
+            .Where(e => season == null || e.Season == season)
             .ToListAsync();
+        if (fileIds != null)
+            events = events.Where(e => e.Files.Any(f => fileIds.Contains(f.Id))).ToList();
 
         int totalRenamed = 0;
 
         foreach (var evt in events)
         {
-            var renamed = await RenameEventFilesAsync(evt.Id, settings);
+            var renamed = await RenameEventFilesAsync(evt.Id, settings, fileIds);
             totalRenamed += renamed;
         }
 
@@ -1156,6 +1194,9 @@ public class FileRenameService
     {
         if (string.IsNullOrEmpty(originalTitle)) return string.Empty;
 
+        // A name Sportarr wrote ends in the id token. Without this the
+        // digits after the last dash would read as the release group.
+        originalTitle = Sportarr.Api.Helpers.SportarrIdToken.Strip(originalTitle).Trim();
         var match = System.Text.RegularExpressions.Regex.Match(
             originalTitle, @"-([A-Za-z0-9]+)(?:\.[a-z]{2,4})?$");
         if (!match.Success) return string.Empty;

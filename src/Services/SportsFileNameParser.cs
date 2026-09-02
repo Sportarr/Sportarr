@@ -606,7 +606,7 @@ public class SportsFileNameParser
             OriginalFilename = filename ?? string.Empty
         };
 
-        // Sportarr id tokens ({sportarr-ev-2336155}, see docs/RELEASE_NAMING.md)
+        // Sportarr id tokens (sportarr-ev-2336155, see docs/RELEASE_NAMING.md)
         // are the authoritative match signal when present. Extract them first,
         // then strip them so the token digits can never confuse the date,
         // year, or round extraction below.
@@ -1092,7 +1092,7 @@ public class SportsParseResult
     public string? Session { get; set; }
     /// <summary>
     /// Canonical event id ("ev-2336155") extracted from a release naming
-    /// standard token ({sportarr-ev-2336155}). Authoritative when present -
+    /// standard token (sportarr-ev-2336155). Authoritative when present -
     /// matchers compare it against Event.ExternalId and skip fuzzy logic.
     /// </summary>
     public string? SportarrEventId { get; set; }

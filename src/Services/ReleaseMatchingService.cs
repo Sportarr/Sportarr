@@ -314,7 +314,7 @@ public class ReleaseMatchingService
         var parseResult = preParsed ?? _sportsParser.Parse(release.Title);
 
         // AUTHORITATIVE ID TOKEN (docs/RELEASE_NAMING.md): a release tagged
-        // {sportarr-ev-XXXXXXX} in its name, or carrying a "sportarrid"
+        // sportarr-ev-XXXXXXX in its name, or carrying a "sportarrid"
         // torznab/newznab attribute from the indexer, names its event
         // exactly. When the tagged id matches this event's canonical id,
         // that IS the match - no fuzzy team/date/round arithmetic can

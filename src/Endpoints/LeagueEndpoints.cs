@@ -2120,7 +2120,7 @@ app.MapPost("/api/leagues/rename-preview", async (HttpContext context, SportarrD
             var league = await db.Leagues.FindAsync(leagueId);
             if (league == null) continue;
 
-            var previews = await fileRenameService.PreviewLeagueRenamesAsync(leagueId);
+            var previews = await fileRenameService.PreviewLeagueRenamesAsync(leagueId, request.Season, request.FileIds is { Count: > 0 } ? request.FileIds : null);
             allPreviews.AddRange(previews.Select(p => new
             {
                 leagueId = leagueId,
@@ -2170,7 +2170,7 @@ app.MapPost("/api/leagues/rename", async (HttpContext context, SportarrDbContext
             var league = await db.Leagues.FindAsync(leagueId);
             if (league == null) continue;
 
-            var renamedCount = await fileRenameService.RenameAllFilesInLeagueAsync(leagueId);
+            var renamedCount = await fileRenameService.RenameAllFilesInLeagueAsync(leagueId, request.Season, request.FileIds is { Count: > 0 } ? request.FileIds : null);
             totalRenamed += renamedCount;
             results.Add(new { leagueId = leagueId, leagueName = league.Name, renamedCount = renamedCount });
         }
@@ -2360,7 +2360,9 @@ app.MapPost("/api/leagues/{id:int}/recalculate-episodes", async (
                 // finds 0 to correct while the files on disk still carry the old
                 // ones. Gating the rename on renumbered > 0 made this endpoint a
                 // no-op in exactly the case a user runs it for.
-                var renamed = await fileRenameService.RenameAllFilesInSeasonAsync(id, season);
+                // Numbering only: this endpoint exists to put the hub's new
+                // numbers on the files, not to enforce the naming format.
+                var renamed = await fileRenameService.RenameAllFilesInSeasonAsync(id, season, numberingOnly: true);
                 totalFilesRenamed += renamed;
 
                 if (renamed > 0)

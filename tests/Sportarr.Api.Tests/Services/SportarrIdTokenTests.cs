@@ -290,10 +290,10 @@ public class SportarrIdTokenTests
     // ---- Renamer emission ----
 
     [Fact]
-    public void RenamerToken_EmitsCanonicalForm_ForHubIds()
+    public void RenamerToken_EmitsBrandedForm_ForHubIds()
     {
-        FileNamingService.FormatSportarrIdToken("ev-2336155").Should().Be("{sportarr-ev-2336155}");
-        FileNamingService.FormatSportarrIdToken("EV-2336155").Should().Be("{sportarr-ev-2336155}");
+        FileNamingService.FormatSportarrIdToken("ev-2336155").Should().Be("sportarr-ev-2336155");
+        FileNamingService.FormatSportarrIdToken("EV-2336155").Should().Be("sportarr-ev-2336155");
     }
 
     [Fact]

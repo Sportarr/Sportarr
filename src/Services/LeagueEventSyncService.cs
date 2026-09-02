@@ -1023,9 +1023,13 @@ public class LeagueEventSyncService
                             renumberedCount, seasonStr);
                     }
 
-                    // ALWAYS scan and rename files to ensure they match current naming format
-                    // This catches files that were imported with wrong episode numbers or old naming format
-                    var renamedCount = await _fileRenameService.RenameAllFilesInSeasonAsync(seasonLeagueId, seasonStr);
+                    // Rename only the files whose season or episode marker no
+                    // longer matches, so a renumbered season keeps its files
+                    // identifiable. A naming format change on its own is left
+                    // to a manual rename, as in the other arrs. This used to
+                    // enforce the whole format and rewrote every file in a
+                    // library the moment its owner edited the format.
+                    var renamedCount = await _fileRenameService.RenameAllFilesInSeasonAsync(seasonLeagueId, seasonStr, numberingOnly: true);
                     totalRenamed += renamedCount;
 
                     if (renamedCount > 0)

@@ -128,6 +128,9 @@ export default function LeagueFilesModal({
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [renamePreview, setRenamePreview] = useState<RenamePreviewItem[]>([]);
+  // The files the preview was built for. Confirm renames exactly those,
+  // whatever the selection does while the preview is open.
+  const [renameScopeIds, setRenameScopeIds] = useState<number[] | undefined>(undefined);
   const [isRenaming, setIsRenaming] = useState(false);
 
   // Reset deleted file IDs and rename state when modal opens/closes or data changes
@@ -189,9 +192,13 @@ export default function LeagueFilesModal({
   const loadRenamePreview = async () => {
     setIsLoadingPreview(true);
     setShowRenamePreview(true);
+    const scope = selectedIds.size > 0 ? Array.from(selectedIds) : undefined;
+    setRenameScopeIds(scope);
     try {
       const response = await apiClient.post('/leagues/rename-preview', {
-        leagueIds: [leagueId]
+        leagueIds: [leagueId],
+        season,
+        fileIds: scope,
       });
       setRenamePreview(response.data || []);
     } catch (error) {
@@ -208,7 +215,9 @@ export default function LeagueFilesModal({
     setIsRenaming(true);
     try {
       const response = await apiClient.post('/leagues/rename', {
-        leagueIds: [leagueId]
+        leagueIds: [leagueId],
+        season,
+        fileIds: renameScopeIds,
       });
       const { totalRenamed } = response.data;
 

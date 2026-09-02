@@ -225,7 +225,7 @@ public class ImportMatchingService
             eventTitle, sportsResult.Confidence);
 
         // AUTHORITATIVE ID TOKEN (docs/RELEASE_NAMING.md): a name tagged
-        // {sportarr-ev-XXXXXXX}, or a file carrying an embedded SPORTARR
+        // sportarr-ev-XXXXXXX, or a file carrying an embedded SPORTARR
         // tag, identifies its event exactly - resolve it directly and skip
         // fuzzy matching. Unknown ids (unsynced league, legacy install)
         // fall through to the normal strategies.
