@@ -516,7 +516,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             totalVerified, totalMissing, totalFound);
 
         // Discover new untracked files in root folders
-        await DiscoverNewFilesAsync(db, cancellationToken);
+        await DiscoverNewFilesAsync(db, config.RecycleBin, cancellationToken);
 
         // Remove stale disk-discovered PendingImport rows whose source file is gone
         await CleanupStalePendingImportsAsync(db, config, cancellationToken);
@@ -693,7 +693,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
     /// Discover new untracked video files in root folders and create PendingImport records.
     /// Files are shown in the Activity page for user review before being linked to events.
     /// </summary>
-    private async Task DiscoverNewFilesAsync(SportarrDbContext db, CancellationToken cancellationToken)
+    private async Task DiscoverNewFilesAsync(SportarrDbContext db, string? recycleBin, CancellationToken cancellationToken)
     {
         // Root folders live in the RootFolders table (the UI's source of truth).
         var rootFolders = await db.RootFolders.ToListAsync(cancellationToken);
@@ -773,7 +773,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                     .Where(f => videoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
                 // Skip recycle bin, dot folders, and system folders so recycled/system copies
                 // are never re-discovered as new files (the source of the "47 files vs 21" inflation).
-                files = LibraryPathFilter.FilterExcluded(files);
+                files = LibraryPathFilter.FilterExcluded(files, recycleBin);
                 // Skip release sample clips so a stray preview is never suggested
                 // as a pending import for a real event.
                 files = SampleFileFilter.FilterSamples(files, rootFolder.Path);

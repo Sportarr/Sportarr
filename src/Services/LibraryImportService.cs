@@ -89,12 +89,14 @@ public class LibraryImportService
         {
             // Get media management settings for destination preview
             var settings = await GetMediaManagementSettingsAsync();
+            var recycleBin = (await _configService.GetConfigAsync()).RecycleBin;
 
             var searchOption = includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
             var files = SampleFileFilter.FilterSamples(
                     LibraryPathFilter.FilterExcluded(
                         Directory.GetFiles(folderPath, "*.*", searchOption)
-                            .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower()))),
+                            .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower())),
+                        recycleBin),
                     folderPath)
                 .ToList();
 

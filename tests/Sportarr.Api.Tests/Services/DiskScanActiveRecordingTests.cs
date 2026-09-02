@@ -47,7 +47,7 @@ public class DiskScanActiveRecordingTests : IDisposable
     {
         var method = typeof(DiskScanService).GetMethod(
             "DiscoverNewFilesAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        return (Task)method.Invoke(svc, new object[] { db, CancellationToken.None })!;
+        return (Task)method.Invoke(svc, new object?[] { db, null, CancellationToken.None })!;
     }
 
     private async Task<string> SeedAsync(SportarrDbContext db, DvrRecordingStatus status)

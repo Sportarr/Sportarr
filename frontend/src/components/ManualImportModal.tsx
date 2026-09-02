@@ -468,7 +468,8 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess, i
   const handleReject = async () => {
     setIsLoading(true);
     try {
-      const response = await apiPost(`/api/pending-imports/${pendingImport.id}/reject`, {});
+      // Dismiss keeps the file, as its tooltip says; only Remove in Activity deletes it.
+      const response = await apiPost(`/api/pending-imports/${pendingImport.id}/reject?deleteFile=false`, {});
 
       if (!response.ok) {
         throw new Error(await readError(response, "Could not reject this file"));

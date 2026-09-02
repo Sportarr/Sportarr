@@ -1340,11 +1340,12 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
 // API: Scan league folder for untracked video files
 // Creates PendingImport records for manual approval
-app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, ImportMatchingService importMatchingService, ILogger<Program> logger) =>
+app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, ImportMatchingService importMatchingService, ConfigService configService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
         return Results.NotFound(new { error = "League not found" });
+    var recycleBin = (await configService.GetConfigAsync()).RecycleBin;
 
     // Root folders live in the RootFolders table — the single source of truth
     // the UI writes to and what every path (health check, league add, imports)
@@ -1424,7 +1425,8 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
         {
             var files = LibraryPathFilter.FilterExcluded(
                 Directory.EnumerateFiles(leaguePath, "*.*", SearchOption.AllDirectories)
-                    .Where(f => videoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant())));
+                    .Where(f => videoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant())),
+                recycleBin);
 
             foreach (var filePath in files)
             {

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Models.Requests;
 using Sportarr.Api.Services;
@@ -559,7 +560,9 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
     SportarrDbContext db,
     IServiceScopeFactory scopeFactory,
     ILogger<Program> logger,
-    bool search = false) =>
+    ConfigService configService,
+    bool search = false,
+    bool? deleteFile = null) =>
 {
     // Reject a pending import (user doesn't want to import it). Hard-deletes the
     // PendingImport row and writes a Blocklist entry so the disk-scan and
@@ -586,6 +589,7 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
 
     logger.LogInformation("[Pending Import] Rejected and blocklisted {Title} (path {FilePath}, hash {Hash})",
         import.Title, import.FilePath, import.TorrentInfoHash ?? "n/a");
+    await RemoveDiskFoundFileAsync(import, deleteFile, db, configService, logger);
 
     // "Blocklist and search for replacement" asked for a replacement. Without
     // this the choice did nothing that plain blocklisting did not, even though
@@ -598,14 +602,22 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
     return Results.NoContent();
 });
 
-app.MapDelete("/api/pending-imports/{id:int}", async (int id, SportarrDbContext db) =>
+app.MapDelete("/api/pending-imports/{id:int}", async (
+    int id,
+    SportarrDbContext db,
+    ConfigService configService,
+    ILogger<Program> logger,
+    bool? deleteFile = null) =>
 {
-    // Delete a pending import record
+    // Delete a pending import record. For a row the scan made from a file
+    // on disk the file goes too, the way a download client removal takes
+    // the download's files, unless the caller says deleteFile=false.
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();
 
     db.PendingImports.Remove(import);
     await db.SaveChangesAsync();
+    await RemoveDiskFoundFileAsync(import, deleteFile, db, configService, logger);
 
     return Results.NoContent();
 });
@@ -863,6 +875,33 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
     /// scope takes its database context away the moment the response
     /// completes, so the work gets a scope of its own.
     /// </summary>
+    /// <summary>
+    /// Removes the file behind a pending import the scan made from disk, when
+    /// the user removes the row. Rows from a download client keep their files
+    /// here; the client removal handles those. Off only when the caller says
+    /// deleteFile=false. Recycle bin first, root folders only.
+    /// </summary>
+    private static async Task RemoveDiskFoundFileAsync(
+        PendingImport import, bool? deleteFile, SportarrDbContext db, ConfigService configService, ILogger logger)
+    {
+        if (!PendingImportFiles.ShouldRemove(import.DownloadClientId, deleteFile, import.Status)) return;
+        var config = await configService.GetConfigAsync();
+        var roots = await db.RootFolders.Select(r => r.Path).ToListAsync();
+        // A row can go stale: the library may have imported this very file
+        // since the scan listed it. A tracked file is never deleted here.
+        var tracked = await db.EventFiles.AnyAsync(f => f.FilePath == import.FilePath)
+                      || await db.Events.AnyAsync(e => e.FilePath == import.FilePath);
+        try
+        {
+            var outcome = PendingImportFiles.RemoveFromDisk(import.FilePath, config.RecycleBin, roots, tracked);
+            logger.LogInformation("[Pending Import] File of removed row {Title}: {Detail}", import.Title, outcome.Detail);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[Pending Import] Could not remove the file of {Title}: {Path}", import.Title, import.FilePath);
+        }
+    }
+
     private static async Task StartReplacementSearchAsync(
         IServiceScopeFactory scopeFactory,
         int eventId,
