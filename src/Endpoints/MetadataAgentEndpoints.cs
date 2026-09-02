@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using Sportarr.Api.Startup;
@@ -30,42 +32,47 @@ public static class MetadataAgentEndpoints
     public static IEndpointRouteBuilder MapMetadataAgentEndpoints(this IEndpointRouteBuilder app)
     {
         // Search leagues by title (the agent's "series" match step).
-        app.MapGet("/api/metadata/agents/search", async (string? title, int? year, SportarrDbContext db) =>
+        app.MapGet("/api/metadata/agents/search", async (string? title, int? year, string? filename, SportarrDbContext db) =>
         {
-            if (string.IsNullOrWhiteSpace(title))
+            // A file path that carries a Sportarr id names the league
+            // outright, the way a tvdb id names a show. That league leads
+            // the list, flagged matched_by "id"; the title search fills the
+            // rest for a folder whose files carry no id.
+            var hinted = await LeagueFromHintAsync(db, filename);
+            if (string.IsNullOrWhiteSpace(title) && hinted == null)
                 return Results.Ok(new { results = Array.Empty<object>() });
 
-            var term = title.Trim();
-            // LIKE is case sensitive on PostgreSQL and not on SQLite, so the
-            // same search worked on one and found nothing on the other unless
-            // the caller's capitalization happened to match what was stored.
-            // Lowering both sides behaves the same everywhere.
-            var loweredTerm = term.ToLowerInvariant();
+            var leagues = new List<League>();
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                var term = title.Trim();
+                // LIKE is case sensitive on PostgreSQL and not on SQLite, so the
+                // same search worked on one and found nothing on the other unless
+                // the caller's capitalization happened to match what was stored.
+                // Lowering both sides behaves the same everywhere.
+                var loweredTerm = term.ToLowerInvariant();
 
-            // The year filter runs in memory because the stored value is free
-            // text. Taking twenty five rows before applying it meant a league
-            // that matched both the title and the year was thrown away
-            // whenever twenty five others matched the title first.
-            var candidateLimit = year == null ? 25 : 250;
-            var leagues = await db.Leagues
-                .AsNoTracking()
-                .Where(l => EF.Functions.Like(l.Name.ToLower(), $"%{loweredTerm}%"))
-                .OrderBy(l => l.Name)
-                .Take(candidateLimit)
-                .ToListAsync();
+                // The year filter runs in memory because the stored value is free
+                // text. Taking twenty five rows before applying it meant a league
+                // that matched both the title and the year was thrown away
+                // whenever twenty five others matched the title first.
+                var candidateLimit = year == null ? 25 : 250;
+                leagues = await db.Leagues
+                    .AsNoTracking()
+                    .Where(l => EF.Functions.Like(l.Name.ToLower(), $"%{loweredTerm}%"))
+                    .OrderBy(l => l.Name)
+                    .Take(candidateLimit)
+                    .ToListAsync();
+            }
 
             var results = leagues
                 .Where(l => year == null || ParseYear(l.FormedYear) == year)
+                .Where(l => hinted == null || l.Id != hinted.Id)
                 .Take(25)
-                .Select(l => new
-                {
-                    id = l.ExternalId,
-                    title = l.Name,
-                    year = ParseYear(l.FormedYear),
-                    poster_url = l.PosterUrl,
-                    sport = l.Sport
-                })
+                .Select(l => SearchRow(l, "title"))
                 .ToList();
+            if (hinted != null)
+                results.Insert(0, SearchRow(hinted, "id"));
 
             return Results.Ok(new { results });
         });
@@ -181,28 +188,14 @@ public static class MetadataAgentEndpoints
         // matches the season list and the filename.
         app.MapGet("/api/metadata/match", async (string? series, string? season, int? episode, string? filename, SportarrDbContext db, SportarrApiClient apiClient, EventPartDetector partDetector) =>
         {
-            if (string.IsNullOrWhiteSpace(series) || string.IsNullOrWhiteSpace(season) || episode == null)
-                return Results.Ok(new { error = "series, season and episode are required" });
+            var resolved = await ResolveMatchAsync(db, series, season, episode, filename);
+            if (resolved.Error != null)
+                return Results.Ok(new { error = resolved.Error });
 
-            var league = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == series);
-            if (league == null)
-                return Results.Ok(new { error = "Series not found" });
-
-            if (!int.TryParse(season, out var sn))
-                return Results.Ok(new { error = "Invalid season" });
-
-            var events = await db.Events
-                .AsNoTracking()
-                .Where(e => e.LeagueId == league.Id && e.SeasonNumber == sn)
-                .ToListAsync();
-
-            var evt = events
-                .Where(e => !IsExcluded(e.Status) && e.EpisodeNumber == episode)
-                .OrderBy(e => e.EventDate)
-                .FirstOrDefault();
-
-            if (evt == null)
-                return Results.Ok(new { error = "Episode not found" });
+            var league = resolved.League!;
+            var evt = resolved.Event!;
+            var sn = resolved.SeasonNumber;
+            var events = resolved.SeasonEvents;
 
             var seasonLabel = events.Select(e => e.Season).FirstOrDefault(s => !string.IsNullOrEmpty(s));
             var matchSeasonPosters = await db.SeasonPosters
@@ -247,6 +240,7 @@ public static class MetadataAgentEndpoints
                 {
                     league_id = league.ExternalId,
                     event_id = evt.ExternalId,
+                    source = resolved.Source,
                     series = new
                     {
                         id = league.ExternalId,
@@ -359,6 +353,105 @@ public static class MetadataAgentEndpoints
     // pass the cast they fetched from the hub. The part-aware overload is
     // for /match calls that carry a filename: parts share an episode number,
     // so only the filename identifies which part a specific file is.
+    private static object SearchRow(League l, string matchedBy) => new
+    {
+        id = l.ExternalId,
+        title = l.Name,
+        year = ParseYear(l.FormedYear),
+        poster_url = l.PosterUrl,
+        sport = l.Sport,
+        matched_by = matchedBy
+    };
+
+    /// <summary>
+    /// What a /match request names. Source is "id" when the Sportarr id in
+    /// the file name named the event, "numbering" when the season and
+    /// episode numbers did.
+    /// </summary>
+    public sealed record MatchResolution(
+        League? League, Event? Event, int SeasonNumber, List<Event> SeasonEvents, string Source, string? Error);
+
+    /// <summary>
+    /// The Sportarr id in the file name is the match key, like a tvdb id:
+    /// a file that carries one names its event exactly, whatever the
+    /// series or the season and episode numbers say. The numbers are the
+    /// fallback for a file that carries none. An id names its event even
+    /// when that event is cancelled or postponed: the caller holds a real
+    /// file of it, and the agents keep the file's own numbers. (The hub
+    /// answers the same way; its Plex provider alone answers nothing there,
+    /// because Plex needs a numbered slot.)
+    /// </summary>
+    public static async Task<MatchResolution> ResolveMatchAsync(
+        SportarrDbContext db, string? series, string? season, int? episode, string? filename)
+    {
+        var hintedId = SportarrIdToken.ExtractEventId(filename);
+        if (hintedId != null)
+        {
+            var hinted = await db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.ExternalId == hintedId);
+            var hintedLeague = hinted == null
+                ? null
+                : await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.Id == hinted.LeagueId);
+            if (hinted != null && hintedLeague != null)
+            {
+                var hintedSeason = hinted.SeasonNumber ?? hinted.EventDate.Year;
+                var siblings = await db.Events
+                    .AsNoTracking()
+                    .Where(e => e.LeagueId == hintedLeague.Id && e.SeasonNumber == hintedSeason)
+                    .ToListAsync();
+                return new MatchResolution(hintedLeague, hinted, hintedSeason, siblings, "id", null);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(series) || string.IsNullOrWhiteSpace(season) || episode == null)
+            return Fail("series, season and episode are required");
+
+        var league = await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.ExternalId == series);
+        if (league == null)
+            return Fail("Series not found");
+
+        if (!int.TryParse(season, out var sn))
+            return Fail("Invalid season");
+
+        var events = await db.Events
+            .AsNoTracking()
+            .Where(e => e.LeagueId == league.Id && e.SeasonNumber == sn)
+            .ToListAsync();
+
+        var evt = events
+            .Where(e => !IsExcluded(e.Status) && e.EpisodeNumber == episode)
+            .OrderBy(e => e.EventDate)
+            .FirstOrDefault();
+
+        if (evt == null)
+            return Fail("Episode not found");
+
+        return new MatchResolution(league, evt, sn, events, "numbering", null);
+
+        static MatchResolution Fail(string error) => new(null, null, 0, new List<Event>(), "none", error);
+    }
+
+    /// <summary>
+    /// The league a file path names through its Sportarr id: a league token
+    /// directly, an event token through the event's league. Null when the
+    /// path carries no readable id.
+    /// </summary>
+    public static async Task<League?> LeagueFromHintAsync(SportarrDbContext db, string? filename)
+    {
+        var leagueId = SportarrIdToken.ExtractLeagueId(filename);
+        if (leagueId != null)
+        {
+            var league = await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.ExternalId == leagueId);
+            if (league != null)
+                return league;
+        }
+
+        var eventId = SportarrIdToken.ExtractEventId(filename);
+        if (eventId == null)
+            return null;
+        var evt = await db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.ExternalId == eventId);
+        return evt == null ? null : await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.Id == evt.LeagueId);
+    }
+
     private static object ToEpisode(Event e) => ToEpisode(e, null);
 
     private static object ToEpisode(Event e, IReadOnlyList<HubCastMember>? cast) => ToEpisode(e, cast, null);

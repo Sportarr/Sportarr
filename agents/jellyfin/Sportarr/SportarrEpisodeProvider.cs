@@ -77,7 +77,10 @@ namespace Jellyfin.Plugin.Sportarr
             // blind-matching those numbers returns a confidently wrong event
             // (that scene name landed on a game from 2000). Leave the episode
             // unidentified instead so the misparse is visible and fixable.
-            if (info.ParentIndexNumber.Value is < 1900 or > 2100)
+            // A file that carries the Sportarr id is matched by the id, so its
+            // numbers need no check.
+            if (info.ParentIndexNumber.Value is < 1900 or > 2100
+                && !SportarrSeriesProvider.CarriesSportarrId(System.IO.Path.GetFileName(info.Path)))
             {
                 _logger.LogWarning(
                     "[Sportarr] Season {Season} is not a year - '{Path}' does not follow the Sportarr naming scheme (League - SyyyyEnn - Title); skipping match to avoid wrong metadata",

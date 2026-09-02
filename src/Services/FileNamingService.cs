@@ -184,10 +184,11 @@ public class FileNamingService
     /// from old installs produce an empty string rather than a junk token.
     /// </summary>
     // The token writes the branded form, sportarr-ev-2338110, with no
-    // braces. Every reader (imports, rescans, the parser) accepts it. The
-    // media-server agents never read it at all: they match a show by its
-    // folder name and an event by the season and episode numbers in the
-    // file name. Braces in a file name only ever raised questions.
+    // braces. Every reader (imports, rescans, the parser, the media-server
+    // agents) accepts it. The agents match a file by this id first, the way
+    // a tvdb id names a show; the season and episode numbers are the
+    // fallback for a file that carries none. Braces in a file name only
+    // ever raised questions.
     internal static string FormatSportarrIdToken(string? externalId)
     {
         return !string.IsNullOrEmpty(externalId)

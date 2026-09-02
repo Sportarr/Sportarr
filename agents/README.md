@@ -18,6 +18,12 @@ understand it with no special configuration:
 
 Example: Formula 1 → Season 2026 → `S2026E12` (Bahrain Grand Prix).
 
+**The Sportarr id is the match key.** Every file the Sportarr app names
+carries the event's id, `sportarr-ev-2338110`. The agents match a file by
+that id first, the way a tvdb id names a show, so a renumbered season can
+never point a file at another event. The league folder name and the
+`S{year}E{episode}` numbers are the fallback for files that carry no id.
+
 ## Two ways to run it (read this first)
 
 **Option A — Run the Sportarr app (recommended).** You never name a file by
@@ -33,8 +39,10 @@ the season and Sportarr followed it so your library stays correct.
 server at the agent but manage files yourself, **you** name them. Use the
 catalog browser at <https://sportarr.net/browse> → open a league → pick a
 season to see every event with its current episode number, then name your file
-to match. Because you are naming manually, re-check the number if an event gets
-rescheduled — the browser always shows the current one.
+to match. Better still, put the event's id in the name (every event page shows
+it, `sportarr-ev-2338110`) and the number no longer matters. Naming by number
+only? Re-check it if an event gets rescheduled; the browser always shows the
+current one.
 
 ## File naming convention
 
@@ -131,10 +139,12 @@ distributed via `kodi/repository.sportarr/`. See [kodi/README.md](kodi/README.md
 2. Scan the library.
 3. Open the item. A correct match shows the **right episode number**, the
    **event poster**, the **air date**, and a **description**.
-4. If it does not match: confirm the library is a **TV Shows / Shows** type,
-   the `Season {year}` folder exists, and the episode number matches
-   <https://sportarr.net/browse>. Use the server's **Fix Match / Identify** to
-   pick the league manually.
+4. If it does not match: confirm the library is a **TV Shows / Shows** type
+   and the `Season {year}` folder exists. A file whose name carries
+   `sportarr-ev-…` matches by that id whatever its numbers say; a file
+   without one needs the episode number that <https://sportarr.net/browse>
+   shows. Use the server's **Fix Match / Identify** to pick the league
+   manually.
 
 ## Troubleshooting
 

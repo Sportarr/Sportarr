@@ -170,6 +170,12 @@ events are skipped), so when the upstream schedule shifts, the number shifts:
   name to match. Case and zero-padding don't matter (`S2026E12`, `s2026e12`,
   and `s2026e012` all resolve to episode 12). The Sportarr app's naming format
   is customizable under **Settings → Media Management**.
+- **The Sportarr id names the show.** Files the app names carry the event's id
+  (`sportarr-ev-2338110`). The metadata provider reads it to match the show,
+  the way Plex reads a tvdb id in a folder name, so a folder named anything
+  still lands on the right league. Plex then places each file by its season
+  and episode numbers, as it does for every show, and Sportarr keeps those
+  numbers current. The legacy bundle matches each file by its id.
 
 ### Verify it works
 
@@ -189,7 +195,7 @@ events are skipped), so when the upstream schedule shifts, the number shifts:
 
 1. **Scan**: Plex scans your library and finds files matching the naming convention
 2. **Parse**: Plex extracts series name, season, and episode from filenames
-3. **Query**: Sportarr metadata provider is called to find matches
+3. **Query**: Sportarr metadata provider is called with the show's name and the path of one of its files; a Sportarr id in that name names the league outright, otherwise the series name does. Episodes are placed by their season and episode numbers
 4. **Fetch**: Full metadata (posters, descriptions, air dates) is retrieved from sportarr.net or your configured local instance. Each event is resolved individually via `/api/metadata/match` rather than pulling the whole season list per file
 5. **Display**: Rich metadata appears in your Plex library
 

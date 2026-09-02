@@ -34,6 +34,8 @@ Download `sportarr-jellyfin-plugin_*.zip` from the [latest release](https://gith
 2. Create a library: select **Shows**, add your sports folder
 3. Under **Metadata Downloaders** and **Image Fetchers**, enable **Sportarr** and drag it to the top of both lists
 
+Files the Sportarr app names carry the event's id (`sportarr-ev-2338110`), and the plugin matches by it first, like a tvdb id. The folder name and the season and episode numbers only serve files without one. See [File naming](../features/file-naming.md#the-sportarr-id-token).
+
 See [agents/jellyfin/README.md](https://github.com/Sportarr/Sportarr/blob/main/agents/jellyfin/README.md) for the full walkthrough and troubleshooting.
 
 !!! warning "Installed the plugin before August 2026?"

@@ -50,6 +50,10 @@ namespace Sportarr
 
         [JsonPropertyName("sport")]
         public string? Sport { get; set; }
+
+        /// <summary>"id" when a file's Sportarr id named this league, else "title".</summary>
+        [JsonPropertyName("matched_by")]
+        public string? MatchedBy { get; set; }
     }
 
     /// <summary>

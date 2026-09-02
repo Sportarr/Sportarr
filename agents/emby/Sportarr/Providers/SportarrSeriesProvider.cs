@@ -89,7 +89,14 @@ namespace Sportarr.Providers
                 // refresh did it silently, so a library could rewrite itself
                 // wrongly with nobody touching anything. The candidate has to
                 // agree on the name, and on the year when both are known.
-                var searchResults = await GetSearchResults(info, cancellationToken).ConfigureAwait(false);
+                // A file in the folder that carries the Sportarr id names the
+                // league outright, the way a tvdb id names a show. The id is
+                // exact, so it needs no name check.
+                sportarrId = await SearchByIdHintAsync(info, cancellationToken).ConfigureAwait(false);
+
+                var searchResults = string.IsNullOrEmpty(sportarrId)
+                    ? await GetSearchResults(info, cancellationToken).ConfigureAwait(false)
+                    : Array.Empty<RemoteSearchResult>();
                 foreach (var candidate in searchResults)
                 {
                     if (!NamesAgree(info.Name, candidate.Name)) continue;
@@ -201,6 +208,84 @@ namespace Sportarr.Providers
         /// Whether two series names refer to the same thing, ignoring case,
         /// punctuation and spacing.
         /// </summary>
+        private static readonly string[] MediaExtensions = { ".mkv", ".mp4", ".ts", ".m4v", ".avi", ".mov", ".wmv", ".webm", ".mpg", ".mpeg" };
+
+        // The Sportarr id token in a file name: branded (sportarr-ev-2338110),
+        // braced ({sportarr-ev-2338110}) or bare (ev-2338110). A file that
+        // carries one names its event; its numbers no longer matter.
+        private static readonly System.Text.RegularExpressions.Regex SportarrIdToken = new(
+            @"(^|[^a-z0-9])(sportarr[-._ ]+)?(ev|lg)[-._ ]*\d{4,10}(?![0-9])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        internal static bool CarriesSportarrId(string? name) =>
+            !string.IsNullOrEmpty(name) && SportarrIdToken.IsMatch(name);
+
+        /// <summary>
+        /// The name of one media file under the series folder that carries
+        /// a Sportarr id, or null. Files in the folder itself come first,
+        /// then one level down (Season folders). A theme clip or an extra
+        /// carries no id and never stands in for the show's files.
+        /// </summary>
+        internal static string? FirstMediaFile(string? seriesPath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(seriesPath) || !System.IO.Directory.Exists(seriesPath)) return null;
+                foreach (var file in System.IO.Directory.EnumerateFiles(seriesPath))
+                {
+                    if (IsMediaFile(file) && CarriesSportarrId(System.IO.Path.GetFileName(file))) return System.IO.Path.GetFileName(file);
+                }
+                foreach (var dir in System.IO.Directory.EnumerateDirectories(seriesPath))
+                {
+                    foreach (var file in System.IO.Directory.EnumerateFiles(dir))
+                    {
+                        if (IsMediaFile(file) && CarriesSportarrId(System.IO.Path.GetFileName(file))) return System.IO.Path.GetFileName(file);
+                    }
+                }
+            }
+            catch
+            {
+                // An unreadable folder names nothing; the name search follows.
+            }
+            return null;
+        }
+
+        private static bool IsMediaFile(string path)
+        {
+            var ext = System.IO.Path.GetExtension(path);
+            foreach (var known in MediaExtensions)
+            {
+                if (string.Equals(ext, known, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// The league id the folder's files name through their Sportarr id,
+        /// or null when no file carries one the server knows.
+        /// </summary>
+        private async Task<string?> SearchByIdHintAsync(SeriesInfo info, CancellationToken cancellationToken)
+        {
+            var hintFile = FirstMediaFile(info.Path);
+            if (hintFile == null) return null;
+            try
+            {
+                var url = $"{ApiUrl}/api/metadata/agents/search?title={Uri.EscapeDataString(info.Name ?? string.Empty)}&filename={Uri.EscapeDataString(hintFile)}";
+                var response = await FetchNoCacheJsonAsync<SportarrSeriesSearchResponse>(url, cancellationToken).ConfigureAwait(false);
+                var first = response?.Results?.Length > 0 ? response.Results[0] : null;
+                if (first != null && first.MatchedBy == "id" && !string.IsNullOrEmpty(first.Id))
+                {
+                    _logger.Debug($"[Sportarr] '{hintFile}' names league {first.Id} by its Sportarr id");
+                    return first.Id;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug($"[Sportarr] Id hint lookup failed for {info.Path}: {ex.Message}");
+            }
+            return null;
+        }
+
         private static bool NamesAgree(string? a, string? b)
         {
             if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
@@ -232,6 +317,13 @@ namespace Sportarr.Providers
                 if (searchInfo.Year.HasValue)
                 {
                     url += $"&year={searchInfo.Year}";
+                }
+                // A file in the folder that carries the Sportarr id names the
+                // league outright; the server lists that league first.
+                var hintFile = FirstMediaFile(searchInfo.Path);
+                if (hintFile != null)
+                {
+                    url += $"&filename={Uri.EscapeDataString(hintFile)}";
                 }
 
                 _logger.Debug($"[Sportarr] Searching: {url}");

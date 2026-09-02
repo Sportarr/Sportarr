@@ -16,4 +16,6 @@ Sportarr provides a metadata plugin for Emby that fetches posters, banners, desc
 3. Go to **Dashboard > Plugins > Sportarr** and set the API URL (defaults to `https://sportarr.net`; a local Sportarr install works here too)
 4. Create a **TV Shows** library for your sports content, enable **Sportarr** under Metadata Downloaders, and move it to the top of the priority list
 
+Files the Sportarr app names carry the event's id (`sportarr-ev-2338110`), and the plugin matches by it first, like a tvdb id. The folder name and the season and episode numbers only serve files without one. See [File naming](../features/file-naming.md#the-sportarr-id-token).
+
 See [agents/emby/README.md](https://github.com/Sportarr/Sportarr/blob/main/agents/emby/README.md) for details.

@@ -13,6 +13,8 @@ Kodi works differently from Plex, Jellyfin, and Emby: it doesn't need a plugin a
 3. Choose what to write - **Episode NFO** and **Show NFO** are on by default; **Episode Thumbnails** and **League Poster & Banner** are optional
 4. Import or re-sync a league - the `.nfo` files and images appear next to your video files
 
+Each event's `.nfo` carries its Sportarr id as a `uniqueid`, the way a tvdb id would, so the library keeps the id whatever the season and episode numbers do.
+
 In Kodi, create a **TV Shows** library pointed at your sports folder and scan it. No scraper configuration needed - Kodi finds the local NFO automatically.
 
 !!! tip

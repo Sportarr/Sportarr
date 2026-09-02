@@ -37,7 +37,7 @@ This document specifies the API endpoints required for sportarr.net to implement
 
 ### 1. Provider Definition
 
-**GET** `/plex/provider`
+**GET** `/api/plex/provider/sports` (users paste `https://sportarr.net/plex`, which redirects here)
 
 Returns the provider configuration and capabilities.
 
@@ -45,15 +45,15 @@ Returns the provider configuration and capabilities.
 ```json
 {
   "MediaContainer": {
-    "identifier": "tv.plex.agents.custom.sportarr",
+    "identifier": "tv.plex.agents.custom.sportarr.sports",
     "title": "Sportarr",
     "version": "2.0.0",
     "types": [
       { "type": 2, "title": "TV Shows" }
     ],
     "Feature": [
-      { "type": "match", "key": "/plex/provider/library/metadata/matches" },
-      { "type": "metadata", "key": "/plex/provider/library/metadata" }
+      { "type": "match", "key": "/api/plex/provider/sports/library/metadata/matches" },
+      { "type": "metadata", "key": "/api/plex/provider/sports/library/metadata" }
     ],
     "attribution": "Metadata provided by Sportarr (powered by Sportarr API)"
   }
@@ -64,9 +64,13 @@ Returns the provider configuration and capabilities.
 
 ### 2. Match Endpoint (Search)
 
-**POST** `/plex/provider/library/metadata/matches`
+**POST** `/api/plex/provider/sports/library/metadata/matches`
 
 Plex calls this to find matching shows/seasons/episodes based on file info.
+Every request may carry `filename`, the relative path of the media file
+(for a show or a season, the first file found). A Sportarr id in that
+name (`sportarr-ev-2338110`, or `lg-000032` for a league) names the item
+outright; titles and numbers are the fallback for a file with no id.
 
 **Headers:**
 - `X-Plex-Language`: `en` (optional)
@@ -79,7 +83,8 @@ Plex calls this to find matching shows/seasons/episodes based on file info.
   "type": 2,
   "title": "UFC",
   "year": 2025,
-  "manual": 0
+  "manual": 0,
+  "filename": "Sports/UFC/Season 2025/UFC - S2025E05 - UFC 320 - sportarr-ev-2338110.mkv"
 }
 ```
 
@@ -88,7 +93,8 @@ Plex calls this to find matching shows/seasons/episodes based on file info.
 {
   "type": 3,
   "parentTitle": "UFC",
-  "index": 2025
+  "index": 2025,
+  "filename": "Sports/UFC/Season 2025/UFC - S2025E05 - UFC 320 - sportarr-ev-2338110.mkv"
 }
 ```
 
@@ -99,7 +105,8 @@ Plex calls this to find matching shows/seasons/episodes based on file info.
   "grandparentTitle": "UFC",
   "parentIndex": 2025,
   "index": 5,
-  "title": "UFC 320"
+  "title": "UFC 320",
+  "filename": "Sports/UFC/Season 2025/UFC - S2025E05 - UFC 320 - sportarr-ev-2338110.mkv"
 }
 ```
 
@@ -109,13 +116,13 @@ Plex calls this to find matching shows/seasons/episodes based on file info.
   "MediaContainer": {
     "offset": 0,
     "totalSize": 1,
-    "identifier": "tv.plex.agents.custom.sportarr",
+    "identifier": "tv.plex.agents.custom.sportarr.sports",
     "size": 1,
     "Metadata": [
       {
         "ratingKey": "sportarr-league-4389",
-        "key": "/plex/provider/library/metadata/sportarr-league-4389",
-        "guid": "tv.plex.agents.custom.sportarr://league/4389",
+        "key": "/api/plex/provider/sports/library/metadata/sportarr-league-4389",
+        "guid": "tv.plex.agents.custom.sportarr.sports://league/4389",
         "type": 2,
         "title": "Ultimate Fighting Championship",
         "originalTitle": "UFC",
@@ -142,13 +149,13 @@ Plex calls this to find matching shows/seasons/episodes based on file info.
   "MediaContainer": {
     "offset": 0,
     "totalSize": 1,
-    "identifier": "tv.plex.agents.custom.sportarr",
+    "identifier": "tv.plex.agents.custom.sportarr.sports",
     "size": 1,
     "Metadata": [
       {
         "ratingKey": "sportarr-event-123456",
-        "key": "/plex/provider/library/metadata/sportarr-event-123456",
-        "guid": "tv.plex.agents.custom.sportarr://event/123456",
+        "key": "/api/plex/provider/sports/library/metadata/sportarr-event-123456",
+        "guid": "tv.plex.agents.custom.sportarr.sports://event/123456",
         "type": 4,
         "title": "UFC 320: Jones vs. Aspinall",
         "grandparentTitle": "UFC",
@@ -170,11 +177,11 @@ Plex calls this to find matching shows/seasons/episodes based on file info.
 
 ### 3. Metadata Endpoint (Single Item)
 
-**GET** `/plex/provider/library/metadata/{ratingKey}`
+**GET** `/api/plex/provider/sports/library/metadata/{ratingKey}`
 
 Returns detailed metadata for a specific item.
 
-**Example:** `GET /plex/provider/library/metadata/sportarr-league-4389`
+**Example:** `GET /api/plex/provider/sports/library/metadata/sportarr-league-4389`
 
 **Response (TV Show/League):**
 ```json
@@ -182,13 +189,13 @@ Returns detailed metadata for a specific item.
   "MediaContainer": {
     "offset": 0,
     "totalSize": 1,
-    "identifier": "tv.plex.agents.custom.sportarr",
+    "identifier": "tv.plex.agents.custom.sportarr.sports",
     "size": 1,
     "Metadata": [
       {
         "ratingKey": "sportarr-league-4389",
-        "key": "/plex/provider/library/metadata/sportarr-league-4389",
-        "guid": "tv.plex.agents.custom.sportarr://league/4389",
+        "key": "/api/plex/provider/sports/library/metadata/sportarr-league-4389",
+        "guid": "tv.plex.agents.custom.sportarr.sports://league/4389",
         "type": 2,
         "title": "Ultimate Fighting Championship",
         "originalTitle": "UFC",
@@ -214,7 +221,7 @@ Returns detailed metadata for a specific item.
 }
 ```
 
-**Example:** `GET /plex/provider/library/metadata/sportarr-event-123456`
+**Example:** `GET /api/plex/provider/sports/library/metadata/sportarr-event-123456`
 
 **Response (Episode/Event):**
 ```json
@@ -222,19 +229,19 @@ Returns detailed metadata for a specific item.
   "MediaContainer": {
     "offset": 0,
     "totalSize": 1,
-    "identifier": "tv.plex.agents.custom.sportarr",
+    "identifier": "tv.plex.agents.custom.sportarr.sports",
     "size": 1,
     "Metadata": [
       {
         "ratingKey": "sportarr-event-123456",
-        "key": "/plex/provider/library/metadata/sportarr-event-123456",
-        "guid": "tv.plex.agents.custom.sportarr://event/123456",
+        "key": "/api/plex/provider/sports/library/metadata/sportarr-event-123456",
+        "guid": "tv.plex.agents.custom.sportarr.sports://event/123456",
         "type": 4,
         "title": "UFC 320: Jones vs. Aspinall",
         "grandparentTitle": "UFC",
-        "grandparentKey": "/plex/provider/library/metadata/sportarr-league-4389",
+        "grandparentKey": "/api/plex/provider/sports/library/metadata/sportarr-league-4389",
         "parentTitle": "Season 2025",
-        "parentKey": "/plex/provider/library/metadata/sportarr-season-4389-2025",
+        "parentKey": "/api/plex/provider/sports/library/metadata/sportarr-season-4389-2025",
         "parentIndex": 2025,
         "index": 5,
         "originallyAvailableAt": "2025-03-15",
@@ -260,7 +267,7 @@ Returns detailed metadata for a specific item.
 
 ### 4. Children Endpoint (Seasons)
 
-**GET** `/plex/provider/library/metadata/{ratingKey}/children`
+**GET** `/api/plex/provider/sports/library/metadata/{ratingKey}/children`
 
 Returns seasons for a show, or episodes for a season.
 
@@ -268,7 +275,7 @@ Returns seasons for a show, or episodes for a season.
 - `X-Plex-Container-Start`: `0` (pagination offset)
 - `X-Plex-Container-Size`: `20` (items per page)
 
-**Example:** `GET /plex/provider/library/metadata/sportarr-league-4389/children`
+**Example:** `GET /api/plex/provider/sports/library/metadata/sportarr-league-4389/children`
 
 **Response (Seasons):**
 ```json
@@ -276,29 +283,29 @@ Returns seasons for a show, or episodes for a season.
   "MediaContainer": {
     "offset": 0,
     "totalSize": 5,
-    "identifier": "tv.plex.agents.custom.sportarr",
+    "identifier": "tv.plex.agents.custom.sportarr.sports",
     "size": 5,
     "Metadata": [
       {
         "ratingKey": "sportarr-season-4389-2025",
-        "key": "/plex/provider/library/metadata/sportarr-season-4389-2025",
-        "guid": "tv.plex.agents.custom.sportarr://season/4389/2025",
+        "key": "/api/plex/provider/sports/library/metadata/sportarr-season-4389-2025",
+        "guid": "tv.plex.agents.custom.sportarr.sports://season/4389/2025",
         "type": 3,
         "title": "Season 2025",
         "parentTitle": "UFC",
-        "parentKey": "/plex/provider/library/metadata/sportarr-league-4389",
+        "parentKey": "/api/plex/provider/sports/library/metadata/sportarr-league-4389",
         "index": 2025,
         "thumb": "https://sportarr.net/images/leagues/4389/seasons/2025/poster.jpg",
         "summary": "UFC events from the 2025 season."
       },
       {
         "ratingKey": "sportarr-season-4389-2024",
-        "key": "/plex/provider/library/metadata/sportarr-season-4389-2024",
-        "guid": "tv.plex.agents.custom.sportarr://season/4389/2024",
+        "key": "/api/plex/provider/sports/library/metadata/sportarr-season-4389-2024",
+        "guid": "tv.plex.agents.custom.sportarr.sports://season/4389/2024",
         "type": 3,
         "title": "Season 2024",
         "parentTitle": "UFC",
-        "parentKey": "/plex/provider/library/metadata/sportarr-league-4389",
+        "parentKey": "/api/plex/provider/sports/library/metadata/sportarr-league-4389",
         "index": 2024,
         "thumb": "https://sportarr.net/images/leagues/4389/seasons/2024/poster.jpg",
         "summary": "UFC events from the 2024 season."
@@ -308,7 +315,7 @@ Returns seasons for a show, or episodes for a season.
 }
 ```
 
-**Example:** `GET /plex/provider/library/metadata/sportarr-season-4389-2025/children`
+**Example:** `GET /api/plex/provider/sports/library/metadata/sportarr-season-4389-2025/children`
 
 **Response (Episodes):**
 ```json
@@ -316,13 +323,13 @@ Returns seasons for a show, or episodes for a season.
   "MediaContainer": {
     "offset": 0,
     "totalSize": 42,
-    "identifier": "tv.plex.agents.custom.sportarr",
+    "identifier": "tv.plex.agents.custom.sportarr.sports",
     "size": 20,
     "Metadata": [
       {
         "ratingKey": "sportarr-event-123456",
-        "key": "/plex/provider/library/metadata/sportarr-event-123456",
-        "guid": "tv.plex.agents.custom.sportarr://event/123456",
+        "key": "/api/plex/provider/sports/library/metadata/sportarr-event-123456",
+        "guid": "tv.plex.agents.custom.sportarr.sports://event/123456",
         "type": 4,
         "title": "UFC 320: Jones vs. Aspinall",
         "grandparentTitle": "UFC",
@@ -357,13 +364,13 @@ Rating keys are URL-safe identifiers that encode the item type and ID:
 GUIDs follow Plex's custom agent scheme:
 
 ```
-tv.plex.agents.custom.sportarr://{type}/{id}
+tv.plex.agents.custom.sportarr.sports://{type}/{id}
 ```
 
 Examples:
-- `tv.plex.agents.custom.sportarr://league/4389`
-- `tv.plex.agents.custom.sportarr://season/4389/2025`
-- `tv.plex.agents.custom.sportarr://event/123456`
+- `tv.plex.agents.custom.sportarr.sports://league/4389`
+- `tv.plex.agents.custom.sportarr.sports://season/4389/2025`
+- `tv.plex.agents.custom.sportarr.sports://event/123456`
 
 ---
 
@@ -402,9 +409,9 @@ contract, including the frozen offsets and the envelope retirement policy.
 
 ### TV Show Matching (type 2)
 
-1. Search by title (fuzzy match against league names)
-2. Filter by sport if detectable from title
-3. Return best matches sorted by score
+1. A stored `guid` (the identity Plex already holds, a Fix Match included) resolves the league outright
+2. Else a Sportarr id in `filename` names the league: a league token directly, an event token through the event's league
+3. Else search by title (relevance-scored against league names) and return the best matches
 
 Common league titles to match:
 - "UFC" → Ultimate Fighting Championship
@@ -416,16 +423,16 @@ Common league titles to match:
 
 ### Season Matching (type 3)
 
-1. Parse `parentTitle` to find league
-2. Use `index` as season year
-3. Return matching season
+1. A Sportarr id in `filename` names the league, and an event id names the season too
+2. Else parse `parentTitle` to find the league and use `index` as the season year
+3. Return the matching season
 
 ### Episode Matching (type 4)
 
-1. Parse `grandparentTitle` to find league
-2. Use `parentIndex` as season year
-3. Use `index` as episode number within that season
-4. Optionally match by `title` for better accuracy
+1. An event id in `filename` names the event outright, with its own season and league, whatever the titles and numbers say. An event with no numbered slot (cancelled or postponed) answers nothing rather than another game
+2. Else parse `grandparentTitle` to find the league, `parentIndex` as the season year and `index` as the episode number within that season
+
+Note that a library scan never sends a type 4 request: once the show is matched, Plex places each file by its season and episode numbers against the provider's season children listing. Type 4 requests come from a manual Fix Match on an episode. Episode payloads carry a `Guid` array with `sportarr://ev-…` and its `tvdb://` alias, like show payloads.
 
 **Episode Number Calculation:**
 Episodes are numbered chronologically by event date within each season. This matches how Sportarr assigns episode numbers.
@@ -454,7 +461,7 @@ Images are sourced from Sportarr API and cached on sportarr.net.
 ```json
 {
   "MediaContainer": {
-    "identifier": "tv.plex.agents.custom.sportarr",
+    "identifier": "tv.plex.agents.custom.sportarr.sports",
     "size": 0,
     "Metadata": []
   }
@@ -515,19 +522,19 @@ WHERE idLeague = ? AND strSeason = ?
 ### API Testing
 
 ```bash
-# Get provider info
-curl https://sportarr.net/plex/provider
+# Get provider info (the /plex URL users paste redirects to the manifest)
+curl -L https://sportarr.net/plex
 
 # Search for a show
-curl -X POST https://sportarr.net/plex/provider/library/metadata/matches \
+curl -X POST https://sportarr.net/api/plex/provider/sports/library/metadata/matches \
   -H "Content-Type: application/json" \
   -d '{"type": 2, "title": "UFC"}'
 
 # Get show metadata
-curl https://sportarr.net/plex/provider/library/metadata/sportarr-league-4389
+curl https://sportarr.net/api/plex/provider/sports/library/metadata/sportarr-league-4389
 
 # Get seasons
-curl https://sportarr.net/plex/provider/library/metadata/sportarr-league-4389/children
+curl https://sportarr.net/api/plex/provider/sports/library/metadata/sportarr-league-4389/children
 ```
 
 ---

@@ -62,11 +62,12 @@ public class MetadataWriterServiceTests : IDisposable
         var videoPath = Path.Combine(_tempDir, fileName);
         File.WriteAllText(videoPath, "video");
 
-        var league = new League { Name = "UFC", Sport = "Fighting" };
+        var league = new League { Name = "UFC", Sport = "Fighting", ExternalId = "lg-004463" };
         var evt = new Event
         {
             Title = "UFC 317 - Main Card",
             Sport = "Fighting",
+            ExternalId = "ev-2338110",
             League = league,
             SeasonNumber = 2026,
             EpisodeNumber = 12,
@@ -119,6 +120,38 @@ public class MetadataWriterServiceTests : IDisposable
         // tag makes Kodi try to resolve it online and corrupts the local
         // scrape (confirmed Sonarr/Radarr issue pattern).
         doc.Root.Element("episodeguide").Should().BeNull();
+
+        // The event's own id rides in the nfo the way a tvdb id does, so
+        // the library keeps the id whatever the numbers do.
+        var uniqueId = doc.Root.Element("uniqueid");
+        uniqueId.Should().NotBeNull();
+        uniqueId!.Attribute("type")!.Value.Should().Be("sportarr");
+        uniqueId.Attribute("default")!.Value.Should().Be("true");
+        uniqueId.Value.Should().Be("ev-2338110");
+
+    }
+
+    [Fact]
+    public async Task WriteLeagueMetadataAsync_WritesTheLeagueIdIntoTheShowNfo()
+    {
+        await AddEnabledKodiProviderAsync();
+        var seasonDir = Path.Combine(_tempDir, "UFC", "Season 2026");
+        Directory.CreateDirectory(seasonDir);
+        var (evt, file) = MakeEventAndFile(Path.Combine("UFC", "Season 2026", "UFC 317 - Main Card.mkv"));
+        file.Exists = true;
+        file.Event = evt;
+        _db.Events.Add(evt);
+        _db.EventFiles.Add(file);
+        await _db.SaveChangesAsync();
+
+        await _service.WriteLeagueMetadataAsync(evt.League!);
+
+        var show = XDocument.Load(Path.Combine(_tempDir, "UFC", "tvshow.nfo"));
+        show.Root!.Name.LocalName.Should().Be("tvshow");
+        var uniqueId = show.Root.Element("uniqueid");
+        uniqueId.Should().NotBeNull();
+        uniqueId!.Attribute("type")!.Value.Should().Be("sportarr");
+        uniqueId.Value.Should().Be("lg-004463");
     }
 
     [Fact]

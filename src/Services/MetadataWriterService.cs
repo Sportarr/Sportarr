@@ -188,6 +188,16 @@ public class MetadataWriterService : IMetadataWriterService
             new XElement("episode", evt.EpisodeNumber!.Value),
             new XElement("aired", (evt.BroadcastDate ?? evt.EventDate).ToString("yyyy-MM-dd")));
 
+        // The event's own id, the way a tvdb id rides in a Kodi nfo, so the
+        // library keeps the id whatever the numbers do.
+        if (!string.IsNullOrEmpty(evt.ExternalId))
+        {
+            episode.Add(new XElement("uniqueid",
+                new XAttribute("type", "sportarr"),
+                new XAttribute("default", "true"),
+                evt.ExternalId));
+        }
+
         if (!string.IsNullOrEmpty(evt.Description))
         {
             episode.Add(new XElement("plot", evt.Description));
@@ -208,6 +218,14 @@ public class MetadataWriterService : IMetadataWriterService
         var show = new XElement("tvshow",
             new XElement("title", league.Name),
             new XElement("genre", league.Sport));
+
+        if (!string.IsNullOrEmpty(league.ExternalId))
+        {
+            show.Add(new XElement("uniqueid",
+                new XAttribute("type", "sportarr"),
+                new XAttribute("default", "true"),
+                league.ExternalId));
+        }
 
         if (!string.IsNullOrEmpty(league.Description))
         {

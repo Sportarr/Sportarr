@@ -154,8 +154,8 @@ read tags back:
   non-MKV containers the filename token carries the id.
 - Sportarr reads the embedded tag on import and scan and treats it with
   the same authority as a filename token (the filename token wins if
-  both are present and disagree). Note that media servers do not
-  currently read embedded ids for matching, so keep the token in the
+  both are present and disagree). The media server agents read the
+  filename token, not the embedded tag, so keep the token in the
   release name too; the embedded tag is the recovery path for files
   whose names get mangled downstream.
 

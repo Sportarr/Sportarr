@@ -22,7 +22,7 @@ For the release title patterns Sportarr's parser understands per sport, see the 
 
 ## The Sportarr id token
 
-`{Sportarr Id}` writes the event's id into the name as `sportarr-ev-2338110`. Imports and rescans read it back and match the file to its event exactly, so a renamed or moved file never lands on the wrong event. The media server agents do not use it at all. Plex, Jellyfin, Emby and Kodi match the show by the league folder name and each event by the season and episode numbers in the file name, which is why Sportarr keeps those numbers current on its own.
+`{Sportarr Id}` writes the event's id into the name as `sportarr-ev-2338110`. Imports and rescans read it back and match the file to its event exactly, so a renamed or moved file never lands on the wrong event. The media server agents read it the same way. Jellyfin and Emby match each file by its Sportarr id first, like a tvdb id, and fall back to the league folder name and the season and episode numbers only for a file that carries no id. Plex matches the show by the id in your file names, the way it reads a tvdb id in a folder name, and then places each file by its season and episode numbers, because that is how Plex places every episode; the Plex legacy bundle matches each file by its id. Kodi gets the id from the `.nfo` Sportarr writes next to the file. Keep the token in your format and a renumbered season can never send a file to another league or, on Jellyfin and Emby, to another game. Sportarr still keeps the numbers current on its own, for files that carry no id and for the episode order your media server shows.
 
 ## Changing the format
 

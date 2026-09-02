@@ -116,7 +116,10 @@ namespace Sportarr.Providers
             // scheme; blind-matching those numbers returns a confidently wrong
             // event. Leave the episode unidentified instead so the misparse is
             // visible and fixable.
-            if (info.ParentIndexNumber.Value < 1900 || info.ParentIndexNumber.Value > 2100)
+            // A file that carries the Sportarr id is matched by the id, so its
+            // numbers need no check.
+            if ((info.ParentIndexNumber.Value < 1900 || info.ParentIndexNumber.Value > 2100)
+                && !SportarrSeriesProvider.CarriesSportarrId(System.IO.Path.GetFileName(info.Path)))
             {
                 _logger.Warn($"[Sportarr] Season {info.ParentIndexNumber} is not a year - filename does not follow the Sportarr naming scheme (League - SyyyyEnn - Title); skipping match to avoid wrong metadata");
                 return result;
@@ -129,6 +132,13 @@ namespace Sportarr.Providers
                 // guarantees /match returns the event this file maps to, for
                 // the cost of one small response per file.
                 var url = $"{ApiUrl}/api/metadata/match?series={seriesId}&season={info.ParentIndexNumber}&episode={info.IndexNumber}";
+                // The file name carries the Sportarr id, which the server
+                // matches by first; the numbers serve a file without one.
+                // It also names the part of a multi-part event.
+                if (!string.IsNullOrEmpty(info.Path))
+                {
+                    url += $"&filename={Uri.EscapeDataString(System.IO.Path.GetFileName(info.Path))}";
+                }
                 _logger.Debug($"[Sportarr] Matching episode: {url}");
 
                 var response = await FetchNoCacheJsonAsync<SportarrMatchResponse>(url, cancellationToken);

@@ -21,6 +21,8 @@ For **Plex 1.43.0+**, use the Custom Metadata Provider system. No plugin install
 5. **Restart Plex Media Server**
 6. Create a **TV Shows** library, select your sports folder, and choose the **Sportarr** agent
 
+Files the Sportarr app names carry the event's id (`sportarr-ev-2338110`). The provider reads it to match the show, the way Plex reads a tvdb id in a folder name, so a folder named anything still lands on the right league. Each file is then placed by its season and episode numbers, because that is how Plex places every episode, and Sportarr keeps those numbers current. See [File naming](../features/file-naming.md#the-sportarr-id-token).
+
 ## Legacy bundle agent
 
 For older Plex versions, download the legacy bundle from the Sportarr UI (**Settings > General > Media Server Agents**) and copy it to your Plex Plug-ins directory.

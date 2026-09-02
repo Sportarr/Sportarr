@@ -242,30 +242,34 @@ public class LibraryImportService
                     // named with sportarr-ev-XXXXXXX, or carrying an
                     // embedded SPORTARR tag (surfaced via ffprobe on
                     // parsedInfo), identifies its event exactly - look it up
-                    // directly and skip fuzzy scoring. The same
-                    // claimed/HasFile eligibility rules apply as for fuzzy
-                    // matches, so a token can't double-assign an event
-                    // within one scan batch.
+                    // directly and skip fuzzy scoring. The id names its
+                    // event whether or not that event already has a file, or
+                    // an earlier file in this batch claimed it: a second copy
+                    // of a game is still that game (the import then decides
+                    // between the copies, the way a grab upgrade does). A
+                    // fuzzy match would hand it to a different game. Only an
+                    // id this instance does not know falls back to fuzzy
+                    // scoring.
                     var scanTokenId = sportsResult.SportarrEventId ?? parsedInfo.SportarrEventId;
                     if (!string.IsNullOrEmpty(scanTokenId))
                     {
                         var tokenEventId = scanTokenId;
                         var tokenEvent = await _db.Events
                             .Include(e => e.League)
-                            .FirstOrDefaultAsync(e => e.ExternalId == tokenEventId
-                                && (isPartFile || (!e.HasFile && !claimedEventIds.Contains(e.Id))));
+                            .FirstOrDefaultAsync(e => e.ExternalId == tokenEventId);
                         if (tokenEvent != null)
                         {
                             matchedEvent = tokenEvent;
                             matchConfidence = 100;
                             if (!isPartFile)
                                 claimedEventIds.Add(tokenEvent.Id);
-                            _logger.LogInformation("[Library Import] Id token match: '{File}' is tagged {Token} = '{Event}'",
-                                filename, tokenEventId, tokenEvent.Title);
+                            _logger.LogInformation("[Library Import] Id token match: '{File}' is tagged {Token} = '{Event}'{Note}",
+                                filename, tokenEventId, tokenEvent.Title,
+                                tokenEvent.HasFile ? " (the event already has a file)" : "");
                         }
                         else
                         {
-                            _logger.LogWarning("[Library Import] File '{File}' carries id token {Token} but no eligible local event has that id - falling back to fuzzy matching",
+                            _logger.LogWarning("[Library Import] File '{File}' carries id token {Token} but no local event has that id - falling back to fuzzy matching",
                                 filename, tokenEventId);
                         }
                     }

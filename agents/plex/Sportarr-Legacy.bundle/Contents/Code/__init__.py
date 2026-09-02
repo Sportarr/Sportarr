@@ -52,6 +52,38 @@ def Start():
     HTTP.CacheTime = 0
 
 
+def leaf_name(path):
+    """The file name at the end of a path, as a byte string."""
+    if isinstance(path, unicode):
+        path = path.encode('utf-8')
+    return path.split('/')[-1].split('\\')[-1]
+
+
+def first_media_file(media):
+    """The name of one media file of the show, or None."""
+    try:
+        name = getattr(media, 'filename', None)
+        if name:
+            # The framework hands this one URL-quoted.
+            return leaf_name(String.Unquote(name))
+        for season in media.seasons:
+            for ep in media.seasons[season].episodes:
+                name = episode_file_name(media, season, ep)
+                if name:
+                    return name
+    except Exception:
+        pass
+    return None
+
+
+def episode_file_name(media, season_num, ep_num):
+    """The file name of one episode of the show, or None."""
+    try:
+        return leaf_name(media.seasons[season_num].episodes[ep_num].items[0].parts[0].file)
+    except Exception:
+        return None
+
+
 class SportarrAgent(Agent.TV_Shows):
     name = 'Sportarr (Legacy)'
     languages = ['en']
@@ -71,14 +103,24 @@ class SportarrAgent(Agent.TV_Shows):
             if media.year:
                 search_url = search_url + "&year=%s" % media.year
 
+            # A file in the folder that carries the Sportarr id names the
+            # league outright; the server puts that league first, flagged
+            # matched_by "id".
+            first_file = first_media_file(media)
+            if first_file:
+                search_url = search_url + "&filename=%s" % String.Quote(first_file, usePlus=True)
+
             Log.Debug("[Sportarr-Legacy] Search URL: %s" % search_url)
             response = fetch_json(search_url)
 
             if 'results' in response:
                 for idx, series in enumerate(response['results'][:10]):
-                    score = 100 - (idx * 5)
-
+                    # The id in the file name is exact; nothing outranks it.
+                    # An exact title comes next, then the server's order.
+                    score = min(95, 100 - (idx * 5))
                     if series.get('title', '').lower() == media.show.lower():
+                        score = 99
+                    if series.get('matched_by') == 'id':
                         score = 100
 
                     # thumb populates the Fix Match dialog with the league
@@ -154,10 +196,12 @@ class SportarrAgent(Agent.TV_Shows):
             Log.Debug("[Sportarr-Legacy] Seasons URL: %s" % seasons_url)
             seasons_response = fetch_json(seasons_url)
 
+            covered = set()
             if 'seasons' in seasons_response:
                 for season_data in seasons_response['seasons']:
                     season_num = season_data.get('season_number')
                     if season_num in media.seasons:
+                        covered.add(str(season_num))
                         season = metadata.seasons[season_num]
                         season.title = season_data.get('title', "Season %s" % season_num)
                         season.summary = season_data.get('summary', '')
@@ -171,6 +215,13 @@ class SportarrAgent(Agent.TV_Shows):
                                 Log.Warn("[Sportarr-Legacy] Failed to fetch season poster: %s" % e)
 
                         self.update_episodes(metadata, media, season_num)
+
+            # A season Plex found that the season list does not name still
+            # gets its episodes matched: a file that carries the Sportarr id
+            # names its event whatever its season number says.
+            for season_num in media.seasons:
+                if str(season_num) not in covered:
+                    self.update_episodes(metadata, media, season_num)
 
         except Exception as e:
             Log.Error("[Sportarr-Legacy] Update error: %s" % str(e))
@@ -189,6 +240,11 @@ class SportarrAgent(Agent.TV_Shows):
                 match_url = "%s/api/metadata/match?series=%s&season=%s&episode=%s" % (
                     get_api_url(), metadata.id, season_num, ep_num
                 )
+                # The file name carries the Sportarr id; the server matches
+                # by it first and by the numbers only for a file without one.
+                file_name = episode_file_name(media, season_num, ep_num)
+                if file_name:
+                    match_url = match_url + "&filename=%s" % String.Quote(file_name, usePlus=True)
                 Log.Debug("[Sportarr-Legacy] Match URL: %s" % match_url)
                 match_response = fetch_json(match_url)
 

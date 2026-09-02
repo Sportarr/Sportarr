@@ -3,7 +3,9 @@
 Kodi is the odd one out among Sportarr's media-server integrations: it needs
 **no addon at all** to work correctly. Kodi reads local `.nfo` files and
 poster/fanart images directly off disk, and Sportarr can write those for you
-(Settings → Local Metadata in the Sportarr app). Turn that on, point a Kodi
+(Settings → Local Metadata in the Sportarr app). The `.nfo` carries the
+event's Sportarr id as a `uniqueid`, the way a tvdb id would, so the
+library keeps the id whatever the numbers do. Turn that on, point a Kodi
 TV Shows library at your sports folder, and you're done - see
 [docs/integrations/kodi.md](https://wiki.sportarr.net) on the wiki.
 
