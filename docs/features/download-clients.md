@@ -26,6 +26,14 @@ If you manage seeding manually and never want Sportarr to move files out of your
 
 With **Remove Completed Downloads** enabled on a client, a move import finishes by removing the job from the client and deleting the job's leftover folder, including nfo, sample, and archive leftovers, so nothing of the release stays behind in the download directory. With the setting off, Sportarr leaves the client's jobs and folders completely alone.
 
+### A file for a game that already has one
+
+Sportarr keeps one file per game, or per part of a game. Every way a file can arrive is judged by the same rule. A lower quality never replaces the file you have. The same quality replaces it unless it is an older revision while propers and repacks are preferred, or its custom format score is lower. A higher quality always replaces it.
+
+A copy that is equal to the file a game already holds is not swapped in. It is listed in Activity with the reason, so you decide whether to import it, ignore it or remove it.
+
+A completed download that fails the rule stays in the queue with the reason and an **Import Anyway** button. A file that appears in a league folder and fails the rule is logged and left where it is; **Library Import** lists it with the reason and imports whatever you select. When a copy that already sits in the league folder takes over, the file it replaces stays on disk untracked. A copy from anywhere else replaces it through the recycle bin.
+
 ## Per-indexer client assignment
 
 Under an indexer's advanced settings you can pin a specific download client, so grabs from that indexer always go to that client regardless of priority order. Useful when one tracker should hit a dedicated seedbox client.

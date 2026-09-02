@@ -615,6 +615,9 @@ public class EventDvrService
                 Quality = recording.Quality,
                 PartName = recording.PartName,
                 ImportMode = recording.ImportMode,
+                // A recording replaces what the event holds only with an upgrade;
+                // a rejected recording stays in the DVR folder with the reason logged.
+                OnlyIfUpgrade = true,
             }
         });
 
@@ -622,7 +625,9 @@ public class EventDvrService
         {
             var reason = result.Errors.Count > 0
                 ? string.Join("; ", result.Errors)
-                : "the library import did not take the file";
+                : result.Rejected.Count > 0
+                    ? string.Join("; ", result.Rejected.Select(r => r.Reason))
+                    : "the library import did not take the file";
             _logger.LogWarning(
                 "[EventDVR] Recording {RecordingId} was not imported: {Reason}", recording.Id, reason);
             recording.ErrorMessage = reason;

@@ -477,27 +477,19 @@ public class FileImportService : IFileImportService
 
             if (upgradedFile != null)
             {
-                // Compare quality scores - reject if not an upgrade.
-                var existingTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(upgradedFile.Quality) + upgradedFile.CustomFormatScore;
-                var newTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(download.Quality) + download.CustomFormatScore;
-
-                // A proper/repack at the SAME score is a legitimate upgrade
-                // (broken original, fixed re-release) when the Download
-                // Propers and Repacks setting allows it.
-                var revisionUpgrade = config.DownloadPropersAndRepacks == "preferAndUpgrade" &&
-                    newTotalScore == existingTotalScore &&
-                    ReleaseRevision.Parse(download.Title) >
-                    ReleaseRevision.Parse(upgradedFile.OriginalTitle ?? upgradedFile.Quality);
-
-                if (newTotalScore <= existingTotalScore && !revisionUpgrade)
+                // One rule for every import path (ImportUpgradeRule): a lower
+                // quality never replaces, the same quality replaces unless it is
+                // a revision downgrade or a lower custom format score, a higher
+                // quality always replaces.
+                var decision = ImportUpgradeRule.Evaluate(
+                    upgradedFile.Quality, upgradedFile.CustomFormatScore, upgradedFile.OriginalTitle ?? upgradedFile.Quality,
+                    qualityString, download.CustomFormatScore, download.Title,
+                    config.DownloadPropersAndRepacks);
+                if (!decision.IsUpgrade)
                 {
-                    _logger.LogWarning(
-                        "[Import] Not an upgrade - existing file has same or better quality: " +
-                        "{ExistingQuality} (score {ExistingScore}) vs {NewQuality} (score {NewScore})",
-                        upgradedFile.Quality, existingTotalScore, download.Quality, newTotalScore);
-
+                    _logger.LogWarning("[Import] {Rejection} ({Title})", decision.Rejection, download.Title);
                     download.Status = DownloadStatus.ImportWarning;
-                    download.ErrorMessage = $"Not an upgrade for existing file (existing: {upgradedFile.Quality} score {existingTotalScore}, new: {download.Quality} score {newTotalScore})";
+                    download.ErrorMessage = decision.Rejection;
                     download.LastUpdate = DateTime.UtcNow;
                     await _db.SaveChangesAsync();
                     // File was NOT transferred - no orphan cleanup needed

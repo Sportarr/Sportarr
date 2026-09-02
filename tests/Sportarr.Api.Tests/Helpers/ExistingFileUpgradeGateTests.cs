@@ -49,6 +49,31 @@ public class ExistingFileUpgradeGateTests
     }
 
     [Fact]
+    public void A_higher_quality_is_allowed_whatever_the_custom_format_score_says()
+    {
+        // Quality first, as the import judges: the importer would take this file.
+        ExistingFileUpgradeGate.RefusalReason(File("HDTV-720p", cf: 500), "UFC.300.Prelims.1080p.WEB", "WEBDL-1080p", 0, Profile(), Config())
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void A_lower_quality_is_refused_whatever_the_custom_format_score_says()
+    {
+        // The importer would refuse this file, so grabbing it wastes a download.
+        ExistingFileUpgradeGate.RefusalReason(File("WEBDL-1080p"), "UFC.300.Prelims.720p.HDTV", "HDTV-720p", 500, Profile(), Config())
+            .Should().NotBeNull();
+    }
+
+    [Fact]
+    public void An_older_revision_of_the_same_quality_is_refused_while_propers_are_preferred()
+    {
+        ExistingFileUpgradeGate.RefusalReason(File("WEBDL-1080p", cf: 0, originalTitle: "UFC.300.Prelims.1080p.WEB.PROPER"), "UFC.300.Prelims.1080p.WEB", "WEBDL-1080p", 500, Profile(), Config())
+            .Should().NotBeNull("the importer would refuse it too");
+        ExistingFileUpgradeGate.RefusalReason(File("WEBDL-1080p", cf: 0, originalTitle: "UFC.300.Prelims.1080p.WEB.PROPER"), "UFC.300.Prelims.1080p.WEB", "WEBDL-1080p", 500, Profile(), Config("doNotPrefer"))
+            .Should().BeNull("revisions do not count when propers are not preferred");
+    }
+
+    [Fact]
     public void A_genuine_quality_upgrade_is_allowed()
     {
         ExistingFileUpgradeGate.RefusalReason(File("HDTV-720p"), "UFC.300.Prelims.1080p.WEB", "WEBDL-1080p", 0, Profile(), Config())

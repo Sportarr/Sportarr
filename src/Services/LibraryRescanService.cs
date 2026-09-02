@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
 
@@ -108,6 +109,9 @@ public class LibraryRescanService
                     FilePath = i.FilePath,
                     EventId = i.MatchedEventId,
                     Quality = i.Quality,
+                    // A rescan replaces what an event holds only with an upgrade
+                    // and leaves a rejected copy where it is.
+                    OnlyIfUpgrade = true,
                 })
                 .ToList();
 
@@ -116,6 +120,13 @@ public class LibraryRescanService
             try
             {
                 var importResult = await _libraryImport.ImportFilesAsync(autoImportable);
+                foreach (var rejected in importResult.Rejected)
+                {
+                    _logger.LogInformation("[Library Rescan] {Reason} Left where it is, Library Import can still take it: {Path}",
+                        rejected.Reason, rejected.FilePath);
+                    var match = scan.MatchedFiles.FirstOrDefault(f => f.FilePath == rejected.FilePath);
+                    if (match != null) await ListForReviewAsync(match, rejected.Reason, ct);
+                }
                 result.AutoImported += importResult.Imported.Count + importResult.Created.Count;
                 result.ImportFailures += importResult.Failed.Count + importResult.Errors.Count;
                 result.ImportSkipped += importResult.Skipped.Count;
@@ -132,6 +143,45 @@ public class LibraryRescanService
         result.CompletedAt = DateTime.UtcNow;
         result.Notes = $"Scanned {result.RootsScanned} root folder(s), {result.TotalFilesScanned} files, {result.MatchedFiles} matched, {result.AutoImported} auto-imported.";
         return result;
+    }
+
+    /// <summary>
+    /// Puts a copy the rescan would not import in Activity with the reason,
+    /// so the user decides what happens to it. A file the user ignored stays
+    /// ignored. A row that already carries a reason, or one a download client
+    /// owns, is left alone.
+    /// </summary>
+    private async Task ListForReviewAsync(ImportableFile file, string reason, CancellationToken ct)
+    {
+        if (await _db.Blocklist.AnyAsync(b => b.FilePath == file.FilePath, ct)) return;
+
+        var existing = await _db.PendingImports
+            .FirstOrDefaultAsync(p => p.FilePath == file.FilePath && p.Status == PendingImportStatus.Pending, ct);
+        if (existing != null)
+        {
+            if (existing.DownloadClientId != null || existing.ErrorMessage != null) return;
+            existing.ErrorMessage = reason;
+            existing.SuggestedEventId ??= file.MatchedEventId;
+            if (existing.SuggestionConfidence == 0) existing.SuggestionConfidence = file.MatchConfidence ?? 0;
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        _db.PendingImports.Add(new PendingImport
+        {
+            DownloadClientId = null,
+            DownloadId = $"disk-{Guid.NewGuid():N}",
+            Title = file.FileName,
+            FilePath = file.FilePath,
+            Size = file.FileSize,
+            Quality = file.Quality,
+            SuggestedEventId = file.MatchedEventId,
+            SuggestionConfidence = file.MatchConfidence ?? 0,
+            Detected = DateTime.UtcNow,
+            Status = PendingImportStatus.Pending,
+            ErrorMessage = reason,
+        });
+        await _db.SaveChangesAsync(ct);
     }
 
     // Shared with the real-time file watcher so both auto-import paths

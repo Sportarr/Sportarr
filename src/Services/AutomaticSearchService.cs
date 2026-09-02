@@ -1121,6 +1121,7 @@ public class AutomaticSearchService : IAutomaticSearchService
 
                     // If quality cutoff not met, allow quality upgrades
                     // If quality cutoff met but format cutoff not met, only allow format upgrades
+                    var propersSetting = (await _configService.GetConfigAsync()).DownloadPropersAndRepacks;
                     bool shouldUpgrade;
                     string upgradeReason;
 
@@ -1134,13 +1135,13 @@ public class AutomaticSearchService : IAutomaticSearchService
                         shouldUpgrade = true;
                         upgradeReason = $"format score upgrade ({existingFormatScore} -> {newReleaseFormatScore})";
                     }
-                    else if (!qualityCutoffMet && !isQualityUpgrade && isFormatUpgrade)
+                    else if (!qualityCutoffMet && newReleaseQualityScore == existingQualityScore && isFormatUpgrade)
                     {
                         // Same quality but better format score
                         shouldUpgrade = true;
                         upgradeReason = $"format score upgrade at same quality ({existingFormatScore} -> {newReleaseFormatScore})";
                     }
-                    else if ((await _configService.GetConfigAsync()).DownloadPropersAndRepacks == "preferAndUpgrade" &&
+                    else if (propersSetting == "preferAndUpgrade" &&
                              newReleaseQualityScore == existingQualityScore &&
                              newReleaseFormatScore == existingFormatScore &&
                              Helpers.ReleaseRevision.Parse(bestRelease.Title) >
@@ -1157,25 +1158,24 @@ public class AutomaticSearchService : IAutomaticSearchService
                         upgradeReason = "not better than existing";
                     }
 
-                    // NET-UPGRADE GUARD (automatic grabs only): the import step compares the
-                    // TOTAL score (quality + custom format) and refuses anything that is not
-                    // strictly higher than the existing file (FileImportService), and RSS sync
-                    // already does the same. The quality-only isQualityUpgrade check above can
-                    // approve a higher-resolution release whose total still sits below an
-                    // existing file boosted by a custom format (e.g. a +2000 release group),
-                    // so Sportarr would grab and download it only for the importer to throw it
-                    // away as "not an upgrade." Mirror the import's total-score rule here so we
-                    // never waste a download. Manual searches keep the user's explicit choice.
-                    if (shouldUpgrade && !isManualSearch &&
-                        upgradeReason != "proper/repack revision of the same quality")
+                    // QUALITY-FIRST GUARD (automatic grabs only): the import judges
+                    // quality first (ImportUpgradeRule), so a lower quality never
+                    // replaces the existing file whatever its custom format score,
+                    // and a higher quality always may. A grab the importer would
+                    // refuse is a wasted download. Manual searches keep the user's
+                    // explicit choice.
+                    if (shouldUpgrade && !isManualSearch && newReleaseQualityScore < existingQualityScore)
                     {
-                        var existingTotalScore = existingQualityScore + existingFormatScore;
-                        var newReleaseTotalScore = newReleaseQualityScore + newReleaseFormatScore;
-                        if (newReleaseTotalScore <= existingTotalScore)
-                        {
-                            shouldUpgrade = false;
-                            upgradeReason = $"not a net upgrade (existing total {existingTotalScore} >= new total {newReleaseTotalScore})";
-                        }
+                        shouldUpgrade = false;
+                        upgradeReason = $"lower quality than the existing file ({existingQualityScore} > {newReleaseQualityScore})";
+                    }
+                    else if (shouldUpgrade && !isManualSearch && newReleaseQualityScore == existingQualityScore
+                             && propersSetting != "doNotPrefer"
+                             && Helpers.ReleaseRevision.Parse(bestRelease.Title) < Helpers.ReleaseRevision.Parse(relevantFile.OriginalTitle ?? relevantFile.Quality))
+                    {
+                        // An older revision of the same quality: the importer refuses it.
+                        shouldUpgrade = false;
+                        upgradeReason = "an older revision of the existing file";
                     }
 
                     if (!shouldUpgrade)

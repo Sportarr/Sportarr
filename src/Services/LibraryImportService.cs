@@ -315,11 +315,20 @@ public class LibraryImportService
                             claimedEventIds.Add(matchedEvent.Id);
                     }
 
+                    // What the file the event already holds says about this one,
+                    // and whether an import would keep the file in place (a copy
+                    // already beside that file is not renamed).
+                    var judged = matchedEvent == null || isPartFile
+                        ? (Rejections: new List<string>(), InPlace: false)
+                        : await UpgradeRejectionsAsync(matchedEvent, filePath, parsedInfo);
+
                     // Build destination preview for matched files
                     string? destinationPreview = null;
                     if (matchedEvent != null)
                     {
-                        destinationPreview = await BuildDestinationPreviewAsync(matchedEvent, fileInfo.Name, settings);
+                        destinationPreview = judged.InPlace
+                            ? filePath
+                            : await BuildDestinationPreviewAsync(matchedEvent, fileInfo.Name, settings);
                     }
 
                     var importable = new ImportableFile
@@ -343,7 +352,8 @@ public class LibraryImportService
                         MatchedLeagueName = matchedEvent?.League?.Name,
                         MatchedSeason = matchedEvent?.Season ?? matchedEvent?.SeasonNumber?.ToString() ?? (matchedEvent?.BroadcastDate ?? matchedEvent?.EventDate)?.Year.ToString(),
                         DestinationPreview = destinationPreview,
-                        MatchConfidence = matchConfidence > 0 ? matchConfidence : null
+                        MatchConfidence = matchConfidence > 0 ? matchConfidence : null,
+                        Rejections = judged.Rejections
                     };
 
                     if (matchedEvent != null)
@@ -434,11 +444,7 @@ public class LibraryImportService
                 //   honor it and keep torrents seeding from the source path)
                 // - UseHardlinks=false + CopyFiles=true: Copy
                 // - both off: Move (removes source files)
-                var importMode = settings.UseHardlinks
-                    ? LibraryImportMode.Hardlink
-                    : settings.CopyFiles
-                        ? LibraryImportMode.Copy
-                        : LibraryImportMode.Move;
+                var importMode = DefaultImportMode(settings);
                 // An explicit per-import mode is honored literally: explicit Copy
                 // must produce a real copy even when Use Hardlinks is enabled
                 // (Copy and Hardlink are separate choices in the import UI).
@@ -491,7 +497,8 @@ public class LibraryImportService
                         else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
                         {
                             // Auto-detect part from filename
-                            var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, existingEvent.Sport);
+                            var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, existingEvent.Sport,
+                                existingEvent.Title, existingEvent.League?.Name);
                             partName = partInfo?.SegmentName;
                             partNumber = partInfo?.PartNumber;
                         }
@@ -501,21 +508,58 @@ public class LibraryImportService
                         partNumber ??= EventPartDetector.ResolvePartNumber(partName, existingEvent.Sport,
                             existingEvent.Title, existingEvent.League?.Name);
 
+                        // The file the event already holds for this part decides whether
+                        // this one may take its place. One rule for every import path
+                        // (ImportUpgradeRule): an automatic import stops at a rejection
+                        // and leaves the file where it is; a manual import replaces.
+                        // A copy that already sits beside the file it replaces is imported
+                        // in place and that file stays on disk untracked; a copy from
+                        // anywhere else replaces it through the recycle bin.
+                        var occupant = existingFileRecord == null
+                            ? ImportUpgradeRule.ExistingFileForPart(existingEvent.Files, partNumber, request.FilePath, config.EnableMultiPartEpisodes)
+                            : null;
+                        var importInPlace = false;
+                        if (occupant != null)
+                        {
+                            var decision = await DecideUpgradeAsync(occupant, request.FilePath,
+                                request.Quality ?? _fileParser.BuildQualityString(parsedInfo), existingEvent.League);
+                            importInPlace = IsBesideOccupant(request.FilePath, occupant.FilePath);
+                            if (request.OnlyIfUpgrade
+                                && (!decision.IsUpgrade || (decision.Equal && (importInPlace || importMode != LibraryImportMode.Move))))
+                            {
+                                // An equal copy is kept out of an automatic import when
+                                // taking it over would only repeat: beside the held file
+                                // the other copy would take over again on the next rescan,
+                                // and a copied or linked source stays where a rescan finds
+                                // it again, recycling the held file each time.
+                                var reason = decision.Rejection ?? EqualCopyRejection;
+                                _logger.LogInformation("[Library Import] {Reason} Left where it is: {Path}", reason, request.FilePath);
+                                result.Rejected.Add(new ImportRejection(request.FilePath, reason));
+                                result.Skipped.Add(request.FilePath);
+                                continue;
+                            }
+                            if (importInPlace)
+                            {
+                                _logger.LogInformation("[Library Import] {Path} takes the place of {OldPath}, which stays on disk untracked",
+                                    request.FilePath, occupant.FilePath);
+                            }
+                        }
+
                         // One part holds one file. Importing a second file for a part that
                         // already has one replaces it, the same way a grab upgrade does.
                         // Keeping both leaves the event with two files named "Main Card",
                         // and an integration that keeps one record per part loses one.
                         StagedPartReplacement? stagedPart = null;
-                        if (existingFileRecord == null)
+                        if (existingFileRecord == null && !importInPlace)
                         {
-                            stagedPart = await StageOccupiedPartAsync(existingEvent, partNumber, request.FilePath);
+                            stagedPart = await StageOccupiedPartAsync(existingEvent, partNumber, request.FilePath, occupant);
                         }
 
                         // Build destination path and transfer file - pass part info and import mode
                         string destinationPath;
                         try
                         {
-                            destinationPath = await TransferFileToLibraryAsync(
+                            destinationPath = importInPlace ? request.FilePath : await TransferFileToLibraryAsync(
                                 request.FilePath,
                                 existingEvent,
                                 parsedInfo,
@@ -651,6 +695,13 @@ public class LibraryImportService
 
                         // Saved. Now the file it replaced can go.
                         await CommitStagedPartAsync(stagedPart, linkedFile);
+                        if (importInPlace && occupant != null && !ReferenceEquals(occupant, linkedFile))
+                        {
+                            // The old copy keeps its place on disk; only its record goes,
+                            // so the event holds one file for this part.
+                            _db.EventFiles.Remove(occupant);
+                            await _db.SaveChangesAsync();
+                        }
 
                         result.Imported.Add(destinationPath);
                         notifyQueue.Add((existingEvent, destinationPath,
@@ -1476,12 +1527,113 @@ public class LibraryImportService
     private sealed record StagedPartReplacement(EventFile Occupant, string OriginalPath, string? StagedPath);
 
     /// <summary>
+    /// Why the file may not take the place of the file this event already
+    /// holds, as Library Import shows it. Empty when the event holds no file
+    /// or the file is an upgrade.
+    /// </summary>
+    /// <summary>The reason an equal copy is left where it is.</summary>
+    internal const string EqualCopyRejection = "The event already has a file as good as this one.";
+
+    /// <summary>
+    /// The mode an import uses when the caller names none. A hardlink or a
+    /// copy leaves the source file where it is; a move takes it away.
+    /// </summary>
+    private static LibraryImportMode DefaultImportMode(MediaManagementSettings settings) =>
+        settings.UseHardlinks
+            ? LibraryImportMode.Hardlink
+            : settings.CopyFiles
+                ? LibraryImportMode.Copy
+                : LibraryImportMode.Move;
+
+    private async Task<(List<string> Rejections, bool InPlace)> UpgradeRejectionsAsync(Event evt, string filePath, ParsedFileInfo parsedInfo)
+    {
+        var none = (new List<string>(), false);
+        // HasFile is false for a multi-part event holding only some parts,
+        // so a held part file is looked for before giving up.
+        if (!evt.HasFile && !await _db.EventFiles.AnyAsync(f => f.EventId == evt.Id && f.Exists)) return none;
+        var config = await _configService.GetConfigAsync();
+        var held = await _db.EventFiles.AsNoTracking()
+            .Where(f => f.EventId == evt.Id && f.Exists)
+            .ToListAsync();
+        int? partNumber = null;
+        if (config.EnableMultiPartEpisodes && !string.IsNullOrEmpty(evt.Sport))
+        {
+            partNumber = _partDetector.DetectPart(parsedInfo.EventTitle, evt.Sport, evt.Title, evt.League?.Name)?.PartNumber;
+        }
+        var occupant = ImportUpgradeRule.ExistingFileForPart(held, partNumber, filePath, config.EnableMultiPartEpisodes);
+        if (occupant == null) return none;
+        var inPlace = IsBesideOccupant(filePath, occupant.FilePath);
+        var decision = await DecideUpgradeAsync(occupant, filePath, _fileParser.BuildQualityString(parsedInfo), evt.League);
+        // The same test the import makes, so the scan shows every copy an
+        // automatic import would leave out, the equal one included.
+        var leftOut = decision.Equal
+            && (inPlace || DefaultImportMode(await GetMediaManagementSettingsAsync()) != LibraryImportMode.Move);
+        if (decision.IsUpgrade && !leftOut) return (new List<string>(), inPlace);
+        var rejection = decision.Rejection ?? EqualCopyRejection;
+        return (new List<string> { rejection }, inPlace);
+    }
+
+    /// <summary>
+    /// The shared rule applied to one incoming file against the file the
+    /// event holds. Custom format scores are read from both names against
+    /// the league's quality profile, so a file that arrived without a grab
+    /// is judged the same way as one that did.
+    /// </summary>
+    private async Task<ImportUpgradeRule.Decision> DecideUpgradeAsync(EventFile occupant, string incomingPath, string? incomingQuality, League? league)
+    {
+        var config = await _configService.GetConfigAsync();
+        var incomingName = Path.GetFileNameWithoutExtension(incomingPath);
+        var occupantName = occupant.OriginalTitle ?? Path.GetFileNameWithoutExtension(occupant.FilePath ?? string.Empty);
+        return ImportUpgradeRule.Evaluate(
+            occupant.Quality, await FormatScoreAsync(occupantName, league), occupantName,
+            incomingQuality, await FormatScoreAsync(incomingName, league), incomingName,
+            config.DownloadPropersAndRepacks);
+    }
+
+    // Custom formats and a profile's scores, loaded once per service
+    // lifetime (one request or one scan), keyed by profile id.
+    private readonly Dictionary<int, (List<CustomFormat> Formats, Dictionary<int, int> Scores)> _formatScoreCache = new();
+
+    private async Task<int> FormatScoreAsync(string title, League? league)
+    {
+        if (string.IsNullOrEmpty(title) || league?.QualityProfileId == null) return 0;
+        var profileId = league.QualityProfileId.Value;
+        if (!_formatScoreCache.TryGetValue(profileId, out var cached))
+        {
+            var profile = await _db.QualityProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == profileId);
+            var scores = profile?.FormatItems?.ToDictionary(fi => fi.FormatId, fi => fi.Score) ?? new Dictionary<int, int>();
+            var formats = scores.Count == 0 ? new List<CustomFormat>() : await _db.CustomFormats.AsNoTracking().ToListAsync();
+            cached = (formats, scores);
+            _formatScoreCache[profileId] = cached;
+        }
+        if (cached.Scores.Count == 0) return 0;
+        return _customFormatService.EvaluateRelease(title, cached.Formats, cached.Scores).Sum(m => m.Score);
+    }
+
+    /// <summary>
+    /// Whether a file already sits in the folder of the file it would
+    /// replace. Such a copy is imported in place and the file it replaces
+    /// is left on disk; a copy from anywhere else, a watch folder or another
+    /// season folder included, is moved into place and replaces it.
+    /// </summary>
+    private static bool IsBesideOccupant(string incomingPath, string? occupantPath)
+    {
+        if (string.IsNullOrEmpty(occupantPath)) return false;
+        var occupantDir = Path.GetDirectoryName(Path.GetFullPath(occupantPath));
+        if (string.IsNullOrEmpty(occupantDir)) return false;
+        var incomingDir = Path.GetDirectoryName(Path.GetFullPath(incomingPath)) ?? string.Empty;
+        return incomingDir.Equals(occupantDir, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Renames the file already holding this part out of the way. Nothing is
     /// deleted here, so a failed transfer can put it back.
     /// </summary>
-    private async Task<StagedPartReplacement?> StageOccupiedPartAsync(Event existingEvent, int? partNumber, string incomingPath)
+    private async Task<StagedPartReplacement?> StageOccupiedPartAsync(Event existingEvent, int? partNumber, string incomingPath, EventFile? chosen = null)
     {
-        var occupant = existingEvent.Files
+        // The file judged by the upgrade rule is the file replaced, so the
+        // decision and the replacement always concern the same file.
+        var occupant = chosen ?? existingEvent.Files
             .FirstOrDefault(f => f.PartNumber == partNumber &&
                                  !string.Equals(f.FilePath, incomingPath, StringComparison.OrdinalIgnoreCase));
 
@@ -2322,6 +2474,14 @@ public class ImportableFile
     public int? MatchConfidence { get; set; }
     public int? ExistingEventId { get; set; }
 
+    /// <summary>
+    /// Why the file may not take the place of the file the matched event
+    /// already holds, as Library Import shows it. Empty when the event holds
+    /// no file for this part or the file is an upgrade. A manual import
+    /// replaces regardless.
+    /// </summary>
+    public List<string> Rejections { get; set; } = new();
+
     public string FileSizeFormatted => FormatBytes(FileSize);
 
     private static string FormatBytes(long bytes)
@@ -2346,6 +2506,14 @@ public class FileImportRequest
     public required string FilePath { get; set; }
     public int? EventId { get; set; }
     public bool CreateNew { get; set; }
+
+    /// <summary>
+    /// An automatic import (the file watcher, a rescan, a completed download
+    /// Sportarr did not grab): the file may take the place of a file the
+    /// event already holds only when it is an upgrade. A manual import leaves
+    /// this false and replaces regardless.
+    /// </summary>
+    public bool OnlyIfUpgrade { get; set; }
     public string? EventTitle { get; set; }
     public string? Organization { get; set; }
     public DateTime? EventDate { get; set; }
@@ -2424,11 +2592,20 @@ public enum LibraryImportMode
 /// <summary>
 /// Result of importing files
 /// </summary>
+/// <summary>A file an automatic import left where it was, and why.</summary>
+public sealed record ImportRejection(string FilePath, string Reason)
+{
+    public override string ToString() => $"{FilePath}: {Reason}";
+}
+
 public class ImportResult
 {
     public List<string> Imported { get; set; } = new();
     public List<string> Created { get; set; } = new();
     public List<string> Skipped { get; set; } = new();
+
+    /// <summary>Files an automatic import left where they were, with the reason.</summary>
+    public List<ImportRejection> Rejected { get; set; } = new();
     public List<string> Failed { get; set; } = new();
     public List<string> Errors { get; set; } = new();
 }

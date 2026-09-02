@@ -1432,6 +1432,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     int? suggestedEventId = null;
                     int confidence = 0;
                     var imported = false;
+                    string? rejectedReason = null;
 
                     // Only completed downloads get engine analysis: a
                     // still-downloading torrent's folder holds partial
@@ -1472,10 +1473,18 @@ public class EnhancedDownloadMonitorService : BackgroundService
                                         {
                                             FilePath = best.FilePath,
                                             EventId = best.MatchedEventId,
-                                            Quality = best.Quality
+                                            Quality = best.Quality,
+                                            // Not grabbed by Sportarr: it replaces what the
+                                            // event holds only as an upgrade, else it waits
+                                            // in Pending Imports with the reason.
+                                            OnlyIfUpgrade = true
                                         }
                                     });
                                     imported = importResult.Imported.Count + importResult.Created.Count > 0;
+                                    if (!imported && importResult.Rejected.Count > 0)
+                                    {
+                                        rejectedReason = importResult.Rejected[0].Reason;
+                                    }
                                 }
                             }
                         }
@@ -1526,6 +1535,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         SuggestedEventId = suggestedEventId,
                         SuggestionConfidence = confidence,
                         Detected = DateTime.UtcNow,
+                        ErrorMessage = rejectedReason,
                         Status = imported ? PendingImportStatus.Completed : PendingImportStatus.Pending
                     };
 

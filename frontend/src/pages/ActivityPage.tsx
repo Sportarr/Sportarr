@@ -159,6 +159,7 @@ interface PendingImport {
   suggestedPart?: string;
   suggestionConfidence: number;
   detected: string;
+  errorMessage?: string;
   protocol?: string;
   isPack?: boolean;
   fileCount?: number;
@@ -1511,6 +1512,9 @@ export default function ActivityPage() {
                       return (
                         <td key="title" className="px-3 py-1.5 overflow-hidden">
                           <div className="text-gray-300 text-xs truncate" title={pendingImport.title}>{pendingImport.title}</div>
+                          {pendingImport.errorMessage && (
+                            <div className="text-yellow-400 text-xs">{pendingImport.errorMessage}</div>
+                          )}
                         </td>
                       );
                     case 'quality':
@@ -1867,6 +1871,9 @@ export default function ActivityPage() {
                             {pendingImport.protocol && <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{pendingImport.protocol}</span>}
                           </div>
                           <p className="text-sm text-gray-400 truncate mb-1">{pendingImport.title}</p>
+                          {pendingImport.errorMessage && (
+                            <p className="text-sm text-yellow-400 mb-1">{pendingImport.errorMessage}</p>
+                          )}
                           <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
                             {pendingImport.size > 0 && <span>{formatBytes(pendingImport.size)}</span>}
                             {pendingImport.downloadClient?.name && <><span className="text-gray-600">•</span><span>{pendingImport.downloadClient.name}</span></>}

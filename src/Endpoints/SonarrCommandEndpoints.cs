@@ -257,6 +257,7 @@ public static class SonarrCommandEndpoints
                                     }
                                 }
 
+                                string? rejectedReason = null;
                                 if (analysis?.MatchedEventId != null &&
                                     (analysis.MatchConfidence ?? 0) >= LibraryImportService.AutoImportConfidenceFloor &&
                                     analysis.ExistingEventId == null)
@@ -267,9 +268,13 @@ public static class SonarrCommandEndpoints
                                         {
                                             FilePath = path,
                                             EventId = analysis.MatchedEventId,
-                                            Quality = analysis.Quality
+                                            Quality = analysis.Quality,
+                                            // A scan a download client asked for replaces what
+                                            // an event holds only with an upgrade.
+                                            OnlyIfUpgrade = true
                                         }
                                     });
+                                    rejectedReason = importResult.Rejected.Count > 0 ? importResult.Rejected[0].Reason : null;
                                     if (importResult.Imported.Count + importResult.Created.Count > 0)
                                     {
                                         importedCount++;
@@ -297,6 +302,7 @@ public static class SonarrCommandEndpoints
                                         SuggestedEventId = analysis?.MatchedEventId,
                                         SuggestionConfidence = analysis?.MatchConfidence ?? 0,
                                         Detected = DateTime.UtcNow,
+                                        ErrorMessage = rejectedReason,
                                         Status = PendingImportStatus.Pending
                                     });
                                     await db.SaveChangesAsync();

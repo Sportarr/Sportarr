@@ -53,6 +53,7 @@ interface ImportableFile {
   destinationPreview?: string;
   matchConfidence?: number;
   existingEventId?: number;
+  rejections?: string[];
 }
 
 interface ScanResult {
@@ -900,6 +901,9 @@ const LibraryImportPage: React.FC = () => {
                               )}
                               <span className="text-gray-500 ml-2">({file.fileSizeFormatted})</span>
                             </p>
+                            {file.rejections && file.rejections.length > 0 && (
+                              <p className="text-sm text-yellow-400">{file.rejections.join(' ')}</p>
+                            )}
                           </div>
                           {!mapping && getConfidenceBadge(file.matchConfidence)}
                           <button
