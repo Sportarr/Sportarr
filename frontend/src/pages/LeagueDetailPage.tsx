@@ -1688,7 +1688,7 @@ export default function LeagueDetailPage() {
                     onClick={() => setLeagueMenuOpen(false)}
                     aria-hidden="true"
                   />
-                  <div className="absolute left-0 top-full z-50 mt-2 w-64 animate-pill-down">
+                  <div className="absolute right-0 top-full z-50 mt-2 w-64 animate-pill-down">
                     <div
                       role="menu"
                       className="max-h-[75dvh] overflow-y-auto rounded-2xl border-2 border-red-900/70 bg-gradient-to-b from-gray-900 to-black shadow-2xl shadow-black/40"
