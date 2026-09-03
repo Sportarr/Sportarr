@@ -737,13 +737,15 @@ app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, S
 });
 
 // API: Update league (including monitor toggle)
-app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, TaskService taskService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
     {
         return Results.NotFound(new { error = "League not found" });
     }
+
+    var keepAllEventsTurnedOn = false;
 
     // Log the raw request body for debugging
     logger.LogInformation("[LEAGUES] Updating league: {Name} (ID: {Id}), Request body properties: {Properties}",
@@ -1066,10 +1068,9 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
-    // Keeping every event changes what the next sync writes, not what is
-    // monitored, so no event re-monitoring is triggered here. Turning it on
-    // takes effect on the next sync; turning it off lets the sync's
-    // out-of-filter cleanup remove the extra events again.
+    // Showing every event changes what the sync writes, not what is
+    // monitored, so no event re-monitoring is triggered here. Turning it off
+    // lets the sync's out-of-filter cleanup remove the extra events again.
     if (body.TryGetProperty("keepAllEvents", out var keepAllEventsProp) &&
         (keepAllEventsProp.ValueKind == JsonValueKind.True || keepAllEventsProp.ValueKind == JsonValueKind.False))
     {
@@ -1078,6 +1079,12 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         {
             logger.LogInformation("[LEAGUES] KeepAllEvents changing from {Old} to {New}", league.KeepAllEvents, newKeepAllEvents);
             league.KeepAllEvents = newKeepAllEvents;
+            // Turning it on must go and get the events the team filter kept
+            // out, the same way a changed team set does. Nothing else
+            // re-fetches them, so the setting would look broken until the
+            // next daily sync. Turning it off leaves them, and the edit
+            // dialog offers to remove them.
+            keepAllEventsTurnedOn = newKeepAllEvents;
         }
     }
 
@@ -1333,6 +1340,24 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     league.LastUpdate = DateTime.UtcNow;
     await db.SaveChangesAsync();
+
+    if (keepAllEventsTurnedOn)
+    {
+        var refreshAlreadyQueued = await db.Tasks.AnyAsync(t =>
+            t.CommandName == "RefreshLeague" &&
+            t.Status == Sportarr.Api.Models.TaskStatus.Queued &&
+            t.Body != null && t.Body.Contains($"\"leagueId\":{league.Id},"));
+        if (refreshAlreadyQueued)
+        {
+            logger.LogInformation("[LEAGUES] Show all events turned on for {Name}; a league refresh is already queued and will apply it", league.Name);
+        }
+        else
+        {
+            logger.LogInformation("[LEAGUES] Show all events turned on for {Name} - queueing deep sync to bring in the events the filter kept out", league.Name);
+            var showAllSyncBody = JsonSerializer.Serialize(new { leagueId = league.Id, scope = "full" });
+            await taskService.QueueTaskAsync($"Deep Sync {league.Name}", "RefreshLeague", priority: 0, body: showAllSyncBody);
+        }
+    }
 
     logger.LogInformation("[LEAGUES] Successfully updated league: {Name}", league.Name);
     return Results.Ok(LeagueResponse.FromLeague(league));
@@ -2872,7 +2897,11 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
 
     internal static List<Event> SelectVisibleEvents(List<Event> events, League league, bool showAll)
     {
-        if (showAll)
+        // "Show all events" is one choice about the whole league. The sync
+        // stores every event for it, and the list shows every event it
+        // stored. Without this the setting filled the library with games the
+        // page then hid again.
+        if (showAll || league.KeepAllEvents)
         {
             return events;
         }

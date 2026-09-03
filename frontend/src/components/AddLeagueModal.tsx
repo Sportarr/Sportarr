@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
-import { MagnifyingGlassIcon, XMarkIcon, CheckIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, XMarkIcon, CheckIcon, InformationCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPost } from '../utils/api';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../utils/designTokens';
+import { PortalTooltip } from './PortalTooltip';
 import {
   isFightingSport,
   isMotorsport,
@@ -1142,18 +1143,30 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               </select>
                             </div>
                           )}
-                          <label className="flex items-start gap-3 p-3 rounded-lg bg-gray-800 hover:bg-gray-750 cursor-pointer">
+                          <label className="flex items-center gap-3 p-3 rounded-lg bg-gray-800 hover:bg-gray-750 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={keepAllEvents}
                               onChange={(e) => setKeepAllEvents(e.target.checked)}
                               className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
                             />
-                            <div>
-                              <div className="text-sm font-medium text-white">Keep every game in the library</div>
-                              <div className="text-xs text-gray-400">
-                                Games without one of your teams are normally not stored at all. Keep them, unmonitored, so you can find a one-off game and monitor it yourself. Uses more disk.
-                              </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-medium text-white">Show all events</span>
+                              <PortalTooltip
+                                className="w-72 p-2 text-left"
+                                content={
+                                  <>
+                                    <p className="text-gray-300 text-[11px]">
+                                      Only events for the teams and session types you follow are shown.
+                                    </p>
+                                    <p className="text-gray-400 text-[11px] mt-1">
+                                      Turn this on to show every event the league has. They arrive unmonitored, and the extra events use more disk.
+                                    </p>
+                                  </>
+                                }
+                              >
+                                <ExclamationTriangleIcon className="w-4 h-4 text-yellow-400 cursor-help" />
+                              </PortalTooltip>
                             </div>
                           </label>
                           {/* Turning the setting off stops new games being

@@ -344,7 +344,6 @@ export default function LeagueDetailPage() {
   // Reveals events the league's own monitoring choices hide: sessions the
   // user does not follow, and games without a followed team. Needed to find
   // a one-off event and monitor it by hand.
-  const [showAllEvents, setShowAllEvents] = useState(false);
   // Held locally so the list reorders on click, then saved to the league so it
   // survives a reload and follows the user to another browser.
   const [sortOldestFirst, setSortOldestFirst] = useState(false);
@@ -417,10 +416,10 @@ export default function LeagueDetailPage() {
   // until one is opened, and a league with thousands of events answered
   // megabytes for a list that only needs counts.
   const { data: seasonSummary, isLoading: eventsLoading } = useQuery({
-    queryKey: ['league-seasons', id, showAllEvents],
+    queryKey: ['league-seasons', id],
     queryFn: async () => {
       const response = await apiClient.get<LeagueSeasonSummary>(
-        `/leagues/${id}/seasons${showAllEvents ? '?showAll=true' : ''}`);
+        `/leagues/${id}/seasons`);
       return response.data;
     },
     enabled: !!id,
@@ -456,10 +455,10 @@ export default function LeagueDetailPage() {
   const expandedSeasonList = useMemo(() => [...expandedSeasons], [expandedSeasons]);
   const seasonEventQueries = useQueries({
     queries: expandedSeasonList.map((season) => ({
-      queryKey: ['league-season-events', id, season, showAllEvents],
+      queryKey: ['league-season-events', id, season],
       queryFn: async () => {
         const response = await apiClient.get<EventDetail[]>(
-          `/leagues/${id}/events?season=${encodeURIComponent(season)}${showAllEvents ? '&showAll=true' : ''}`);
+          `/leagues/${id}/events?season=${encodeURIComponent(season)}`);
         return response.data;
       },
       enabled: !!id,
@@ -1965,19 +1964,6 @@ export default function LeagueDetailPage() {
                 </label>
               );
             })()}
-
-            <label className="flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showAllEvents}
-                onChange={(e) => setShowAllEvents(e.target.checked)}
-                className="rounded text-red-600 focus:ring-red-500 bg-gray-800 border-gray-600"
-              />
-              Show every event
-              <span className="text-gray-500">
-                (including sessions and teams you do not follow)
-              </span>
-            </label>
 
             <label className="flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer select-none">
               <input

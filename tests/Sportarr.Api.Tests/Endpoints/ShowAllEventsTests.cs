@@ -39,6 +39,35 @@ public class ShowAllEventsTests
     };
 
     [Fact]
+    public void TheLeagueSettingShowsEveryEventWithoutAskingPerRequest()
+    {
+        var league = TeamLeague("tm-cowboys");
+        league.KeepAllEvents = true;
+        var events = new List<Event>
+        {
+            Ev("Dallas Cowboys vs Green Bay Packers", "tm-cowboys", "tm-packers"),
+            Ev("Chicago Bears vs Detroit Lions", "tm-bears", "tm-lions"),
+        };
+
+        LeagueEndpoints.SelectVisibleEvents(events, league, showAll: false).Should().HaveCount(2,
+            "the setting stores every event, so the list must not hide them again");
+    }
+
+    [Fact]
+    public void TheLeagueSettingShowsEverySessionToo()
+    {
+        var league = MotorsportLeague("Race");
+        league.KeepAllEvents = true;
+        var events = new List<Event>
+        {
+            Ev("Formula 1 Belgian Grand Prix"),
+            Ev("Formula 1 Belgian Grand Prix Practice 1"),
+        };
+
+        LeagueEndpoints.SelectVisibleEvents(events, league, showAll: false).Should().HaveCount(2);
+    }
+
+    [Fact]
     public void ShowAll_RevealsGamesFromTeamsTheUserDoesNotFollow()
     {
         var league = TeamLeague("tm-cowboys");
