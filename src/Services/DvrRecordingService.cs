@@ -768,6 +768,26 @@ public class DvrRecordingService
     /// ends exactly on time and a live event that wraps up early and
     /// drops the feed.
     /// </summary>
+    /// <summary>
+    /// Whether a recorder exit reads as the end of the broadcast rather than
+    /// a failure. True at the natural end of the window, and true once the
+    /// last EarlyEndGraceFraction of the scheduled duration has been reached,
+    /// which is where a live event that finished early drops its feed. Always
+    /// false with nothing on disk, so an empty capture never finalizes as a
+    /// completed recording.
+    /// </summary>
+    internal static bool ExitLooksLikeANormalEnd(
+        DateTime now, DateTime scheduledStart, DateTime scheduledEnd, int postPaddingMinutes, long fileSize)
+    {
+        if (fileSize <= 0) return false;
+
+        var windowEnd = scheduledEnd.AddMinutes(postPaddingMinutes);
+        if (now >= windowEnd.AddSeconds(-30)) return true;
+
+        var earlyEndThreshold = scheduledEnd - ((scheduledEnd - scheduledStart) * EarlyEndGraceFraction);
+        return now >= earlyEndThreshold;
+    }
+
     public async Task HandleRecorderExitAsync(int recordingId, int exitCode, string? errorSummary)
     {
         var recording = await _db.DvrRecordings
@@ -818,9 +838,7 @@ public class DvrRecordingService
         // elapsed, with data on disk: either the stream ran to its
         // scheduled finish, or the live event wrapped up early and the
         // feed dropped - both are completed runs, not failures.
-        var scheduledDuration = recording.ScheduledEnd - recording.ScheduledStart;
-        var earlyEndThreshold = recording.ScheduledEnd - (scheduledDuration * EarlyEndGraceFraction);
-        if (fileSize > 0 && (now >= windowEnd.AddSeconds(-30) || now >= earlyEndThreshold))
+        if (ExitLooksLikeANormalEnd(now, recording.ScheduledStart, recording.ScheduledEnd, recording.PostPadding, fileSize))
         {
             await FinalizeCaptureContainerAsync(recording);
             fileSize = TryReadFileSize() ?? fileSize; // keep the pre-remux size if the re-read fails
