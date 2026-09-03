@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isTerminalStatus } from '../utils/eventStatus';
-import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, TvIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, EyeIcon as EyeSolidIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -38,7 +38,7 @@ interface CalendarUISettings {
   firstDayOfWeek?: string;
 }
 
-const TOOLBAR_GROUP_CLASS = 'inline-flex min-w-max items-center space-x-1 rounded-lg bg-gray-900 p-1';
+const TOOLBAR_GROUP_CLASS = 'inline-flex flex-wrap items-center gap-1 rounded-lg bg-gray-900 p-1 sm:min-w-max sm:flex-nowrap sm:space-x-1 sm:gap-0';
 
 // Sport color mappings.
 // Reserved colors (do not assign to sports):
@@ -750,8 +750,13 @@ export default function CalendarPage() {
               <h1 className="text-2xl font-bold text-white md:text-3xl">Calendar</h1>
             </div>
 
-            <div className="overflow-x-auto xl:max-w-[calc(100%-16rem)]">
-              <div className="flex sm:min-w-max flex-wrap items-center justify-start gap-2 xl:justify-end">
+            {/* The controls wrap onto a second line when the window is too
+                narrow for one. They used to sit on a single line inside a
+                scrolling strip, so on anything under about 1900px the filters
+                and the iCal link were off the right edge with nothing to say
+                they were there. */}
+            <div className="xl:max-w-[calc(100%-16rem)]">
+              <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
                 {/* Calendar Navigation */}
                 <div className={TOOLBAR_GROUP_CLASS}>
                   {/* Today Button */}
@@ -777,7 +782,7 @@ export default function CalendarPage() {
                   </button>
 
                   {/* Fixed width container for date range */}
-                  <div className="min-w-[170px] rounded-md bg-gray-800 px-3 py-1.5 text-center md:min-w-[230px]">
+                  <div className="min-w-[150px] rounded-md bg-gray-800 px-2.5 py-1.5 text-center md:min-w-[195px]">
                     <p data-testid="calendar-current-month-label" className="truncate text-sm font-semibold text-white">
                       {headerLabel}
                     </p>
@@ -833,16 +838,6 @@ export default function CalendarPage() {
 
                 {/* Filters */}
                 <div className={TOOLBAR_GROUP_CLASS}>
-                  <div className="inline-flex items-center gap-2 rounded-md bg-gray-800 px-3 py-1.5 text-sm text-gray-400">
-                    <FunnelIcon className="h-4 w-4" />
-                    <span>Filter</span>
-                    {(filterSport !== 'all' || filterTvOnly || showUnmonitored) && (
-                      <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-xs text-white">
-                        {(filterSport !== 'all' ? 1 : 0) + (filterTvOnly ? 1 : 0) + (showUnmonitored ? 1 : 0)}
-                      </span>
-                    )}
-                  </div>
-
                   {/* Monitoring Filter */}
                   <select
                     value={showUnmonitored ? 'all' : 'monitored'}
@@ -894,10 +889,9 @@ export default function CalendarPage() {
                       Clear
                     </button>
                   )}
-                </div>
 
-                {/* iCal Feed Link */}
-                <div className={TOOLBAR_GROUP_CLASS}>
+                  {/* Sits with the filters so it never wraps onto a line of
+                      its own. */}
                   <button
                     onClick={() => { setShowIcalModal(true); setIcalCopied(false); }}
                     className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_INACTIVE_CLASS} flex items-center gap-1.5`}
