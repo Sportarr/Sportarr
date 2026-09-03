@@ -936,7 +936,17 @@ export default function CalendarPage() {
           <div className="overflow-x-auto md:flex-1 md:min-h-0">
             {/* Phones fit all 7 columns (Google-style dot cells); sm+ keeps the
                 wide grid with full event chips. */}
-            <table className="w-full sm:min-w-[900px] table-fixed border-collapse md:h-full" data-testid="calendar-table">
+            {/* The month grid is as tall as its weeks, never stretched to
+                the page. A full-height CSS table hands its leftover height to
+                rows in proportion to what they already hold, so the busiest
+                week grew by far the most and carried a block of empty space
+                under its events. Each cell keeps its 132px, which a table
+                treats as a minimum, so a quiet week still looks like a
+                calendar. The week view is one row and still fills the page. */}
+            <table
+              className={`w-full sm:min-w-[900px] table-fixed border-collapse ${currentView === 'week' ? 'md:h-full' : ''}`}
+              data-testid="calendar-table"
+            >
               <thead>
                 <tr>
                   {weekdayNames.map(dayName => (
@@ -958,7 +968,7 @@ export default function CalendarPage() {
                         <td
                           key={day.date.toISOString()}
                           data-testid={`calendar-day-${formatDateInputValue(day.date)}`}
-                          className={`relative h-14 sm:h-[132px] md:h-auto align-top border-b border-r border-gray-700/35 ${currentDayIsToday ? "bg-amber-500/5 ring-1 ring-inset ring-amber-500" : ""}`}
+                          className={`relative h-14 sm:h-[132px] ${currentView === 'week' ? 'md:h-auto' : ''} align-top border-b border-r border-gray-700/35 ${currentDayIsToday ? "bg-amber-500/5 ring-1 ring-inset ring-amber-500" : ""}`}
                         >
                           {currentDayIsToday && (
                             <div className="absolute left-0 top-0 bg-amber-500 px-1.5 py-0.5 text-xs font-bold leading-tight text-black">
