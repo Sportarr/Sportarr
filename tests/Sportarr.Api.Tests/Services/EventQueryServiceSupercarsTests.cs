@@ -67,6 +67,20 @@ public class EventQueryServiceSupercarsTests
     }
 
     [Fact]
+    public void ARenameUpstreamReachesTheQueries()
+    {
+        // The sync now follows the source's name, so an install that carried
+        // the old one asks with the new one after its next refresh. Both are
+        // covered because a rename lands league by league.
+        foreach (var name in new[] { "V8 Supercars", "Supercars" })
+        {
+            CreateService()
+                .BuildEventQueries(Race("Century Batteries Ipswich Super 440 - Race 25", "8", leagueName: name))
+                .Should().Contain("Supercars 2025 Race 25");
+        }
+    }
+
+    [Fact]
     public void ACountryCodeIsNeverAQuery()
     {
         var queries = CreateService().BuildEventQueries(Race("Century Batteries Ipswich Super 440 - Race 25", "8"));

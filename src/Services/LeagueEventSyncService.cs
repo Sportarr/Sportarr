@@ -1471,6 +1471,20 @@ public class LeagueEventSyncService
             // when upstream surfaces a value the existing row was
             // missing (the most common case for legacy leagues added
             // before the new bindings landed).
+            // The name follows the source too. A competition can be renamed
+            // (V8 Supercars became Supercars in 2016) and the old name is then
+            // in no release, so a search built from it finds nothing. The
+            // league folder is built from this name, so the files already
+            // imported stay where they are and stay linked, and Library >
+            // rename moves them when the user wants that.
+            if (!string.IsNullOrEmpty(fullDetails.Name) &&
+                !string.Equals(fullDetails.Name, league.Name, StringComparison.Ordinal))
+            {
+                _logger.LogInformation(
+                    "[League Event Sync] {Old} is now called {New} upstream. Searches use the new name; files already imported keep their folder until a rename.",
+                    league.Name, fullDetails.Name);
+                league.Name = fullDetails.Name;
+            }
             if (!string.IsNullOrEmpty(fullDetails.AlternateName)) league.AlternateName = fullDetails.AlternateName;
             if (!string.IsNullOrEmpty(fullDetails.LogoUrl))       league.LogoUrl = fullDetails.LogoUrl;
             if (!string.IsNullOrEmpty(fullDetails.BannerUrl))     league.BannerUrl = fullDetails.BannerUrl;
