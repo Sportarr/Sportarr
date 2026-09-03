@@ -261,11 +261,17 @@ export default function Layout() {
        collapses; browsers without dvh ignore the invalid inline value and fall
        back to the h-screen class. With plain 100vh the shell was taller than
        the visible area on mobile, so the document gained its own scroll on
-       top of <main>'s - the "swipe twice to reach the ends" bug. */
-    <div className="flex flex-col md:flex-row h-screen bg-black text-gray-100" style={{ height: '100dvh' }}>
+       top of <main>'s - the "swipe twice to reach the ends" bug.
+
+       The sidebar is 256px wide, which a tablet cannot spare. It left the
+       month calendar about 500px for a grid that needs 900, so three days of
+       the week sat off the right edge behind a scroll with no scrollbar to
+       hint at them. Tablets therefore use the navigation phones use, and the
+       sidebar returns at xl where there is room for both. */
+    <div className="flex flex-col xl:flex-row h-screen bg-black text-gray-100" style={{ height: '100dvh' }}>
       {/* Mobile Header - Only visible on small screens */}
       <div
-        className="relative flex-none md:hidden bg-gradient-to-r from-gray-900 to-black border-b border-red-900/30"
+        className="relative flex-none xl:hidden bg-gradient-to-r from-gray-900 to-black border-b border-red-900/30"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
         {/* Brand + settings gear. The gear opens a pill menu of the settings
@@ -318,14 +324,14 @@ export default function Layout() {
 
       {/* Backdrop for the settings pill - tap anywhere else to close */}
       {settingsMenuOpen && (
-        <div className="fixed inset-0 z-40 md:hidden" onClick={() => setSettingsMenuOpen(false)} />
+        <div className="fixed inset-0 z-40 xl:hidden" onClick={() => setSettingsMenuOpen(false)} />
       )}
 
       {/* Sidebar - desktop only. Phones cover every destination via the tab
           bar's pill menus plus the top bar's settings gear; there is no drawer. */}
-      <aside className="hidden md:flex md:relative inset-y-0 left-0 z-40 w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex-col">
+      <aside className="hidden xl:flex xl:relative inset-y-0 left-0 z-40 w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex-col">
         {/* Logo - Hidden on mobile (shown in header instead) */}
-        <div className="hidden md:block p-4 border-b border-red-900/30">
+        <div className="hidden xl:block p-4 border-b border-red-900/30">
           <Link to="/leagues" onClick={cleanupInertAttributes} className="block">
             <img
               src={getImageUrl(lockupFile)}
@@ -471,7 +477,7 @@ export default function Layout() {
           `<main>` is the actual scroll container for the app shell,
           so the gutter has to be reserved here too. */}
       <main
-        className="flex-1 overflow-y-auto [touch-action:pan-y_pinch-zoom] bg-gradient-to-br from-gray-950 via-black to-gray-950 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0"
+        className="flex-1 overflow-y-auto [touch-action:pan-y_pinch-zoom] bg-gradient-to-br from-gray-950 via-black to-gray-950 pb-[calc(4.5rem+env(safe-area-inset-bottom))] xl:pb-0"
         style={{ scrollbarGutter: 'stable' }}
       >
         <HealthBanner />

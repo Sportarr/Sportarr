@@ -938,7 +938,7 @@ export default function CalendarPage() {
                 treats as a minimum, so a quiet week still looks like a
                 calendar. The week view is one row and still fills the page. */}
             <table
-              className={`w-full sm:min-w-[900px] table-fixed border-collapse ${currentView === 'week' ? 'md:h-full' : ''}`}
+              className={`w-full sm:min-w-[600px] md:min-w-[700px] xl:min-w-[900px] table-fixed border-collapse ${currentView === 'week' ? 'md:h-full' : ''}`}
               data-testid="calendar-table"
             >
               <thead>

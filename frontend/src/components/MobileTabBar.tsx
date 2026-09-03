@@ -102,11 +102,11 @@ export default function MobileTabBar() {
     <>
       {/* Invisible backdrop while a pill is open - tap anywhere else to close */}
       {openMenu && (
-        <div className="fixed inset-0 z-40 md:hidden" onClick={() => setOpenMenu(null)} />
+        <div className="fixed inset-0 z-40 xl:hidden" onClick={() => setOpenMenu(null)} />
       )}
 
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-red-900/30 bg-gradient-to-t from-black to-gray-900"
+        className="fixed bottom-0 left-0 right-0 z-50 xl:hidden border-t border-red-900/30 bg-gradient-to-t from-black to-gray-900"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* Pill menu for the open section */}

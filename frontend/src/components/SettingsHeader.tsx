@@ -73,11 +73,12 @@ export default function SettingsHeader({
         </div>
       </div>
 
-      {/* Phone-only floating Save: appears above the tab bar only while there
-          is something to save, so the header itself never needs to pin. */}
+      {/* Floating Save for every size that uses the tab bar. It sits above
+          the bar and appears only while there is something to save, so the
+          header itself never needs to pin. */}
       {showSaveButton && onSave && hasUnsavedChanges && (
         <div
-          className="fixed inset-x-0 z-40 flex justify-end px-4 md:hidden pointer-events-none"
+          className="fixed inset-x-0 z-40 flex justify-end px-4 xl:hidden pointer-events-none"
           style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom))' }}
         >
           <button
