@@ -183,8 +183,15 @@ if (showHelp)
     return;
 }
 
-// Pre-configure builder to read configuration before setting up Serilog
-var preBuilder = WebApplication.CreateBuilder(args);
+// Pre-configure builder to read configuration before setting up Serilog.
+// The content root is the folder the binary sits in, not the folder the
+// process happened to start in, so appsettings.json is found wherever the
+// app is launched from. See the note on the main builder below.
+var preBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 
 // Configuration - get data path first so logs go in the right place
 // Priority: 1) -data argument, 2) Sportarr__DataPath env var, 3) Platform default
@@ -544,21 +551,24 @@ Log.Logger = new LoggerConfiguration()
         flushToDiskInterval: TimeSpan.FromSeconds(5))
     .CreateLogger();
 
-var builder = WebApplication.CreateBuilder(args);
-
-// Resolve the UI (wwwroot) next to the executable instead of relative to the
-// current working directory. A tar.gz / self-contained install launched from
-// an arbitrary directory left the web root at "<cwd>/wwwroot", which does not
-// exist, so app.Environment.WebRootPath came back null and every request 500'd
-// with "Value cannot be null. (Parameter 'path1')" from the SPA fallback's
-// Path.Combine. The published UI always ships beside the binary, so point the
-// web root there when it exists (Docker already runs from that directory, so
-// this is a no-op there).
+// Resolve the app's own folders from the binary, not from the folder the
+// process started in. A tar.gz install launched from elsewhere left the web
+// root at "<cwd>/wwwroot", which does not exist, so WebRootPath came back
+// null and every request 500'd from the SPA fallback's Path.Combine.
+//
+// Both roots are set when the builder is made, not after. Calling
+// UseWebRoot afterwards threw "The web root changed ... Changing the host
+// configuration using WebApplicationBuilder.WebHost is not supported" and
+// killed the app on start, which is what a systemd unit without a
+// WorkingDirectory does. Running from the install folder hid it, because
+// the value it set was the value already there.
 var bundledWebRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
-if (Directory.Exists(bundledWebRoot))
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
-    builder.WebHost.UseWebRoot(bundledWebRoot);
-}
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+    WebRootPath = Directory.Exists(bundledWebRoot) ? bundledWebRoot : null,
+});
 
 // Configure Kestrel to listen on configured port and bind address from config.xml
 builder.WebHost.UseUrls($"http://{bindAddress}:{port}");

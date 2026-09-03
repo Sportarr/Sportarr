@@ -135,6 +135,7 @@ Wants=network-online.target
 
 [Service]
 User=sportarr
+WorkingDirectory=/opt/sportarr
 ExecStart=/opt/sportarr/Sportarr -data /var/lib/sportarr
 Restart=on-failure
 
