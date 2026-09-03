@@ -675,9 +675,12 @@ public class SportsFileNameParser
             }
         }
 
-        // Extract date from filename
-        var dateMatch = DatePattern.Match(cleanName);
-        if (dateMatch.Success)
+        // Extract date from filename. Every candidate is tried, not just the
+        // first: an event or club name can hold a four-digit number of its own
+        // ("Bathurst 1000 12 10", "CSKA 1948"), and the real date often sits
+        // further along the name. The first candidate that reads as a real
+        // date wins.
+        foreach (Match dateMatch in DatePattern.Matches(cleanName))
         {
             if (int.TryParse(dateMatch.Groups["year"].Value, out var year) &&
                 int.TryParse(dateMatch.Groups["month"].Value, out var month) &&
@@ -729,8 +732,11 @@ public class SportsFileNameParser
                     }
                 }
             }
+
+            if (result.EventDate != null) break;
         }
-        else
+
+        if (result.EventDate == null)
         {
             // Try season span extraction first (e.g., "2025-2026" or "2025-26").
             // Span detection MUST run before the day-first date attempt: a
