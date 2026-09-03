@@ -1939,8 +1939,22 @@ export default function LeagueDetailPage() {
         <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden">
           <div className="p-4 md:p-6 border-b border-red-900/30">
             <h2 className="text-xl md:text-2xl font-bold text-white">Events</h2>
+            {/* The stat card above counts what the library stores. This
+                line counts what passes the league's own filters, across
+                every season. Both numbers are shown when they differ, or
+                one looks like the other one is wrong. It does not count
+                what is on screen: collapsed seasons and the cancelled
+                toggle change the rows, not this. */}
             <p className="text-gray-400 text-xs md:text-sm mt-1">
-              {totalEventCount} event{totalEventCount !== 1 ? 's' : ''} in this league
+              {league.eventCount > totalEventCount ? (
+                <>
+                  {totalEventCount.toLocaleString()} of {league.eventCount.toLocaleString()} stored events match what you follow
+                </>
+              ) : (
+                <>
+                  {totalEventCount.toLocaleString()} event{totalEventCount !== 1 ? 's' : ''} in this league
+                </>
+              )}
             </p>
 
             {/* Show-cancelled toggle. Hidden by default because cancelled
