@@ -12,6 +12,7 @@ import EventFileDetailModal from '../components/EventFileDetailModal';
 import LeagueFilesModal from '../components/LeagueFilesModal';
 import TeamAliasesModal from '../components/TeamAliasesModal';
 import EventStatusBadge from '../components/EventStatusBadge';
+import { getEventLifecycle } from '../utils/eventStatus';
 import ManualImportModal from '../components/ManualImportModal';
 import RefreshScopeModal, { type RefreshScope } from '../components/RefreshScopeModal';
 import { useSearchQueueStatus, useDownloadQueue, useTasks } from '../api/hooks';
@@ -2318,18 +2319,11 @@ export default function LeagueDetailPage() {
                         <div className="divide-y divide-red-900/20">
                           {seasonEvents.map(event => {
                             const hasFile = event.hasFile;
-                            const eventDate = new Date(event.eventDate);
-                            const now = new Date();
-                            const isPastEvent = eventDate < now;
-                            const status = event.status?.toUpperCase();
-                            // 'cancelled' / 'postponed' get their own badge -- the previous
-                            // `isNotStarted = !isCompleted && !isLive` fallback was rendering
-                            // them as "Not Started", which is misleading: a cancelled game
-                            // never happens.
-                            const isCancelled = status === 'CANCELLED' || status === 'CANCELED';
-                            const isPostponed = status === 'POSTPONED';
-                            const isCompleted = hasFile || status === 'FT' || status === 'COMPLETED' || status === 'MATCH FINISHED' || (isPastEvent && (!status || status === 'NS' || status === 'NOT STARTED'));
-                            const isLive = status === 'LIVE';
+                            const lifecycle = getEventLifecycle({ status: event.status, eventDate: event.eventDate, hasFile });
+                            const isCancelled = lifecycle === 'cancelled';
+                            const isPostponed = lifecycle === 'postponed';
+                            const isCompleted = lifecycle === 'completed';
+                            const isLive = lifecycle === 'live';
                             const hasParts = config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event);
 
                             return (
@@ -2698,18 +2692,14 @@ export default function LeagueDetailPage() {
                             </span>
                           )}
 
-                          {/* Status badge - infer from date if not set */}
+                          {/* Status badge - the clock fills in what the status has not caught up with */}
                           {(() => {
-                            const eventDate = new Date(event.eventDate);
-                            const now = new Date();
-                            const isPast = eventDate < now;
-                            const status = event.status?.toUpperCase();
-                            const isCancelled = status === 'CANCELLED' || status === 'CANCELED';
-                            const isPostponed = status === 'POSTPONED';
-                            // Event is completed if: has file, OR explicit completed status, OR past date with unstarted/no status
-                            const isCompleted = event.hasFile || status === 'FT' || status === 'COMPLETED' || status === 'MATCH FINISHED' || (isPast && (!status || status === 'NS' || status === 'NOT STARTED'));
-                            const isLive = status === 'LIVE';
-                            const isNotStarted = !isCompleted && !isLive && !isCancelled && !isPostponed;
+                            const lifecycle = getEventLifecycle({ status: event.status, eventDate: event.eventDate, hasFile: event.hasFile });
+                            const isCancelled = lifecycle === 'cancelled';
+                            const isPostponed = lifecycle === 'postponed';
+                            const isCompleted = lifecycle === 'completed';
+                            const isLive = lifecycle === 'live';
+                            const isNotStarted = lifecycle === 'upcoming';
 
                             if (isCancelled) {
                               return (

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isTerminalStatus } from '../utils/eventStatus';
 import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, EyeIcon as EyeSolidIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
@@ -158,10 +159,7 @@ const isEventLive = (event: Event, timezone: string | null): boolean => {
   // already recognises "Match Finished", "Canceled", "AET" and case
   // variants, and comparing raw literals here kept the live pulse on for
   // events that page already showed as over.
-  const terminal = (event.status || '').toUpperCase();
-  if (terminal === 'COMPLETED' || terminal === 'FT' || terminal === 'AET' ||
-      terminal === 'MATCH FINISHED' || terminal === 'CANCELLED' ||
-      terminal === 'CANCELED' || terminal === 'POSTPONED') {
+  if (isTerminalStatus(event.status)) {
     return false;
   }
 
