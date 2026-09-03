@@ -15,6 +15,10 @@ interface PortalTooltipProps {
  */
 export function PortalTooltip({ children, content, className = '', preferTop = false }: PortalTooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
+  // A touch screen sends a mouse-leave of its own right after a tap, which
+  // closed the tooltip the tap had just opened. The pointer handlers are
+  // therefore only for pointers that really hover.
+  const canHover = typeof window !== 'undefined' && window.matchMedia?.('(hover: hover)').matches;
   const [position, setPosition] = useState({ top: 0, left: 0, showAbove: false });
   const triggerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -95,13 +99,41 @@ export function PortalTooltip({ children, content, className = '', preferTop = f
     }
   }, [isVisible, updatePosition]);
 
+  // A touch screen has no hover, so a tap opens the tooltip and a tap
+  // anywhere else closes it. The tap must not reach the control behind the
+  // trigger: these often sit inside a label, where a tap would flip the very
+  // checkbox the tooltip explains.
+  useEffect(() => {
+    if (!isVisible) return;
+    const close = (event: Event) => {
+      if (triggerRef.current?.contains(event.target as Node)) return;
+      setIsVisible(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [isVisible]);
+
   return (
     <>
+      {/* A tap focuses the trigger before it clicks it. Opening on every
+          focus therefore opened the tooltip and the click that followed
+          closed it again, so focus opens it only for the keyboard. */}
       <div
         ref={triggerRef}
         className="inline-flex"
-        onMouseEnter={() => setIsVisible(true)}
-        onMouseLeave={() => setIsVisible(false)}
+        tabIndex={0}
+        role="button"
+        aria-expanded={isVisible}
+        onMouseEnter={canHover ? () => setIsVisible(true) : undefined}
+        onMouseLeave={canHover ? () => setIsVisible(false) : undefined}
+        onFocus={(event) => { if (event.target.matches(':focus-visible')) setIsVisible(true); }}
+        onBlur={() => setIsVisible(false)}
+        onKeyDown={(event) => { if (event.key === 'Escape') setIsVisible(false); }}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setIsVisible(visible => !visible);
+        }}
       >
         {children}
       </div>
