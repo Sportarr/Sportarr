@@ -128,6 +128,35 @@ public class SupercarsReleaseMatchingTests
     }
 
     [Fact]
+    public void AnEventNameHoldingAThousandIsNotADate()
+    {
+        // "Bathurst 1000 13 10" read 1000 as the year, retried as 1000-10-13,
+        // and hard-rejected every Bathurst release as 374,009 days out.
+        var release = Rel("Supercars 2024 Race 20 Bathurst 1000 13 10 1080p EN");
+        var evt = Race("Repco Bathurst 1000 - Race 20", "9", 20, 2024, 10, 13);
+
+        var result = _matchingSvc.ValidateRelease(release, evt);
+
+        result.IsHardRejection.Should().BeFalse("the biggest race of the season is not from the year 1000");
+        result.Confidence.Should().BeGreaterThanOrEqualTo(ReleaseMatchingService.MinimumMatchConfidence);
+    }
+
+    [Fact]
+    public void OneFileHoldingTwoRacesMatchesBoth()
+    {
+        var release = Rel("Supercars 2026 Races 26 and 27 Ipswich 22 08 1080p EN");
+
+        foreach (var race in new[] { 26, 27 })
+        {
+            _matchingSvc.ValidateRelease(release, Race($"Century Batteries Ipswich Super 440 - Race {race}", "9", race, 2026, 8, 22))
+                .IsHardRejection.Should().BeFalse($"the file holds race {race}");
+        }
+
+        _matchingSvc.ValidateRelease(release, Ipswich2026Race28())
+            .IsHardRejection.Should().BeTrue("race 28 is not in that file");
+    }
+
+    [Fact]
     public void TheRaceNumberScoresTheRightEventHigher()
     {
         const string release = "Supercars 2025 Race 25 Ipswich 10 08 1080p EN";

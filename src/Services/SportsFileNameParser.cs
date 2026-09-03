@@ -534,6 +534,14 @@ public class SportsFileNameParser
     //
     // Requiring separator consistency makes that match impossible, and the
     // DayFirstDatePattern fallback below then reads "05.08.2026" correctly.
+    /// <summary>
+    /// Whether a four-digit number can be the year of a sports release. Guards
+    /// against event names that carry a number of their own, such as the
+    /// Bathurst 1000 or the Daytona 500.
+    /// </summary>
+    private static bool IsPlausibleReleaseYear(int year) =>
+        year >= 1950 && year <= DateTime.UtcNow.Year + 2;
+
     private static readonly Regex DatePattern = new(@"(?<!\d)(?<year>\d{4})(?<sep>[\.\-\s]+)(?<month>\d{2})\k<sep>(?<day>\d{2})(?!\d)", RegexOptions.Compiled);
     // European day-first dating ("Spain vs Argentina 19.07.2026"). Only
     // consulted when the year-first pattern found nothing; the lookarounds
@@ -673,7 +681,15 @@ public class SportsFileNameParser
         {
             if (int.TryParse(dateMatch.Groups["year"].Value, out var year) &&
                 int.TryParse(dateMatch.Groups["month"].Value, out var month) &&
-                int.TryParse(dateMatch.Groups["day"].Value, out var day))
+                int.TryParse(dateMatch.Groups["day"].Value, out var day) &&
+                // An event name can hold a four-digit number that is not a year.
+                // "Supercars 2024 Race 20 Bathurst 1000 13 10" read 1000 as the
+                // year, failed on month 13, retried swapped as 1000-10-13, and
+                // hard-rejected every Bathurst release as 374,009 days out. A
+                // number that cannot be a year leaves the date to the patterns
+                // below, which read the trailing pair and take the year from
+                // elsewhere in the name.
+                IsPlausibleReleaseYear(year))
             {
                 try
                 {
