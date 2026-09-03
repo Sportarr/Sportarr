@@ -282,6 +282,8 @@ public class ReleaseMatchScorer
     private static readonly Regex _sprintRegex = new(@"\bsprint\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _qualifyingExcludeSprintRegex = new(@"\b(qualifying|qualifyers?|qualifiers?|shootout|quali)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _qualifyingRegex = new(@"(?<!sprint\s*)\b(qualifying|qualifyers?|qualifiers?|quali\b|q[123]\b)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _eventRaceRegex = new(@"\bRace\s*(\d{1,3})\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _releaseRaceRegex = new(@"\bRace\s*(\d{1,3})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _raceRegex = new(@"\b(race|main\s*race|full\s*event)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _anySessionIndicatorRegex = new(
         @"\b(fp[123]|free\s*practice|practice|qualifying|qualifyers?|qualifiers?|quali|q[123]|sprint|shootout|full\s*event|pre[\s\-_.]*race|post[\s\-_.]*race|build[\s\-_.]*up|grid[\s\-_.]*walk|podium|race[\s\-_.]*analysis)\b",
@@ -529,6 +531,26 @@ public class ReleaseMatchScorer
                 score += IsRoundBasedSport(eventSportPrefix) ? 25 : 15;
             else
                 return 0; // Real round mismatch (Round 19 != Round 22, Masters R1 != R2)
+        }
+
+        // A race number, for a series whose event titles carry one ("... -
+        // Race 25"). A round can hold three races that agree on everything
+        // else, so without this the three score the same and the wrong one
+        // can win. Only a release that counts races the same way is compared:
+        // one that names a round counts inside the round instead, and its
+        // number means nothing here (see ReleaseMatchingService, which has
+        // the round's races and can resolve it).
+        var eventRaceNumber = ExtractTitleRaceNumber(evt.Title);
+        if (eventRaceNumber.HasValue && !parsed.RoundNumber.HasValue)
+        {
+            var releaseRace = ExtractTitleRaceNumber(releaseTitle, anywhere: true);
+            if (releaseRace.HasValue)
+            {
+                if (releaseRace.Value == eventRaceNumber.Value)
+                    score += 25;
+                else
+                    return 0; // Race 24 is not Race 25
+            }
         }
 
         // NOTE: ParsedRelease.GameNumber ("Game 6" in
@@ -1576,6 +1598,17 @@ public class ReleaseMatchScorer
     /// <summary>
     /// Extract round number from round string (e.g., "Round 19" -> 19).
     /// </summary>
+    /// <summary>
+    /// The race number in a title. An event title carries it at the end
+    /// ("... - Race 25"); a release carries it anywhere.
+    /// </summary>
+    private static int? ExtractTitleRaceNumber(string? title, bool anywhere = false)
+    {
+        if (string.IsNullOrEmpty(title)) return null;
+        var match = (anywhere ? _releaseRaceRegex : _eventRaceRegex).Match(title);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var race) ? race : null;
+    }
+
     private int? ExtractRoundNumber(string round)
     {
         var match = _digitsRegex.Match(round);

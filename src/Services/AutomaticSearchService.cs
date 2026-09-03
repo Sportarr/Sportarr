@@ -690,11 +690,32 @@ public class AutomaticSearchService : IAutomaticSearchService
             var validatedReleases = new List<ReleaseSearchResult>();
             var dateRejectionCount = 0;
 
+            // A release that counts races inside its round ("Round09 ... Race 3")
+            // means nothing without the races that round holds. The library
+            // knows them, so read them once for this event and let the matcher
+            // resolve the number.
+            List<int>? roundRaceNumbers = null;
+            if (!string.IsNullOrEmpty(evt.Round) && EventPartDetector.IsMotorsport(evt.Sport ?? ""))
+            {
+                roundRaceNumbers = await _db.Events
+                    .AsNoTracking()
+                    .Where(e => e.LeagueId == evt.LeagueId && e.Season == evt.Season && e.Round == evt.Round)
+                    .Select(e => e.Title)
+                    .ToListAsync()
+                    .ContinueWith(t => t.Result
+                        .Select(ReleaseMatchingService.RaceNumberInTitle)
+                        .Where(n => n.HasValue)
+                        .Select(n => n!.Value)
+                        .Distinct()
+                        .OrderBy(n => n)
+                        .ToList());
+            }
+
             foreach (var release in approvedReleases)
             {
                 var earlyLimit = ReleaseMatchingService.ResolveEarlyReleaseLimit(release, earlyReleaseLimits);
                 var matchResult = _releaseMatchingService.ValidateRelease(release, evt, part, config.EnableMultiPartEpisodes,
-                    earlyReleaseLimitDays: earlyLimit);
+                    earlyReleaseLimitDays: earlyLimit, roundRaceNumbers: roundRaceNumbers);
 
                 if (matchResult.IsHardRejection)
                 {

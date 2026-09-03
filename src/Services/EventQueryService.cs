@@ -405,6 +405,16 @@ public class EventQueryService
             round = roundNum;
         }
 
+        // A race number the event title carries ("... - Race 25"). Releases
+        // from earlier seasons are named by that number and nothing else that
+        // this event holds, so a query without it never reaches them.
+        int? raceNumber = null;
+        var raceMatch = Regex.Match(evt.Title ?? "", @"\bRace\s+(\d{1,3})\s*$", RegexOptions.IgnoreCase);
+        if (raceMatch.Success && int.TryParse(raceMatch.Groups[1].Value, out var raceNum) && raceNum > 0)
+        {
+            raceNumber = raceNum;
+        }
+
         // Derive a location word from the event title (e.g. "Chinese" from "Chinese Grand Prix")
         string? titleWord = null;
         var titleLocationMatch = Regex.Match(evt.Title ?? "", @"^([\w\s]+?)\s+Grand Prix", RegexOptions.IgnoreCase);
@@ -429,6 +439,15 @@ public class EventQueryService
                 queries.Add($"{prefix} {year} Round{round.Value:D2}");
             }
 
+            // A series that numbers its races across the season names them
+            // that way in its releases too ("Supercars 2025 Race 25"). The
+            // number comes from the event's own title, so only a series that
+            // is numbered this way asks for it.
+            if (raceNumber.HasValue)
+            {
+                queries.Add($"{prefix} {year} Race {raceNumber.Value}");
+            }
+
             // Location queries catch releases named after the venue or country
             // rather than the round ("motogp.2026.italy..."), which an indexer
             // can otherwise bury under the broad season query. Every series
@@ -436,7 +455,11 @@ public class EventQueryService
             // that names events some other way from emitting junk, because a
             // missing location or a title without a Grand Prix simply adds
             // nothing.
-            if (!string.IsNullOrEmpty(evt.Location))
+            // A location of "AU" or "US" is a country code, not a venue, and
+            // the query it makes ("Supercars 2025 AU") returns nothing on any
+            // indexer. Only a real place name is worth a query.
+            if (!string.IsNullOrEmpty(evt.Location) &&
+                (evt.Location.Length > 3 || evt.Location.Contains(' ')))
             {
                 queries.Add($"{prefix} {year} {evt.Location}");
             }
@@ -1159,6 +1182,12 @@ public class EventQueryService
             return "IndyCar";
         if (lower.Contains("wrc") || lower.Contains("world rally"))
             return "WRC";
+        // The series dropped "V8" in 2016 and every release since is filed
+        // under Supercars alone. The metadata still says V8 Supercars, and a
+        // query built from that name returns nothing at all, so the name the
+        // releases use wins here whichever name the league carries.
+        if (lower.Contains("supercars"))
+            return "Supercars";
 
         // British Superbike, checked before World Superbike so the shared
         // "superbike" word cannot pull it into the wrong series. Releases
