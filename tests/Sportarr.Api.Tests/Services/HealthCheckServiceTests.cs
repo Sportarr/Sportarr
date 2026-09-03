@@ -101,7 +101,8 @@ public class HealthCheckServiceTests : IDisposable
             configService,
             new DiskSpaceService(Mock.Of<ILogger<DiskSpaceService>>()),
             sportarrApiClient,
-            httpClientFactory.Object);
+            httpClientFactory.Object,
+            new FileNamingService(Mock.Of<ILogger<FileNamingService>>()));
     }
 
     [Fact]

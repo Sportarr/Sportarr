@@ -17,6 +17,7 @@ public class HealthCheckService
     private readonly DiskSpaceService _diskSpaceService;
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly FileNamingService _fileNamingService;
 
     public HealthCheckService(
         SportarrDbContext db,
@@ -25,7 +26,8 @@ public class HealthCheckService
         ConfigService configService,
         DiskSpaceService diskSpaceService,
         SportarrApiClient sportarrApiClient,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        FileNamingService fileNamingService)
     {
         _db = db;
         _logger = logger;
@@ -34,6 +36,7 @@ public class HealthCheckService
         _diskSpaceService = diskSpaceService;
         _sportarrApiClient = sportarrApiClient;
         _httpClientFactory = httpClientFactory;
+        _fileNamingService = fileNamingService;
     }
 
     /// <summary>
@@ -52,6 +55,7 @@ public class HealthCheckService
             results.AddRange(await CheckDiskSpaceAsync());
             results.AddRange(await CheckAuthenticationAsync());
             results.AddRange(await CheckOrphanedEventsAsync());
+            results.AddRange(await CheckRenamedLeagueFoldersAsync());
             results.AddRange(await CheckUpdateAvailableAsync());
             results.AddRange(await CheckDatabaseMigrationNeededAsync());
             results.AddRange(await CheckMetadataApiAsync());
@@ -87,6 +91,86 @@ public class HealthCheckService
     /// <summary>
     /// Check root folder configuration and accessibility
     /// </summary>
+    /// <summary>
+    /// A league whose files sit in a folder named after something else. A
+    /// competition can be renamed at the source (V8 Supercars became
+    /// Supercars in 2016) and the league folder is built from the name, so
+    /// files imported under the old name stay where they are. They keep
+    /// playing and stay linked to their events, so nothing is broken, but
+    /// new imports land in a new folder and the two drift apart.
+    ///
+    /// The check reads the files themselves rather than remembering a
+    /// rename, so it says the same thing whatever renamed the league, and it
+    /// clears itself once the files move. The user can also dismiss it.
+    /// </summary>
+    private async Task<List<HealthCheckResult>> CheckRenamedLeagueFoldersAsync()
+    {
+        var results = new List<HealthCheckResult>();
+        var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();
+        if (settings is null || !settings.CreateLeagueFolders) return results;
+
+        // Every league with files, monitored or not: the files sit in the old
+        // folder either way.
+        var leagues = await _db.Leagues.AsNoTracking()
+            .Select(l => new { l.Id, l.Name, l.Sport })
+            .ToListAsync();
+
+        foreach (var league in leagues)
+        {
+            var expected = _fileNamingService.BuildLeagueFolderName(settings,
+                new League { Id = league.Id, Name = league.Name, Sport = league.Sport });
+            if (string.IsNullOrWhiteSpace(expected)) continue;
+
+            var folders = await _db.EventFiles.AsNoTracking()
+                .Where(f => f.Event != null && f.Event.LeagueId == league.Id && f.Exists && f.FilePath != null)
+                .Select(f => f.FilePath!)
+                .Take(500)
+                .ToListAsync();
+
+            var stale = folders
+                .Select(LeagueFolderOf)
+                .Where(name => name != null && !string.Equals(name, expected, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(name => name!, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Count())
+                .FirstOrDefault();
+
+            if (stale is null) continue;
+
+            results.Add(new HealthCheckResult
+            {
+                Type = HealthCheckType.LeagueFolderRenamed,
+                // Warning, not Notice, because only a warning carries the
+                // dismiss control in the header banner, and this notice is
+                // meant to be read once and closed.
+                Level = HealthCheckLevel.Warning,
+                Message = $"{league.Name} is now named differently from its folder '{stale.Key}'",
+                Details = $"{stale.Count()} {(stale.Count() == 1 ? "file" : "files")} for {league.Name} " +
+                          $"{(stale.Count() == 1 ? "is" : "are")} in a folder named '{stale.Key}'. " +
+                          $"They still play and stay linked to their events, and new files go to '{expected}'. " +
+                          "Use Rename Files on the league to move them, or dismiss this notice to keep them where they are."
+            });
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// The league folder a file sits in: the folder above its season folder
+    /// when there is one, otherwise the folder holding the file.
+    /// </summary>
+    private static string? LeagueFolderOf(string filePath)
+    {
+        var dir = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrEmpty(dir)) return null;
+        var name = Path.GetFileName(dir);
+        if (name.StartsWith("Season ", StringComparison.OrdinalIgnoreCase))
+        {
+            var parent = Path.GetDirectoryName(dir);
+            name = string.IsNullOrEmpty(parent) ? name : Path.GetFileName(parent);
+        }
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
     private async Task<List<HealthCheckResult>> CheckRootFoldersAsync()
     {
         var results = new List<HealthCheckResult>();
