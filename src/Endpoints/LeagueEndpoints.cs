@@ -746,6 +746,11 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     }
 
     var keepAllEventsTurnedOn = false;
+    // A setting that widens what the library should hold has to go and get it.
+    // A scheduled sync walks current and future seasons only, so a season that
+    // is over is never revisited, and the recalculation below only re-reads
+    // events that are already stored.
+    var reachWidened = false;
 
     // Log the raw request body for debugging
     logger.LogInformation("[LEAGUES] Updating league: {Name} (ID: {Id}), Request body properties: {Properties}",
@@ -1028,6 +1033,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             logger.LogInformation("[LEAGUES] MonitorFinals changing from {Old} to {New}", league.MonitorFinals, newMonitorFinals);
             league.MonitorFinals = newMonitorFinals;
             eventTypesChanged = true;
+            reachWidened |= newMonitorFinals;
         }
     }
     if (body.TryGetProperty("monitorPlayoffs", out var monitorPlayoffsProp) &&
@@ -1039,6 +1045,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             logger.LogInformation("[LEAGUES] MonitorPlayoffs changing from {Old} to {New}", league.MonitorPlayoffs, newMonitorPlayoffs);
             league.MonitorPlayoffs = newMonitorPlayoffs;
             eventTypesChanged = true;
+            reachWidened |= newMonitorPlayoffs;
         }
     }
     if (body.TryGetProperty("monitorPreseason", out var monitorPreseasonProp) &&
@@ -1050,6 +1057,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             logger.LogInformation("[LEAGUES] MonitorPreseason changing from {Old} to {New}", league.MonitorPreseason, newMonitorPreseason);
             league.MonitorPreseason = newMonitorPreseason;
             eventTypesChanged = true;
+            reachWidened |= newMonitorPreseason;
         }
     }
 
@@ -1065,6 +1073,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                 league.SpecialEventsMonitorType, newSpecialReach);
             league.SpecialEventsMonitorType = newSpecialReach;
             eventTypesChanged = true;
+            reachWidened = true;
         }
     }
 
@@ -1341,7 +1350,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     league.LastUpdate = DateTime.UtcNow;
     await db.SaveChangesAsync();
 
-    if (keepAllEventsTurnedOn)
+    if (keepAllEventsTurnedOn || reachWidened)
     {
         var refreshAlreadyQueued = await db.Tasks.AnyAsync(t =>
             t.CommandName == "RefreshLeague" &&
@@ -1349,11 +1358,11 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             t.Body != null && t.Body.Contains($"\"leagueId\":{league.Id},"));
         if (refreshAlreadyQueued)
         {
-            logger.LogInformation("[LEAGUES] Show all events turned on for {Name}; a league refresh is already queued and will apply it", league.Name);
+            logger.LogInformation("[LEAGUES] {Name} needs the seasons walked again; a league refresh is already queued and will apply it", league.Name);
         }
         else
         {
-            logger.LogInformation("[LEAGUES] Show all events turned on for {Name} - queueing deep sync to bring in the events the filter kept out", league.Name);
+            logger.LogInformation("[LEAGUES] Settings widened for {Name} - queueing deep sync to bring in the events the filter kept out, past seasons included", league.Name);
             var showAllSyncBody = JsonSerializer.Serialize(new { leagueId = league.Id, scope = "full" });
             await taskService.QueueTaskAsync($"Deep Sync {league.Name}", "RefreshLeague", priority: 0, body: showAllSyncBody);
         }
