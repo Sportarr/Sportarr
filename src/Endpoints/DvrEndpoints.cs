@@ -211,7 +211,7 @@ app.MapDelete("/api/dvr/recordings/{id:int}", async (int id, DvrRecordingService
 app.MapPost("/api/dvr/recordings/{id:int}/start", async (int id, DvrRecordingService dvrService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[DVR] Starting recording {Id}", id);
-    var result = await dvrService.StartRecordingAsync(id);
+    var result = await dvrService.StartRecordingAsync(id, isManual: true);
     if (!result.Success)
     {
         return Results.BadRequest(new { error = result.Error });

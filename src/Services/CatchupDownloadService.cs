@@ -253,6 +253,19 @@ public class CatchupDownloadService : BackgroundService
         DvrRecording recording,
         CancellationToken ct)
     {
+        if (recording.IsAutomatic && recording.EventId.HasValue)
+        {
+            var refusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(
+                db, recording.EventId.Value, recording.PartName, cancellationToken: ct);
+            if (refusal != null)
+            {
+                recording.Status = DvrRecordingStatus.Cancelled;
+                recording.ErrorMessage = refusal;
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+        }
+
         var now = DateTime.UtcNow;
         var channel = recording.Channel;
         var source = channel?.Source;
@@ -346,6 +359,19 @@ public class CatchupDownloadService : BackgroundService
         string? error = null;
         foreach (var mode in modes)
         {
+            if (recording.IsAutomatic && recording.EventId.HasValue)
+            {
+                var refusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(
+                    db, recording.EventId.Value, recording.PartName, cancellationToken: ct);
+                if (refusal != null)
+                {
+                    recording.Status = DvrRecordingStatus.Cancelled;
+                    recording.ErrorMessage = refusal;
+                    await db.SaveChangesAsync(ct);
+                    return;
+                }
+            }
+
             var url = XtreamCodesClient.BuildTimeshiftUrl(
                 source.Url, source.Username, source.Password, streamId,
                 serverLocalStart, minutes, phpMode: mode == "php");

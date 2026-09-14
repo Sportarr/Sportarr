@@ -59,6 +59,10 @@ public class LeagueAddService
 
     public async Task<LeagueAddResult> AddLeagueAsync(AddLeagueRequest request)
     {
+        if (request.AutomaticMissingMaxAgeDays < 0 || request.AutomaticUpgradeMaxAgeDays < 0)
+            return new LeagueAddResult { Success = false, StatusCode = 400,
+                ErrorMessage = "Automatic acquisition age limits must be non-negative (0 = unlimited)" };
+
         // Declared out here so the catch can tell whether the row was already
         // committed and report that rather than a bare failure.
         League? league = null;

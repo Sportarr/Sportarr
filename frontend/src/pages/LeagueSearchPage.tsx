@@ -1,3 +1,4 @@
+import { acquisitionPolicyFrom, type AcquisitionPolicy } from '../utils/acquisitionPolicy';
 import { useState, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -211,6 +212,7 @@ export default function LeagueSearchPage() {
       monitorPlayoffs,
       monitorPreseason,
       retentionDays,
+      acquisitionPolicy,
       allowHighlights,
       sessionTypeQualityProfiles,
       enableDvr,
@@ -232,6 +234,7 @@ export default function LeagueSearchPage() {
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
       retentionDays?: number;
+      acquisitionPolicy?: AcquisitionPolicy;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
       enableDvr?: boolean;
@@ -269,6 +272,7 @@ export default function LeagueSearchPage() {
         monitorPreseason: monitorPreseason ?? false,
         allowHighlights: allowHighlights ?? false,
         retentionDays: retentionDays ?? 0,
+        ...acquisitionPolicy,
         enableDvr: enableDvr ?? true,
         logoUrl: league.strBadge || league.strLogo,
         bannerUrl: league.strBanner,
@@ -351,6 +355,7 @@ export default function LeagueSearchPage() {
       monitorPlayoffs,
       monitorPreseason,
       retentionDays,
+      acquisitionPolicy,
       allowHighlights,
       sessionTypeQualityProfiles,
       rootFolderId,
@@ -376,6 +381,7 @@ export default function LeagueSearchPage() {
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
       retentionDays?: number;
+      acquisitionPolicy?: AcquisitionPolicy;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
       rootFolderId?: number | null;
@@ -405,6 +411,7 @@ export default function LeagueSearchPage() {
         monitorPreseason: monitorPreseason ?? false,
         allowHighlights: allowHighlights ?? false,
         retentionDays: retentionDays ?? 0,
+        ...acquisitionPolicy,
       });
 
       if (!settingsResponse.ok) {
@@ -551,10 +558,13 @@ export default function LeagueSearchPage() {
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
     enableDvr: boolean,
+    _keepAllEvents: boolean,
+    acquisitionPolicy: AcquisitionPolicy = acquisitionPolicyFrom({}),
   ) => {
     const modalData = addModalDataRef.current;
     if (modalData?.editMode && modalData.leagueId) {
       updateLeagueSettingsMutation.mutate({
+        acquisitionPolicy,
         leagueId: modalData.leagueId,
         monitoredTeamIds,
         monitorType,
@@ -582,6 +592,7 @@ export default function LeagueSearchPage() {
       });
     } else {
       addLeagueMutation.mutate({
+        acquisitionPolicy,
         league,
         monitoredTeamIds,
         monitorType,

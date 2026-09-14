@@ -233,7 +233,7 @@ public class DvrRecordingService
     /// <summary>
     /// Schedule a new recording
     /// </summary>
-    public async Task<DvrRecording> ScheduleRecordingAsync(ScheduleDvrRecordingRequest request)
+    public async Task<DvrRecording> ScheduleRecordingAsync(ScheduleDvrRecordingRequest request, bool isAutomatic = false)
     {
         // All scheduling math compares against DateTime.UtcNow, so pin
         // the incoming times to UTC. JSON datetimes without an offset
@@ -318,6 +318,7 @@ public class DvrRecordingService
 
         var recording = new DvrRecording
         {
+            IsAutomatic = isAutomatic,
             EventId = request.EventId,
             ChannelId = request.ChannelId,
             Title = title,
@@ -334,6 +335,15 @@ public class DvrRecordingService
         };
 
         _db.DvrRecordings.Add(recording);
+        if (isAutomatic && request.EventId.HasValue)
+        {
+            var refusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(_db, request.EventId.Value, request.PartName);
+            if (refusal != null)
+            {
+                _db.Entry(recording).State = EntityState.Detached;
+                throw new InvalidOperationException(refusal);
+            }
+        }
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("[DVR] Scheduled {Method} recording: {Title} on {Channel} from {Start} to {End}",
@@ -460,7 +470,7 @@ public class DvrRecordingService
     /// <summary>
     /// Start a recording immediately
     /// </summary>
-    public async Task<RecordingResult> StartRecordingAsync(int recordingId)
+    public async Task<RecordingResult> StartRecordingAsync(int recordingId, bool isManual = false)
     {
         if (!_startsInFlight.TryAdd(recordingId, 0))
         {
@@ -470,7 +480,7 @@ public class DvrRecordingService
 
         try
         {
-            return await StartRecordingCoreAsync(recordingId);
+            return await StartRecordingCoreAsync(recordingId, isManual);
         }
         finally
         {
@@ -478,7 +488,7 @@ public class DvrRecordingService
         }
     }
 
-    private async Task<RecordingResult> StartRecordingCoreAsync(int recordingId)
+    private async Task<RecordingResult> StartRecordingCoreAsync(int recordingId, bool isManual)
     {
         var recording = await _db.DvrRecordings
             .Include(r => r.Channel)
@@ -527,6 +537,18 @@ public class DvrRecordingService
         if (recording.Channel == null)
         {
             return new RecordingResult { Success = false, Error = "Channel not found" };
+        }
+
+        if (!isManual && recording.IsAutomatic && recording.EventId.HasValue)
+        {
+            var refusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(_db, recording.EventId.Value, recording.PartName);
+            if (refusal != null)
+            {
+                recording.Status = DvrRecordingStatus.Cancelled;
+                recording.ErrorMessage = refusal;
+                await _db.SaveChangesAsync();
+                return new RecordingResult { Success = false, Error = refusal };
+            }
         }
 
         // Generate output path. Fails when a configured DVR Recording Path is
@@ -583,6 +605,18 @@ public class DvrRecordingService
         // Get per-source stream options
         var userAgent = recording.Channel.Source?.UserAgent;
         var extraInputArgs = recording.Channel.Source?.FfmpegInputArgs;
+
+        if (!isManual && recording.IsAutomatic && recording.EventId.HasValue)
+        {
+            var refusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(_db, recording.EventId.Value, recording.PartName);
+            if (refusal != null)
+            {
+                recording.Status = DvrRecordingStatus.Cancelled;
+                recording.ErrorMessage = refusal;
+                await _db.SaveChangesAsync();
+                return new RecordingResult { Success = false, Error = refusal };
+            }
+        }
 
         // Start the recording
         var result = await _ffmpegRecorder.StartRecordingAsync(
@@ -714,6 +748,7 @@ public class DvrRecordingService
         // Create the rotated recording carrying forward times + padding.
         var rotated = new DvrRecording
         {
+            IsAutomatic = failed.IsAutomatic,
             EventId = failed.EventId,
             ChannelId = nextChannel.Id,
             Title = failed.Title,
