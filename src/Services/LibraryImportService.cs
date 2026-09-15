@@ -135,6 +135,7 @@ public class LibraryImportService
 
             // Track event IDs claimed by earlier files in this batch so two files can't match the same event
             var claimedEventIds = new HashSet<int>();
+            var supercarsRoundRaceCache = new Dictionary<(int Year, int Round), List<int>>();
 
             var processedFileCount = 0;
             foreach (var filePath in files)
@@ -290,13 +291,35 @@ public class LibraryImportService
                             .Where(e => isPartFile || (!e.HasFile && !claimedEventIds.Contains(e.Id)))
                             .ToListAsync();
 
+                        List<int>? roundRaceNumbers = null;
+                        if (sportsResult.RoundNumber.HasValue &&
+                            organization?.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true)
+                        {
+                            var cacheKey = (parsedYear ?? 0, sportsResult.RoundNumber.Value);
+                            if (!supercarsRoundRaceCache.TryGetValue(cacheKey, out roundRaceNumbers))
+                            {
+                                var roundValue = sportsResult.RoundNumber.Value.ToString();
+                                var roundTitles = await _db.Events
+                                    .AsNoTracking()
+                                    .Where(evt => evt.Round == roundValue &&
+                                        evt.League != null && evt.League.Name.Contains("Supercars") &&
+                                        (!parsedYear.HasValue || evt.Season == parsedYear.Value.ToString() ||
+                                            evt.SeasonNumber == parsedYear.Value))
+                                    .Select(evt => evt.Title)
+                                    .ToListAsync();
+                                roundRaceNumbers = ReleaseMatchingService.RaceNumbersInTitles(roundTitles);
+                                supercarsRoundRaceCache[cacheKey] = roundRaceNumbers;
+                            }
+                        }
+
                         foreach (var candidate in candidates)
                         {
                             var confidence = CalculateMatchConfidence(
                                 eventTitle, candidate.Title, organization, candidate,
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
-                                sportsResult.Location, _logger, sport, seriesLabel);
+                                sportsResult.Location, _logger, sport, seriesLabel,
+                                roundRaceNumbers, filename);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
@@ -769,14 +792,16 @@ public class LibraryImportService
                     else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes && !string.IsNullOrEmpty(parsedInfo.EventTitle))
                     {
                         // Auto-detect part from filename
-                        var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, sport);
+                        var partInfo = _partDetector.DetectPart(
+                            parsedInfo.EventTitle, sport, newEvent.Title, league?.Name);
                         partName = partInfo?.SegmentName;
                         partNumber = partInfo?.PartNumber;
                     }
 
                     // The caller can send a part name with no number. The number orders
                     // the parts, so fill it from the name.
-                    partNumber ??= EventPartDetector.ResolvePartNumber(partName, sport, newEvent.Title);
+                    partNumber ??= EventPartDetector.ResolvePartNumber(
+                        partName, sport, newEvent.Title, league?.Name);
 
                     // Build destination path and transfer file - pass part info and import mode
                     var destinationPath = await TransferFileToLibraryAsync(
@@ -1035,7 +1060,8 @@ public class LibraryImportService
             else if (config.EnableMultiPartEpisodes)
             {
                 // Fallback: try auto-detection from original filename if no part info provided
-                var detectedPart = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+                var detectedPart = _partDetector.DetectPart(
+                    parsed.EventTitle, eventInfo.Sport, eventInfo.Title, eventInfo.League?.Name);
                 if (detectedPart != null)
                 {
                     partSuffix = $" - {detectedPart.PartSuffix}";
@@ -1920,7 +1946,9 @@ public class LibraryImportService
         string? parsedLocation = null,
         ILogger? logger = null,
         string? parsedSport = null,
-        string? seriesLabel = null)
+        string? seriesLabel = null,
+        IReadOnlyList<int>? roundRaceNumbers = null,
+        string? sourceTitle = null)
     {
         int confidence = 0;
 
@@ -1936,6 +1964,29 @@ public class LibraryImportService
         {
             logger?.LogDebug("[Match] Series label gate: file names series '{Label}', event '{Event}' is in league '{League}' - rejecting",
                 seriesLabel, eventTitle, evt.League.Name);
+            return 0;
+        }
+
+        var originalTitle = sourceTitle ?? searchTitle;
+        var hasLeagueReleaseIdentity = LeagueReleaseNamePolicy.HasStrongEventIdentity(originalTitle, evt);
+        if (CricketRugbyReleaseNamePolicy.HasIdentityConflict(originalTitle, evt) ||
+            LeagueReleaseNamePolicy.HasIdentityConflict(originalTitle, evt))
+        {
+            return 0;
+        }
+
+        if (SearchNormalizationService.HasCyclingCategoryConflict(
+                originalTitle, eventTitle, evt.League?.Name, evt.Sport))
+        {
+            return 0;
+        }
+
+        var supercarsRoundRaceIdentity = LeagueReleaseNamePolicy.EvaluateSupercarsRoundRaceIdentity(
+            originalTitle, evt, roundRaceNumbers);
+        if (supercarsRoundRaceIdentity == false ||
+            LeagueReleaseNamePolicy.HasUnresolvedSupercarsRaceIdentity(originalTitle, evt) &&
+            supercarsRoundRaceIdentity != true)
+        {
             return 0;
         }
 
@@ -1969,6 +2020,7 @@ public class LibraryImportService
         if (string.IsNullOrWhiteSpace(seriesLabel) && evt.League != null &&
             !organizationEstablishesIdentity &&
             string.IsNullOrWhiteSpace(evt.HomeTeamName) && string.IsNullOrWhiteSpace(evt.AwayTeamName) &&
+            !hasLeagueReleaseIdentity &&
             !ReleaseMatchingService.TitleHasLeagueIdentity(searchTitle, eventTitle, evt.League))
         {
             logger?.LogDebug("[Match] League identity gate: '{Title}' names neither league '{League}' nor anything distinctive from event '{Event}' - rejecting",
@@ -1982,7 +2034,7 @@ public class LibraryImportService
         // fuzzy title arithmetic works out. Without this a soccer World Cup
         // file auto-matched a World Snooker event.
         if (!string.IsNullOrEmpty(parsedSport) && !string.IsNullOrEmpty(evt.Sport) &&
-            !evt.Sport.Equals(parsedSport, StringComparison.OrdinalIgnoreCase))
+            !LeagueSportRules.AreEquivalentSports(evt.Sport, parsedSport))
         {
             logger?.LogDebug("[Match] Sport gate: file parsed as {ParsedSport}, event '{Event}' is {EventSport} - rejecting",
                 parsedSport, eventTitle, evt.Sport);
@@ -2055,7 +2107,8 @@ public class LibraryImportService
             var yearMatches = eventYear == parsedYear.Value
                 || eventSeasonYear == parsedYear.Value
                 || (seasonYearEnd.HasValue && parsedYear.Value <= seasonYearEnd.Value
-                    && eventSeasonYear.HasValue && parsedYear.Value >= eventSeasonYear.Value);
+                    && eventSeasonYear.HasValue && parsedYear.Value >= eventSeasonYear.Value)
+                || CricketRugbyReleaseNamePolicy.HasSplitSeasonYearMatch(originalTitle, evt);
 
             if (!yearMatches)
             {
@@ -2136,6 +2189,15 @@ public class LibraryImportService
                 var matchPercent = (double)matchingWords / totalWords;
                 confidence += (int)(30 * matchPercent);
             }
+        }
+
+        if (CricketRugbyReleaseNamePolicy.HasStrongEventIdentity(originalTitle, evt))
+        {
+            confidence += 40;
+        }
+        if (hasLeagueReleaseIdentity)
+        {
+            confidence += 50;
         }
 
         // ── ORGANIZATION → LEAGUE ───────────────────────────────────────────────

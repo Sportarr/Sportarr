@@ -103,4 +103,142 @@ public class ManualImportCandidateTests : IDisposable
         suggestions[0].ParsedOrganization.Should().Be("MotoGP",
             "the championship must reach the suggestion so the UI and new-event creation can use it");
     }
+
+    [Fact]
+    public async Task ManualCandidates_OfferAnEarlySeasonEventBeyondTheLeagueRecencyCap()
+    {
+        await using var db = CreateDb();
+        var league = new League
+        {
+            Name = "Indian Premier League",
+            Sport = "Cricket"
+        };
+        db.Leagues.Add(league);
+        await db.SaveChangesAsync();
+
+        var wanted = new Event
+        {
+            Title = "Delhi Capitals vs Mumbai Indians",
+            Sport = "Cricket",
+            Season = "2026",
+            Round = "8",
+            EventDate = new DateTime(2026, 4, 4),
+            HomeTeamName = "Delhi Capitals",
+            AwayTeamName = "Mumbai Indians",
+            LeagueId = league.Id,
+            League = league
+        };
+        db.Events.Add(wanted);
+        for (var index = 0; index < 15; index++)
+        {
+            db.Events.Add(new Event
+            {
+                Title = $"Later Club {index} vs Later Club {index + 20}",
+                Sport = "Cricket",
+                Season = "2026",
+                Round = (index + 20).ToString(),
+                EventDate = new DateTime(2026, 5, 1).AddDays(index),
+                HomeTeamName = $"Later Club {index}",
+                AwayTeamName = $"Later Club {index + 20}",
+                LeagueId = league.Id,
+                League = league
+            });
+        }
+        await db.SaveChangesAsync();
+
+        const string release =
+            "IPL 2026 M08 Delhi Capitals vs Mumbai Indians Full Match Replay 1080p";
+        var suggestions = await CreateSvc(db).GetAllPossibleMatchesAsync(release);
+
+        suggestions.Select(candidate => candidate.EventId).Should().Contain(wanted.Id);
+    }
+
+    [Fact]
+    public async Task ManualCandidates_MapARoundRelativeSupercarsRaceFromTheFullRound()
+    {
+        await using var db = CreateDb();
+        var league = new League { Name = "Supercars", Sport = "Motorsport" };
+        db.Leagues.Add(league);
+        await db.SaveChangesAsync();
+
+        Event AddRace(int race, int day)
+        {
+            var evt = new Event
+            {
+                Title = $"Century Batteries Ipswich Super 440 - Race {race}",
+                Sport = "Motorsport",
+                Season = "2026",
+                Round = "9",
+                EpisodeNumber = race,
+                EventDate = new DateTime(2026, 8, day),
+                LeagueId = league.Id,
+                League = league
+            };
+            db.Events.Add(evt);
+            return evt;
+        }
+
+        AddRace(26, 21);
+        AddRace(27, 22);
+        var wanted = AddRace(28, 23);
+        await db.SaveChangesAsync();
+
+        const string release =
+            "Supercars 2026 Round09 Ipswich Race 3 2160p FoxSports WEB DL DD H265 English";
+        var suggestions = await CreateSvc(db).GetAllPossibleMatchesAsync(release);
+
+        suggestions.Should().ContainSingle(candidate => candidate.EventId == wanted.Id);
+        suggestions.Where(candidate => candidate.EventId != wanted.Id).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(
+        "PDC Darts",
+        "Darts",
+        "Winmau World Masters Day 2",
+        "PDC 2026 World Masters Day 2 1080p WEB")]
+    [InlineData(
+        "World Snooker",
+        "Snooker",
+        "Halo World Championship Final Day 2",
+        "World Snooker Championship 2026 Final Shaun Murphy vs Wu Yize Part 2 1080p HEVC")]
+    public async Task ManualCandidates_OfferAnOlderNamedIndividualEvent(
+        string leagueName,
+        string sport,
+        string eventTitle,
+        string release)
+    {
+        await using var db = CreateDb();
+        var league = new League { Name = leagueName, Sport = sport };
+        db.Leagues.Add(league);
+        await db.SaveChangesAsync();
+
+        var wanted = new Event
+        {
+            Title = eventTitle,
+            Sport = sport,
+            Season = "2026",
+            EventDate = new DateTime(2026, 1, 2),
+            LeagueId = league.Id,
+            League = league
+        };
+        db.Events.Add(wanted);
+        for (var index = 0; index < 15; index++)
+        {
+            db.Events.Add(new Event
+            {
+                Title = $"Later Tournament {index} Day 1",
+                Sport = sport,
+                Season = "2026",
+                EventDate = new DateTime(2026, 6, 1).AddDays(index),
+                LeagueId = league.Id,
+                League = league
+            });
+        }
+        await db.SaveChangesAsync();
+
+        var suggestions = await CreateSvc(db).GetAllPossibleMatchesAsync(release);
+
+        suggestions.Select(candidate => candidate.EventId).Should().Contain(wanted.Id);
+    }
 }

@@ -44,7 +44,7 @@ public sealed class CompetitionSessionDateBoundaryTests(ITestOutputHelper output
     }
 
     [Fact]
-    public void RecurringWrestlingBroadcastKeepsExistingThreeDayGrace()
+    public void RecurringWrestlingBroadcastRequiresTheExactDate()
     {
         var evt = new Event
         {
@@ -53,8 +53,8 @@ public sealed class CompetitionSessionDateBoundaryTests(ITestOutputHelper output
             League = new League { Id = 2, Name = "AEW", Sport = "Wrestling" }
         };
         var result = Match("AEW Dynamite 2026 06 10 1080p WEB h264", evt);
-        Assert.False(result.IsHardRejection);
-        Assert.Contains(result.MatchReasons, reason => reason.Contains("Date within 3 days"));
+        Assert.True(result.IsHardRejection);
+        Assert.Contains(result.Rejections, reason => reason.Contains("Date mismatch"));
     }
 
     private ReleaseMatchResult Match(string title, Event evt)

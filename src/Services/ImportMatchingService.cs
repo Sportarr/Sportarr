@@ -239,6 +239,7 @@ public class ImportMatchingService
                 .FirstOrDefaultAsync(e => e.ExternalId == tokenEventId);
             if (tokenEvent != null)
             {
+                var tokenPart = DetectPartForEvent(title, sportType, tokenEvent);
                 _logger.LogInformation("[Import Matching] Id token match: '{Title}' is tagged {Token} = '{Event}' (ID: {EventId})",
                     title, tokenEventId, tokenEvent.Title, tokenEvent.Id);
                 return new ImportSuggestion
@@ -250,7 +251,7 @@ public class ImportMatchingService
                     EventDate = tokenEvent.EventDate,
                     Quality = quality,
                     QualityScore = qualityScore,
-                    Part = detectedPart,
+                    Part = tokenPart,
                     Confidence = 100,
                     ParsedSport = sportsResult.Sport,
                     ParsedOrganization = sportsResult.Organization
@@ -261,7 +262,9 @@ public class ImportMatchingService
         }
 
         // Search for matching events in database
-        var matches = await FindEventMatchesAsync(eventTitle, detectedPart, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);
+        var matches = await FindEventMatchesAsync(
+            eventTitle, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);
+        var roundRaceNumbers = await LoadSupercarsRoundRaceNumbersAsync(sportsResult);
 
         if (!matches.Any())
         {
@@ -283,10 +286,12 @@ public class ImportMatchingService
         // Calculate confidence score for each match, boosting if sports parser matched
         var scoredMatches = matches.Select(evt =>
         {
-            var score = ScoreMatch(eventTitle, evt.Title, detectedPart, evt, sportsResult);
+            var candidatePart = DetectPartForEvent(title, sportType, evt);
+            var score = ScoreMatch(eventTitle, evt.Title, candidatePart, evt, sportsResult, roundRaceNumbers);
             return new
             {
                 Event = evt,
+                Part = candidatePart,
                 Score = Math.Min(100, score.Core + score.TieBreak),
                 score.Core,
                 score.TieBreak
@@ -325,7 +330,7 @@ public class ImportMatchingService
             EventDate = bestMatch.Event.EventDate,
             Quality = quality,
             QualityScore = qualityScore,
-            Part = detectedPart,
+            Part = bestMatch.Part,
             Confidence = bestMatch.Score,
             ParsedSport = sportsResult.Sport,
             ParsedOrganization = sportsResult.Organization
@@ -335,10 +340,25 @@ public class ImportMatchingService
     /// <summary>
     /// Find potential event matches from database
     /// </summary>
-    private async Task<List<Event>> FindEventMatchesAsync(string searchTitle, string? part, string? organization = null, DateTime? eventDate = null, int? roundNumber = null)
+    private async Task<List<Event>> FindEventMatchesAsync(
+        string searchTitle,
+        string? organization = null,
+        DateTime? eventDate = null,
+        int? roundNumber = null)
     {
         // Clean the search title
         var cleanTitle = CleanSearchString(searchTitle);
+        var identityTitle = cleanTitle;
+        if (!string.IsNullOrWhiteSpace(organization))
+        {
+            var cleanOrganization = CleanSearchString(organization);
+            identityTitle = Regex.Replace(
+                cleanTitle,
+                $@"^{Regex.Escape(cleanOrganization)}(?:\s+|$)",
+                string.Empty,
+                RegexOptions.IgnoreCase,
+                TimeSpan.FromMilliseconds(100)).Trim();
+        }
 
         // Build query with multiple search strategies
         var query = _db.Events
@@ -355,7 +375,24 @@ public class ImportMatchingService
             .Take(10)
             .ToListAsync();
 
-        var searchWords = cleanTitle.Split(new[] { ' ', '.', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+        if (!string.Equals(identityTitle, cleanTitle, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(identityTitle))
+        {
+            var identityMatches = await query
+                .Where(e => EF.Functions.Like(e.Title, $"%{EscapeLikePattern(identityTitle)}%", "\\"))
+                .OrderByDescending(e => e.EventDate)
+                .Take(10)
+                .ToListAsync();
+            foreach (var match in identityMatches)
+            {
+                if (!titleMatches.Any(existing => existing.Id == match.Id))
+                {
+                    titleMatches.Add(match);
+                }
+            }
+        }
+
+        var searchWords = identityTitle.Split(new[] { ' ', '.', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
         if (titleMatches.Count < 10 && searchWords.Length > 0)
         {
             var wordPattern = "%" + string.Join("%", searchWords.Select(EscapeLikePattern)) + "%";
@@ -372,6 +409,93 @@ public class ImportMatchingService
                 if (!titleMatches.Any(m => m.Id == match.Id))
                 {
                     titleMatches.Add(match);
+                }
+            }
+        }
+
+        var identityWords = Regex.Matches(identityTitle, @"[A-Za-z]+")
+            .Select(match => match.Value)
+            .Where(word => word.Length > 2 &&
+                !new[] { "full", "match", "replay", "round", "week" }
+                    .Contains(word, StringComparer.OrdinalIgnoreCase))
+            .Take(2)
+            .Select(EscapeLikePattern)
+            .ToList();
+        if (identityWords.Count == 2)
+        {
+            var firstWord = identityWords[0];
+            var secondWord = identityWords[1];
+            var identityWordMatches = await query
+                .Where(e => EF.Functions.Like(e.Title, $"%{firstWord}%", "\\") &&
+                    EF.Functions.Like(e.Title, $"%{secondWord}%", "\\"))
+                .OrderByDescending(e => e.EventDate)
+                .Take(20)
+                .ToListAsync();
+            foreach (var match in identityWordMatches)
+            {
+                if (!titleMatches.Any(existing => existing.Id == match.Id))
+                {
+                    titleMatches.Add(match);
+                }
+            }
+        }
+
+        // Team releases usually preserve both participant names even when
+        // they add a league alias, season, round, and broadcast labels around
+        // them. Use both sides of "vs" or "at" before the league recency
+        // fallback. This keeps an early-season game reachable after a league
+        // has more than ten newer events.
+        var participantSides = Regex.Split(
+            cleanTitle,
+            @"\b(?:vs?|at)\b",
+            RegexOptions.IgnoreCase,
+            TimeSpan.FromMilliseconds(100));
+        if (participantSides.Length == 2)
+        {
+            var organizationWords = NormalizeForLeagueMatch(organization ?? string.Empty)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var ignoredWords = new HashSet<string>(organizationWords, StringComparer.OrdinalIgnoreCase)
+            {
+                "full", "match", "replay", "round", "week", "final", "qualifier",
+                "semifinal", "semifinals", "quarterfinal", "quarterfinals"
+            };
+
+            static List<string> ParticipantWords(string side, HashSet<string> ignored) =>
+                Regex.Matches(side, @"[A-Za-z]+")
+                    .Select(match => match.Value)
+                    .Where(word => word.Length > 2 && !ignored.Contains(word))
+                    .ToList();
+
+            var leftWords = ParticipantWords(participantSides[0], ignoredWords).TakeLast(3).ToList();
+            var rightWords = ParticipantWords(participantSides[1], ignoredWords).Take(3).ToList();
+            if (leftWords.Count > 0 && rightWords.Count > 0)
+            {
+                var left0 = EscapeLikePattern(leftWords[0]);
+                var left1 = leftWords.Count > 1 ? EscapeLikePattern(leftWords[1]) : left0;
+                var left2 = leftWords.Count > 2 ? EscapeLikePattern(leftWords[2]) : left1;
+                var right0 = EscapeLikePattern(rightWords[0]);
+                var right1 = rightWords.Count > 1 ? EscapeLikePattern(rightWords[1]) : right0;
+                var right2 = rightWords.Count > 2 ? EscapeLikePattern(rightWords[2]) : right1;
+
+                var participantMatches = await query
+                    .Where(e =>
+                        (EF.Functions.Like(e.Title, $"%{left0}%", "\\") ||
+                         EF.Functions.Like(e.Title, $"%{left1}%", "\\") ||
+                         EF.Functions.Like(e.Title, $"%{left2}%", "\\")) &&
+                        (EF.Functions.Like(e.Title, $"%{right0}%", "\\") ||
+                         EF.Functions.Like(e.Title, $"%{right1}%", "\\") ||
+                         EF.Functions.Like(e.Title, $"%{right2}%", "\\")))
+                    .OrderByDescending(e => e.EventDate)
+                    .Take(20)
+                    .ToListAsync();
+
+                foreach (var match in participantMatches)
+                {
+                    if (!titleMatches.Any(existing => existing.Id == match.Id))
+                    {
+                        titleMatches.Add(match);
+                    }
                 }
             }
         }
@@ -495,7 +619,7 @@ public class ImportMatchingService
         }
 
         // Strategy 5: Extract words and search more broadly
-        var words = cleanTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        var words = identityTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Where(w => w.Length > 2) // Skip short words
             .Take(3) // Use top 3 significant words
             .ToList();
@@ -528,9 +652,10 @@ public class ImportMatchingService
     /// <summary>
     /// Calculate confidence score (0-100) for how well a file matches an event
     /// </summary>
-    internal int CalculateMatchConfidence(string searchTitle, string eventTitle, string? detectedPart, Event evt, SportsParseResult? sportsResult = null)
+    internal int CalculateMatchConfidence(string searchTitle, string eventTitle, string? detectedPart, Event evt,
+        SportsParseResult? sportsResult = null, IReadOnlyList<int>? roundRaceNumbers = null)
     {
-        var score = ScoreMatch(searchTitle, eventTitle, detectedPart, evt, sportsResult);
+        var score = ScoreMatch(searchTitle, eventTitle, detectedPart, evt, sportsResult, roundRaceNumbers);
         return Math.Min(100, score.Core + score.TieBreak);
     }
 
@@ -543,7 +668,8 @@ public class ImportMatchingService
     /// outweighed the date, and a file re-imported over an earlier mistake
     /// landed on the next game along, the one still empty.
     /// </summary>
-    internal ImportMatchScore ScoreMatch(string searchTitle, string eventTitle, string? detectedPart, Event evt, SportsParseResult? sportsResult = null)
+    internal ImportMatchScore ScoreMatch(string searchTitle, string eventTitle, string? detectedPart, Event evt,
+        SportsParseResult? sportsResult = null, IReadOnlyList<int>? roundRaceNumbers = null)
     {
         int confidence = 0;
         int tieBreak = 0;
@@ -551,6 +677,33 @@ public class ImportMatchingService
         // Normalize titles for comparison
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
+        var originalTitle = sportsResult?.OriginalFilename ?? searchTitle;
+        var normalizedOriginal = NormalizeTitle(originalTitle);
+        var parsedRoundNumber = sportsResult?.RoundNumber ?? ExtractRoundNumber(normalizedOriginal);
+        var leagueName = evt.League?.Name ?? string.Empty;
+        var isNascarCup = leagueName.Contains("NASCAR Cup", StringComparison.OrdinalIgnoreCase);
+        var isWrc = leagueName.Contains("WRC", StringComparison.OrdinalIgnoreCase) ||
+                    leagueName.Contains("World Rally", StringComparison.OrdinalIgnoreCase);
+        var isWorldSuperbike = EventPartDetector.IsWorldSuperbikeLeague(leagueName);
+        var nascarLocationDateIdentity = isNascarCup &&
+            SearchNormalizationService.HasExactDateAndLocationMatch(
+                originalTitle,
+                evt.Venue,
+                evt.Location,
+                sportsResult?.EventDate,
+                (evt.BroadcastDate ?? evt.EventDate).Date);
+        var nascarNamedIdentity = isNascarCup &&
+            (normalizedOriginal.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase) ||
+             nascarLocationDateIdentity);
+        var nascarSearchIdentity = isNascarCup &&
+            normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase);
+        var nascarSessionMatch = isNascarCup &&
+            SearchNormalizationService.HasMatchingNascarSession(
+                originalTitle, evt.Title ?? eventTitle);
+        var nascarRoundIdentity = isNascarCup &&
+            parsedRoundNumber is int nascarReleaseRound &&
+            int.TryParse(evt.Round, out var nascarEventRound) &&
+            nascarReleaseRound == nascarEventRound;
 
         // A degenerate title carries no signal - and the contains branch
         // below would award EVERY event 40 points for an empty search string
@@ -558,6 +711,59 @@ public class ImportMatchingService
         if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
         {
             return new ImportMatchScore(0, 0);
+        }
+
+        if (CricketRugbyReleaseNamePolicy.HasIdentityConflict(originalTitle, evt))
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+        if (LeagueReleaseNamePolicy.HasIdentityConflict(originalTitle, evt))
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+        if (SearchNormalizationService.HasCyclingCategoryConflict(
+                originalTitle, evt.Title, evt.League?.Name, evt.Sport))
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+        var supercarsRoundRaceIdentity = LeagueReleaseNamePolicy.EvaluateSupercarsRoundRaceIdentity(
+            originalTitle, evt, roundRaceNumbers);
+        if (supercarsRoundRaceIdentity == false)
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+        if (LeagueReleaseNamePolicy.HasUnresolvedSupercarsRaceIdentity(originalTitle, evt) &&
+            supercarsRoundRaceIdentity != true)
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+        if (supercarsRoundRaceIdentity == true)
+        {
+            confidence += 50;
+        }
+
+        if (isNascarCup &&
+            (SearchNormalizationService.HasConflictingNascarSeries(originalTitle, evt.Title ?? eventTitle) ||
+             SearchNormalizationService.HasConflictingNascarSession(originalTitle, evt.Title ?? eventTitle)))
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+
+        if (isNascarCup && SearchNormalizationService.HasConflictingNascarRaceDistance(
+                originalTitle, eventTitle))
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+
+        if (isNascarCup && !nascarNamedIdentity && !nascarRoundIdentity && !nascarSearchIdentity)
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+
+        if (isNascarCup && sportsResult?.EventDate is DateTime releaseDate &&
+            Math.Abs(((evt.BroadcastDate ?? evt.EventDate).Date - releaseDate.Date).TotalDays) > 1)
+        {
+            return new ImportMatchScore(-100, 0);
         }
 
         // The parser prefixes a dated fixture with its league and date, and
@@ -598,6 +804,51 @@ public class ImportMatchingService
             }
         }
 
+        if (CricketRugbyReleaseNamePolicy.HasStrongEventIdentity(originalTitle, evt))
+        {
+            confidence += 40;
+        }
+        if (LeagueReleaseNamePolicy.HasStrongEventIdentity(originalTitle, evt))
+        {
+            confidence += 50;
+        }
+
+        if (EventPartDetector.IsFightingSport(evt.Sport ?? string.Empty) &&
+            sportsResult?.EventDate == null &&
+            sportsResult?.EventYear is int releaseYear)
+        {
+            var eventYear = (evt.BroadcastDate ?? evt.EventDate).Year;
+            var yearMatches = releaseYear == eventYear ||
+                              sportsResult.SeasonYearEnd is int releaseYearEnd &&
+                              eventYear >= releaseYear &&
+                              eventYear <= releaseYearEnd;
+            if (!yearMatches)
+            {
+                return new ImportMatchScore(-100, 0);
+            }
+        }
+
+        var combatIdentity = SearchNormalizationService.EvaluateCombatIdentity(
+            originalTitle,
+            evt.Title ?? eventTitle,
+            evt.League?.Name,
+            evt.Sport,
+            detectedPart,
+            enableMultiPartEpisodes: true);
+        if (combatIdentity == CombatIdentityMatch.Mismatch)
+        {
+            return new ImportMatchScore(-100, 0);
+        }
+        if (combatIdentity == CombatIdentityMatch.Match)
+        {
+            confidence += 45;
+        }
+
+        if (nascarLocationDateIdentity)
+        {
+            confidence += 40;
+        }
+
         // Special-stage token agreement (rally SSn releases, issue #102).
         // The stage number is the only difference between sixteen otherwise
         // identical stage titles, so it outweighs generic word overlap.
@@ -606,13 +857,27 @@ public class ImportMatchingService
         if (EventPartDetector.IsMotorsport(evt.Sport ?? "") ||
             (sportsResult != null && EventPartDetector.IsMotorsport(sportsResult.Sport ?? "")))
         {
-            var searchStage = ExtractStageNumber(normalizedSearch);
+            var searchStage = ExtractStageNumber(normalizedOriginal);
             var eventStage = ExtractStageNumber(normalizedEvent);
-            if (searchStage.HasValue && eventStage.HasValue)
+            if (isWrc && eventStage.HasValue)
+            {
+                if (searchStage != eventStage ||
+                    !SearchNormalizationService.HasRallyIdentityMatch(originalTitle, evt.Title ?? eventTitle))
+                {
+                    return new ImportMatchScore(-100, 0);
+                }
+
+                confidence += 40;
+            }
+            else if (isWrc && searchStage.HasValue)
+            {
+                return new ImportMatchScore(-100, 0);
+            }
+            else if (!isWrc && searchStage.HasValue && eventStage.HasValue)
             {
                 confidence += searchStage == eventStage ? 15 : -40;
             }
-            else if (searchStage.HasValue || eventStage.HasValue)
+            else if (!isWrc && (searchStage.HasValue || eventStage.HasValue))
             {
                 confidence -= 15;
             }
@@ -648,13 +913,13 @@ public class ImportMatchingService
                  !string.IsNullOrEmpty(evt.League.Name))
         {
             var org = sportsResult.Organization;
-            var leagueName = evt.League.Name;
-            if (!leagueName.Contains(org, StringComparison.OrdinalIgnoreCase) &&
-                !org.Contains(leagueName, StringComparison.OrdinalIgnoreCase))
+            var matchedLeagueName = evt.League.Name;
+            if (!matchedLeagueName.Contains(org, StringComparison.OrdinalIgnoreCase) &&
+                !org.Contains(matchedLeagueName, StringComparison.OrdinalIgnoreCase))
             {
                 confidence -= 50;
                 _logger.LogDebug("[Import Matching] League mismatch penalty: parsed '{ParsedOrg}' vs league '{League}' for '{EventTitle}'",
-                    org, leagueName, evt.Title);
+                    org, matchedLeagueName, evt.Title);
             }
         }
 
@@ -680,7 +945,25 @@ public class ImportMatchingService
         if (sportsResult?.EventDate != null)
         {
             var dateMatch = ImportDateMatchPolicy.Evaluate(evt, sportsResult.EventDate.Value);
-            if (dateMatch.Reject)
+            if (SearchNormalizationService.RequiresExactCombatDate(
+                    evt.Title ?? eventTitle, evt.League?.Name, evt.Sport) &&
+                dateMatch.DaysDifference != 0)
+            {
+                return new ImportMatchScore(-100, 0);
+            }
+
+            if (EventPartDetector.IsFightingSport(evt.Sport ?? string.Empty) &&
+                dateMatch.DaysDifference > 3 &&
+                !SearchNormalizationService.HasDayMonthDateToken(originalTitle, dateMatch.EventDate))
+            {
+                return new ImportMatchScore(-100, 0);
+            }
+
+            if (SearchNormalizationService.HasDayMonthDateToken(originalTitle, dateMatch.EventDate))
+            {
+                confidence += 20;
+            }
+            else if (dateMatch.Reject)
             {
                 confidence -= 100;
                 _logger.LogDebug("[Import Matching] Date mismatch REJECT: release {ReleaseDate} vs fixture {EventDate} for '{EventTitle}'",
@@ -714,15 +997,19 @@ public class ImportMatchingService
         // could import against the race of another round. Only compare a
         // numeric round: other sports keep bracket names such as "Semi-final"
         // in the same field.
-        if (sportsResult?.RoundNumber != null && int.TryParse(evt.Round, out var eventRound))
+        if (parsedRoundNumber.HasValue && int.TryParse(evt.Round, out var eventRound))
         {
-            var parsedRound = sportsResult.RoundNumber.Value;
+            var parsedRound = parsedRoundNumber.Value;
             // Indexers number pre-season testing 0 where the API uses 500.
             var roundsAgree = eventRound == parsedRound ||
                               (parsedRound == 0 && eventRound == 500) ||
                               (parsedRound == 500 && eventRound == 0);
 
             if (roundsAgree)
+            {
+                confidence += isNascarCup ? 35 : 25;
+            }
+            else if (nascarNamedIdentity)
             {
                 confidence += 25;
             }
@@ -734,41 +1021,82 @@ public class ImportMatchingService
             }
         }
 
-        // Session identity does not depend on a round number. Some series do
-        // not publish one, and unfamiliar filename shapes can still carry a
-        // clear session label in the original name.
-        var releaseSession = sportsResult?.Session;
-        if (sportsResult != null && EventPartDetector.IsMotorsport(eventSport ?? ""))
+        var isSupercars = leagueName.Contains("Supercars", StringComparison.OrdinalIgnoreCase);
+        var useDetailedSessionIdentity = isWorldSuperbike ||
+            (leagueName.Contains("IndyCar", StringComparison.OrdinalIgnoreCase) &&
+             EventPartDetector.DetectMotorsportSessionIdentity(
+                 evt.Title ?? eventTitle, leagueName, releaseTitle: false) == "Final Practice");
+        if (useDetailedSessionIdentity)
         {
-            releaseSession = EventPartDetector.DetectMotorsportSessionFromFilename(
-                sportsResult.OriginalFilename, evt.League?.Name);
-        }
+            var releaseSession = EventPartDetector.DetectMotorsportSessionIdentity(
+                originalTitle, leagueName, releaseTitle: true);
+            var eventSession = EventPartDetector.DetectMotorsportSessionIdentity(
+                evt.Title ?? eventTitle, leagueName, releaseTitle: false);
 
-        if (!string.IsNullOrEmpty(releaseSession))
-        {
-            var eventSession = EventPartDetector.DetectMotorsportSessionType(evt.Title, evt.League?.Name ?? "");
             if (!string.IsNullOrEmpty(eventSession))
             {
                 if (eventSession.Equals(releaseSession, StringComparison.OrdinalIgnoreCase))
                 {
-                    confidence += 20; // Session matches — strong signal
-                    _logger.LogDebug("[Import Matching] Session match boost: '{Session}' matches event '{EventTitle}'",
-                        releaseSession, evt.Title);
+                    confidence += 40;
                 }
                 else
                 {
-                    confidence -= 100; // Session mismatch — hard reject (e.g., file is "Practice 1" but event is "Race")
-                    _logger.LogDebug("[Import Matching] Session mismatch REJECT: parsed '{ParsedSession}' vs event '{EventSession}' for '{EventTitle}'",
-                        releaseSession, eventSession, evt.Title);
+                    return new ImportMatchScore(-100, 0);
                 }
             }
-            else
+        }
+        else if (isSupercars)
+        {
+            var releaseSession = EventPartDetector.DetectMotorsportSessionIdentity(
+                originalTitle, leagueName, releaseTitle: true);
+            var eventSession = EventPartDetector.DetectMotorsportSessionIdentity(
+                evt.Title ?? eventTitle, leagueName, releaseTitle: false);
+
+            if (!string.IsNullOrEmpty(releaseSession) && !string.IsNullOrEmpty(eventSession))
             {
-                // File has a session but event title has no detectable session — likely wrong match
-                // e.g., "Practice 1" file matching a generic "Grand Prix" event
-                confidence -= 30;
-                _logger.LogDebug("[Import Matching] File has session '{Session}' but event '{EventTitle}' has no session — penalizing",
-                    releaseSession, evt.Title);
+                if (!eventSession.Equals(releaseSession, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new ImportMatchScore(-100, 0);
+                }
+
+                confidence += 40;
+            }
+        }
+        else
+        {
+            // Session identity does not depend on a round number.
+            var releaseSession = sportsResult?.Session;
+            if (sportsResult != null && EventPartDetector.IsMotorsport(eventSport ?? ""))
+            {
+                releaseSession = EventPartDetector.DetectMotorsportSessionFromFilename(
+                    sportsResult.OriginalFilename, evt.League?.Name);
+            }
+
+            if (!string.IsNullOrEmpty(releaseSession))
+            {
+                var eventSession = EventPartDetector.DetectMotorsportSessionType(evt.Title, evt.League?.Name ?? "");
+                if (!string.IsNullOrEmpty(eventSession))
+                {
+                    if (eventSession.Equals(releaseSession, StringComparison.OrdinalIgnoreCase) ||
+                        nascarSessionMatch)
+                    {
+                        confidence += 20;
+                        _logger.LogDebug("[Import Matching] Session match boost: '{Session}' matches event '{EventTitle}'",
+                            releaseSession, evt.Title);
+                    }
+                    else
+                    {
+                        confidence -= 100;
+                        _logger.LogDebug("[Import Matching] Session mismatch REJECT: parsed '{ParsedSession}' vs event '{EventSession}' for '{EventTitle}'",
+                            releaseSession, eventSession, evt.Title);
+                    }
+                }
+                else
+                {
+                    confidence -= 30;
+                    _logger.LogDebug("[Import Matching] File has session '{Session}' but event '{EventTitle}' has no session",
+                        releaseSession, evt.Title);
+                }
             }
         }
 
@@ -789,8 +1117,14 @@ public class ImportMatchingService
 
     private static int? ExtractStageNumber(string normalizedTitle)
     {
-        var match = Regex.Match(normalizedTitle, @"\bSS(\d+)\b", RegexOptions.IgnoreCase);
+        var match = Regex.Match(normalizedTitle, @"\b(?:SS|Stage)\s*(\d+)\b", RegexOptions.IgnoreCase);
         return match.Success && int.TryParse(match.Groups[1].Value, out var stage) ? stage : null;
+    }
+
+    private static int? ExtractRoundNumber(string normalizedTitle)
+    {
+        var match = Regex.Match(normalizedTitle, @"\bRound\s*(\d{1,3})\b", RegexOptions.IgnoreCase);
+        return match.Success && int.TryParse(match.Groups[1].Value, out var round) ? round : null;
     }
 
     // LIKE metacharacters in a filename must stay literal, or an odd release
@@ -923,18 +1257,16 @@ public class ImportMatchingService
         // did. Left on the old default it called an unfamiliar league a fight
         // card and scored its parts as though it had rounds.
         var sportType = await ResolveSportAsync(title, sportsResult.Sport);
-        var detectedPart = sportType is null
-            ? null
-            : _partDetector.DetectPart(title, sportType)?.SegmentName;
-
         var events = await FindEventMatchesAsync(
-            eventTitle, detectedPart, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);
+            eventTitle, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);
+        var roundRaceNumbers = await LoadSupercarsRoundRaceNumbersAsync(sportsResult);
 
         var suggestions = new List<(ImportSuggestion Suggestion, ImportMatchScore Score)>();
 
         foreach (var evt in events)
         {
-            var score = ScoreMatch(eventTitle, evt.Title, detectedPart, evt, sportsResult);
+            var detectedPart = DetectPartForEvent(title, sportType, evt);
+            var score = ScoreMatch(eventTitle, evt.Title, detectedPart, evt, sportsResult, roundRaceNumbers);
             var confidence = Math.Min(100, score.Core + score.TieBreak);
 
             suggestions.Add((new ImportSuggestion
@@ -963,6 +1295,40 @@ public class ImportMatchingService
             .ThenByDescending(s => s.Score.TieBreak)
             .Select(s => s.Suggestion)
             .ToList();
+    }
+
+    private string? DetectPartForEvent(string title, string? fallbackSport, Event evt)
+    {
+        var sport = string.IsNullOrWhiteSpace(evt.Sport) ? fallbackSport : evt.Sport;
+        return string.IsNullOrWhiteSpace(sport)
+            ? null
+            : _partDetector.DetectPart(
+                title, sport, evt.Title, evt.League?.Name)?.SegmentName;
+    }
+
+    private async Task<List<int>?> LoadSupercarsRoundRaceNumbersAsync(SportsParseResult parsed)
+    {
+        if (!parsed.RoundNumber.HasValue ||
+            parsed.Organization?.Contains("Supercars", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            return null;
+        }
+
+        var round = parsed.RoundNumber.Value.ToString();
+        var year = parsed.EventYear ?? parsed.EventDate?.Year;
+        var query = _db.Events
+            .AsNoTracking()
+            .Where(evt => evt.Round == round && evt.League != null &&
+                evt.League.Name.Contains("Supercars"));
+        if (year.HasValue)
+        {
+            var season = year.Value.ToString();
+            query = query.Where(evt => evt.Season == season ||
+                evt.SeasonNumber == year.Value || evt.EventDate.Year == year.Value);
+        }
+
+        var titles = await query.Select(evt => evt.Title).ToListAsync();
+        return ReleaseMatchingService.RaceNumbersInTitles(titles);
     }
 }
 

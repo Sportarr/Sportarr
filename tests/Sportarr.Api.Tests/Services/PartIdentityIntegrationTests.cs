@@ -121,6 +121,21 @@ public class PartIdentityIntegrationTests
     }
 
     [Fact]
+    public async Task ManualAutomaticSearchAcceptsAewZeroHourForRequestedCountdown()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            title: "Forbidden Door", sport: "Wrestling", leagueName: "AEW");
+        var result = await rig.AutomaticAsync(
+            rig.Release("AEW.Forbidden.Door.2020.Zero.Hour.720p.WEB-DL.H264-Fixture"),
+            requestedPart: "Countdown",
+            manual: true);
+
+        result.Success.Should().BeTrue(result.Message);
+        rig.Transport.ClientAdds.Should().Be(1);
+        (await rig.Db.DownloadQueue.SingleAsync()).Part.Should().Be("Countdown");
+    }
+
+    [Fact]
     public async Task ManualAutomaticRoute_PreservesIntentionalActiveDownloadOverride()
     {
         await using var rig = await PartIdentityIntegrationHarness.CreateAsync();

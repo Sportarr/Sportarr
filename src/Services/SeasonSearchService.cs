@@ -103,7 +103,8 @@ public class SeasonSearchService
             enableMultiPartEpisodes: enableMultiPart,
             leagueTags: league.Tags,
             allowHighlights: league.AllowHighlights,
-            sportarrId: Helpers.SportarrIdToken.Normalize(league.ExternalId)
+            sportarrId: Helpers.SportarrIdToken.Normalize(league.ExternalId),
+            leagueName: league.Name
         );
 
         _logger.LogInformation("[Season Search] Found {Count} raw releases from indexers", allReleases.Count);
@@ -117,6 +118,13 @@ public class SeasonSearchService
         // Match releases to events
         var seasonReleases = new List<SeasonSearchRelease>();
         var seenGuids = new HashSet<string>();
+        var roundRaceNumbersByRound = seasonEvents
+            .Where(evt => evt.League?.Name.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true &&
+                !string.IsNullOrEmpty(evt.Round))
+            .GroupBy(evt => evt.Round)
+            .ToDictionary(
+                group => group.Key!,
+                group => ReleaseMatchingService.RaceNumbersInTitles(group.Select(evt => evt.Title)));
 
         foreach (var release in allReleases)
         {
@@ -137,6 +145,7 @@ public class SeasonSearchService
 
             foreach (var evt in seasonEvents)
             {
+                roundRaceNumbersByRound.TryGetValue(evt.Round ?? string.Empty, out var roundRaceNumbers);
                 var matchResult = _releaseMatchingService.ValidateRelease(
                     release,
                     evt,
@@ -144,12 +153,14 @@ public class SeasonSearchService
                     enableMultiPartEpisodes: enableMultiPart,
                     preParsed: preParsed,
                     earlyReleaseLimitDays: earlyLimit,
+                    roundRaceNumbers: roundRaceNumbers,
                     knownLeagues: knownLeagues);
 
                 if (matchResult.IsMatch)
                 {
                     // Detect which part this release is for (if any)
-                    var detectedPart = _eventPartDetector.DetectPart(release.Title, evt.Sport);
+                    var detectedPart = _eventPartDetector.DetectPart(
+                        release.Title, evt.Sport, evt.Title, evt.League?.Name);
 
                     matchedEvents.Add(new SeasonEventMatch
                     {

@@ -31,7 +31,7 @@ public class EventQueryServiceWrestlingTests
     }
 
     [Fact]
-    public void BuildEventQueries_WweWeeklyShow_HasMonthLevelFallback()
+    public void BuildEventQueries_WweWeeklyShow_UsesOnlyExactDate()
     {
         var service = CreateService();
         var evt = new Event
@@ -44,9 +44,7 @@ public class EventQueryServiceWrestlingTests
 
         var queries = service.BuildEventQueries(evt);
 
-        // Day-level primary and month-level fallback, again without the episode number.
-        queries.Should().Contain("WWE Raw 2026 03 02");
-        queries.Should().Contain("WWE Raw 2026 03");
+        queries.Should().Equal("WWE Raw 2026 03 02");
         queries.Should().NotContain(q => q.Contains("1500"));
     }
 }

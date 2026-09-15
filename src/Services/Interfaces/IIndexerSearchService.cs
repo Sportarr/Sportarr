@@ -33,7 +33,8 @@ public interface IIndexerSearchService
         bool allowHighlights = false,
         string? sportarrId = null,
         bool useCategoryFilter = true,
-        bool interactiveSearch = true);
+        bool interactiveSearch = true,
+        string? leagueName = null);
 
     Task<SearchOperationOutcome> SearchAllIndexersDetailedAsync(
         string query,
@@ -50,7 +51,8 @@ public interface IIndexerSearchService
         bool useCategoryFilter = true,
         bool interactiveSearch = true,
         bool forceRefresh = false,
-        bool cacheSuccessfulSources = false);
+        bool cacheSuccessfulSources = false,
+        string? leagueName = null);
 
     /// <summary>
     /// Search a single indexer

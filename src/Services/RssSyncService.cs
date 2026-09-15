@@ -212,6 +212,8 @@ public class RssSyncService : BackgroundService
             releaseDates,
             datePeerLeagueIds,
             cancellationToken);
+        var roundRaceNumbersByRound = await LoadSupercarsRoundRaceNumbersAsync(
+            db, monitoredEvents, cancellationToken);
 
         _logger.LogDebug("[RSS Sync] Loaded {ProfileCount} quality profiles, {FormatCount} custom formats, {ReleaseProfileCount} release profiles for evaluation",
             qualityProfiles.Count, customFormats.Count, releaseProfiles.Count);
@@ -229,10 +231,12 @@ public class RssSyncService : BackgroundService
                     release,
                     monitoredEvents,
                     releaseMatchingService,
+                    partDetector,
                     config.EnableMultiPartEpisodes,
                     earlyReleaseLimits,
                     knownLeagues,
-                    datePeers);
+                    datePeers,
+                    roundRaceNumbersByRound);
 
                 if (matchedEvent == null)
                     continue;
@@ -355,7 +359,8 @@ public class RssSyncService : BackgroundService
             eventTitle: matchedEvent.Title,
             runtimeMinutes: defaultRuntimeMinutes,
             allowHighlights: matchedEvent.League?.AllowHighlights ?? false,
-            isSizeExemptPack: isPack);
+            isSizeExemptPack: isPack,
+            leagueName: matchedEvent.League?.Name);
 
         // Apply evaluation results to release (same as IndexerSearchService does)
         release.Quality = evaluation.Quality;
@@ -455,15 +460,19 @@ public class RssSyncService : BackgroundService
             parsedReleaseDate.HasValue ? new[] { parsedReleaseDate.Value } : Array.Empty<DateTime>(),
             datePeerLeagueIds,
             cancellationToken);
+        var roundRaceNumbersByRound = await LoadSupercarsRoundRaceNumbersAsync(
+            db, monitoredEvents, cancellationToken);
 
         var matchedEvent = FindMatchingEvent(
             release,
             monitoredEvents,
             releaseMatchingService,
+            partDetector,
             config.EnableMultiPartEpisodes,
             earlyReleaseLimits,
             knownLeagues,
-            datePeers);
+            datePeers,
+            roundRaceNumbersByRound);
 
         if (matchedEvent == null)
         {
@@ -591,10 +600,12 @@ public class RssSyncService : BackgroundService
         ReleaseSearchResult release,
         List<Event> monitoredEvents,
         ReleaseMatchingService matchingService,
+        EventPartDetector partDetector,
         bool enableMultiPartEpisodes,
         IReadOnlyDictionary<int, int?> earlyReleaseLimits,
         IReadOnlyCollection<League> knownLeagues,
-        IReadOnlyCollection<Event> datePeers)
+        IReadOnlyCollection<Event> datePeers,
+        IReadOnlyDictionary<(int? LeagueId, string? Season, string? Round), List<int>> roundRaceNumbersByRound)
     {
         Event? bestMatch = null;
         int bestConfidence = int.MinValue;
@@ -609,7 +620,6 @@ public class RssSyncService : BackgroundService
         // safe.
         var preParsed = matchingService.ParseRelease(release.Title);
         var earlyLimit = ReleaseMatchingService.ResolveEarlyReleaseLimit(release, earlyReleaseLimits);
-
         foreach (var evt in monitoredEvents)
         {
             // No keyword pre-filter. The previous implementation required a
@@ -625,8 +635,13 @@ public class RssSyncService : BackgroundService
             // year-bounds checks, etc.), with preParsed memoized above,
             // so per-event validation is cheap enough to skip the brittle
             // keyword prefilter entirely.
-            var matchResult = matchingService.ValidateRelease(release, evt, null, enableMultiPartEpisodes, preParsed,
-                earlyReleaseLimitDays: earlyLimit, knownLeagues: knownLeagues, datePeers: datePeers);
+            var requestedPart = enableMultiPartEpisodes
+                ? partDetector.DetectPart(release.Title, evt.Sport ?? string.Empty, evt.Title, evt.League?.Name)?.SegmentName
+                : null;
+            roundRaceNumbersByRound.TryGetValue((evt.LeagueId, evt.Season, evt.Round), out var roundRaceNumbers);
+            var matchResult = matchingService.ValidateRelease(release, evt, requestedPart, enableMultiPartEpisodes, preParsed,
+                earlyReleaseLimitDays: earlyLimit, roundRaceNumbers: roundRaceNumbers,
+                knownLeagues: knownLeagues, datePeers: datePeers);
             if (!matchResult.IsMatch || matchResult.IsHardRejection)
                 continue;
 
@@ -672,6 +687,36 @@ public class RssSyncService : BackgroundService
         }
 
         return bestMatch;
+    }
+
+    private static async Task<Dictionary<(int? LeagueId, string? Season, string? Round), List<int>>> LoadSupercarsRoundRaceNumbersAsync(
+        SportarrDbContext db,
+        IReadOnlyCollection<Event> monitoredEvents,
+        CancellationToken cancellationToken)
+    {
+        var leagueIds = monitoredEvents
+            .Where(evt => evt.LeagueId.HasValue &&
+                evt.League?.Name.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true)
+            .Select(evt => evt.LeagueId!.Value)
+            .Distinct()
+            .ToArray();
+        if (leagueIds.Length == 0)
+        {
+            return new Dictionary<(int?, string?, string?), List<int>>();
+        }
+
+        var scheduleEvents = await db.Events
+            .AsNoTracking()
+            .Where(evt => evt.LeagueId.HasValue && leagueIds.Contains(evt.LeagueId.Value))
+            .Select(evt => new { evt.LeagueId, evt.Season, evt.Round, evt.Title })
+            .ToListAsync(cancellationToken);
+
+        return scheduleEvents
+            .Where(evt => !string.IsNullOrEmpty(evt.Round))
+            .GroupBy(evt => (evt.LeagueId, evt.Season, evt.Round))
+            .ToDictionary(
+                group => group.Key,
+                group => ReleaseMatchingService.RaceNumbersInTitles(group.Select(evt => evt.Title)));
     }
 
     /// <summary>
@@ -749,7 +794,8 @@ public class RssSyncService : BackgroundService
         string? releasePart = null;
         if (EventPartDetector.IsFightingSport(evt.Sport ?? ""))
         {
-            var partInfo = partDetector.DetectPart(release.Title, evt.Sport ?? "");
+            var partInfo = partDetector.DetectPart(
+                release.Title, evt.Sport ?? "", evt.Title, evt.League?.Name);
 
             if (config.EnableMultiPartEpisodes)
             {

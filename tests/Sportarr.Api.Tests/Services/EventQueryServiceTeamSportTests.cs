@@ -31,7 +31,7 @@ public class EventQueryServiceTeamSportTests
     }
 
     [Fact]
-    public void BuildEventQueries_CollegeFootballGame_IncludesReversedTeamOrder()
+    public void BuildEventQueries_CollegeFootballGame_UsesOneMeasuredQuery()
     {
         var service = CreateService();
         var homeTeam = new Team { Name = "South Florida" };
@@ -52,8 +52,7 @@ public class EventQueryServiceTeamSportTests
         // NFL/NBA/etc.), so the query is the event title verbatim - but some
         // indexers title releases in broadcast order rather than Sportarr's
         // home/away designation, so the reversed pairing must also be tried.
-        queries.Should().Contain("South Florida vs Old Dominion");
-        queries.Should().Contain("Old Dominion vs South Florida");
+        queries.Should().Equal("NCAAF 2025 South Florida Old Dominion");
     }
 
     [Fact]

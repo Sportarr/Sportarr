@@ -99,4 +99,29 @@ public class LibraryImportCrossSportMatchingTests
 
         score.Should().Be(0, "an empty search title carries no title signal at all");
     }
+
+    [Theory]
+    [InlineData("Fighting")]
+    [InlineData("Wrestling")]
+    [InlineData("Boxing")]
+    public void CombatSportAliasesMatchTheCanonicalEventSport(string parsedSport)
+    {
+        var evt = new Event
+        {
+            Title = "RAW #1724",
+            Sport = "Combat",
+            Season = "2026",
+            EventDate = new DateTime(2026, 6, 8),
+            League = new League { Name = "WWE", Sport = "Combat" }
+        };
+
+        LibraryImportService.CalculateMatchConfidence(
+                searchTitle: evt.Title,
+                eventTitle: evt.Title,
+                organization: "WWE",
+                evt: evt,
+                parsedDate: null,
+                parsedSport: parsedSport)
+            .Should().BeGreaterThanOrEqualTo(40);
+    }
 }

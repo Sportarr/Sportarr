@@ -103,6 +103,43 @@ public class SportsFileNameParser
             TitleBuilder = (match) => $"{match.Groups["fighter1"].Value} vs {match.Groups["fighter2"].Value}"
         },
 
+        new SportsPattern
+        {
+            Sport = "Motorsport",
+            Organization = "Supercars",
+            Pattern = new Regex(
+                @"^Supercars?[^0-9]*(?<year>20\d{2})[\.\-\s]+(?:Round|R)[\.\-\s]*0*(?<round>[1-9][0-9]?)[\.\-\s]+(?<event>.+?)(?=[\.\-\s]+(?:2160p|1080p|720p|480p|4K|UHD|WEB|HDTV|BluRay)\b|$)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                PatternTimeout),
+            TitleBuilder = match =>
+                $"Supercars {match.Groups["year"].Value} Round{int.Parse(match.Groups["round"].Value):D2} " +
+                Regex.Replace(match.Groups["event"].Value, @"[\.\-_]+", " ").Trim(),
+            RoundExtractor = match => int.Parse(match.Groups["round"].Value)
+        },
+
+        new SportsPattern
+        {
+            Sport = "Cycling",
+            Organization = "UCI World Tour",
+            Pattern = new Regex(
+                @"^Cycling[\.\-\s]+UCI[\.\-\s]+World[\.\-\s]+Tour[\.\-\s]+(?<year>20\d{2})[\.\-\s]+(?<event>.+?)(?=[\.\-\s]+(?:2160p|1080p|720p|480p|4K|UHD|WEB|HDTV|BluRay)\b|$)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                PatternTimeout),
+            TitleBuilder = match => Regex.Replace(match.Groups["event"].Value, @"[\.\-_]+", " ").Trim()
+        },
+
+        new SportsPattern
+        {
+            Sport = "Cricket",
+            Organization = "Australian Big Bash League",
+            Pattern = new Regex(
+                @"^(?<event>(?:M(?<round>\d{1,3})|Final)[\.\-\s]+.+?[\.\-\s]+BBL[\.\-\s]+(?<year>20\d{2})(?:[\.\-\s]+\d{2})?.*?)(?=[\.\-\s]+(?:2160p|1080p|720p|480p|4K|UHD|WEB|HDTV|BluRay)\b|$)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                PatternTimeout),
+            TitleBuilder = match => Regex.Replace(match.Groups["event"].Value, @"[\.\-_]+", " ").Trim(),
+            RoundExtractor = match => int.TryParse(match.Groups["round"].Value, out var round) ? round : null
+        },
+
         // WWE patterns: WWE.Raw.2024.01.15, WWE.SmackDown.2024.01.12, WWE.NXT.2024.01.16
         new SportsPattern
         {
@@ -264,6 +301,17 @@ public class SportsFileNameParser
             Pattern = new Regex(@"NASCAR[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"NASCAR {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")}",
             SessionExtractor = (match) => DetectMotorsportSession(match.Groups["name"].Value)
+        },
+
+        new SportsPattern
+        {
+            Sport = "Motorsport",
+            Organization = "IMSA SportsCar Championship",
+            Pattern = new Regex(@"^IMSA(?:[\.\-\s]+SportsCar[\.\-\s]+Championship)?[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round|R)[\.\-\s]*0*(?<round>\d+)[\.\-\s]+(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|DD[25P]|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            TitleBuilder = match => CleanLocationName(match.Groups["name"].Value),
+            RoundExtractor = match => int.TryParse(match.Groups["round"].Value, out var round) ? round : null,
+            LocationExtractor = match => CleanLocationName(match.Groups["name"].Value),
+            SessionExtractor = match => DetectMotorsportSession(match.Groups["name"].Value)
         },
 
         // Formula E: formula.e.2026.round.03.miami.e.prix, Formula.E.2026.Round04.Jeddah.E.Prix
@@ -960,6 +1008,23 @@ public class SportsFileNameParser
         // Try to extract known organization prefixes
         var orgPatterns = new Dictionary<string, (string Sport, string Org)>
         {
+            { @"^IPL[\.\-\s]", ("Cricket", "Indian Premier League") },
+            { @"^WPL[\.\-\s]", ("Cricket", "Women's Premier League") },
+            { @"^BBL(?=20\d{2})", ("Cricket", "Australian Big Bash League") },
+            { @"^NRL[\.\-\s]", ("Rugby", "Australian National Rugby League") },
+            { @"^URC[\.\-\s]", ("Rugby", "United Rugby Championship") },
+            { @"^Rugby[\.\-\s]+Championship[\.\-\s]", ("Rugby", "Rugby Championship") },
+            { @"^Six[\.\-\s]+Nations(?:[\.\-\s]+Rugby)?[\.\-\s]", ("Rugby", "Six Nations Championship") },
+            { @"^AFL[\.\-\s]", ("Australian Football", "Australian AFL") },
+            { @"^Euro[\.\-\s]*League[\.\-\s]", ("Basketball", "EuroLeague Basketball") },
+            { @"^NCAAF[\.\-\s]", ("Football", "NCAA Division 1") },
+            { @"^NCAAM[\.\-\s]", ("Basketball", "NCAA Division I Basketball Mens") },
+            { @"^NCAA[\.\-\s]+Baseball[\.\-\s]", ("Baseball", "NCAA Baseball") },
+            { @"^World[\.\-\s]+Snooker[\.\-\s]", ("Snooker", "World Snooker") },
+            { @"^Snooker[\.\-\s]", ("Snooker", "World Snooker") },
+            { @"^PDC[\.\-\s]", ("Darts", "PDC Darts") },
+            { @"^IMSA[\.\-\s]+SportsCar[\.\-\s]+Championship[\.\-\s]", ("Motorsport", "IMSA SportsCar Championship") },
+            { @"^Supercars?[\.\-\s]", ("Motorsport", "Supercars") },
             { @"^UFC[\.\-\s]", ("Fighting", "UFC") },
             { @"^Bellator[\.\-\s]", ("Fighting", "Bellator") },
             { @"^PFL[\.\-\s]", ("Fighting", "PFL") },
@@ -974,7 +1039,7 @@ public class SportsFileNameParser
             { @"^(?:UCL|Champions[\.\-\s]*League)[\.\-\s]", ("Soccer", "Champions League") },
             { @"^(?:F1[\.\-\s]*Academy|Formula[\.\-\s]*1[\.\-\s]*Academy)[\.\-\s]", ("Motorsport", "F1 Academy") },
             { @"^(?:F1|Formula[\.\-\s]*1)[\.\-\s]", ("Motorsport", "Formula 1") },
-            { @"^Formula[\.\-\s]+E[\.\-\s]", ("Motorsport", "Formula E") },
+            { @"^Formula[\.\-\s]*E[\.\-\s]", ("Motorsport", "Formula E") },
             { @"^NASCAR[\.\-\s]", ("Motorsport", "NASCAR") },
             { @"^MotoGP[\.\-\s]", ("Motorsport", "MotoGP") },
             { @"^Moto2[\.\-\s]", ("Motorsport", "Moto2") },

@@ -199,8 +199,9 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     var queriesAttempted = 0;
     var sportarrId = Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.ExternalId);
     var sourceFingerprint = await indexerSearchService.GetSearchSourceFingerprintAsync(true, evt.League?.Tags);
-    var metadataProbe = usingCustomQuery ||
-        !string.Equals(evt.Sport, "Basketball", StringComparison.OrdinalIgnoreCase) ||
+    var supportsMetadataProbe = string.Equals(evt.Sport, "Basketball", StringComparison.OrdinalIgnoreCase) ||
+        evt.League?.Name.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true;
+    var metadataProbe = usingCustomQuery || !supportsMetadataProbe ||
         SearchTemplateList.Parse(evt.League?.SearchQueryTemplate).Count > 0
         ? null
         : eventQueryService.BuildMetadataTitleProbe(evt, queries);
@@ -259,7 +260,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                     sportarrId: sportarrId,
                     useCategoryFilter: false,
                     forceRefresh: forceRefresh,
-                    cacheSuccessfulSources: true);
+                    cacheSuccessfulSources: true,
+                    leagueName: evt.League?.Name);
 
                 results = outcome.Releases;
                 searchDiagnostics.AddRange(outcome.Diagnostics);
@@ -300,7 +302,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         {
             await indexerSearchService.EvaluateReleasesAsync(allResults, qualityProfileId, part, evt.Sport,
                 config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags,
-                allowHighlights: evt.League?.AllowHighlights ?? false);
+                allowHighlights: evt.League?.AllowHighlights ?? false,
+                leagueName: evt.League?.Name);
         }
         else
         {
@@ -321,6 +324,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .Select(i => new { i.Id, i.EarlyReleaseLimit })
         .ToDictionaryAsync(i => i.Id, i => i.EarlyReleaseLimit);
     var knownLeagues = await LeagueMatchContext.LoadAsync(db);
+    var roundRaceNumbers = await LoadRoundRaceNumbersAsync(db, evt);
 
     var dateRejectionCount = 0;
     var identityRejectedResults = new HashSet<ReleaseSearchResult>(ReferenceEqualityComparer.Instance);
@@ -328,7 +332,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     {
         var earlyLimit = ReleaseMatchingService.ResolveEarlyReleaseLimit(result, earlyReleaseLimits);
         var matchResult = releaseMatchingService.ValidateRelease(result, evt, part, config.EnableMultiPartEpisodes,
-            earlyReleaseLimitDays: earlyLimit, knownLeagues: knownLeagues);
+            earlyReleaseLimitDays: earlyLimit, roundRaceNumbers: roundRaceNumbers,
+            knownLeagues: knownLeagues);
 
         if (matchResult.IsHardRejection)
         {
@@ -354,7 +359,9 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     // Releases that don't match the event (wrong game, TV shows, documentaries) are marked as rejected
     foreach (var result in allResults)
     {
-        result.MatchScore = releaseMatchScorer.CalculateMatchScore(result.Title, evt, knownLeagues);
+        result.MatchScore = releaseMatchScorer.CalculateMatchScore(
+            result.Title, evt, knownLeagues, part, config.EnableMultiPartEpisodes,
+            roundRaceNumbers);
 
         // Mark non-matching releases as rejected (so UI "Hide Rejected" filter works)
         if (result.MatchScore < ReleaseMatchScorer.MinimumMatchScore)
@@ -387,13 +394,15 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         {
             await indexerSearchService.EvaluateReleasesAsync(uniqueProbeResults, qualityProfileId, part, evt.Sport,
                 config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags,
-                allowHighlights: evt.League?.AllowHighlights ?? false);
+                allowHighlights: evt.League?.AllowHighlights ?? false,
+                leagueName: evt.League?.Name);
 
             foreach (var release in uniqueProbeResults)
             {
                 var earlyLimit = ReleaseMatchingService.ResolveEarlyReleaseLimit(release, earlyReleaseLimits);
                 var matchResult = releaseMatchingService.ValidateRelease(release, evt, part,
-                    config.EnableMultiPartEpisodes, earlyReleaseLimitDays: earlyLimit);
+                    config.EnableMultiPartEpisodes, earlyReleaseLimitDays: earlyLimit,
+                    roundRaceNumbers: roundRaceNumbers, knownLeagues: knownLeagues);
                 if (matchResult.IsHardRejection)
                 {
                     release.Rejections.AddRange(matchResult.Rejections);
@@ -405,7 +414,10 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                     release.Rejections.AddRange(matchResult.Rejections);
                 }
 
-                release.MatchScore = releaseMatchScorer.CalculateMatchScore(release.Title, evt);
+                release.MatchScore = releaseMatchScorer.CalculateMatchScore(
+                    release.Title, evt, knownLeagues, requestedPart: part,
+                    enableMultiPartEpisodes: config.EnableMultiPartEpisodes,
+                    roundRaceNumbers: roundRaceNumbers);
                 if (release.MatchScore < ReleaseMatchScorer.MinimumMatchScore)
                 {
                     release.Approved = false;
@@ -527,10 +539,11 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     foreach (var query in queries)
     {
         logger.LogInformation("[PACK SEARCH] Searching: '{Query}'", query);
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, null, evt.League?.Tags, skippedIndexers,
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, evt.Title, evt.League?.Tags, skippedIndexers,
             allowHighlights: evt.League?.AllowHighlights ?? false,
             sportarrId: Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.League?.ExternalId),
-            useCategoryFilter: false);
+            useCategoryFilter: false,
+            leagueName: evt.League?.Name);
 
         foreach (var result in results)
         {
@@ -555,6 +568,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     // They get the same checks a normal manual search applies.
     var packConfig = await configService.GetConfigAsync();
     var knownLeagues = await LeagueMatchContext.LoadAsync(db);
+    var roundRaceNumbers = await LoadRoundRaceNumbersAsync(db, evt);
 
     // The week the event belongs to. The general validation compares numbers
     // found in the release title against numbers in the event title, and a
@@ -565,7 +579,8 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     foreach (var result in allResults)
     {
         var matchResult = releaseMatchingService.ValidateRelease(
-            result, evt, null, packConfig.EnableMultiPartEpisodes, knownLeagues: knownLeagues);
+            result, evt, null, packConfig.EnableMultiPartEpisodes,
+            roundRaceNumbers: roundRaceNumbers, knownLeagues: knownLeagues);
         if (matchResult.Rejections.Any())
         {
             result.Rejections.AddRange(matchResult.Rejections);
@@ -585,7 +600,10 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
             }
         }
 
-        result.MatchScore = releaseMatchScorer.CalculateMatchScore(result.Title, evt, knownLeagues);
+        result.MatchScore = releaseMatchScorer.CalculateMatchScore(
+            result.Title, evt, knownLeagues, requestedPart: null,
+            enableMultiPartEpisodes: packConfig.EnableMultiPartEpisodes,
+            roundRaceNumbers: roundRaceNumbers);
     }
 
     await MarkBlocklistedAsync(db, allResults);
@@ -624,6 +642,22 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     /// Torrents match on the info hash, usenet on title plus indexer, which is
     /// all the blocklist records for a protocol with no hash.
     /// </summary>
+    private static async Task<List<int>?> LoadRoundRaceNumbersAsync(SportarrDbContext db, Event evt)
+    {
+        if (string.IsNullOrEmpty(evt.Round) ||
+            evt.League?.Name.Contains("Supercars", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            return null;
+        }
+
+        var titles = await db.Events
+            .AsNoTracking()
+            .Where(e => e.LeagueId == evt.LeagueId && e.Season == evt.Season && e.Round == evt.Round)
+            .Select(e => e.Title)
+            .ToListAsync();
+        return ReleaseMatchingService.RaceNumbersInTitles(titles);
+    }
+
     private static async Task MarkBlocklistedAsync(SportarrDbContext db, List<ReleaseSearchResult> results)
     {
         if (results.Count == 0) return;

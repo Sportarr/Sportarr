@@ -48,14 +48,11 @@ public class EventQueryServiceSupercarsTests
     }
 
     [Fact]
-    public void TheRaceNumberInTheTitleBecomesAQuery()
+    public void TheRaceNumberAndRoundCoverBothReleaseConventions()
     {
         var queries = CreateService().BuildEventQueries(Race("Century Batteries Ipswich Super 440 - Race 25", "8"));
 
-        // Releases from these seasons are named "Supercars 2025 Race 25 Ipswich 10 08".
-        queries.Should().Contain("Supercars 2025 Race 25");
-        queries.Should().Contain("Supercars 2025 Round08");
-        queries.Should().Contain("Supercars 2025");
+        queries.Should().Equal("Supercars 2025 Race 25", "Supercars 2025 Round08");
     }
 
     [Fact]
@@ -90,11 +87,22 @@ public class EventQueryServiceSupercarsTests
     }
 
     [Fact]
-    public void ARealPlaceNameIsStillWorthAsking()
+    public void APlaceNameDoesNotAddAnUnmeasuredQuery()
     {
         var evt = Race("Century Batteries Ipswich Super 440 - Race 25", "8");
         evt.Location = "Ipswich";
 
-        CreateService().BuildEventQueries(evt).Should().Contain("Supercars 2025 Ipswich");
+        CreateService().BuildEventQueries(evt)
+            .Should().Equal("Supercars 2025 Race 25", "Supercars 2025 Round08");
+    }
+
+    [Fact]
+    public void RoundQueryIsAlreadyInTheMainPlan()
+    {
+        var evt = Race("Century Batteries Ipswich Super 440 - Race 28", "9", leagueName: "Supercars");
+        var queries = CreateService().BuildEventQueries(evt);
+
+        queries.Should().Contain("Supercars 2025 Round09");
+        CreateService().BuildMetadataTitleProbe(evt, queries).Should().BeNull();
     }
 }

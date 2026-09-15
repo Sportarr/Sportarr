@@ -160,6 +160,12 @@ public static class TeamNameVariationData
         { "Washington Capitals", new[] { "WSH Capitals", "Capitals", "Caps" } },
         { "Winnipeg Jets", new[] { "WPG", "WPG Jets" } },
 
+        // EuroLeague metadata includes organization suffixes that releases omit.
+        { "Panathinaikos BC", new[] { "Panathinaikos", "Panathinaikos Athens" } },
+        { "Olympiacos BC", new[] { "Olympiacos" } },
+        { "Real Madrid Baloncesto", new[] { "Real Madrid" } },
+        { "Valencia Basket", new[] { "Valencia" } },
+
         // ============================================================
         // AFL Teams (18). TheSportsDB canonical names are "<Place>
         // Football Club" or "<Place> <Nickname>"; releases use either the

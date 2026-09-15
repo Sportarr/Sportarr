@@ -505,7 +505,8 @@ public class FileImportService : IFileImportService
                 (partIdentity.Kind is PartIdentityKind.Ambiguous or PartIdentityKind.Unlabelled or PartIdentityKind.UnsupportedLabel))
             {
                 // Preserve only labels the old basename parser exposed to the detector.
-                var legacyPart = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport!, eventInfo.Title);
+                var legacyPart = _partDetector.DetectPart(
+                    parsed.EventTitle, eventInfo.Sport!, eventInfo.Title, eventInfo.League?.Name);
                 if (legacyPart != null)
                 {
                     var canonicalLegacy = PartIdentityResolver.Resolve(

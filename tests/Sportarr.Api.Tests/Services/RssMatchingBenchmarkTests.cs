@@ -16,8 +16,10 @@ public class RssMatchingMeasurementCollection;
 public class RssMatchingBenchmarkTests(ITestOutputHelper output)
 {
     private delegate Event? FindMatch(ReleaseSearchResult release, List<Event> events,
-        ReleaseMatchingService matcher, bool multiPart, IReadOnlyDictionary<int, int?> earlyLimits,
-        IReadOnlyCollection<League> knownLeagues, IReadOnlyCollection<Event> datePeers);
+        ReleaseMatchingService matcher, EventPartDetector partDetector, bool multiPart,
+        IReadOnlyDictionary<int, int?> earlyLimits,
+        IReadOnlyCollection<League> knownLeagues, IReadOnlyCollection<Event> datePeers,
+        IReadOnlyDictionary<(int? LeagueId, string? Season, string? Round), List<int>> roundRaceNumbersByRound);
 
     [Fact]
     public void MixedFeed_SelectsExpectedEvents_OnFirstAndRepeatPass()
@@ -30,6 +32,7 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
         var matcher = new ReleaseMatchingService(NullLogger<ReleaseMatchingService>.Instance,
             new SportsFileNameParser(NullLogger<SportsFileNameParser>.Instance),
             new EventPartDetector(NullLogger<EventPartDetector>.Instance));
+        var partDetector = new EventPartDetector(NullLogger<EventPartDetector>.Instance);
         var findMatch = typeof(RssSyncService).GetMethod("FindMatchingEvent",
             BindingFlags.Instance | BindingFlags.NonPublic)!.CreateDelegate<FindMatch>(rss);
         var earlyLimits = new Dictionary<int, int?>();
@@ -40,8 +43,8 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
             $"architecture: {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
         output.WriteLine($"Releases: {releases.Count}; events: {events.Count}; pairs/pass: {releases.Count * events.Count}");
 
-        var first = Measure("first", findMatch, releases, events, matcher, earlyLimits, knownLeagues);
-        var repeat = Measure("repeat", findMatch, releases, events, matcher, earlyLimits, knownLeagues);
+        var first = Measure("first", findMatch, releases, events, matcher, partDetector, earlyLimits, knownLeagues);
+        var repeat = Measure("repeat", findMatch, releases, events, matcher, partDetector, earlyLimits, knownLeagues);
 
         first.Should().Equal(releases.Select(release => release.ExpectedId));
         repeat.Should().Equal(first);
@@ -58,6 +61,7 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
         var matcher = new ReleaseMatchingService(NullLogger<ReleaseMatchingService>.Instance,
             new SportsFileNameParser(NullLogger<SportsFileNameParser>.Instance),
             new EventPartDetector(NullLogger<EventPartDetector>.Instance));
+        var partDetector = new EventPartDetector(NullLogger<EventPartDetector>.Instance);
         var findMatch = typeof(RssSyncService).GetMethod("FindMatchingEvent",
             BindingFlags.Instance | BindingFlags.NonPublic)!.CreateDelegate<FindMatch>(rss);
         var earlyLimits = new Dictionary<int, int?>();
@@ -65,11 +69,58 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
 
         output.WriteLine($"Team releases: {releases.Count}; events: {events.Count}; pairs/pass: {releases.Count * events.Count}");
 
-        var first = Measure("team first", findMatch, releases, events, matcher, earlyLimits, knownLeagues);
-        var repeat = Measure("team repeat", findMatch, releases, events, matcher, earlyLimits, knownLeagues);
+        var first = Measure("team first", findMatch, releases, events, matcher, partDetector, earlyLimits, knownLeagues);
+        var repeat = Measure("team repeat", findMatch, releases, events, matcher, partDetector, earlyLimits, knownLeagues);
 
         first.Should().Equal(releases.Select(release => release.ExpectedId));
         repeat.Should().Equal(first);
+    }
+
+    [Fact]
+    public void SupercarsFeedMapsRoundRaceToSeasonRace()
+    {
+        var league = new League { Id = 18, Name = "Supercars", Sport = "Motorsport" };
+        Event Race(int number, int day) => new()
+        {
+            Id = number,
+            Title = $"Century Batteries Ipswich Super 440 - Race {number}",
+            Sport = "Motorsport",
+            LeagueId = league.Id,
+            League = league,
+            Season = "2026",
+            Round = "9",
+            EventDate = new DateTime(2026, 8, day),
+            Monitored = true
+        };
+        var events = new List<Event> { Race(26, 21), Race(27, 22), Race(28, 23) };
+        var release = new ReleaseSearchResult
+        {
+            Title = "Supercars 2026 Round09 Ipswich Race 3 2160p FoxSports WEB DL DD H265 English",
+            Guid = "supercars-round09-race3",
+            DownloadUrl = "http://test/supercars-round09-race3",
+            Indexer = "Test"
+        };
+        using var services = new ServiceCollection().BuildServiceProvider();
+        using var rss = new RssSyncService(services, NullLogger<RssSyncService>.Instance);
+        var matcher = new ReleaseMatchingService(
+            NullLogger<ReleaseMatchingService>.Instance,
+            new SportsFileNameParser(NullLogger<SportsFileNameParser>.Instance),
+            new EventPartDetector(NullLogger<EventPartDetector>.Instance));
+        var findMatch = typeof(RssSyncService).GetMethod(
+            "FindMatchingEvent", BindingFlags.Instance | BindingFlags.NonPublic)!.CreateDelegate<FindMatch>(rss);
+
+        var result = findMatch(
+            release,
+            new List<Event> { events[2] },
+            matcher,
+            new EventPartDetector(NullLogger<EventPartDetector>.Instance),
+            true,
+            new Dictionary<int, int?>(),
+            new[] { league },
+            events,
+            RoundSchedule(events));
+
+        result.Should().BeSameAs(events[2]);
     }
 
     [Fact]
@@ -129,17 +180,112 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
             release,
             new List<Event> { adjacentGame },
             matcher,
+            new EventPartDetector(NullLogger<EventPartDetector>.Instance),
             true,
             new Dictionary<int, int?>(),
             new[] { league },
-            new[] { adjacentGame, namedGame });
+            new[] { adjacentGame, namedGame },
+            RoundSchedule(Array.Empty<Event>()));
 
         result.Should().BeNull();
     }
 
+    [Fact]
+    public void MultipartWrestlingSidePackageCanReachTheMonitoredEvent()
+    {
+        var league = new League { Id = 10, Name = "AEW", Sport = "Wrestling" };
+        var evt = new Event
+        {
+            Id = 10,
+            Title = "Forbidden Door",
+            Sport = "Wrestling",
+            LeagueId = league.Id,
+            League = league,
+            EventDate = new DateTime(2026, 6, 28, 20, 0, 0, DateTimeKind.Utc),
+            BroadcastDate = new DateTime(2026, 6, 28),
+            BroadcastDateVerified = true,
+            Monitored = true
+        };
+        var release = new ReleaseSearchResult
+        {
+            Title = "AEW.Forbidden.Door.2026.Zero.Hour.1080p.WEB.H264-GROUP",
+            Guid = "aew-zero-hour",
+            DownloadUrl = "http://fixture.invalid/aew-zero-hour",
+            Indexer = "Fixture"
+        };
+        using var services = new ServiceCollection().BuildServiceProvider();
+        using var rss = new RssSyncService(services, NullLogger<RssSyncService>.Instance);
+        var matcher = new ReleaseMatchingService(
+            NullLogger<ReleaseMatchingService>.Instance,
+            new SportsFileNameParser(NullLogger<SportsFileNameParser>.Instance),
+            new EventPartDetector(NullLogger<EventPartDetector>.Instance));
+        var findMatch = typeof(RssSyncService).GetMethod(
+            "FindMatchingEvent",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.CreateDelegate<FindMatch>(rss);
+
+        findMatch(
+                release,
+                new List<Event> { evt },
+                matcher,
+                new EventPartDetector(NullLogger<EventPartDetector>.Instance),
+                true,
+                new Dictionary<int, int?>(),
+                new[] { league },
+                Array.Empty<Event>(),
+                RoundSchedule(Array.Empty<Event>()))
+            .Should().BeSameAs(evt);
+    }
+
+    [Fact]
+    public void WeeklyWrestlingReleaseFromAnAdjacentDateCannotReachRss()
+    {
+        var league = new League { Id = 11, Name = "WWE", Sport = "Combat" };
+        var evt = new Event
+        {
+            Id = 11,
+            Title = "RAW #1724",
+            Sport = "Combat",
+            LeagueId = league.Id,
+            League = league,
+            EventDate = new DateTime(2026, 6, 28, 20, 0, 0, DateTimeKind.Utc),
+            BroadcastDate = new DateTime(2026, 6, 28),
+            BroadcastDateVerified = true,
+            Monitored = true
+        };
+        var release = new ReleaseSearchResult
+        {
+            Title = "WWE.RAW.2026.06.27.1080p.WEB.H264-GROUP",
+            Guid = "wwe-adjacent-date",
+            DownloadUrl = "http://fixture.invalid/wwe-adjacent-date",
+            Indexer = "Fixture"
+        };
+        using var services = new ServiceCollection().BuildServiceProvider();
+        using var rss = new RssSyncService(services, NullLogger<RssSyncService>.Instance);
+        var partDetector = new EventPartDetector(NullLogger<EventPartDetector>.Instance);
+        var matcher = new ReleaseMatchingService(
+            NullLogger<ReleaseMatchingService>.Instance,
+            new SportsFileNameParser(NullLogger<SportsFileNameParser>.Instance),
+            partDetector);
+        var findMatch = typeof(RssSyncService).GetMethod(
+            "FindMatchingEvent",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.CreateDelegate<FindMatch>(rss);
+
+        findMatch(
+            release,
+            new List<Event> { evt },
+            matcher,
+            partDetector,
+            true,
+            new Dictionary<int, int?>(),
+            new[] { league },
+            Array.Empty<Event>(),
+            RoundSchedule(Array.Empty<Event>())).Should().BeNull();
+    }
+
     private int?[] Measure(string pass, FindMatch findMatch,
         List<(ReleaseSearchResult Release, int? ExpectedId)> releases, List<Event> events,
-        ReleaseMatchingService matcher, IReadOnlyDictionary<int, int?> earlyLimits,
+        ReleaseMatchingService matcher, EventPartDetector partDetector,
+        IReadOnlyDictionary<int, int?> earlyLimits,
         IReadOnlyCollection<League> knownLeagues)
     {
         using var process = Process.GetCurrentProcess();
@@ -147,16 +293,19 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
         var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         var cpuBefore = process.TotalProcessorTime;
         var timer = Stopwatch.StartNew();
+        var roundSchedule = RoundSchedule(Array.Empty<Event>());
         for (var index = 0; index < releases.Count; index++)
         {
             results[index] = findMatch(
                 releases[index].Release,
                 events,
                 matcher,
+                partDetector,
                 true,
                 earlyLimits,
                 knownLeagues,
-                events)?.Id;
+                events,
+                roundSchedule)?.Id;
         }
         timer.Stop();
         var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
@@ -166,6 +315,14 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
             $"matches={results.Count(result => result.HasValue)}");
         return results;
     }
+
+    private static IReadOnlyDictionary<(int? LeagueId, string? Season, string? Round), List<int>> RoundSchedule(
+        IEnumerable<Event> events) => events
+        .Where(evt => evt.League?.Name.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true)
+        .GroupBy(evt => (evt.LeagueId, evt.Season, evt.Round))
+        .ToDictionary(
+            group => group.Key,
+            group => ReleaseMatchingService.RaceNumbersInTitles(group.Select(evt => evt.Title)));
 
     private static List<Event> CreateEvents()
     {

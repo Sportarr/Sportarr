@@ -81,7 +81,8 @@ public class ReleaseEvaluator
         int? runtimeMinutes = null,
         bool isPack = false,
         bool allowHighlights = false,
-        bool isSizeExemptPack = false)
+        bool isSizeExemptPack = false,
+        string? leagueName = null)
     {
         var evaluation = new ReleaseEvaluation();
         var configuredSizeRuntimeMinutes = Math.Max(1, runtimeMinutes ?? DefaultSportsRuntimeMinutes);
@@ -100,7 +101,8 @@ public class ReleaseEvaluator
 
         if (isFightingSport)
         {
-            var detectedPart = _partDetector.DetectPart(release.Title, sport ?? "Fighting", eventTitle);
+            var detectedPart = _partDetector.DetectPart(
+                release.Title, sport ?? "Fighting", eventTitle, leagueName);
 
             if (!enableMultiPartEpisodes)
             {

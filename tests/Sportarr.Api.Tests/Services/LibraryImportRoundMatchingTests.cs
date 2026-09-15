@@ -123,4 +123,40 @@ public class LibraryImportRoundMatchingTests
         // +50 the exact-round match gives the correct event.
         Score(noRound).Should().BeLessThan(Score(SpainQualifyingRound9()));
     }
+
+    [Fact]
+    public void SupercarsRoundRelativeRaceMapsToTheSeasonRace()
+    {
+        var league = new League { Id = 8, Name = "Supercars", Sport = "Motorsport" };
+        var wanted = new Event
+        {
+            Title = "Century Batteries Ipswich Super 440 - Race 28",
+            Sport = "Motorsport",
+            Round = "9",
+            Season = "2026",
+            EventDate = new DateTime(2026, 8, 23),
+            LeagueId = league.Id,
+            League = league
+        };
+        var sibling = new Event
+        {
+            Title = "Century Batteries Ipswich Super 440 - Race 26",
+            Sport = "Motorsport",
+            Round = "9",
+            Season = "2026",
+            EventDate = new DateTime(2026, 8, 21),
+            LeagueId = league.Id,
+            League = league
+        };
+        var roundRaces = new[] { 26, 27, 28 };
+
+        int Score(Event evt) => LibraryImportService.CalculateMatchConfidence(
+            "Supercars 2026 Round09 Ipswich Race 3", evt.Title!, "Supercars", evt,
+            parsedDate: null, parsedYear: 2026, parsedRoundNumber: 9,
+            seasonYearEnd: null, explicitEpisodeNumber: null, parsedLocation: "Ipswich",
+            roundRaceNumbers: roundRaces);
+
+        Score(wanted).Should().BeGreaterThanOrEqualTo(40);
+        Score(sibling).Should().Be(0);
+    }
 }

@@ -5,15 +5,6 @@ using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Tests.Services;
 
-/// <summary>
-/// The reversed home/away fallback query must work from the denormalized
-/// team-name columns, not just the Team navigations. Field case: an NCAA
-/// game titled "South Florida vs Old Dominion" produced a single query on a
-/// build that carried the fallback, because college events have no linked
-/// Team rows - only HomeTeamName/AwayTeamName strings - and the fallback
-/// read evt.HomeTeam?.Name exclusively. The tracker titled the release
-/// "Old Dominion vs South Florida", so the one ordered query found nothing.
-/// </summary>
 public class EventQueryServiceReversedOrderTests
 {
     private static EventQueryService CreateService() =>
@@ -28,7 +19,7 @@ public class EventQueryServiceReversedOrderTests
     };
 
     [Fact]
-    public void TeamSport_NameColumnsOnly_AddsReversedPairingQuery()
+    public void CollegeFootball_NameColumnsOnly_UsesMeasuredQuery()
     {
         var service = CreateService();
         var evt = CollegeEvent();
@@ -37,22 +28,22 @@ public class EventQueryServiceReversedOrderTests
 
         var queries = service.BuildEventQueries(evt);
 
-        queries.Should().Contain("Old Dominion vs South Florida");
+        queries.Should().Equal("NCAAF 2025 South Florida Old Dominion");
     }
 
     [Fact]
-    public void TeamSport_NoTeamData_DerivesReversedPairingFromTitle()
+    public void CollegeFootball_NoTeamData_DerivesMeasuredQueryFromTitle()
     {
         var service = CreateService();
         var evt = CollegeEvent();
 
         var queries = service.BuildEventQueries(evt);
 
-        queries.Should().Contain("Old Dominion vs South Florida");
+        queries.Should().Equal("NCAAF 2025 South Florida Old Dominion");
     }
 
     [Fact]
-    public void TeamSport_NavigationsOnly_StillAddsReversedPairingQuery()
+    public void CollegeFootball_NavigationsOnly_UsesMeasuredQuery()
     {
         var service = CreateService();
         var evt = CollegeEvent();
@@ -61,11 +52,11 @@ public class EventQueryServiceReversedOrderTests
 
         var queries = service.BuildEventQueries(evt);
 
-        queries.Should().Contain("Old Dominion vs South Florida");
+        queries.Should().Equal("NCAAF 2025 South Florida Old Dominion");
     }
 
     [Fact]
-    public void Fighting_MatchupTitle_AddsBothSurnameOrders()
+    public void Boxing_MatchupTitle_UsesOneSurnamePairQuery()
     {
         var service = CreateService();
         var evt = new Event
@@ -78,8 +69,7 @@ public class EventQueryServiceReversedOrderTests
 
         var queries = service.BuildEventQueries(evt);
 
-        queries.Should().Contain("Wardley vs Dubois");
-        queries.Should().Contain("Dubois vs Wardley");
+        queries.Should().Equal("Wardley vs Dubois");
     }
 
     [Fact]

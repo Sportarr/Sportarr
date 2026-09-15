@@ -804,7 +804,8 @@ public class PackImportService
                 null, // requestedPart
                 eventInfo.Sport,
                 true, // enableMultiPartEpisodes
-                eventInfo.Title);
+                eventInfo.Title,
+                leagueName: eventInfo.League?.Name);
 
             customFormatScore = evaluation.CustomFormatScore;
             matchedFormats = evaluation.MatchedFormats?.Select(mf => mf.Name).ToList() ?? new List<string>();

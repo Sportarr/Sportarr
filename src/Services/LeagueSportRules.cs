@@ -49,7 +49,7 @@ public static class LeagueSportRules
     /// </summary>
     private static readonly string[][] EquivalentSports = new[]
     {
-        new[] { "Fighting", "Combat", "MMA", "Mixed Martial Arts" },
+        new[] { "Fighting", "Combat", "MMA", "Mixed Martial Arts", "Boxing", "Wrestling" },
         new[] { "Motorsport", "Racing", "Motorsports", "Auto Racing" },
         new[] { "American Football", "Football", "Gridiron" },
         new[] { "Ice Hockey", "Hockey" },

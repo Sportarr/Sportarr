@@ -93,13 +93,12 @@ public class NrlTeamNameMatchingTests
     }
 
     [Fact]
-    public void NrlLeague_QueriesUseNrlPrefixNotFullMetadataName()
+    public void NrlLeague_UsesOneYearAndNicknamePairQuery()
     {
         var service = new EventQueryService(NullLogger<EventQueryService>.Instance);
         var queries = service.BuildEventQueries(NrlEvent());
 
-        queries.Should().Contain("NRL 2026 07");
-        queries.Should().Contain("NRL 2026");
+        queries.Should().Equal("NRL 2026 Eels Sea Eagles");
         queries.Should().NotContain(q => q.Contains("Australian National Rugby League"));
     }
 }

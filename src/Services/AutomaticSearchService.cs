@@ -351,7 +351,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                     // Cached releases have Approved=true and empty Rejections by default
                     // We must run ReleaseEvaluator to apply CF minimum score and other profile requirements
                     await ReEvaluateCachedReleasesAsync(allReleases, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, leagueTags,
-                        allowHighlights: evt.League?.AllowHighlights ?? false);
+                        allowHighlights: evt.League?.AllowHighlights ?? false,
+                        leagueName: evt.League?.Name);
 
                     // Pre-populate seenGuids so supplementary queries below don't re-add cached releases
                     foreach (var r in allReleases)
@@ -378,7 +379,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                         allowHighlights: evt.League?.AllowHighlights ?? false,
                         sportarrId: sportarrId,
                         interactiveSearch: isManualSearch,
-                        cacheSuccessfulSources: true);
+                        cacheSuccessfulSources: true,
+                        leagueName: evt.League?.Name);
                     var releases = outcome.Releases;
                     result.SearchDiagnostics.AddRange(outcome.Diagnostics);
                     searchComplete &= outcome.SatisfiesRequest;
@@ -436,6 +438,17 @@ public class AutomaticSearchService : IAutomaticSearchService
             {
                 datePeers = await EventDateMatchContext.LoadAsync(_db, evt);
             }
+            List<int>? roundRaceNumbers = null;
+            if (!string.IsNullOrEmpty(evt.Round) &&
+                evt.League?.Name.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var roundTitles = await _db.Events
+                    .AsNoTracking()
+                    .Where(e => e.LeagueId == evt.LeagueId && e.Season == evt.Season && e.Round == evt.Round)
+                    .Select(e => e.Title)
+                    .ToListAsync();
+                roundRaceNumbers = ReleaseMatchingService.RaceNumbersInTitles(roundTitles);
+            }
 
             const int AutoGrabMinMatchScore = ReleaseMatchScorer.AutoGrabMatchScore;
             var allowMetadataProbe = true;
@@ -473,7 +486,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                         var beforeCount = allReleases.Count;
                         allReleases = allReleases.Where(r =>
                         {
-                            var detected = _partDetector.DetectPart(r.Title, evt.Sport ?? "Fighting", evt.Title);
+                            var detected = _partDetector.DetectPart(
+                                r.Title, evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
                             // Keep full-event files (no part) and monitored parts; drop the rest.
                             return detected == null || monitoredSet.Contains(detected.SegmentName);
                         }).ToList();
@@ -505,7 +519,9 @@ public class AutomaticSearchService : IAutomaticSearchService
                     // Only calculate if not already scored (cached releases have scores)
                     if (release.MatchScore == 0)
                     {
-                        release.MatchScore = _releaseMatchScorer.CalculateMatchScore(release.Title, evt, knownLeagues);
+                        release.MatchScore = _releaseMatchScorer.CalculateMatchScore(
+                            release.Title, evt, knownLeagues, part, config.EnableMultiPartEpisodes,
+                            roundRaceNumbers);
                         scoredCount++;
                     }
 
@@ -617,27 +633,6 @@ public class AutomaticSearchService : IAutomaticSearchService
                         .Where(i => i.EarlyReleaseLimit.HasValue)
                         .Select(i => new { i.Id, i.EarlyReleaseLimit })
                         .ToDictionaryAsync(i => i.Id, i => i.EarlyReleaseLimit);
-
-                    // A release that counts races inside its round ("Round09 ... Race 3")
-                    // means nothing without the races that round holds. The library
-                    // knows them, so read them once for this event and let the matcher
-                    // resolve the number.
-                    List<int>? roundRaceNumbers = null;
-                    if (!string.IsNullOrEmpty(evt.Round) && EventPartDetector.IsMotorsport(evt.Sport ?? ""))
-                    {
-                        roundRaceNumbers = await _db.Events
-                            .AsNoTracking()
-                            .Where(e => e.LeagueId == evt.LeagueId && e.Season == evt.Season && e.Round == evt.Round)
-                            .Select(e => e.Title)
-                            .ToListAsync()
-                            .ContinueWith(t => t.Result
-                                .Select(ReleaseMatchingService.RaceNumberInTitle)
-                                .Where(n => n.HasValue)
-                                .Select(n => n!.Value)
-                                .Distinct()
-                                .OrderBy(n => n)
-                                .ToList());
-                    }
 
                     return release =>
                     {
@@ -813,7 +808,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                             evt.Title, leagueTags, allowHighlights: evt.League?.AllowHighlights ?? false,
                             sportarrId: sportarrId,
                             interactiveSearch: isManualSearch,
-                            cacheSuccessfulSources: true);
+                            cacheSuccessfulSources: true,
+                            leagueName: evt.League?.Name);
                         probeReleases = outcome.Releases;
                         result.SearchComplete &= outcome.SatisfiesRequest;
                         result.SearchDiagnostics.AddRange(outcome.Diagnostics);
@@ -833,7 +829,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                 allReleases = allReleases.Select(release => SearchResultCache.RawRelease.FromSearchResult(release).ToSearchResult()).ToList();
                 await ReEvaluateCachedReleasesAsync(allReleases, qualityProfileId, part, evt.Sport,
                     config.EnableMultiPartEpisodes, evt.Title, leagueTags,
-                    allowHighlights: evt.League?.AllowHighlights ?? false);
+                    allowHighlights: evt.League?.AllowHighlights ?? false,
+                    leagueName: evt.League?.Name);
                 matchedReleases = await ValidateCandidatesAsync();
             }
 
@@ -1894,12 +1891,13 @@ public class AutomaticSearchService : IAutomaticSearchService
         bool enableMultiPartEpisodes,
         string? eventTitle,
         List<int>? leagueTags = null,
-        bool allowHighlights = false)
+        bool allowHighlights = false,
+        string? leagueName = null)
     {
         if (!releases.Any()) return;
 
         await _indexerSearchService.EvaluateReleasesAsync(releases, qualityProfileId, requestedPart, sport,
-            enableMultiPartEpisodes, eventTitle, leagueTags, allowHighlights);
+            enableMultiPartEpisodes, eventTitle, leagueTags, allowHighlights, leagueName);
     }
 
     private async Task<DownloadClient?> GetPreferredDownloadClientAsync(string protocol, List<int>? leagueTags = null, int? indexerAssignedClientId = null)

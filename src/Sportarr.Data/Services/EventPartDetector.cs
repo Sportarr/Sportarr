@@ -1131,6 +1131,114 @@ public class EventPartDetector
         ["NASCAR"] = "Race",
     };
 
+    private static readonly Regex WorldSuperbikeSuperpoleRacePattern = new(
+        @"\bsuperpole[\s._-]+race\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex WorldSuperbikeNumberedRacePattern = new(
+        @"\brace[\s._-]*(?<number>1|2|3|one|two|three)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex WorldSuperbikeSuperpolePattern = new(
+        @"\bsuperpole\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex IndyCarFinalPracticePattern = new(
+        @"\bfinal[\s._-]+practice\b|\bfp\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NumberedPracticePattern = new(
+        @"\b(?:(?:free[\s._-]*)?practice|fp)[\s._-]*(?<number>\d{1,2})\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public static string? DetectMotorsportSessionIdentity(
+        string title,
+        string? leagueName,
+        bool releaseTitle)
+    {
+        var normalizedTitle = Regex.Replace(title, @"[._-]+", " ");
+
+        var numberedPractice = NumberedPracticePattern.Match(normalizedTitle);
+        if (numberedPractice.Success &&
+            int.TryParse(numberedPractice.Groups["number"].Value, out var practiceNumber) &&
+            practiceNumber > 0)
+        {
+            return $"Practice {practiceNumber}";
+        }
+
+        if (IsWorldSuperbikeLeague(leagueName))
+            return DetectWorldSuperbikeSession(normalizedTitle);
+
+        if (leagueName?.Contains("IndyCar", StringComparison.OrdinalIgnoreCase) == true &&
+            IndyCarFinalPracticePattern.IsMatch(normalizedTitle))
+        {
+            return "Final Practice";
+        }
+
+        var session = releaseTitle
+            ? DetectMotorsportSessionFromFilename(normalizedTitle, leagueName)
+            : DetectMotorsportSessionType(normalizedTitle, leagueName ?? "");
+
+        if (leagueName?.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true &&
+            session != null && Regex.IsMatch(session, @"^Race\s+\d+$", RegexOptions.IgnoreCase))
+        {
+            return "Race";
+        }
+
+        return session;
+    }
+
+    public static string? DetectWorldSuperbikeSession(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return null;
+
+        var cleaned = Regex.Replace(title, @"[._-]+", " ");
+
+        if (WorldSuperbikeSuperpoleRacePattern.IsMatch(cleaned))
+            return "Superpole Race";
+
+        var numberedRace = WorldSuperbikeNumberedRacePattern.Match(cleaned);
+        if (numberedRace.Success)
+        {
+            var number = numberedRace.Groups["number"].Value.ToLowerInvariant() switch
+            {
+                "one" => "1",
+                "two" => "2",
+                "three" => "3",
+                var value => value,
+            };
+            return $"Race {number}";
+        }
+
+        if (WorldSuperbikeSuperpolePattern.IsMatch(cleaned))
+            return "Superpole";
+
+        if (Regex.IsMatch(cleaned, @"\bfp\s*3\b|\b(?:free\s+)?practice\s*(?:3|three)\b", RegexOptions.IgnoreCase))
+            return "Practice 3";
+        if (Regex.IsMatch(cleaned, @"\bfp\s*2\b|\b(?:free\s+)?practice\s*(?:2|two)\b", RegexOptions.IgnoreCase))
+            return "Practice 2";
+        if (Regex.IsMatch(cleaned, @"\bfp\s*1\b|\b(?:free\s+)?practice\s*(?:1|one)?\b", RegexOptions.IgnoreCase))
+            return "Practice 1";
+        if (Regex.IsMatch(cleaned, @"\bwarm\s*up\b", RegexOptions.IgnoreCase))
+            return "Warm Up";
+        if (Regex.IsMatch(cleaned, @"\brace\b", RegexOptions.IgnoreCase))
+            return "Race";
+
+        return null;
+    }
+
+    public static bool IsWorldSuperbikeLeague(string? leagueName)
+    {
+        if (string.IsNullOrWhiteSpace(leagueName)) return false;
+
+        var normalized = leagueName.Trim();
+        return normalized.Equals("SBK", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("WSBK", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("World Superbike", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("Superbike World", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("WorldSBK", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Get available session types for a motorsport league
     /// Currently supports Formula 1 and MotoGP - returns empty list for other motorsports

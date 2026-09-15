@@ -171,6 +171,72 @@ public sealed class MotorsportQueryBaselineTests(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    public async Task NascarEventBeyondTheBroadResultCeilingUsesOneSpecificFallback()
+    {
+        await using var rig = await MotorsportQueryHttpHarness.CreateAsync(output);
+        rig.Event.Title = "Daytona 500";
+        rig.Event.Round = "1";
+        rig.Event.EventDate = new DateTime(2026, 2, 15, 12, 0, 0, DateTimeKind.Utc);
+        rig.Event.BroadcastDate = rig.Event.EventDate;
+        rig.Event.League!.Name = "NASCAR Cup Series";
+        await rig.Db.SaveChangesAsync();
+
+        for (var number = 1; number <= 100; number++)
+        {
+            rig.AddRelease(
+                $"NASCAR Cup Series 2026 Other Race {number:D3} 1080p WEB H264",
+                suppliedEventId: null,
+                guid: $"broad-offer-{number:D3}");
+        }
+
+        const string target = "NASCAR Cup Series 2026 Daytona 500 1080p WEB H264";
+        rig.AddRelease(target, suppliedEventId: null, guid: "offer-target-after-ceiling");
+
+        var result = await rig.AutomaticAsync();
+
+        using (new AssertionScope())
+        {
+            rig.Transport.Searches.Select(search => search.Query).Should().Equal(
+                "NASCAR Cup Series 2026",
+                "NASCAR Cup Series 2026 Daytona 500");
+            result.ReleasesFound.Should().Be(101);
+            await SelectedAndRefusedAsync(rig, result, target);
+        }
+    }
+
+    [Fact]
+    public async Task WecRoundReleaseBeyondTheBroadResultCeilingUsesOneSpecificFallback()
+    {
+        await using var rig = await MotorsportQueryHttpHarness.CreateAsync(output);
+        rig.Event.Title = "6 Hours of Spa Francorchamps Qualifying - Hypercar";
+        rig.Event.Round = "2";
+        rig.Event.League!.Name = "WEC";
+        await rig.Db.SaveChangesAsync();
+
+        for (var number = 1; number <= 100; number++)
+        {
+            rig.AddRelease(
+                $"WEC 2026 Round03 Other Session {number:D3} 1080p WEB H264",
+                suppliedEventId: null,
+                guid: $"wec-broad-offer-{number:D3}");
+        }
+
+        const string target = "WEC 2026 Round02 Belgium Qualifying STAN WEB DL 1080p H264 English MWR";
+        rig.AddRelease(target, suppliedEventId: null, guid: "wec-target-after-ceiling");
+
+        var result = await rig.AutomaticAsync();
+
+        using (new AssertionScope())
+        {
+            rig.Transport.Searches.Select(search => search.Query).Should().Equal(
+                "WEC 2026",
+                "WEC 2026 Round02");
+            result.ReleasesFound.Should().Be(101);
+            await SelectedAndRefusedAsync(rig, result, target);
+        }
+    }
+
     private static async Task SelectedAndRefusedAsync(MotorsportQueryHttpHarness rig, AutomaticSearchResult result, string title)
     {
         result.SelectedRelease.Should().Be(title);

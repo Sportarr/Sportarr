@@ -63,7 +63,7 @@ public sealed class CompetitionDatePreservationTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void FinalTokenDoesNotExtendAthleticsRuleToRecurringWrestling()
+    public void FinalTokenDoesNotRelaxTheRecurringWrestlingDateRule()
     {
         var evt = AthleticsFinal();
         evt.Title = "AEW Dynamite Final";
@@ -71,8 +71,8 @@ public sealed class CompetitionDatePreservationTests(ITestOutputHelper output)
         evt.League = new League { Id = 1, Name = "AEW", Sport = "Wrestling" };
         var release = Release("AEW.Dynamite.Final.2022.07.18.720p.WEB-DL.H264-GROUP");
         var result = Match(release, evt);
-        Assert.False(result.IsHardRejection);
-        Assert.Contains(result.MatchReasons, reason => reason == "Date within 3 days");
+        Assert.True(result.IsHardRejection);
+        Assert.Contains(result.Rejections, reason => reason.StartsWith("Date mismatch:", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -131,6 +131,172 @@ public sealed class CompetitionDatePreservationTests(ITestOutputHelper output)
         Assert.True(result.IsHardRejection);
         Assert.Equal(0, result.Confidence);
         Assert.Contains(result.Rejections, reason => reason.Contains("different event (ev-2336156", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MatchingDayAndMonthCannotOverrideAConflictingExplicitYear()
+    {
+        var evt = new Event
+        {
+            Id = 2,
+            Title = "Boston Celtics vs New York Knicks",
+            Sport = "Basketball",
+            EventDate = new DateTime(2026, 5, 5, 19, 0, 0, DateTimeKind.Utc),
+            BroadcastDate = new DateTime(2026, 5, 5),
+            BroadcastDateVerified = true,
+            HomeTeamId = 1,
+            AwayTeamId = 2,
+            HomeTeamName = "Boston Celtics",
+            AwayTeamName = "New York Knicks",
+            League = new League { Id = 2, Name = "NBA", Sport = "Basketball" }
+        };
+        const string title = "NBA.Boston.Celtics.vs.New.York.Knicks.05.05.2025.1080p.WEB";
+        var release = Release(title);
+        var parsed = _matching.ParseRelease(title);
+
+        var validation = _matching.ValidateRelease(release, evt, preParsed: parsed);
+        var import = ImportMatchingTestHarness.Service().ScoreMatch(
+            parsed.EventTitle ?? title, evt.Title, null, evt, parsed);
+
+        Assert.True(validation.IsHardRejection);
+        Assert.True(import.Core <= 0);
+    }
+
+    [Fact]
+    public void MatchingDayAndMonthCannotOverrideAConflictingShortYear()
+    {
+        var evt = new Event
+        {
+            Id = 5,
+            Title = "Boston Celtics vs New York Knicks",
+            Sport = "Basketball",
+            EventDate = new DateTime(2026, 5, 5, 19, 0, 0, DateTimeKind.Utc),
+            BroadcastDate = new DateTime(2026, 5, 5),
+            BroadcastDateVerified = true,
+            HomeTeamId = 1,
+            AwayTeamId = 2,
+            HomeTeamName = "Boston Celtics",
+            AwayTeamName = "New York Knicks",
+            League = new League { Id = 5, Name = "NBA", Sport = "Basketball" }
+        };
+        const string title = "NBA.Boston.Celtics.vs.New.York.Knicks.05.05.25.1080p.WEB";
+        var release = Release(title);
+        var parsed = _matching.ParseRelease(title);
+
+        var validation = _matching.ValidateRelease(release, evt, preParsed: parsed);
+        var import = ImportMatchingTestHarness.Service().ScoreMatch(
+            parsed.EventTitle ?? title, evt.Title, null, evt, parsed);
+
+        Assert.Equal(2025, parsed.EventDate?.Year);
+        Assert.True(validation.IsHardRejection);
+        Assert.Equal(0, new ReleaseMatchScorer().CalculateMatchScore(title, evt));
+        Assert.True(import.Core <= 0);
+    }
+
+    [Fact]
+    public void AudioChannelTokenCannotOverrideAConflictingFullDate()
+    {
+        var evt = new Event
+        {
+            Id = 6,
+            Title = "Boston Celtics vs New York Knicks",
+            Sport = "Basketball",
+            EventDate = new DateTime(2026, 1, 5, 19, 0, 0, DateTimeKind.Utc),
+            BroadcastDate = new DateTime(2026, 1, 5),
+            BroadcastDateVerified = true,
+            HomeTeamId = 1,
+            AwayTeamId = 2,
+            HomeTeamName = "Boston Celtics",
+            AwayTeamName = "New York Knicks",
+            League = new League { Id = 6, Name = "NBA", Sport = "Basketball" }
+        };
+        const string title = "NBA.Boston.Celtics.vs.New.York.Knicks.2026.06.08.DDP5.1.1080p.WEB";
+        var release = Release(title);
+        var parsed = _matching.ParseRelease(title);
+
+        var validation = _matching.ValidateRelease(release, evt, preParsed: parsed);
+        var import = ImportMatchingTestHarness.Service().ScoreMatch(
+            parsed.EventTitle ?? title, evt.Title, null, evt, parsed);
+
+        Assert.True(validation.IsHardRejection);
+        Assert.Equal(0, new ReleaseMatchScorer().CalculateMatchScore(title, evt));
+        Assert.True(import.Core <= 0);
+    }
+
+    [Theory]
+    [InlineData(1996, "96")]
+    [InlineData(2025, "25")]
+    public void ShortYearScoringUsesTheMatchingCentury(int year, string shortYear)
+    {
+        var evt = new Event
+        {
+            Id = 7,
+            Title = "Boston Celtics vs New York Knicks",
+            Sport = "Basketball",
+            EventDate = new DateTime(year, 3, 16, 19, 0, 0, DateTimeKind.Utc),
+            BroadcastDate = new DateTime(year, 3, 16),
+            BroadcastDateVerified = true,
+            HomeTeamId = 1,
+            AwayTeamId = 2,
+            HomeTeamName = "Boston Celtics",
+            AwayTeamName = "New York Knicks",
+            League = new League { Id = 7, Name = "NBA", Sport = "Basketball" }
+        };
+
+        Assert.True(new ReleaseMatchScorer().CalculateMatchScore(
+                $"NBA.Boston.Celtics.vs.New.York.Knicks.16.03.{shortYear}.1080p.WEB", evt) >=
+            ReleaseMatchScorer.AutoGrabMatchScore);
+    }
+
+    [Fact]
+    public void DayAndMonthCannotSwapAnExplicitYearMonthDayDate()
+    {
+        var evt = new Event
+        {
+            Id = 3,
+            Title = "Boston Celtics vs New York Knicks",
+            Sport = "Basketball",
+            EventDate = new DateTime(2026, 6, 5, 19, 0, 0, DateTimeKind.Utc),
+            BroadcastDate = new DateTime(2026, 6, 5),
+            BroadcastDateVerified = true,
+            HomeTeamId = 1,
+            AwayTeamId = 2,
+            HomeTeamName = "Boston Celtics",
+            AwayTeamName = "New York Knicks",
+            League = new League { Id = 3, Name = "NBA", Sport = "Basketball" }
+        };
+        const string title = "NBA.Boston.Celtics.vs.New.York.Knicks.2026.05.06.1080p.WEB";
+        var release = Release(title);
+        var parsed = _matching.ParseRelease(title);
+
+        var validation = _matching.ValidateRelease(release, evt, preParsed: parsed);
+        var import = ImportMatchingTestHarness.Service().ScoreMatch(
+            parsed.EventTitle ?? title, evt.Title, null, evt, parsed);
+
+        Assert.True(validation.IsHardRejection);
+        Assert.True(import.Core <= 0);
+    }
+
+    [Fact]
+    public void TeamGameNumberDoesNotDisableTimezoneRollover()
+    {
+        var evt = new Event
+        {
+            Id = 4,
+            Title = "Boston Celtics vs New York Knicks Game 2",
+            Sport = "Basketball",
+            EventDate = new DateTime(2026, 6, 11, 0, 30, 0, DateTimeKind.Utc),
+            BroadcastDateVerified = false,
+            HomeTeamId = 1,
+            AwayTeamId = 2,
+            HomeTeamName = "Boston Celtics",
+            AwayTeamName = "New York Knicks",
+            League = new League { Id = 4, Name = "NBA", Sport = "Basketball" }
+        };
+
+        Assert.True(new ReleaseMatchScorer().CalculateMatchScore(
+            "NBA.Boston.Celtics.vs.New.York.Knicks.Game.2.2026.06.10.1080p.WEB", evt) >=
+            ReleaseMatchScorer.AutoGrabMatchScore);
     }
 
     private ReleaseMatchResult Match(ReleaseSearchResult release, Event evt)

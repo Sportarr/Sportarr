@@ -180,7 +180,7 @@ public class PlayoffSeriesDateMatchingTests
     }
 
     [Fact]
-    public void NonTeamEvent_KeepsThreeDayGrace()
+    public void RecurringWrestlingEventRequiresTheExactDate()
     {
         var evt = new Event
         {
@@ -193,8 +193,7 @@ public class PlayoffSeriesDateMatchingTests
 
         var result = _svc.ValidateRelease(Rel("AEW Dynamite 2026 06 10 1080p WEB h264"), evt);
 
-        result.IsHardRejection.Should().BeFalse(
-            "non-team events keep the broadcast-drift grace window");
-        result.MatchReasons.Should().Contain(r => r.Contains("Date within"));
+        result.IsHardRejection.Should().BeTrue();
+        result.Rejections.Should().Contain(reason => reason.Contains("Date mismatch"));
     }
 }

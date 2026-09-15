@@ -206,6 +206,32 @@ public class RssPackAcquisitionTests(Xunit.Abstractions.ITestOutputHelper output
     }
 
     [Fact]
+    public async Task PushedAewZeroHourPersistsAsCountdown()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            rename: false,
+            multipart: true,
+            title: "Forbidden Door",
+            sport: "Wrestling",
+            leagueName: "AEW",
+            relational: true);
+        rig.Event.MonitoredParts = "Countdown";
+        rig.Event.League!.MonitoredParts = "Countdown";
+        await rig.Db.SaveChangesAsync();
+        var release = rig.Release("AEW.Forbidden.Door.2020.Zero.Hour.720p.WEB-DL.H264-Fixture");
+        release.Size = 2_000_000_000;
+        release.IndexerId = await rig.Db.Indexers.Select(x => x.Id).SingleAsync();
+
+        var outcome = await rig.Services.GetRequiredService<RssSyncService>()
+            .ProcessPushedReleaseAsync(release, CancellationToken.None);
+
+        Assert.True(outcome.Grabbed, string.Join("; ", outcome.Rejections));
+        Assert.Equal(1, rig.Transport.ClientAdds);
+        Assert.Equal("Countdown", (await rig.Db.DownloadQueue.SingleAsync()).Part);
+        Assert.Equal("Countdown", (await rig.Db.GrabHistory.SingleAsync()).PartName);
+    }
+
+    [Fact]
     public async Task PushedInferredPackStillEnforcesMinimumFormatScore()
     {
         await using var rig = await CreatePackPolicyRigAsync();

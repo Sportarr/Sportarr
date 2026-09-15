@@ -167,4 +167,79 @@ public class SupercarsReleaseMatchingTests
 
         right.Should().BeGreaterThan(wrong, "the race number is the only thing telling them apart");
     }
+
+    [Fact]
+    public void RoundRelativeRaceScoresOnlyItsSeasonRace()
+    {
+        const string release = "Supercars 2026 Round09 Ipswich Race 3 2160p FoxSports WEB DL DD H265 English";
+        var wanted = Ipswich2026Race28();
+        var sibling = Race("Century Batteries Ipswich Super 440 - Race 26", "9", 26, 2026, 8, 21);
+
+        _scorer.CalculateMatchScore(release, wanted, roundRaceNumbers: Round9Races)
+            .Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.MinimumMatchScore);
+        _scorer.CalculateMatchScore(release, sibling, roundRaceNumbers: Round9Races)
+            .Should().Be(0);
+    }
+
+    [Fact]
+    public void RoundRelativeRaceSeparatesImportCandidates()
+    {
+        const string release = "Supercars 2026 Round09 Ipswich Race 3 2160p FoxSports WEB DL DD H265 English";
+        var parser = new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>());
+        var parsed = parser.Parse(release);
+        parsed.RoundNumber.Should().Be(9);
+        var service = ImportMatchingTestHarness.Service();
+        var wanted = Ipswich2026Race28();
+        var sibling = Race("Century Batteries Ipswich Super 440 - Race 26", "9", 26, 2026, 8, 21);
+
+        service.ScoreMatch(parsed.EventTitle ?? release, wanted.Title, null, wanted, parsed, Round9Races).Core
+            .Should().BeGreaterThanOrEqualTo(50);
+        service.ScoreMatch(parsed.EventTitle ?? release, sibling.Title, null, sibling, parsed, Round9Races).Core
+            .Should().BeLessOrEqualTo(0);
+    }
+
+    [Fact]
+    public void ASingleRaceRoundWithoutALocalRaceNumberIsImportable()
+    {
+        const string release = "Supercars 2026 Round10 Tailem Bend Race 2160p FoxSports WEB DL H265 English";
+        var parser = new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>());
+        var parsed = parser.Parse(release);
+        var evt = Race("AirTouch 500 at The Bend - Race 29", "10", 29, 2026, 9, 13);
+
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(parsed.EventTitle ?? release, evt.Title, null, evt, parsed, new[] { 29 }).Core
+            .Should().BeGreaterThanOrEqualTo(50);
+    }
+
+    [Theory]
+    [InlineData("Supercars 2026 Round09 Ipswich Race 2160p FoxSports WEB DL H265 English")]
+    [InlineData("Supercars 2026 Round09 Ipswich 2160p FoxSports WEB DL H265 English")]
+    public void ARoundWithoutARaceNumberInAMultiRaceRoundIsRejectedAsAmbiguous(string release)
+    {
+        var evt = Ipswich2026Race28();
+        var parser = new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>());
+        var parsed = parser.Parse(release);
+
+        _matchingSvc.ValidateRelease(Rel(release), evt, roundRaceNumbers: Round9Races)
+            .IsHardRejection.Should().BeTrue();
+        _scorer.CalculateMatchScore(release, evt, roundRaceNumbers: Round9Races)
+            .Should().Be(0);
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(parsed.EventTitle ?? release, evt.Title, null, evt, parsed, Round9Races).Core
+            .Should().BeLessOrEqualTo(0);
+        LibraryImportService.CalculateMatchConfidence(
+                parsed.EventTitle ?? release,
+                evt.Title,
+                parsed.Organization,
+                evt,
+                parsed.EventDate,
+                parsed.EventYear,
+                parsed.RoundNumber,
+                parsed.SeasonYearEnd,
+                parsedLocation: parsed.Location,
+                parsedSport: parsed.Sport,
+                roundRaceNumbers: Round9Races,
+                sourceTitle: release)
+            .Should().Be(0);
+    }
 }

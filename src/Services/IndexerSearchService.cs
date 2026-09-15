@@ -147,10 +147,10 @@ public class IndexerSearchService : IIndexerSearchService
     /// <param name="sport">Sport type for part validation (e.g., "Fighting")</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
     /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
-    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null, List<SkippedIndexer>? skippedIndexers = null, bool allowHighlights = false, string? sportarrId = null, bool useCategoryFilter = true, bool interactiveSearch = true)
-        => (await SearchAllIndexersDetailedAsync(query, maxResultsPerIndexer, qualityProfileId, requestedPart, sport, enableMultiPartEpisodes, eventTitle, leagueTags, skippedIndexers, allowHighlights, sportarrId, useCategoryFilter, interactiveSearch)).Releases;
+    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null, List<SkippedIndexer>? skippedIndexers = null, bool allowHighlights = false, string? sportarrId = null, bool useCategoryFilter = true, bool interactiveSearch = true, string? leagueName = null)
+        => (await SearchAllIndexersDetailedAsync(query, maxResultsPerIndexer, qualityProfileId, requestedPart, sport, enableMultiPartEpisodes, eventTitle, leagueTags, skippedIndexers, allowHighlights, sportarrId, useCategoryFilter, interactiveSearch, leagueName: leagueName)).Releases;
 
-    public async Task<SearchOperationOutcome> SearchAllIndexersDetailedAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null, List<SkippedIndexer>? skippedIndexers = null, bool allowHighlights = false, string? sportarrId = null, bool useCategoryFilter = true, bool interactiveSearch = true, bool forceRefresh = false, bool cacheSuccessfulSources = false)
+    public async Task<SearchOperationOutcome> SearchAllIndexersDetailedAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null, List<SkippedIndexer>? skippedIndexers = null, bool allowHighlights = false, string? sportarrId = null, bool useCategoryFilter = true, bool interactiveSearch = true, bool forceRefresh = false, bool cacheSuccessfulSources = false, string? leagueName = null)
     {
         _logger.LogInformation("[Indexer Search] Searching all indexers for: {Query}", query);
 
@@ -410,7 +410,7 @@ public class IndexerSearchService : IIndexerSearchService
                 sourceCache?.Store(fetched.Key, fetched.Outcome, cacheDuration);
 
         await EvaluateReleasesAsync(allResults, qualityProfileId, requestedPart, sport,
-            enableMultiPartEpisodes, eventTitle, leagueTags, allowHighlights);
+            enableMultiPartEpisodes, eventTitle, leagueTags, allowHighlights, leagueName);
 
         // Sort by ranking priority (quality trumps all):
         // 1. Approved status (approved first)
@@ -453,7 +453,8 @@ public class IndexerSearchService : IIndexerSearchService
         bool enableMultiPartEpisodes,
         string? eventTitle,
         List<int>? leagueTags = null,
-        bool allowHighlights = false)
+        bool allowHighlights = false,
+        string? leagueName = null)
     {
         // Load release profiles for keyword filtering.
         var releaseProfiles = await _releaseProfileService.LoadReleaseProfilesAsync();
@@ -520,7 +521,8 @@ public class IndexerSearchService : IIndexerSearchService
                 eventTitle,
                 config.DefaultSportsRuntimeMinutes,
                 isPack,
-                allowHighlights);
+                allowHighlights,
+                leagueName: leagueName);
 
             // Update release with evaluation results
             release.Score = evaluation.TotalScore;
