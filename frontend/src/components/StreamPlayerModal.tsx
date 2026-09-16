@@ -16,6 +16,15 @@ import {
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
 import apiClient from '../api/client';
+import {
+  detectStreamType,
+  getDefaultPlaybackMode,
+  getHlsPlaybackConfig,
+  isPlaybackGenerationCurrent,
+  type HlsPlaybackProfile,
+  type PlaybackMode,
+  type StreamType,
+} from './streamPlaybackConfig';
 
 // LocalStorage key for the user's preferred volume + mute state.
 // Persisted across modal opens so they don't have to re-set volume
@@ -79,36 +88,6 @@ interface StreamDebugInfo {
   error?: string;
 }
 
-type StreamType = 'hls' | 'mpegts' | 'native' | 'unknown';
-type PlaybackMode = 'proxy' | 'direct' | 'ffmpeg';
-
-function detectStreamType(url: string): StreamType {
-  const lowerUrl = url.toLowerCase();
-
-  // HLS streams
-  if (lowerUrl.includes('.m3u8') || lowerUrl.includes('m3u8')) {
-    return 'hls';
-  }
-
-  // MPEG-TS streams
-  if (lowerUrl.includes('.ts') || lowerUrl.includes('/ts/') || lowerUrl.includes('mpegts')) {
-    return 'mpegts';
-  }
-
-  // FLV streams (also handled by mpegts.js)
-  if (lowerUrl.includes('.flv')) {
-    return 'mpegts';
-  }
-
-  // MP4 and other native formats
-  if (lowerUrl.includes('.mp4') || lowerUrl.includes('.webm') || lowerUrl.includes('.ogg')) {
-    return 'native';
-  }
-
-  // Default to HLS as it's most common for IPTV
-  return 'hls';
-}
-
 // Global log array for debugging (outside component)
 let globalLogs: string[] = [];
 
@@ -155,6 +134,7 @@ export default function StreamPlayerModal({
   const [isLoading, setIsLoading] = useState(true);
   const [streamType, setStreamType] = useState<StreamType>('unknown');
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('proxy');
+  const [hlsPlaybackProfile, setHlsPlaybackProfile] = useState<HlsPlaybackProfile>('balanced');
   const [retryCount, setRetryCount] = useState(0);
   const [showDebug, setShowDebug] = useState(false);
   const [debugInfo, setDebugInfo] = useState<StreamDebugInfo | null>(null);
@@ -169,6 +149,12 @@ export default function StreamPlayerModal({
   const [videoReady, setVideoReady] = useState(false);
   const [isPip, setIsPip] = useState(false);
   const ffmpegInitializingRef = useRef(false);
+  const hlsPlaybackProfileRef = useRef<HlsPlaybackProfile>(hlsPlaybackProfile);
+  const playbackGenerationRef = useRef(0);
+  const ffmpegRequestedGenerationRef = useRef<number | null>(null);
+  const ffmpegStartGenerationRef = useRef<number | null>(null);
+  const ffmpegStartInFlightRef = useRef<Promise<string | null> | null>(null);
+  const cleanupInFlightRef = useRef<Promise<void> | null>(null);
   // Auto-retry counter: HLS streams occasionally throw fatal errors on
   // transient upstream blips (segment fetch failure, brief connection
   // reset). One silent retry recovers most of these without showing the
@@ -190,6 +176,9 @@ export default function StreamPlayerModal({
       setIsLoading(true);
       autoRetryCountRef.current = 0;
       ffmpegInitializingRef.current = false;
+      setPlaybackMode(streamUrl && channelId != null
+        ? getDefaultPlaybackMode(streamUrl, channelId)
+        : 'proxy');
       // Restore the user's last-used audio state from localStorage so
       // they don't have to re-set volume + mute every time they preview
       // a channel. Defaults to volume=1, muted=false on first run.
@@ -197,7 +186,7 @@ export default function StreamPlayerModal({
       setVolume(persisted.volume);
       setIsMuted(persisted.muted);
     }
-  }, [isOpen, channelId]);
+  }, [isOpen, channelId, streamUrl]);
 
   // Log when modal opens to verify player support
   useEffect(() => {
@@ -287,43 +276,80 @@ export default function StreamPlayerModal({
   };
 
   // Start FFmpeg HLS stream
-  const startFfmpegStream = async (): Promise<string | null> => {
+  const startFfmpegStream = async (generation: number): Promise<string | null> => {
     if (!channelId) return null;
 
-    try {
-      log('info', 'Starting FFmpeg HLS stream', { channelId });
-      const response = await apiClient.post(`/v1/stream/${channelId}/start`);
+    const startRequest = (async (): Promise<string | null> => {
+      try {
+        log('info', 'Starting FFmpeg HLS stream', { channelId });
+        const response = await apiClient.post(`/v1/stream/${channelId}/start`);
 
-      if (response.data.success) {
+        if (!response.data.success) {
+          log('error', 'FFmpeg stream failed', response.data.error);
+          return null;
+        }
+
+        const isCurrent = isPlaybackGenerationCurrent(
+          generation,
+          playbackGenerationRef.current,
+          false,
+        ) && ffmpegRequestedGenerationRef.current === generation;
+        if (!isCurrent) {
+          log('info', 'Discarding stale FFmpeg start result', { generation });
+          // Cleanup serializes starts, so this request still owns the channel
+          // until its result is released. Stop it before a newer generation
+          // is allowed to issue its own start request.
+          if (ffmpegStartGenerationRef.current === generation && response.data.sessionId) {
+            await stopFfmpegStream(response.data.sessionId);
+          }
+          return null;
+        }
+
         log('info', 'FFmpeg stream started', { sessionId: response.data.sessionId, playlistUrl: response.data.playlistUrl });
         ffmpegSessionIdRef.current = response.data.sessionId;
         setFfmpegSessionId(response.data.sessionId);
         return response.data.sessionId;
-      } else {
-        log('error', 'FFmpeg stream failed', response.data.error);
+      } catch (err) {
+        log('error', 'Failed to start FFmpeg stream', err);
         return null;
       }
-    } catch (err) {
-      log('error', 'Failed to start FFmpeg stream', err);
-      return null;
+    })();
+
+    ffmpegStartGenerationRef.current = generation;
+    ffmpegStartInFlightRef.current = startRequest;
+    try {
+      return await startRequest;
+    } finally {
+      if (ffmpegStartInFlightRef.current === startRequest) {
+        ffmpegStartInFlightRef.current = null;
+        ffmpegStartGenerationRef.current = null;
+      }
     }
   };
 
   // Stop FFmpeg stream
-  const stopFfmpegStream = async () => {
-    if (channelId && ffmpegSessionIdRef.current) {
+  const stopFfmpegStream = async (sessionIdOverride?: string) => {
+    const sessionId = sessionIdOverride ?? ffmpegSessionIdRef.current;
+    if (channelId && sessionId) {
       // Cleared before the request so a re-entrant call does not stop twice,
       // but restored when the request fails. Forgetting the id on failure
       // meant no later cleanup could stop the session, and the server-side
       // transcode kept pulling the channel.
-      const sessionId = ffmpegSessionIdRef.current;
-      ffmpegSessionIdRef.current = null;
+      const ownsCurrentSession = ffmpegSessionIdRef.current === sessionId;
+      if (ownsCurrentSession) {
+        ffmpegSessionIdRef.current = null;
+      }
       try {
         log('info', 'Stopping FFmpeg stream', { channelId });
-        await apiClient.post(`/v1/stream/${channelId}/stop`);
-        setFfmpegSessionId(null);
+        await apiClient.post(
+          `/v1/stream/${channelId}/stop?sessionId=${encodeURIComponent(sessionId)}`,
+        );
+        if (ffmpegSessionIdRef.current === sessionId) {
+          ffmpegSessionIdRef.current = null;
+          setFfmpegSessionId(null);
+        }
       } catch (err) {
-        if (ffmpegSessionIdRef.current === null) {
+        if (ownsCurrentSession && ffmpegSessionIdRef.current === null) {
           ffmpegSessionIdRef.current = sessionId;
         }
         log('warn', 'Failed to stop FFmpeg stream', err);
@@ -331,39 +357,131 @@ export default function StreamPlayerModal({
     }
   };
 
-  // Cleanup function
-  const cleanup = async () => {
-    log('debug', 'Cleaning up player resources');
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-    if (mpegtsPlayerRef.current) {
-      try {
-        mpegtsPlayerRef.current.destroy();
-      } catch {
-        // Ignore destroy errors
+  // Cleanup function. Queue teardown synchronously before awaiting an older
+  // cleanup so a prop change cannot slip a new player between two teardown
+  // tasks. Manual cleanup also invalidates the active generation immediately;
+  // delayed callbacks must not update state while the user is retrying/closing.
+  const cleanup = (cleanupGeneration?: number): Promise<void> => {
+    const previousGeneration = playbackGenerationRef.current;
+    const guardGeneration = cleanupGeneration ?? previousGeneration + 1;
+    if (cleanupGeneration == null) {
+      playbackGenerationRef.current = guardGeneration;
+      if (ffmpegRequestedGenerationRef.current === previousGeneration) {
+        ffmpegRequestedGenerationRef.current = null;
       }
-      mpegtsPlayerRef.current = null;
     }
-    if (videoRef.current) {
-      videoRef.current.src = '';
-      videoRef.current.load();
+
+    const previousCleanup = cleanupInFlightRef.current ?? Promise.resolve();
+    const cleanupTask = previousCleanup
+      .catch((error) => {
+        log('warn', 'Previous player cleanup failed', error);
+      })
+      .then(async () => {
+        log('debug', 'Cleaning up player resources');
+        ffmpegInitializingRef.current = false;
+        if (hlsRef.current) {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        }
+        if (mpegtsPlayerRef.current) {
+          try {
+            mpegtsPlayerRef.current.destroy();
+          } catch {
+            // Ignore destroy errors
+          }
+          mpegtsPlayerRef.current = null;
+        }
+        if (videoRef.current) {
+          videoRef.current.src = '';
+          videoRef.current.load();
+        }
+        // Finish an in-flight start before stopping the channel. This prevents
+        // a newer generation from racing a channel-wide stop request.
+        if (ffmpegStartInFlightRef.current) {
+          await ffmpegStartInFlightRef.current;
+        }
+        await stopFfmpegStream();
+
+        // Teardown must not overwrite state belonging to a newer player.
+        if (playbackGenerationRef.current !== guardGeneration) {
+          return;
+        }
+        setIsPlaying(false);
+        setError(null);
+        setErrorDetails(null);
+        setIsLoading(true);
+        setStreamType('unknown');
+        autoRetryCountRef.current = 0;
+      })
+      .catch((error) => {
+        log('error', 'Player cleanup failed', error);
+      });
+
+    cleanupInFlightRef.current = cleanupTask;
+    void cleanupTask.finally(() => {
+      if (cleanupInFlightRef.current === cleanupTask) {
+        cleanupInFlightRef.current = null;
+      }
+    });
+    return cleanupTask;
+  };
+
+  // Apply HLS.js tuning without restarting the server-side FFmpeg session.
+  // These controls change the browser's live-edge target and retry budget;
+  // they do not pretend to alter FFmpeg's already-running producer process.
+  const applyHlsPlaybackProfile = (profile: HlsPlaybackProfile) => {
+    hlsPlaybackProfileRef.current = profile;
+    setHlsPlaybackProfile(profile);
+
+    const hls = hlsRef.current;
+    if (!hls) {
+      return;
     }
-    // Stop FFmpeg stream if active
-    await stopFfmpegStream();
-    setIsPlaying(false);
-    setError(null);
-    setErrorDetails(null);
-    setIsLoading(true);
-    setStreamType('unknown');
-    autoRetryCountRef.current = 0;
+
+    Object.assign(hls.config, getHlsPlaybackConfig(profile));
+    hls.stopLoad();
+    hls.startLoad(-1);
+
+    // Low-latency mode is an explicit request to discard accumulated delay.
+    // Resilient mode intentionally leaves the current buffer alone.
+    if (profile === 'low-latency' && videoRef.current && hls.liveSyncPosition != null) {
+      videoRef.current.currentTime = hls.liveSyncPosition;
+    }
+    log('info', 'Applied HLS playback profile', { profile });
+  };
+
+  const seekToLiveEdge = () => {
+    const video = videoRef.current;
+    const livePosition = hlsRef.current?.liveSyncPosition;
+    if (!video || livePosition == null || !Number.isFinite(livePosition)) {
+      log('warn', 'Live edge is not currently available');
+      return;
+    }
+
+    try {
+      video.currentTime = livePosition;
+      video.play().catch(() => {});
+      log('info', 'Moved playback to HLS live edge', { livePosition });
+    } catch (seekError) {
+      log('warn', 'Could not move playback to HLS live edge', { error: String(seekError) });
+    }
+  };
+
+  const restartFfmpegStream = async () => {
+    if (playbackMode !== 'ffmpeg') return;
+    log('info', 'Restarting FFmpeg playback session');
+    const cleanupGeneration = playbackGenerationRef.current + 1;
+    await cleanup();
+    if (playbackGenerationRef.current !== cleanupGeneration) return;
+    setRetryCount(prev => prev + 1);
   };
 
   // Retry with different mode
   const handleRetry = async () => {
     log('info', 'Retrying stream playback', { currentMode: playbackMode, retryCount });
+    const cleanupGeneration = playbackGenerationRef.current + 1;
     await cleanup();
+    if (playbackGenerationRef.current !== cleanupGeneration) return;
     setRetryCount(prev => prev + 1);
 
     // Cycle through modes: proxy -> ffmpeg -> direct -> proxy
@@ -393,6 +511,17 @@ export default function StreamPlayerModal({
     }
 
     const video = videoRef.current;
+    const generation = playbackGenerationRef.current + 1;
+    playbackGenerationRef.current = generation;
+    let cancelled = false;
+    const isCurrent = () => isPlaybackGenerationCurrent(
+      generation,
+      playbackGenerationRef.current,
+      cancelled,
+    );
+    if (playbackMode === 'ffmpeg') {
+      ffmpegRequestedGenerationRef.current = generation;
+    }
     setError(null);
     setErrorDetails(null);
     setIsLoading(true);
@@ -401,6 +530,11 @@ export default function StreamPlayerModal({
 
     const initializePlayer = async () => {
       try {
+        if (cleanupInFlightRef.current) {
+          await cleanupInFlightRef.current;
+        }
+        if (!isCurrent()) return;
+
         // For FFmpeg mode, start the FFmpeg HLS stream first
         if (playbackMode === 'ffmpeg') {
           log('info', 'Starting FFmpeg HLS transcoding session', { channelId, channelName });
@@ -410,8 +544,9 @@ export default function StreamPlayerModal({
           video.removeAttribute('src');
           video.load();
 
-          const sessionId = await startFfmpegStream();
+          const sessionId = await startFfmpegStream(generation);
           if (!sessionId) {
+            if (!isCurrent()) return;
             ffmpegInitializingRef.current = false;
             setError('Failed to start FFmpeg transcoding');
             setErrorDetails('FFmpeg may not be installed or the stream URL is invalid.');
@@ -423,7 +558,7 @@ export default function StreamPlayerModal({
           await new Promise(resolve => setTimeout(resolve, 2000));
 
           // Re-check video element is still available after wait
-          if (!videoRef.current) {
+          if (!isCurrent() || !videoRef.current) {
             log('warn', 'Video element no longer available after FFmpeg startup');
             ffmpegInitializingRef.current = false;
             return;
@@ -437,34 +572,31 @@ export default function StreamPlayerModal({
             log('debug', 'Creating HLS.js instance for FFmpeg stream');
             const hls = new Hls({
               enableWorker: true,
-              lowLatencyMode: false,           // Disable for more stable playback
-              liveSyncDuration: 6,             // Target 6 seconds behind live edge
-              liveMaxLatencyDuration: 15,      // Allow up to 15 seconds latency
               // Note: Don't use liveSyncDurationCount with liveSyncDuration - they conflict
-              maxBufferLength: 60,             // Buffer up to 60 seconds
-              maxMaxBufferLength: 120,         // Max buffer 2 minutes
-              maxBufferSize: 60 * 1000 * 1000, // 60MB buffer size
-              maxBufferHole: 1.0,              // Allow 1 second gaps in buffer
-              highBufferWatchdogPeriod: 3,     // Check buffer every 3 seconds
+              ...getHlsPlaybackConfig(hlsPlaybackProfileRef.current),
             });
 
             hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+              if (!isCurrent()) return;
               log('debug', 'FFmpeg HLS: Media attached');
               ffmpegInitializingRef.current = false;
               hls.loadSource(hlsUrl);
             });
 
             hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+              if (!isCurrent()) return;
               log('info', 'FFmpeg HLS: Manifest parsed', { levels: data.levels.length });
               setStreamType('hls');
               setIsLoading(false);
               video.play().catch((e) => {
+                if (!isCurrent()) return;
                 log('warn', 'Autoplay blocked', e);
                 setIsPlaying(false);
               });
             });
 
             hls.on(Hls.Events.ERROR, (_, data) => {
+              if (!isCurrent()) return;
               log('error', 'FFmpeg HLS error', { type: data.type, details: data.details, fatal: data.fatal });
               if (data.fatal) {
                 setError(`FFmpeg playback error: ${data.details}`);
@@ -473,16 +605,19 @@ export default function StreamPlayerModal({
               }
             });
 
-            hls.attachMedia(video);
             hlsRef.current = hls;
+            hls.attachMedia(video);
           } else {
             // Native HLS (Safari)
             ffmpegInitializingRef.current = false;
             video.src = hlsUrl;
             video.addEventListener('loadedmetadata', () => {
+              if (!isCurrent()) return;
               setStreamType('hls');
               setIsLoading(false);
-              video.play().catch(() => setIsPlaying(false));
+              video.play().catch(() => {
+                if (isCurrent()) setIsPlaying(false);
+              });
             });
           }
           return;
@@ -522,27 +657,7 @@ export default function StreamPlayerModal({
             // player rides over transient delays instead of stalling.
             const hls = new Hls({
               enableWorker: true,
-              lowLatencyMode: false,           // Stability over live-edge chasing
-              backBufferLength: 30,            // 30s rewind buffer is plenty for IPTV
-              maxBufferLength: 30,             // Keep ~30s ahead
-              maxMaxBufferLength: 120,         // Allow growing to 2 min for slow networks
-              maxBufferSize: 60 * 1000 * 1000, // 60 MB hard cap
-              maxBufferHole: 1.0,              // Tolerate 1s segment gaps
-              highBufferWatchdogPeriod: 3,     // Watchdog every 3s
-              // Live-stream-specific knobs.
-              liveSyncDuration: 6,             // Sit ~6s behind live edge
-              liveMaxLatencyDuration: 20,      // Drift up to 20s before forcing a sync
-              // Network resilience — retry transient segment / manifest
-              // failures before HLS.js declares them fatal.
-              manifestLoadingTimeOut: 20_000,
-              manifestLoadingMaxRetry: 4,
-              manifestLoadingRetryDelay: 1_000,
-              levelLoadingTimeOut: 20_000,
-              levelLoadingMaxRetry: 4,
-              levelLoadingRetryDelay: 1_000,
-              fragLoadingTimeOut: 30_000,
-              fragLoadingMaxRetry: 6,
-              fragLoadingRetryDelay: 1_000,
+              ...getHlsPlaybackConfig(hlsPlaybackProfileRef.current),
               // Enable CORS for cross-origin requests
               xhrSetup: (xhr) => {
                 xhr.withCredentials = false;
@@ -550,14 +665,17 @@ export default function StreamPlayerModal({
             });
 
             hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+              if (!isCurrent()) return;
               log('debug', 'HLS: Media attached, loading source');
               hls.loadSource(effectiveUrl);
             });
 
             hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+              if (!isCurrent()) return;
               log('info', 'HLS: Manifest parsed', { levels: data.levels.length });
               setIsLoading(false);
               video.play().catch((e) => {
+                if (!isCurrent()) return;
                 log('warn', 'Autoplay blocked', e);
                 setIsPlaying(false);
               });
@@ -572,6 +690,7 @@ export default function StreamPlayerModal({
             });
 
             hls.on(Hls.Events.ERROR, (_, data) => {
+              if (!isCurrent()) return;
               log('error', 'HLS error', { type: data.type, details: data.details, fatal: data.fatal, response: data.response });
 
               if (data.fatal) {
@@ -628,21 +747,25 @@ export default function StreamPlayerModal({
             // A stream that ran clean for a minute then blips deserves a
             // fresh retry budget instead of stacking on top of an old run.
             hls.on(Hls.Events.FRAG_LOADED, () => {
+              if (!isCurrent()) return;
               if (autoRetryCountRef.current > 0) {
                 autoRetryCountRef.current = 0;
               }
             });
 
-            hls.attachMedia(video);
             hlsRef.current = hls;
+            hls.attachMedia(video);
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             // Native HLS support (Safari)
             log('info', 'Using native HLS support (Safari)');
             video.src = effectiveUrl;
             video.addEventListener('loadedmetadata', () => {
+              if (!isCurrent()) return;
               log('debug', 'Native HLS: Metadata loaded');
               setIsLoading(false);
-              video.play().catch(() => setIsPlaying(false));
+              video.play().catch(() => {
+                if (isCurrent()) setIsPlaying(false);
+              });
             });
           } else {
             setError('HLS is not supported in this browser');
@@ -675,27 +798,32 @@ export default function StreamPlayerModal({
             });
 
             player.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
+              if (!isCurrent()) return;
               log('error', 'MPEG-TS error', { errorType, errorDetail, errorInfo });
               setError(`Stream error: ${errorType}`);
               setErrorDetails(String(errorDetail));
             });
 
             player.on(mpegts.Events.LOADING_COMPLETE, () => {
+              if (!isCurrent()) return;
               log('debug', 'MPEG-TS: Loading complete');
             });
 
             player.on(mpegts.Events.MEDIA_INFO, (info) => {
+              if (!isCurrent()) return;
               log('info', 'MPEG-TS: Media info received', info);
               setIsLoading(false);
             });
 
             player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
+              if (!isCurrent()) return;
               if (stats.speed !== undefined && stats.speed > 0) {
                 log('debug', 'MPEG-TS: Receiving data', { speed: stats.speed, decodedFrames: stats.decodedFrames });
               }
             });
 
             player.on(mpegts.Events.METADATA_ARRIVED, (metadata) => {
+              if (!isCurrent()) return;
               log('info', 'MPEG-TS: Metadata arrived', metadata);
             });
 
@@ -710,7 +838,7 @@ export default function StreamPlayerModal({
 
             // Set loading to false after a short delay if no media info arrives
             setTimeout(() => {
-              if (mpegtsPlayerRef.current) {
+              if (isCurrent() && mpegtsPlayerRef.current) {
                 setIsLoading(false);
               }
             }, 5000);
@@ -724,11 +852,15 @@ export default function StreamPlayerModal({
           log('debug', 'Using native video playback');
           video.src = effectiveUrl;
           video.addEventListener('loadedmetadata', () => {
+            if (!isCurrent()) return;
             log('debug', 'Native: Metadata loaded');
             setIsLoading(false);
-            video.play().catch(() => setIsPlaying(false));
+            video.play().catch(() => {
+              if (isCurrent()) setIsPlaying(false);
+            });
           });
           video.addEventListener('error', (e) => {
+            if (!isCurrent()) return;
             log('error', 'Native video error', e);
             setError('Failed to load video');
             setErrorDetails(`Video element error: ${video.error?.message || 'Unknown error'}`);
@@ -740,6 +872,7 @@ export default function StreamPlayerModal({
           if (Hls.isSupported()) {
             const hls = new Hls();
             hls.on(Hls.Events.ERROR, (_, data) => {
+              if (!isCurrent()) return;
               if (data.fatal) {
                 log('error', 'Default HLS error', data);
                 setError('Could not play this stream format');
@@ -748,13 +881,14 @@ export default function StreamPlayerModal({
               }
             });
             hls.loadSource(effectiveUrl);
-            hls.attachMedia(video);
             hlsRef.current = hls;
+            hls.attachMedia(video);
           } else {
             video.src = effectiveUrl;
           }
         }
       } catch (err) {
+        if (!isCurrent()) return;
         const errorMessage = err instanceof Error ? err.message : (typeof err === 'string' ? err : JSON.stringify(err));
         log('error', 'Player initialization error', { message: errorMessage, type: typeof err, err });
         setError(`Failed to initialize player`);
@@ -768,14 +902,17 @@ export default function StreamPlayerModal({
 
     // Video event listeners
     const handlePlay = () => {
+      if (!isCurrent()) return;
       log('debug', 'Video playing');
       setIsPlaying(true);
     };
     const handlePause = () => {
+      if (!isCurrent()) return;
       log('debug', 'Video paused');
       setIsPlaying(false);
     };
     const handleError = (e: Event) => {
+      if (!isCurrent()) return;
       const videoEl = e.target as HTMLVideoElement;
       // Ignore errors during FFmpeg initialization (video has no src yet)
       if (ffmpegInitializingRef.current) {
@@ -790,6 +927,7 @@ export default function StreamPlayerModal({
       setIsLoading(false);
     };
     const handleCanPlay = () => {
+      if (!isCurrent()) return;
       log('debug', 'Video can play');
       setIsLoading(false);
       // Clear any previous errors when video can play
@@ -797,9 +935,11 @@ export default function StreamPlayerModal({
       setErrorDetails(null);
     };
     const handleWaiting = () => {
+      if (!isCurrent()) return;
       log('debug', 'Video waiting/buffering');
     };
     const handleStalled = () => {
+      if (!isCurrent()) return;
       log('warn', 'Video stalled');
     };
 
@@ -811,18 +951,31 @@ export default function StreamPlayerModal({
     video.addEventListener('stalled', handleStalled);
 
     return () => {
+      cancelled = true;
+      if (playbackGenerationRef.current === generation) {
+        playbackGenerationRef.current += 1;
+      }
+      if (ffmpegRequestedGenerationRef.current === generation) {
+        ffmpegRequestedGenerationRef.current = null;
+      }
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('error', handleError);
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('stalled', handleStalled);
-      cleanup();
+      void cleanup(generation);
     };
+    // The generation guard above deliberately owns these render-scoped
+    // callbacks; adding them as dependencies would restart playback on every
+    // render and defeat the stale-completion protection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, streamUrl, playbackMode, retryCount, videoReady, channelId]);
 
   const handleClose = async () => {
+    const cleanupGeneration = playbackGenerationRef.current + 1;
     await cleanup();
+    if (playbackGenerationRef.current !== cleanupGeneration) return;
     setPlaybackMode('proxy');
     setRetryCount(0);
     ffmpegSessionIdRef.current = null;
@@ -1229,6 +1382,26 @@ export default function StreamPlayerModal({
                     >
                       <ArrowPathIcon className="w-6 h-6 text-white" />
                     </button>
+                    {playbackMode === 'ffmpeg' && (
+                      <button
+                        onClick={restartFfmpegStream}
+                        disabled={isLoading}
+                        className="px-3 py-2 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed text-xs text-white transition-colors"
+                        title="Stop and start the FFmpeg producer again"
+                      >
+                        Restart FFmpeg
+                      </button>
+                    )}
+                    {Hls.isSupported() && (playbackMode === 'ffmpeg' || streamType === 'hls') && (
+                      <button
+                        onClick={seekToLiveEdge}
+                        disabled={isLoading || !!error}
+                        className="px-3 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-xs text-white transition-colors"
+                        title="Seek to the current HLS live edge"
+                      >
+                        Live edge
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1285,6 +1458,25 @@ export default function StreamPlayerModal({
                         </button>
                       </div>
                     </div>
+
+                    {Hls.isSupported() && (playbackMode === 'ffmpeg' || streamType === 'hls') && (
+                      <div className="mb-3 p-2 bg-gray-800 rounded flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-gray-300 text-xs">Live playback tuning</div>
+                          <div className="text-[10px] text-gray-500">Applies to this browser session without restarting FFmpeg.</div>
+                        </div>
+                        <select
+                          value={hlsPlaybackProfile}
+                          onChange={(event) => applyHlsPlaybackProfile(event.target.value as HlsPlaybackProfile)}
+                          className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white"
+                          aria-label="Live playback tuning profile"
+                        >
+                          <option value="low-latency">Low latency</option>
+                          <option value="balanced">Balanced</option>
+                          <option value="resilient">Resilient</option>
+                        </select>
+                      </div>
+                    )}
 
                     {loadingDebug && (
                       <div className="text-center py-4 text-gray-400">
