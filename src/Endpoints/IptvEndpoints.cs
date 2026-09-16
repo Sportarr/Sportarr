@@ -14,6 +14,82 @@ namespace Sportarr.Api.Endpoints;
 
 public static class IptvEndpoints
 {
+    private const int MaxStreamRedirects = 10;
+
+    private static bool IsRedirectStatusCode(int statusCode) =>
+        statusCode is 301 or 302 or 303 or 307 or 308;
+
+    internal static int GetProxyResponseStatusCode(int upstreamStatusCode) =>
+        IsRedirectStatusCode(upstreamStatusCode)
+            ? StatusCodes.Status502BadGateway
+            : upstreamStatusCode;
+
+    internal static Task<HttpResponseMessage> SendStreamRequestAsync(
+        HttpClient httpClient,
+        Uri initialUri,
+        CancellationToken cancellationToken) =>
+        SendStreamRequestAsync(
+            httpClient,
+            HttpMethod.Get,
+            initialUri,
+            "VLC/3.0.18 LibVLC/3.0.18",
+            cancellationToken);
+
+    internal static async Task<HttpResponseMessage> SendStreamRequestAsync(
+        HttpClient httpClient,
+        HttpMethod method,
+        Uri initialUri,
+        string userAgent,
+        CancellationToken cancellationToken,
+        Action<HttpRequestMessage>? configureRequest = null)
+    {
+        var currentUri = initialUri;
+
+        for (var redirectCount = 0; redirectCount <= MaxStreamRedirects; redirectCount++)
+        {
+            using var request = new HttpRequestMessage(method, currentUri);
+            request.Headers.Add("User-Agent", userAgent);
+            request.Headers.Add("Accept", "*/*");
+            configureRequest?.Invoke(request);
+
+            var response = await httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            response.RequestMessage ??= request;
+
+            var statusCode = (int)response.StatusCode;
+            var location = response.Headers.Location;
+            if (!IsRedirectStatusCode(statusCode) || location == null)
+            {
+                return response;
+            }
+
+            if (redirectCount == MaxStreamRedirects)
+            {
+                return response;
+            }
+
+            var redirectUri = location.IsAbsoluteUri
+                ? location
+                : new Uri(currentUri, location);
+
+            // Do not follow non-HTTP redirects. Returning the response lets
+            // the caller turn it into a controlled 502 instead of allowing a
+            // browser-facing proxy to become a file/data URI fetcher.
+            if (redirectUri.Scheme != Uri.UriSchemeHttp &&
+                redirectUri.Scheme != Uri.UriSchemeHttps)
+            {
+                return response;
+            }
+
+            response.Dispose();
+            currentUri = redirectUri;
+        }
+
+        throw new InvalidOperationException("Stream redirect loop exceeded the configured limit.");
+    }
+
     public static IEndpointRouteBuilder MapIptvEndpoints(this IEndpointRouteBuilder app)
     {
 // IPTV/DVR API Endpoints
@@ -1156,7 +1232,8 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
     int channelId,
     IptvSourceService iptvService,
     IHttpClientFactory httpClientFactory,
-    ILogger<Program> logger) =>
+    ILogger<Program> logger,
+    HttpContext context) =>
 {
     var channel = await iptvService.GetChannelByIdAsync(channelId);
     if (channel == null)
@@ -1176,24 +1253,25 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
         ["streamUrl"] = channel.StreamUrl,
         ["userAgent"] = userAgent
     };
+    HttpResponseMessage? headResponse = null;
+    HttpResponseMessage? getResponse = null;
 
     try
     {
         var httpClient = httpClientFactory.CreateClient("StreamProxy");
         httpClient.Timeout = TimeSpan.FromSeconds(15);
 
-        // Test HEAD request first
-        var headRequest = new HttpRequestMessage(HttpMethod.Head, channel.StreamUrl);
-        headRequest.Headers.Add("User-Agent", userAgent);
-        headRequest.Headers.Add("Accept", "*/*");
-
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        HttpResponseMessage? headResponse = null;
         string? headError = null;
 
         try
         {
-            headResponse = await httpClient.SendAsync(headRequest);
+            headResponse = await SendStreamRequestAsync(
+                httpClient,
+                HttpMethod.Head,
+                new Uri(channel.StreamUrl, UriKind.Absolute),
+                userAgent,
+                context.RequestAborted);
             stopwatch.Stop();
         }
         catch (Exception ex)
@@ -1213,20 +1291,19 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
             ["error"] = headError
         };
 
-        // Test GET request - for live streams we can't use Range, so read with timeout
-        var getRequest = new HttpRequestMessage(HttpMethod.Get, channel.StreamUrl);
-        getRequest.Headers.Add("User-Agent", userAgent);
-        getRequest.Headers.Add("Accept", "*/*");
-
-        HttpResponseMessage? getResponse = null;
         string? getError = null;
         byte[]? sampleBytes = null;
 
         stopwatch.Restart();
         try
         {
-            // Use ResponseHeadersRead to get response quickly without waiting for full content
-            getResponse = await httpClient.SendAsync(getRequest, HttpCompletionOption.ResponseHeadersRead);
+            // Use the same bounded redirect handling as the playback proxy.
+            getResponse = await SendStreamRequestAsync(
+                httpClient,
+                HttpMethod.Get,
+                new Uri(channel.StreamUrl, UriKind.Absolute),
+                userAgent,
+                context.RequestAborted);
             stopwatch.Stop();
             var headerTime = stopwatch.ElapsedMilliseconds;
 
@@ -1234,10 +1311,11 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
             {
                 // For live streams, just read a small sample with a short timeout
                 stopwatch.Restart();
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+                cts.CancelAfter(TimeSpan.FromSeconds(5));
                 try
                 {
-                    var stream = await getResponse.Content.ReadAsStreamAsync();
+                    await using var stream = await getResponse.Content.ReadAsStreamAsync(cts.Token);
                     sampleBytes = new byte[2048]; // Read up to 2KB
                     var bytesRead = 0;
                     var totalRead = 0;
@@ -1312,7 +1390,10 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
         };
 
         // Determine stream type from URL and content
-        var urlLower = channel.StreamUrl.ToLowerInvariant();
+        var effectiveUri = getResponse?.RequestMessage?.RequestUri
+            ?? headResponse?.RequestMessage?.RequestUri
+            ?? new Uri(channel.StreamUrl, UriKind.Absolute);
+        var urlLower = effectiveUri.ToString().ToLowerInvariant();
         string urlStreamType = "unknown";
         if (urlLower.Contains(".m3u8") || urlLower.Contains("m3u8"))
             urlStreamType = "HLS";
@@ -1370,6 +1451,11 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
         logger.LogError(ex, "[StreamDebug] Error debugging stream for channel {ChannelId}", channelId);
         debugInfo["error"] = ex.Message;
         return Results.Ok(debugInfo);
+    }
+    finally
+    {
+        headResponse?.Dispose();
+        getResponse?.Dispose();
     }
 });
 
@@ -1443,22 +1529,30 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
         httpClient.Timeout = TimeSpan.FromSeconds(30);
 
         // Set common IPTV headers
-        var request = new HttpRequestMessage(HttpMethod.Get, channel.StreamUrl);
-        request.Headers.Add("User-Agent", "VLC/3.0.18 LibVLC/3.0.18");
-        request.Headers.Add("Accept", "*/*");
-
-        var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+        var response = await SendStreamRequestAsync(
+            httpClient,
+            new Uri(channel.StreamUrl, UriKind.Absolute),
+            context.RequestAborted);
 
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning("[StreamProxy] Upstream returned {StatusCode} for channel {ChannelId}",
-                response.StatusCode, channelId);
-            return Results.StatusCode((int)response.StatusCode);
+            logger.LogWarning(
+                "[StreamProxy] Upstream returned {StatusCode} after redirect handling for channel {ChannelId}; location={Location}",
+                response.StatusCode, channelId, response.Headers.Location?.ToString() ?? "none");
+            var statusCode = GetProxyResponseStatusCode((int)response.StatusCode);
+            response.Dispose();
+            return Results.StatusCode(statusCode);
         }
+
+        // Results.Stream does not own the HttpResponseMessage. Dispose it when
+        // ASP.NET finishes the downstream response, including disconnects.
+        context.Response.RegisterForDispose(response);
 
         // Get content type from upstream or detect from URL
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
-        var streamUrl = channel.StreamUrl.ToLowerInvariant();
+        var effectiveUri = response.RequestMessage?.RequestUri
+            ?? new Uri(channel.StreamUrl, UriKind.Absolute);
+        var streamUrl = effectiveUri.ToString().ToLowerInvariant();
 
         // Detect content type from URL if not set properly
         if (contentType == "application/octet-stream")
@@ -1512,18 +1606,18 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
                 }
             }
 
-            var playlistContent = await response.Content.ReadAsStringAsync();
+            var playlistContent = await response.Content.ReadAsStringAsync(context.RequestAborted);
             logger.LogDebug("[StreamProxy] HLS playlist received, length: {Length}", playlistContent.Length);
 
             // Rewrite segment URLs to go through our proxy
-            var baseUrl = new Uri(channel.StreamUrl);
+            var baseUrl = effectiveUri;
             var rewrittenPlaylist = Sportarr.Api.Helpers.HlsRewriter.RewritePlaylist(playlistContent, baseUrl, logger, channelId);
 
             return Results.Content(rewrittenPlaylist, contentType);
         }
 
         // For binary streams, return as stream
-        var stream = await response.Content.ReadAsStreamAsync();
+        var stream = await response.Content.ReadAsStreamAsync(context.RequestAborted);
         return Results.Stream(stream, contentType);
     }
     catch (TaskCanceledException)
@@ -1589,17 +1683,22 @@ app.MapGet("/api/iptv/stream/url", async (
         var httpClient = httpClientFactory.CreateClient("StreamProxy");
         httpClient.Timeout = TimeSpan.FromSeconds(30);
 
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("User-Agent", "VLC/3.0.18 LibVLC/3.0.18");
-        request.Headers.Add("Accept", "*/*");
-
-        var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+        var response = await SendStreamRequestAsync(
+            httpClient,
+            new Uri(url, UriKind.Absolute),
+            context.RequestAborted);
 
         if (!response.IsSuccessStatusCode)
         {
-            return Results.StatusCode((int)response.StatusCode);
+            logger.LogWarning(
+                "[StreamProxy] Upstream returned {StatusCode} after redirect handling for proxied URL; location={Location}",
+                response.StatusCode, response.Headers.Location?.ToString() ?? "none");
+            var statusCode = GetProxyResponseStatusCode((int)response.StatusCode);
+            response.Dispose();
+            return Results.StatusCode(statusCode);
         }
 
+        context.Response.RegisterForDispose(response);
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
 
         // Set CORS headers
@@ -1607,7 +1706,7 @@ app.MapGet("/api/iptv/stream/url", async (
         context.Response.Headers.Append("Access-Control-Allow-Methods", "GET, OPTIONS");
         context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
 
-        var stream = await response.Content.ReadAsStreamAsync();
+        var stream = await response.Content.ReadAsStreamAsync(context.RequestAborted);
         return Results.Stream(stream, contentType);
     }
     catch (Exception ex)
