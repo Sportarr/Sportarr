@@ -1706,11 +1706,15 @@ app.MapPost("/api/v1/stream/{channelId:int}/start", async (
 // Stop an FFmpeg HLS stream
 app.MapPost("/api/v1/stream/{channelId:int}/stop", async (
     int channelId,
+    string? sessionId,
     FFmpegStreamService streamService,
     ILogger<Program> logger) =>
 {
-    logger.LogInformation("[HLSStream] Stopping HLS stream for channel {ChannelId}", channelId);
-    await streamService.StopStreamAsync(channelId.ToString());
+    logger.LogInformation(
+        "[HLSStream] Stopping HLS stream for channel {ChannelId}, session {SessionId}",
+        channelId,
+        sessionId ?? "any");
+    await streamService.StopStreamAsync(channelId.ToString(), sessionId);
     return Results.Ok(new { success = true });
 });
 
