@@ -10,6 +10,7 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class FFmpegStreamService : IDisposable
 {
+    private const int HlsPlaylistSize = 10;
     private readonly ILogger<FFmpegStreamService> _logger;
     private readonly ConcurrentDictionary<string, StreamSession> _sessions = new();
     private readonly string _hlsOutputPath;
@@ -48,14 +49,19 @@ public class FFmpegStreamService : IDisposable
     }
 
     /// <summary>
-    /// Start streaming a channel via FFmpeg HLS transcoding
+    /// Start streaming a channel via FFmpeg HLS. Stream copy is the default;
+    /// normalization is enabled explicitly for sources that need it.
     /// </summary>
-    public async Task<StreamResult> StartStreamAsync(string channelId, string streamUrl, string? userAgent = null)
+    public async Task<StreamResult> StartStreamAsync(
+        string channelId,
+        string streamUrl,
+        string? userAgent = null,
+        bool normalize = false)
     {
         // Check if session already exists
         if (_sessions.TryGetValue(channelId, out var existingSession))
         {
-            if (existingSession.IsActive)
+            if (existingSession.IsActive && existingSession.Normalize == normalize)
             {
                 _logger.LogDebug("[Stream] Reusing existing session for channel {ChannelId}", channelId);
                 return new StreamResult
@@ -68,7 +74,7 @@ public class FFmpegStreamService : IDisposable
             else
             {
                 // Clean up old session
-                await StopStreamAsync(channelId);
+                await StopStreamAsync(channelId, existingSession.SessionId);
             }
         }
 
@@ -82,6 +88,7 @@ public class FFmpegStreamService : IDisposable
             var ffmpegPath = GetFFmpegPath();
             if (string.IsNullOrEmpty(ffmpegPath))
             {
+                try { Directory.Delete(sessionPath, true); } catch { }
                 return new StreamResult
                 {
                     Success = false,
@@ -89,9 +96,19 @@ public class FFmpegStreamService : IDisposable
                 };
             }
 
+            if (normalize && !SupportsH264Encoder(ffmpegPath))
+            {
+                try { Directory.Delete(sessionPath, true); } catch { }
+                return new StreamResult
+                {
+                    Success = false,
+                    Error = "FFmpeg is available, but the libx264 encoder is not installed. Disable HLS normalization or install an FFmpeg build with libx264."
+                };
+            }
+
             // Build FFmpeg arguments for HLS output
             var playlistPath = Path.Combine(sessionPath, "playlist.m3u8");
-            var arguments = BuildHlsArguments(streamUrl, playlistPath, userAgent);
+            var arguments = BuildHlsArguments(streamUrl, playlistPath, userAgent, normalize);
 
             _logger.LogInformation("[Stream] Starting FFmpeg for channel {ChannelId}: {Args}", channelId, string.Join(" ", arguments));
 
@@ -124,6 +141,7 @@ public class FFmpegStreamService : IDisposable
                 SessionId = sessionId,
                 ChannelId = channelId,
                 StreamUrl = streamUrl,
+                Normalize = normalize,
                 Process = process,
                 OutputPath = sessionPath,
                 PlaylistPath = playlistPath,
@@ -402,7 +420,11 @@ public class FFmpegStreamService : IDisposable
     // Returns ffmpeg arguments as discrete argv tokens (one element per token, values NOT
     // quoted) for ProcessStartInfo.ArgumentList. .NET quotes/escapes each element, so the
     // stream URL and user-agent cannot inject extra ffmpeg options.
-    private List<string> BuildHlsArguments(string streamUrl, string playlistPath, string? userAgent)
+    private List<string> BuildHlsArguments(
+        string streamUrl,
+        string playlistPath,
+        string? userAgent,
+        bool normalize)
     {
         var args = new List<string>
         {
@@ -424,13 +446,36 @@ public class FFmpegStreamService : IDisposable
         // Input
         args.Add("-i"); args.Add(streamUrl);
 
-        // Copy streams without re-encoding for speed
-        args.Add("-c"); args.Add("copy");
+        if (normalize)
+        {
+            // Normalize the live feed instead of copying its compressed video. Some
+            // IPTV relays begin with incomplete H.264 access units (for example,
+            // without the PPS needed to decode them). VLC can recover from that,
+            // but stream-copy HLS preserves the damaged cadence and can produce
+            // long, irregular segments that browser players cannot consume
+            // smoothly. Selecting the first A/V pair also keeps non-media streams
+            // such as subtitles or data tracks out of the MPEG-TS output.
+            args.Add("-map"); args.Add("0:v:0");
+            args.Add("-map"); args.Add("0:a:0?");
+            args.Add("-c:v"); args.Add("libx264");
+            args.Add("-preset"); args.Add("ultrafast");
+            args.Add("-tune"); args.Add("zerolatency");
+            args.Add("-g"); args.Add("120"); // Maximum GOP for 59.94fps sources
+            args.Add("-keyint_min"); args.Add("1");
+            args.Add("-sc_threshold"); args.Add("0");
+            args.Add("-force_key_frames"); args.Add("expr:gte(t,n_forced*2)");
+            args.Add("-pix_fmt"); args.Add("yuv420p");
+            args.Add("-c:a"); args.Add("aac");
+        }
+        else
+        {
+            args.Add("-c"); args.Add("copy");
+        }
 
         // HLS output options
         args.Add("-f"); args.Add("hls");
         args.Add("-hls_time"); args.Add("2");           // 2 second segments
-        args.Add("-hls_list_size"); args.Add("5");       // Keep 5 segments in playlist
+        args.Add("-hls_list_size"); args.Add(HlsPlaylistSize.ToString()); // Keep enough segments to absorb live-source jitter
         args.Add("-hls_flags"); args.Add("delete_segments+append_list+omit_endlist");
         args.Add("-hls_segment_type"); args.Add("mpegts");
         args.Add("-hls_segment_filename");
@@ -484,32 +529,7 @@ public class FFmpegStreamService : IDisposable
 
         foreach (var path in possiblePaths)
         {
-            if (path == "ffmpeg")
-            {
-                try
-                {
-                    var processInfo = new ProcessStartInfo
-                    {
-                        FileName = "ffmpeg",
-                        Arguments = "-version",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    };
-                    using var process = Process.Start(processInfo);
-                    if (process != null)
-                    {
-                        process.WaitForExit(5000);
-                        if (process.ExitCode == 0)
-                        {
-                            return "ffmpeg";
-                        }
-                    }
-                }
-                catch { }
-            }
-            else if (File.Exists(path))
+            if ((path == "ffmpeg" || File.Exists(path)) && IsFfmpegAvailable(path))
             {
                 return path;
             }
@@ -517,6 +537,74 @@ public class FFmpegStreamService : IDisposable
 
         return null;
     }
+
+    private static bool IsFfmpegAvailable(string executablePath)
+    {
+        try
+        {
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = executablePath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            processInfo.ArgumentList.Add("-hide_banner");
+            processInfo.ArgumentList.Add("-version");
+
+            using var process = Process.Start(processInfo);
+            if (process == null || !process.WaitForExit(5000))
+            {
+                try { process?.Kill(entireProcessTree: true); } catch { }
+                return false;
+            }
+
+            return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool SupportsH264Encoder(string executablePath)
+    {
+        var processInfo = new ProcessStartInfo
+        {
+            FileName = executablePath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        processInfo.ArgumentList.Add("-hide_banner");
+        processInfo.ArgumentList.Add("-encoders");
+        return SupportsH264Encoder(processInfo);
+    }
+
+    private static bool SupportsH264Encoder(ProcessStartInfo processInfo)
+    {
+        using var process = Process.Start(processInfo);
+        if (process == null)
+            return false;
+
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(5000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            return false;
+        }
+
+        Task.WaitAll(outputTask, errorTask);
+        return process.ExitCode == 0
+            && HasH264Encoder($"{outputTask.Result}\n{errorTask.Result}");
+    }
+
+    private static bool HasH264Encoder(string output) =>
+        output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Any(line => line.Contains(" libx264 ", StringComparison.OrdinalIgnoreCase));
 
     public void Dispose()
     {
@@ -549,6 +637,7 @@ internal class StreamSession
     public required string SessionId { get; set; }
     public required string ChannelId { get; set; }
     public required string StreamUrl { get; set; }
+    public bool Normalize { get; set; }
     public required Process Process { get; set; }
     public required string OutputPath { get; set; }
     public required string PlaylistPath { get; set; }
