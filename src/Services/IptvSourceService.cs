@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Data;
+using Sportarr.Api.Endpoints;
 using Sportarr.Api.Models;
 using Sportarr.Api.Helpers;
 
@@ -569,24 +570,33 @@ public class IptvSourceService
     /// with the body left unread. Without that fallback a working channel was
     /// recorded as offline.
     /// </summary>
-    private async Task<HttpResponseMessage> ProbeChannelAsync(
-        HttpClient httpClient, IptvChannel channel, CancellationToken ct)
+    private Task<HttpResponseMessage> ProbeChannelAsync(
+        HttpClient httpClient, IptvChannel channel, CancellationToken ct) =>
+        ProbeChannelAsync(
+            httpClient,
+            new Uri(channel.StreamUrl, UriKind.Absolute),
+            channel.Source?.UserAgent,
+            ct);
+
+    internal static async Task<HttpResponseMessage> ProbeChannelAsync(
+        HttpClient httpClient,
+        Uri streamUri,
+        string? userAgent,
+        CancellationToken ct)
     {
-        void ApplyUserAgent(HttpRequestMessage message)
-        {
-            if (!string.IsNullOrEmpty(channel.Source?.UserAgent))
-            {
-                message.Headers.UserAgent.Clear();
-                message.Headers.UserAgent.ParseAdd(channel.Source.UserAgent);
-            }
-        }
+        var effectiveUserAgent = string.IsNullOrEmpty(userAgent)
+            ? "VLC/3.0.18 LibVLC/3.0.18"
+            : userAgent;
 
         HttpResponseMessage? headResponse = null;
         try
         {
-            using var headRequest = new HttpRequestMessage(HttpMethod.Head, channel.StreamUrl);
-            ApplyUserAgent(headRequest);
-            headResponse = await httpClient.SendAsync(headRequest, ct);
+            headResponse = await IptvEndpoints.SendStreamRequestAsync(
+                httpClient,
+                HttpMethod.Head,
+                streamUri,
+                effectiveUserAgent,
+                ct);
 
             if (headResponse.IsSuccessStatusCode)
             {
@@ -596,16 +606,18 @@ public class IptvSourceService
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
             // Some servers close the connection on HEAD rather than answering.
-            _logger.LogDebug(ex, "[IPTV] HEAD probe failed for {Name}; trying a ranged GET", channel.Name);
         }
 
-        using var getRequest = new HttpRequestMessage(HttpMethod.Get, channel.StreamUrl);
-        ApplyUserAgent(getRequest);
-        getRequest.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 1);
-
         // Headers only: a live stream would otherwise be pulled for as long as
-        // the probe held it open.
-        var getResponse = await httpClient.SendAsync(getRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+        // the probe held it open. The shared helper also follows provider
+        // redirects before this health check evaluates the status.
+        var getResponse = await IptvEndpoints.SendStreamRequestAsync(
+            httpClient,
+            HttpMethod.Get,
+            streamUri,
+            effectiveUserAgent,
+            ct,
+            request => request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 1));
 
         if (getResponse.IsSuccessStatusCode || headResponse == null)
         {
@@ -631,8 +643,10 @@ public class IptvSourceService
             _logger.LogDebug("[IPTV] Testing channel: {Name} ({Url})",
                 channel.Name, Sportarr.Api.Helpers.SecretRedactor.Url(channel.StreamUrl));
 
-            // Use IptvClient which has AllowAutoRedirect=true for following 302 redirects
-            var httpClient = _httpClientFactory.CreateClient("IptvClient");
+            // Use the SSRF-guarded client. Redirects are followed by the shared
+            // helper so each hop is scheme-checked, bounded, and validated by
+            // the client's ConnectCallback before a socket is opened.
+            var httpClient = _httpClientFactory.CreateClient("StreamProxy");
 
             // Use a short timeout for testing
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));

@@ -199,8 +199,10 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient("StreamProxy")
             .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
             {
-                AllowAutoRedirect = true,
-                MaxAutomaticRedirections = 10,
+                // Redirects are followed by the proxy endpoint so it can
+                // distinguish a usable final response from an unresolved or
+                // looping redirect instead of returning a bare 3xx to HLS.js.
+                AllowAutoRedirect = false,
                 PooledConnectionLifetime = TimeSpan.FromMinutes(1),
                 PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30),
                 // SSRF guard: the stream proxy is reachable anonymously and fetches
