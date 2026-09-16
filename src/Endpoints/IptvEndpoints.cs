@@ -1674,7 +1674,8 @@ app.MapPost("/api/v1/stream/{channelId:int}/start", async (
     int channelId,
     IptvSourceService iptvService,
     FFmpegStreamService streamService,
-    ILogger<Program> logger) =>
+    ILogger<Program> logger,
+    bool normalize = false) =>
 {
     var channel = await iptvService.GetChannelByIdAsync(channelId);
     if (channel == null)
@@ -1687,7 +1688,8 @@ app.MapPost("/api/v1/stream/{channelId:int}/start", async (
     var result = await streamService.StartStreamAsync(
         channelId.ToString(),
         channel.StreamUrl,
-        "VLC/3.0.18 LibVLC/3.0.18");
+        "VLC/3.0.18 LibVLC/3.0.18",
+        normalize);
 
     if (!result.Success)
     {
