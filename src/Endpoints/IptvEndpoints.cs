@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Models.Requests;
 using Sportarr.Api.Services;
@@ -88,6 +89,18 @@ public static class IptvEndpoints
         }
 
         throw new InvalidOperationException("Stream redirect loop exceeded the configured limit.");
+    }
+
+    internal static async Task<string> ReadAndRewriteHlsPlaylistAsync(
+        HttpResponseMessage response,
+        Uri fallbackUri,
+        int? channelId,
+        ILogger? logger,
+        CancellationToken cancellationToken)
+    {
+        var playlistContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        var baseUri = response.RequestMessage?.RequestUri ?? fallbackUri;
+        return HlsRewriter.RewritePlaylist(playlistContent, baseUri, logger, channelId);
     }
 
     public static IEndpointRouteBuilder MapIptvEndpoints(this IEndpointRouteBuilder app)
@@ -1606,12 +1619,13 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
                 }
             }
 
-            var playlistContent = await response.Content.ReadAsStringAsync(context.RequestAborted);
-            logger.LogDebug("[StreamProxy] HLS playlist received, length: {Length}", playlistContent.Length);
-
-            // Rewrite segment URLs to go through our proxy
-            var baseUrl = effectiveUri;
-            var rewrittenPlaylist = Sportarr.Api.Helpers.HlsRewriter.RewritePlaylist(playlistContent, baseUrl, logger, channelId);
+            var rewrittenPlaylist = await ReadAndRewriteHlsPlaylistAsync(
+                response,
+                new Uri(channel.StreamUrl, UriKind.Absolute),
+                channelId,
+                logger,
+                context.RequestAborted);
+            logger.LogDebug("[StreamProxy] HLS playlist rewritten, length: {Length}", rewrittenPlaylist.Length);
 
             return Results.Content(rewrittenPlaylist, contentType);
         }
@@ -1700,11 +1714,36 @@ app.MapGet("/api/iptv/stream/url", async (
 
         context.Response.RegisterForDispose(response);
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var effectiveUri = response.RequestMessage?.RequestUri ?? new Uri(url, UriKind.Absolute);
+
+        if (contentType == "application/octet-stream")
+        {
+            var effectiveUrl = effectiveUri.ToString().ToLowerInvariant();
+            if (effectiveUrl.Contains(".m3u8") || effectiveUrl.Contains("m3u8"))
+                contentType = "application/vnd.apple.mpegurl";
+            else if (effectiveUrl.Contains(".ts"))
+                contentType = "video/mp2t";
+            else if (effectiveUrl.Contains(".mp4"))
+                contentType = "video/mp4";
+            else if (effectiveUrl.Contains(".flv"))
+                contentType = "video/x-flv";
+        }
 
         // Set CORS headers
         context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
         context.Response.Headers.Append("Access-Control-Allow-Methods", "GET, OPTIONS");
         context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
+
+        if (contentType == "application/vnd.apple.mpegurl" || contentType == "application/x-mpegURL")
+        {
+            var rewrittenPlaylist = await ReadAndRewriteHlsPlaylistAsync(
+                response,
+                new Uri(url, UriKind.Absolute),
+                channelId,
+                logger,
+                context.RequestAborted);
+            return Results.Content(rewrittenPlaylist, contentType);
+        }
 
         var stream = await response.Content.ReadAsStreamAsync(context.RequestAborted);
         return Results.Stream(stream, contentType);

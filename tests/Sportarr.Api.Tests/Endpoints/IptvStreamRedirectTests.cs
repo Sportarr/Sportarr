@@ -50,6 +50,83 @@ public class IptvStreamRedirectTests
     }
 
     [Fact]
+    public async Task RewritesRedirectedMasterAndVariantPlaylistsAgainstTheirUpstreamUris()
+    {
+        var requestedUris = new List<Uri>();
+        using var client = new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            requestedUris.Add(request.RequestUri!);
+            return requestedUris.Count switch
+            {
+                1 => new HttpResponseMessage(HttpStatusCode.Redirect)
+                {
+                    Headers = { Location = new Uri("https://cdn.example.net/live/master.m3u8") }
+                },
+                2 => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000\nvariants/high/index.m3u8\n")
+                    {
+                        Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.apple.mpegurl") }
+                    }
+                },
+                _ => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("#EXTM3U\n#EXTINF:2,\nsegments/segment001.ts\n")
+                    {
+                        Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.apple.mpegurl") }
+                    }
+                }
+            };
+        }));
+
+        var initialUri = new Uri("https://provider.example/start");
+        using var masterResponse = await IptvEndpoints.SendStreamRequestAsync(
+            client,
+            initialUri,
+            CancellationToken.None);
+
+        var master = await IptvEndpoints.ReadAndRewriteHlsPlaylistAsync(
+            masterResponse,
+            initialUri,
+            channelId: 24,
+            logger: null,
+            CancellationToken.None);
+
+        var variantProxyUrl = master
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Single(line => line.Contains("/api/iptv/stream/url?url=", StringComparison.Ordinal));
+        var variantUri = new Uri(Uri.UnescapeDataString(
+            variantProxyUrl[(variantProxyUrl.IndexOf("url=", StringComparison.Ordinal) + 4)..]
+                .Split('&')[0]));
+        variantUri.Should().Be(new Uri("https://cdn.example.net/live/variants/high/index.m3u8"));
+
+        using var variantResponse = await IptvEndpoints.SendStreamRequestAsync(
+            client,
+            variantUri,
+            CancellationToken.None);
+        var variant = await IptvEndpoints.ReadAndRewriteHlsPlaylistAsync(
+            variantResponse,
+            variantUri,
+            channelId: 24,
+            logger: null,
+            CancellationToken.None);
+
+        var segmentProxyUrl = variant
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Single(line => line.Contains("/api/iptv/stream/url?url=", StringComparison.Ordinal));
+        var segmentUri = new Uri(Uri.UnescapeDataString(
+            segmentProxyUrl[(segmentProxyUrl.IndexOf("url=", StringComparison.Ordinal) + 4)..]
+                .Split('&')[0]));
+
+        segmentUri.Should().Be(new Uri("https://cdn.example.net/live/variants/high/segments/segment001.ts"));
+        requestedUris.Should().Equal(
+            new Uri("https://provider.example/start"),
+            new Uri("https://cdn.example.net/live/master.m3u8"),
+            new Uri("https://cdn.example.net/live/variants/high/index.m3u8"));
+    }
+
+    [Fact]
     public async Task ChannelProbeFollowsRedirectsInsteadOfReportingFound()
     {
         var requests = new List<(HttpMethod Method, Uri Uri)>();
