@@ -375,7 +375,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<DiskSpaceService>();
         services.AddScoped<HealthCheckService>();
         services.AddScoped<BackupService>();
-        services.AddScoped<NotificationService>();
+        services.AddScoped<INotificationService, NotificationService>();
         // Singleton: holds the live SSE subscriber channels.
         services.AddSingleton<EventStreamService>();
         // Backup-restore reconciliation stack. PathRemap + LibraryRescan
