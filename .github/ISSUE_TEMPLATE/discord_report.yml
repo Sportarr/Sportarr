@@ -1,0 +1,56 @@
+name: Discord Report
+description: 'Use the same fields as a report submitted through Discord.'
+labels: ['needs-triage']
+body:
+- type: markdown
+  attributes:
+    value: |
+      Reports submitted through Discord use these same fields and receive the `source:discord` label automatically. If you already submitted a report in Discord, continue there instead of creating another issue here.
+
+      This repository is public. Everyone can read your report and attachments. Remove passwords, API keys, tokens, and other private information before submitting. Reports submitted directly here do not pass through the Discord bot's redaction checks.
+- type: dropdown
+  id: category
+  attributes:
+    label: Category
+    description: Choose the type of report.
+    options:
+      - Bug
+      - Feature Request
+      - Question
+  validations:
+    required: true
+- type: input
+  id: title
+  attributes:
+    label: Title
+    description: Summarize the report in one sentence. Use the same text for the issue title above.
+    placeholder: Recordings stop before the event finishes
+  validations:
+    required: true
+- type: textarea
+  id: what_happened
+  attributes:
+    label: What happened
+    description: Explain the problem and what you expected. For a feature or question, describe what you need.
+    placeholder: Describe what you saw, what you expected, and when it started.
+  validations:
+    required: true
+- type: textarea
+  id: steps_to_reproduce
+  attributes:
+    label: Steps to reproduce
+    description: List the steps that show the problem, if applicable.
+    placeholder: |
+      1. Open...
+      2. Select...
+      3. The problem appears when...
+  validations:
+    required: false
+- type: input
+  id: version_install_type
+  attributes:
+    label: Sportarr version and install type
+    description: Include the full version number and how Sportarr is installed.
+    placeholder: 4.x.x.x, Docker on Unraid
+  validations:
+    required: true
