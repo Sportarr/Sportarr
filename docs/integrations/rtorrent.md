@@ -6,7 +6,7 @@ Command-line torrent client, usually driven through ruTorrent or an XML-RPC endp
 |---|---|
 | Protocol | Torrent |
 | Default port | 8080 |
-| Authentication | Username and password when your web frontend requires them |
+| Authentication | Username and password with Basic or Digest authentication |
 
 ## Setup
 
@@ -16,5 +16,7 @@ Command-line torrent client, usually driven through ruTorrent or an XML-RPC endp
 4. Set **XML-RPC Path** to the endpoint path, not a full URL. Use `/RPC2` for a root endpoint or `/rutorrent/RPC2` for an endpoint under ruTorrent. A base path such as `/rutorrent` also works because Sportarr adds `/RPC2`. Leaving the field empty uses `/rutorrent/RPC2`
 5. Keep the category as `sportarr`
 6. **Test**, then **Save**
+
+If the test reports HTTP 401, check the XML-RPC username and password. Do not turn off SSL to fix an authentication error. If the certificate does not match, use the hostname on your provider's certificate instead of the server IP. An HTTP 400 response points to the XML-RPC path, hostname, or port.
 
 Post-import modes, per-indexer client pinning, and remote path mappings are shared across all clients and documented under [Download Clients](../features/download-clients.md).

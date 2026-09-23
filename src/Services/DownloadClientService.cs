@@ -337,12 +337,21 @@ public class DownloadClientService : IDownloadClientService
             _logger.LogInformation("[Download Client] Testing {Type} connection to {Host}:{Port}",
                 config.Type, config.Host, config.Port);
 
+            if (config.Type == DownloadClientType.RTorrent)
+            {
+                var result = await GetRTorrentClient(config).TestConnectionDetailedAsync(config);
+                if (result.Success)
+                    _logger.LogInformation("[Download Client] Connection test successful for {Name}", config.Name);
+                else
+                    _logger.LogWarning("[Download Client] Connection test failed for {Name}", config.Name);
+                return result;
+            }
+
             var success = config.Type switch
             {
                 DownloadClientType.QBittorrent => await TestQBittorrentAsync(config),
                 DownloadClientType.Transmission => await TestTransmissionAsync(config),
                 DownloadClientType.Deluge => await TestDelugeAsync(config),
-                DownloadClientType.RTorrent => await TestRTorrentAsync(config),
                 DownloadClientType.Sabnzbd => await TestSabnzbdAsync(config),
                 DownloadClientType.NzbGet => await TestNzbGetAsync(config),
                 DownloadClientType.Decypharr => await TestDecypharrAsync(config),
@@ -1049,12 +1058,6 @@ public class DownloadClientService : IDownloadClientService
     private async Task<bool> TestDelugeAsync(DownloadClient config)
     {
         var client = GetDelugeClient(config);
-        return await client.TestConnectionAsync(config);
-    }
-
-    private async Task<bool> TestRTorrentAsync(DownloadClient config)
-    {
-        var client = GetRTorrentClient(config);
         return await client.TestConnectionAsync(config);
     }
 

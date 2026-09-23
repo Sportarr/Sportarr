@@ -1,4 +1,6 @@
+using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Authentication;
 using System.Text;
 using System.Xml.Linq;
 using Sportarr.Api.Models;
@@ -56,18 +58,37 @@ public class RTorrentClient
     /// </summary>
     public async Task<bool> TestConnectionAsync(DownloadClient config)
     {
+        return (await TestConnectionDetailedAsync(config)).Success;
+    }
+
+    public async Task<(bool Success, string Message)> TestConnectionDetailedAsync(DownloadClient config)
+    {
         try
         {
-            // Test with system.client_version
-            var response = await SendXmlRpcRequestAsync(config, "system.client_version", Array.Empty<object>());
-            if (!Succeeded(response, "system.client_version")) return false;
+            var result = await SendXmlRpcRequestWithStatusAsync(config, "system.client_version", Array.Empty<object>());
+            if (result.StatusCode == HttpStatusCode.Unauthorized)
+                return (false, "rTorrent authentication failed (HTTP 401). Check the XML-RPC username and password.");
+            if (result.StatusCode == HttpStatusCode.BadRequest)
+                return (false, "rTorrent rejected the XML-RPC request (HTTP 400). Check XML-RPC Path, hostname, and port.");
+            if (result.Error is HttpRequestException { InnerException: AuthenticationException authError })
+            {
+                return authError.Message.Contains("RemoteCertificateNameMismatch", StringComparison.OrdinalIgnoreCase)
+                    ? (false, "TLS certificate does not match the host. Use the provider's hostname instead of its IP address.")
+                    : (false, "TLS connection failed. Check the HTTPS port and certificate for this host.");
+            }
+            if (result.Error != null)
+                return (false, "Could not reach rTorrent. Check the hostname, port, and network connection.");
+            if (result.StatusCode is { } status && status != HttpStatusCode.OK)
+                return (false, $"rTorrent returned HTTP {(int)status}. Check XML-RPC Path and the seedbox settings.");
+            if (!Succeeded(result.Body, "system.client_version"))
+                return (false, "The endpoint did not return an XML-RPC response. Check XML-RPC Path.");
 
             try
             {
-                var document = XDocument.Parse(response!);
+                var document = XDocument.Parse(result.Body!);
                 var value = document.Root?.Element("params")?.Element("param")?.Element("value");
                 if (document.Root?.Name == "methodResponse" && !string.IsNullOrWhiteSpace(value?.Value))
-                    return true;
+                    return (true, "Connection successful");
             }
             catch (System.Xml.XmlException)
             {
@@ -75,21 +96,12 @@ public class RTorrentClient
             }
 
             _logger.LogWarning("[rTorrent] Connection test returned an invalid XML-RPC response");
-            return false;
-        }
-        catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
-        {
-            _logger.LogError(ex,
-                "[rTorrent] SSL/TLS connection failed for {Host}:{Port}. " +
-                "This usually means SSL is enabled in Sportarr but the port is serving HTTP, not HTTPS. " +
-                "Please ensure HTTPS is enabled in rTorrent/ruTorrent settings, or disable SSL in Sportarr.",
-                config.Host, config.Port);
-            return false;
+            return (false, "The endpoint did not return an XML-RPC response. Check XML-RPC Path.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[rTorrent] Connection test failed");
-            return false;
+            return (false, "rTorrent connection test failed. Check the logs for details.");
         }
     }
 
@@ -584,7 +596,14 @@ public class RTorrentClient
         return $"{protocol}://{config.Host}:{config.Port}{rpcPath}";
     }
 
+    private sealed record XmlRpcRequestResult(string? Body, HttpStatusCode? StatusCode, Exception? Error = null);
+
     private async Task<string?> SendXmlRpcRequestAsync(DownloadClient config, string method, object[] parameters)
+    {
+        return (await SendXmlRpcRequestWithStatusAsync(config, method, parameters)).Body;
+    }
+
+    private async Task<XmlRpcRequestResult> SendXmlRpcRequestWithStatusAsync(DownloadClient config, string method, object[] parameters)
     {
         try
         {
@@ -595,7 +614,7 @@ public class RTorrentClient
             {
                 Content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml")
             };
-            if (!string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
+            if (config.UseSsl && !string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
             {
                 var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{config.Username}:{config.Password}"));
                 requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
@@ -605,17 +624,71 @@ public class RTorrentClient
 
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadAsStringAsync();
+                return new XmlRpcRequestResult(await response.Content.ReadAsStringAsync(), response.StatusCode);
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized &&
+                !string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
+            {
+                var configuredUri = new Uri(BuildRpcUrl(config));
+                var challengedUri = response.RequestMessage?.RequestUri;
+                if (challengedUri == null ||
+                    challengedUri.Scheme != configuredUri.Scheme ||
+                    challengedUri.Host != configuredUri.Host ||
+                    challengedUri.Port != configuredUri.Port)
+                {
+                    _logger.LogWarning("[rTorrent] Authentication challenge came from a different origin");
+                    return new XmlRpcRequestResult(null, response.StatusCode);
+                }
+
+                if (response.Headers.WwwAuthenticate.Any(challenge =>
+                    challenge.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase)))
+                    return await SendChallengedXmlRpcRequestAsync(config, challengedUri, xmlRequest, "Digest");
+
+                if (!config.UseSsl && response.Headers.WwwAuthenticate.Any(challenge =>
+                    challenge.Scheme.Equals("Basic", StringComparison.OrdinalIgnoreCase)))
+                    return await SendChallengedXmlRpcRequestAsync(config, challengedUri, xmlRequest, "Basic");
             }
 
             _logger.LogWarning("[rTorrent] XML-RPC request failed: {Status}", response.StatusCode);
-            return null;
+            return new XmlRpcRequestResult(null, response.StatusCode);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[rTorrent] XML-RPC request error");
-            return null;
+            return new XmlRpcRequestResult(null, null, ex);
         }
+    }
+
+    private async Task<XmlRpcRequestResult> SendChallengedXmlRpcRequestAsync(DownloadClient config, Uri uri, string xmlRequest, string scheme)
+    {
+        var credentials = new CredentialCache();
+        credentials.Add(uri, scheme, new NetworkCredential(config.Username, config.Password));
+        using var handler = new SocketsHttpHandler
+        {
+            Credentials = credentials,
+            AllowAutoRedirect = false,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+        };
+        if (config.UseSsl && config.DisableSslCertificateValidation)
+        {
+            handler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+            {
+                RemoteCertificateValidationCallback = (_, _, _, _) => true
+            };
+        }
+
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri)
+        {
+            Content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml")
+        };
+        using var response = await client.SendAsync(request);
+        if (response.IsSuccessStatusCode)
+            return new XmlRpcRequestResult(await response.Content.ReadAsStringAsync(), response.StatusCode);
+
+        _logger.LogWarning("[rTorrent] XML-RPC request failed after {Scheme} authentication: {Status}", scheme, response.StatusCode);
+        return new XmlRpcRequestResult(null, response.StatusCode);
     }
 
     private async Task<bool> ControlTorrentAsync(DownloadClient config, string method, string hash)
