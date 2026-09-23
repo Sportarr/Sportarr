@@ -41,10 +41,10 @@ public class ReleaseMatchScorer
         // USA circuits (F1, IndyCar, NASCAR, MotoGP)
         { "USA", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "Las Vegas", "Vegas", "Miami", "Miami Gardens", "Austin", "COTA", "Circuit of the Americas",
-              "Indianapolis", "Indy", "Daytona", "Laguna Seca", "Road America", "Watkins Glen", "Road Atlanta" } },
+              "Indianapolis", "Indy", "Daytona", "Laguna Seca", "Road America", "Watkins Glen", "Road Atlanta", "Portland" } },
         { "United States", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "Las Vegas", "Vegas", "Miami", "Miami Gardens", "Austin", "COTA", "Circuit of the Americas",
-              "Indianapolis", "Indy", "Daytona", "Laguna Seca", "Road America", "Watkins Glen", "Road Atlanta" } },
+              "Indianapolis", "Indy", "Daytona", "Laguna Seca", "Road America", "Watkins Glen", "Road Atlanta", "Portland" } },
 
         // Italy circuits (F1, MotoGP)
         { "Italy", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -54,18 +54,18 @@ public class ReleaseMatchScorer
 
         // Britain/UK circuits (F1, MotoGP, WEC)
         { "Britain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Silverstone", "Brands Hatch", "Donington" } },
+            { "Silverstone", "Brands Hatch", "Donington", "London", "ExCeL" } },
         { "British", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Silverstone", "Brands Hatch", "Donington" } },
+            { "Silverstone", "Brands Hatch", "Donington", "London", "ExCeL" } },
         { "UK", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Silverstone", "Brands Hatch", "Donington" } },
+            { "Silverstone", "Brands Hatch", "Donington", "London", "ExCeL" } },
         { "Great Britain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Silverstone", "Brands Hatch", "Donington" } },
+            { "Silverstone", "Brands Hatch", "Donington", "London", "ExCeL" } },
         // The metadata source names this round "United Kingdom" while
         // releases say "Great Britain", so the event's own location has to
         // be a key too, the same way USA and United States both are above.
         { "United Kingdom", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Silverstone", "Brands Hatch", "Donington" } },
+            { "Silverstone", "Brands Hatch", "Donington", "London", "ExCeL" } },
 
         // Spain circuits (F1, MotoGP)
         { "Spain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -75,9 +75,9 @@ public class ReleaseMatchScorer
 
         // Japan circuits (F1, MotoGP, WEC)
         { "Japan", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Suzuka", "Motegi", "Twin Ring", "Fuji" } },
+            { "Suzuka", "Motegi", "Twin Ring", "Fuji", "Tokyo" } },
         { "Japanese", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Suzuka", "Motegi", "Twin Ring", "Fuji" } },
+            { "Suzuka", "Motegi", "Twin Ring", "Fuji", "Tokyo" } },
 
         // Australia circuits (F1, MotoGP)
         { "Australia", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -87,9 +87,9 @@ public class ReleaseMatchScorer
 
         // China circuits (F1)
         { "China", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Shanghai" } },
+            { "Shanghai", "Sanya", "Haitang Bay" } },
         { "Chinese", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Shanghai" } },
+            { "Shanghai", "Sanya", "Haitang Bay" } },
 
         // Brazil circuits (F1, MotoGP)
         { "Brazil", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -151,9 +151,9 @@ public class ReleaseMatchScorer
 
         // Saudi Arabia circuits (F1)
         { "Saudi Arabia", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Jeddah" } },
+            { "Jeddah", "Diriyah" } },
         { "Saudi", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Jeddah" } },
+            { "Jeddah", "Diriyah" } },
 
         // UAE circuits (F1)
         { "UAE", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -187,9 +187,9 @@ public class ReleaseMatchScorer
 
         // Germany circuits (MotoGP)
         { "Germany", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Sachsenring", "Hockenheim", "Nurburgring" } },
+            { "Sachsenring", "Hockenheim", "Nurburgring", "Berlin" } },
         { "German", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Sachsenring", "Hockenheim", "Nurburgring" } },
+            { "Sachsenring", "Hockenheim", "Nurburgring", "Berlin" } },
 
         // Argentina circuits (MotoGP)
         { "Argentina", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -209,9 +209,9 @@ public class ReleaseMatchScorer
 
         // Indonesia circuits (MotoGP)
         { "Indonesia", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Mandalika", "Lombok" } },
+            { "Mandalika", "Lombok", "Jakarta" } },
         { "Indonesian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Mandalika", "Lombok" } },
+            { "Mandalika", "Lombok", "Jakarta" } },
 
         // India circuits (MotoGP)
         { "India", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -1378,23 +1378,23 @@ public class ReleaseMatchScorer
             { "Qatar", new[] { "Lusail", "Qatari" } },
             { "Brazil", new[] { "Brazilian", "Interlagos", "Sao Paulo" } },
             { "Mexico", new[] { "Mexican", "Mexico City" } },
-            { "China", new[] { "Chinese", "Shanghai" } },
-            { "USA", new[] { "United States", "American", "COTA", "Austin", "Circuit of the Americas" } },
+            { "China", new[] { "Chinese", "Shanghai", "Sanya", "Haitang Bay" } },
+            { "USA", new[] { "United States", "American", "COTA", "Austin", "Circuit of the Americas", "Portland" } },
             { "Las Vegas", new[] { "Vegas" } },
             { "Miami", new[] { "Miami Gardens" } },
             { "Abu Dhabi", new[] { "AbuDhabi", "Yas Marina" } },
             { "Monaco", new[] { "Monte Carlo", "Monegasque" } },
             { "Austria", new[] { "Austrian", "Spielberg", "Red Bull Ring" } },
-            { "Britain", new[] { "British", "Silverstone", "UK", "Great Britain", "United Kingdom" } },
-            { "United Kingdom", new[] { "British", "Britain", "Silverstone", "UK", "Great Britain" } },
+            { "Britain", new[] { "British", "Silverstone", "UK", "Great Britain", "United Kingdom", "London", "ExCeL" } },
+            { "United Kingdom", new[] { "British", "Britain", "Silverstone", "UK", "Great Britain", "London", "ExCeL" } },
             { "Italy", new[] { "Italian", "Monza", "Imola", "Mugello", "Misano" } },
             { "Belgium", new[] { "Belgian", "Spa", "Spa-Francorchamps" } },
-            { "Japan", new[] { "Japanese", "Suzuka", "Motegi", "Fuji" } },
+            { "Japan", new[] { "Japanese", "Suzuka", "Motegi", "Fuji", "Tokyo" } },
             { "Singapore", new[] { "Singaporean", "Marina Bay" } },
             { "Australia", new[] { "Australian", "Melbourne", "Albert Park", "Phillip Island" } },
             { "Canada", new[] { "Canadian", "Montreal" } },
             { "Azerbaijan", new[] { "Azerbaijani", "Baku" } },
-            { "Saudi Arabia", new[] { "Saudi", "Jeddah" } },
+            { "Saudi Arabia", new[] { "Saudi", "Jeddah", "Diriyah" } },
             { "Netherlands", new[] { "Dutch", "Zandvoort" } },
             { "Hungary", new[] { "Hungarian", "Budapest", "Hungaroring" } },
             { "Spain", new[] { "Spanish", "Barcelona", "Catalunya", "Jerez", "Valencia", "Aragon" } },
@@ -1402,10 +1402,10 @@ public class ReleaseMatchScorer
             { "Emilia Romagna", new[] { "Emilia-Romagna", "San Marino" } },
             { "Portugal", new[] { "Portuguese", "Portimao", "Algarve" } },
             { "France", new[] { "French", "Le Mans", "Paul Ricard" } },
-            { "Germany", new[] { "German", "Sachsenring", "Hockenheim", "Nurburgring" } },
+            { "Germany", new[] { "German", "Sachsenring", "Hockenheim", "Nurburgring", "Berlin" } },
             { "Malaysia", new[] { "Malaysian", "Sepang" } },
             { "Thailand", new[] { "Thai", "Buriram", "Chang" } },
-            { "Indonesia", new[] { "Indonesian", "Mandalika", "Lombok" } },
+            { "Indonesia", new[] { "Indonesian", "Mandalika", "Lombok", "Jakarta" } },
             { "India", new[] { "Indian", "Buddh" } },
             { "Argentina", new[] { "Termas de Rio Hondo" } },
             { "Kazakhstan", new[] { "Sokol" } },
