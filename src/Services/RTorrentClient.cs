@@ -14,8 +14,6 @@ public class RTorrentClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<RTorrentClient> _logger;
     private readonly Sportarr.Api.Services.Interfaces.IRemotePathMappingService? _pathMappingService;
-    private string? _baseUrl;
-    private string? _authCredentials;
     private HttpClient? _customHttpClient; // For SSL bypass
 
     public RTorrentClient(HttpClient httpClient, ILogger<RTorrentClient> logger,
@@ -60,11 +58,24 @@ public class RTorrentClient
     {
         try
         {
-            ConfigureClient(config);
-
             // Test with system.client_version
             var response = await SendXmlRpcRequestAsync(config, "system.client_version", Array.Empty<object>());
-            return Succeeded(response, "system.client_version");
+            if (!Succeeded(response, "system.client_version")) return false;
+
+            try
+            {
+                var document = XDocument.Parse(response!);
+                var value = document.Root?.Element("params")?.Element("param")?.Element("value");
+                if (document.Root?.Name == "methodResponse" && !string.IsNullOrWhiteSpace(value?.Value))
+                    return true;
+            }
+            catch (System.Xml.XmlException)
+            {
+                // A proxy can return HTTP 200 with a non-XML page.
+            }
+
+            _logger.LogWarning("[rTorrent] Connection test returned an invalid XML-RPC response");
+            return false;
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
         {
@@ -99,8 +110,6 @@ public class RTorrentClient
     {
         try
         {
-            ConfigureClient(config);
-
             var startStopped = config.InitialState == TorrentInitialState.Stopped;
 
             // Trailing d.*.set commands applied atomically at load time: label (rTorrent's
@@ -193,8 +202,6 @@ public class RTorrentClient
     {
         try
         {
-            ConfigureClient(config);
-
             // Use d.multicall2 to get all torrents with multiple fields
             var fields = new[] { "d.hash=", "d.name=", "d.size_bytes=", "d.completed_bytes=",
                                 "d.up.total=", "d.state=", "d.down.rate=", "d.up.rate=",
@@ -274,7 +281,6 @@ public class RTorrentClient
     {
         try
         {
-            ConfigureClient(config);
             var response = await SendXmlRpcRequestAsync(config, "d.priority.set", new object[] { hash, priority });
             return Succeeded(response, "d.priority.set");
         }
@@ -295,7 +301,6 @@ public class RTorrentClient
     {
         try
         {
-            ConfigureClient(config);
             var response = await SendXmlRpcRequestAsync(config, "d.custom1.set", new object[] { hash, category ?? string.Empty });
             return Succeeded(response, "d.custom1.set");
         }
@@ -468,8 +473,6 @@ public class RTorrentClient
     {
         try
         {
-            ConfigureClient(config);
-
             // Neither mode used to do what it says. "Leave the files" ran
             // d.close, which only stops the torrent and leaves it registered
             // in rTorrent forever. "Delete the files" ran d.erase, which
@@ -566,21 +569,19 @@ public class RTorrentClient
 
     // Private helper methods
 
-    private void ConfigureClient(DownloadClient config)
+    private static string BuildRpcUrl(DownloadClient config)
     {
         var protocol = config.UseSsl ? "https" : "http";
-        var urlBase = string.IsNullOrEmpty(config.UrlBase) ? "/rutorrent" : config.UrlBase;
+        var urlBase = string.IsNullOrWhiteSpace(config.UrlBase) ? "/rutorrent" : config.UrlBase.Trim();
 
         if (!urlBase.StartsWith("/"))
             urlBase = "/" + urlBase;
         urlBase = urlBase.TrimEnd('/');
 
-        _baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/RPC2";
-
-        if (!string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
-        {
-            _authCredentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{config.Username}:{config.Password}"));
-        }
+        var rpcPath = urlBase.EndsWith("/RPC2", StringComparison.OrdinalIgnoreCase)
+            ? urlBase
+            : $"{urlBase}/RPC2";
+        return $"{protocol}://{config.Host}:{config.Port}{rpcPath}";
     }
 
     private async Task<string?> SendXmlRpcRequestAsync(DownloadClient config, string method, object[] parameters)
@@ -590,12 +591,15 @@ public class RTorrentClient
             var client = GetHttpClient(config);
             var xmlRequest = BuildXmlRpcRequest(method, parameters);
 
-            var requestMessage = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, BuildRpcUrl(config))
             {
                 Content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml")
             };
-            if (!string.IsNullOrEmpty(_authCredentials))
-                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
+            if (!string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
+            {
+                var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{config.Username}:{config.Password}"));
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            }
 
             using var response = await client.SendAsync(requestMessage);
 
@@ -618,7 +622,6 @@ public class RTorrentClient
     {
         try
         {
-            ConfigureClient(config);
             var response = await SendXmlRpcRequestAsync(config, method, new object[] { hash });
             return Succeeded(response, method);
         }

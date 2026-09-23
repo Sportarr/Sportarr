@@ -100,7 +100,6 @@ const isBlackholeType = (type: number | undefined): boolean => type === 10 || ty
 // Determine protocol based on type
 const getProtocol = (type: number): 'usenet' | 'torrent' => {
   const protocol = (type === 5 || type === 6 || type === 8 || type === 9 || type === 11 || type === 14) ? 'usenet' : 'torrent';
-  console.log(`[DEBUG] getProtocol: type=${type}, protocol=${protocol}, type===5: ${type === 5}, type===6: ${type === 6}, type===8: ${type === 8}, type===9: ${type === 9}`);
   return protocol;
 };
 
@@ -297,10 +296,6 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     try {
       setIsLoading(true);
       const response = await apiClient.get('/downloadclient');
-      console.log('[DEBUG] Loaded download clients from API:', response.data);
-      response.data.forEach((client: any) => {
-        console.log(`[DEBUG] Client: ${client.name}, Type: ${client.type}, Protocol: ${getProtocol(client.type)}, UrlBase: ${client.urlBase}`);
-      });
       setDownloadClients(response.data);
     } catch (error) {
       console.error('Failed to load download clients:', error);
@@ -586,9 +581,6 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
 
     try {
       setIsLoading(true);
-      console.log('[DEBUG] Saving download client with data:', formData);
-      console.log('[DEBUG] UrlBase value being saved:', formData.urlBase);
-
       if (editingClient) {
         // Update existing
         await apiClient.put(`/downloadclient/${editingClient.id}`, formData);
@@ -617,9 +609,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         tags: []
       });
     } catch (error) {
-      console.error('Failed to save download client:', error);
       toast.error('Save Failed', {
-        description: 'Failed to save download client. Please check the console for details.',
+        description: 'Failed to save download client. Please try again.',
       });
     } finally {
       setIsLoading(false);
@@ -627,11 +618,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   };
 
   const handleEditClient = (client: DownloadClient) => {
-    console.log('[DEBUG] Editing client:', client);
-    console.log('[DEBUG] Client urlBase:', client.urlBase);
     setEditingClient(client);
     setFormData(client);
-    console.log('[DEBUG] FormData after setFormData:', client);
     setTestResult(null);
     const clientName = clientTypeNameMap[client.type];
     const template = downloadClientTemplates.find(t => t.implementation === clientName);
@@ -682,7 +670,6 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         }
       }
     } catch (error: any) {
-      console.error('Test failed:', error);
       const result = { success: false, message: error.response?.data?.message || 'Connection test failed!' };
       setTestResult(result);
 
@@ -1510,7 +1497,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
 
                     {selectedTemplate?.fields.includes('urlBase') && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">URL Base</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          {selectedTemplate.name === 'rTorrent' ? 'XML-RPC Path' : 'URL Base'}
+                        </label>
                         <input
                           type="text"
                           value={formData.urlBase || ''}
@@ -1521,7 +1510,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                             selectedTemplate.name === 'NZBGet' ? 'Leave empty for default (root)' :
                             selectedTemplate.name === 'Transmission' ? '/transmission' :
                             selectedTemplate.name === 'Deluge' ? 'Leave empty for default (root)' :
-                            selectedTemplate.name === 'rTorrent' ? '/rutorrent' :
+                            selectedTemplate.name === 'rTorrent' ? '/RPC2 or /rutorrent/RPC2' :
                             selectedTemplate.name === 'qBittorrent' ? 'Leave empty for default (root)' :
                             selectedTemplate.name === 'DecypharrUsenet' ? '/sabnzbd' :
                             selectedTemplate.name === 'Decypharr' ? 'Leave empty for default (root)' :
@@ -1534,7 +1523,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           {selectedTemplate.name === 'qBittorrent' && 'URL path prefix for qBittorrent Web UI. Default is root (leave empty). Set only if configured in qBittorrent settings.'}
                           {selectedTemplate.name === 'Transmission' && 'RPC URL path for Transmission. Default is /transmission. Leave empty only if you changed it in Transmission settings.'}
                           {selectedTemplate.name === 'Deluge' && 'Base URL for Deluge web interface. Default is root (leave empty). Use /deluge only if configured in Deluge settings.'}
-                          {selectedTemplate.name === 'rTorrent' && 'URL base for ruTorrent web interface. Default is /rutorrent. Leave empty only if you changed it in ruTorrent settings.'}
+                          {selectedTemplate.name === 'rTorrent' && 'Enter the path only, not the full URL. Paths ending in /RPC2 are used as entered. Other paths get /RPC2 added. Leave empty to use /rutorrent/RPC2.'}
                           {selectedTemplate.name === 'Vuze' && 'URL base for Vuze web interface. Default is root (leave empty).'}
                           {selectedTemplate.name === 'Decypharr' && 'URL base for Decypharr. Default is root (leave empty unless behind a reverse proxy).'}
                           {selectedTemplate.name === 'DecypharrUsenet' && 'URL base for Decypharr usenet mode. Typically /sabnzbd since Decypharr emulates the SABnzbd API.'}
