@@ -1201,6 +1201,7 @@ public class DvrRecordingResponse
     public string? LeagueName { get; set; }
     public int ChannelId { get; set; }
     public string ChannelName { get; set; } = string.Empty;
+    public List<int> FallbackChannelIds { get; set; } = new();
     public string Title { get; set; } = string.Empty;
     public DateTime ScheduledStart { get; set; }
     public DateTime ScheduledEnd { get; set; }
@@ -1245,6 +1246,7 @@ public class DvrRecordingResponse
             LeagueName = recording.Event?.League?.Name,
             ChannelId = recording.ChannelId,
             ChannelName = recording.Channel?.Name ?? string.Empty,
+            FallbackChannelIds = SafeFallbackIds(recording.FallbackChannelIds),
             Title = recording.Title,
             ScheduledStart = recording.ScheduledStart,
             ScheduledEnd = recording.ScheduledEnd,
@@ -1270,6 +1272,20 @@ public class DvrRecordingResponse
             Method = recording.Method,
             Created = recording.Created
         };
+    }
+
+    private static List<int> SafeFallbackIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new List<int>();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<int>>(json) ?? new List<int>();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return new List<int>();
+        }
     }
 }
 

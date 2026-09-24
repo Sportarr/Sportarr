@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
@@ -196,6 +197,25 @@ app.MapPut("/api/dvr/recordings/{id:int}", async (int id, ScheduleDvrRecordingRe
         return Results.BadRequest(new { error = ex.Message });
     }
 }).WithRequestValidation<ScheduleDvrRecordingRequest>();
+
+app.MapPatch("/api/dvr/recordings/{id:int}/assignment", async (
+    int id, DvrAssignmentPatchRequest request, [FromServices] DvrAssignmentService assignmentService,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await assignmentService.UpdateAsync(id, request, cancellationToken);
+        return result == null ? Results.NotFound() : Results.Ok(result);
+    }
+    catch (DvrAssignmentConflictException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+}).WithRequestValidation<DvrAssignmentPatchRequest>();
 
 // Delete a recording (defaults to deleting the file on disk too)
 app.MapDelete("/api/dvr/recordings/{id:int}", async (int id, DvrRecordingService dvrService, bool? deleteFile) =>

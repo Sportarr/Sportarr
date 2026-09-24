@@ -461,6 +461,7 @@ public static class ServiceCollectionExtensions
         // the proxy/HDHomeRun path.
         services.AddSingleton<StreamSessionTracker>();
         services.AddScoped<DvrRecordingService>();
+        services.AddScoped<DvrAssignmentService>();
         services.AddSingleton<DvrEarlyFinishGuard>();
         services.AddScoped<EventDvrService>();
         services.AddScoped<DvrQualityScoreCalculator>();

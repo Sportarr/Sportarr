@@ -40,6 +40,36 @@ Check `appName` to confirm you are talking to Sportarr, and compare the
 version against the minimum your integration requires. Versions are numeric
 dot-separated segments; compare segment-wise.
 
+## Scheduled DVR assignments
+
+`PATCH /api/dvr/recordings/{id}/assignment` changes only the fields included
+in the JSON body of a scheduled recording. Use `expectedChannelId` to reject
+a stale channel choice instead of overwriting a newer assignment.
+
+```json
+{
+  "expectedChannelId": 12,
+  "channelId": 14,
+  "fallbackChannelIds": [16, 18],
+  "scheduledStart": "2027-01-01T18:00:00Z",
+  "scheduledEnd": "2027-01-01T21:00:00Z",
+  "quality": "HDTV-1080p"
+}
+```
+
+All fields are optional. Omitted fields keep their current values. Send
+`"fallbackChannelIds": []` to clear the fallback list. The normal recording
+response also includes `fallbackChannelIds`, even when the list is empty.
+Times are stored in UTC. The start must precede the end, and a live recording
+cannot be moved into a window that has already ended. Every assigned channel
+must be enabled and belong to an active source. Catchup assignments also
+require archive-capable Xtream channels.
+
+The response includes `recordingId`, `previous`, and `current` assignment
+objects. A successful update returns 200. Invalid assignments return 400,
+unknown recordings return 404, and stale or non-scheduled recordings return
+409. No assignment fields change on a rejected request.
+
 ## Download completion notifications
 
 `POST /api/download/completed` requests a check of tracked downloads when a

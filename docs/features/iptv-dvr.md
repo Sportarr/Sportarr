@@ -32,6 +32,11 @@ Sportarr includes experimental support for recording live sports events directly
 
 5. When you monitor an event whose league has a mapped channel, a recording is scheduled automatically.
 
+External tools can change a scheduled recording's channel, fallback channels,
+time window, or quality through the [assignment API](../APPLICATION_API.md#scheduled-dvr-assignments).
+The update leaves other recording fields intact. Send `expectedChannelId` to
+reject a stale channel choice.
+
 !!! tip "Keeping a league off DVR"
     Each league has an **Automatic DVR scheduling** toggle, available as an **Enable IPTV DVR** checkbox when adding the league and as its own toggle on the league detail page (DVR section) afterward. Turn it off to keep a league on indexer downloads only; the auto-scheduler will never resolve a channel or schedule recordings for it, including through EPG/broadcaster matching with no channel manually mapped, while manual recordings still work. This is what lets you run, say, Formula 1 through indexers only while recording football over IPTV.
 
