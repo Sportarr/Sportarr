@@ -1082,7 +1082,8 @@ public class TaskService : ITaskService
         using var scope = _scopeFactory.CreateScope();
         var importService = scope.ServiceProvider.GetRequiredService<LibraryImportService>();
 
-        var result = await importService.ScanFolderAsync(folderPath, includeSubfolders, onProgress);
+        var result = await importService.ScanFolderAsync(
+            folderPath, includeSubfolders, onProgress, includeIgnoredFiles: true);
 
         // Same rationale as LibraryImportAsync above: the result column
         // carries the same LibraryScanResult shape the old inline response

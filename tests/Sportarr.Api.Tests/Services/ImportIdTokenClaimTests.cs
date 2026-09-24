@@ -121,6 +121,72 @@ public class ImportIdTokenClaimTests : IDisposable
         match.MatchConfidence.Should().Be(100);
         result.UnmatchedFiles.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task ManualScanShowsFilePreviouslyIgnoredByAutomaticImport()
+    {
+        var (filed, _) = Seed(filedHasFile: false);
+        var path = WriteFile("NFL - S2025E06 - Some Copy - sportarr-ev-312923.mkv");
+        _db.Blocklist.Add(new BlocklistItem
+        {
+            Title = "Rejected automatic import",
+            FilePath = path,
+            Reason = BlocklistReason.ManualBlock
+        });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.ScanFolderAsync(
+            _tempDir, includeSubfolders: false, includeIgnoredFiles: true);
+
+        result.TotalFiles.Should().Be(1);
+        result.MatchedFiles.Should().ContainSingle()
+            .Which.MatchedEventId.Should().Be(filed.Id);
+        result.UnmatchedFiles.Should().BeEmpty();
+        result.AlreadyInLibrary.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AutomaticScanStillSkipsIgnoredFile()
+    {
+        Seed(filedHasFile: false);
+        var path = WriteFile("NFL - S2025E06 - Some Copy - sportarr-ev-312923.mkv");
+        _db.Blocklist.Add(new BlocklistItem
+        {
+            Title = "Rejected automatic import",
+            FilePath = path,
+            Reason = BlocklistReason.ManualBlock
+        });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false);
+
+        result.MatchedFiles.Should().BeEmpty();
+        result.UnmatchedFiles.Should().BeEmpty();
+        result.AlreadyInLibrary.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ManualScanShowsTrackedFileEvenWhenItsPathWasIgnored()
+    {
+        var (filed, _) = Seed(filedHasFile: true);
+        var path = WriteFile("NFL - S2025E06 - Some Copy - sportarr-ev-312923.mkv");
+        filed.FilePath = path;
+        _db.Blocklist.Add(new BlocklistItem
+        {
+            Title = "Rejected automatic import",
+            FilePath = path,
+            Reason = BlocklistReason.ManualBlock
+        });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.ScanFolderAsync(
+            _tempDir, includeSubfolders: false, includeIgnoredFiles: true);
+
+        result.AlreadyInLibrary.Should().ContainSingle()
+            .Which.ExistingEventId.Should().Be(filed.Id);
+        result.MatchedFiles.Should().BeEmpty();
+        result.UnmatchedFiles.Should().BeEmpty();
+    }
 }
 
 /// <summary>

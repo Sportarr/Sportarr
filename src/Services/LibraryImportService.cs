@@ -69,7 +69,11 @@ public class LibraryImportService
     /// <summary>
     /// Scan a folder for video files
     /// </summary>
-    public async Task<LibraryScanResult> ScanFolderAsync(string folderPath, bool includeSubfolders = true, Func<int, int, Task>? onProgress = null)
+    public async Task<LibraryScanResult> ScanFolderAsync(
+        string folderPath,
+        bool includeSubfolders = true,
+        Func<int, int, Task>? onProgress = null,
+        bool includeIgnoredFiles = false)
     {
         var result = new LibraryScanResult
         {
@@ -102,16 +106,17 @@ public class LibraryImportService
 
             result.TotalFiles = files.Count;
 
-            // User-ignored files: rejecting a pending import blocklists the
-            // file's path. Scans skip those entirely so an ignored file
-            // doesn't resurface as matched/unmatched on every rescan
-            // (DiskScanService and the file watcher apply the same rule).
-            var ignoredPaths = new HashSet<string>(
-                await _db.Blocklist
-                    .Where(b => b.FilePath != null)
-                    .Select(b => b.FilePath!)
-                    .ToListAsync(),
-                StringComparer.OrdinalIgnoreCase);
+            // Manual review may reconsider a file that automatic scans ignore.
+            HashSet<string>? ignoredPaths = null;
+            if (!includeIgnoredFiles)
+            {
+                ignoredPaths = new HashSet<string>(
+                    await _db.Blocklist
+                        .Where(b => b.FilePath != null)
+                        .Select(b => b.FilePath!)
+                        .ToListAsync(),
+                    StringComparer.OrdinalIgnoreCase);
+            }
 
             // Preload every Event/EventFile whose FilePath falls under this scanned
             // folder in two queries total, instead of two FirstOrDefaultAsync calls
@@ -140,7 +145,7 @@ public class LibraryImportService
             var processedFileCount = 0;
             foreach (var filePath in files)
             {
-                if (ignoredPaths.Contains(filePath))
+                if (ignoredPaths?.Contains(filePath) == true)
                 {
                     continue;
                 }
