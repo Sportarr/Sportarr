@@ -1989,67 +1989,6 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not clean up incomplete tasks: {ex.Message}");
         }
 
-        // Recover downloads stranded in the "Importing" state.
-        // The import sets Status = Importing and commits it before moving the
-        // file; the terminal Imported (or Failed) status is only written once the
-        // import finishes. If the process is killed in between — a crash, or the
-        // user restarting the container/host mid-import — the row is left at
-        // Importing forever. Nothing in the monitor's poll loop transitions a row
-        // OUT of Importing, so the "Importing to library..." badge sticks for days
-        // and the activity count never drops. On boot, reconcile each stranded
-        // row: if the event already has a file on disk the import effectively
-        // finished, so mark it Imported; otherwise hand it back to the monitor as
-        // Completed so the (idempotent) import is retried.
-        try
-        {
-            var stuckImports = await db.DownloadQueue
-                .Where(d => d.Status == DownloadStatus.Importing)
-                .ToListAsync();
-
-            if (stuckImports.Count > 0)
-            {
-                Console.WriteLine($"[Sportarr] Found {stuckImports.Count} download(s) stranded in 'Importing' from a previous session - recovering...");
-                foreach (var item in stuckImports)
-                {
-                    // The evidence has to be the file this download was importing,
-                    // not any file the event happens to own. Two cases made the
-                    // looser check finalise an import that never happened. An
-                    // upgrade deletes the old file from disk before it transfers
-                    // the new one and only drops the old row afterwards, so a
-                    // crash in between leaves a row describing a file that is
-                    // gone. And on a multi-part event one finished part answered
-                    // for every other part. Both stranded the download for good,
-                    // because nothing moves a row out of Imported.
-                    var partFiles = await db.EventFiles
-                        .Where(f => f.EventId == item.EventId && f.Exists)
-                        .ToListAsync();
-
-                    var importedFile = partFiles.FirstOrDefault(f =>
-                        string.Equals(f.PartName, item.Part, StringComparison.OrdinalIgnoreCase) &&
-                        !string.IsNullOrEmpty(f.FilePath) &&
-                        File.Exists(f.FilePath));
-
-                    if (importedFile != null)
-                    {
-                        item.Status = DownloadStatus.Imported;
-                        item.ImportedAt ??= DateTime.UtcNow;
-                    }
-                    else
-                    {
-                        // Hand it back to the monitor. The import is idempotent,
-                        // so a retry either completes it or fails visibly.
-                        item.Status = DownloadStatus.Completed;
-                    }
-                }
-                await db.SaveChangesAsync();
-                Console.WriteLine($"[Sportarr] Recovered {stuckImports.Count} stranded import(s)");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Sportarr] Warning: Could not recover stranded imports: {ex.Message}");
-        }
-
         // Drop the retired Event Mapping tables. The feature (Sportarr-API powered
         // release-name matching) was removed; these tables are no longer referenced
         // by any model, service, or endpoint. SQLite DROP TABLE IF EXISTS is a no-op
@@ -2064,6 +2003,42 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not drop retired Event Mapping tables: {ex.Message}");
         }
         } // end: if (!db.Database.IsNpgsql()) - SQLite schema drift repairs/backfills
+
+        // Recover imports on both database providers. A file from an older
+        // download does not prove that this import finished.
+        try
+        {
+            var stuckImports = await db.DownloadQueue
+                .Where(item => item.Status == DownloadStatus.Importing)
+                .ToListAsync();
+            foreach (var item in stuckImports)
+            {
+                var files = await db.EventFiles
+                    .Where(file => file.EventId == item.EventId && file.Exists)
+                    .ToListAsync();
+                var histories = await db.ImportHistories
+                    .Where(history => history.DownloadQueueItemId == item.Id)
+                    .ToListAsync();
+                if (InterruptedImportRecovery.HasCompletedImport(item, files, histories))
+                {
+                    item.Status = DownloadStatus.Imported;
+                    item.ImportedAt ??= DateTime.UtcNow;
+                }
+                else
+                {
+                    item.Status = DownloadStatus.Completed;
+                }
+            }
+            if (stuckImports.Count > 0)
+            {
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[Sportarr] Recovered {stuckImports.Count} interrupted import(s)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not recover interrupted imports: {ex.Message}");
+        }
 
         // Bring league sports onto the hub's canonical names first, so the
         // event alignment below inherits them. The hub treats Combat as the

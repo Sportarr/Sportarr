@@ -68,6 +68,7 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
         dq.Downloaded,
         dq.Progress,
         CanRetryImport = PackImportBoundary.CanRetryImport(dq),
+        CanImportAnyway = ManualQueueImportPolicy.CanImportAnyway(dq),
         dq.TimeRemaining,
         dq.ErrorMessage,
         dq.StatusMessages,
@@ -160,6 +161,7 @@ app.MapGet("/api/queue/{id:int}", async (int id, SportarrDbContext db) =>
         dq.Downloaded,
         dq.Progress,
         CanRetryImport = PackImportBoundary.CanRetryImport(dq),
+        CanImportAnyway = ManualQueueImportPolicy.CanImportAnyway(dq),
         dq.TimeRemaining,
         dq.ErrorMessage,
         dq.StatusMessages,
@@ -282,6 +284,8 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, F
         return Results.BadRequest(new { error = ex.Message });
     }
 });
+
+app.MapManualQueueImportEndpoint();
 
 // API: Queue Operations - Retry Import (for failed imports)
 app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger, IServiceProvider services, DownloadClientService downloadClientService) =>
@@ -880,6 +884,65 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
         })
     });
 });
+
+        return app;
+    }
+
+    public static IEndpointRouteBuilder MapManualQueueImportEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/api/queue/{id:int}/import-anyway", async (
+            int id, SportarrDbContext db, FileImportService fileImportService, DownloadClientService downloadClientService,
+            DownloadOwnershipCoordinator coordinator, IServiceProvider services, ILogger<Program> logger) =>
+        {
+            var item = await db.DownloadQueue
+                .Include(dq => dq.Event)
+                .Include(dq => dq.DownloadClient)
+                .FirstOrDefaultAsync(dq => dq.Id == id);
+
+            if (item is null) return Results.NotFound();
+            if (!ManualQueueImportPolicy.CanImportAnyway(item))
+                return Results.BadRequest(new { error = "Only a completed download held by a quality, revision, or custom format warning can be imported this way." });
+            if (item.DownloadClient is null)
+                return Results.BadRequest(new { error = "The download client is no longer available." });
+
+            using var decision = coordinator.TryEnterExternalDecision(item.DownloadClientId, item.DownloadId);
+            if (decision is null)
+                return Results.Conflict(new { error = "This download is already being processed. Try again shortly." });
+
+            var clientStatus = await downloadClientService.GetDownloadStatusAsync(item.DownloadClient, item.DownloadId, item.GrabCategory);
+            if (clientStatus is not null && !ManualQueueImportPolicy.IsCompletedClientStatus(clientStatus))
+                return Results.BadRequest(new { error = "The download client no longer reports this download as complete." });
+            if (clientStatus is null && string.IsNullOrWhiteSpace(item.OutputPath))
+                return Results.BadRequest(new { error = "The download is no longer in the client and its saved path is unavailable." });
+
+            if (!await ManualQueueImportPolicy.TryClaimAsync(db, id))
+                return Results.Conflict(new { error = "This download was already claimed or changed. Refresh the queue and try again." });
+            await db.Entry(item).ReloadAsync();
+
+            try
+            {
+                var result = item.IsPack
+                    ? await fileImportService.ImportCompletedPackAsync(item,
+                        () => new CompletedDownloadCleanup(services, logger).RunAsync(item, downloadClientService, db),
+                        allowPreferenceOverride: true, allowSavedPath: true)
+                    : await fileImportService.ImportDownloadAsync(item, allowPreferenceOverride: true, allowSavedPath: true);
+                if (result is null) ManualQueueImportPolicy.MarkIncompleteImport(item);
+                await db.SaveChangesAsync();
+
+                if (result is null)
+                    return Results.BadRequest(new { error = item.ErrorMessage ?? "Import was rejected" });
+
+                return Results.Ok(new { item.Id, item.Status });
+            }
+            catch (Exception ex)
+            {
+                item.Status = DownloadStatus.Failed;
+                item.ErrorMessage = $"Import failed: {ex.Message}";
+                await db.SaveChangesAsync();
+                logger.LogError(ex, "[QUEUE] Manual import failed for queue item {Id}", item.Id);
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
 
         return app;
     }

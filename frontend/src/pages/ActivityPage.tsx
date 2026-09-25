@@ -18,6 +18,7 @@ import {
   EyeIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
+import ConfirmationModal from '../components/ConfirmationModal';
 import ManualImportModal from '../components/ManualImportModal';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
@@ -60,6 +61,7 @@ interface QueueItem {
   downloaded: number;
   progress: number;
   canRetryImport: boolean;
+  canImportAnyway?: boolean;
   timeRemaining?: string;
   errorMessage?: string;
   statusMessages?: string[]; // Status messages (warnings, errors)
@@ -84,6 +86,20 @@ interface ColumnVisibility {
   client: boolean;
   added: boolean;
   actions: boolean;
+}
+
+interface ExistingEventFile {
+  quality: string;
+  customFormatScore: number;
+  partName?: string | null;
+}
+
+interface ManualImportDialog {
+  items: QueueItem[];
+  existingFiles: Record<number, ExistingEventFile[]>;
+  loading: boolean;
+  loadError?: boolean;
+  error?: string;
 }
 
 interface HistoryItem {
@@ -277,6 +293,11 @@ export default function ActivityPage() {
   const [isLoading, setIsLoading] = useState(true); // Only true for initial load
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [removeQueueDialog, setRemoveQueueDialog] = useState<RemoveQueueDialog | null>(null);
+  const [manualImportDialog, setManualImportDialog] = useState<ManualImportDialog | null>(null);
+  const lastManualImportDialog = React.useRef<ManualImportDialog | null>(null);
+  if (manualImportDialog) lastManualImportDialog.current = manualImportDialog;
+  const shownManualImportDialog = manualImportDialog ?? lastManualImportDialog.current;
+  const [manualImportBusy, setManualImportBusy] = useState(false);
   const [removeHistoryDialog, setRemoveHistoryDialog] = useState<RemoveHistoryDialog | null>(null);
   const [removeBlocklistDialog, setRemoveBlocklistDialog] = useState<RemoveBlocklistDialog | null>(null);
   const [selectedBlocklistIds, setSelectedBlocklistIds] = useState<Set<number>>(new Set());
@@ -711,6 +732,43 @@ export default function ActivityPage() {
       loadQueue();
     } catch (error) {
       console.error('Bulk import failed:', error);
+    }
+  };
+
+  const openManualImportDialog = async (item: QueueItem) => {
+    const items = [item];
+    setManualImportDialog({ items, existingFiles: {}, loading: true });
+    try {
+      const eventIds = [...new Set(items.map(item => item.eventId))];
+      const results = await Promise.all(eventIds.map(async eventId => {
+        const response = await apiClient.get<ExistingEventFile[]>(`/events/${eventId}/files`);
+        return [eventId, response.data] as const;
+      }));
+      setManualImportDialog(current => current?.items === items
+        ? { ...current, existingFiles: Object.fromEntries(results), loading: false }
+        : current);
+    } catch {
+      setManualImportDialog(current => current?.items === items
+        ? { ...current, loading: false, loadError: true, error: 'Could not load the current files. Close this window and try again.' }
+        : current);
+    }
+  };
+
+  const confirmManualImport = async () => {
+    if (!manualImportDialog || manualImportDialog.loading || manualImportBusy || manualImportDialog.loadError) return;
+    setManualImportBusy(true);
+    const item = manualImportDialog.items[0];
+    try {
+      await apiClient.post(`/queue/${item.id}/import-anyway`);
+      loadQueue();
+      setManualImportDialog(null);
+    } catch (error: any) {
+      loadQueue();
+      setManualImportDialog(current => current
+        ? { ...current, error: error.response?.data?.error || 'Import failed. Try again.' }
+        : current);
+    } finally {
+      setManualImportBusy(false);
     }
   };
 
@@ -1236,12 +1294,13 @@ export default function ActivityPage() {
     totalSelected > 0 &&
     selectedPendingIds.size === 0 &&
     selectedQueueItems.length === selectedQueueIds.size &&
-    selectedQueueItems.every(isQueueRowImportable);
+    selectedQueueItems.every(item => !item.canImportAnyway && isQueueRowImportable(item));
 
   const bulkImportDisabledReason = (() => {
     if (totalSelected === 0) return 'Select rows to import';
     if (selectedPendingIds.size > 0) return 'Pending imports require per-item event mapping; remove them from the selection or open them individually';
-    if (!selectedQueueItems.every(isQueueRowImportable)) return 'One or more selected items are still downloading or already imported';
+    if (selectedQueueItems.some(item => item.canImportAnyway)) return 'Import Anyway needs confirmation for each download. Open each row individually';
+    if (!selectedQueueItems.every(isQueueRowImportable)) return 'One or more selected items cannot be imported yet. Check each row for the reason';
     return '';
   })();
 
@@ -1366,6 +1425,7 @@ export default function ActivityPage() {
         // Show import button for Warning (5) or Completed (3) status when unmonitored
         const canImport = isUnmonitored && (item.status === 5 || item.status === 3);
         const canRetryImport = item.canRetryImport === true;
+        const canImportAnyway = item.canImportAnyway === true;
         return (
           <td key="actions" className="px-2 py-1.5">
             <div className="flex items-center justify-end gap-1">
@@ -1376,6 +1436,16 @@ export default function ActivityPage() {
                   title="Retry Import"
                 >
                   <ArrowPathIcon className="w-4 h-4" />
+                </button>
+              )}
+              {canImportAnyway && (
+                <button
+                  onClick={() => openManualImportDialog(item)}
+                  className={BUTTON_ICON_WARNING}
+                  title="Import Anyway"
+                  aria-label="Import Anyway"
+                >
+                  <DocumentCheckIcon className="w-4 h-4" />
                 </button>
               )}
               {/* Show Import/Delete buttons for unmonitored downloads (Sonarr-style) */}
@@ -1982,6 +2052,7 @@ export default function ActivityPage() {
                     const isUnmonitored = item.statusMessages?.some(msg => msg.includes('no longer monitored'));
                     const canImportCard = isUnmonitored && (item.status === 5 || item.status === 3);
                     const canRetryImportCard = item.canRetryImport === true;
+                    const canImportAnywayCard = item.canImportAnyway === true;
                     return (
                       <div
                         key={item.id}
@@ -2044,6 +2115,12 @@ export default function ActivityPage() {
                               <button onClick={() => handleRetryImport(item)} className={BUTTON_WARNING}>
                                 <ArrowPathIcon className="w-4 h-4" />
                                 Retry Import
+                              </button>
+                            )}
+                            {canImportAnywayCard && (
+                              <button onClick={() => openManualImportDialog(item)} className={BUTTON_WARNING}>
+                                <DocumentCheckIcon className="w-4 h-4" />
+                                Import Anyway
                               </button>
                             )}
                             {canImportCard && (
@@ -2656,6 +2733,38 @@ export default function ActivityPage() {
             )}
           </div>
         )}
+
+        <ConfirmationModal
+          isOpen={manualImportDialog !== null}
+          onClose={() => { if (!manualImportBusy) setManualImportDialog(null); }}
+          onConfirm={confirmManualImport}
+          title="Import this download?"
+          message={shownManualImportDialog && (
+            <div className="space-y-3">
+              <p>This choice bypasses quality and custom format preferences. It may replace the matching library file.</p>
+              {shownManualImportDialog.loading && <p>Loading current files...</p>}
+              {shownManualImportDialog.error && <p className="text-red-400">{shownManualImportDialog.error}</p>}
+              {!shownManualImportDialog.loading && !shownManualImportDialog.loadError && shownManualImportDialog.items.map(item => {
+                const files = shownManualImportDialog.existingFiles[item.eventId] ?? [];
+                const current = files.length > 0
+                  ? files.map(file => `${file.partName ? `${file.partName}: ` : ''}${file.quality} CF ${file.customFormatScore >= 0 ? '+' : ''}${file.customFormatScore}`).join(', ')
+                  : 'None';
+                const next = `${item.quality || 'Unknown'} CF ${(item.customFormatScore ?? 0) >= 0 ? '+' : ''}${item.customFormatScore ?? 0}`;
+                return (
+                  <div key={item.id} className="rounded-lg border border-gray-700 bg-black/30 p-3">
+                    <p className="font-medium text-white break-words">{item.event?.title || item.title}{item.part ? ` (${item.part})` : ''}</p>
+                    <p>Files on event: {current}</p>
+                    <p>Selected: {next}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          confirmText="Import Anyway"
+          isLoading={manualImportBusy}
+          confirmDisabled={!!manualImportDialog?.loading || !!manualImportDialog?.loadError}
+          mobileFullScreen
+        />
 
         {/* Remove from Queue Dialog (Sonarr-style) - Supports single and bulk removal */}
         {removeQueueDialog && (

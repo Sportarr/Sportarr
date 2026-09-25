@@ -189,7 +189,9 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
             DestinationPath = (string?)null,
             h.Quality,
             Size = (long?)null,
-            Decision = h.Type == EventFileHistoryType.DeletedForUpgrade ? "Deleted for upgrade" : "Deleted",
+            Decision = h.Type == EventFileHistoryType.ReplacedManually
+                ? "Replaced manually"
+                : h.Type == EventFileHistoryType.DeletedForUpgrade ? "Deleted for upgrade" : "Deleted",
             Warnings = new List<string>(),
             Errors = !string.IsNullOrEmpty(h.Reason) ? new List<string> { h.Reason! } : new List<string>(),
             Date = h.Date,
@@ -310,7 +312,9 @@ app.MapGet("/api/leagues/{leagueId:int}/seasons/{season}/history", async (int le
             DestinationPath = (string?)null,
             h.Quality,
             Size = (long?)null,
-            Decision = h.Type == EventFileHistoryType.DeletedForUpgrade ? "Deleted for upgrade" : "Deleted",
+            Decision = h.Type == EventFileHistoryType.ReplacedManually
+                ? "Replaced manually"
+                : h.Type == EventFileHistoryType.DeletedForUpgrade ? "Deleted for upgrade" : "Deleted",
             Warnings = new List<string>(),
             Errors = !string.IsNullOrEmpty(h.Reason) ? new List<string> { h.Reason! } : new List<string>(),
             Date = h.Date,

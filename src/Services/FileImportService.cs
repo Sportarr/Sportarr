@@ -155,18 +155,23 @@ public class FileImportService : IFileImportService
     public Task<ImportHistory> ImportDownloadAsync(
         DownloadQueueItem download,
         string? overridePath = null,
-        PostImportMode? manualImportMode = null) =>
-        ImportDownloadWithScopeAsync(download, overridePath, manualImportMode);
+        PostImportMode? manualImportMode = null,
+        bool allowPreferenceOverride = false,
+        bool allowSavedPath = false) =>
+        ImportDownloadWithScopeAsync(download, overridePath, manualImportMode,
+            allowPreferenceOverride: allowPreferenceOverride, allowSavedPath: allowSavedPath);
 
-    internal Task<ImportHistory> ImportCompletedPackAsync(DownloadQueueItem download, Func<Task> completeImport, bool retryHeld = false) =>
-        ImportDownloadWithScopeAsync(download, null, null, completeImport, retryHeld);
+    internal Task<ImportHistory> ImportCompletedPackAsync(DownloadQueueItem download, Func<Task> completeImport,
+        bool retryHeld = false, bool allowPreferenceOverride = false, bool allowSavedPath = false) =>
+        ImportDownloadWithScopeAsync(download, null, null, completeImport, retryHeld, allowPreferenceOverride, allowSavedPath);
 
     private async Task<ImportHistory> ImportDownloadWithScopeAsync(
         DownloadQueueItem download, string? overridePath, PostImportMode? manualImportMode,
-        Func<Task>? completeImport = null, bool retryHeld = false)
+        Func<Task>? completeImport = null, bool retryHeld = false, bool allowPreferenceOverride = false,
+        bool allowSavedPath = false)
     {
         var resolvePackMember = download.IsPack && (string.IsNullOrEmpty(overridePath) || !File.Exists(overridePath));
-        if (!resolvePackMember) return await ImportDownloadCoreAsync(download, overridePath, manualImportMode);
+        if (!resolvePackMember) return await ImportDownloadCoreAsync(download, overridePath, manualImportMode, allowPreferenceOverride, allowSavedPath);
         if (download.Id == 0 || !download.DownloadClientId.HasValue || string.IsNullOrWhiteSpace(download.DownloadId))
             return await HoldPackMemberAsync(download, "The directory has no persisted client job identity.");
 
@@ -204,7 +209,7 @@ public class FileImportService : IFileImportService
         foreach (var tracked in _db.ChangeTracker.Entries<DownloadQueueItem>()
             .Where(x => x.Entity.Id != download.Id && x.Entity.DownloadClientId == clientId && x.Entity.DownloadId == downloadId).ToList())
             await tracked.ReloadAsync();
-        var result = await ImportDownloadCoreAsync(download, overridePath, manualImportMode);
+        var result = await ImportDownloadCoreAsync(download, overridePath, manualImportMode, allowPreferenceOverride, allowSavedPath);
         if (result != null && completeImport != null)
         {
             try
@@ -220,7 +225,8 @@ public class FileImportService : IFileImportService
     }
 
     private async Task<ImportHistory> ImportDownloadCoreAsync(
-        DownloadQueueItem download, string? overridePath, PostImportMode? manualImportMode)
+        DownloadQueueItem download, string? overridePath, PostImportMode? manualImportMode,
+        bool allowPreferenceOverride, bool allowSavedPath)
     {
         _logger.LogInformation("Starting import for download: {Title} (ID: {DownloadId})",
             download.Title, download.DownloadId);
@@ -251,8 +257,7 @@ public class FileImportService : IFileImportService
         string? transferredDestPath = null;
         string? transferSourcePath = null;
 
-        // Old file path removed when this import is an upgrade, captured so we can
-        // fire an OnEventFileDeleteForUpgrade notification once the import commits.
+        // Keep the removed path for a deletion notification after import.
         string? upgradedOldFilePath = null;
 
         try
@@ -297,7 +302,7 @@ public class FileImportService : IFileImportService
             // Get download path - use override if provided (manual import), otherwise query download client
             var downloadPath = !string.IsNullOrEmpty(overridePath)
                 ? overridePath
-                : await GetDownloadPathAsync(download);
+                : await GetDownloadPathAsync(download, allowSavedPath);
 
             if (!string.IsNullOrEmpty(overridePath))
             {
@@ -541,6 +546,7 @@ public class FileImportService : IFileImportService
                 string.Equals(f.FilePath, eventInfo.FilePath, StringComparison.OrdinalIgnoreCase)) ?? fullEventFiles.FirstOrDefault();
             var freeSpaceChecked = false;
             EventFile? upgradedFile = null;
+            var manuallyReplaced = false;
 
             if (partInfo != null)
             {
@@ -572,13 +578,13 @@ public class FileImportService : IFileImportService
             {
                 var qualityProfiles = await _db.QualityProfiles.AsNoTracking().ToListAsync();
                 var qualityProfile = RssSyncService.ResolveQualityProfile(eventInfo, qualityProfiles);
-                // One rule covers every import path. A lower profile rank never
-                // replaces. Equal ranks use revision and custom format score.
+                // Automatic imports use this rule. An explicit choice can bypass
+                // its preference result, but not the file safety checks.
                 var decision = ImportUpgradeRule.Evaluate(
                     upgradedFile.Quality, upgradedFile.CustomFormatScore, upgradedFile.OriginalTitle ?? upgradedFile.Quality,
                     qualityString, download.CustomFormatScore, download.Title,
                     config.DownloadPropersAndRepacks, qualityProfile);
-                if (!decision.IsUpgrade)
+                if (!decision.IsUpgrade && !allowPreferenceOverride)
                 {
                     _logger.LogWarning("[Import] {Rejection} ({Title})", decision.Rejection, download.Title);
                     download.Status = DownloadStatus.ImportWarning;
@@ -589,7 +595,11 @@ public class FileImportService : IFileImportService
                     return null!;
                 }
 
-                _logger.LogInformation("[Import] Upgrade detected - replacing existing file: {OldPath} ({OldQuality}) with {NewQuality}",
+                manuallyReplaced = !decision.IsUpgrade;
+                if (manuallyReplaced)
+                    _logger.LogInformation("[Import] Manual preference override for {Title}: {Rejection}", download.Title, decision.Rejection);
+
+                _logger.LogInformation("[Import] Replacing existing file: {OldPath} ({OldQuality}) with {NewQuality}",
                     upgradedFile.FilePath, upgradedFile.Quality, qualityString);
 
                 // Check free space now, before the delete below destroys the old
@@ -698,10 +708,10 @@ public class FileImportService : IFileImportService
                 _db.EventFileHistory.Add(new EventFileHistory
                 {
                     EventId = eventInfo.Id,
-                    Type = EventFileHistoryType.DeletedForUpgrade,
+                    Type = manuallyReplaced ? EventFileHistoryType.ReplacedManually : EventFileHistoryType.DeletedForUpgrade,
                     SourceTitle = System.IO.Path.GetFileName(upgradedFile.FilePath) ?? upgradedFile.FilePath,
                     Quality = upgradedFile.Quality,
-                    Reason = $"Upgraded to {qualityString}",
+                    Reason = manuallyReplaced ? $"Manually replaced with {qualityString}" : $"Upgraded to {qualityString}",
                     Part = upgradedFile.PartName,
                     Date = DateTime.UtcNow
                 });
@@ -1012,11 +1022,10 @@ public class FileImportService : IFileImportService
 
             // NOTIFICATIONS: Send notifications (Discord, Telegram, Plex, Jellyfin, Emby, etc.) for the import.
             // Media server refresh (Plex/Jellyfin/Emby) is handled through the notification system.
-            // An import that replaced an existing file fires OnUpgrade instead of
-            // OnDownload so the two toggles mean what they say.
+            // A deliberate lower-ranked replacement is a download, not an upgrade.
             try
             {
-                var isUpgradeImport = !string.IsNullOrEmpty(upgradedOldFilePath);
+                var isUpgradeImport = !string.IsNullOrEmpty(upgradedOldFilePath) && !manuallyReplaced;
                 await _notificationService.SendNotificationAsync(
                     isUpgradeImport ? NotificationTrigger.OnUpgrade : NotificationTrigger.OnDownload,
                     $"{(isUpgradeImport ? "Upgraded" : "Imported")}: {eventInfo.Title}",
@@ -1059,17 +1068,14 @@ public class FileImportService : IFileImportService
                 _logger.LogWarning(ex, "[Import] Failed to write local metadata for '{Title}': {Error}", eventInfo.Title, ex.Message);
             }
 
-            // When this import replaced an older file, tell webhooks / media servers
-            // the old file was removed (parity with the manual delete path). Media
-            // servers already got refreshed for the new file by OnDownload above, so
-            // this only matters to consumers that subscribe to delete events.
+            // Tell consumers which old file was removed after the new file imports.
             if (!string.IsNullOrEmpty(upgradedOldFilePath))
             {
                 try
                 {
                     await _notificationService.SendNotificationAsync(
-                        NotificationTrigger.OnEventFileDeleteForUpgrade,
-                        $"Deleted for upgrade: {eventInfo.Title}",
+                        manuallyReplaced ? NotificationTrigger.OnEventFileDelete : NotificationTrigger.OnEventFileDeleteForUpgrade,
+                        $"{(manuallyReplaced ? "Replaced manually" : "Deleted for upgrade")}: {eventInfo.Title}",
                         $"Old file: {Path.GetFileName(upgradedOldFilePath)}",
                         new NotificationEventData
                         {
@@ -2434,7 +2440,7 @@ public class FileImportService : IFileImportService
     /// <summary>
     /// Get download path from download client
     /// </summary>
-    private async Task<string> GetDownloadPathAsync(DownloadQueueItem download)
+    private async Task<string> GetDownloadPathAsync(DownloadQueueItem download, bool allowSavedPath)
     {
         // Load download client if not already loaded (defensive - some callers may not include it)
         var downloadClient = download.DownloadClient;
@@ -2448,7 +2454,7 @@ public class FileImportService : IFileImportService
         }
 
         // Query download client for status which includes save path
-        var status = await _downloadClientService.GetDownloadStatusAsync(downloadClient, download.DownloadId);
+        var status = await _downloadClientService.GetDownloadStatusAsync(downloadClient, download.DownloadId, download.GrabCategory);
 
         // SAFETY CHECK: Verify download is actually complete before importing
         // This catches edge cases where a failed download (e.g., repair failure) somehow reaches import
@@ -2475,6 +2481,11 @@ public class FileImportService : IFileImportService
             _logger.LogInformation("[PathMapping] Final path for import: '{LocalPath}'", localPath);
             _logger.LogInformation("[PathMapping] ========== PATH TRANSLATION END ==========");
             return localPath;
+        }
+
+        if (allowSavedPath && !string.IsNullOrWhiteSpace(download.OutputPath))
+        {
+            return await _pathMappingService.RemapRemoteToLocalAsync(downloadClient.Host, download.OutputPath);
         }
 
         // Fallback to default path if status doesn't include it

@@ -1039,7 +1039,9 @@ public enum EventFileHistoryType
     /// <summary>The user deleted the file manually.</summary>
     Deleted = 0,
     /// <summary>The file was removed because a better release was imported over it.</summary>
-    DeletedForUpgrade = 1
+    DeletedForUpgrade = 1,
+    /// <summary>The user replaced the file despite its lower preference rank.</summary>
+    ReplacedManually = 2
 }
 
 /// <summary>

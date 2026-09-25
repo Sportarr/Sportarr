@@ -17,6 +17,45 @@ namespace Sportarr.Api.Tests.Services;
 
 public class DownloadMonitorImportWarningTests
 {
+    [Fact]
+    public async Task ClientPollLeavesAnImportInFlightAlone()
+    {
+        var options = new DbContextOptionsBuilder<SportarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        using var services = new ServiceCollection().BuildServiceProvider();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var config = new ConfigService(new ConfigurationBuilder().Build(), NullLogger<ConfigService>.Instance);
+        using var handler = new CompletedDownloadHandler("Completed");
+        using var http = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(instance => instance.CreateClient(It.IsAny<string>())).Returns(http);
+        var clientService = new DownloadClientService(factory.Object, NullLoggerFactory.Instance,
+            NullLogger<DownloadClientService>.Instance, cache, config,
+            Mock.Of<IRemotePathMappingService>(), new DownloadOwnershipCoordinator());
+        using var db = new SportarrDbContext(options);
+        db.DownloadQueue.Add(new DownloadQueueItem
+        {
+            Title = "Import in flight", DownloadId = "test-download", Status = DownloadStatus.Importing,
+            Progress = 100, Event = new Event { Title = "Italian Grand Prix", Sport = "Motorsport" },
+            DownloadClient = new DownloadClient { Name = "Fake SABnzbd", Type = DownloadClientType.Sabnzbd, Host = "localhost" }
+        });
+        await db.SaveChangesAsync();
+        using var wakeSignal = new DownloadMonitorWakeSignal();
+        using var monitor = new EnhancedDownloadMonitorService(services,
+            NullLogger<EnhancedDownloadMonitorService>.Instance, wakeSignal);
+        var row = await db.DownloadQueue.Include(item => item.DownloadClient).SingleAsync();
+        var process = typeof(EnhancedDownloadMonitorService).GetMethod("ProcessDownloadAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        await (Task)process.Invoke(monitor, new object?[]
+        {
+            row, clientService, null, db, true, false, false, 0, CancellationToken.None
+        })!;
+
+        row.Status.Should().Be(DownloadStatus.Importing);
+        handler.RequestCount.Should().Be(0);
+    }
+
     [Theory]
     [InlineData("Completed", true, true, DownloadStatus.ImportWarning, 0, 0)]
     [InlineData("Paused", true, true, DownloadStatus.ImportWarning, 0, 0)]

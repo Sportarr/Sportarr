@@ -44,7 +44,7 @@ A completed download that fails the rule stays in the queue with the reason and 
 
 ## Retry a completed import
 
-Activity shows **Retry Import** when a completed download has failed to import or a pack member is held for correction. Resolve the displayed reason, then retry the import. Retrying uses the completed download and does not submit another download job. Bulk import uses the same eligibility as each row.
+Activity shows **Retry Import** when a completed download has failed to import or a pack member is held for correction. Resolve the displayed reason, then retry the import. Retrying uses the completed download and does not submit another download job. Bulk import supports these retries. **Import Anyway** requires confirmation on each download and is not available in bulk.
 
 Pack members are checked against their own events and parts. A completed member does not allow Sportarr to remove a shared download while another member still needs it.
 

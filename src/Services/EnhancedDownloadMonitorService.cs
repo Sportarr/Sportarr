@@ -222,6 +222,10 @@ public class EnhancedDownloadMonitorService : BackgroundService
             if (cancellationToken.IsCancellationRequested)
                 break;
 
+            await db.Entry(download).ReloadAsync(cancellationToken);
+            if (db.Entry(download).State == EntityState.Detached || download.Status == DownloadStatus.Imported)
+                continue;
+
             try
             {
                 await ProcessDownloadAsync(
@@ -271,6 +275,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
         int stalledFailMinutes,
         CancellationToken cancellationToken)
     {
+        // An import owns this row until it finishes. Startup recovers interrupted imports.
+        if (download.Status == DownloadStatus.Importing) return;
+
         // Preserve member warnings until the user retries with corrected files or identity.
         if (PackImportBoundary.IsHeld(download)) return;
 

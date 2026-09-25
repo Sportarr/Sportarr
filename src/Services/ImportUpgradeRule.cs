@@ -8,14 +8,18 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Whether a file may take the place of the file an event already holds.
-/// One rule for every way a file arrives (a completed download, a file
-/// found in the library, a manual import), so they never disagree.
+/// Automatic imports use one rule for every way a file arrives.
+/// An explicit choice can override a preference rejection.
 /// A lower profile rank never replaces. The same rank replaces unless it is
 /// a revision downgrade while propers are preferred, or its custom format
 /// score is lower. A higher profile rank always replaces.
 /// </summary>
 public static class ImportUpgradeRule
 {
+    public const string LowerQualityRejection = "Not an upgrade for the existing file.";
+    public const string RevisionRejection = "Not a revision upgrade for the existing file.";
+    public const string CustomFormatRejection = "Not a custom format upgrade for the existing file.";
+
     /// <summary>
     /// Equal is true when profile rank, revision and custom format score all
     /// match: an accepted copy that improves nothing. An automatic import
@@ -38,7 +42,7 @@ public static class ImportUpgradeRule
         if (qualityComparison < 0)
         {
             return new Decision(false,
-                $"Not an upgrade for the existing file. Existing quality: {Label(existingQuality)}. New quality: {Label(newQuality)}.");
+                $"{LowerQualityRejection} Existing quality: {Label(existingQuality)}. New quality: {Label(newQuality)}.");
         }
 
         if (qualityComparison == 0)
@@ -54,7 +58,7 @@ public static class ImportUpgradeRule
 
             if (preference < 0 && propersPreferred && revisionComparison < 0)
             {
-                return new Decision(false, "Not a revision upgrade for the existing file.");
+                return new Decision(false, RevisionRejection);
             }
 
             if (preference > 0)
@@ -65,7 +69,7 @@ public static class ImportUpgradeRule
             if (preference < 0)
             {
                 return new Decision(false,
-                    $"Not a custom format upgrade for the existing file. New score {newFormatScore} does not improve on {existingFormatScore}.");
+                    $"{CustomFormatRejection} New score {newFormatScore} does not improve on {existingFormatScore}.");
             }
 
             return new Decision(true, null, Equal: true);

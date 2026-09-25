@@ -19,20 +19,27 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
 });
 
-async function showQueue(width: number, status = 9, progress = 100, canRetryImport = true) {
+async function showQueue(width: number, status = 9, progress = 100, canRetryImport = true, canImportAnyway = false,
+  extraRows: Array<{ id: number; eventId: number; title: string; canImportAnyway: boolean; canRetryImport: boolean }> = []) {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
   const queueItem = {
     id: 41, eventId: 7, event: { id: 7, title: 'Owned team event', organization: 'NFL',
-      eventDate: '2020-09-01T20:00:00Z', monitored: true, hasFile: false },
+      eventDate: '2020-09-01T20:00:00Z', monitored: true, hasFile: canImportAnyway },
     title: 'NFL.2020.Week1.720p.WEB-DL', downloadId: 'owned-pack-job', downloadClientId: 1,
-    downloadClient: { id: 1, name: 'Owned fixture' }, status, progress, canRetryImport,
-    size: 4096, downloaded: progress === 100 ? 4096 : 4000, protocol: 'Torrent', quality: 'WEBDL-720p',
-    errorMessage: status === 9 ? 'Pack member unresolved: No member uniquely identifies this event.' : 'Import failed',
+    downloadClient: { id: 1, name: 'Owned fixture' }, status, progress, canRetryImport, canImportAnyway,
+    size: 4096, downloaded: progress === 100 ? 4096 : 4000, protocol: 'Torrent',
+    quality: canImportAnyway ? 'HDTV-1080p' : 'WEBDL-720p', customFormatScore: canImportAnyway ? 2500 : 0,
+    errorMessage: canImportAnyway
+      ? 'Not an upgrade for the existing file. Existing quality: WEBDL-2160p. New quality: HDTV-1080p.'
+      : status === 9 ? 'Pack member unresolved: No member uniquely identifies this event.' : 'Import failed',
     statusMessages: [], added: '2020-09-02T00:00:00Z', completedAt: '2020-09-02T00:01:00Z'
   };
   transport.get.mockImplementation(async (path: string) => {
-    if (path === '/queue') return { data: [queueItem] };
+    if (path === '/queue') return { data: [queueItem, ...extraRows.map(extra => ({
+      ...queueItem, ...extra, event: { ...queueItem.event, id: extra.eventId, title: extra.title }
+    }))] };
     if (path === '/pending-imports') return { data: [] };
+    if (/^\/events\/\d+\/files$/.test(path)) return { data: [{ id: 1, quality: 'WEBDL-2160p', customFormatScore: 560, partName: null }] };
     throw new Error('Unconfigured page request ' + path);
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -46,7 +53,7 @@ async function showQueue(width: number, status = 9, progress = 100, canRetryImpo
   expect(branch).not.toBeNull();
   const row = within(branch as HTMLElement);
   expect(row.getByText('Owned team event')).toBeInTheDocument();
-  return { user: userEvent.setup(), row };
+  return { user: userEvent.setup(), row, container };
 }
 
 describe.each([['desktop', 1000], ['phone', 390]] as const)('Activity retry on %s', (_view, width) => {
@@ -88,5 +95,92 @@ describe.each([['desktop', 1000], ['phone', 390]] as const)('Activity retry on %
     await user.click(row.getByRole('checkbox'));
     expect(screen.getByRole('button', { name: 'Import Selected' })).toBeDisabled();
     expect(transport.post).not.toHaveBeenCalled();
+  });
+});
+
+describe.each([['desktop', 1000], ['phone', 390]] as const)('Activity manual replacement on %s', (_view, width) => {
+  it('requires confirmation before importing a lower-ranked completed download', async () => {
+    const { user, row } = await showQueue(width, 9, 100, false, true);
+
+    await user.click(row.getByRole('button', { name: 'Import Anyway' }));
+    expect(transport.post).not.toHaveBeenCalled();
+    expect(await screen.findByText(/WEBDL-2160p.*CF \+560/)).toBeInTheDocument();
+    expect(screen.getByText(/HDTV-1080p.*CF \+2500/)).toBeInTheDocument();
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Import Anyway' }));
+
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith('/queue/41/import-anyway'));
+  });
+
+  it('keeps a destructive override out of bulk import', async () => {
+    const { user, row } = await showQueue(width, 9, 100, false, true);
+    await user.click(row.getByRole('checkbox'));
+    const action = screen.getByRole('button', { name: 'Import Selected' });
+    expect(action).toBeDisabled();
+    expect(transport.post).not.toHaveBeenCalled();
+  });
+
+  it('does not import when the confirmation is cancelled', async () => {
+    const { user, row } = await showQueue(width, 9, 100, false, true);
+    await user.click(row.getByRole('button', { name: 'Import Anyway' }));
+    await screen.findByText(/Files on event: WEBDL-2160p/);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    expect(transport.post).not.toHaveBeenCalled();
+  });
+
+  it('blocks confirmation when current files cannot be loaded', async () => {
+    const { user, row } = await showQueue(width, 9, 100, false, true);
+    const originalGet = transport.get.getMockImplementation()!;
+    transport.get.mockImplementation((path: string) => path === '/events/7/files'
+      ? Promise.reject(new Error('Unavailable')) : originalGet(path));
+    await user.click(row.getByRole('button', { name: 'Import Anyway' }));
+
+    expect(await screen.findByText('Could not load the current files. Close this window and try again.')).toBeInTheDocument();
+    expect(screen.queryByText('Files on event: None')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Import Anyway' })).toBeDisabled();
+    expect(transport.post).not.toHaveBeenCalled();
+  });
+
+  it('keeps a mixed selection out of bulk import', async () => {
+    const { user, row, container } = await showQueue(width, 9, 100, false, true, [
+      { id: 42, eventId: 8, title: 'Second event', canImportAnyway: false, canRetryImport: true },
+      { id: 43, eventId: 9, title: 'Third event', canImportAnyway: true, canRetryImport: false }
+    ]);
+    await user.click(row.getAllByRole('checkbox')[0]);
+    const branches = width >= 640
+      ? within(screen.getByRole('table')).getAllByRole('row').slice(2)
+      : Array.from(container.querySelectorAll<HTMLElement>('[class~="sm:hidden"][class~="space-y-3"] > div')).slice(1);
+    for (const branch of branches) {
+      const checkbox = within(branch as HTMLElement).queryByRole('checkbox');
+      if (checkbox) await user.click(checkbox);
+    }
+    expect(screen.getByRole('button', { name: 'Import Selected' })).toBeDisabled();
+    expect(transport.post).not.toHaveBeenCalled();
+  });
+
+  it('keeps the choice available after a failed request', async () => {
+    const { user, row } = await showQueue(width, 9, 100, false, true);
+    let failed = false;
+    const originalGet = transport.get.getMockImplementation()!;
+    transport.get.mockImplementation(async (path: string) => {
+      const response = await originalGet(path);
+      if (path === '/queue' && failed) {
+        response.data[0].status = 4;
+        response.data[0].canImportAnyway = false;
+      }
+      return response;
+    });
+    transport.post.mockImplementationOnce(() => {
+      failed = true;
+      return Promise.reject({ response: { data: { error: 'Client unavailable' } } });
+    });
+    await user.click(row.getByRole('button', { name: 'Import Anyway' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    await dialog.findByText(/Files on event: WEBDL-2160p/);
+    await user.click(dialog.getByRole('button', { name: 'Import Anyway' }));
+
+    expect(await dialog.findByText('Client unavailable')).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Import Anyway' })).toBeEnabled();
+    await waitFor(() => expect(row.queryByRole('button', { name: 'Import Anyway' })).not.toBeInTheDocument());
   });
 });

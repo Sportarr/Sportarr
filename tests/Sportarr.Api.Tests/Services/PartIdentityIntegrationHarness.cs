@@ -79,6 +79,7 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         var app = builder.Build();
         app.MapEventSearchAndGrabEndpoints();
         app.MapSonarrReleasePushEndpoint();
+        app.MapManualQueueImportEndpoint();
         await app.StartAsync();
         var rig = new PartIdentityIntegrationHarness(app, directory, transport);
         if (relational) await rig.Db.Database.EnsureCreatedAsync();
@@ -169,6 +170,8 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
     internal sealed class StubTransport : HttpMessageHandler, IHttpClientFactory
     {
         public int ClientAdds { get; private set; }
+        public string? CompletedDownloadId { get; set; }
+        public string? CompletedDownloadPath { get; set; }
         public string? RssResponse { get; set; }
         public List<string> UnexpectedRequests { get; } = new();
         public HttpClient CreateClient(string name) => new(this, false);
@@ -184,6 +187,15 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
                     Content = new StringContent(RssResponse, Encoding.UTF8, "application/rss+xml") });
             if (uri.Host == "part-source.invalid") return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
                 Content = new StringContent("<?xml version=\"1.0\"?><nzb xmlns=\"http://www.newzbin.com/DTD/2003/nzb\"><file poster=\"fixture\" subject=\"fixture\" date=\"1599004800\"><groups><group>alt.test</group></groups><segments><segment bytes=\"4096\" number=\"1\">fixture@invalid</segment></segments></file></nzb>", Encoding.UTF8, "application/x-nzb") });
+            if (uri.Host == "part-client.invalid" && uri.Query.Contains("mode=history") && CompletedDownloadPath != null)
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(new { history = new { slots = new[] {
+                    new { nzo_id = CompletedDownloadId, status = "Completed", storage = CompletedDownloadPath,
+                        category = "sportarr", bytes = 4096L }
+                } } });
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json") });
+            }
             if (uri.Host == "part-client.invalid")
             {
                 var add = uri.Query.Contains("mode=addfile") || uri.Query.Contains("mode=addurl");

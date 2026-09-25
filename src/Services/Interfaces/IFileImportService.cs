@@ -23,5 +23,7 @@ public interface IFileImportService
     Task<ImportHistory> ImportDownloadAsync(
         DownloadQueueItem download,
         string? overridePath = null,
-        PostImportMode? manualImportMode = null);
+        PostImportMode? manualImportMode = null,
+        bool allowPreferenceOverride = false,
+        bool allowSavedPath = false);
 }
