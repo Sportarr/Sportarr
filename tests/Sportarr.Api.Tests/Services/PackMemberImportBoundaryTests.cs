@@ -104,14 +104,15 @@ public class PackMemberImportBoundaryTests
     }
 
     [Fact]
-    public async Task OrdinaryNonPackKeepsItsExistingLargestFileSelection()
+    public async Task OrdinaryNonPackWithTwoUnclearVideosWaitsForAChoice()
     {
         await using var rig = await PackRig.CreateAsync();
         rig.Owners[0].IsPack = false; rig.Owners[0].PackGroupId = null;
         await rig.Db.SaveChangesAsync();
         await rig.MemberAsync(0, 4096); await rig.MemberAsync(1, 8192);
-        var history = await rig.ImportAsync(0); Assert.NotNull(history);
-        Assert.Equal(rig.Bytes[1], await File.ReadAllBytesAsync(history.DestinationPath!));
+        var history = await rig.ImportAsync(0); Assert.Null(history);
+        Assert.Equal(DownloadStatus.ImportWarning, rig.Owners[0].Status);
+        Assert.Equal(ManualQueueImportPolicy.AmbiguousVideoWarning, rig.Owners[0].ErrorMessage);
     }
 
     [Fact]

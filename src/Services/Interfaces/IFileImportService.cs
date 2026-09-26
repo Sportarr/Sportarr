@@ -25,5 +25,6 @@ public interface IFileImportService
         string? overridePath = null,
         PostImportMode? manualImportMode = null,
         bool allowPreferenceOverride = false,
-        bool allowSavedPath = false);
+        bool allowSavedPath = false,
+        string? selectedRelativePath = null);
 }

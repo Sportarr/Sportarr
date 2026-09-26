@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
@@ -8,6 +9,7 @@ using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Models.Requests;
 using Sportarr.Api.Services;
+using Sportarr.Api.Validators;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -69,6 +71,7 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
         dq.Progress,
         CanRetryImport = PackImportBoundary.CanRetryImport(dq),
         CanImportAnyway = ManualQueueImportPolicy.CanImportAnyway(dq),
+        CanChooseVideo = ManualQueueImportPolicy.CanChooseVideo(dq),
         dq.TimeRemaining,
         dq.ErrorMessage,
         dq.StatusMessages,
@@ -162,6 +165,7 @@ app.MapGet("/api/queue/{id:int}", async (int id, SportarrDbContext db) =>
         dq.Progress,
         CanRetryImport = PackImportBoundary.CanRetryImport(dq),
         CanImportAnyway = ManualQueueImportPolicy.CanImportAnyway(dq),
+        CanChooseVideo = ManualQueueImportPolicy.CanChooseVideo(dq),
         dq.TimeRemaining,
         dq.ErrorMessage,
         dq.StatusMessages,
@@ -890,6 +894,87 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
 
     public static IEndpointRouteBuilder MapManualQueueImportEndpoint(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/queue/{id:int}/video-files", async (
+            int id, SportarrDbContext db, FileImportService fileImportService) =>
+        {
+            var item = await db.DownloadQueue.Include(row => row.DownloadClient).FirstOrDefaultAsync(row => row.Id == id);
+            if (item is null) return Results.NotFound();
+            if (!ManualQueueImportPolicy.CanChooseVideo(item))
+                return Results.BadRequest(new { error = "This download is not waiting for a video choice." });
+            try
+            {
+                return Results.Ok(await fileImportService.ListVideoCandidatesAsync(item));
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        app.MapPost("/api/queue/{id:int}/import-selected", async (
+            int id, ImportSelectedRequest request, SportarrDbContext db, FileImportService fileImportService,
+            DownloadClientService downloadClientService, [FromServices] DownloadOwnershipCoordinator coordinator,
+            ILogger<Program> logger) =>
+        {
+            var item = await db.DownloadQueue
+                .Include(row => row.Event)
+                .Include(row => row.DownloadClient)
+                .FirstOrDefaultAsync(row => row.Id == id);
+            if (item is null) return Results.NotFound();
+            if (!ManualQueueImportPolicy.CanChooseVideo(item))
+                return Results.BadRequest(new { error = "This download is not waiting for a video choice." });
+
+            using var decision = coordinator.TryEnterExternalDecision(item.DownloadClientId, item.DownloadId);
+            if (decision is null)
+                return Results.Conflict(new { error = "This download is already being processed. Try again shortly." });
+
+            var clientStatus = await downloadClientService.GetDownloadStatusAsync(item.DownloadClient!, item.DownloadId, item.GrabCategory);
+            if (clientStatus is not null && !ManualQueueImportPolicy.IsCompletedClientStatus(clientStatus))
+                return Results.BadRequest(new { error = "The download client no longer reports this download as complete." });
+            if (clientStatus is null && string.IsNullOrWhiteSpace(item.OutputPath))
+                return Results.BadRequest(new { error = "The download is no longer in the client and its saved path is unavailable." });
+
+            IReadOnlyList<ImportVideoCandidate> candidates;
+            try
+            {
+                candidates = await fileImportService.ListVideoCandidatesAsync(item);
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            if (!candidates.Any(candidate => string.Equals(candidate.RelativePath, request.RelativePath, StringComparison.Ordinal)))
+                return Results.BadRequest(new { error = "The selected video is no longer in this download. Choose a file again." });
+
+            if (!await ManualQueueImportPolicy.TryClaimAsync(db, id))
+                return Results.Conflict(new { error = "This download was already claimed or changed. Refresh the queue and try again." });
+            await db.Entry(item).ReloadAsync();
+
+            try
+            {
+                var result = await fileImportService.ImportDownloadAsync(item, allowPreferenceOverride: true,
+                    allowSavedPath: true, selectedRelativePath: request.RelativePath);
+                if (result is null) ManualQueueImportPolicy.MarkIncompleteImport(item);
+                await db.SaveChangesAsync();
+                if (result is null) return Results.BadRequest(new { error = item.ErrorMessage ?? "Import was rejected" });
+                return Results.Ok(new { item.Id, item.Status });
+            }
+            catch (SelectedVideoUnavailableException ex)
+            {
+                ManualQueueImportPolicy.RestoreVideoChoice(item);
+                await db.SaveChangesAsync();
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                item.Status = DownloadStatus.Failed;
+                item.ErrorMessage = $"Import failed: {ex.Message}";
+                await db.SaveChangesAsync();
+                logger.LogError(ex, "[QUEUE] Selected video import failed for queue item {Id}", item.Id);
+                return Results.BadRequest(new { error = ex.Message, retryRequired = true });
+            }
+        }).WithRequestValidation<ImportSelectedRequest>();
+
         app.MapPost("/api/queue/{id:int}/import-anyway", async (
             int id, SportarrDbContext db, FileImportService fileImportService, DownloadClientService downloadClientService,
             DownloadOwnershipCoordinator coordinator, IServiceProvider services, ILogger<Program> logger) =>

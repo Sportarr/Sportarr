@@ -70,6 +70,34 @@ public class ManualQueueImportPolicyTests
         row.ErrorMessage.Should().Be("Import did not complete. Retry the import.");
     }
 
+    [Fact]
+    public void AmbiguousVideoWarningRequiresAFileChoice()
+    {
+        var row = Row(DownloadStatus.ImportWarning, 100, ManualQueueImportPolicy.AmbiguousVideoWarning);
+
+        ManualQueueImportPolicy.CanChooseVideo(row).Should().BeTrue();
+        ManualQueueImportPolicy.CanImportAnyway(row).Should().BeFalse();
+    }
+
+    [Fact]
+    public void PackWarningCannotUseTheOrdinaryVideoChooser()
+    {
+        var row = Row(DownloadStatus.ImportWarning, 100, ManualQueueImportPolicy.AmbiguousVideoWarning);
+        row.IsPack = true;
+
+        ManualQueueImportPolicy.CanChooseVideo(row).Should().BeFalse();
+    }
+
+    [Fact]
+    public void MissingSelectedFileReturnsTheRowToVideoChoice()
+    {
+        var row = Row(DownloadStatus.Failed, 100, "Import failed: file moved");
+
+        ManualQueueImportPolicy.RestoreVideoChoice(row);
+
+        ManualQueueImportPolicy.CanChooseVideo(row).Should().BeTrue();
+    }
+
     private static DownloadQueueItem Row(DownloadStatus status, double progress, string reason) => new()
     {
         EventId = 1,

@@ -20,13 +20,14 @@ afterEach(() => {
 });
 
 async function showQueue(width: number, status = 9, progress = 100, canRetryImport = true, canImportAnyway = false,
-  extraRows: Array<{ id: number; eventId: number; title: string; canImportAnyway: boolean; canRetryImport: boolean }> = []) {
+  extraRows: Array<{ id: number; eventId: number; title: string; canImportAnyway: boolean; canRetryImport: boolean }> = [],
+  canChooseVideo = false) {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
   const queueItem = {
     id: 41, eventId: 7, event: { id: 7, title: 'Owned team event', organization: 'NFL',
       eventDate: '2020-09-01T20:00:00Z', monitored: true, hasFile: canImportAnyway },
     title: 'NFL.2020.Week1.720p.WEB-DL', downloadId: 'owned-pack-job', downloadClientId: 1,
-    downloadClient: { id: 1, name: 'Owned fixture' }, status, progress, canRetryImport, canImportAnyway,
+    downloadClient: { id: 1, name: 'Owned fixture' }, status, progress, canRetryImport, canImportAnyway, canChooseVideo,
     size: 4096, downloaded: progress === 100 ? 4096 : 4000, protocol: 'Torrent',
     quality: canImportAnyway ? 'HDTV-1080p' : 'WEBDL-720p', customFormatScore: canImportAnyway ? 2500 : 0,
     errorMessage: canImportAnyway
@@ -40,6 +41,9 @@ async function showQueue(width: number, status = 9, progress = 100, canRetryImpo
     }))] };
     if (path === '/pending-imports') return { data: [] };
     if (/^\/events\/\d+\/files$/.test(path)) return { data: [{ id: 1, quality: 'WEBDL-2160p', customFormatScore: 560, partName: null }] };
+    if (path === '/queue/41/video-files') return { data: [
+      { relativePath: 'Sprint.mp4', size: 8192 }, { relativePath: 'Race.mp4', size: 16384 }
+    ] };
     throw new Error('Unconfigured page request ' + path);
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -95,6 +99,51 @@ describe.each([['desktop', 1000], ['phone', 390]] as const)('Activity retry on %
     await user.click(row.getByRole('checkbox'));
     expect(screen.getByRole('button', { name: 'Import Selected' })).toBeDisabled();
     expect(transport.post).not.toHaveBeenCalled();
+  });
+});
+
+describe.each([['desktop', 1000], ['phone', 390]] as const)('Activity video choice on %s', (_view, width) => {
+  it('waits for a file choice before importing an ambiguous download', async () => {
+    const { user, row } = await showQueue(width, 9, 100, false, false, [], true);
+
+    await user.click(row.getByRole('button', { name: 'Choose Video' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    await dialog.findByText('Sprint.mp4');
+    expect(dialog.getByText(/ignores automatic upgrade preferences/i)).toBeInTheDocument();
+    expect(dialog.getByText(/WEBDL-2160p.*CF \+560/)).toBeInTheDocument();
+    expect(dialog.getByText(/WEBDL-720p.*CF \+0/)).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Import Selected Video' })).toBeDisabled();
+    await user.click(dialog.getByRole('radio', { name: /Sprint.mp4/ }));
+    await user.click(dialog.getByRole('button', { name: 'Import Selected Video' }));
+
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith('/queue/41/import-selected', { relativePath: 'Sprint.mp4' }));
+  });
+
+  it('closes the chooser when the failed import needs a queue retry', async () => {
+    const { user, row } = await showQueue(width, 9, 100, false, false, [], true);
+    transport.post.mockRejectedValueOnce({ response: { data: { error: 'Try again shortly.', retryRequired: true } } });
+    await user.click(row.getByRole('button', { name: 'Choose Video' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    await dialog.findByText('Sprint.mp4');
+    await user.click(dialog.getByRole('radio', { name: /Sprint.mp4/ }));
+    await user.click(dialog.getByRole('button', { name: 'Import Selected Video' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(transport.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the file list visible but blocks an override if current files cannot load', async () => {
+    const { user, row } = await showQueue(width, 9, 100, false, false, [], true);
+    const originalGet = transport.get.getMockImplementation()!;
+    transport.get.mockImplementation((path: string) => path === '/events/7/files'
+      ? Promise.reject(new Error('Unavailable')) : originalGet(path));
+    await user.click(row.getByRole('button', { name: 'Choose Video' }));
+    const dialog = within(await screen.findByRole('dialog'));
+
+    expect(await dialog.findByText('Sprint.mp4')).toBeInTheDocument();
+    expect(dialog.getByText('Could not load the current files. Close this window and try again.')).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Import Selected Video' })).toBeDisabled();
+    expect(dialog.queryByText('No video files are available in this download.')).not.toBeInTheDocument();
   });
 });
 

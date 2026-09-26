@@ -4,8 +4,12 @@ using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
 
+public sealed record ImportSelectedRequest(string RelativePath);
+
 public static class ManualQueueImportPolicy
 {
+    public const string AmbiguousVideoWarning = "Multiple videos could match this event. Choose the file to import.";
+
     public static bool IsCompletedClientStatus(DownloadClientStatus status) =>
         string.Equals(status.Status, "completed", StringComparison.OrdinalIgnoreCase) ||
         (string.Equals(status.Status, "paused", StringComparison.OrdinalIgnoreCase) && status.Progress >= 99.9);
@@ -20,6 +24,18 @@ public static class ManualQueueImportPolicy
             (reason.StartsWith(ImportUpgradeRule.LowerQualityRejection, StringComparison.Ordinal) ||
              reason.StartsWith(ImportUpgradeRule.RevisionRejection, StringComparison.Ordinal) ||
              reason.StartsWith(ImportUpgradeRule.CustomFormatRejection, StringComparison.Ordinal));
+    }
+
+    public static bool CanChooseVideo(DownloadQueueItem item) =>
+        !item.IsPack && item.Status == DownloadStatus.ImportWarning && item.Progress >= 100 &&
+        item.DownloadClient is not null &&
+        item.ErrorMessage?.StartsWith(AmbiguousVideoWarning, StringComparison.Ordinal) == true;
+
+    public static void RestoreVideoChoice(DownloadQueueItem item)
+    {
+        item.Status = DownloadStatus.ImportWarning;
+        item.ErrorMessage = AmbiguousVideoWarning;
+        item.LastUpdate = DateTime.UtcNow;
     }
 
     public static async Task<bool> TryClaimAsync(SportarrDbContext db, int id)

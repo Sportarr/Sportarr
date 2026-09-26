@@ -7,6 +7,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
 
+public sealed record ImportVideoCandidate(string RelativePath, long Size);
+
+public sealed class SelectedVideoUnavailableException : Exception
+{
+    public SelectedVideoUnavailableException() : base("The selected video is no longer in this download. Choose a file again.") { }
+}
+
 /// <summary>
 /// Thrown by the import path when a file in the download folder matches
 /// a category the indexer's FailDownloads policy says should be treated
@@ -157,9 +164,21 @@ public class FileImportService : IFileImportService
         string? overridePath = null,
         PostImportMode? manualImportMode = null,
         bool allowPreferenceOverride = false,
-        bool allowSavedPath = false) =>
+        bool allowSavedPath = false,
+        string? selectedRelativePath = null) =>
         ImportDownloadWithScopeAsync(download, overridePath, manualImportMode,
-            allowPreferenceOverride: allowPreferenceOverride, allowSavedPath: allowSavedPath);
+            allowPreferenceOverride: allowPreferenceOverride, allowSavedPath: allowSavedPath,
+            selectedRelativePath: selectedRelativePath);
+
+    public async Task<IReadOnlyList<ImportVideoCandidate>> ListVideoCandidatesAsync(DownloadQueueItem download)
+    {
+        var path = await GetDownloadPathAsync(download, allowSavedPath: true);
+        var root = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? path;
+        return FindVideoFiles(path)
+            .Select(file => new ImportVideoCandidate(Path.GetRelativePath(root, file), GetFileSizeResolvingSymlinks(file)))
+            .OrderBy(candidate => candidate.RelativePath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 
     internal Task<ImportHistory> ImportCompletedPackAsync(DownloadQueueItem download, Func<Task> completeImport,
         bool retryHeld = false, bool allowPreferenceOverride = false, bool allowSavedPath = false) =>
@@ -168,10 +187,12 @@ public class FileImportService : IFileImportService
     private async Task<ImportHistory> ImportDownloadWithScopeAsync(
         DownloadQueueItem download, string? overridePath, PostImportMode? manualImportMode,
         Func<Task>? completeImport = null, bool retryHeld = false, bool allowPreferenceOverride = false,
-        bool allowSavedPath = false)
+        bool allowSavedPath = false, string? selectedRelativePath = null)
     {
+        if (download.IsPack && selectedRelativePath != null)
+            throw new InvalidOperationException("Choose a pack member through the pack import flow.");
         var resolvePackMember = download.IsPack && (string.IsNullOrEmpty(overridePath) || !File.Exists(overridePath));
-        if (!resolvePackMember) return await ImportDownloadCoreAsync(download, overridePath, manualImportMode, allowPreferenceOverride, allowSavedPath);
+        if (!resolvePackMember) return await ImportDownloadCoreAsync(download, overridePath, manualImportMode, allowPreferenceOverride, allowSavedPath, selectedRelativePath);
         if (download.Id == 0 || !download.DownloadClientId.HasValue || string.IsNullOrWhiteSpace(download.DownloadId))
             return await HoldPackMemberAsync(download, "The directory has no persisted client job identity.");
 
@@ -209,7 +230,7 @@ public class FileImportService : IFileImportService
         foreach (var tracked in _db.ChangeTracker.Entries<DownloadQueueItem>()
             .Where(x => x.Entity.Id != download.Id && x.Entity.DownloadClientId == clientId && x.Entity.DownloadId == downloadId).ToList())
             await tracked.ReloadAsync();
-        var result = await ImportDownloadCoreAsync(download, overridePath, manualImportMode, allowPreferenceOverride, allowSavedPath);
+        var result = await ImportDownloadCoreAsync(download, overridePath, manualImportMode, allowPreferenceOverride, allowSavedPath, selectedRelativePath);
         if (result != null && completeImport != null)
         {
             try
@@ -226,7 +247,7 @@ public class FileImportService : IFileImportService
 
     private async Task<ImportHistory> ImportDownloadCoreAsync(
         DownloadQueueItem download, string? overridePath, PostImportMode? manualImportMode,
-        bool allowPreferenceOverride, bool allowSavedPath)
+        bool allowPreferenceOverride, bool allowSavedPath, string? selectedRelativePath)
     {
         _logger.LogInformation("Starting import for download: {Title} (ID: {DownloadId})",
             download.Title, download.DownloadId);
@@ -437,10 +458,6 @@ public class FileImportService : IFileImportService
                 throw new Exception($"No video files found in: {downloadPath}. Found {allFiles.Length} file(s) but none are recognized video formats. Files: {fileList}");
             }
 
-            // Largest file wins, except when an ancillary-named file (pre/post
-            // show, analysis, highlights) edges out the actual session by a few
-            // percent - then the biggest cleanly-named file is preferred (#205).
-            // Uses symlink-resolving file size for debrid service compatibility.
             string sourceFile;
             if (packDirectory)
             {
@@ -449,7 +466,26 @@ public class FileImportService : IFileImportService
                 if (selection.File == null) return await HoldPackMemberAsync(download, selection.Error!);
                 sourceFile = selection.File;
             }
-            else sourceFile = Helpers.MainFileSelector.SelectMainVideoFile(videoFiles, GetFileSizeResolvingSymlinks);
+            else if (selectedRelativePath != null)
+            {
+                var root = Directory.Exists(downloadPath) ? downloadPath : Path.GetDirectoryName(downloadPath) ?? downloadPath;
+                sourceFile = videoFiles.FirstOrDefault(file =>
+                    string.Equals(Path.GetRelativePath(root, file), selectedRelativePath, StringComparison.Ordinal))
+                    ?? throw new SelectedVideoUnavailableException();
+            }
+            else
+            {
+                sourceFile = Helpers.MainFileSelector.SelectMainVideoFile(videoFiles, GetFileSizeResolvingSymlinks, download.Title)!;
+                if (sourceFile == null)
+                {
+                    download.Status = DownloadStatus.ImportWarning;
+                    download.Progress = 100;
+                    download.ErrorMessage = ManualQueueImportPolicy.AmbiguousVideoWarning;
+                    download.LastUpdate = DateTime.UtcNow;
+                    await _db.SaveChangesAsync();
+                    return null!;
+                }
+            }
             var fileInfo = new FileInfo(sourceFile);
             var actualFileSize = GetFileSizeResolvingSymlinks(sourceFile);
 

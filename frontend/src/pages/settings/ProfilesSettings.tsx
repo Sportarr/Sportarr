@@ -1370,7 +1370,10 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                   className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                 />
                 <span className="text-sm font-medium text-gray-300">
-                  Upgrades Allowed (If disabled qualities will not be upgraded)
+                  Upgrade existing files
+                  <span className="block text-xs font-normal text-gray-400">
+                    Allows automatic searches, RSS feeds, and pushed releases to replace files with preferred releases. Turn off to stop automatic replacements. Manual imports can still replace files.
+                  </span>
                 </span>
               </label>
 

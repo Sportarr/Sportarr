@@ -1395,6 +1395,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       <option value="SpecialsOnly">Special Events Only (finals / playoffs / preseason)</option>
                       <option value="None">None (manual monitoring only)</option>
                     </select>
+                    {monitorType === 'Future' && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        Events added while upcoming stay monitored after they air. Unmonitor an event to stop future downloads for it.
+                      </p>
+                    )}
                     {monitorType === 'SpecialsOnly' && (
                       <p className="text-xs text-gray-400 mt-2">
                         Monitors only special events across all seasons, using the Special events
@@ -1600,7 +1605,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
                       />
                       <div>
-                        <div className="text-sm font-medium text-white">Search on add/update</div>
+                        <div className="text-sm font-medium text-white">Search for missing events on add/update</div>
                         <div className="text-xs text-gray-400">Automatically search when league is added or settings change</div>
                       </div>
                     </label>
@@ -1617,6 +1622,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         <div className="text-xs text-gray-400">Search for quality upgrades when league is added or settings change</div>
                       </div>
                     </label>
+                    <p className="text-xs text-gray-400">
+                      These options only start searches when you add or update this league. Other automatic searches, RSS feeds, and pushed releases can still upgrade monitored events. Turn off upgrades in the quality profile to stop automatic replacements.
+                    </p>
                   </div>
 
                   {/* Custom Search Query Template */}

@@ -14,6 +14,8 @@ using Sportarr.Api.Endpoints;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using Sportarr.Api.Services.Interfaces;
+using Sportarr.Api.Validators;
+using FluentValidation;
 
 namespace Sportarr.Api.Tests.Services;
 
@@ -57,6 +59,7 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         services.AddSingleton(new SportarrDbContext(options.Options));
         services.AddMemoryCache();
         services.AddSingleton<DownloadOwnershipCoordinator>();
+        services.AddSingleton<IValidator<ImportSelectedRequest>, ImportSelectedRequestValidator>();
         services.AddSingleton<RssSyncService>();
         var transport = new StubTransport();
         services.AddSingleton<IHttpClientFactory>(transport);

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using System.Net;
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Models;
@@ -9,6 +10,190 @@ namespace Sportarr.Api.Tests.Services;
 
 public class ManualQueueImportTests
 {
+    [Fact]
+    public async Task AmbiguousUpgradeKeepsExistingFileUntilAFileIsChosen()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(multipart: false);
+        var existing = await rig.ImportAsync("UFC.9999.720p.WEB-DL", "old.720p.WEB-DL.mkv");
+        var oldBytes = await File.ReadAllBytesAsync(existing.FilePath);
+        var folder = Path.Combine(Path.GetTempPath(), "sportarr-ambiguous-import-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(folder, "Session"));
+            await File.WriteAllBytesAsync(Path.Combine(folder, "Session", "Sprint.mp4"), Enumerable.Repeat((byte)'s', 8192).ToArray());
+            await File.WriteAllBytesAsync(Path.Combine(folder, "Race.mp4"), Enumerable.Repeat((byte)'r', 16384).ToArray());
+            var row = new DownloadQueueItem
+            {
+                EventId = rig.Event.Id,
+                Title = "UFC.9999.2160p.WEB-DL",
+                DownloadId = "ambiguous-upgrade",
+                Quality = "WEBDL-2160p",
+                Protocol = "Usenet",
+                Status = DownloadStatus.Completed,
+                Progress = 99.9,
+                DownloadClientId = (await rig.Db.DownloadClients.SingleAsync()).Id
+            };
+            rig.Db.DownloadQueue.Add(row);
+            await rig.Db.SaveChangesAsync();
+
+            var service = rig.Services.GetRequiredService<FileImportService>();
+            var held = await service.ImportDownloadAsync(row, folder, PostImportMode.Copy);
+
+            held.Should().BeNull();
+            row.Status.Should().Be(DownloadStatus.ImportWarning);
+            row.Progress.Should().Be(100);
+            row.DownloadClient = await rig.Db.DownloadClients.SingleAsync();
+            ManualQueueImportPolicy.CanChooseVideo(row).Should().BeTrue();
+            (await File.ReadAllBytesAsync(existing.FilePath)).Should().Equal(oldBytes);
+
+            var chosen = await service.ImportDownloadAsync(row, folder, PostImportMode.Copy,
+                allowPreferenceOverride: true, selectedRelativePath: Path.Combine("Session", "Sprint.mp4"));
+
+            chosen.Should().NotBeNull();
+            var imported = await rig.Db.EventFiles.SingleAsync();
+            (await File.ReadAllBytesAsync(imported.FilePath)).Should().OnlyContain(value => value == (byte)'s');
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
+    public async Task QueueFileChoiceImportsOnlyTheSelectedVideo()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(relational: true, multipart: false);
+        var existing = await rig.ImportAsync("UFC.9999.720p.WEB-DL", "old.720p.WEB-DL.mkv");
+        var folder = Path.Combine(Path.GetTempPath(), "sportarr-choice-route-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(folder, "Session"));
+            await File.WriteAllBytesAsync(Path.Combine(folder, "Session", "Sprint.mp4"), Enumerable.Repeat((byte)'s', 8192).ToArray());
+            await File.WriteAllBytesAsync(Path.Combine(folder, "Race.mp4"), Enumerable.Repeat((byte)'r', 16384).ToArray());
+            var row = new DownloadQueueItem
+            {
+                EventId = rig.Event.Id, Title = "UFC.9999.2160p.WEB-DL", DownloadId = "choice-route",
+                Quality = "WEBDL-2160p", Protocol = "Usenet", Status = DownloadStatus.ImportWarning,
+                Progress = 100, ErrorMessage = ManualQueueImportPolicy.AmbiguousVideoWarning,
+                DownloadClientId = (await rig.Db.DownloadClients.SingleAsync()).Id, OutputPath = folder
+            };
+            rig.Db.DownloadQueue.Add(row);
+            await rig.Db.SaveChangesAsync();
+            rig.Transport.CompletedDownloadId = row.DownloadId;
+            rig.Transport.CompletedDownloadPath = folder;
+
+            using var list = await rig.Client.GetAsync($"/api/queue/{row.Id}/video-files");
+            list.StatusCode.Should().Be(HttpStatusCode.OK);
+            var candidates = await list.Content.ReadFromJsonAsync<List<ImportVideoCandidate>>();
+            candidates!.Select(file => file.RelativePath).Should().BeEquivalentTo("Race.mp4", Path.Combine("Session", "Sprint.mp4"));
+
+            using var bypass = await rig.Client.PostAsync($"/api/queue/{row.Id}/import-anyway", null);
+            bypass.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            File.Exists(existing.FilePath).Should().BeTrue();
+
+            using var rejected = await rig.Client.PostAsJsonAsync($"/api/queue/{row.Id}/import-selected",
+                new { relativePath = "../old.720p.WEB-DL.mkv" });
+            rejected.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            File.Exists(existing.FilePath).Should().BeTrue();
+
+            using var accepted = await rig.Client.PostAsJsonAsync($"/api/queue/{row.Id}/import-selected",
+                new { relativePath = Path.Combine("Session", "Sprint.mp4") });
+            accepted.StatusCode.Should().Be(HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
+            var imported = await rig.Db.EventFiles.SingleAsync();
+            (await File.ReadAllBytesAsync(imported.FilePath)).Should().OnlyContain(value => value == (byte)'s');
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
+    public async Task MultiFileUpgradeImportsTheEventInsteadOfLargerPostShowAnalysis()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(multipart: false);
+        var existing = await rig.ImportAsync("UFC.9999.720p.WEB-DL", "old.720p.WEB-DL.mkv");
+        var oldPath = existing.FilePath;
+        var folder = Path.Combine(Path.GetTempPath(), "sportarr-session-import-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            await File.WriteAllBytesAsync(Path.Combine(folder, "01.Pre-UFC.9999.Buildup.mp4"),
+                Enumerable.Repeat((byte)'p', 4096).ToArray());
+            await File.WriteAllBytesAsync(Path.Combine(folder, "02.UFC.9999.Event.mp4"),
+                Enumerable.Repeat((byte)'s', 8192).ToArray());
+            await File.WriteAllBytesAsync(Path.Combine(folder, "03.Post-UFC.9999.Analysis.mp4"),
+                Enumerable.Repeat((byte)'a', 16384).ToArray());
+            var row = new DownloadQueueItem
+            {
+                EventId = rig.Event.Id,
+                Title = "UFC.9999.2160p.WEB-DL",
+                DownloadId = "multifile-session-upgrade",
+                Quality = "WEBDL-2160p",
+                Protocol = "Usenet",
+                Status = DownloadStatus.Completed
+            };
+            rig.Db.DownloadQueue.Add(row);
+            await rig.Db.SaveChangesAsync();
+
+            var result = await rig.Services.GetRequiredService<FileImportService>()
+                .ImportDownloadAsync(row, folder, PostImportMode.Copy);
+
+            result.Should().NotBeNull();
+            var imported = await rig.Db.EventFiles.SingleAsync();
+            (await File.ReadAllBytesAsync(imported.FilePath)).Should().OnlyContain(value => value == (byte)'s');
+            File.Exists(oldPath).Should().BeFalse();
+            row.Status.Should().Be(DownloadStatus.Imported);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
+    public async Task HighlightsUpgradeImportsHighlightsInsteadOfAComparableSideVideo()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(multipart: false);
+        var existing = await rig.ImportAsync("UFC.9999.720p.WEB-DL", "old.720p.WEB-DL.mkv");
+        var oldPath = existing.FilePath;
+        var folder = Path.Combine(Path.GetTempPath(), "sportarr-highlights-import-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            await File.WriteAllBytesAsync(Path.Combine(folder, "UFC.9999.Highlights.mp4"),
+                Enumerable.Repeat((byte)'h', 16384).ToArray());
+            await File.WriteAllBytesAsync(Path.Combine(folder, "Drivers.Press.Conference.mp4"),
+                Enumerable.Repeat((byte)'p', 12288).ToArray());
+            var row = new DownloadQueueItem
+            {
+                EventId = rig.Event.Id,
+                Title = "UFC.9999.Highlights.2160p.WEB-DL",
+                DownloadId = "highlights-multifile-upgrade",
+                Quality = "WEBDL-2160p",
+                Protocol = "Usenet",
+                Status = DownloadStatus.Completed
+            };
+            rig.Db.DownloadQueue.Add(row);
+            await rig.Db.SaveChangesAsync();
+
+            var result = await rig.Services.GetRequiredService<FileImportService>()
+                .ImportDownloadAsync(row, folder, PostImportMode.Copy);
+
+            result.Should().NotBeNull();
+            var imported = await rig.Db.EventFiles.SingleAsync();
+            (await File.ReadAllBytesAsync(imported.FilePath)).Should().OnlyContain(value => value == (byte)'h');
+            File.Exists(oldPath).Should().BeFalse();
+            row.Status.Should().Be(DownloadStatus.Imported);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
     [Fact]
     public async Task QueueEndpointRejectsIncompletePreferenceWarningWithoutTouchingCurrentFile()
     {

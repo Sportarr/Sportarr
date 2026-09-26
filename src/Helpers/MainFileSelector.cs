@@ -1,13 +1,8 @@
 namespace Sportarr.Api.Helpers;
 
 /// <summary>
-/// Picks the main video file out of a multi-file release. Largest file wins,
-/// with one refinement: when another file is close in size (within 10%) and
-/// the largest one's name marks it as ancillary content (pre/post show,
-/// buildup, analysis, highlights, ...), the biggest non-ancillary candidate
-/// is preferred. Motorsport releases in particular ship the session alongside
-/// buildup and analysis files, and the post-session analysis can edge out the
-/// actual session by a few megabytes (#205).
+/// Picks the main video file from a multi-file release.
+/// A session file wins over a file named as extra content when its size is plausible.
 /// </summary>
 public static class MainFileSelector
 {
@@ -22,7 +17,8 @@ public static class MainFileSelector
     /// <paramref name="sizeOf"/> supplies file sizes (symlink-resolving in the
     /// import path).
     /// </summary>
-    public static string SelectMainVideoFile(IReadOnlyList<string> videoFiles, Func<string, long> sizeOf)
+    public static string? SelectMainVideoFile(IReadOnlyList<string> videoFiles, Func<string, long> sizeOf,
+        string? releaseTitle = null)
     {
         if (videoFiles.Count == 1)
         {
@@ -34,22 +30,27 @@ public static class MainFileSelector
             .OrderByDescending(x => x.Size)
             .ToList();
         var maxSize = sized[0].Size;
-        if (maxSize <= 0)
+        if (maxSize <= 0) return null;
+
+        var minimumMainSize = maxSize / 4;
+        var highlightsRelease = !string.IsNullOrWhiteSpace(releaseTitle)
+            && System.Text.RegularExpressions.Regex.IsMatch(releaseTitle,
+                @"(?<![A-Za-z0-9])highlights?(?![A-Za-z0-9])",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (highlightsRelease)
         {
-            return sized[0].Path;
+            var highlights = sized.Where(x => x.Size >= minimumMainSize && HasHighlightName(x.Path)).ToList();
+            return highlights.Count == 1 ? highlights[0].Path : null;
         }
 
-        // Only files within 10% of the largest compete on name relevance -
-        // a genuinely bigger file always wins regardless of what it's called.
-        var comparable = sized.Where(x => x.Size * 10 >= maxSize * 9).ToList();
-        if (comparable.Count == 1)
-        {
-            return comparable[0].Path;
-        }
-
-        var preferred = comparable.FirstOrDefault(x => !HasAncillaryName(x.Path));
-        return (preferred.Path ?? comparable[0].Path);
+        var candidates = sized.Where(x => x.Size >= minimumMainSize && !HasAncillaryName(x.Path)).ToList();
+        return candidates.Count == 1 ? candidates[0].Path : null;
     }
+
+    private static bool HasHighlightName(string path) =>
+        System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileNameWithoutExtension(path),
+            @"(?<![A-Za-z0-9])highlights?(?![A-Za-z0-9])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     /// <summary>
     /// True when the file name carries a marker of ancillary content. Matching
