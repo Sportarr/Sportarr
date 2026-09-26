@@ -125,6 +125,15 @@ public class AutomaticSearchService : IAutomaticSearchService
                 return result;
             }
 
+            var policyRefusal = !isManualSearch && !Helpers.AutomaticAcquisitionPolicy.CanConsiderEvent(evt, DateTime.UtcNow)
+                ? "Event is excluded by the league automatic acquisition policy"
+                : null;
+            if (policyRefusal != null)
+            {
+                result.Message = policyRefusal;
+                return result;
+            }
+
             // MONITORED CHECK: Only applies to automatic background searches
             // Manual searches (user clicking search button) should always work
             // Individual event monitoring takes precedence over league monitoring
@@ -956,6 +965,31 @@ public class AutomaticSearchService : IAutomaticSearchService
                 }
             }
 
+            string? AcquisitionPart(ReleaseSearchResult release) => part ??
+                (config.EnableMultiPartEpisodes && EventPartDetector.IsFightingSport(evt.Sport ?? "")
+                    ? _partDetector.DetectPart(release.Title, evt.Sport ?? "", evt.Title)?.SegmentName
+                        ?? EventPartDetector.GetMainPartName(evt.Sport ?? "", evt.Title, evt.League?.Name)
+                    : null);
+            if (!isManualSearch)
+            {
+                var policyEvent = await _db.Events.AsNoTracking().Include(candidate => candidate.League)
+                    .Include(candidate => candidate.Files).FirstOrDefaultAsync(candidate => candidate.Id == eventId);
+                if (policyEvent == null)
+                {
+                    result.Message = "Event no longer exists";
+                    return result;
+                }
+                var policyNow = DateTime.UtcNow;
+                matchedReleases = matchedReleases.Where(release =>
+                    Helpers.AutomaticAcquisitionPolicy.RefusalReason(policyEvent, AcquisitionPart(release),
+                        policyNow, release.IsPack) == null).ToList();
+                if (matchedReleases.Count == 0)
+                {
+                    result.Message = "No releases allowed by the league automatic acquisition policy";
+                    return result;
+                }
+            }
+
             // Select best release using delay profile and protocol priority (from validated releases only)
             var bestRelease = _delayProfileService.SelectBestReleaseWithDelayProfile(
                 matchedReleases, delayProfile, qualityProfile);
@@ -969,6 +1003,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             }
 
             result.SelectedRelease = bestRelease.Title;
+            var acquisitionPart = AcquisitionPart(bestRelease);
             result.SelectedIndexer = bestRelease.Indexer;
             result.Quality = bestRelease.Quality;
             _logger.LogInformation("[Automatic Search] Selected: {Release} from {Indexer} (Score: {Score})",
@@ -1250,6 +1285,14 @@ public class AutomaticSearchService : IAutomaticSearchService
             // Season/multi-event packs use the pack-specific seed time when
             // the indexer defines one (packs are typically expected to seed
             // longer than single events).
+            policyRefusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(
+                _db, eventId, acquisitionPart, isManualSearch, bestRelease.IsPack);
+            if (policyRefusal != null)
+            {
+                result.Message = policyRefusal;
+                return result;
+            }
+
             var downloadId = await _downloadClientService.AddDownloadAsync(
                 downloadClient,
                 bestRelease.DownloadUrl,

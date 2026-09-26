@@ -12,6 +12,7 @@ namespace Sportarr.Api.Models;
 public class PendingRelease
 {
     public int Id { get; set; }
+    public bool? IsPack { get; set; }
 
     public int EventId { get; set; }
     public Event? Event { get; set; }

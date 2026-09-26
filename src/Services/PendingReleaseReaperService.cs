@@ -112,7 +112,24 @@ public class PendingReleaseReaperService : BackgroundService
                 continue;
             }
 
-            var winner = group
+            var eligible = new List<PendingRelease>();
+            foreach (var pending in group)
+            {
+                var policyRefusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(
+                    db, evt.Id, group.Key.Part, isPack: pending.IsPack != false, cancellationToken: cancellationToken);
+                if (policyRefusal != null)
+                {
+                    pending.Status = PendingReleaseStatus.Cancelled;
+                    pending.Reason = policyRefusal;
+                }
+                else
+                {
+                    eligible.Add(pending);
+                }
+            }
+            if (eligible.Count == 0) continue;
+
+            var winner = eligible
                 .OrderByDescending(p => p.QualityScore)
                 .ThenByDescending(p => p.CustomFormatScore)
                 .ThenByDescending(p => p.Score)
@@ -165,7 +182,7 @@ public class PendingReleaseReaperService : BackgroundService
             // queued while the group still read as pending, and the next pass
             // grabbed the same event a second time. Nothing is saved unless
             // the grab succeeds, so the revert below is enough on failure.
-            var losers = group.Where(p => p.Id != winner.Id).ToList();
+            var losers = eligible.Where(p => p.Id != winner.Id).ToList();
             winner.Status = PendingReleaseStatus.Released;
             foreach (var loser in losers)
             {
@@ -181,14 +198,14 @@ public class PendingReleaseReaperService : BackgroundService
                     "[Pending Release Reaper] Released best-of-window for '{Event}': {Winner} (score {Score})",
                     evt.Title, winner.Title, winner.QualityScore + winner.CustomFormatScore);
             }
-            else if (outcome == GrabOutcome.Superseded || outcome == GrabOutcome.Importing)
+            else if (outcome == GrabOutcome.Superseded || outcome == GrabOutcome.Importing || outcome == GrabOutcome.PolicyRefused)
             {
                 // Something better is already queued or being imported, the
                 // same answer RSS sync gives. Riding the failure path here
                 // marked the winner failed, put the losers back, and promoted
                 // the next one to hit the same download a minute later, one
                 // bogus grab failed warning per held release per pass.
-                var reason = outcome == GrabOutcome.Importing
+                var reason = outcome == GrabOutcome.PolicyRefused ? winner.Reason : outcome == GrabOutcome.Importing
                     ? "Event already being imported"
                     : "Better or equal release already queued";
                 foreach (var p in group)
@@ -216,7 +233,7 @@ public class PendingReleaseReaperService : BackgroundService
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private enum GrabOutcome { Grabbed, Failed, Superseded, Importing }
+    private enum GrabOutcome { Grabbed, Failed, Superseded, Importing, PolicyRefused }
 
     private async Task<GrabOutcome> TryGrabPendingAsync(
         SportarrDbContext db,
@@ -292,6 +309,14 @@ public class PendingReleaseReaperService : BackgroundService
                     queued.Title, evt.Title, queuedScore, pendingScore, pending.Title);
                 return GrabOutcome.Superseded;
             }
+        }
+
+        var policyRefusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(
+            db, evt.Id, pending.Part, isPack: pending.IsPack != false, cancellationToken: cancellationToken);
+        if (policyRefusal != null)
+        {
+            pending.Reason = policyRefusal;
+            return GrabOutcome.PolicyRefused;
         }
 
         var downloadId = await downloadClientService.AddDownloadAsync(

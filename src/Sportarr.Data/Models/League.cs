@@ -169,6 +169,11 @@ public class League
     /// </summary>
     public int RetentionDays { get; set; } = 0;
 
+    public bool AutomaticMissingEnabled { get; set; } = true;
+    public bool AutomaticUpgradesEnabled { get; set; } = true;
+    public int AutomaticMissingMaxAgeDays { get; set; } = 0;
+    public int AutomaticUpgradeMaxAgeDays { get; set; } = 0;
+
     /// <summary>
     /// The RootFolder this league's media should live under. Set at add time
     /// from the Add League modal and used by the import path builder so a
@@ -520,6 +525,11 @@ public class AddLeagueRequest
     /// <summary>Per-league retention window in days (0 = keep forever).</summary>
     public int RetentionDays { get; set; } = 0;
 
+    public bool AutomaticMissingEnabled { get; set; } = true;
+    public bool AutomaticUpgradesEnabled { get; set; } = true;
+    public int AutomaticMissingMaxAgeDays { get; set; }
+    public int AutomaticUpgradeMaxAgeDays { get; set; }
+
     /// <summary>
     /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
     /// {Round}, {Week}, {EventTitle}, {HomeTeam}, {AwayTeam}, {vs}, {Season}
@@ -558,6 +568,10 @@ public class AddLeagueRequest
             AllowHighlights = AllowHighlights,
             KeepAllEvents = KeepAllEvents,
             RetentionDays = Math.Max(0, RetentionDays),
+            AutomaticMissingEnabled = AutomaticMissingEnabled,
+            AutomaticUpgradesEnabled = AutomaticUpgradesEnabled,
+            AutomaticMissingMaxAgeDays = AutomaticMissingMaxAgeDays,
+            AutomaticUpgradeMaxAgeDays = AutomaticUpgradeMaxAgeDays,
             SearchQueryTemplate = SearchQueryTemplate,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
@@ -587,6 +601,10 @@ public class LeagueResponse
     public MonitorType MonitorType { get; set; }
     public int? QualityProfileId { get; set; }
     public int RetentionDays { get; set; }
+    public bool AutomaticMissingEnabled { get; set; }
+    public bool AutomaticUpgradesEnabled { get; set; }
+    public int AutomaticMissingMaxAgeDays { get; set; }
+    public int AutomaticUpgradeMaxAgeDays { get; set; }
     public int? RootFolderId { get; set; }
 
     /// <summary>
@@ -757,6 +775,10 @@ public class LeagueResponse
             KeepAllEvents = league.KeepAllEvents,
             AlternateName = league.AlternateName,
             RetentionDays = league.RetentionDays,
+            AutomaticMissingEnabled = league.AutomaticMissingEnabled,
+            AutomaticUpgradesEnabled = league.AutomaticUpgradesEnabled,
+            AutomaticMissingMaxAgeDays = league.AutomaticMissingMaxAgeDays,
+            AutomaticUpgradeMaxAgeDays = league.AutomaticUpgradeMaxAgeDays,
             SearchQueryTemplate = league.SearchQueryTemplate,
             LogoUrl = league.LogoUrl,
             BannerUrl = league.BannerUrl,

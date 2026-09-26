@@ -120,10 +120,14 @@ public class BacklogSearchService : BackgroundService
         if (oldestAllowed.HasValue)
             missingQuery = missingQuery.Where(e => e.EventDate >= oldestAllowed.Value);
 
-        var missingEventIds = await missingQuery
+        var missingCandidates = await missingQuery
             .OrderByDescending(e => e.EventDate)
-            .Select(e => new { e.Id, e.Title })
             .ToListAsync(cancellationToken);
+
+        var policyNow = DateTime.UtcNow;
+        var missingEventIds = missingCandidates
+            .Where(evt => Helpers.AutomaticAcquisitionPolicy.CanConsiderEvent(evt, policyNow))
+            .Select(evt => new { evt.Id, evt.Title }).ToList();
 
         var cutoffQuery = db.Events
             .Include(e => e.League)
@@ -153,12 +157,16 @@ public class BacklogSearchService : BackgroundService
             {
                 e.Id,
                 e.Title,
+                e.League,
+                e.EventDate,
                 EventQuality = e.Quality,
                 FileQualities = e.Files.Where(f => f.Exists).Select(f => f.Quality).ToList()
             })
             .ToListAsync(cancellationToken);
 
         var cutoffEventIds = cutoffCandidates
+            .Where(candidate => Helpers.AutomaticAcquisitionPolicy.RefusalReason(
+                candidate.League, candidate.EventDate, true, policyNow) == null)
             .Where(c =>
             {
                 // Prefer EventFile rows; fall back to Event-level Quality for legacy rows.

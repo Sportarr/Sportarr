@@ -15,6 +15,8 @@ import {
 } from '../utils/leagueSportRules';
 import ConfirmationModal from './ConfirmationModal';
 import TagSelector from './TagSelector';
+import AcquisitionPolicyFields from './AcquisitionPolicyFields';
+import { acquisitionPolicyFrom, type AcquisitionPolicy } from '../utils/acquisitionPolicy';
 
 interface Team {
   idTeam: string;
@@ -80,7 +82,8 @@ interface AddLeagueModalProps {
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
     enableDvr: boolean,
-    keepAllEvents: boolean
+    keepAllEvents: boolean,
+    acquisitionPolicy: AcquisitionPolicy
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -111,6 +114,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [enableDvr, setEnableDvr] = useState(true);
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [retentionDays, setRetentionDays] = useState(0);
+  const [acquisitionPolicy, setAcquisitionPolicy] = useState(() => acquisitionPolicyFrom({}));
   const [rootFolderId, setRootFolderId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
   const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
@@ -421,6 +425,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         monitorType: existingLeague.monitorType,
         qualityProfileId: existingLeague.qualityProfileId,
         retentionDays: existingLeague.retentionDays,
+        acquisitionPolicy: acquisitionPolicyFrom(existingLeague),
         monitoredParts: existingLeague.monitoredParts,
         monitoredSessionTypes: existingLeague.monitoredSessionTypes,
         monitoredEventTypes: existingLeague.monitoredEventTypes,
@@ -448,6 +453,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setMonitorType(existingLeague.monitorType || 'All');
       setQualityProfileId(existingLeague.qualityProfileId || null);
       setRetentionDays(existingLeague.retentionDays || 0);
+      setAcquisitionPolicy(acquisitionPolicyFrom(existingLeague));
       setRootFolderId(existingLeague.rootFolderId ?? null);
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
@@ -573,6 +579,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setMonitorType('Future');
       setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
       setRetentionDays(0);
+      setAcquisitionPolicy(acquisitionPolicyFrom({}));
       // Default to the most-free-space accessible root folder so single-root
       // setups don't require a click and multi-root setups still surface a
       // sensible pre-selection.
@@ -804,7 +811,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       allowHighlights,
       sessionTypeQualityString,
       enableDvr,
-      keepAllEvents
+      keepAllEvents,
+      acquisitionPolicy
     );
   };
 
@@ -1570,6 +1578,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                   </div>
 
                   {/* Event Retention */}
+                  <AcquisitionPolicyFields value={acquisitionPolicy} onChange={setAcquisitionPolicy} />
+
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-300 mb-2">
                       Delete Events After

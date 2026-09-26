@@ -1,3 +1,4 @@
+import { acquisitionPolicyFrom, type AcquisitionPolicy } from '../utils/acquisitionPolicy';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon, TagIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
@@ -853,7 +854,7 @@ export default function LeagueDetailPage() {
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
       keepAllEvents?: boolean;
-    }) => {
+    } & Partial<AcquisitionPolicy>) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
       // Fighting leagues that monitor by event type (UFC, WWE, ONE) hide the team
@@ -1008,11 +1009,13 @@ export default function LeagueDetailPage() {
     sessionTypeQualityProfiles: string | null,
     _enableDvr?: boolean,
     keepAllEvents?: boolean,
+    acquisitionPolicy: AcquisitionPolicy = acquisitionPolicyFrom({}),
   ) => {
     void _rootFolderId;
     void league;
     void _enableDvr;
     updateLeagueSettingsMutation.mutate({
+      ...acquisitionPolicy,
       monitoredTeamIds,
       monitorType,
       qualityProfileId,

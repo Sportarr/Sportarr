@@ -202,6 +202,10 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.KeepAllEvents,
         league.AllowHighlights,
         league.RetentionDays,
+        league.AutomaticMissingEnabled,
+        league.AutomaticUpgradesEnabled,
+        league.AutomaticMissingMaxAgeDays,
+        league.AutomaticUpgradeMaxAgeDays,
         league.RootFolderId,
         Path = leaguePath,
         league.SearchQueryTemplate,
@@ -769,6 +773,27 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     // Log the raw request body for debugging
     logger.LogInformation("[LEAGUES] Updating league: {Name} (ID: {Id}), Request body properties: {Properties}",
         league.Name, id, string.Join(", ", body.EnumerateObject().Select(p => p.Name)));
+
+    foreach (var field in new[] { "automaticMissingMaxAgeDays", "automaticUpgradeMaxAgeDays" })
+    {
+        if (body.TryGetProperty(field, out var value) &&
+            (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var days) || days < 0))
+            return Results.BadRequest(new { error = $"{field} must be a non-negative integer (0 = unlimited)" });
+    }
+    foreach (var field in new[] { "automaticMissingEnabled", "automaticUpgradesEnabled" })
+    {
+        if (body.TryGetProperty(field, out var value) &&
+            value.ValueKind != JsonValueKind.True && value.ValueKind != JsonValueKind.False)
+            return Results.BadRequest(new { error = $"{field} must be a boolean" });
+    }
+    if (body.TryGetProperty("automaticMissingEnabled", out var missingEnabled))
+        league.AutomaticMissingEnabled = missingEnabled.GetBoolean();
+    if (body.TryGetProperty("automaticUpgradesEnabled", out var upgradesEnabled))
+        league.AutomaticUpgradesEnabled = upgradesEnabled.GetBoolean();
+    if (body.TryGetProperty("automaticMissingMaxAgeDays", out var missingAge))
+        league.AutomaticMissingMaxAgeDays = missingAge.GetInt32();
+    if (body.TryGetProperty("automaticUpgradeMaxAgeDays", out var upgradeAge))
+        league.AutomaticUpgradeMaxAgeDays = upgradeAge.GetInt32();
 
     // Track what changed for event updates
     bool monitoredChanged = false;
@@ -2492,6 +2517,9 @@ app.MapPut("/api/leagues/bulk", async (BulkEditLeaguesRequest request, SportarrD
         return Results.BadRequest(new { error = "leagueIds must not be empty" });
     }
 
+    if (request.AutomaticMissingMaxAgeDays < 0 || request.AutomaticUpgradeMaxAgeDays < 0)
+        return Results.BadRequest(new { error = "Automatic acquisition age limits must be non-negative (0 = unlimited)" });
+
     if (request.QualityProfileId.HasValue &&
         !await db.QualityProfiles.AnyAsync(p => p.Id == request.QualityProfileId.Value))
     {
@@ -2518,6 +2546,15 @@ app.MapPut("/api/leagues/bulk", async (BulkEditLeaguesRequest request, SportarrD
         {
             league.RetentionDays = Math.Max(0, request.RetentionDays.Value);
         }
+
+        if (request.AutomaticMissingEnabled.HasValue)
+            league.AutomaticMissingEnabled = request.AutomaticMissingEnabled.Value;
+        if (request.AutomaticUpgradesEnabled.HasValue)
+            league.AutomaticUpgradesEnabled = request.AutomaticUpgradesEnabled.Value;
+        if (request.AutomaticMissingMaxAgeDays.HasValue)
+            league.AutomaticMissingMaxAgeDays = request.AutomaticMissingMaxAgeDays.Value;
+        if (request.AutomaticUpgradeMaxAgeDays.HasValue)
+            league.AutomaticUpgradeMaxAgeDays = request.AutomaticUpgradeMaxAgeDays.Value;
 
         // Tags: "replace" applies even with an empty list (clear all);
         // add/remove are no-ops without tags to add or remove.

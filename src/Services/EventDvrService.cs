@@ -60,7 +60,7 @@ public class EventDvrService
     /// (downloaded after airing by CatchupDownloadService); the rest
     /// keep the live recording path.
     /// </summary>
-    public async Task<DvrRecording?> ScheduleRecordingForEventAsync(int eventId)
+    public async Task<DvrRecording?> ScheduleRecordingForEventAsync(int eventId, bool isAutomatic = false)
     {
         var evt = await _db.Events
             .Include(e => e.League)
@@ -247,7 +247,7 @@ public class EventDvrService
                 PrePadding = prePadding,
                 PostPadding = postPadding,
                 Method = useCatchup ? DvrRecordingMethod.Catchup : DvrRecordingMethod.Live
-            });
+            }, isAutomatic);
 
             // Redundant recording: when configured, also record the event
             // from the next-best DISTINCT channels, preferring a different
@@ -293,7 +293,7 @@ public class EventDvrService
                             PrePadding = prePadding,
                             PostPadding = postPadding,
                             Method = DvrRecordingMethod.Live
-                        });
+                        }, isAutomatic);
                         if (extraRecording != null)
                         {
                             redundantChannelIds.Add(extra.Id);
@@ -370,7 +370,7 @@ public class EventDvrService
     {
         if (monitored)
         {
-            await ScheduleRecordingForEventAsync(eventId);
+            await ScheduleRecordingForEventAsync(eventId, isAutomatic: true);
         }
         else
         {
@@ -466,7 +466,7 @@ public class EventDvrService
 
         foreach (var evt in upcomingEvents)
         {
-            var recording = await ScheduleRecordingForEventAsync(evt.Id);
+            var recording = await ScheduleRecordingForEventAsync(evt.Id, isAutomatic: true);
             if (recording != null)
             {
                 scheduledCount++;

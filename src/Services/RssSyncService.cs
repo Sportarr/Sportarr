@@ -149,6 +149,8 @@ public class RssSyncService : BackgroundService
                 && e.Status != "Canceled" && e.Status != "canceled")
             .ToListAsync(cancellationToken);
 
+        monitoredEvents = monitoredEvents.Where(evt => Helpers.AutomaticAcquisitionPolicy.CanConsiderEvent(evt, nowUtc)).ToList();
+
         if (!monitoredEvents.Any())
         {
             _logger.LogDebug("[RSS Sync] No monitored events have aired yet");
@@ -696,6 +698,11 @@ public class RssSyncService : BackgroundService
             }
         }
 
+        var policyRefusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(
+            db, evt.Id, releasePart, isPack: release.IsPack, cancellationToken: cancellationToken);
+        if (policyRefusal != null)
+            return (false, policyRefusal, releasePart);
+
         // 2. Check if already in queue (PART-AWARE) - with upgrade logic
         DownloadQueueItem? itemToReplace = null;
         var replacedScore = 0;
@@ -990,6 +997,7 @@ public class RssSyncService : BackgroundService
                                 IndexerId = release.IndexerId,
                                 TorrentInfoHash = release.TorrentInfoHash,
                                 Protocol = release.Protocol,
+                                IsPack = release.IsPack,
                                 Size = release.Size,
                                 Quality = release.Quality,
                                 Source = release.Source,
@@ -1033,6 +1041,11 @@ public class RssSyncService : BackgroundService
 
         // The decision is final, so the queued download this release beats can
         // go now.
+        policyRefusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(
+            db, evt.Id, releasePart, isPack: release.IsPack, cancellationToken: cancellationToken);
+        if (policyRefusal != null)
+            return (false, policyRefusal, releasePart);
+
         if (itemToReplace != null)
         {
             await RemoveAndCancelQueueItemAsync(db, itemToReplace, downloadClientService, cancellationToken);
@@ -1151,6 +1164,14 @@ public class RssSyncService : BackgroundService
 
         // Send to download client with seed config from indexer. Packs use
         // the pack-specific seed time when the indexer defines one.
+        var policyRefusal = await Helpers.AutomaticAcquisitionPolicy.RefusalReasonAsync(
+            db, evt.Id, releasePart, isPack: release.IsPack, cancellationToken: cancellationToken);
+        if (policyRefusal != null)
+        {
+            _logger.LogInformation("[RSS Sync] {Reason}: {Event}", policyRefusal, evt.Title);
+            return false;
+        }
+
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             release.DownloadUrl,

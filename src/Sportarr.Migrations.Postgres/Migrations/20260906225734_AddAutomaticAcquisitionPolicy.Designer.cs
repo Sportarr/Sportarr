@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Sportarr.Api.Data;
@@ -12,9 +13,11 @@ using Sportarr.Api.Data;
 namespace Sportarr.Api.Migrations.Postgres.Migrations
 {
     [DbContext(typeof(SportarrDbContext))]
-    partial class SportarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260906225734_AddAutomaticAcquisitionPolicy")]
+    partial class AddAutomaticAcquisitionPolicy
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1228,9 +1231,6 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasAnnotation("Relational:JsonPropertyName", "broadcastDate");
 
-                    b.Property<bool>("BroadcastDateVerified")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "strDescriptionEN");
@@ -1254,9 +1254,6 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<bool>("HasFile")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool?>("HasLaterSeasonFinal")
                         .HasColumnType("boolean");
 
                     b.Property<string>("HomeScore")
@@ -2383,10 +2380,6 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasAnnotation("Relational:JsonPropertyName", "strSport");
-
-                    b.Property<string>("SportFormat")
-                        .HasColumnType("text")
-                        .HasAnnotation("Relational:JsonPropertyName", "strSportFormat");
 
                     b.Property<string>("Tags")
                         .IsRequired()

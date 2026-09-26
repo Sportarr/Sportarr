@@ -945,6 +945,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime?>("ImportedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsAutomatic")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("LastUpdated")
                         .HasColumnType("TEXT");
 
@@ -2191,6 +2194,18 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strLeagueAlternate");
 
+                    b.Property<bool>("AutomaticMissingEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AutomaticMissingMaxAgeDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AutomaticUpgradeMaxAgeDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AutomaticUpgradesEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("BannerUrl")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT")
@@ -2707,6 +2722,7 @@ namespace Sportarr.Api.Migrations
 
             modelBuilder.Entity("Sportarr.Api.Models.PendingRelease", b =>
                 {
+                    b.Property<bool?>("IsPack").HasColumnType("INTEGER");
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");

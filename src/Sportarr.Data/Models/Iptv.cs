@@ -654,6 +654,7 @@ public class ChannelLeagueMapping
 public class DvrRecording
 {
     public int Id { get; set; }
+    public bool IsAutomatic { get; set; }
 
     /// <summary>
     /// The event being recorded (optional - can record without event association)
