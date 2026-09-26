@@ -817,6 +817,33 @@ public class FileWatcherService : BackgroundService
             evt.Title);
     }
 
+    private async Task UpdateEventAfterDeletedFileAsync(
+        SportarrDbContext db, Event evt, string deletedPath, bool enableMultiPartEpisodes)
+    {
+        var remaining = evt.Files
+            .Where(file => file.Exists && file.FilePath != deletedPath)
+            .OrderByDescending(file => file.Size)
+            .ThenBy(file => file.Id)
+            .ToList();
+        evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+            evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
+            evt.League?.MonitoredParts, remaining.Select(file => file.PartNumber).ToArray(),
+            enableMultiPartEpisodes);
+
+        var pathComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (remaining.Count == 0 || string.Equals(evt.FilePath, deletedPath, pathComparison))
+        {
+            var selected = remaining.FirstOrDefault();
+            evt.FilePath = selected?.FilePath;
+            evt.FileSize = selected?.Size;
+            evt.Quality = selected?.Quality;
+        }
+
+        if (remaining.Count == 0)
+            await MaybeUnmonitorDeletedAsync(db, evt);
+    }
+
     private async Task HandleDeletedFileAsync(string filePath)
     {
         try
@@ -834,6 +861,7 @@ public class FileWatcherService : BackgroundService
                 _logger.LogDebug("[File Watcher] Ignoring our own deletion during import: {Path}", filePath);
                 return;
             }
+            var config = await scope.ServiceProvider.GetRequiredService<ConfigService>().GetConfigAsync();
 
             // Check EventFiles table
             var eventFile = await db.EventFiles.FirstOrDefaultAsync(ef => ef.FilePath == filePath);
@@ -842,36 +870,25 @@ public class FileWatcherService : BackgroundService
                 eventFile.Exists = false;
                 eventFile.LastVerified = DateTime.UtcNow;
 
-                // Check if the event has any other existing files
-                var hasOtherFiles = await db.EventFiles
-                    .AnyAsync(ef => ef.EventId == eventFile.EventId && ef.Id != eventFile.Id && ef.Exists);
-
-                if (!hasOtherFiles)
-                {
-                    var evt = await db.Events.FindAsync(eventFile.EventId);
-                    if (evt != null)
-                    {
-                        evt.HasFile = false;
-                        evt.FilePath = null;
-                        evt.FileSize = null;
-                        evt.Quality = null;
-                        await MaybeUnmonitorDeletedAsync(db, evt);
-                    }
-                }
+                var evt = await db.Events
+                    .Include(e => e.League)
+                    .Include(e => e.Files)
+                    .FirstOrDefaultAsync(e => e.Id == eventFile.EventId);
+                if (evt != null)
+                    await UpdateEventAfterDeletedFileAsync(db, evt, filePath, config.EnableMultiPartEpisodes);
 
                 await db.SaveChangesAsync();
                 _logger.LogWarning("[File Watcher] File deleted: {Path}", filePath);
             }
 
             // Check Events table direct file path
-            var directEvent = await db.Events.FirstOrDefaultAsync(e => e.FilePath == filePath);
+            var directEvent = await db.Events
+                .Include(e => e.League)
+                .Include(e => e.Files)
+                .FirstOrDefaultAsync(e => e.FilePath == filePath);
             if (directEvent != null)
             {
-                directEvent.HasFile = false;
-                directEvent.FilePath = null;
-                directEvent.FileSize = null;
-                directEvent.Quality = null;
-                await MaybeUnmonitorDeletedAsync(db, directEvent);
+                await UpdateEventAfterDeletedFileAsync(db, directEvent, filePath, config.EnableMultiPartEpisodes);
                 await db.SaveChangesAsync();
                 _logger.LogWarning("[File Watcher] File deleted (direct event): {Path}", filePath);
             }

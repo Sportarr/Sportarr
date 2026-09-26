@@ -17,6 +17,25 @@ public class ReleaseTypeDetectorTests
         ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.SingleEvent);
     }
 
+    [Fact]
+    public void Detect_AflRoundWithVMatchup_IsNotAnImportPack()
+    {
+        const string title = "AFL 2026 Round 1 Game 1 Carlton Blues V Richmond Tigers 1080p WEB DL 50FPS AAC H264 FLOG";
+
+        ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.SingleEvent);
+        ReleaseTypeDetector.DetectForImport(title).Should().Be(ReleaseType.SingleEvent);
+    }
+
+    [Theory]
+    [InlineData("AFL 2026 Round 1 Carlton V Richmond and Geelong V Fremantle PACK 1080p")]
+    [InlineData("AFL 2026 Carlton V Richmond FULL SEASON 1080p")]
+    [InlineData("AFL 2026 Carlton V Richmond ALL GAMES 1080p")]
+    public void Detect_ExplicitBundleWithVMatchup_RemainsAnImportPack(string title)
+    {
+        ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.Pack);
+        ReleaseTypeDetector.DetectForImport(title).Should().Be(ReleaseType.Pack);
+    }
+
     [Theory]
     [InlineData("Premier.League.2025-26.Matchday.32.Match.Pack.1080p50.H265")]
     [InlineData("WWE.2007.PPV.Pack.DVDRip.x264-RUDOS")]
@@ -56,6 +75,33 @@ public class ReleaseTypeDetectorTests
     public void Detect_EmptyTitle_ReturnsUnknown()
     {
         ReleaseTypeDetector.Detect("").Should().Be(ReleaseType.Unknown);
+    }
+
+    [Fact]
+    public void Detect_WrcFullRallyWithRound_ReturnsSingleEvent()
+    {
+        const string title = "WRC 2026 Round03 Safari Rally Kenya FULL EVENT 1080p50fps EN RallyTV";
+
+        ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.SingleEvent);
+        ReleaseTypeDetector.DetectForImport(title).Should().Be(ReleaseType.SingleEvent);
+    }
+
+    [Fact]
+    public void Detect_WrcFullRallyWithExplicitPackMarker_RemainsPack()
+    {
+        const string title = "WRC 2026 Round03 Safari Rally Kenya FULL EVENT PACK 1080p";
+
+        ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.Pack);
+        ReleaseTypeDetector.DetectForImport(title).Should().Be(ReleaseType.Pack);
+    }
+
+    [Fact]
+    public void Detect_WrcFullRallyWithLeagueId_RemainsPack()
+    {
+        const string title = "WRC 2026 Round03 Safari Rally Kenya FULL EVENT 1080p50fps EN RallyTV";
+
+        ReleaseTypeDetector.Detect(title, sportarrLeagueId: "lg-9900300").Should().Be(ReleaseType.Pack);
+        ReleaseTypeDetector.DetectForImport(title, leagueId: "lg-9900300").Should().Be(ReleaseType.Pack);
     }
 
     [Fact]

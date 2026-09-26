@@ -568,9 +568,9 @@ public class EventDvrService
             Source = "IPTV",
             Codec = recording.VideoCodec,
             PartName = recording.PartName,
-            PartNumber = !string.IsNullOrEmpty(recording.PartName)
-                ? GetPartNumberFromName(recording.PartName)
-                : null,
+            PartNumber = EventPartDetector.ResolvePartNumber(
+                recording.PartName, recording.Event.Sport, recording.Event.Title,
+                recording.Event.League?.Name),
             Added = DateTime.UtcNow,
             LastVerified = DateTime.UtcNow,
             Exists = true,
@@ -580,7 +580,16 @@ public class EventDvrService
         _db.EventFiles.Add(eventFile);
 
         // Update event status
-        recording.Event.HasFile = true;
+        var presentParts = await _db.EventFiles
+            .Where(file => file.EventId == recording.EventId && file.Exists)
+            .Select(file => file.PartNumber)
+            .ToListAsync();
+        presentParts.Add(eventFile.PartNumber);
+        var config = await _configService.GetConfigAsync();
+        recording.Event.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+            recording.Event.Sport, recording.Event.Title, recording.Event.League?.Name,
+            recording.Event.MonitoredParts, recording.Event.League?.MonitoredParts,
+            presentParts, config.EnableMultiPartEpisodes);
         recording.Event.FilePath = recording.OutputPath;
         recording.Event.FileSize = recording.FileSize;
         recording.Event.Quality = recording.Quality ?? "DVR";
@@ -866,20 +875,6 @@ public class EventDvrService
         return importedCount;
     }
 
-    /// <summary>
-    /// Get part number from part name for fighting sports.
-    /// </summary>
-    private static int? GetPartNumberFromName(string partName)
-    {
-        return partName.ToLowerInvariant() switch
-        {
-            "early prelims" => 1,
-            "prelims" => 2,
-            "main card" => 3,
-            "full event" => 0,
-            _ => null
-        };
-    }
 }
 
 /// <summary>

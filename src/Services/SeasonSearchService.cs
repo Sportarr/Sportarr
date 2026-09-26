@@ -154,7 +154,8 @@ public class SeasonSearchService
                     preParsed: preParsed,
                     earlyReleaseLimitDays: earlyLimit,
                     roundRaceNumbers: roundRaceNumbers,
-                    knownLeagues: knownLeagues);
+                    knownLeagues: knownLeagues,
+                    datePeers: seasonEvents);
 
                 if (matchResult.IsMatch)
                 {

@@ -58,6 +58,7 @@ public static class EventFileEditorEndpoints
             int id,
             EventFileEditRequest request,
             SportarrDbContext db,
+            ConfigService configService,
             ILogger<Program> logger) =>
         {
             var file = await db.EventFiles.FirstOrDefaultAsync(f => f.Id == id);
@@ -87,6 +88,8 @@ public static class EventFileEditorEndpoints
                 id, file.Quality ?? "null", file.Source ?? "null", file.Codec ?? "null", file.ReleaseGroup ?? "null");
 
             ApplyEdits(file, request);
+            if (request.PartName != null || request.PartNumber.HasValue)
+                await RecalculateCompletenessAsync(db, configService, new[] { file.EventId });
             var rowsWritten = await db.SaveChangesAsync();
 
             logger.LogInformation(
@@ -103,6 +106,7 @@ public static class EventFileEditorEndpoints
         app.MapPut("/api/event-files/editor", async (
             EventFileEditorRequest request,
             SportarrDbContext db,
+            ConfigService configService,
             ILogger<Program> logger) =>
         {
             if (request.EventFileIds == null || request.EventFileIds.Count == 0)
@@ -133,6 +137,8 @@ public static class EventFileEditorEndpoints
             {
                 ApplyEdits(file, request);
             }
+            if (request.PartName != null || request.PartNumber.HasValue)
+                await RecalculateCompletenessAsync(db, configService, files.Select(f => f.EventId));
             var rowsWritten = await db.SaveChangesAsync();
 
             logger.LogInformation("[EventFile Editor] Bulk-applied edits to {Count} files ({Rows} rows written, ids: {Ids})",
@@ -150,6 +156,7 @@ public static class EventFileEditorEndpoints
         app.MapPut("/api/event-files/bulk", async (
             List<EventFileBulkItem> items,
             SportarrDbContext db,
+            ConfigService configService,
             ILogger<Program> logger) =>
         {
             if (items == null || items.Count == 0)
@@ -172,6 +179,12 @@ public static class EventFileEditorEndpoints
                 ApplyEdits(file, item);
                 updated.Add(file);
             }
+
+            var changedPartEventIds = updated
+                .Where(file => items.Any(item => item.Id == file.Id &&
+                    (item.PartName != null || item.PartNumber.HasValue)))
+                .Select(file => file.EventId);
+            await RecalculateCompletenessAsync(db, configService, changedPartEventIds);
 
             await db.SaveChangesAsync();
 
@@ -321,6 +334,22 @@ public static class EventFileEditorEndpoints
     /// Public so unit tests can exercise the merge logic without spinning up the
     /// full HTTP pipeline.
     /// </summary>
+    private static async Task RecalculateCompletenessAsync(
+        SportarrDbContext db, ConfigService configService, IEnumerable<int> eventIds)
+    {
+        var ids = eventIds.Distinct().ToArray();
+        if (ids.Length == 0) return;
+
+        var config = await configService.GetConfigAsync();
+        var events = await db.Events
+            .Include(e => e.League)
+            .Include(e => e.Files)
+            .Where(e => ids.Contains(e.Id))
+            .ToListAsync();
+        foreach (var evt in events)
+            evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt, config.EnableMultiPartEpisodes);
+    }
+
     public static void ApplyEdits(EventFile file, EventFileEditRequest req)
     {
         if (req.Quality != null)
@@ -364,4 +393,3 @@ public static class EventFileEditorEndpoints
         }
     }
 }
-

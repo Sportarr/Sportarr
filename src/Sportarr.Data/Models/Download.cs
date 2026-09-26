@@ -224,6 +224,7 @@ public class DownloadQueueItem
     public DateTime Added { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
     public DateTime? ImportedAt { get; set; }
+    public DateTime? FailedAt { get; set; }
 
     // Enhanced download monitoring fields
     public int? RetryCount { get; set; } = 0;
@@ -1288,7 +1289,7 @@ public class PendingImportResponse
     public string? Protocol { get; set; }
     public string? TorrentInfoHash { get; set; }
 
-    public static PendingImportResponse FromPendingImport(PendingImport import) => new()
+    public static PendingImportResponse FromPendingImport(PendingImport import, bool enableMultiPartEpisodes) => new()
     {
         Id = import.Id,
         DownloadClientId = import.DownloadClientId,
@@ -1309,7 +1310,8 @@ public class PendingImportResponse
         Status = import.Status,
         ErrorMessage = import.ErrorMessage,
         SuggestedEventId = import.SuggestedEventId,
-        SuggestedEvent = import.SuggestedEvent is null ? null : EventResponse.FromEvent(import.SuggestedEvent),
+        SuggestedEvent = import.SuggestedEvent is null
+            ? null : EventResponse.FromEvent(import.SuggestedEvent, enableMultiPartEpisodes, filesLoaded: false),
         SuggestedPart = import.SuggestedPart,
         SuggestionConfidence = import.SuggestionConfidence,
         Detected = import.Detected,

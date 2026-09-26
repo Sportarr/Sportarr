@@ -755,6 +755,19 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         logger.LogInformation("[CONFIG] EnableMultiPartEpisodes changed from {Old} to {New} - updating file format",
             previousEnableMultiPart, updatedConfig.EnableMultiPartEpisodes);
         await fileFormatManager.UpdateFileFormatForMultiPartSetting(updatedConfig.EnableMultiPartEpisodes);
+
+        var fightingSports = EventPartDetector.FightingSportNames
+            .Select(s => s.ToLowerInvariant()).ToArray();
+        var fightingEvents = await db.Events
+            .Include(e => e.League)
+            .Include(e => e.Files)
+            .AsSplitQuery()
+            .Where(e => e.Sport != null && fightingSports.Contains(e.Sport.ToLower())
+                && (e.HasFile || e.Files.Any()))
+            .ToListAsync();
+        foreach (var evt in fightingEvents)
+            evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt, updatedConfig.EnableMultiPartEpisodes);
+        await db.SaveChangesAsync();
     }
 
     // CRITICAL: Sync SecuritySettings to database (used by DynamicAuthenticationMiddleware)

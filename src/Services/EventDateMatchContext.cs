@@ -1,11 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
 
 internal static class EventDateMatchContext
 {
+    public static bool ShouldLoadPeers(Event evt) =>
+        !string.IsNullOrWhiteSpace(evt.HomeTeamName) &&
+        !string.IsNullOrWhiteSpace(evt.AwayTeamName) &&
+        (!evt.BroadcastDateVerified ||
+            LeagueReleaseNamePolicy.CanUseVerifiedCopaDateWindow(evt) ||
+            LeagueReleaseNamePolicy.CanUseVerifiedLibertadoresUtcDate(evt) ||
+            LeagueReleaseNamePolicy.AllowsAdjacentDateDriftLeague(evt));
+
     public static async Task<IReadOnlyCollection<Event>> LoadAsync(
         SportarrDbContext db,
         Event evt,

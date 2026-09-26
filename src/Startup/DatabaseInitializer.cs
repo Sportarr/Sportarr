@@ -2113,6 +2113,12 @@ public static class DatabaseInitializer
     using (var scope = services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var normalizedProfileCount = await QualityProfileOrderNormalizer.NormalizeAsync(db);
+        if (normalizedProfileCount > 0)
+        {
+            Console.WriteLine($"[Sportarr] Corrected quality order for {normalizedProfileCount} imported profile(s)");
+        }
+
         try
         {
             var mediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
@@ -2698,6 +2704,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "Notifications", "LastNotificationAt", "TEXT NULL");
         EnsureColumn(db, "Events", "TsdbId", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "OutputPath", "TEXT NULL");
+        EnsureColumn(db, "DownloadQueue", "FailedAt", "TEXT NULL");
 
         RelaxLegacyRootFolderColumns(db);
     }

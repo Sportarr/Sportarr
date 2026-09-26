@@ -89,6 +89,26 @@ public class EventQueryServiceAliasTests
     }
 
     [Fact]
+    public void CatalogLeague_AddsUserAliasQuery()
+    {
+        var evt = new Event
+        {
+            Title = "Shanghai Port vs Beijing Guoan",
+            Sport = "Soccer",
+            EventDate = new DateTime(2026, 8, 15, 0, 0, 0, DateTimeKind.Utc),
+            League = new League { Name = "Chinese Super League", Sport = "Soccer" },
+            HomeTeamName = "Shanghai Port",
+            AwayTeamName = "Beijing Guoan",
+            HomeTeam = new Team { Name = "Shanghai Port", UserAliases = "上海海港" },
+            AwayTeam = new Team { Name = "Beijing Guoan", UserAliases = "北京国安" }
+        };
+
+        CreateService().BuildEventQueries(evt).Should().Equal(
+            "Shanghai Port vs Beijing Guoan",
+            "Chinese Super League 2026 上海海港 北京国安");
+    }
+
+    [Fact]
     public void AliasSlots_PairPositionally_AndFallBackToCanonical()
     {
         var service = CreateService();

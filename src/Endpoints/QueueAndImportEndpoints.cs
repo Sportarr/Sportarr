@@ -356,8 +356,9 @@ app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Fi
 });
 
 // API: Pending Imports (Manual Import for External Downloads)
-app.MapGet("/api/pending-imports", async (SportarrDbContext db) =>
+app.MapGet("/api/pending-imports", async (SportarrDbContext db, ConfigService configService) =>
 {
+    var config = await configService.GetConfigAsync();
     // Get all pending imports (external downloads needing manual mapping)
     var imports = await db.PendingImports
         .AsNoTracking()
@@ -368,11 +369,13 @@ app.MapGet("/api/pending-imports", async (SportarrDbContext db) =>
         .OrderByDescending(pi => pi.Detected)
         .ToListAsync();
     // DTO, because the Event entity serializes Title as "strEvent"
-    return Results.Ok(imports.Select(PendingImportResponse.FromPendingImport));
+    return Results.Ok(imports.Select(import =>
+        PendingImportResponse.FromPendingImport(import, config.EnableMultiPartEpisodes)));
 });
 
-app.MapGet("/api/pending-imports/{id:int}", async (int id, SportarrDbContext db) =>
+app.MapGet("/api/pending-imports/{id:int}", async (int id, SportarrDbContext db, ConfigService configService) =>
 {
+    var config = await configService.GetConfigAsync();
     var import = await db.PendingImports
         .AsNoTracking()
         .Include(pi => pi.DownloadClient)
@@ -381,7 +384,7 @@ app.MapGet("/api/pending-imports/{id:int}", async (int id, SportarrDbContext db)
         .FirstOrDefaultAsync(pi => pi.Id == id);
     return import is null
         ? Results.NotFound()
-        : Results.Ok(PendingImportResponse.FromPendingImport(import));
+        : Results.Ok(PendingImportResponse.FromPendingImport(import, config.EnableMultiPartEpisodes));
 });
 
 app.MapGet("/api/pending-imports/{id:int}/matches", async (
@@ -419,7 +422,9 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     int id,
     HttpRequest req,
     SportarrDbContext db,
-    FileImportService fileImportService) =>
+    FileImportService fileImportService,
+    ConfigService configService,
+    EventPartDetector partDetector) =>
 {
     // Accept a pending import and perform the actual import.
     // Body is optional: when present, may carry { metadataOverrides: { quality, source,
@@ -474,6 +479,8 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
         // Check if this is a disk-discovered file (no download client)
         var isDiskDiscovered = import.DownloadId.StartsWith("disk-");
         EventFile importedFile;
+        ImportHistory? importedHistory = null;
+        var overridesApplied = false;
 
         if (isDiskDiscovered && File.Exists(import.FilePath))
         {
@@ -482,10 +489,17 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
             if (evt == null) throw new Exception($"Event {import.SuggestedEventId} not found");
 
             var fileInfo = new FileInfo(import.FilePath);
+            var selectedPartName = NormalizePendingPartOverride(overrides, evt)
+                ?? import.SuggestedPart ?? partDetector.DetectPart(
+                Path.GetFileNameWithoutExtension(import.FilePath), evt.Sport ?? string.Empty,
+                evt.Title, evt.League?.Name)?.SegmentName;
             var selectedPart = EventPartDetector
                 .GetSegmentDefinitions(evt.Sport, evt.Title, evt.League?.Name)
                 .FirstOrDefault(part => string.Equals(
-                    part.Name, import.SuggestedPart, StringComparison.OrdinalIgnoreCase));
+                    part.Name, selectedPartName, StringComparison.OrdinalIgnoreCase));
+            var storedPartName = EventPartDetector.IsFullEvent(selectedPartName)
+                ? null : selectedPart?.Name ?? selectedPartName;
+            var storedPartNumber = storedPartName == null ? null : selectedPart?.PartNumber;
 
             // Extract release group from filename
             var rgMatch = System.Text.RegularExpressions.Regex.Match(
@@ -506,17 +520,30 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 Size = fileInfo.Length,
                 Quality = import.Quality ?? "Unknown",
                 ReleaseGroup = releaseGroup,
-                PartName = selectedPart?.Name ?? import.SuggestedPart,
-                PartNumber = selectedPart?.PartNumber,
+                PartName = storedPartName,
+                PartNumber = storedPartNumber,
                 Exists = true,
                 Added = DateTime.UtcNow,
                 LastVerified = DateTime.UtcNow
             };
             db.EventFiles.Add(eventFile);
             importedFile = eventFile;
+            if (overrides != null)
+            {
+                Sportarr.Api.Endpoints.EventFileEditorEndpoints.ApplyEdits(eventFile, overrides);
+                overridesApplied = true;
+            }
 
             // Update event status
-            evt.HasFile = true;
+            var presentParts = await db.EventFiles.AsNoTracking()
+                .Where(file => file.EventId == evt.Id && file.Exists)
+                .Select(file => file.PartNumber)
+                .ToListAsync();
+            presentParts.Add(eventFile.PartNumber);
+            var config = await configService.GetConfigAsync();
+            evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
+                evt.League?.MonitoredParts, presentParts, config.EnableMultiPartEpisodes);
             evt.FilePath = import.FilePath;
             evt.FileSize = fileInfo.Length;
             evt.Quality = import.Quality;
@@ -529,7 +556,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 DestinationPath = import.FilePath,
                 Quality = import.Quality ?? "Unknown",
                 Size = fileInfo.Length,
-                Part = selectedPart?.Name ?? import.SuggestedPart,
+                Part = eventFile.PartName,
                 Decision = ImportDecision.Approved,
                 ImportedAt = DateTime.UtcNow
             });
@@ -538,6 +565,12 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
         {
             // Download client import: use FileImportService to move/copy/hardlink
             var tempQueueItem = BuildManualImportQueueItem(import);
+            if (overrides != null && (overrides.PartName != null || overrides.PartNumber.HasValue))
+            {
+                var evt = await db.Events.Include(e => e.League)
+                    .SingleAsync(e => e.Id == import.SuggestedEventId.Value);
+                tempQueueItem.Part = NormalizePendingPartOverride(overrides, evt);
+            }
 
             // Import the download using FileImportService
             // Pass the stored FilePath directly since we already have it from the pending import
@@ -545,6 +578,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
             var imported = await fileImportService.ImportDownloadAsync(tempQueueItem, import.FilePath, importMode);
             if (imported == null)
                 throw new InvalidOperationException(tempQueueItem.ErrorMessage ?? "The file was not imported.");
+            importedHistory = imported;
 
             importedFile = await db.EventFiles.SingleOrDefaultAsync(f =>
                 f.EventId == import.SuggestedEventId.Value && f.FilePath == imported.DestinationPath)
@@ -557,9 +591,24 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
         await db.SaveChangesAsync();
 
         // Apply edits only to the file returned by this import.
-        if (overrides != null)
+        if (overrides != null && !overridesApplied)
         {
             Sportarr.Api.Endpoints.EventFileEditorEndpoints.ApplyEdits(importedFile, overrides);
+            if (importedHistory != null && (overrides.PartName != null || overrides.PartNumber.HasValue))
+            {
+                importedHistory.Part = importedFile.PartName;
+                var evt = await db.Events.Include(e => e.League)
+                    .SingleAsync(e => e.Id == import.SuggestedEventId.Value);
+                var presentParts = await db.EventFiles.AsNoTracking()
+                    .Where(file => file.EventId == evt.Id && file.Exists && file.Id != importedFile.Id)
+                    .Select(file => file.PartNumber)
+                    .ToListAsync();
+                presentParts.Add(importedFile.PartNumber);
+                var config = await configService.GetConfigAsync();
+                evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                    evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
+                    evt.League?.MonitoredParts, presentParts, config.EnableMultiPartEpisodes);
+            }
             await db.SaveChangesAsync();
         }
 
@@ -1149,4 +1198,36 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
         TorrentInfoHash = import.TorrentInfoHash,
         Part = import.SuggestedPart
     };
+
+    private static string? NormalizePendingPartOverride(
+        EventFileEditorEndpoints.EventFileEditRequest? overrides, Event evt)
+    {
+        if (overrides == null || overrides.PartName == null && !overrides.PartNumber.HasValue)
+            return null;
+
+        var requestedName = overrides.PartName?.Trim();
+        var requestedNumber = overrides.PartNumber;
+        var wholeEvent = requestedName != null && EventPartDetector.IsFullEvent(requestedName)
+            || requestedNumber is <= 0;
+        if (wholeEvent)
+        {
+            if (requestedName is { Length: > 0 } && !EventPartDetector.IsFullEvent(requestedName) ||
+                requestedNumber is > 0)
+                throw new InvalidOperationException("The selected part name and number disagree.");
+            overrides.PartName = "";
+            overrides.PartNumber = 0;
+            return EventPartDetector.FullEventSegmentName;
+        }
+
+        var parts = EventPartDetector.GetSegmentDefinitions(evt.Sport, evt.Title, evt.League?.Name);
+        var part = requestedName != null
+            ? parts.FirstOrDefault(value => string.Equals(value.Name, requestedName, StringComparison.OrdinalIgnoreCase))
+            : parts.FirstOrDefault(value => value.PartNumber == requestedNumber);
+        if (part == null || requestedNumber.HasValue && requestedNumber != part.PartNumber)
+            throw new InvalidOperationException("The selected part is not valid for this event.");
+
+        overrides.PartName = part.Name;
+        overrides.PartNumber = part.PartNumber;
+        return part.Name;
+    }
 }

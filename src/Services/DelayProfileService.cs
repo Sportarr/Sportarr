@@ -201,7 +201,8 @@ public class DelayProfileService
         // delay profile then threw it away.
         var qualityFiltered = availableReleases.Where(r =>
         {
-            if (string.IsNullOrEmpty(r.Quality))
+            if (string.IsNullOrEmpty(r.Quality) ||
+                r.Quality.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
             {
                 return true; // Include unknown quality (will get lowest rank)
             }

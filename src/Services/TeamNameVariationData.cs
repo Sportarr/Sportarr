@@ -166,6 +166,9 @@ public static class TeamNameVariationData
         { "Real Madrid Baloncesto", new[] { "Real Madrid" } },
         { "Valencia Basket", new[] { "Valencia" } },
 
+        { "Tottenham Hotspur", new[] { "Tottenham" } },
+        { "Bayern Munich", new[] { "Bayern", "FC Bayern München", "FC Bayern Munchen" } },
+
         // ============================================================
         // AFL Teams (18). TheSportsDB canonical names are "<Place>
         // Football Club" or "<Place> <Nickname>"; releases use either the
@@ -222,5 +225,8 @@ public static class TeamNameVariationData
         { "Sydney Roosters", new[] { "Roosters" } },
         { "Wests Tigers", new[] { "Wests Tigers" } },
         { "Redcliffe Dolphins", new[] { "Dolphins" } },
+
+        { "Hull Kingston Rovers", new[] { "Hull KR" } },
+        { "York City Knights", new[] { "York Knights" } },
     };
 }

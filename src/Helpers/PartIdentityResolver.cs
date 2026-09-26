@@ -56,6 +56,12 @@ public static class PartIdentityResolver
         "fullevent", "completeevent", "fullcard", "completecard"
     }.Select(WordsIn).ToArray();
 
+    public static bool HasNamedPartLabel(string? sourceFileName)
+    {
+        var words = WordsIn(Basename(sourceFileName));
+        return Labels.Any(label => FindStarts(words, label.Words).Any());
+    }
+
     public static PartIdentityResolution Resolve(
         string? requestedPart,
         string? releaseTitle,

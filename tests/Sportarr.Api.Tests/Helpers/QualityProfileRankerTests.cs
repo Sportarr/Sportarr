@@ -63,6 +63,37 @@ public class QualityProfileRankerTests
     }
 
     [Fact]
+    public void ReorderedImportedProfileHonorsItsSavedOrder()
+    {
+        var profile = Profile(
+            Group("WEB 1080p", Item("WEBDL-1080p", 15)),
+            Item("SDTV", 1),
+            Item("Unknown", 0));
+        profile.Items[0].Quality = 2;
+        profile.TrashId = "imported-profile";
+        profile.IsSynced = true;
+
+        QualityProfileRanker.Compare(profile, "WEBDL-1080p", "SDTV")
+            .Should().BePositive();
+    }
+
+    [Fact]
+    public void ImportedGroupCutoffUsesItsOwnGroupInsteadOfAnotherGroupsChild()
+    {
+        var profile = Profile(
+            Group("WEB 1080p", Item("WEBDL-1080p", 0)),
+            Group("WEB 480p", Item("WEBDL-480p", 0)));
+        profile.Items[0].Quality = 1;
+        profile.Items[1].Quality = 0;
+        profile.TrashId = "imported-profile";
+        profile.IsSynced = true;
+        profile.CutoffQuality = 0;
+
+        QualityProfileRanker.GetCutoffRank(profile, 0)
+            .Should().Be(QualityProfileRanker.GetRank(profile, "WEBDL-480p"));
+    }
+
+    [Fact]
     public void GroupedQualityMeetsAChildCutoff()
     {
         var profile = Profile(

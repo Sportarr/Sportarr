@@ -320,6 +320,9 @@ internal sealed class QuotaIncompleteCacheHarness : IAsyncDisposable
         private readonly string _prefix = "/cache-" + Guid.NewGuid().ToString("N");
         private int _arrivals;
         public int RequestCeiling { get; set; } = 16;
+        public bool SupportsSportarrId { get; set; } = true;
+        public string[] SearchQueries { get; set; } = Queries;
+        public bool ReturnAllReleasesForEachQuery { get; set; }
         public string Url { get; private set; } = "";
         public ReleaseSearchResult[] Releases { get; private set; } = Array.Empty<ReleaseSearchResult>();
         public Attempt[] Attempts => _attempts.ToArray();
@@ -378,10 +381,12 @@ internal sealed class QuotaIncompleteCacheHarness : IAsyncDisposable
             else if (path != _prefix + "/api" || query["apikey"] != "fixture")
             { Reject("unexpected-source-request"); context.Response.StatusCode = 400; return; }
             else if (mode == "caps")
-                xml = "<caps><limits max=\"2\" default=\"2\"/><searching><search available=\"yes\" supportedParams=\"q,sportarrid\"/></searching><categories><category id=\"5000\" name=\"TV\"><subcat id=\"5060\" name=\"Sport\"/></category></categories></caps>";
-            else if (mode == "search" && Queries.Contains(text) && eventId == "ev-2336155" && offset >= 0)
+                xml = $"<caps><limits max=\"2\" default=\"2\"/><searching><search available=\"yes\" supportedParams=\"{(SupportsSportarrId ? "q,sportarrid" : "q")}\"/></searching><categories><category id=\"5000\" name=\"TV\"><subcat id=\"5060\" name=\"Sport\"/></category></categories></caps>";
+            else if (mode == "search" && SearchQueries.Contains(text) &&
+                     (SupportsSportarrId ? eventId == "ev-2336155" : eventId.Length == 0) && offset >= 0)
             {
-                var catalogue = text == Queries[0] ? Releases.Take(3).ToArray() : Releases.Skip(3).ToArray();
+                var catalogue = ReturnAllReleasesForEachQuery || SearchQueries.Length == 1 ? Releases :
+                    text == SearchQueries[0] ? Releases.Take(3).ToArray() : Releases.Skip(3).ToArray();
                 if (query["empty"] == "1") catalogue = Array.Empty<ReleaseSearchResult>();
                 releases = catalogue.Skip(offset).Take(2).ToArray();
                 if (query["recovered"] == "1")
@@ -399,7 +404,8 @@ internal sealed class QuotaIncompleteCacheHarness : IAsyncDisposable
                         new XElement("pubDate", release.PublishDate.ToString("r", System.Globalization.CultureInfo.InvariantCulture)),
                         new XElement("enclosure", new XAttribute("url", release.DownloadUrl), new XAttribute("length", release.Size), new XAttribute("type", "application/x-nzb")),
                         new XElement(ns + "attr", new XAttribute("name", "category"), new XAttribute("value", "5060")),
-                        new XElement(ns + "attr", new XAttribute("name", "sportarrid"), new XAttribute("value", release.SportarrEventId!)))))).ToString();
+                        release.SportarrEventId == null ? null :
+                            new XElement(ns + "attr", new XAttribute("name", "sportarrid"), new XAttribute("value", release.SportarrEventId)))))).ToString();
             }
             else { Reject("unknown-source-operation-or-query-identity"); context.Response.StatusCode = 400; return; }
             context.Response.StatusCode = status;

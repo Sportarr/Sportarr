@@ -22,6 +22,7 @@ public class MediaFileParserTests
     [InlineData("UFC 300 Main Card 1080p HDTV x264-ABC", "UFC 300 Main Card")]
     [InlineData("Fury vs Usyk 2024 720p BluRay x265-XYZ", "Fury vs Usyk")]
     [InlineData("Bellator.300.Prelims.480p.WEBRip.AAC-GROUP", "Bellator 300 Prelims")]
+    [InlineData("WNBL Womens 2026 03 01 Perth Lynx vs Townsville Fire 1080p", "Perth Lynx vs Townsville Fire")]
     public void Parse_ShouldExtractEventTitle(string filename, string expectedTitle)
     {
         // Act

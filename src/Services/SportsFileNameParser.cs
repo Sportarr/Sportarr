@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace Sportarr.Api.Services;
@@ -130,6 +131,39 @@ public class SportsFileNameParser
 
         new SportsPattern
         {
+            Sport = "Gaelic",
+            Organization = "All-Ireland Senior Football Championship",
+            Pattern = new Regex(
+                @"^(?<year>20\d{2})\s+GAA\s+Football\s+All\s+Ireland\s+Senior\s+Championship(?:\s+(?:Final|Semi\s+Final))?\s+(?<team1>.+?)\s+vs\s+(?<team2>.+?)(?=\s+(?:\(?RTE\d*\)?|2160p|1080p|720p|480p|4K|UHD|WEB|HDTV|BluRay)\b|$)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                PatternTimeout),
+            TitleBuilder = match => $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
+
+        new SportsPattern
+        {
+            Sport = "Handball",
+            Organization = "EHF Champions League",
+            Pattern = new Regex(
+                @"^(?:Handball\s+)?EHF\s+Champions(?:h(?:ip)?)?\s+League\s+(?<year>20\d{2})\s+(?<team1>.+?)\s+vs\s+(?<team2>.+?)\s+(?<day>0?[1-9]|[12][0-9]|3[01])\s+(?<month>0?[1-9]|1[0-2])",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                PatternTimeout),
+            TitleBuilder = match => $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
+
+        new SportsPattern
+        {
+            Sport = "Wintersports",
+            Organization = "World Mens Curling Championship",
+            Pattern = new Regex(
+                @"^Curling\s+World\s+Championships?(?:\s+Final)?\s+(?<year>20\d{2})(?:\s+(?:Semi\s+Final|Round\s+Robin|RR))?\s+(?<team1>.+?)\s+vs\s+(?<team2>.+?)(?:\s+(?:Round\s+Robin|RR))?\s+(?<day>0?[1-9]|[12][0-9]|3[01])\s+(?<month>0?[1-9]|1[0-2])",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                PatternTimeout),
+            TitleBuilder = match => $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
+
+        new SportsPattern
+        {
             Sport = "Cricket",
             Organization = "Australian Big Bash League",
             Pattern = new Regex(
@@ -255,6 +289,17 @@ public class SportsFileNameParser
             Pattern = new Regex(@"(?:UCL|UEFA[\.\-\s]*Champions[\.\-\s]*League)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<round>[A-Za-z]+[\.\-\s]+(?:of[\.\-\s]+)?\d*|Group[\.\-\s]+[A-H]|Final|Semi[\.\-\s]*Final|Quarter[\.\-\s]*Final)[\.\-\s]+(?<team1>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)[\.\-\s]+(?:vs?|@)[\.\-\s]+(?<team2>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"Champions League {match.Groups["round"].Value.Replace(".", " ")}: {match.Groups["team1"].Value.Replace(".", " ")} vs {match.Groups["team2"].Value.Replace(".", " ")}"
         },
+        new SportsPattern
+        {
+            Sport = "Soccer",
+            Organization = "NWSL",
+            Pattern = new Regex(
+                @"^NWSL[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<team1>.+?)[\.\s]+vs\.?[\.\s]+(?<team2>.+?)(?=[\.\-\s]+(?:2160p|1080p|720p|480p|XviD|WEB|HDTV|BluRay)\b|$)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                PatternTimeout),
+            TitleBuilder = match =>
+                $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
         // Generic soccer: Soccer.Team1.vs.Team2.2024.01.15
         new SportsPattern
         {
@@ -262,6 +307,17 @@ public class SportsFileNameParser
             Organization = null,
             Pattern = new Regex(@"(?:Soccer|Football)[\.\-\s]+(?<team1>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)[\.\-\s]+(?:vs?|@)[\.\-\s]+(?<team2>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"{match.Groups["team1"].Value.Replace(".", " ")} vs {match.Groups["team2"].Value.Replace(".", " ")}"
+        },
+
+        // BTCC: BTCC.2026.Round03.Donington.Park.Race.Three
+        new SportsPattern
+        {
+            Sport = "Motorsport",
+            Organization = "BTCC",
+            Pattern = new Regex(@"^BTCC[\.\-\s]+(?<year>\d{4})[\.\-\s]+Round[\.\-\s]*0*(?<round>\d{1,2})[\.\-\s]+(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|DD[25P]|ITVX|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            TitleBuilder = match => CleanLocationName(match.Groups["name"].Value),
+            RoundExtractor = match => int.TryParse(match.Groups["round"].Value, out var round) ? round : null,
+            SessionExtractor = match => DetectMotorsportSession(match.Groups["name"].Value)
         },
 
         // F1 Academy: F1.Academy.2026.China.Grand.Prix.Practice, Formula1.Academy.2026.Round03.Miami
@@ -301,6 +357,16 @@ public class SportsFileNameParser
             Pattern = new Regex(@"NASCAR[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"NASCAR {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")}",
             SessionExtractor = (match) => DetectMotorsportSession(match.Groups["name"].Value)
+        },
+
+        new SportsPattern
+        {
+            Sport = "Motorsport",
+            Organization = "AMA Supercross",
+            Pattern = new Regex(@"^(?<year>\d{4})[\.\-\s]+AMA[\.\-\s]+Supercross[\.\-\s]+(?:Round|Rd|R)[\.\-\s]*0*(?<round>\d{1,2})[\.\-\s]+(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|DD[25P]|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            TitleBuilder = match => CleanLocationName(match.Groups["name"].Value),
+            RoundExtractor = match => int.TryParse(match.Groups["round"].Value, out var round) ? round : null,
+            LocationExtractor = match => CleanLocationName(match.Groups["name"].Value)
         },
 
         new SportsPattern
@@ -590,21 +656,83 @@ public class SportsFileNameParser
     private static bool IsPlausibleReleaseYear(int year) =>
         year >= 1950 && year <= DateTime.UtcNow.Year + 2;
 
-    private static readonly Regex DatePattern = new(@"(?<!\d)(?<year>\d{4})(?<sep>[\.\-\s]+)(?<month>\d{2})\k<sep>(?<day>\d{2})(?!\d)", RegexOptions.Compiled);
+    private static readonly Regex DatePattern = new(
+        @"(?<!\d)(?<year>\d{4})(?<sep>[\.\-/\s]+)(?<month>\d{1,2})\k<sep>(?<day>\d{1,2})(?!\d)",
+        RegexOptions.Compiled);
     private static readonly Regex CompactDatePattern = new(
         @"(?<!\d)(?<year>20[12]\d)(?<month>\d{2})(?<day>\d{2})(?!\d)",
         RegexOptions.Compiled);
     // European day-first dating ("Spain vs Argentina 19.07.2026"). Only
     // consulted when the year-first pattern found nothing; the lookarounds
     // keep the two-digit groups from binding inside longer digit runs.
-    private static readonly Regex DayFirstDatePattern = new(@"(?<!\d)(?<day>\d{2})[\.\-/\s](?<month>\d{2})[\.\-/\s](?<year>20[12]\d)(?!\d)", RegexOptions.Compiled);
+    private static readonly Regex DayFirstDatePattern = new(
+        @"(?<!\d)(?<day>\d{1,2})[\.\-/\s](?<month>\d{1,2})[\.\-/\s](?<year>20[12]\d)(?!\d)",
+        RegexOptions.Compiled);
+    private static readonly Regex WrittenMonthDatePattern = new(
+        @"(?<![\p{L}\p{N}])(?<day>0?[1-9]|[12]\d|3[01])[\s._-]+(?<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[\s._-]+(?<year>20[12]\d)(?!\d)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        PatternTimeout);
+    private static readonly Regex MonthFirstWrittenDatePattern = new(
+        @"(?<![\p{L}\p{N}])(?<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[\s._-]+(?<day>0?[1-9]|[12]\d|3[01])[\s._,-]+(?<year>20[12]\d)(?!\d)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        PatternTimeout);
+
+    internal static DateTime? ParseMonthFirstWrittenDate(string title)
+    {
+        Match match;
+        try
+        {
+            match = MonthFirstWrittenDatePattern.Match(title);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return null;
+        }
+
+        if (!match.Success || !int.TryParse(match.Groups["year"].Value, out var year) ||
+            !IsPlausibleReleaseYear(year))
+            return null;
+
+        return DateTime.TryParseExact(
+            $"{NormalizeWrittenMonth(match.Groups["month"].Value)} {match.Groups["day"].Value} {year}",
+            ["MMM d yyyy", "MMMM d yyyy"], CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var date)
+            ? date
+            : null;
+    }
+
+    internal static DateTime? ParseWrittenMonthDate(string title)
+    {
+        try
+        {
+            var match = WrittenMonthDatePattern.Match(title);
+            if (match.Success && int.TryParse(match.Groups["year"].Value, out var year) &&
+                IsPlausibleReleaseYear(year) && DateTime.TryParseExact(
+                    $"{match.Groups["day"].Value} {NormalizeWrittenMonth(match.Groups["month"].Value)} {year}",
+                    ["d MMMM yyyy", "d MMM yyyy"], CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out var date))
+            {
+                return date;
+            }
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return null;
+        }
+
+        return ParseMonthFirstWrittenDate(title);
+    }
+
+    private static string NormalizeWrittenMonth(string month) =>
+        month.Equals("Sept", StringComparison.OrdinalIgnoreCase) ? "Sep" : month;
     // Trailing day-month pair with the year elsewhere in the title
     // ("NBA Finals 2026 Knicks vs Spurs Game 5 13 06 1080p..."). The pair is
     // only trusted when it sits directly before the quality/source token (or
     // the end of the name) - that position is where date stamps live in this
     // release style, while pairs elsewhere ("Round 13 06 Austria") are noise.
+    // Ignore the final pair inside a three-part slash date.
     private static readonly Regex TrailingDayMonthPattern = new(
-        @"(?<!\d)(?<day>\d{2})[\.\s_-](?<month>\d{2})(?=[\.\s_-]+(?:\d{3,4}p|WEB|HDTV|SDTV|Blu|x26[45]|[Hh]\.?26[45])|[\.\s_-]*$)",
+        @"(?<!\d)(?<!\d{2}/)(?<day>\d{2})[\.\s_/-](?<month>\d{2})(?=[\.\s_-]+(?:\d{3,4}p|WEB|HDTV|SDTV|Blu|x26[45]|[Hh]\.?26[45])|[\.\s_-]*$)",
         RegexOptions.Compiled);
     private static readonly Regex ShortYearDayFirstDatePattern = new(
         @"(?<!\d)(?<day>\d{2})[\.\s_-](?<month>\d{2})[\.\s_-](?<year>\d{2})(?=[\.\s_-]+(?:\d{3,4}p|WEB|HDTV|SDTV|Blu|x26[45]|[Hh]\.?26[45])|[\.\s_-]*$)",
@@ -825,6 +953,33 @@ public class SportsFileNameParser
 
         if (result.EventDate == null)
         {
+            Match? writtenDateMatch = null;
+            try
+            {
+                writtenDateMatch = WrittenMonthDatePattern.Match(cleanName);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                _logger.LogWarning("[Sports Parser] Written date match timed out for '{Title}'", cleanName);
+            }
+
+            if (writtenDateMatch is { Success: true } &&
+                int.TryParse(writtenDateMatch.Groups["year"].Value, out var writtenYear) &&
+                IsPlausibleReleaseYear(writtenYear) &&
+                DateTime.TryParseExact(
+                    $"{writtenDateMatch.Groups["day"].Value} {NormalizeWrittenMonth(writtenDateMatch.Groups["month"].Value)} {writtenYear}",
+                    ["d MMMM yyyy", "d MMM yyyy"], CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out var writtenDate))
+            {
+                result.EventDate = writtenDate;
+            }
+        }
+
+        result.EventDate ??= ParseMonthFirstWrittenDate(cleanName);
+        result.EventDate ??= SearchNormalizationService.ParseCoupangMonthFirstDate(cleanName);
+
+        if (result.EventDate == null)
+        {
             // Prefer season spans over ambiguous dot dates. A slash date after
             // a season span is an explicit event date and must take precedence.
             var seasonSpanMatch = SeasonSpanPattern.Match(cleanName);
@@ -895,6 +1050,9 @@ public class SportsFileNameParser
                     if (seMatch.Success && int.TryParse(seMatch.Groups["year"].Value, out var seYear))
                     {
                         result.EventYear = seYear;
+                        if (Regex.IsMatch(cleanName, @"\bEHF[\s._-]+Champions[\s._-]+League\b",
+                                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                            result.SeasonYearEnd = seYear + 1;
                         _logger.LogDebug("[SportsFileNameParser] Extracted year {Year} from SxxxxExx marker in '{Filename}'",
                             seYear, filename);
                     }
@@ -944,7 +1102,12 @@ public class SportsFileNameParser
         if (result.EventDate == null && result.EventYear.HasValue)
         {
             var trailingMatch = TrailingDayMonthPattern.Match(cleanName);
+            // Slash pairs are ambiguous outside the observed Confederations Cup release style.
+            var slashPairAllowed = !trailingMatch.Value.Contains('/') ||
+                Regex.IsMatch(cleanName, @"\bConfederations?[\.\s_-]+Cup\b",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (trailingMatch.Success &&
+                slashPairAllowed &&
                 int.TryParse(trailingMatch.Groups["day"].Value, out var tDay) &&
                 int.TryParse(trailingMatch.Groups["month"].Value, out var tMonth))
             {
@@ -1025,6 +1188,8 @@ public class SportsFileNameParser
             { @"^PDC[\.\-\s]", ("Darts", "PDC Darts") },
             { @"^IMSA[\.\-\s]+SportsCar[\.\-\s]+Championship[\.\-\s]", ("Motorsport", "IMSA SportsCar Championship") },
             { @"^Supercars?[\.\-\s]", ("Motorsport", "Supercars") },
+            { @"^BTCC[\.\-\s]", ("Motorsport", "BTCC") },
+            { @"^BKFC[\.\-\s]", ("Fighting", "BKFC") },
             { @"^UFC[\.\-\s]", ("Fighting", "UFC") },
             { @"^Bellator[\.\-\s]", ("Fighting", "Bellator") },
             { @"^PFL[\.\-\s]", ("Fighting", "PFL") },
@@ -1126,7 +1291,7 @@ public class SportsFileNameParser
     /// Looks for keywords like Race, Qualifying, Sprint, Practice, FP1-3, Warm Up.
     /// Returns null if no session detected (location-only string).
     /// </summary>
-    private static string? DetectMotorsportSession(string nameValue)
+    internal static string? DetectMotorsportSession(string nameValue)
     {
         if (string.IsNullOrWhiteSpace(nameValue)) return null;
 

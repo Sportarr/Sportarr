@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
+using System.Net;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
@@ -258,6 +259,97 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
         persistedTarget.Quality.Should().Be("HDTV-720p");
     }
 
+    [Fact]
+    public async Task ReassigningOneFightCardPartKeepsTargetWantedForOtherParts()
+    {
+        await using var rig = CreateRig();
+        var sourcePath = WriteFile("UFC - S2026E57 - UFC 998 - pt3.mkv");
+        var league = NewLeague(1);
+        league.Name = "UFC";
+        league.Sport = "Fighting";
+        var source = NewEvent(1, league, 57, sourcePath);
+        source.Title = "UFC 998";
+        source.Sport = "Fighting";
+        var target = NewEvent(2, league, 58, null);
+        target.Title = "UFC 999";
+        target.Sport = "Fighting";
+        var mainCard = NewFile(1, source, sourcePath, partNumber: 3);
+        mainCard.PartName = "Main Card";
+        source.Files.Add(mainCard);
+        rig.Db.AddRange(league, source, target, NewSettings());
+        await rig.Db.SaveChangesAsync();
+
+        var result = await rig.Service.ReassignFileAsync(mainCard.Id, target.Id);
+
+        result.Success.Should().BeTrue(result.Error);
+        File.Exists(result.NewPath).Should().BeTrue();
+        rig.Db.ChangeTracker.Clear();
+        var persistedTarget = await rig.Db.Events.SingleAsync(evt => evt.Id == target.Id);
+        persistedTarget.HasFile.Should().BeFalse();
+        (await rig.Db.EventFiles.SingleAsync()).EventId.Should().Be(target.Id);
+    }
+
+    [Fact]
+    public async Task RenameClearsCompletionWhenTheSelectedFileIsMissing()
+    {
+        await using var rig = CreateRig();
+        var missingPath = Path.Combine(_tempDir, "UFC - S2026E57 - UFC 998 - pt3.mkv");
+        var league = NewLeague(1);
+        league.Name = "UFC";
+        league.Sport = "Fighting";
+        var evt = NewEvent(1, league, 57, missingPath);
+        evt.Title = "UFC 998";
+        evt.Sport = "Fighting";
+        var mainCard = NewFile(1, evt, missingPath, partNumber: 3);
+        mainCard.PartName = "Main Card";
+        evt.Files.Add(mainCard);
+        rig.Db.AddRange(league, evt, NewSettings());
+        await rig.Db.SaveChangesAsync();
+
+        var renamed = await rig.Service.RenameEventFilesAsync(evt.Id, NewSettings());
+
+        renamed.Should().Be(0);
+        rig.Db.ChangeTracker.Clear();
+        var persisted = await rig.Db.Events.SingleAsync();
+        persisted.HasFile.Should().BeFalse();
+        persisted.FilePath.Should().BeNull();
+        (await rig.Db.EventFiles.SingleAsync()).Exists.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingHubNumbersDoNotRenumberSeasonWithPartialMedia(bool legacyPathOnly)
+    {
+        await using var rig = CreateRig();
+        var partialPath = WriteFile("UFC - S2026E57 - UFC Fight Night 998 - pt1.mkv");
+        var league = NewLeague(1);
+        league.Name = "UFC";
+        league.Sport = "Fighting";
+        var first = NewEvent(1, league, 57, legacyPathOnly ? partialPath : null);
+        first.Title = "UFC Fight Night 998";
+        first.Sport = "Fighting";
+        first.HasFile = false;
+        if (!legacyPathOnly)
+        {
+            var prelims = NewFile(1, first, partialPath, partNumber: 1);
+            prelims.PartName = "Prelims";
+            first.Files.Add(prelims);
+        }
+        var second = NewEvent(2, league, 58, null);
+        second.Title = "UFC Fight Night 999";
+        second.Sport = "Fighting";
+        rig.Db.AddRange(league, first, second);
+        await rig.Db.SaveChangesAsync();
+
+        var renumbered = await rig.Service.RecalculateEpisodeNumbersAsync(league.Id, "2026");
+
+        renumbered.Should().Be(0);
+        rig.Db.ChangeTracker.Clear();
+        (await rig.Db.Events.OrderBy(evt => evt.Id).Select(evt => evt.EpisodeNumber).ToListAsync())
+            .Should().Equal(57, 58);
+    }
+
     private string WriteFile(string name, int size = 1024)
     {
         var path = Path.Combine(_tempDir, name);
@@ -333,7 +425,7 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
         services.AddSingleton<IConfiguration>(configuration);
         services.AddSingleton(new ConfigService(configuration, Mock.Of<ILogger<ConfigService>>()));
         var provider = services.BuildServiceProvider();
-        var httpClient = new HttpClient();
+        var httpClient = new HttpClient(new UnavailableMetadataHandler());
         var configService = provider.GetRequiredService<ConfigService>();
         var notificationService = new NotificationService(
             provider,
@@ -354,7 +446,8 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
             new DiskSpaceService(Mock.Of<ILogger<DiskSpaceService>>()),
             new CustomFormatService(parser),
             notificationService,
-            Mock.Of<IMetadataWriterService>());
+            Mock.Of<IMetadataWriterService>(),
+            configService);
         return new TestRig(db, provider, httpClient, service);
     }
 
@@ -373,5 +466,12 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
             await provider.DisposeAsync();
             httpClient.Dispose();
         }
+    }
+
+    private sealed class UnavailableMetadataHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
     }
 }

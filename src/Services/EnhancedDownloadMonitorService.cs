@@ -492,7 +492,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         download.Downloaded = status.Downloaded;
         download.Size = status.Size;
         download.TimeRemaining = status.TimeRemaining;
-        download.LastUpdate = DateTime.UtcNow;
+        if (previousStatus != DownloadStatus.Failed || status.Status is not ("failed" or "error"))
+            download.LastUpdate = DateTime.UtcNow;
 
         // Keep the last path the client reported. The v3 queue shim serves it
         // as outputPath so an external extractor can find the job folder when
@@ -1023,8 +1024,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
     {
         download.RetryCount = (download.RetryCount ?? 0) + 1;
 
-        _logger.LogWarning("[Enhanced Download Monitor] Download failed: {Title} (Attempt {Retry}/3) - {Error}",
-            download.Title, download.RetryCount, download.ErrorMessage ?? "Unknown error");
+        _logger.LogWarning("[Enhanced Download Monitor] Download failed: {Title} (Attempt {Retry}/{Max}) - {Error}",
+            download.Title, download.RetryCount, DownloadFailurePolicy.MaxRedownloadAttempts,
+            download.ErrorMessage ?? "Unknown error");
 
         // Add to blocklist to prevent re-grabbing the same release
         // For torrents: use TorrentInfoHash
@@ -1100,16 +1102,16 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
         // Retry if enabled and under retry limit (respects interactive vs automatic search setting)
         var shouldRedownload = download.IsManualSearch ? redownloadFailedFromInteractive : redownloadFailed;
-        if (shouldRedownload && download.RetryCount < 3)
+        if (shouldRedownload && download.RetryCount < DownloadFailurePolicy.MaxRedownloadAttempts)
         {
             _logger.LogInformation("[Enhanced Download Monitor] Will retry download on next search cycle: {Title}", download.Title);
             // The automatic search service will pick this up
             download.Status = DownloadStatus.Failed; // Keep as failed but allow retry
         }
-        else if (download.RetryCount >= 3)
+        else if (download.RetryCount >= DownloadFailurePolicy.MaxRedownloadAttempts)
         {
             _logger.LogWarning("[Enhanced Download Monitor] Max retries reached for: {Title}", download.Title);
-            download.ErrorMessage = $"Max retries (3) reached. {download.ErrorMessage}";
+            download.ErrorMessage = $"Max retries ({DownloadFailurePolicy.MaxRedownloadAttempts}) reached. {download.ErrorMessage}";
         }
 
         await db.SaveChangesAsync();

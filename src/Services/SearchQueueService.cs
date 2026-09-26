@@ -113,7 +113,9 @@ public class SearchQueueService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         // Get event details for display and validation
-        var evt = await db.Events.FindAsync(eventId);
+        var evt = await db.Events
+            .Include(e => e.League)
+            .FirstOrDefaultAsync(e => e.Id == eventId);
         var eventTitle = evt?.Title ?? $"Event #{eventId}";
 
         // Validate part against event type (e.g., Fight Night events don't have "Early Prelims")

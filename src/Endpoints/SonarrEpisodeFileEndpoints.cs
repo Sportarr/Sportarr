@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
 using System.Text.Json;
 
 namespace Sportarr.Api.Endpoints;
@@ -121,12 +122,13 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // DELETE /api/v3/episodefile/{id} - Delete specific episode file
-        app.MapDelete("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+        app.MapDelete("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, ConfigService configService, ILogger<Program> logger) =>
         {
             logger.LogInformation("[V3-COMPAT] DELETE /api/v3/episodefile/{Id}", id);
 
             var eventFile = await db.EventFiles
                 .Include(ef => ef.Event)
+                    .ThenInclude(e => e!.League)
                 .FirstOrDefaultAsync(ef => ef.Id == id);
 
             if (eventFile == null)
@@ -155,14 +157,19 @@ public static class SonarrEpisodeFileEndpoints
 
             if (eventFile.Event != null)
             {
-                var remaining = await db.EventFiles
+                var remainingFiles = await db.EventFiles
                     .Where(ef => ef.EventId == eventFile.EventId && ef.Id != id && ef.Exists)
                     .OrderByDescending(ef => ef.Size)
-                    .FirstOrDefaultAsync();
+                    .ToListAsync();
+                var remaining = remainingFiles.FirstOrDefault();
+                var config = await configService.GetConfigAsync();
+                eventFile.Event.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                    eventFile.Event.Sport, eventFile.Event.Title, eventFile.Event.League?.Name,
+                    eventFile.Event.MonitoredParts, eventFile.Event.League?.MonitoredParts,
+                    remainingFiles.Select(f => f.PartNumber).ToArray(), config.EnableMultiPartEpisodes);
 
                 if (remaining == null)
                 {
-                    eventFile.Event.HasFile = false;
                     eventFile.Event.FilePath = null;
                     eventFile.Event.FileSize = null;
                 }
@@ -171,7 +178,6 @@ public static class SonarrEpisodeFileEndpoints
                     // The event's own copy of the path still pointed at the
                     // file that was just deleted, so anything reading those
                     // denormalized fields saw a file that is not there.
-                    eventFile.Event.HasFile = true;
                     eventFile.Event.FilePath = remaining.FilePath;
                     eventFile.Event.FileSize = remaining.Size;
                 }
@@ -185,7 +191,7 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // DELETE /api/v3/episodefile/bulk - Bulk delete episode files (Decypharr repair)
-        app.MapDelete("/api/v3/episodefile/bulk", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        app.MapDelete("/api/v3/episodefile/bulk", async (HttpContext context, SportarrDbContext db, ConfigService configService, ILogger<Program> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
@@ -244,19 +250,25 @@ public static class SonarrEpisodeFileEndpoints
                 db.EventFiles.RemoveRange(eventFiles);
                 await db.SaveChangesAsync();
 
+                var config = await configService.GetConfigAsync();
                 foreach (var eventId in affectedEventIds)
                 {
-                    var evt = await db.Events.FindAsync(eventId);
+                    var evt = await db.Events.Include(e => e.League)
+                        .FirstOrDefaultAsync(e => e.Id == eventId);
                     if (evt != null)
                     {
-                        var remaining = await db.EventFiles
+                        var remainingFiles = await db.EventFiles
                             .Where(ef => ef.EventId == eventId && ef.Exists)
                             .OrderByDescending(ef => ef.Size)
-                            .FirstOrDefaultAsync();
+                            .ToListAsync();
+                        var remaining = remainingFiles.FirstOrDefault();
+                        evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                            evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
+                            evt.League?.MonitoredParts, remainingFiles.Select(f => f.PartNumber).ToArray(),
+                            config.EnableMultiPartEpisodes);
 
                         if (remaining == null)
                         {
-                            evt.HasFile = false;
                             evt.FilePath = null;
                             evt.FileSize = null;
                         }
@@ -265,7 +277,6 @@ public static class SonarrEpisodeFileEndpoints
                             // Point the event at a file that still exists. It
                             // otherwise kept the path of one of the files this
                             // request had just removed.
-                            evt.HasFile = true;
                             evt.FilePath = remaining.FilePath;
                             evt.FileSize = remaining.Size;
                         }

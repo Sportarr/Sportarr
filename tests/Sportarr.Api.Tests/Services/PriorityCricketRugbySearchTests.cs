@@ -51,6 +51,16 @@ public class PriorityCricketRugbySearchTests
         };
         yield return new object[]
         {
+            WorldCupOpening(),
+            "Cricket World Cup 2023"
+        };
+        yield return new object[]
+        {
+            WorldCupFinal(),
+            "Cricket World Cup 2023"
+        };
+        yield return new object[]
+        {
             TeamEvent("Six Nations Championship", "Rugby", "Italy Rugby", "Scotland Rugby", "2026", "1", new DateTime(2026, 2, 7)),
             "Six Nations Rugby 2026 Italy Scotland"
         };
@@ -273,6 +283,118 @@ public class PriorityCricketRugbySearchTests
 
         CricketRugbyReleaseNamePolicy.HasIdentityConflict(title, evt).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("Cricket India vs Australia 5th T20i Full Match Dec 03, 2023 720pEng30fps", 2023, 12, 3)]
+    [InlineData("Cricket India vs Australia 4th T20i Full Match Dec 01, 2023 720pEng30fps", 2023, 12, 1)]
+    [InlineData("Cricket India vs Australia 3rd T20i Full Match Nov 28, 2023 720pEng30fps", 2023, 11, 28)]
+    [InlineData("Cricket India vs Australia 2nd T20i Full Match Nov 26, 2023 720pEng30fps", 2023, 11, 26)]
+    [InlineData("Cricket India vs Australia 2nd ODi Full Match Sep 24, 2023 720pEng30fps", 2023, 9, 24)]
+    [InlineData("Cricket India vs Australia 3rd ODi Full Match Sep 27, 2023 720pEng30fps", 2023, 9, 27)]
+    [InlineData("Cricket India vs Australia 1st ODi Full Match Sep 22, 2023 720pEng30fps", 2023, 9, 22)]
+    public void WorldCupFinalRejectsDatedMatchesBetweenTheSameTeams(
+        string title, int year, int month, int day)
+    {
+        var evt = WorldCupFinal();
+        var parsed = new SportsFileNameParser(NullLogger<SportsFileNameParser>.Instance).Parse(title);
+
+        parsed.EventDate.Should().Be(new DateTime(year, month, day));
+        _matcher.ValidateRelease(Release(title), evt).IsHardRejection.Should().BeTrue();
+        _scorer.CalculateMatchScore(title, evt).Should().BeLessThan(ReleaseMatchScorer.MinimumMatchScore);
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(title, evt.Title, null, evt, parsed).Core.Should().BeLessOrEqualTo(0);
+    }
+
+    [Theory]
+    [InlineData("Cricket World Test Championship 2023 Australia vs India Full Match 720p WEB x264 Willow")]
+    [InlineData("Cricket.World.Cup.2023-M05-India.v.Australia.1080p50.WEB-DL.H264-nVa")]
+    public void WorldCupFinalRejectsAnotherCompetitionOrStage(string title)
+    {
+        var evt = WorldCupFinal();
+        var parsed = new SportsFileNameParser(NullLogger<SportsFileNameParser>.Instance).Parse(title);
+
+        _matcher.ValidateRelease(Release(title), evt).IsHardRejection.Should().BeTrue();
+        _scorer.CalculateMatchScore(title, evt).Should().BeLessThan(ReleaseMatchScorer.MinimumMatchScore);
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(title, evt.Title, null, evt, parsed).Core.Should().BeLessOrEqualTo(0);
+    }
+
+    [Theory]
+    [InlineData("Cricket.World.Cup.2023-M48-The.Final-India.v.Australia-1080p50.WEB-DL.H264.-nVa")]
+    [InlineData("Cricket India vs Australia Full Match Nov 19, 2023 1080p")]
+    public void WorldCupFinalKeepsItsOwnRelease(string title)
+    {
+        var evt = WorldCupFinal();
+        var (parsed, importTitle) = ParseForImport(title);
+
+        _matcher.ValidateRelease(Release(title), evt).IsMatch.Should().BeTrue();
+        _scorer.CalculateMatchScore(title, evt).Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.MinimumMatchScore);
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(importTitle, evt.Title, null, evt, parsed).Core.Should().BeGreaterThanOrEqualTo(50);
+        LibraryScore(title, importTitle, evt, parsed).Should().BeGreaterThanOrEqualTo(40);
+    }
+
+    [Fact]
+    public void WorldCupFinalDoesNotImportNextDaysMeeting()
+    {
+        const string title = "Cricket India vs Australia Full Match Nov 20, 2023 1080p";
+        var evt = WorldCupFinal();
+        var (parsed, importTitle) = ParseForImport(title);
+
+        _matcher.ValidateRelease(Release(title), evt).IsHardRejection.Should().BeTrue();
+        _scorer.CalculateMatchScore(title, evt).Should().BeLessThan(ReleaseMatchScorer.MinimumMatchScore);
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(importTitle, evt.Title, null, evt, parsed).Core.Should().BeLessThan(50);
+        LibraryScore(title, importTitle, evt, parsed).Should().BeLessThan(40);
+    }
+
+    [Theory]
+    [InlineData("Cricket World Cup 2023 M01 England vs New Zealand 1st Innings 720p x264 EN SKY")]
+    [InlineData("Cricket World Cup 2023 M01 England vs New Zealand 2nd Innings 720p x264 EN SKY")]
+    public void WorldCupOpeningDoesNotTreatAnInningsAsTheFullMatch(string title)
+    {
+        var evt = WorldCupOpening();
+        var (parsed, importTitle) = ParseForImport(title);
+
+        _matcher.ValidateRelease(Release(title), evt).IsHardRejection.Should().BeTrue();
+        _scorer.CalculateMatchScore(title, evt).Should().BeLessThan(ReleaseMatchScorer.MinimumMatchScore);
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(importTitle, evt.Title, null, evt, parsed).Core.Should().BeLessThan(50);
+        LibraryScore(title, importTitle, evt, parsed).Should().BeLessThan(40);
+    }
+
+    [Fact]
+    public void WorldCupSemiFinalDoesNotConflictWithFinalStage()
+    {
+        const string title = "Cricket.World.Cup.2023-M46-Semi.Final.1-New.Zealand.v.India-Highlights.1080p.WEB-DL.H264-nVa";
+        var evt = TeamEvent(
+            "Cricket World Cup", "Cricket", "India Cricket", "New Zealand Cricket",
+            "2023", "150", new DateTime(2023, 11, 15));
+
+        CricketRugbyReleaseNamePolicy.HasIdentityConflict(title, evt).Should().BeFalse();
+    }
+
+    [Fact]
+    public void WorldCupOpeningKeepsTheFullMatch()
+    {
+        const string title = "Cricket.World.Cup.2023-M01-England.v.New.Zealand.1080p50.WEB-DL.H264-nVa";
+        var evt = WorldCupOpening();
+        var (parsed, importTitle) = ParseForImport(title);
+
+        _matcher.ValidateRelease(Release(title), evt).IsMatch.Should().BeTrue();
+        _scorer.CalculateMatchScore(title, evt).Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.MinimumMatchScore);
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(importTitle, evt.Title, null, evt, parsed).Core.Should().BeGreaterThanOrEqualTo(50);
+        LibraryScore(title, importTitle, evt, parsed).Should().BeGreaterThanOrEqualTo(40);
+    }
+
+    private static Event WorldCupOpening() => TeamEvent(
+        "Cricket World Cup", "Cricket", "England Cricket", "New Zealand Cricket",
+        "2023", "1", new DateTime(2023, 10, 5));
+
+    private static Event WorldCupFinal() => TeamEvent(
+        "Cricket World Cup", "Cricket", "India Cricket", "Australia Cricket",
+        "2023", "200", new DateTime(2023, 11, 19));
 
     private static Event TeamEvent(
         string leagueName,

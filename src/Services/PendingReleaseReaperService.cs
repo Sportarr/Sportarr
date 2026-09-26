@@ -79,6 +79,7 @@ public class PendingReleaseReaperService : BackgroundService
             await RecoverOwnershipAsync(db, coordinator, recovery);
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
+        var rssSyncService = scope.ServiceProvider.GetRequiredService<RssSyncService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var config = await configService.GetConfigAsync();
         var qualityProfiles = await db.QualityProfiles.ToListAsync(cancellationToken);
@@ -124,19 +125,49 @@ public class PendingReleaseReaperService : BackgroundService
             await db.Entry(evt).ReloadAsync(cancellationToken);
             if (db.Entry(evt).State == EntityState.Detached) continue;
 
-            // If the event already has a file or is no longer monitored, drop everything.
-            if (!evt.Monitored || evt.HasFile)
+            // Refresh the group after acquiring the event decision lock.
+            var candidates = await db.PendingReleases
+                .Where(p => p.EventId == group.Key.EventId
+                    && p.Part == group.Key.Part
+                    && p.Status == PendingReleaseStatus.Pending)
+                .ToListAsync(cancellationToken);
+            if (candidates.Count == 0) continue;
+
+            var latestFailure = await DownloadRetryState.LatestFailureAsync(
+                db, evt.Id, group.Key.Part, cancellationToken);
+            if (latestFailure != null)
             {
-                foreach (var p in group)
+                var retryBlockReason = Helpers.DownloadFailurePolicy.AutomaticRetryBlockReason(
+                    latestFailure, config);
+                if (retryBlockReason != null)
+                {
+                    foreach (var candidate in candidates)
+                    {
+                        candidate.Status = PendingReleaseStatus.Cancelled;
+                        candidate.Reason = retryBlockReason;
+                    }
+                    continue;
+                }
+
+                var retryDelays = AutomaticSearchService.ParseRetryBackoff(config.AutoSearchRetryBackoffMinutes);
+                var retryCount = latestFailure.RetryCount ?? 0;
+                var delayMinutes = retryCount < retryDelays.Length ? retryDelays[retryCount] : retryDelays[^1];
+                if (DateTime.UtcNow < (latestFailure.FailedAt ?? latestFailure.LastUpdate ?? latestFailure.Added).AddMinutes(delayMinutes))
+                    continue;
+            }
+
+            if (!evt.Monitored)
+            {
+                foreach (var p in candidates)
                 {
                     p.Status = PendingReleaseStatus.Cancelled;
-                    p.Reason = evt.HasFile ? "Event already has file" : "Event no longer monitored";
+                    p.Reason = "Event no longer monitored";
                 }
                 continue;
             }
 
             var profile = RssSyncService.ResolveQualityProfile(evt, qualityProfiles);
-            var winner = group
+            var ranked = candidates
                 .OrderByDescending(p => Helpers.QualityProfileRanker.GetRank(profile, p.Quality))
                 .ThenByDescending(p => string.Equals(config.DownloadPropersAndRepacks, "doNotPrefer", StringComparison.OrdinalIgnoreCase)
                     ? 0
@@ -145,46 +176,42 @@ public class PendingReleaseReaperService : BackgroundService
                 .ThenByDescending(p => p.Score)
                 .ThenByDescending(p => p.MatchScore)
                 .ThenByDescending(p => p.Seeders ?? 0)
-                .First();
+                .ToList();
 
-            // The event flag only turns true once every monitored part has a
-            // file. A part that gained its own file during the hold is decided
-            // by that file, as RSS sync decides it: the hold stands only if it
-            // still outscores what the part has. Left to the event flag, a held
-            // prelims release was grabbed after a better prelims file had
-            // already imported, downloaded in full, and was refused at import
-            // as not an upgrade. Dropping on any file at all went too far the
-            // other way and cancelled the upgrades RSS sync had let through.
+            // A file for another part also sets HasFile.
+            // Use the part's file state for a named part.
             var groupPart = group.Key.Part;
             var currentFiles = await db.EventFiles.AsNoTracking()
                 .Where(f => f.EventId == evt.Id && f.Exists).ToListAsync(cancellationToken);
             var partFile = string.IsNullOrEmpty(groupPart)
-                ? null
+                ? currentFiles.FirstOrDefault(f => f.PartName == null)
                 : currentFiles.FirstOrDefault(f => string.Equals(f.PartName, groupPart, StringComparison.OrdinalIgnoreCase));
-            if (partFile != null)
+            if (string.IsNullOrEmpty(groupPart) && evt.HasFile && partFile == null)
             {
-                // The same decision RSS sync makes, from the same helper.
-                // Comparing scores alone here grabbed over a file whose
-                // quality nobody could read, ignored a profile that forbids
-                // upgrades, took a trivial custom-format bump as an upgrade,
-                // and dropped a proper at equal score.
-                // The same profile RSS sync would pick: the event's own, else the
-                // league's, else the default, else the first. A separate lookup
-                // here skipped the default and gave the gate a null profile for
-                // an event pointing at a profile that no longer exists, which
-                // switched off the upgrades-allowed and increment rules.
-                var refusal = Helpers.ExistingFileUpgradeGate.RefusalReason(
-                    partFile, winner.Title, winner.Quality, winner.CustomFormatScore, profile, config);
+                foreach (var p in candidates)
+                {
+                    p.Status = PendingReleaseStatus.Cancelled;
+                    p.Reason = "Event already has file";
+                }
+                continue;
+            }
+            var eligible = new List<PendingRelease>();
+            foreach (var candidate in ranked)
+            {
+                var refusal = partFile == null ? null : Helpers.ExistingFileUpgradeGate.RefusalReason(
+                    partFile, candidate.Title, candidate.Quality, candidate.CustomFormatScore, profile, config);
                 if (refusal != null)
                 {
-                    foreach (var p in group)
-                    {
-                        p.Status = PendingReleaseStatus.Cancelled;
-                        p.Reason = refusal;
-                    }
-                    continue;
+                    candidate.Status = PendingReleaseStatus.Cancelled;
+                    candidate.Reason = refusal;
                 }
+                else eligible.Add(candidate);
             }
+            if (eligible.Count == 0) continue;
+
+            var winner = eligible[0];
+            // A ready lower release must not beat a better candidate still held.
+            if (winner.ReleasableAt > DateTime.UtcNow) continue;
 
             // The whole group is settled before the grab runs, so the save
             // inside it commits these statuses with the queue row. Setting
@@ -192,7 +219,7 @@ public class PendingReleaseReaperService : BackgroundService
             // queued while the group still read as pending, and the next pass
             // grabbed the same event a second time. Nothing is saved unless
             // the grab succeeds, so the revert below is enough on failure.
-            var losers = group.Where(p => p.Id != winner.Id).ToList();
+            var losers = eligible.Where(p => p.Id != winner.Id).ToList();
             winner.Status = PendingReleaseStatus.Released;
             foreach (var loser in losers)
             {
@@ -202,10 +229,14 @@ public class PendingReleaseReaperService : BackgroundService
 
             var outcome = await TryGrabPendingAsync(
                 db, downloadClientService, notificationService, evt, winner, profile, config,
-                eventDecision, cancellationToken);
+                latestFailure, eventDecision, cancellationToken);
 
             if (outcome == GrabOutcome.Grabbed)
             {
+                var cascadeParts = RssSyncService.GetCascadingPartSearchTargets(
+                    currentFiles, winner.Quality, winner.Part, profile, config);
+                rssSyncService.StartCascadingPartSearchesAfterGrab(
+                    evt, winner.Quality, winner.Part, cascadeParts);
                 _logger.LogInformation(
                     "[Pending Release Reaper] Released best-of-window for '{Event}': {Winner} (profile rank {Rank}, CF {Cf})",
                     evt.Title, winner.Title,
@@ -221,13 +252,13 @@ public class PendingReleaseReaperService : BackgroundService
                 var reason = outcome == GrabOutcome.Importing
                     ? "Event already being imported"
                     : "Better or equal release already queued";
-                foreach (var p in group)
+                foreach (var p in eligible)
                 {
                     p.Status = PendingReleaseStatus.Cancelled;
                     p.Reason = reason;
                 }
                 _logger.LogInformation("[Pending Release Reaper] Dropped {Count} held release(s) for '{Event}': {Reason}",
-                    group.Count(), evt.Title, reason);
+                    eligible.Count, evt.Title, reason);
             }
             else
             {
@@ -295,6 +326,7 @@ public class PendingReleaseReaperService : BackgroundService
         PendingRelease pending,
         QualityProfile? profile,
         Config config,
+        DownloadQueueItem? latestFailure,
         AcquisitionLease eventDecision,
         CancellationToken cancellationToken)
     {
@@ -404,7 +436,7 @@ public class PendingReleaseReaperService : BackgroundService
             IndexerId = indexerRecord?.Id,
             Protocol = pending.Protocol,
             TorrentInfoHash = pending.TorrentInfoHash,
-            RetryCount = 0,
+            RetryCount = latestFailure?.RetryCount ?? 0,
             LastUpdate = DateTime.UtcNow,
             QualityScore = pending.QualityScore,
             CustomFormatScore = pending.CustomFormatScore,

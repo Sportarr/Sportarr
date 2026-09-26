@@ -74,12 +74,6 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         }
     }
 
-    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}{Refresh}{Custom}",
-        eventId,
-        part != null ? $" (Part: {part})" : "",
-        forceRefresh ? " (Force Refresh)" : "",
-        !string.IsNullOrEmpty(customQuery) ? $" (Custom Query: {customQuery})" : "");
-
     var evt = await db.Events
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
@@ -91,6 +85,18 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         logger.LogWarning("[SEARCH] Event {EventId} not found", eventId);
         return Results.NotFound();
     }
+
+    if (!config.EnableMultiPartEpisodes ||
+        !EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? string.Empty, evt.League?.Name))
+    {
+        part = null;
+    }
+
+    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}{Refresh}{Custom}",
+        eventId,
+        part != null ? $" (Part: {part})" : "",
+        forceRefresh ? " (Force Refresh)" : "",
+        !string.IsNullOrEmpty(customQuery) ? $" (Custom Query: {customQuery})" : "");
 
     // NOTE: Manual search should work regardless of monitored status
     // User clicking "Search" button explicitly wants to find releases for this event
@@ -293,6 +299,23 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         }
     }
 
+    if (!usingCustomQuery)
+    {
+        var fallbackQueries = eventQueryService.BuildOverflowFallbackQueries(
+            evt, queries, searchDiagnostics, evt.League?.SearchQueryTemplate);
+        foreach (var query in fallbackQueries)
+        {
+            var results = await SearchQueryAsync(query, queries.Count + fallbackQueries.Count);
+            foreach (var result in results)
+            {
+                if (string.IsNullOrEmpty(result.Guid) || seenGuids.Add(result.Guid))
+                {
+                    allResults.Add(result);
+                }
+            }
+        }
+    }
+
     // RELEASE EVALUATION: Apply quality profile and custom format scoring
     // For cached results: Re-evaluate to calculate CF scores (cached results store raw indexer data only)
     // For fresh results: IndexerSearchService already evaluated with quality profile
@@ -325,6 +348,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .ToDictionaryAsync(i => i.Id, i => i.EarlyReleaseLimit);
     var knownLeagues = await LeagueMatchContext.LoadAsync(db);
     var roundRaceNumbers = await LoadRoundRaceNumbersAsync(db, evt);
+    var datePeers = await EventDateMatchContext.LoadAsync(db, evt);
 
     var dateRejectionCount = 0;
     var identityRejectedResults = new HashSet<ReleaseSearchResult>(ReferenceEqualityComparer.Instance);
@@ -333,7 +357,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         var earlyLimit = ReleaseMatchingService.ResolveEarlyReleaseLimit(result, earlyReleaseLimits);
         var matchResult = releaseMatchingService.ValidateRelease(result, evt, part, config.EnableMultiPartEpisodes,
             earlyReleaseLimitDays: earlyLimit, roundRaceNumbers: roundRaceNumbers,
-            knownLeagues: knownLeagues);
+            knownLeagues: knownLeagues, datePeers: datePeers);
 
         if (matchResult.IsHardRejection)
         {
@@ -402,7 +426,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                 var earlyLimit = ReleaseMatchingService.ResolveEarlyReleaseLimit(release, earlyReleaseLimits);
                 var matchResult = releaseMatchingService.ValidateRelease(release, evt, part,
                     config.EnableMultiPartEpisodes, earlyReleaseLimitDays: earlyLimit,
-                    roundRaceNumbers: roundRaceNumbers, knownLeagues: knownLeagues);
+                    roundRaceNumbers: roundRaceNumbers, knownLeagues: knownLeagues, datePeers: datePeers);
                 if (matchResult.IsHardRejection)
                 {
                     release.Rejections.AddRange(matchResult.Rejections);
@@ -485,6 +509,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     IndexerSearchService indexerSearchService,
     EventQueryService eventQueryService,
     ConfigService configService,
+    SearchResultCache searchResultCache,
     ReleaseMatchingService releaseMatchingService,
     ReleaseMatchScorer releaseMatchScorer,
     ILogger<Program> logger) =>
@@ -535,15 +560,49 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
     var skippedIndexers = new List<SkippedIndexer>();
+    var packConfig = await configService.GetConfigAsync();
+    var sportarrId = Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.League?.ExternalId);
+    var sourceFingerprint = await indexerSearchService.GetSearchSourceFingerprintAsync(true, evt.League?.Tags);
+
+    async Task<List<ReleaseSearchResult>> SearchPackQueryAsync(string query)
+    {
+        var cacheKey = SearchResultCache.RequestKey(new[] { query }, evt.League?.Tags,
+            10000, false, sportarrId, sourceFingerprint);
+        var cached = searchResultCache.TryGetCached(cacheKey, packConfig.SearchCacheDuration);
+        if (cached == null)
+        {
+            using var fillSlot = await searchResultCache.EnterFillAsync(cacheKey);
+            cached = searchResultCache.TryGetCached(cacheKey, packConfig.SearchCacheDuration);
+            if (cached == null)
+            {
+                var querySkipped = new List<SkippedIndexer>();
+                var outcome = await indexerSearchService.SearchAllIndexersDetailedAsync(query, 10000, qualityProfile?.Id,
+                    null, evt.Sport, true, evt.Title, evt.League?.Tags, querySkipped,
+                    allowHighlights: evt.League?.AllowHighlights ?? false,
+                    sportarrId: sportarrId,
+                    useCategoryFilter: false,
+                    cacheSuccessfulSources: true,
+                    leagueName: evt.League?.Name);
+                if (outcome.CanCache)
+                    searchResultCache.Store(cacheKey, outcome.Releases, packConfig.SearchCacheDuration,
+                        searchComplete: outcome.SatisfiesRequest, diagnostics: outcome.Diagnostics,
+                        expiresAt: outcome.CacheExpiresAt, skippedIndexers: querySkipped);
+                skippedIndexers.AddRange(querySkipped);
+                return outcome.Releases;
+            }
+        }
+
+        skippedIndexers.AddRange(cached.SkippedIndexers);
+        var results = searchResultCache.ToSearchResults(cached);
+        await indexerSearchService.EvaluateReleasesAsync(results, qualityProfile?.Id, null, evt.Sport,
+            true, evt.Title, evt.League?.Tags, evt.League?.AllowHighlights ?? false, evt.League?.Name);
+        return results;
+    }
 
     foreach (var query in queries)
     {
         logger.LogInformation("[PACK SEARCH] Searching: '{Query}'", query);
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, evt.Title, evt.League?.Tags, skippedIndexers,
-            allowHighlights: evt.League?.AllowHighlights ?? false,
-            sportarrId: Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.League?.ExternalId),
-            useCategoryFilter: false,
-            leagueName: evt.League?.Name);
+        var results = await SearchPackQueryAsync(query);
 
         foreach (var result in results)
         {
@@ -566,9 +625,9 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     // no validation at all, so a wrong season, wrong week, wrong league or
     // already blocklisted pack was presented as approved and listed first.
     // They get the same checks a normal manual search applies.
-    var packConfig = await configService.GetConfigAsync();
     var knownLeagues = await LeagueMatchContext.LoadAsync(db);
     var roundRaceNumbers = await LoadRoundRaceNumbersAsync(db, evt);
+    var datePeers = await EventDateMatchContext.LoadAsync(db, evt);
 
     // The week the event belongs to. The general validation compares numbers
     // found in the release title against numbers in the event title, and a
@@ -580,7 +639,8 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     {
         var matchResult = releaseMatchingService.ValidateRelease(
             result, evt, null, packConfig.EnableMultiPartEpisodes,
-            roundRaceNumbers: roundRaceNumbers, knownLeagues: knownLeagues);
+            roundRaceNumbers: roundRaceNumbers, knownLeagues: knownLeagues,
+            datePeers: datePeers);
         if (matchResult.Rejections.Any())
         {
             result.Rejections.AddRange(matchResult.Rejections);
@@ -604,6 +664,11 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
             result.Title, evt, knownLeagues, requestedPart: null,
             enableMultiPartEpisodes: packConfig.EnableMultiPartEpisodes,
             roundRaceNumbers: roundRaceNumbers);
+        if (result.IsPack &&
+            LeagueReleaseNamePolicy.HasChineseCbaSeasonPackIdentity(result.Title, evt))
+        {
+            result.MatchScore = Math.Max(result.MatchScore, matchResult.Confidence);
+        }
     }
 
     await MarkBlocklistedAsync(db, allResults);

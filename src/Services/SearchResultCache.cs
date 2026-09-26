@@ -73,12 +73,16 @@ public class SearchResultCache : IDisposable
         diagnostics?.Select(diagnostic => diagnostic with { Pages = diagnostic.Pages.ToArray() }).ToArray()
         ?? Array.Empty<IndexerSearchDiagnostic>();
 
+    private static SkippedIndexer[] CopySkippedIndexers(IEnumerable<SkippedIndexer>? skippedIndexers) =>
+        skippedIndexers?.ToArray() ?? Array.Empty<SkippedIndexer>();
+
     /// <summary>
     /// Represents cached raw results from indexers
     /// </summary>
     public class CachedSearchResults
     {
         private IReadOnlyList<IndexerSearchDiagnostic> _searchDiagnostics = Array.Empty<IndexerSearchDiagnostic>();
+        private IReadOnlyList<SkippedIndexer> _skippedIndexers = Array.Empty<SkippedIndexer>();
 
         public bool SearchComplete { get; init; } = true;
 
@@ -86,6 +90,12 @@ public class SearchResultCache : IDisposable
         {
             get => CopyDiagnostics(_searchDiagnostics);
             init => _searchDiagnostics = CopyDiagnostics(value);
+        }
+
+        public IReadOnlyList<SkippedIndexer> SkippedIndexers
+        {
+            get => CopySkippedIndexers(_skippedIndexers);
+            init => _skippedIndexers = CopySkippedIndexers(value);
         }
 
         /// <summary>
@@ -289,7 +299,8 @@ public class SearchResultCache : IDisposable
 
     // Different source requests must not share a cached answer.
     public static string RequestKey(IEnumerable<string> queries, IEnumerable<int>? indexerTags,
-        int maxResultsPerIndexer, bool useCategoryFilter, string? sportarrId, string? sourceFingerprint = null)
+        int maxResultsPerIndexer, bool useCategoryFilter, string? sportarrId, string? sourceFingerprint = null,
+        int? eventScope = null)
     {
         var request = JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -299,7 +310,8 @@ public class SearchResultCache : IDisposable
             MaxResultsPerIndexer = maxResultsPerIndexer,
             UseCategoryFilter = useCategoryFilter,
             SportarrId = sportarrId,
-            SourceFingerprint = sourceFingerprint
+            SourceFingerprint = sourceFingerprint,
+            EventScope = eventScope
         });
         return "request:" + Convert.ToHexString(SHA256.HashData(request));
     }
@@ -384,7 +396,8 @@ public class SearchResultCache : IDisposable
     /// <param name="indexersQueried">Which indexers were queried</param>
     public void Store(string query, IEnumerable<ReleaseSearchResult> results, int cacheDurationSeconds = 300,
         IEnumerable<string>? indexersQueried = null, bool searchComplete = true,
-        IEnumerable<IndexerSearchDiagnostic>? diagnostics = null, DateTimeOffset? expiresAt = null)
+        IEnumerable<IndexerSearchDiagnostic>? diagnostics = null, DateTimeOffset? expiresAt = null,
+        IEnumerable<SkippedIndexer>? skippedIndexers = null)
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         if (expiresAt.HasValue)
@@ -411,6 +424,7 @@ public class SearchResultCache : IDisposable
         {
             SearchComplete = searchComplete,
             SearchDiagnostics = CopyDiagnostics(diagnostics),
+            SkippedIndexers = CopySkippedIndexers(skippedIndexers),
             RawReleases = rawReleases,
             CachedAt = now,
             LifetimeSeconds = lifetime,

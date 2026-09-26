@@ -1,3 +1,5 @@
+using Sportarr.Api.Models;
+
 namespace Sportarr.Api.Helpers;
 
 /// <summary>
@@ -8,6 +10,20 @@ namespace Sportarr.Api.Helpers;
 /// </summary>
 public static class DownloadFailurePolicy
 {
+    public const int MaxRedownloadAttempts = 3;
+
+    public static string? AutomaticRetryBlockReason(DownloadQueueItem failed, Config config)
+    {
+        var enabled = failed.IsManualSearch
+            ? config.RedownloadFailedFromInteractiveSearch
+            : config.RedownloadFailedDownloads;
+        if (!enabled)
+            return "Automatic retry is disabled for this failed download";
+        if ((failed.RetryCount ?? 0) >= MaxRedownloadAttempts)
+            return $"Download retry limit ({MaxRedownloadAttempts}) reached";
+        return null;
+    }
+
     /// <summary>
     /// Whether a still-packed download is inside its extraction grace window and should
     /// keep retrying (ImportPending) rather than being failed. Measured from when the

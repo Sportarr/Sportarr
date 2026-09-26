@@ -115,10 +115,11 @@ app.MapPost("/api/blocklist/clear", async (SportarrDbContext db, ILogger<Program
 });
 
 // API: Wanted/Missing Events
-app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db, ConfigService configService, ILogger<Program> logger) =>
 {
     try
     {
+        var config = await configService.GetConfigAsync();
         logger.LogDebug("[Wanted] GET /api/wanted/missing - page: {Page}, pageSize: {PageSize}", page, pageSize);
 
         var now = DateTime.UtcNow;
@@ -139,7 +140,7 @@ app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbConte
             .Take(pageSize)
             .ToListAsync();
 
-        var eventResponses = events.Select(EventResponse.FromEvent).ToList();
+        var eventResponses = events.Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true)).ToList();
 
         return Results.Ok(new
         {
@@ -160,10 +161,11 @@ app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbConte
     }
 });
 
-app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDbContext db, ConfigService configService, ILogger<Program> logger) =>
 {
     try
     {
+        var config = await configService.GetConfigAsync();
         logger.LogDebug("[Wanted] GET /api/wanted/cutoff-unmet - page: {Page}, pageSize: {PageSize}", page, pageSize);
 
         // The cutoff test runs in memory, so the whole candidate set has to be
@@ -222,7 +224,7 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
         var byId = pageEvents.ToDictionary(e => e.Id);
         var eventResponses = pageIds
             .Where(byId.ContainsKey)
-            .Select(id => EventResponse.FromEvent(byId[id]))
+            .Select(id => EventResponse.FromEvent(byId[id], config.EnableMultiPartEpisodes, filesLoaded: true))
             .ToList();
 
         return Results.Ok(new

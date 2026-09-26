@@ -433,8 +433,9 @@ app.MapGet("/api/leagues/{id:int}/seasons", async (int id, bool? showAll, Sporta
     return Results.Ok(new { totalEvents = visible.Count, seasons });
 });
 
-app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, bool? showAll, string? season, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSize, bool? showAll, string? season, SportarrDbContext db, ConfigService configService, ILogger<Program> logger) =>
 {
+    var config = await configService.GetConfigAsync();
     logger.LogInformation("[LEAGUES] Getting events for league ID: {LeagueId}", id);
 
     // Get league with monitored teams for filtering
@@ -489,7 +490,7 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
         var pageItems = filteredEvents
             .Skip((currentPage - 1) * size)
             .Take(size)
-            .Select(EventResponse.FromEvent)
+            .Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true, leagueOverride: league))
             .ToList();
 
         logger.LogInformation("[LEAGUES] Returning page {Page} ({Count} of {Total}) for league: {LeagueName}",
@@ -506,7 +507,7 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
     }
 
     // Convert to DTOs
-    var response = filteredEvents.Select(EventResponse.FromEvent).ToList();
+    var response = filteredEvents.Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true, leagueOverride: league)).ToList();
 
     logger.LogInformation("[LEAGUES] Found {Count} events for league: {LeagueName} (filtered from {Total})",
         response.Count, league.Name, events.Count);
@@ -751,7 +752,7 @@ app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, S
 });
 
 // API: Update league (including monitor toggle)
-app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, TaskService taskService, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, TaskService taskService, ConfigService configService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
@@ -955,16 +956,18 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
             applyToEvents = false;
         }
 
+        var config = await configService.GetConfigAsync();
+        var eventsToUpdate = await db.Events
+            .Include(e => e.Files)
+            .Where(e => e.LeagueId == id)
+            .ToListAsync();
+
         if (applyToEvents)
         {
             // Cascade to ALL events of all types (PPV, Fight Night, Contender Series, etc.)
             // BuildPartStatuses on each event then renders only the parts that exist for that
             // event type, so a Fight Night event with "Main Card,Prelims,Early Prelims" stored
             // shows just Main Card and Prelims (which is correct).
-            var eventsToUpdate = await db.Events
-                .Where(e => e.LeagueId == id)
-                .ToListAsync();
-
             if (eventsToUpdate.Count > 0)
             {
                 logger.LogInformation("[LEAGUES] Cascading monitored parts to {Count} events: {Parts}",
@@ -983,6 +986,9 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         {
             logger.LogInformation("[LEAGUES] applyMonitoredPartsToEvents=false — league-level parts updated, existing events untouched");
         }
+
+        foreach (var evt in eventsToUpdate)
+            evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt, config.EnableMultiPartEpisodes, league);
     }
 
     // Handle monitored session types for motorsport leagues (currently only F1)
@@ -1528,6 +1534,7 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
                         Size = fileInfo.Length,
                         Quality = quality,
                         SuggestedEventId = suggestion?.EventId,
+                        SuggestedPart = suggestion?.Part,
                         SuggestionConfidence = suggestion?.Confidence ?? 0,
                         Detected = DateTime.UtcNow,
                         Status = PendingImportStatus.Pending

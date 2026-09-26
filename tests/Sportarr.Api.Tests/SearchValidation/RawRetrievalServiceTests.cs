@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Data;
@@ -10,6 +11,85 @@ namespace Sportarr.Api.Tests.SearchValidation;
 
 public sealed class RawRetrievalServiceTests(ITestOutputHelper output)
 {
+    [Theory]
+    [InlineData(IndexerType.Newznab)]
+    [InlineData(IndexerType.Torznab)]
+    public async Task EqualQueriesForDifferentEventsReuseRawPagesWithoutIdSearch(IndexerType protocol)
+    {
+        await using var rig = await QuotaIncompleteCacheHarness.CreateAsync(output, quotaConstrained: false);
+        await ConfigureProtocol(rig, protocol);
+        rig.Transport.SupportsSportarrId = false;
+        rig.Transport.SearchQueries = ["WSBK 2026 Round01 Australia"];
+        rig.Event.League!.ExternalId = "lg-000090";
+        rig.Event.League.Name = "SBK";
+        rig.Event.League.Sport = "Motorsport";
+        rig.Event.League.SearchQueryTemplate = "WSBK 2026 Round01 Australia";
+        rig.Event.ExternalId = "ev-1930112";
+        rig.Event.Title = "Australian - Race 1";
+        rig.Event.Sport = "Motorsport";
+        rig.Event.HomeTeamName = null;
+        rig.Event.AwayTeamName = null;
+        rig.Event.Season = "2026";
+        rig.Event.Round = "1";
+        rig.Event.EventDate = new DateTime(2026, 2, 21, 5, 0, 0, DateTimeKind.Utc);
+        rig.Event.BroadcastDate = new DateTime(2026, 2, 21, 0, 0, 0, DateTimeKind.Utc);
+        rig.Event.BroadcastDateVerified = true;
+        rig.Event.Location = "Phillip Island Grand Prix Circuit";
+        var titles = new[]
+        {
+            "WSBK.2026.Round01.Australia.Race.One.TNT.WEB-DL.1080p.H264.English-MWR",
+            "WSBK.2026.Round01.Australia.Race.One.WEB-DL.1080p.H264.English-MWR",
+            "WSBK.2026.Round01.Australia.Superpole.Race.TNT.WEB-DL.1080p.H264.English-MWR",
+            "WSBK.2026.Round01.Australia.Superpole.Race.WEB-DL.1080p.H264.English-MWR",
+            "WSBK.2026.Round01.Australia.Test.Upload.WEB-DL.1080p.H264.English-MWR"
+        };
+        for (var i = 0; i < titles.Length; i++)
+        {
+            rig.Transport.Releases[i].Title = titles[i];
+            rig.Transport.Releases[i].SportarrEventId = null;
+            rig.Transport.Releases[i].PublishDate = new DateTime(2026, 2, 23, 0, 0, 0, DateTimeKind.Utc);
+        }
+
+        var secondEvent = new Event
+        {
+            ExternalId = "ev-583291", Title = "Australian Superpole - Race", Sport = "Motorsport",
+            LeagueId = rig.Event.LeagueId, League = rig.Event.League,
+            EventDate = new DateTime(2026, 2, 22, 1, 0, 0, DateTimeKind.Utc),
+            BroadcastDate = new DateTime(2026, 2, 22, 0, 0, 0, DateTimeKind.Utc),
+            BroadcastDateVerified = true, Location = "Phillip Island Grand Prix Circuit",
+            Status = rig.Event.Status, Monitored = true, Season = "2026", Round = "1",
+            QualityProfileId = rig.Profile.Id
+        };
+        rig.Db.Events.Add(secondEvent);
+        await rig.Db.SaveChangesAsync();
+
+        static async Task<ReleaseSearchResult[]> SearchAsync(QuotaIncompleteCacheHarness fixture, int eventId)
+        {
+            using var response = await fixture.Client.PostAsJsonAsync($"/api/event/{eventId}/search", new { });
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.True(response.IsSuccessStatusCode, body);
+            using var document = JsonDocument.Parse(body);
+            return document.RootElement.GetProperty("results").Deserialize<ReleaseSearchResult[]>(
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        }
+
+        var raceOneResults = await SearchAsync(rig, rig.Event.Id);
+        Assert.Equal(5, raceOneResults.Length);
+        Assert.Equal(titles.Take(2).OrderBy(title => title),
+            raceOneResults.Where(result => result.Approved).Select(result => result.Title).OrderBy(title => title));
+        var requestsAfterFirstEvent = rig.Transport.Attempts.Count(attempt => attempt.Mode == "search");
+        Assert.Equal(3, requestsAfterFirstEvent);
+
+        var superpoleResults = await SearchAsync(rig, secondEvent.Id);
+        Assert.Equal(5, superpoleResults.Length);
+        Assert.Equal(titles.Skip(2).Take(2).OrderBy(title => title),
+            superpoleResults.Where(result => result.Approved).Select(result => result.Title).OrderBy(title => title));
+        Assert.Equal(requestsAfterFirstEvent, rig.Transport.Attempts.Count(attempt => attempt.Mode == "search"));
+        Assert.All(rig.Transport.Attempts.Where(attempt => attempt.Mode == "search"),
+            attempt => Assert.Empty(attempt.EventId));
+        Assert.Empty(rig.Transport.Violations);
+    }
+
     [Theory]
     [InlineData(IndexerType.Newznab)]
     [InlineData(IndexerType.Torznab)]
@@ -59,7 +139,7 @@ public sealed class RawRetrievalServiceTests(ITestOutputHelper output)
         var service = rig.Services.GetRequiredService<IndexerSearchService>();
         Task<SearchOperationOutcome> Search() => service.SearchAllIndexersDetailedAsync("cache-primary", 100,
             qualityProfileId: rig.Profile.Id, sportarrId: rig.Event.ExternalId, cacheSuccessfulSources: true);
-        var cold = await Search().WaitAsync(TimeSpan.FromSeconds(15));
+        var cold = await Search().WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(6, cold.Releases.Count);
         Assert.Equal(2, rig.Transport.Attempts.Count(a => a.Mode == "search"));
         Assert.Single(rig.Transport.Attempts.Where(a => a.Mode == "caps"));

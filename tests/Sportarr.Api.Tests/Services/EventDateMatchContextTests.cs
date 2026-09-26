@@ -10,6 +10,36 @@ namespace Sportarr.Api.Tests.Services;
 public class EventDateMatchContextTests
 {
     [Fact]
+    public void Verified_midnight_copa_events_need_date_peers()
+    {
+        var copa = Game(1, 1, new DateTime(2024, 6, 21, 0, 0, 0, DateTimeKind.Utc));
+        copa.League = new League { Id = 1, Name = "Copa America", Sport = "Soccer" };
+        copa.BroadcastDateVerified = true;
+        var daytime = Game(2, 1, new DateTime(2024, 6, 21, 12, 0, 0, DateTimeKind.Utc));
+        daytime.League = copa.League;
+        daytime.BroadcastDateVerified = true;
+
+        EventDateMatchContext.ShouldLoadPeers(copa).Should().BeTrue();
+        EventDateMatchContext.ShouldLoadPeers(daytime).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("EHF Champions League")]
+    [InlineData("World Mens Curling Championship")]
+    [InlineData("Concacaf W Gold Cup")]
+    [InlineData("Concacaf Central American Cup")]
+    [InlineData("Concacaf Gold Cup Qualifying")]
+    [InlineData("China FA Cup")]
+    public void Verified_leagues_with_adjacent_day_release_windows_load_date_peers(string leagueName)
+    {
+        var evt = Game(1, 1, new DateTime(2026, 9, 18, 18, 0, 0, DateTimeKind.Utc));
+        evt.League = new League { Id = 1, Name = leagueName, Sport = "Soccer" };
+        evt.BroadcastDateVerified = true;
+
+        EventDateMatchContext.ShouldLoadPeers(evt).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Loads_only_nearby_events_from_the_same_league()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

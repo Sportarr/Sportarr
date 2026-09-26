@@ -174,6 +174,28 @@ public class DvrCompletedOutputNamingTests
         fixture.Recording.OutputPath.Should().Be(originalPath);
     }
 
+    [Fact]
+    public async Task DirectFightNightPrelimsRecordingKeepsMainCardWanted()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var evt = fixture.Recording.Event!;
+        evt.Title = "UFC Fight Night 999";
+        evt.Sport = "Fighting";
+        evt.League!.Name = "UFC";
+        evt.League.Sport = "Fighting";
+        fixture.Recording.PartName = "Prelims";
+        fixture.Recording.OutputPath = fixture.CreateRecordingFile("UFC Fight Night 999 Prelims.mp4");
+        await fixture.Db.SaveChangesAsync();
+
+        var imported = await fixture.CreateEventDvrService()
+            .ImportCompletedRecordingAsync(fixture.Recording.Id);
+
+        imported.Should().BeTrue();
+        fixture.Db.ChangeTracker.Clear();
+        (await fixture.Db.EventFiles.SingleAsync()).PartNumber.Should().Be(1);
+        (await fixture.Db.Events.SingleAsync()).HasFile.Should().BeFalse();
+    }
+
     private sealed class NamingFixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;

@@ -63,7 +63,7 @@ public class RegrabMissingHttpTests
         var actual = await Snapshots(rig);
         foreach (var entry in expected) JsonNode.DeepEquals(entry.Value, actual[entry.Key]).Should().BeTrue($"history {entry.Key} must retain every other stored field");
         (await rig.Db.EventFiles.SingleAsync()).Id.Should().Be(survivor.Id);
-        (await File.ReadAllBytesAsync(survivor.FilePath)).Should().Equal(bytes); rig.Event.HasFile.Should().BeTrue();
+        (await File.ReadAllBytesAsync(survivor.FilePath)).Should().Equal(bytes); rig.Event.HasFile.Should().BeFalse();
         var missing = await rig.ReadAsync("/api/grab-history?missingOnly=true");
         missing.GetProperty("history").EnumerateArray().Select(r => r.GetProperty("id").GetInt32()).Should().NotContain(superseded.Id);
         var all = await rig.ReadAsync("/api/grab-history?missingOnly=true&includeSuperseded=true");

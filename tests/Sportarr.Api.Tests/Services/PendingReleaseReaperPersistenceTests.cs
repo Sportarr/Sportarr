@@ -39,6 +39,7 @@ public class PendingReleaseReaperPersistenceTests
             .UseSqlite("Data Source=" + Path.Combine(directory, "reaper.db") + ";Pooling=False")
             .AddInterceptors(failure));
         services.AddSingleton<ConfigService>();
+        services.AddSingleton<RssSyncService>();
         services.AddSingleton<DownloadOwnershipCoordinator>();
         services.AddSingleton<IHttpClientFactory>(transport);
         services.AddSingleton(transport.CreateClient("default"));

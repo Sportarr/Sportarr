@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
 
@@ -698,6 +699,9 @@ public class EventPartDetector
         if (!IsFightingSport(sport))
             return false;
 
+        if (leagueName?.Equals("ACA", StringComparison.OrdinalIgnoreCase) == true)
+            return false;
+
         // UFC Contender Series: single episode, no parts
         if (DetectUfcEventType(eventTitle) == UfcEventType.ContenderSeries)
             return false;
@@ -783,6 +787,9 @@ public class EventPartDetector
     /// </summary>
     private static List<CardSegment> GetSegmentsForEventType(string? eventTitle, string? leagueName = null)
     {
+        if (leagueName?.Equals("ACA", StringComparison.OrdinalIgnoreCase) == true)
+            return new List<CardSegment>();
+
         // Wrestling segments — dispatch per promotion so AEW/ROH don't
         // route through WWE's WweEventType detector and default to PLE.
         switch (DetectWrestlingPromotion(leagueName))
@@ -845,10 +852,9 @@ public class EventPartDetector
     }
 
     /// <summary>
-    /// The "main" segment name for an event (e.g. "Main Card" for fighting,
-    /// "Main Show" for wrestling) -- the highest-ordered segment. A release for
-    /// the main segment normally ships under the bare event title with no part
-    /// label, so an unlabelled fighting release maps to this part. Returns null
+    /// Gets the main segment name for an event. It uses "Main Card" or "Main Show"
+    /// when defined. It falls back to the highest-numbered segment for custom
+    /// definitions. An unlabelled fighting release maps to this part. Returns null
     /// for sports without multi-part episodes.
     /// </summary>
     public static string? GetMainPartName(string sport, string? eventTitle = null, string? leagueName = null)
@@ -856,9 +862,10 @@ public class EventPartDetector
         if (!IsFightingSport(sport))
             return null;
 
-        return GetSegmentsForEventType(eventTitle, leagueName)
-            .OrderByDescending(s => s.PartNumber)
-            .FirstOrDefault()?.Name;
+        var segments = GetSegmentsForEventType(eventTitle, leagueName);
+        return segments.FirstOrDefault(segment =>
+                segment.Name is "Main Card" or "Main Show")?.Name
+            ?? segments.OrderByDescending(segment => segment.PartNumber).FirstOrDefault()?.Name;
     }
 
     /// <summary>
@@ -984,6 +991,14 @@ public class EventPartDetector
         return required.All(p => presentPartNumbers.Any(n => n == p.PartNumber));
     }
 
+    public static bool AreAllMonitoredPartsPresent(Event evt, bool enableMultiPartEpisodes, League? leagueOverride = null)
+    {
+        var league = leagueOverride ?? evt.League;
+        var presentParts = evt.Files.Where(f => f.Exists).Select(f => f.PartNumber).ToArray();
+        return AreAllMonitoredPartsPresent(evt.Sport, evt.Title, league?.Name,
+            evt.MonitoredParts, league?.MonitoredParts, presentParts, enableMultiPartEpisodes);
+    }
+
     /// <summary>
     /// Check if this is a fighting sport that uses multi-part episodes
     /// </summary>
@@ -992,7 +1007,10 @@ public class EventPartDetector
         if (string.IsNullOrEmpty(sport))
             return false;
 
-        var fightingSports = new[]
+        return FightingSportNames.Any(s => sport.Equals(s, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static IReadOnlyList<string> FightingSportNames { get; } = Array.AsReadOnly(new[]
         {
             "Fighting",
             "Combat",  // hub canonical name — TheSportsDB labels the same sport "Fighting"
@@ -1001,10 +1019,7 @@ public class EventPartDetector
             "Kickboxing",
             "Muay Thai",
             "Wrestling"
-        };
-
-        return fightingSports.Any(s => sport.Equals(s, StringComparison.OrdinalIgnoreCase));
-    }
+        });
 
     // Generational suffixes that trail a fighter's name; the token before
     // them is the actual surname ("Roy Jones Jr" -> "Jones").

@@ -21,6 +21,7 @@ public class FileRenameService
     private readonly CustomFormatService _customFormatService;
     private readonly NotificationService _notificationService;
     private readonly IMetadataWriterService _metadataWriterService;
+    private readonly ConfigService _configService;
 
     // Formats loaded once per scoped instance so per-file token building
     // doesn't re-query on every file of a bulk rename.
@@ -34,7 +35,8 @@ public class FileRenameService
         DiskSpaceService diskSpaceService,
         CustomFormatService customFormatService,
         NotificationService notificationService,
-        IMetadataWriterService metadataWriterService)
+        IMetadataWriterService metadataWriterService,
+        ConfigService configService)
     {
         _db = db;
         _fileNamingService = fileNamingService;
@@ -44,6 +46,7 @@ public class FileRenameService
         _customFormatService = customFormatService;
         _notificationService = notificationService;
         _metadataWriterService = metadataWriterService;
+        _configService = configService;
     }
 
     /// <summary>
@@ -189,7 +192,8 @@ public class FileRenameService
             // rows that are here, and rows come and go, so numbering a season
             // this way would rename files to numbers the hub disagrees with
             // as soon as it answers again.
-            if (events.Any(e => e.HasFile))
+            if (events.Any(e => e.Files.Any(file => file.Exists) ||
+                !string.IsNullOrWhiteSpace(e.FilePath)))
             {
                 _logger.LogInformation("[File Rename] No API episode data available and this season holds files, so numbers are left as they are");
                 return renumberedCount;
@@ -300,6 +304,9 @@ public class FileRenameService
                 _logger.LogError(ex, "[File Rename] Failed to rename file: {FilePath}", file.FilePath);
             }
         }
+
+        if (fileStateChanged)
+            await UpdateEventFileStateAsync(eventId);
 
         if (renamedCount > 0 || fileStateChanged)
         {
@@ -1170,7 +1177,8 @@ public class FileRenameService
     /// </summary>
     private async Task UpdateEventFileStateAsync(int eventId)
     {
-        var evt = await _db.Events.Include(e => e.Files).FirstOrDefaultAsync(e => e.Id == eventId);
+        var evt = await _db.Events.Include(e => e.League).Include(e => e.Files)
+            .FirstOrDefaultAsync(e => e.Id == eventId);
         if (evt == null) return;
 
         var originalHasFile = evt.HasFile;
@@ -1196,7 +1204,11 @@ public class FileRenameService
                 .ThenBy(file => file.Id)
                 .FirstOrDefault();
 
-        evt.HasFile = selectedFile != null;
+        var config = await _configService.GetConfigAsync();
+        evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+            evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
+            evt.League?.MonitoredParts, existingFiles.Select(file => file.PartNumber).ToArray(),
+            config.EnableMultiPartEpisodes);
         if (selectedFile == null)
         {
             evt.FilePath = null;

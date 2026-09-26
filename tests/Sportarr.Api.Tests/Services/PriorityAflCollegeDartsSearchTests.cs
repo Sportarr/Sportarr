@@ -84,6 +84,19 @@ public class PriorityAflCollegeDartsSearchTests
     }
 
     [Fact]
+    public void UndatedAflGameOrdinalWithMatchingRoundAndTeams_IsEligibleForRss()
+    {
+        const string title = "AFL 2026 Round 1 Game 1 Carlton Blues V Richmond Tigers 1080p WEB DL 50FPS AAC H264 FLOG";
+        var evt = TeamEvent("Australian AFL", "Australian Football", "Carlton Football Club",
+            "Richmond Football Club", "2026", "1", new DateTime(2026, 3, 12));
+
+        var result = _matcher.ValidateRelease(Release(title), evt);
+
+        result.IsMatch.Should().BeTrue();
+        result.IsHardRejection.Should().BeFalse();
+    }
+
+    [Fact]
     public void PdcDayRelease_IsViableOnlyForTheNamedDay()
     {
         const string releaseTitle = "PDC 2026 World Masters Day 2 1080p WEB";

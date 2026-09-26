@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Sportarr.Api.Helpers;
+using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
 
@@ -26,6 +28,153 @@ internal enum CombatIdentityMatch
 /// </summary>
 public static class SearchNormalizationService
 {
+    private static readonly Regex CoupangPlayPattern = new(
+        @"\bCoupang[\s._-]+Play\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex CoupangMonthFirstDatePattern = new(
+        @"(?<![0-9])(?<month>0?[1-9]|1[0-2])[\s._/-]+(?<day>0?[1-9]|[12][0-9]|3[01])(?:[\s._/-]+(?<year>(?:19|20)[0-9]{2}))?[\s._/-]+Coupang[\s._-]+Play\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex CoupangIsoDatePattern = new(
+        @"(?<![0-9])(?<year>(?:19|20)[0-9]{2})[\s._/-]+(?<month>0?[1-9]|1[0-2])[\s._/-]+(?<day>0?[1-9]|[12][0-9]|3[01])(?![0-9])|(?<![0-9])(?<year>(?:19|20)[0-9]{2})(?<month>0[1-9]|1[0-2])(?<day>0[1-9]|[12][0-9]|3[01])(?![0-9])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex StandaloneReleaseYearPattern = new(
+        @"(?<![0-9])(?:19|20)[0-9]{2}(?![0-9])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex PreseasonPattern = new(
+        @"\bpre[\s._-]*season\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    internal static bool IsCoupangPlayRelease(string title) => CoupangPlayPattern.IsMatch(title);
+
+    internal static DateTime? ParseCoupangMonthFirstDate(string title)
+    {
+        if (!IsCoupangPlayRelease(title)) return null;
+
+        var isoDates = CoupangIsoDatePattern.Matches(title)
+            .Select(match => BuildCoupangDate(
+                int.Parse(match.Groups["year"].Value),
+                int.Parse(match.Groups["month"].Value),
+                int.Parse(match.Groups["day"].Value)))
+            .Where(date => date.HasValue)
+            .Select(date => date!.Value)
+            .Distinct()
+            .ToArray();
+        if (isoDates.Length > 1) return null;
+
+        var match = CoupangMonthFirstDatePattern.Match(title);
+        if (!match.Success) return isoDates.Length == 1 ? isoDates[0] : null;
+
+        var years = StandaloneReleaseYearPattern.Matches(title)
+            .Select(year => int.Parse(year.Value))
+            .Distinct()
+            .ToArray();
+        var year = match.Groups["year"].Success
+            ? int.Parse(match.Groups["year"].Value)
+            : isoDates.Length == 1
+                ? isoDates[0].Year
+                : years.Length == 1 ? years[0] : 0;
+        var month = int.Parse(match.Groups["month"].Value);
+        var day = int.Parse(match.Groups["day"].Value);
+        var pairedDate = BuildCoupangDate(year, month, day);
+        return isoDates.Length == 1 && pairedDate != isoDates[0] ? null : pairedDate;
+    }
+
+    private static DateTime? BuildCoupangDate(int year, int month, int day) =>
+        year >= 1950 && year <= DateTime.UtcNow.Year + 2 &&
+        day <= DateTime.DaysInMonth(year, month)
+            ? new DateTime(year, month, day)
+            : null;
+
+    private static readonly Regex ParticipantCategoryPattern = new(
+        @"(?<![\p{L}\p{M}\p{N}])(?:(?:u(?:nder)?|sub)[\s._-]*(?<age>\d{1,2})|women'?s?|ladies|female|fem[ei]nin[ao]|youth|reserves?)(?![\p{L}\p{M}\p{N}])",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    internal static bool HasExactDatedPreseasonIdentity(string title, DateTime? releaseDate, Event evt)
+    {
+        if (!releaseDate.HasValue || !PreseasonPattern.IsMatch(title))
+        {
+            return false;
+        }
+
+        var eventDate = (evt.BroadcastDate ?? evt.EventDate.Date).Date;
+        return releaseDate.Value.Date == eventDate;
+    }
+
+    internal static bool HasParticipantCategoryConflict(string releaseTitle, Event evt)
+    {
+        var releaseCategories = ParticipantCategories(releaseTitle);
+        if (releaseCategories.Count == 0)
+        {
+            return false;
+        }
+
+        if (LeagueReleaseNamePolicy.AllowsCombinedParticipantCategory(releaseTitle, evt))
+        {
+            releaseCategories.Remove("women");
+            if (releaseCategories.Count == 0) return false;
+        }
+
+        if (releaseCategories.SetEquals(["women"]) &&
+            BasketballLeagueIdentity.Detect(releaseTitle) == "WNBA" &&
+            BasketballLeagueIdentity.Detect(evt.League?.Name) == "WNBA")
+        {
+            return false;
+        }
+
+        if (releaseCategories.SetEquals(["women"]) &&
+            evt.League?.Name.Trim() is "Australian WNBL" or "Chinese WCBA")
+        {
+            return false;
+        }
+
+        if (releaseCategories.SetEquals(["women"]) &&
+            Regex.IsMatch(evt.League?.Name ?? string.Empty, @"\bNWSL\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            return false;
+        }
+
+        if (releaseCategories.SetEquals(["women"]) &&
+            LeagueReleaseNamePolicy.LeagueKey(evt.League?.Name) is
+                "ConcacafWChampionsCup" or "ConcacafWGoldCup" or "ConmebolWomensNationsLeague")
+        {
+            return false;
+        }
+
+        var eventIdentity = string.Join(' ', new[]
+        {
+            evt.Title,
+            evt.HomeTeamName,
+            evt.AwayTeamName,
+            evt.League?.Name
+        }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        var eventCategories = ParticipantCategories(eventIdentity);
+        return releaseCategories.Except(eventCategories, StringComparer.Ordinal).Any();
+    }
+
+    private static HashSet<string> ParticipantCategories(string title)
+    {
+        var categories = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match match in ParticipantCategoryPattern.Matches(title))
+        {
+            if (match.Groups["age"].Success)
+            {
+                categories.Add("u" + match.Groups["age"].Value);
+                continue;
+            }
+
+            var value = match.Value.ToLowerInvariant();
+            categories.Add(value.StartsWith("reserve", StringComparison.Ordinal) ? "reserve" :
+                value.Equals("youth", StringComparison.Ordinal) ? "youth" : "women");
+        }
+
+        return categories;
+    }
+
     private static readonly Regex WomensCategoryPattern = new(
         @"\b(?:women|womens|female|femmes?)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -92,8 +241,28 @@ public static class SearchNormalizationService
         "kick off", "kickoff", "post show", "postshow", "countdown"
     };
 
-    private static readonly Regex ExplicitNascarSiblingSeriesPattern = new(
-        @"\b(?:arca(?:\s+menards)?|xfinity|o['’]?reilly|craftsman\s+truck|truck)\s+series\b",
+    private static readonly Regex ExplicitNascarSeriesPattern = new(
+        @"\b(?:nascar\s+cup|arca(?:\s+menards)?|xfinity|o\s+reilly(?:\s+auto\s+parts)?|(?:(?:craftsman|camping\s+world)\s+)?truck)\s+series\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NascarShortSeriesLabelPattern = new(
+        @"\bnascar\s+(?<label>cup|(?:(?:craftsman|camping\s+world)\s+)?truck|xfinity|o\s+reilly(?:\s+auto\s+parts)?|arca(?:\s+menards)?)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NascarCupSeriesPattern = new(
+        @"\bnascar\s+cup(?:\s+series)?\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NascarTruckSeriesPattern = new(
+        @"\b(?:(?:nascar\s+)?(?:(?:craftsman|camping\s+world)\s+)?truck\s+series|nascar\s+(?:(?:craftsman|camping\s+world)\s+)?truck|(?:craftsman|camping\s+world)\s+truck)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NascarSecondarySeriesPattern = new(
+        @"\b(?:(?:nascar\s+)?(?:xfinity|o\s+reilly(?:\s+auto\s+parts)?)\s+series|nascar\s+(?:xfinity|o\s+reilly(?:\s+auto\s+parts)?))\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NascarArcaSeriesPattern = new(
+        @"\b(?:(?:nascar\s+)?arca(?:\s+menards)?\s+series|nascar\s+arca(?:\s+menards)?|arca\s+menards)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly string[] NascarSiblingSeriesWords =
@@ -322,7 +491,10 @@ public static class SearchNormalizationService
         }
 
         // Normalize back to FormC (composed form)
-        return stringBuilder.ToString().Normalize(NormalizationForm.FormC);
+        return stringBuilder.ToString()
+            .Normalize(NormalizationForm.FormC)
+            .Replace('ł', 'l')
+            .Replace('Ł', 'L');
     }
 
     /// <summary>
@@ -408,6 +580,14 @@ public static class SearchNormalizationService
         }
 
         if (hasExactParticipantPair)
+        {
+            return CombatIdentityMatch.Match;
+        }
+
+        if (league == "dream" && releasePromotion == null &&
+            ContainsIdentityPhrase(evt, "genki desu ka") &&
+            ContainsIdentityPhrase(release, "dream") &&
+            ContainsIdentityPhrase(release, "genki desu ka"))
         {
             return CombatIdentityMatch.Match;
         }
@@ -680,17 +860,56 @@ public static class SearchNormalizationService
         return IsWeeklyWrestlingEvent(eventTitle, leagueName);
     }
 
-    internal static bool HasConflictingNascarSeries(string releaseTitle, string eventTitle)
+    internal static bool HasConflictingNascarSeries(
+        string releaseTitle, string eventTitle, string? leagueName)
     {
+        var expectedSeries = NamedNascarSeries(NormalizeCombatIdentity(leagueName ?? string.Empty));
+        if (expectedSeries == null) return false;
+
         var release = NormalizeCombatIdentity(PrepareReleaseIdentityTitle(releaseTitle));
         var evt = NormalizeCombatIdentity(eventTitle);
-        if (ExplicitNascarSiblingSeriesPattern.IsMatch(release))
+        var releaseSeries = NamedNascarSeries(release);
+        if (releaseSeries != null && releaseSeries != expectedSeries)
+            return !HasAmbiguousNascarRaceTitle(release, evt);
+        if (releaseSeries == expectedSeries) return false;
+        if (expectedSeries != NascarSeries.Cup) return false;
+
+        if (ExplicitNascarSeriesPattern.IsMatch(release))
         {
             return true;
         }
 
         return NascarSiblingSeriesWords.Any(word =>
             ContainsIdentityPhrase(release, word) && !ContainsIdentityPhrase(evt, word));
+    }
+
+    internal static bool HasMatchingNascarSeries(string releaseTitle, string? leagueName)
+    {
+        var expectedSeries = NamedNascarSeries(NormalizeCombatIdentity(leagueName ?? string.Empty));
+        var releaseSeries = NamedNascarSeries(
+            NormalizeCombatIdentity(PrepareReleaseIdentityTitle(releaseTitle)));
+        return expectedSeries != null && releaseSeries == expectedSeries;
+    }
+
+    private enum NascarSeries { Cup, Truck, Secondary, Arca }
+
+    private static bool HasAmbiguousNascarRaceTitle(string release, string eventTitle)
+    {
+        if (ExplicitNascarSeriesPattern.IsMatch(release)) return false;
+        var label = NascarShortSeriesLabelPattern.Match(release);
+        return label.Success &&
+               eventTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2 &&
+               ContainsIdentityPhrase(eventTitle, label.Groups["label"].Value) &&
+               ContainsIdentityPhrase(release, eventTitle);
+    }
+
+    private static NascarSeries? NamedNascarSeries(string normalized)
+    {
+        if (NascarCupSeriesPattern.IsMatch(normalized)) return NascarSeries.Cup;
+        if (NascarTruckSeriesPattern.IsMatch(normalized)) return NascarSeries.Truck;
+        if (NascarSecondarySeriesPattern.IsMatch(normalized)) return NascarSeries.Secondary;
+        if (NascarArcaSeriesPattern.IsMatch(normalized)) return NascarSeries.Arca;
+        return null;
     }
 
     private static string NormalizeCombatIdentity(string value) =>

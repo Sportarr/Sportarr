@@ -666,18 +666,24 @@ public class IndexerStatusService
         // ONLY Retry-After — no additional exponential backoff on top.
         var waitTime = retryAfter ?? TimeSpan.FromMinutes(5);
 
-        // Cap at 1 hour max wait
-        if (waitTime > TimeSpan.FromHours(1))
+        // Bound untrusted retry times without retrying before a shorter server deadline.
+        if (waitTime > TimeSpan.FromDays(1))
         {
-            waitTime = TimeSpan.FromHours(1);
+            waitTime = TimeSpan.FromDays(1);
         }
 
-        status.RateLimitedUntil = DateTime.UtcNow.Add(waitTime);
+        var now = DateTime.UtcNow;
+        var requestedUntil = now.Add(waitTime);
+        // Keep the longest deadline when in-flight requests finish out of order.
+        if (!status.RateLimitedUntil.HasValue || status.RateLimitedUntil.Value < requestedUntil)
+        {
+            status.RateLimitedUntil = requestedUntil;
+        }
 
         await db.SaveChangesAsync();
 
         _logger.LogWarning("[Indexer Status] Indexer {IndexerId} rate limited (HTTP 429). Retry after {WaitTime} (using Retry-After only, no extra backoff)",
-            indexerId, waitTime);
+            indexerId, status.RateLimitedUntil.Value - now);
     }
 
     /// <summary>

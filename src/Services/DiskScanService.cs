@@ -346,7 +346,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
         // Then scan EventFiles table using AsNoTracking
         var eventFilesToCheck = await db.EventFiles
             .AsNoTracking()
-            .Select(ef => new { ef.Id, ef.FilePath, ef.Exists, ef.MissingSince, EventTitle = ef.Event != null ? ef.Event.Title : null })
+            .Select(ef => new { ef.Id, ef.EventId, ef.FilePath, ef.Exists, ef.MissingSince, EventTitle = ef.Event != null ? ef.Event.Title : null })
             .ToListAsync(cancellationToken);
 
         _logger.LogInformation("[Disk Scan] Checking {Count} event file records...", eventFilesToCheck.Count);
@@ -509,8 +509,13 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             }
         }
 
-        // Update event HasFile status based on file existence
-        await UpdateEventFileStatusAsync(db, cancellationToken);
+        // Keep event completeness aligned with the parts still on disk.
+        var newlyMissingFileIds = filesToMarkMissing.ToHashSet();
+        var eventsLosingFiles = eventFilesToCheck
+            .Where(f => newlyMissingFileIds.Contains(f.Id))
+            .Select(f => f.EventId)
+            .ToHashSet();
+        await UpdateEventFileStatusAsync(db, config, eventsLosingFiles, cancellationToken);
 
         _logger.LogInformation("[Disk Scan] Complete. Verified: {Verified}, Missing: {Missing}, Found: {Found}",
             totalVerified, totalMissing, totalFound);
@@ -579,57 +584,68 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
     }
 
     /// <summary>
-    /// Update Event.HasFile based on whether any files exist.
-    /// Optimized to use AsNoTracking queries and batch updates.
+    /// Update Event.HasFile from the monitored parts that exist.
     /// </summary>
-    private async Task UpdateEventFileStatusAsync(SportarrDbContext db, CancellationToken cancellationToken)
+    private async Task UpdateEventFileStatusAsync(
+        SportarrDbContext db, Config config, IReadOnlySet<int> eventsLosingFiles,
+        CancellationToken cancellationToken)
     {
-        // Use AsNoTracking and group by EventId to determine file status
-        var eventFileStatus = await db.EventFiles
+        var eventIds = await db.EventFiles
             .AsNoTracking()
-            .GroupBy(ef => ef.EventId)
-            .Select(g => new
-            {
-                EventId = g.Key,
-                HasAnyExisting = g.Any(f => f.Exists),
-                FirstExistingFile = g.Where(f => f.Exists).Select(f => new { f.FilePath, f.Size, f.Quality }).FirstOrDefault()
-            })
+            .Select(f => f.EventId)
+            .Distinct()
             .ToListAsync(cancellationToken);
+        if (eventIds.Count == 0) return;
 
-        // Get current event status (only needed fields)
-        var eventIds = eventFileStatus.Select(e => e.EventId).ToList();
+        var existingFiles = await db.EventFiles
+            .AsNoTracking()
+            .Where(f => f.Exists)
+            .Select(f => new { f.EventId, f.PartNumber, f.FilePath, f.Size, f.Quality })
+            .ToListAsync(cancellationToken);
+        var filesByEvent = existingFiles.GroupBy(f => f.EventId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var events = await db.Events
             .AsNoTracking()
             .Where(e => eventIds.Contains(e.Id))
-            .Select(e => new { e.Id, e.Title, e.HasFile })
+            .Select(e => new
+            {
+                e.Id, e.Title, e.Sport, e.MonitoredParts, e.HasFile,
+                LeagueName = e.League != null ? e.League.Name : null,
+                LeagueMonitoredParts = e.League != null ? e.League.MonitoredParts : null
+            })
             .ToListAsync(cancellationToken);
 
-        var eventsToMarkMissing = new List<int>();
+        var eventsToMarkIncomplete = new List<int>();
+        var eventsWithNoFiles = new List<int>();
         var eventsToRestore = new List<(int Id, string FilePath, long Size, string Quality)>();
         var updatedCount = 0;
 
         foreach (var evt in events)
         {
-            var fileStatus = eventFileStatus.FirstOrDefault(f => f.EventId == evt.Id);
-            if (fileStatus == null) continue;
+            filesByEvent.TryGetValue(evt.Id, out var files);
+            var presentParts = files?.Select(f => f.PartNumber).ToList() ?? new List<int?>();
+            var complete = EventPartDetector.AreAllMonitoredPartsPresent(
+                evt.Sport, evt.Title, evt.LeagueName, evt.MonitoredParts,
+                evt.LeagueMonitoredParts, presentParts, config.EnableMultiPartEpisodes);
+            if (files is null && (evt.HasFile || eventsLosingFiles.Contains(evt.Id)))
+                eventsWithNoFiles.Add(evt.Id);
 
-            var hasAnyFiles = fileStatus.HasAnyExisting;
-            var previousHasFile = evt.HasFile;
-
-            if (hasAnyFiles != previousHasFile)
+            if (complete != evt.HasFile)
             {
-                if (!hasAnyFiles)
+                if (!complete)
                 {
-                    // All files are missing - clear file path
-                    eventsToMarkMissing.Add(evt.Id);
-                    _logger.LogWarning("Event {EventTitle} marked as missing - all files deleted", evt.Title);
+                    eventsToMarkIncomplete.Add(evt.Id);
+                    if (files is null)
+                    {
+                        _logger.LogWarning("Event {EventTitle} marked as missing - all files deleted", evt.Title);
+                    }
                 }
-                else if (fileStatus.FirstExistingFile != null)
+                else if (files is { Count: > 0 })
                 {
-                    // Update to point to an existing file
-                    eventsToRestore.Add((evt.Id, fileStatus.FirstExistingFile.FilePath,
-                        fileStatus.FirstExistingFile.Size, fileStatus.FirstExistingFile.Quality ?? ""));
-                    _logger.LogDebug("Event {EventTitle} file restored: {Path}", evt.Title, fileStatus.FirstExistingFile.FilePath);
+                    var first = files[0];
+                    eventsToRestore.Add((evt.Id, first.FilePath, first.Size, first.Quality ?? ""));
+                    _logger.LogDebug("Event {EventTitle} file restored: {Path}", evt.Title, first.FilePath);
                 }
 
                 updatedCount++;
@@ -640,25 +656,24 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
         // FilePath / FileSize / Quality stay (see earlier comment in the
         // direct-path-check branch above for the rationale — temporarily
         // unreachable paths must not destroy user data).
-        if (eventsToMarkMissing.Count > 0)
+        if (eventsToMarkIncomplete.Count > 0)
         {
             await db.Events
-                .Where(e => eventsToMarkMissing.Contains(e.Id))
+                .Where(e => eventsToMarkIncomplete.Contains(e.Id))
                 .ExecuteUpdateAsync(s => s.SetProperty(e => e.HasFile, false),
                     cancellationToken);
+        }
 
-            // Unmonitor Deleted Events: files removed by external forces
-            // (cron cleanup, media server delete-after-watch) unmonitor the
-            // event so it isn't re-downloaded. Safe here because this list
-            // is built after the rename-rescue pass and the
-            // unreachable-root guard, so a down mount or a moved file never
-            // lands in it.
+        // A partial event can already have HasFile=false when its last file
+        // disappears. Use the file transition to unmonitor it in that case.
+        if (eventsWithNoFiles.Count > 0)
+        {
             var mediaSettings = await db.MediaManagementSettings.AsNoTracking()
                 .FirstOrDefaultAsync(cancellationToken);
             if (mediaSettings?.UnmonitorDeletedEvents == true)
             {
                 var unmonitored = await db.Events
-                    .Where(e => eventsToMarkMissing.Contains(e.Id) && e.Monitored)
+                    .Where(e => eventsWithNoFiles.Contains(e.Id) && e.Monitored)
                     .ExecuteUpdateAsync(s => s.SetProperty(e => e.Monitored, false),
                         cancellationToken);
                 if (unmonitored > 0)

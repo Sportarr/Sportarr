@@ -203,12 +203,13 @@ public class LibraryImportService
                         seriesLabel = filename.Substring(0, seMatch.Index).Trim(' ', '-', '.', '_');
                     }
 
-                    // Detect multi-part files (e.g. "UFC - S2025E04 - pt3 - UFC 312..."
-                    // or the episode-attached form "S2024E107pt2"). The lookbehind
-                    // replaces \b, which never fires between a digit and 'p'
-                    // (both word characters), while still rejecting words that
-                    // merely contain pt+digits (Egypt2026).
-                    var isPartFile = System.Text.RegularExpressions.Regex.IsMatch(filename, @"(?<![a-zA-Z])pt\d+\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    // A named fighting part can join an event that already has another part.
+                    var hasPartNumber = System.Text.RegularExpressions.Regex.IsMatch(filename,
+                        @"(?<![a-zA-Z])pt\d+\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    var hasNamedPart = EventPartDetector.IsFightingSport(sport ?? string.Empty) &&
+                        (_partDetector.DetectPart(parsedInfo.EventTitle, sport, eventTitle, organization) != null ||
+                         PartIdentityResolver.HasNamedPartLabel(filePath));
+                    var isPartFile = hasPartNumber || hasNamedPart;
 
                     // Check if file is already in library - dictionary lookups against
                     // the preloaded maps below instead of two FirstOrDefaultAsync calls
@@ -284,17 +285,42 @@ public class LibraryImportService
 
                     if (matchedEvent == null && !string.IsNullOrEmpty(eventTitle))
                     {
-                        // Load candidates, excluding events already claimed by earlier files in this scan batch
-                        // and events that already have files.
-                        // Exception: part files (pt2, pt3…) may match the same event as their main file,
-                        // so they bypass BOTH filters - the whole point of a ptN file is
-                        // adding another file to an event that already has one, so the
-                        // !HasFile filter would otherwise exclude exactly the right event
-                        // and the file would sit unmatched at 0% confidence.
+                        var fightingSports = EventPartDetector.FightingSportNames
+                            .Select(name => name.ToLowerInvariant()).ToArray();
+                        var hasPartYear = parsedYear is >= 1951 and <= 9997;
+                        var partFrom = hasPartYear
+                            ? new DateTime(parsedYear!.Value - 1, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                            : DateTime.MinValue;
+                        var partTo = hasPartYear
+                            ? new DateTime(parsedYear!.Value + 2, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                            : DateTime.MaxValue;
                         var candidates = await _db.Events
+                            .Include(e => e.HomeTeam)
+                            .Include(e => e.AwayTeam)
                             .Include(e => e.League)
-                            .Where(e => isPartFile || (!e.HasFile && !claimedEventIds.Contains(e.Id)))
+                            .Where(e => hasPartNumber ||
+                                (!e.HasFile && !claimedEventIds.Contains(e.Id)) ||
+                                (hasNamedPart && fightingSports.Contains(e.Sport.ToLower()) &&
+                                    (!hasPartYear ||
+                                     (e.EventDate >= partFrom && e.EventDate < partTo) ||
+                                     (e.BroadcastDate >= partFrom && e.BroadcastDate < partTo))))
                             .ToListAsync();
+
+                        IReadOnlyCollection<Event> datePeers = Array.Empty<Event>();
+                        if (eventDate.HasValue)
+                        {
+                            var driftLeagueIds = candidates
+                                .Where(candidate => candidate.LeagueId.HasValue &&
+                                    LeagueReleaseNamePolicy.AllowsObservedDateDrift(filename, candidate, eventDate.Value))
+                                .Select(candidate => candidate.LeagueId!.Value)
+                                .Distinct()
+                                .ToArray();
+                            if (driftLeagueIds.Length > 0)
+                            {
+                                datePeers = await EventDateMatchContext.LoadAsync(
+                                    _db, new[] { eventDate.Value }, driftLeagueIds);
+                            }
+                        }
 
                         List<int>? roundRaceNumbers = null;
                         if (sportsResult.RoundNumber.HasValue &&
@@ -319,12 +345,20 @@ public class LibraryImportService
 
                         foreach (var candidate in candidates)
                         {
+                            if (hasNamedPart && !hasPartNumber &&
+                                (candidate.HasFile || claimedEventIds.Contains(candidate.Id)) &&
+                                DetectImportPart(filePath, parsedInfo, candidate.Sport, candidate.Title,
+                                    candidate.League?.Name) == null)
+                            {
+                                continue;
+                            }
+
                             var confidence = CalculateMatchConfidence(
                                 eventTitle, candidate.Title, organization, candidate,
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
                                 sportsResult.Location, _logger, sport, seriesLabel,
-                                roundRaceNumbers, filename);
+                                roundRaceNumbers, filename, datePeers);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
@@ -496,6 +530,8 @@ public class LibraryImportService
                 }
                 _logger.LogInformation("[Import] Library import mode: {ImportMode} (CopyFiles={CopyFiles}, UseHardlinks={UseHardlinks}, requested: {RequestedMode})",
                     importMode, settings.CopyFiles, settings.UseHardlinks, request.ImportMode ?? "auto");
+                var fullEventWasSelected = request.PartName is not null
+                    && EventPartDetector.IsFullEvent(request.PartName);
 
                 if (request.EventId.HasValue)
                 {
@@ -519,7 +555,7 @@ public class LibraryImportService
                         int? partNumber = request.PartNumber;
 
                         // If user selected "Full Event", treat as no part (null)
-                        if (EventPartDetector.IsFullEvent(partName))
+                        if (fullEventWasSelected)
                         {
                             partName = null;
                             partNumber = null;
@@ -527,7 +563,7 @@ public class LibraryImportService
                         else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
                         {
                             // Auto-detect part from filename
-                            var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, existingEvent.Sport,
+                            var partInfo = DetectImportPart(request.FilePath, parsedInfo, existingEvent.Sport,
                                 existingEvent.Title, existingEvent.League?.Name);
                             partName = partInfo?.SegmentName;
                             partNumber = partInfo?.PartNumber;
@@ -599,7 +635,8 @@ public class LibraryImportService
                                 partName,
                                 partNumber,
                                 importMode,
-                                modeWasExplicit);
+                                modeWasExplicit,
+                                fullEventWasSelected);
                         }
                         catch
                         {
@@ -624,7 +661,6 @@ public class LibraryImportService
 
                         // Update event with new file info
                         existingEvent.FilePath = destinationPath;
-                        existingEvent.HasFile = true;
                         existingEvent.FileSize = sourceFileSize;
                         existingEvent.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                         existingEvent.LastUpdate = DateTime.UtcNow;
@@ -656,6 +692,7 @@ public class LibraryImportService
 
                             if (existingByDest != null)
                             {
+                                var previousOwnerId = existingByDest.EventId;
                                 existingByDest.EventId = existingEvent.Id;
                                 existingByDest.Size = sourceFileSize;
                                 existingByDest.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
@@ -664,6 +701,8 @@ public class LibraryImportService
                                 existingByDest.LastVerified = DateTime.UtcNow;
                                 existingByDest.Exists = true;
                                 linkedFile = existingByDest;
+                                await RefreshPreviousOwnerAsync(previousOwnerId, existingEvent.Id,
+                                    existingByDest, config);
 
                                 _logger.LogInformation("Re-linked existing file record to event: {EventTitle} -> {FilePath} (Part: {PartName})",
                                     existingEvent.Title, destinationPath, partName ?? "N/A");
@@ -701,12 +740,24 @@ public class LibraryImportService
                             }
                         }
 
+                        var presentParts = existingEvent.Files
+                            .Where(f => f.Exists && !ReferenceEquals(f, linkedFile)
+                                && !ReferenceEquals(f, stagedPart?.Occupant)
+                                && (!importInPlace || !ReferenceEquals(f, occupant)))
+                            .Select(f => f.PartNumber)
+                            .Append(linkedFile.PartNumber)
+                            .ToArray();
+                        existingEvent.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                            existingEvent.Sport, existingEvent.Title, existingEvent.League?.Name,
+                            existingEvent.MonitoredParts, existingEvent.League?.MonitoredParts,
+                            presentParts, config.EnableMultiPartEpisodes);
+
                         // Persist per file so one bad file cannot fail the whole
                         // batch save at the end, and so the row exists before any
                         // concurrent disk scan sees the freshly moved file.
                         if (newlyAdded != null)
                         {
-                            linkedFile = await SaveImportedFileAsync(newlyAdded);
+                            linkedFile = await SaveImportedFileAsync(newlyAdded, config);
                         }
                         else
                         {
@@ -789,16 +840,16 @@ public class LibraryImportService
                     int? partNumber = request.PartNumber;
 
                     // If user selected "Full Event", treat as no part (null)
-                    if (EventPartDetector.IsFullEvent(partName))
+                    if (fullEventWasSelected)
                     {
                         partName = null;
                         partNumber = null;
                     }
-                    else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes && !string.IsNullOrEmpty(parsedInfo.EventTitle))
+                    else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
                     {
                         // Auto-detect part from filename
-                        var partInfo = _partDetector.DetectPart(
-                            parsedInfo.EventTitle, sport, newEvent.Title, league?.Name);
+                        var partInfo = DetectImportPart(
+                            request.FilePath, parsedInfo, sport, newEvent.Title, league?.Name);
                         partName = partInfo?.SegmentName;
                         partNumber = partInfo?.PartNumber;
                     }
@@ -818,11 +869,15 @@ public class LibraryImportService
                         partName,
                         partNumber,
                         importMode,
-                        modeWasExplicit);
+                        modeWasExplicit,
+                        fullEventWasSelected);
 
                     // Update event with file path
                     newEvent.FilePath = destinationPath;
-                    newEvent.HasFile = true;
+                    newEvent.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                        newEvent.Sport, newEvent.Title, league?.Name,
+                        newEvent.MonitoredParts, league?.MonitoredParts,
+                        new int?[] { partNumber }, config.EnableMultiPartEpisodes);
 
                     // The create-new path needs the same destination-path guard as
                     // the existing-event path: another file earlier in this batch
@@ -833,6 +888,7 @@ public class LibraryImportService
                     EventFile eventFile;
                     if (fileAtDestination != null)
                     {
+                        var previousOwnerId = fileAtDestination.EventId;
                         fileAtDestination.EventId = newEvent.Id;
                         fileAtDestination.Size = sourceFileSize;
                         fileAtDestination.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
@@ -841,6 +897,8 @@ public class LibraryImportService
                         fileAtDestination.LastVerified = DateTime.UtcNow;
                         fileAtDestination.Exists = true;
                         eventFile = fileAtDestination;
+                        await RefreshPreviousOwnerAsync(previousOwnerId, newEvent.Id,
+                            fileAtDestination, config);
                         await _db.SaveChangesAsync();
 
                         _logger.LogInformation("Re-linked existing file record to new event: {EventTitle} -> {FilePath} (Part: {PartName})",
@@ -869,7 +927,7 @@ public class LibraryImportService
                             Exists = true
                         };
                         _db.EventFiles.Add(eventFile);
-                        eventFile = await SaveImportedFileAsync(eventFile);
+                        eventFile = await SaveImportedFileAsync(eventFile, config);
                     }
 
                     result.Created.Add(destinationPath);
@@ -969,7 +1027,7 @@ public class LibraryImportService
     /// slow transfer is the realistic case), the pending insert is merged into
     /// the winning row instead of failing the file on the unique index.
     /// </summary>
-    private async Task<EventFile> SaveImportedFileAsync(EventFile pending)
+    private async Task<EventFile> SaveImportedFileAsync(EventFile pending, Config config)
     {
         try
         {
@@ -981,6 +1039,7 @@ public class LibraryImportService
         {
             _db.Entry(pending).State = EntityState.Detached;
             var winner = await _db.EventFiles.FirstAsync(f => f.FilePath == pending.FilePath);
+            var previousOwnerId = winner.EventId;
             winner.EventId = pending.EventId;
             winner.Size = pending.Size;
             winner.Quality = pending.Quality;
@@ -988,6 +1047,7 @@ public class LibraryImportService
             winner.PartNumber = pending.PartNumber;
             winner.LastVerified = DateTime.UtcNow;
             winner.Exists = true;
+            await RefreshPreviousOwnerAsync(previousOwnerId, pending.EventId, winner, config);
             await _db.SaveChangesAsync();
 
             _logger.LogInformation("[Import] Merged import into the existing file record for {Path} (another writer created it first)",
@@ -996,16 +1056,45 @@ public class LibraryImportService
         }
     }
 
+    private async Task RefreshPreviousOwnerAsync(int previousOwnerId, int newOwnerId,
+        EventFile movedFile, Config config)
+    {
+        if (previousOwnerId == newOwnerId)
+            return;
+
+        var previous = await _db.Events.Include(e => e.League)
+            .FirstOrDefaultAsync(e => e.Id == previousOwnerId);
+        if (previous == null)
+            return;
+
+        var remaining = await _db.EventFiles
+            .Where(f => f.EventId == previousOwnerId && f.Id != movedFile.Id && f.Exists)
+            .ToListAsync();
+        if (string.Equals(previous.FilePath, movedFile.FilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            var selected = remaining.FirstOrDefault();
+            previous.FilePath = selected?.FilePath;
+            previous.FileSize = selected?.Size;
+            previous.Quality = selected?.Quality;
+        }
+
+        previous.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+            previous.Sport, previous.Title, previous.League?.Name,
+            previous.MonitoredParts, previous.League?.MonitoredParts,
+            remaining.Select(f => f.PartNumber).ToArray(), config.EnableMultiPartEpisodes);
+    }
+
     private async Task<string> TransferFileToLibraryAsync(
         string sourcePath,
         Event eventInfo,
         ParsedFileInfo parsed,
         MediaManagementSettings settings,
         Config config,
-        string? partName = null,
-        int? partNumber = null,
-        LibraryImportMode importMode = LibraryImportMode.Move,
-        bool modeWasExplicit = false)
+        string? partName,
+        int? partNumber,
+        LibraryImportMode importMode,
+        bool modeWasExplicit,
+        bool fullEventWasSelected)
     {
         var sourceFileInfo = new FileInfo(sourcePath);
         var extension = sourceFileInfo.Extension;
@@ -1062,11 +1151,11 @@ public class LibraryImportService
                 _logger.LogDebug("[Import] Using part info for filename: {PartName} (Part {PartNumber})",
                     partName, partNumber?.ToString() ?? "N/A");
             }
-            else if (config.EnableMultiPartEpisodes)
+            else if (config.EnableMultiPartEpisodes && !fullEventWasSelected)
             {
                 // Fallback: try auto-detection from original filename if no part info provided
-                var detectedPart = _partDetector.DetectPart(
-                    parsed.EventTitle, eventInfo.Sport, eventInfo.Title, eventInfo.League?.Name);
+                var detectedPart = DetectImportPart(
+                    sourcePath, parsed, eventInfo.Sport, eventInfo.Title, eventInfo.League?.Name);
                 if (detectedPart != null)
                 {
                     partSuffix = $" - {detectedPart.PartSuffix}";
@@ -1579,6 +1668,20 @@ public class LibraryImportService
                 ? LibraryImportMode.Copy
                 : LibraryImportMode.Move;
 
+    private EventPartInfo? DetectImportPart(
+        string filePath, ParsedFileInfo parsedInfo, string sport, string? eventTitle, string? leagueName)
+    {
+        var fromFilename = PartIdentityResolver.Resolve(
+            null, null, filePath, sport, eventTitle, leagueName, true);
+        if (fromFilename.Kind == PartIdentityKind.InferredPart)
+            return fromFilename.Part;
+        if (fromFilename.Kind is PartIdentityKind.CompleteEventLabel or PartIdentityKind.Ambiguous
+            or PartIdentityKind.UnsupportedLabel)
+            return null;
+
+        return _partDetector.DetectPart(parsedInfo.EventTitle, sport, eventTitle, leagueName);
+    }
+
     private async Task<(List<string> Rejections, bool InPlace)> UpgradeRejectionsAsync(Event evt, string filePath, ParsedFileInfo parsedInfo)
     {
         var none = (new List<string>(), false);
@@ -1592,7 +1695,7 @@ public class LibraryImportService
         int? partNumber = null;
         if (config.EnableMultiPartEpisodes && !string.IsNullOrEmpty(evt.Sport))
         {
-            partNumber = _partDetector.DetectPart(parsedInfo.EventTitle, evt.Sport, evt.Title, evt.League?.Name)?.PartNumber;
+            partNumber = DetectImportPart(filePath, parsedInfo, evt.Sport, evt.Title, evt.League?.Name)?.PartNumber;
         }
         var occupant = ImportUpgradeRule.ExistingFileForPart(held, partNumber, filePath, config.EnableMultiPartEpisodes);
         if (occupant == null) return none;
@@ -1953,7 +2056,8 @@ public class LibraryImportService
         string? parsedSport = null,
         string? seriesLabel = null,
         IReadOnlyList<int>? roundRaceNumbers = null,
-        string? sourceTitle = null)
+        string? sourceTitle = null,
+        IReadOnlyCollection<Event>? datePeers = null)
     {
         int confidence = 0;
 
@@ -1982,6 +2086,10 @@ public class LibraryImportService
 
         if (SearchNormalizationService.HasCyclingCategoryConflict(
                 originalTitle, eventTitle, evt.League?.Name, evt.Sport))
+        {
+            return 0;
+        }
+        if (SearchNormalizationService.HasParticipantCategoryConflict(originalTitle, evt))
         {
             return 0;
         }
@@ -2059,8 +2167,10 @@ public class LibraryImportService
         var eventRoundNumber = int.TryParse(evt.Round, out var er) ? er : (int?)null;
         if (parsedRoundNumber.HasValue && eventRoundNumber.HasValue)
         {
+            var hasExactPreseasonDate = eventRoundNumber.Value == 500 &&
+                SearchNormalizationService.HasExactDatedPreseasonIdentity(originalTitle, parsedDate, evt);
             // Authoritative when the event carries real round data.
-            if (eventRoundNumber.Value == parsedRoundNumber.Value)
+            if (eventRoundNumber.Value == parsedRoundNumber.Value || hasExactPreseasonDate)
             {
                 confidence += 50;
                 logger?.LogDebug("[Match] Round {Round} matches event Round for '{Event}'", parsedRoundNumber.Value, eventTitle);
@@ -2138,7 +2248,16 @@ public class LibraryImportService
         if (parsedDate.HasValue)
         {
             dateMatch = ImportDateMatchPolicy.Evaluate(evt, parsedDate.Value);
-            if (dateMatch.Value.Reject || dateMatch.Value.DaysDifference > 7)
+            if (dateMatch.Value.DaysDifference > 0 && ReleaseMatchingService.DateMatchesAnotherTeamEvent(
+                    evt, parsedDate.Value.Date, datePeers))
+            {
+                return 0;
+            }
+
+            var allowsObservedDateDrift = LeagueReleaseNamePolicy.AllowsObservedDateDrift(
+                originalTitle, evt, parsedDate.Value);
+            if ((dateMatch.Value.Reject || dateMatch.Value.DaysDifference > 7) &&
+                !allowsObservedDateDrift)
             {
                 logger?.LogDebug("[Match] Date gate: file dated {FileDate:yyyy-MM-dd}, event '{Event}' is {EventDate:yyyy-MM-dd} ({Diff:F0} days apart) - rejecting",
                     parsedDate.Value, eventTitle, dateMatch.Value.EventDate, dateMatch.Value.DaysDifference);
@@ -2156,7 +2275,7 @@ public class LibraryImportService
         // arbitrary event exactly on the acceptance floor.
         if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
         {
-            return 0;
+            return hasLeagueReleaseIdentity ? Math.Min(100, confidence + 50) : 0;
         }
 
         if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
@@ -2200,6 +2319,10 @@ public class LibraryImportService
         {
             confidence += 40;
         }
+        if (CricketRugbyReleaseNamePolicy.HasStrongWorldCupIdentity(originalTitle, evt, parsedDate))
+        {
+            confidence += 50;
+        }
         if (hasLeagueReleaseIdentity)
         {
             confidence += 50;
@@ -2213,9 +2336,9 @@ public class LibraryImportService
         {
             var leagueMatch = evt.League.Name.Contains(organization, StringComparison.OrdinalIgnoreCase)
                            || organization.Contains(evt.League.Name, StringComparison.OrdinalIgnoreCase);
-            if (!leagueMatch)
+            if (!leagueMatch && !hasLeagueReleaseIdentity)
                 return 0; // Wrong sport — eliminate before any title comparison
-            confidence += 15;
+            if (leagueMatch) confidence += 15;
         }
 
         // ── DATE PROXIMITY ──────────────────────────────────────────────────────

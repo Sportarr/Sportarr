@@ -33,7 +33,15 @@ public static class QualityProfileRanker
     {
         for (var index = 0; index < profile.Items.Count; index++)
         {
-            if (ContainsQualityId(profile.Items[index], qualityId))
+            if (profile.Items[index].Quality == qualityId)
+            {
+                return profile.Items.Count - index;
+            }
+        }
+
+        for (var index = 0; index < profile.Items.Count; index++)
+        {
+            if (profile.Items[index].Items?.Any(child => ContainsQualityId(child, qualityId)) == true)
             {
                 return profile.Items.Count - index;
             }
@@ -52,6 +60,26 @@ public static class QualityProfileRanker
         var currentRank = GetRank(profile, qualityName);
         var cutoffRank = GetCutoffRank(profile, profile.CutoffQuality.Value);
         return currentRank > 0 && cutoffRank > 0 && currentRank < cutoffRank;
+    }
+
+    internal static bool UsesAscendingImportedOrder(QualityProfile profile)
+    {
+        if (!profile.IsSynced || profile.IsCustomized ||
+            string.IsNullOrEmpty(profile.TrashId) || profile.Items.Count < 2)
+        {
+            return false;
+        }
+
+        // Only an untouched import has enough evidence to reverse safely.
+        for (var index = 0; index < profile.Items.Count; index++)
+        {
+            if (profile.Items[index].Quality != index)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool Matches(QualityItem item, QualityParser.QualityDefinition quality)

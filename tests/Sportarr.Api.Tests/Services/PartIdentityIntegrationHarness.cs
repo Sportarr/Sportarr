@@ -176,6 +176,7 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         public string? CompletedDownloadId { get; set; }
         public string? CompletedDownloadPath { get; set; }
         public string? RssResponse { get; set; }
+        public System.Collections.Concurrent.ConcurrentQueue<Uri> SourceRequests { get; } = new();
         public List<string> UnexpectedRequests { get; } = new();
         public HttpClient CreateClient(string name) => new(this, false);
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -185,9 +186,12 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
                 uri.AbsolutePath.StartsWith("/api/metadata/agents/episode/", StringComparison.Ordinal))
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
                     Content = new StringContent("{\"episode_number\":1,\"episode_number_authoritative\":true}", Encoding.UTF8, "application/json") });
+            if (uri.Host == "part-source.invalid") SourceRequests.Enqueue(uri);
             if (uri.Host == "part-source.invalid" && uri.AbsolutePath == "/api" && RssResponse != null)
+            {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
                     Content = new StringContent(RssResponse, Encoding.UTF8, "application/rss+xml") });
+            }
             if (uri.Host == "part-source.invalid") return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
                 Content = new StringContent("<?xml version=\"1.0\"?><nzb xmlns=\"http://www.newzbin.com/DTD/2003/nzb\"><file poster=\"fixture\" subject=\"fixture\" date=\"1599004800\"><groups><group>alt.test</group></groups><segments><segment bytes=\"4096\" number=\"1\">fixture@invalid</segment></segments></file></nzb>", Encoding.UTF8, "application/x-nzb") });
             if (uri.Host == "part-client.invalid" && uri.Query.Contains("mode=history") && CompletedDownloadPath != null)

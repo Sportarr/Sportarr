@@ -181,7 +181,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess, i
     originalTitle: pendingImport.title,
     languages: [],
     indexerFlags: undefined,
-    partName: pendingImport.suggestedPart,
+    partName: undefined,
     partNumber: undefined,
   });
   const [showEditor, setShowEditor] = useState(false);
@@ -406,6 +406,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess, i
     const part = parts.find(p => p.name === partName);
     setSelectedPart(partName || null);
     setSelectedPartNumber(part?.partNumber ?? null);
+    setEditorValues(current => ({ ...current, partName: undefined, partNumber: undefined }));
   };
 
   // Pull the server's message out of a failed response, falling back to a

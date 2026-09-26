@@ -318,6 +318,19 @@ public class MediaFileParser
                 // Include date in title
                 return cleanName.Substring(0, fullDateMatch.Index + fullDateMatch.Length).Trim();
             }
+
+            var qualityMarker = QualityPattern.Match(afterDate);
+            var sourceMarker = SourcePattern.Match(afterDate);
+            var fixtureEnd = Math.Min(
+                qualityMarker.Success ? qualityMarker.Index : afterDate.Length,
+                sourceMarker.Success ? sourceMarker.Index : afterDate.Length);
+            var fixture = afterDate[..fixtureEnd].Trim(' ', '.', '-', '_');
+            if (Regex.IsMatch(fixture, @"\s(?:vs?\.?|@)\s",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                    TimeSpan.FromMilliseconds(100)))
+            {
+                return fixture;
+            }
         }
 
         // For non-date filenames, find the first metadata marker

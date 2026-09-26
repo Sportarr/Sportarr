@@ -371,8 +371,10 @@ app.MapGet("/api/calendar", async (
     DateTime? start,
     DateTime? end,
     bool? unmonitored,
-    SportarrDbContext db) =>
+    SportarrDbContext db,
+    ConfigService configService) =>
 {
+    var config = await configService.GetConfigAsync();
     // Default to 1 month back + 2 months forward if no range specified
     var rangeStart = start ?? DateTime.UtcNow.AddMonths(-1);
     var rangeEnd = end ?? DateTime.UtcNow.AddMonths(2);
@@ -388,7 +390,7 @@ app.MapGet("/api/calendar", async (
         query = query.Where(e => e.Monitored);
 
     var events = await query.OrderBy(e => e.EventDate).ToListAsync();
-    return Results.Ok(events.Select(EventResponse.FromEvent).ToList());
+    return Results.Ok(events.Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: false)).ToList());
 });
 
 // ========================================

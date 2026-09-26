@@ -60,7 +60,8 @@ internal sealed class CombinedProbeCacheHarness : IAsyncDisposable
         Client = app.GetTestClient();
     }
 
-    public static async Task<CombinedProbeCacheHarness> CreateAsync(ITestOutputHelper output, bool pagedOffers = false, int initialQueries = 0)
+    public static async Task<CombinedProbeCacheHarness> CreateAsync(ITestOutputHelper output, bool pagedOffers = false,
+        int initialQueries = 0, int eredivisieRows = 0, int rugbyBoundaryRows = 0)
     {
         var directory = Path.Combine(Path.GetTempPath(), "sportarr-cache-policy-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -117,14 +118,24 @@ internal sealed class CombinedProbeCacheHarness : IAsyncDisposable
             };
             rig.Db.AddRange(root, rig.Profile);
             await rig.Db.SaveChangesAsync();
-            var league = new League { Name = "Formula 1", Sport = "Motorsport", Monitored = true,
+            var league = new League { Name = rugbyBoundaryRows > 0 ? "English Rugby League Super League"
+                : eredivisieRows > 0 ? "Dutch Eredivisie" : "Formula 1",
+                Sport = rugbyBoundaryRows > 0 ? "Rugby" : eredivisieRows > 0 ? "Soccer" : "Motorsport", Monitored = true,
                 RootFolderId = root.Id, QualityProfileId = rig.Profile.Id, SearchQueryTemplate = null };
             rig.Db.Leagues.Add(league);
             await rig.Db.SaveChangesAsync();
-            rig.Event = new Event { Title = "Belgian Grand Prix", Sport = "Motorsport", ExternalId = pagedOffers ? "ev-2336155" : "",
+            rig.Event = new Event { Title = rugbyBoundaryRows > 0 ? "Warrington Wolves vs Hull Kingston Rovers"
+                : eredivisieRows > 0 ? "Feyenoord vs Go Ahead Eagles" : "Belgian Grand Prix",
+                Sport = league.Sport, ExternalId = rugbyBoundaryRows > 0 ? "ev-2616201"
+                    : pagedOffers || eredivisieRows > 0 ? "ev-2336155" : "",
                 Location = "Spa Francorchamps", Round = "14",
-                HomeTeamName = "Spain", AwayTeamName = "Belgium", LeagueId = league.Id, League = league,
-                EventDate = rig.Now.Date.AddDays(-40), Status = "Completed", Monitored = true,
+                HomeTeamName = rugbyBoundaryRows > 0 ? "Warrington Wolves" : eredivisieRows > 0 ? "Feyenoord" : "Spain",
+                AwayTeamName = rugbyBoundaryRows > 0 ? "Hull Kingston Rovers" : eredivisieRows > 0 ? "Go Ahead Eagles" : "Belgium", LeagueId = league.Id, League = league,
+                EventDate = rugbyBoundaryRows > 0 ? new DateTime(2026, 8, 31, 16, 30, 0, DateTimeKind.Utc)
+                    : eredivisieRows > 0 ? new DateTime(2026, 8, 16, 18, 0, 0, DateTimeKind.Utc) : rig.Now.Date.AddDays(-40),
+                BroadcastDate = rugbyBoundaryRows > 0 ? new DateTime(2026, 8, 31)
+                    : eredivisieRows > 0 ? new DateTime(2026, 8, 16) : null,
+                Status = "Completed", Monitored = true,
                 Season = rig.Now.Date.AddDays(-40).Year.ToString(), QualityProfileId = rig.Profile.Id };
             rig.Indexer = new Indexer { Name = "Cache source", Type = IndexerType.Newznab,
                 Url = transport.Url, ApiPath = "/api", QueryLimit = 8, RequestDelayMs = 20, ApiKey = "fixture", Categories = new List<string> { "5060" },
@@ -137,11 +148,16 @@ internal sealed class CombinedProbeCacheHarness : IAsyncDisposable
                 QueriesThisHour = initialQueries, GrabsThisHour = 0, HourResetTime = DateTime.UtcNow.AddHours(1) });
             await rig.Db.SaveChangesAsync();
             rig.Queries = rig.Services.GetRequiredService<EventQueryService>().BuildEventQueries(rig.Event).ToArray();
-            Assert.True(rig.Queries.Length > 2, "The default query builder must produce more than two queries.");
+            if (rugbyBoundaryRows > 0)
+                Assert.Equal(new[] { "Super League Rugby 2026 08", "Super League Rugby 2026 09" }, rig.Queries);
+            else if (eredivisieRows == 0)
+                Assert.True(rig.Queries.Length > 2, "The default query builder must produce more than two queries.");
+            else
+                Assert.Equal(new[] { "Eredivisie 2026 08" }, rig.Queries);
             // Leave the same probe budget after the complete primary plan.
-            rig.Indexer.QueryLimit = rig.Queries.Length + 6;
+            rig.Indexer.QueryLimit = eredivisieRows > 0 || rugbyBoundaryRows > 0 ? 10 : rig.Queries.Length + 6;
             await rig.Db.SaveChangesAsync();
-            transport.Configure(rig.Event, rig.Indexer, pagedOffers);
+            transport.Configure(rig.Event, rig.Indexer, pagedOffers, eredivisieRows, rugbyBoundaryRows);
             return rig;
         }
         catch
@@ -200,7 +216,9 @@ internal sealed class CombinedProbeCacheHarness : IAsyncDisposable
         var fingerprint = await Services.GetRequiredService<IndexerSearchService>()
             .GetSearchSourceFingerprintAsync(!automatic, Event.League!.Tags);
         var keys = automatic
-            ? new[] { SearchResultCache.RequestKey(Queries, Event.League!.Tags, 100, true, Sportarr.Api.Helpers.SportarrIdToken.Normalize(Event.ExternalId), fingerprint), SearchResultCache.RequestKey(new[] { Probe }, Event.League!.Tags, 100, true, Sportarr.Api.Helpers.SportarrIdToken.Normalize(Event.ExternalId), fingerprint) }
+            ? (Probe == null
+                ? new[] { SearchResultCache.RequestKey(Queries, Event.League!.Tags, 100, true, Sportarr.Api.Helpers.SportarrIdToken.Normalize(Event.ExternalId), fingerprint) }
+                : new[] { SearchResultCache.RequestKey(Queries, Event.League!.Tags, 100, true, Sportarr.Api.Helpers.SportarrIdToken.Normalize(Event.ExternalId), fingerprint), SearchResultCache.RequestKey(new[] { Probe }, Event.League!.Tags, 100, true, Sportarr.Api.Helpers.SportarrIdToken.Normalize(Event.ExternalId), fingerprint) })
             : Queries.Select(query => SearchResultCache.RequestKey(new[] { query }, Event.League!.Tags, 10000, false, Sportarr.Api.Helpers.SportarrIdToken.Normalize(Event.ExternalId), fingerprint)).ToArray();
         var cache = Services.GetRequiredService<SearchResultCache>();
         return keys.Select(key =>
@@ -324,18 +342,43 @@ internal sealed class CombinedProbeCacheHarness : IAsyncDisposable
         private readonly ConcurrentQueue<string> _violations = new();
         private readonly string _prefix = "/cache-" + Guid.NewGuid().ToString("N");
         private int _arrivals;
+        private int _maxArrivals = 16;
         public string Url { get; private set; } = "";
         public ReleaseSearchResult[] Releases { get; private set; } = Array.Empty<ReleaseSearchResult>();
         public Attempt[] Attempts => _attempts.ToArray();
         public string[] Violations => _violations.ToArray();
         public void Reject(string reason) => _violations.Enqueue(reason);
+        public void AllowUpTo(int count) => _maxArrivals = count;
         private QuotaSource(WebApplication app) => _app = app;
 
         private string _eventId = "";
-        public void Configure(Event evt, Indexer row, bool pagedOffers)
+        public void Configure(Event evt, Indexer row, bool pagedOffers, int eredivisieRows = 0,
+            int rugbyBoundaryRows = 0)
         {
             _eventId = evt.ExternalId ?? "";
-            Releases = pagedOffers ? Enumerable.Range(1, 3).Select(number => new ReleaseSearchResult
+            var home = (evt.HomeTeamName ?? "").Replace(' ', '.');
+            var away = (evt.AwayTeamName ?? "").Replace(' ', '.');
+            var date = evt.BroadcastDate ?? evt.EventDate;
+            var guidPrefix = evt.HomeTeamName == "Feyenoord" ? "eredivisie-offer-" : $"eredivisie-{evt.Id}-offer-";
+            Releases = rugbyBoundaryRows > 0 ? Enumerable.Range(1, rugbyBoundaryRows).Select(number => new ReleaseSearchResult
+            {
+                Guid = "rugby-boundary-offer-" + number, Indexer = row.Name,
+                Title = number == rugbyBoundaryRows
+                    ? "Super League Rugby 2026 Warrington Wolves vs Hull KR 01 09 1080p WEB-DL H264-GROUP"
+                    : $"Super League Rugby 2026 Other{number} vs Unrelated{number} 01 09 1080p WEB-DL H264-GROUP",
+                DownloadUrl = Url + "/descriptor/rugby-boundary-" + number,
+                Size = 4L * 1024 * 1024 * 1024,
+                PublishDate = DateTime.UtcNow.AddDays(-2), SportarrEventId = _eventId
+            }).ToArray() : eredivisieRows > 0 ? Enumerable.Range(1, eredivisieRows).Select(number => new ReleaseSearchResult
+            {
+                Guid = guidPrefix + number, Indexer = row.Name,
+                Title = number == eredivisieRows
+                    ? $"Eredivisie.{date:yyyy.MM.dd}.{home}.vs.{away}.1080p.WEB-DL.H264-GROUP"
+                    : $"Eredivisie.2026.08.16.Other{number}.vs.Unrelated{number}.1080p.WEB-DL.H264-GROUP",
+                DownloadUrl = Url + "/descriptor/eredivisie-" + number,
+                Size = 4L * 1024 * 1024 * 1024,
+                PublishDate = DateTime.UtcNow.AddDays(-2), SportarrEventId = _eventId
+            }).ToArray() : pagedOffers ? Enumerable.Range(1, 3).Select(number => new ReleaseSearchResult
             {
                 Guid = "probe-offer-" + number, Indexer = row.Name,
                 Title = $"Belgian.Grand.Prix.{evt.EventDate:yyyy.MM.dd}.2160p.WEB-DL.H264-GROUP{number}",
@@ -365,7 +408,7 @@ internal sealed class CombinedProbeCacheHarness : IAsyncDisposable
 
         private async Task RespondAsync(HttpContext context)
         {
-            if (Interlocked.Increment(ref _arrivals) > 16 || context.Request.Method != "GET")
+            if (Interlocked.Increment(ref _arrivals) > _maxArrivals || context.Request.Method != "GET")
             { Reject("source-attempt-ceiling-or-method"); context.Response.StatusCode = 400; return; }
             var query = context.Request.Query;
             var mode = query["t"].ToString();
@@ -386,7 +429,7 @@ internal sealed class CombinedProbeCacheHarness : IAsyncDisposable
             { Reject("unexpected-source-request"); context.Response.StatusCode = 400; return; }
             else if (mode == "caps")
                 xml = "<caps><limits max=\"2\" default=\"2\"/><searching><search available=\"yes\" supportedParams=\"q,sportarrid\"/></searching><categories><category id=\"5000\" name=\"TV\"><subcat id=\"5060\" name=\"Sport\"/></category></categories></caps>";
-            else if (mode == "search" && !string.IsNullOrWhiteSpace(text) && eventId == _eventId && offset >= 0 && offset <= 4)
+            else if (mode == "search" && !string.IsNullOrWhiteSpace(text) && eventId == _eventId && offset >= 0 && offset <= 10)
             {
                 var tokens = System.Text.RegularExpressions.Regex.Matches(text.ToLowerInvariant(), @"[\p{L}\p{N}]+").Select(match => match.Value).ToArray();
                 var catalogue = Releases.Where(release => tokens.All(token => System.Text.RegularExpressions.Regex.Matches(release.Title.ToLowerInvariant(), @"[\p{L}\p{N}]+").Select(match => match.Value).Contains(token))).ToArray();

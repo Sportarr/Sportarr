@@ -75,8 +75,7 @@ public class BritishSuperbikeTests
     {
         var queries = QuerySvc().BuildEventQueries(BsbEvent(leagueName));
 
-        queries.Should().Contain("BSB 2026 Round01");
-        queries.Should().Contain("BSB 2026");
+        queries.Should().Equal("BSB 2026 Round01");
         queries.Should().NotContain(q => q.Contains("Bennetts", StringComparison.OrdinalIgnoreCase));
     }
 

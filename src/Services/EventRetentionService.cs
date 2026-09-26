@@ -196,7 +196,6 @@ public class EventRetentionService : BackgroundService
                 var keptFiles = evt.Files.Except(removableFiles).ToList();
                 if (keptFiles.Count == 0)
                 {
-                    evt.HasFile = false;
                     evt.FilePath = null;
                     evt.FileSize = null;
                     evt.Quality = null;
@@ -211,6 +210,12 @@ public class EventRetentionService : BackgroundService
                     _logger.LogWarning("[Event Retention] Event {EventId} keeps {Count} file(s) that could not be removed",
                         evt.Id, keptFiles.Count);
                 }
+
+                evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                    evt.Sport, evt.Title, evt.League?.Name,
+                    evt.MonitoredParts, evt.League?.MonitoredParts,
+                    keptFiles.Where(f => f.Exists && File.Exists(f.FilePath))
+                        .Select(f => f.PartNumber).ToArray(), config.EnableMultiPartEpisodes);
 
                 // Report only what actually went.
                 deletedFilesData = removableFiles

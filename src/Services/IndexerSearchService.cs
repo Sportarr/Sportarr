@@ -94,13 +94,11 @@ public class IndexerSearchService : IIndexerSearchService
 
     public async Task<string> GetSearchSourceFingerprintAsync(bool interactiveSearch, IEnumerable<int>? leagueTags)
     {
-        var tags = leagueTags?.ToList();
+        // Include excluded rows so changes to them refresh cached skip warnings.
         var indexers = await _db.Indexers.AsNoTracking()
             .Where(i => i.Enabled && (interactiveSearch ? i.EnableInteractiveSearch : i.EnableAutomaticSearch))
             .OrderBy(i => i.Id)
             .ToListAsync();
-        if (tags != null)
-            indexers = indexers.Where(i => Helpers.TagHelper.TagsMatch(i.Tags, tags)).ToList();
 
         var clientTypes = await _db.DownloadClients.AsNoTracking()
             .Where(client => client.Enabled)
@@ -111,6 +109,7 @@ public class IndexerSearchService : IIndexerSearchService
         var identity = new
         {
             Mode = interactiveSearch ? "interactive" : "automatic",
+            LeagueTags = leagueTags?.OrderBy(tag => tag).ToArray(),
             Indexers = indexers.Select(SourceIdentity),
             ClientTypes = clientTypes
         };

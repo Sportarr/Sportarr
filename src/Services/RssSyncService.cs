@@ -199,9 +199,7 @@ public class RssSyncService : BackgroundService
             .Select(date => date!.Value)
             .ToArray();
         var datePeerLeagueIds = monitoredEvents
-            .Where(evt => !evt.BroadcastDateVerified
-                && !string.IsNullOrWhiteSpace(evt.HomeTeamName)
-                && !string.IsNullOrWhiteSpace(evt.AwayTeamName))
+            .Where(EventDateMatchContext.ShouldLoadPeers)
             .Select(evt => evt.LeagueId)
             .Where(leagueId => leagueId.HasValue)
             .Select(leagueId => leagueId!.Value)
@@ -279,12 +277,15 @@ public class RssSyncService : BackgroundService
                 }
 
                 // GRAB IT! (pass the detected part)
+                var cascadeParts = await GetCascadingPartSearchTargetsAsync(
+                    db, matchedEvent, release.Quality, shouldGrab.ReleasePart, qualityProfile, config, cancellationToken);
                 var grabbed = await GrabReleaseAsync(
                     db, matchedEvent, release, downloadClientService, notificationService, shouldGrab.ReleasePart, cancellationToken);
                 eventDecision.Dispose();
 
                 if (grabbed)
                 {
+                    StartCascadingPartSearchesAfterGrab(matchedEvent, release.Quality, shouldGrab.ReleasePart, cascadeParts);
                     if (matchedEvent.HasFile)
                     {
                         upgradesFound++;
@@ -447,9 +448,7 @@ public class RssSyncService : BackgroundService
         var knownLeagues = await LeagueMatchContext.LoadAsync(db, cancellationToken);
         var parsedReleaseDate = releaseMatchingService.ParseRelease(release.Title).EventDate;
         var datePeerLeagueIds = monitoredEvents
-            .Where(evt => !evt.BroadcastDateVerified
-                && !string.IsNullOrWhiteSpace(evt.HomeTeamName)
-                && !string.IsNullOrWhiteSpace(evt.AwayTeamName))
+            .Where(EventDateMatchContext.ShouldLoadPeers)
             .Select(evt => evt.LeagueId)
             .Where(leagueId => leagueId.HasValue)
             .Select(leagueId => leagueId!.Value)
@@ -512,6 +511,8 @@ public class RssSyncService : BackgroundService
                 new List<string> { shouldGrab.Reason });
         }
 
+        var cascadeParts = await GetCascadingPartSearchTargetsAsync(
+            db, matchedEvent, release.Quality, shouldGrab.ReleasePart, qualityProfile, config, cancellationToken);
         var grabbed = await GrabReleaseAsync(
             db, matchedEvent, release, downloadClientService, notificationService, shouldGrab.ReleasePart, cancellationToken);
 
@@ -521,6 +522,8 @@ public class RssSyncService : BackgroundService
                 new List<string> { "Failed to send release to a download client" });
         }
 
+        eventDecision.Dispose();
+        StartCascadingPartSearchesAfterGrab(matchedEvent, release.Quality, shouldGrab.ReleasePart, cascadeParts);
         return new PushedReleaseOutcome(true, false, matchedEvent.Title, new List<string>());
     }
 
@@ -792,7 +795,7 @@ public class RssSyncService : BackgroundService
 
         // 1. Detect part FIRST (for fighting sports) - needed for all subsequent checks
         string? releasePart = null;
-        if (EventPartDetector.IsFightingSport(evt.Sport ?? ""))
+        if (EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? "", evt.League?.Name))
         {
             var partInfo = partDetector.DetectPart(
                 release.Title, evt.Sport ?? "", evt.Title, evt.League?.Name);
@@ -985,18 +988,20 @@ public class RssSyncService : BackgroundService
         }
 
         // 4. Check for recent failed downloads with backoff (part-aware)
-        var recentFailedDownload = await db.DownloadQueue
-            .Where(d => d.EventId == evt.Id && d.Status == DownloadStatus.Failed)
-            .Where(d => releasePart == null ? d.Part == null : d.Part == releasePart)
-            .OrderByDescending(d => d.LastUpdate)
-            .FirstOrDefaultAsync(cancellationToken);
+        var recentFailedDownload = await DownloadRetryState.LatestFailureAsync(
+            db, evt.Id, releasePart, cancellationToken);
 
         if (recentFailedDownload != null)
         {
+            var retryBlockReason = Helpers.DownloadFailurePolicy.AutomaticRetryBlockReason(
+                recentFailedDownload, config);
+            if (retryBlockReason != null)
+                return (false, retryBlockReason, releasePart);
+
             var retryDelays = new[] { 30, 60, 120, 240, 480 }; // minutes
             var retryCount = recentFailedDownload.RetryCount ?? 0;
             var delayMinutes = retryCount < retryDelays.Length ? retryDelays[retryCount] : retryDelays[^1];
-            var nextRetryTime = (recentFailedDownload.LastUpdate ?? DateTime.UtcNow).AddMinutes(delayMinutes);
+            var nextRetryTime = (recentFailedDownload.FailedAt ?? recentFailedDownload.LastUpdate ?? recentFailedDownload.Added).AddMinutes(delayMinutes);
 
             if (DateTime.UtcNow < nextRetryTime)
                 return (false, $"Backoff until {nextRetryTime:HH:mm}", releasePart);
@@ -1028,36 +1033,6 @@ public class RssSyncService : BackgroundService
                 releasePart ?? "full event");
         }
 
-        // 5b. CASCADING UPGRADE: When downloading a higher quality part, search for other parts at the new quality
-        // This ensures all parts of a multi-part event have consistent quality for Plex compatibility
-        if (releasePart != null && config.EnableMultiPartEpisodes)
-        {
-            // Check if other parts exist with LOWER quality than this release
-            var otherPartFiles = currentFiles
-                .Where(f => f.PartName != null && f.PartName != releasePart && f.Exists)
-                .ToList();
-
-            if (otherPartFiles.Any())
-            {
-                var newResolution = ExtractResolution(release.Quality);
-                // Find parts that need upgrading to match the new release quality
-                var partsNeedingUpgrade = otherPartFiles
-                    .Where(f => Helpers.QualityProfileRanker.Compare(profile, release.Quality, f.Quality) > 0)
-                    .Select(f => f.PartName!)
-                    .ToList();
-
-                if (partsNeedingUpgrade.Any())
-                {
-                    _logger.LogInformation(
-                        "[RSS Sync] Cascading upgrade: Found {Part} at {Quality}, triggering search for {Count} other parts: {Parts}",
-                        releasePart, release.Quality, partsNeedingUpgrade.Count, string.Join(", ", partsNeedingUpgrade));
-
-                    // Trigger immediate searches for other parts at the new quality (fire-and-forget)
-                    _ = TriggerCascadingPartSearchesAsync(evt, partsNeedingUpgrade, release.Quality ?? "Unknown", newResolution);
-                }
-            }
-        }
-
         // 6. Check quality profile. The caller resolved it once, through the
         // same resolver the reaper uses, and the existing-file gate above
         // already judged by it. A second lookup here by the event's own id
@@ -1069,100 +1044,79 @@ public class RssSyncService : BackgroundService
         if (qualityProfile == null)
             return (false, "No quality profile", releasePart);
 
-        // 7. Check delay profile: hold release for N minutes so a higher-quality
-        // release can win before we commit. Bypass conditions grab immediately;
-        // otherwise persist to PendingReleases and let the
-        // PendingReleaseReaperService pick the best-of-window once the timer
-        // expires.
+        // 7. An active hold owns the event part until the reaper settles it.
+        var pendingGroup = await db.PendingReleases
+            .Where(p => p.EventId == evt.Id
+                && p.Part == releasePart
+                && p.Status == PendingReleaseStatus.Pending)
+            .ToListAsync(cancellationToken);
+        var alreadyPending = pendingGroup.FirstOrDefault(p =>
+            (!string.IsNullOrWhiteSpace(release.Guid)
+                && string.Equals(p.Guid, release.Guid, StringComparison.Ordinal)
+                && string.Equals(p.Indexer, release.Indexer, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrWhiteSpace(release.DownloadUrl)
+                && string.Equals(p.DownloadUrl, release.DownloadUrl, StringComparison.Ordinal)));
+        if (alreadyPending != null)
+            return (false, $"Held by delay profile until {alreadyPending.ReleasableAt:HH:mm}", releasePart);
+
+        // 8. Hold new releases while a pending group exists. A new candidate
+        // must join the same choice even when its own delay has elapsed.
         var delayProfile = await delayProfileService.GetDelayProfileForEventAsync(evt.Id);
-        if (delayProfile != null)
-        {
-            var protocolDelay = release.Protocol.Equals("Usenet", StringComparison.OrdinalIgnoreCase)
+        var protocolDelay = delayProfile == null ? 0
+            : release.Protocol.Equals("Usenet", StringComparison.OrdinalIgnoreCase)
                 ? delayProfile.UsenetDelay
                 : delayProfile.TorrentDelay;
+        var bypass = delayProfile?.BypassIfAboveCustomFormatScore == true
+            && release.CustomFormatScore >= delayProfile.MinimumCustomFormatScore;
+        var nowUtc = DateTime.UtcNow;
+        var releasableAt = protocolDelay > 0 && !bypass
+            ? release.PublishDate.AddMinutes(protocolDelay)
+            : nowUtc;
 
-            if (protocolDelay > 0)
+        if (pendingGroup.Count > 0 || releasableAt > nowUtc)
+        {
+            db.PendingReleases.Add(new PendingRelease
             {
-                var bypass = false;
-                if (delayProfile.BypassIfAboveCustomFormatScore &&
-                    release.CustomFormatScore >= delayProfile.MinimumCustomFormatScore)
-                {
-                    bypass = true;
-                    _logger.LogDebug("[RSS Sync] Delay bypassed - CF score {Score} >= minimum {Min}",
-                        release.CustomFormatScore, delayProfile.MinimumCustomFormatScore);
-                }
+                EventId = evt.Id,
+                Title = release.Title,
+                Guid = release.Guid,
+                DownloadUrl = release.DownloadUrl,
+                InfoUrl = release.InfoUrl,
+                Indexer = release.Indexer,
+                IndexerId = release.IndexerId,
+                TorrentInfoHash = release.TorrentInfoHash,
+                Protocol = release.Protocol,
+                Size = release.Size,
+                Quality = release.Quality,
+                Source = release.Source,
+                Codec = release.Codec,
+                Language = release.Language,
+                ReleaseGroup = release.ReleaseGroup,
+                QualityScore = release.QualityScore,
+                CustomFormatScore = release.CustomFormatScore,
+                Score = release.Score,
+                MatchScore = release.MatchScore,
+                Part = releasePart,
+                IsPack = PackImportBoundary.IsPackRelease(release.Title, release.IsPack,
+                    release.SportarrLeagueId, release.SportarrEventId),
+                Seeders = release.Seeders,
+                Leechers = release.Leechers,
+                PublishDate = release.PublishDate,
+                AddedToPendingAt = nowUtc,
+                ReleasableAt = releasableAt,
+                Reason = $"DelayProfile-{release.Protocol}-{protocolDelay}m",
+                Status = PendingReleaseStatus.Pending
+            });
+            await db.SaveChangesAsync(cancellationToken);
 
-                if (!bypass)
-                {
-                    // Honor age of the release — the delay clock starts at
-                    // PublishDate, so older releases may already be past the window.
-                    var elapsedSincePublish = DateTime.UtcNow - release.PublishDate;
-                    var releasableAt = release.PublishDate.AddMinutes(protocolDelay);
+            _logger.LogInformation(
+                "[RSS Sync] Held release '{Title}' for event '{Event}' until {ReleasableAt} ({Delay}m delay)",
+                release.Title, evt.Title, releasableAt, protocolDelay);
 
-                    if (elapsedSincePublish.TotalMinutes >= protocolDelay)
-                    {
-                        // Already past the delay window - grab now.
-                        _logger.LogDebug("[RSS Sync] Delay already elapsed for '{Title}' (published {Mins:F0}m ago)",
-                            release.Title, elapsedSincePublish.TotalMinutes);
-                    }
-                    else
-                    {
-                        // Hold this release. Insert into PendingReleases unless we
-                        // already track it (same Guid for same event).
-                        var alreadyPending = await db.PendingReleases
-                            .AnyAsync(p => p.EventId == evt.Id
-                                && p.Guid == release.Guid
-                                && p.Status == PendingReleaseStatus.Pending,
-                                cancellationToken);
-
-                        if (!alreadyPending)
-                        {
-                            db.PendingReleases.Add(new PendingRelease
-                            {
-                                EventId = evt.Id,
-                                Title = release.Title,
-                                Guid = release.Guid,
-                                DownloadUrl = release.DownloadUrl,
-                                InfoUrl = release.InfoUrl,
-                                Indexer = release.Indexer,
-                                IndexerId = release.IndexerId,
-                                TorrentInfoHash = release.TorrentInfoHash,
-                                Protocol = release.Protocol,
-                                Size = release.Size,
-                                Quality = release.Quality,
-                                Source = release.Source,
-                                Codec = release.Codec,
-                                Language = release.Language,
-                                ReleaseGroup = release.ReleaseGroup,
-                                QualityScore = release.QualityScore,
-                                CustomFormatScore = release.CustomFormatScore,
-                                Score = release.Score,
-                                MatchScore = release.MatchScore,
-                                Part = releasePart,
-                                IsPack = PackImportBoundary.IsPackRelease(release.Title, release.IsPack,
-                                    release.SportarrLeagueId, release.SportarrEventId),
-                                Seeders = release.Seeders,
-                                Leechers = release.Leechers,
-                                PublishDate = release.PublishDate,
-                                AddedToPendingAt = DateTime.UtcNow,
-                                ReleasableAt = releasableAt,
-                                Reason = $"DelayProfile-{release.Protocol}-{protocolDelay}m",
-                                Status = PendingReleaseStatus.Pending
-                            });
-                            await db.SaveChangesAsync(cancellationToken);
-
-                            _logger.LogInformation(
-                                "[RSS Sync] Held release '{Title}' for event '{Event}' until {ReleasableAt} ({Delay}m delay)",
-                                release.Title, evt.Title, releasableAt, protocolDelay);
-                        }
-
-                        return (false, $"Held by delay profile until {releasableAt:HH:mm}", releasePart);
-                    }
-                }
-            }
+            return (false, $"Held by delay profile until {releasableAt:HH:mm}", releasePart);
         }
 
-        // 8. Check if release quality is allowed AND has no rejections.
+        // 9. Check if release quality is allowed AND has no rejections.
         // Approved=true alone isn't sufficient: ReleaseEvaluator sets Approved=true
         // even when rejections (e.g. MinFormatScore below threshold, size limits,
         // 0 seeders) were added, leaving downstream filters to enforce them.
@@ -1340,6 +1294,9 @@ public class RssSyncService : BackgroundService
             _logger.LogWarning(ex, "[RSS Sync] Error setting queue priority for {DownloadId}", downloadId);
         }
 
+        var previousFailedDownload = await DownloadRetryState.LatestFailureAsync(
+            db, evt.Id, releasePart, cancellationToken);
+
         // Add to download queue
         var queueItem = new DownloadQueueItem
         {
@@ -1360,7 +1317,7 @@ public class RssSyncService : BackgroundService
             IndexerId = indexerRecord?.Id,
             Protocol = release.Protocol,
             TorrentInfoHash = torrentInfoHash,
-            RetryCount = 0,
+            RetryCount = previousFailedDownload?.RetryCount ?? 0,
             LastUpdate = DateTime.UtcNow,
             QualityScore = release.QualityScore,
             CustomFormatScore = release.CustomFormatScore,
@@ -1472,6 +1429,58 @@ public class RssSyncService : BackgroundService
     }
 
     #region Cascading Part Upgrade Helpers
+
+    private static async Task<List<string>> GetCascadingPartSearchTargetsAsync(
+        SportarrDbContext db,
+        Event evt,
+        string? releaseQuality,
+        string? releasePart,
+        QualityProfile? profile,
+        Config config,
+        CancellationToken cancellationToken)
+    {
+        if (releasePart == null || !config.EnableMultiPartEpisodes || profile == null)
+            return new List<string>();
+
+        var otherPartFiles = await db.EventFiles.AsNoTracking()
+            .Where(f => f.EventId == evt.Id && f.PartName != null && f.PartName != releasePart && f.Exists)
+            .ToListAsync(cancellationToken);
+        return GetCascadingPartSearchTargets(otherPartFiles, releaseQuality, releasePart, profile, config);
+    }
+
+    internal static List<string> GetCascadingPartSearchTargets(
+        IEnumerable<EventFile> currentFiles,
+        string? releaseQuality,
+        string? releasePart,
+        QualityProfile? profile,
+        Config config)
+    {
+        if (releasePart == null || !config.EnableMultiPartEpisodes || profile == null)
+            return new List<string>();
+
+        return currentFiles
+            .Where(f => f.PartName != null && f.PartName != releasePart && f.Exists)
+            .Where(f => Helpers.QualityProfileRanker.Compare(profile, releaseQuality, f.Quality) > 0)
+            .Select(f => f.PartName!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    internal void StartCascadingPartSearchesAfterGrab(
+        Event evt,
+        string? releaseQuality,
+        string? releasePart,
+        List<string> partsNeedingUpgrade)
+    {
+        if (partsNeedingUpgrade.Count == 0)
+            return;
+
+        _logger.LogInformation(
+            "[RSS Sync] Cascading upgrade: Grabbed {Part} at {Quality}, searching for {Count} lower-quality parts: {Parts}",
+            releasePart, releaseQuality, partsNeedingUpgrade.Count, string.Join(", ", partsNeedingUpgrade));
+        _ = TriggerCascadingPartSearchesAsync(
+            evt, partsNeedingUpgrade, releaseQuality ?? "Unknown", ExtractResolution(releaseQuality));
+    }
 
     // Track active cascading searches to prevent circular triggers
     private static readonly HashSet<string> _activeCascadeSearches = new();

@@ -642,8 +642,11 @@ public class EventResponse
     /// <summary>
     /// Convert Event entity to response DTO
     /// </summary>
-    public static EventResponse FromEvent(Event evt)
+    public static EventResponse FromEvent(Event evt, bool enableMultiPartEpisodes, bool filesLoaded, League? leagueOverride = null)
     {
+        var league = leagueOverride ?? evt.League;
+        var completeFromFiles = EventPartDetector.AreAllMonitoredPartsPresent(
+            evt, enableMultiPartEpisodes, league);
         var response = new EventResponse
         {
             Id = evt.Id,
@@ -651,8 +654,8 @@ public class EventResponse
             Title = evt.Title,
             Sport = evt.Sport,
             LeagueId = evt.LeagueId,
-            LeagueName = evt.League?.Name,
-            LeagueLogoUrl = evt.League?.LogoUrl,
+            LeagueName = league?.Name,
+            LeagueLogoUrl = league?.LogoUrl,
             HomeTeamId = evt.HomeTeamId,
             HomeTeamName = evt.HomeTeam?.Name,
             AwayTeamId = evt.AwayTeamId,
@@ -670,20 +673,8 @@ public class EventResponse
             Monitored = evt.Monitored,
             ManuallyMonitored = evt.ManuallyMonitored,
             MonitoredParts = evt.MonitoredParts,
-            // Derive the badge from the files we actually return rather than
-            // trusting only the denormalized HasFile flag. The two can drift
-            // apart — e.g. an import that is interrupted after the file lands on
-            // disk, or the file watcher flipping the flag off — which showed up
-            // as an event whose "Downloaded" badge was missing even though the
-            // "All Files" list (which reads EventFiles directly) listed the file.
-            // OR-ing keeps it safe when Files isn't eager-loaded: the flag still
-            // wins, we only ever ADD "downloaded" when a real file exists.
-            // A real file always wins. When files were loaded and none of them
-            // exist, say so rather than trusting a stale flag: the response
-            // otherwise called the event downloaded and returned an empty file
-            // list in the same breath. With no files loaded at all there is
-            // nothing to contradict the flag, so it still stands.
-            HasFile = evt.Files.Any(f => f.Exists) || (evt.HasFile && evt.Files.Count == 0),
+            // Trust the stored flag only when this query did not load the files.
+            HasFile = filesLoaded ? completeFromFiles : evt.HasFile,
             FilePath = evt.FilePath,
             FileSize = evt.FileSize,
             Quality = evt.Quality,
@@ -707,7 +698,7 @@ public class EventResponse
         // Build part statuses for fighting sports
         if (IsFightingSport(evt.Sport))
         {
-            response.PartStatuses = BuildPartStatuses(evt);
+            response.PartStatuses = BuildPartStatuses(evt, league);
         }
 
         return response;
@@ -729,11 +720,11 @@ public class EventResponse
     /// Build part status list for multi-part episodes
     /// Uses event-type-aware part detection (e.g., Fight Night events don't have Early Prelims)
     /// </summary>
-    private static List<PartStatus> BuildPartStatuses(Event evt)
+    private static List<PartStatus> BuildPartStatuses(Event evt, League? league)
     {
         // Get event-type-aware segments from EventPartDetector
         // This accounts for differences like UFC PPV (4 parts) vs Fight Night (2 parts)
-        var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
+        var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, league?.Name);
 
         // Filter out "Full Event" (part number 0) - it's not a multi-part segment
         var allParts = segmentDefinitions
@@ -766,15 +757,16 @@ public class EventResponse
         // - null = all parts monitored (default)
         // - "" (empty string) = NO parts monitored
         // - "Part1,Part2" = specific parts monitored
-        var monitoredPartNames = evt.MonitoredParts == null
+        var effectiveMonitoredParts = evt.MonitoredParts ?? league?.MonitoredParts;
+        var monitoredPartNames = effectiveMonitoredParts == null
             ? new HashSet<string>() // null means all parts monitored by default (handled below)
-            : evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            : effectiveMonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => p.Trim())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // If MonitoredParts is null, default to all parts monitored
         // If MonitoredParts is empty string "", no parts are monitored
-        var defaultMonitorAll = evt.MonitoredParts == null;
+        var defaultMonitorAll = effectiveMonitoredParts == null;
 
         var partStatuses = new List<PartStatus>();
 

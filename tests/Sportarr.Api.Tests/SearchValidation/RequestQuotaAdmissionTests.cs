@@ -207,6 +207,49 @@ public sealed class RequestQuotaAdmissionTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task LongRetryAfterKeepsIndexerUnavailableUntilServerDeadline()
+    {
+        await using var fixture = await StatusFixture.CreateAsync(null);
+        await fixture.Status.RecordRateLimitedAsync(fixture.Row.Id, TimeSpan.FromHours(3));
+
+        await using var db = fixture.Factory.CreateDbContext();
+        var status = await db.IndexerStatuses.AsNoTracking().SingleAsync();
+        Assert.InRange(status.RateLimitedUntil!.Value,
+            DateTime.UtcNow.AddHours(2).AddMinutes(55),
+            DateTime.UtcNow.AddHours(3).AddMinutes(5));
+
+        var error = await Assert.ThrowsAsync<IndexerQueryAdmissionException>(
+            () => fixture.Status.ReserveQueryAttemptAsync(fixture.Row.Id));
+        Assert.Equal(QueryAdmissionFailure.Denied, error.Kind);
+        Assert.Equal(0, status.QueriesThisHour);
+    }
+
+    [Fact]
+    public async Task ExcessiveRetryAfterRemainsBoundedToOneDay()
+    {
+        await using var fixture = await StatusFixture.CreateAsync(null);
+        await fixture.Status.RecordRateLimitedAsync(fixture.Row.Id, TimeSpan.FromDays(3));
+
+        await using var db = fixture.Factory.CreateDbContext();
+        var status = await db.IndexerStatuses.AsNoTracking().SingleAsync();
+        Assert.InRange(status.RateLimitedUntil!.Value,
+            DateTime.UtcNow.AddHours(23).AddMinutes(55),
+            DateTime.UtcNow.AddDays(1).AddMinutes(5));
+    }
+
+    [Fact]
+    public async Task LaterShort429CannotShortenAnActiveLongCooldown()
+    {
+        await using var fixture = await StatusFixture.CreateAsync(null);
+        await fixture.Status.RecordRateLimitedAsync(fixture.Row.Id, TimeSpan.FromHours(3));
+        await fixture.Status.RecordRateLimitedAsync(fixture.Row.Id, TimeSpan.FromMinutes(5));
+
+        await using var db = fixture.Factory.CreateDbContext();
+        var status = await db.IndexerStatuses.AsNoTracking().SingleAsync();
+        Assert.True(status.RateLimitedUntil > DateTime.UtcNow.AddHours(2).AddMinutes(55));
+    }
+
+    [Fact]
     public async Task LegacyOutcomeStillCountsForUnmigratedCallers()
     {
         await using var fixture = await StatusFixture.CreateAsync(null);

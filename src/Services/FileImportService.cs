@@ -1166,6 +1166,8 @@ public class FileImportService : IFileImportService
                 if (!ReferenceEquals(entry.Entity, download))
                     entry.State = EntityState.Detached;
             }
+            if (download.Id != 0 && _db.Entry(download).State == EntityState.Detached)
+                _db.Entry(download).State = EntityState.Unchanged;
 
             // Roll back the file we transferred this run. Without this, an import
             // that transfers the file and then fails leaves an untracked copy in

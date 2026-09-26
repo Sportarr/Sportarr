@@ -1451,6 +1451,9 @@ public class TrashGuideSyncService
                             template.Cutoff, highestAllowed.Name, highestAllowed.Quality);
                     }
                 }
+
+                // The source lists the lowest quality first. Sportarr ranks the first item highest.
+                newProfile.Items.Reverse();
             }
 
             // Map format scores (need to find matching synced CFs)

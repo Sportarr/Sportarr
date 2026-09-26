@@ -11,6 +11,34 @@ public class SportarrDbContext : DbContext
     {
     }
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        StampDownloadFailures();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        StampDownloadFailures();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void StampDownloadFailures()
+    {
+        foreach (var entry in ChangeTracker.Entries<DownloadQueueItem>())
+        {
+            if (entry.Entity.Status != DownloadStatus.Failed)
+                continue;
+
+            var addedFailure = entry.State == EntityState.Added && entry.Entity.FailedAt == null;
+            var newFailure = entry.State == EntityState.Modified &&
+                entry.Property(item => item.Status).OriginalValue != DownloadStatus.Failed;
+            if (addedFailure || newFailure)
+                entry.Entity.FailedAt = DateTime.UtcNow;
+        }
+    }
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         // Applies to both DateTime and DateTime? properties - EF Core passes null through

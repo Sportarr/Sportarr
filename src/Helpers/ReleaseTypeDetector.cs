@@ -44,7 +44,7 @@ public static class ReleaseTypeDetector
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex SingleMatchupPattern = new(
-        @"\bvs\.?\b",
+        @"\b(?:vs|v)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
@@ -62,6 +62,10 @@ public static class ReleaseTypeDetector
         @"FP[123]|PRACTICE(?:[\.\-\s]?[123])?|FREE[\.\-\s]?PRACTICE|" +
         @"WARM[\.\-\s]?UP|SHAKEDOWN|GRAND[\.\-\s]?PRIX|GP|" +
         @"MAIN[\.\-\s]?CARD|PRELIMS?|EARLY[\.\-\s]?PRELIMS?)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex SingleWrcRallyPattern = new(
+        @"\bWRC\b.*\bRALLY\b.*\bFULL[\.\-\s]?EVENT\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
@@ -86,14 +90,21 @@ public static class ReleaseTypeDetector
             return ReleaseType.Unknown;
         }
 
-        var hasSingleMatchup = SingleMatchupPattern.IsMatch(releaseTitle);
+        var hasExplicitPackMarker = false;
+        foreach (Match marker in PackMarkerPattern.Matches(releaseTitle))
+        {
+            hasExplicitPackMarker = true;
+            if (!marker.Value.Equals("COMPLETE", StringComparison.OrdinalIgnoreCase))
+            {
+                return ReleaseType.Pack;
+            }
+        }
 
-        if (hasSingleMatchup)
+        if (SingleMatchupPattern.IsMatch(releaseTitle))
         {
             return ReleaseType.SingleEvent;
         }
 
-        var hasExplicitPackMarker = PackMarkerPattern.IsMatch(releaseTitle);
         var hasBareRoundMarker = RoundMarkerPattern.IsMatch(releaseTitle);
 
         if (hasExplicitPackMarker)
@@ -105,7 +116,7 @@ public static class ReleaseTypeDetector
         {
             // A round number and the name of one session is one session, not a
             // pack of them.
-            return SingleSessionPattern.IsMatch(releaseTitle)
+            return SingleSessionPattern.IsMatch(releaseTitle) || SingleWrcRallyPattern.IsMatch(releaseTitle)
                 ? ReleaseType.SingleEvent
                 : ReleaseType.Pack;
         }

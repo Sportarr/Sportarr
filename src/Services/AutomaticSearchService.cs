@@ -117,6 +117,8 @@ public class AutomaticSearchService : IAutomaticSearchService
             // below can resolve a per-root DefaultDownloadClientCategory
             // override without a follow-up query.
             var evt = await _db.Events
+                .Include(e => e.HomeTeam)
+                .Include(e => e.AwayTeam)
                 .Include(e => e.League)
                 .ThenInclude(l => l!.RootFolder)
                 .FirstOrDefaultAsync(e => e.Id == eventId);
@@ -125,6 +127,12 @@ public class AutomaticSearchService : IAutomaticSearchService
                 result.Success = false;
                 result.Message = "Event not found";
                 return result;
+            }
+
+            if (!config.EnableMultiPartEpisodes ||
+                !EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? string.Empty, evt.League?.Name))
+            {
+                part = null;
             }
 
             // MONITORED CHECK: Only applies to automatic background searches
@@ -186,21 +194,31 @@ public class AutomaticSearchService : IAutomaticSearchService
             // Retry backoff: don't hammer failed downloads.
             // NOTE: Manual searches bypass this check - user explicitly wants to retry
             DownloadQueueItem? recentFailedDownload = null;
-            if (!isManualSearch)
+            var partlessMultiPartRequest = string.IsNullOrEmpty(part) && config.EnableMultiPartEpisodes &&
+                EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? string.Empty, evt.League?.Name);
+            if (!isManualSearch && !partlessMultiPartRequest)
             {
-                recentFailedDownload = await _db.DownloadQueue
-                    .Where(d => d.EventId == eventId && d.Status == DownloadStatus.Failed)
-                    .OrderByDescending(d => d.LastUpdate)
-                    .FirstOrDefaultAsync();
+                recentFailedDownload = await DownloadRetryState.LatestFailureAsync(_db, eventId, part);
 
                 if (recentFailedDownload != null)
                 {
+                    var retryBlockReason = Helpers.DownloadFailurePolicy.AutomaticRetryBlockReason(
+                        recentFailedDownload, config);
+                    if (retryBlockReason != null)
+                    {
+                        result.Success = false;
+                        result.Message = retryBlockReason;
+                        _logger.LogInformation("[{SearchType}] Skipping {Title}: {Reason}",
+                            searchType, evt.Title, retryBlockReason);
+                        return result;
+                    }
+
                     // User-configurable exponential backoff via Config.AutoSearchRetryBackoffMinutes
                     // (CSV like "30,60,120,240,480"). The last entry is reused once exhausted.
                     var retryDelays = ParseRetryBackoff(config.AutoSearchRetryBackoffMinutes);
                     var currentRetryCount = recentFailedDownload.RetryCount ?? 0;
                     var delayMinutes = currentRetryCount < retryDelays.Length ? retryDelays[currentRetryCount] : retryDelays[^1];
-                    var nextRetryTime = (recentFailedDownload.LastUpdate ?? DateTime.UtcNow).AddMinutes(delayMinutes);
+                    var nextRetryTime = (recentFailedDownload.FailedAt ?? recentFailedDownload.LastUpdate ?? recentFailedDownload.Added).AddMinutes(delayMinutes);
 
                     if (DateTime.UtcNow < nextRetryTime)
                     {
@@ -216,13 +234,10 @@ public class AutomaticSearchService : IAutomaticSearchService
                         searchType, currentRetryCount + 1, evt.Title, delayMinutes);
                 }
             }
-            else
+            else if (isManualSearch && !partlessMultiPartRequest)
             {
                 // For manual searches, still get the failed download for retry count tracking
-                recentFailedDownload = await _db.DownloadQueue
-                    .Where(d => d.EventId == eventId && d.Status == DownloadStatus.Failed)
-                    .OrderByDescending(d => d.LastUpdate)
-                    .FirstOrDefaultAsync();
+                recentFailedDownload = await DownloadRetryState.LatestFailureAsync(_db, eventId, part);
             }
 
             // An event that is already downloading is not missing, however long
@@ -324,7 +339,10 @@ public class AutomaticSearchService : IAutomaticSearchService
             var sourceFingerprint = await _indexerSearchService.GetSearchSourceFingerprintAsync(isManualSearch, leagueTags);
 
             // The merged answer belongs to the complete source request.
-            var cacheKey = SearchResultCache.RequestKey(queries, leagueTags, 100, true, sportarrId, sourceFingerprint);
+            var eventCacheScope = sportarrId == null && EventQueryService.MayUseOverflowFallback(evt, customTemplate)
+                ? evt.Id : (int?)null;
+            var cacheKey = SearchResultCache.RequestKey(queries, leagueTags, 100, true, sportarrId,
+                sourceFingerprint, eventCacheScope);
 
             // Only one caller fills a given key. A fighting event searches
             // once per part and the part is not in the query, so all of its
@@ -368,8 +386,9 @@ public class AutomaticSearchService : IAutomaticSearchService
             {
                 int queriesAttempted = 0;
 
-                foreach (var query in queriesToRun)
+                for (var queryIndex = 0; queryIndex < queriesToRun.Count; queryIndex++)
                 {
+                    var query = queriesToRun[queryIndex];
                     queriesAttempted++;
                     _logger.LogInformation("[Automatic Search] Trying query {Attempt}/{Total}: '{Query}'",
                         queriesAttempted, queriesToRun.Count, query);
@@ -387,6 +406,16 @@ public class AutomaticSearchService : IAutomaticSearchService
                     searchCacheable &= outcome.CanCache;
                     if (outcome.CacheExpiresAt is { } expiry && (!cacheExpiresAt.HasValue || expiry < cacheExpiresAt.Value))
                         cacheExpiresAt = expiry;
+
+                    if (queryIndex < queries.Count)
+                    {
+                        foreach (var fallback in _eventQueryService.BuildOverflowFallbackQueries(
+                            evt, queries, outcome.Diagnostics, customTemplate))
+                        {
+                            if (!queriesToRun.Contains(fallback, StringComparer.OrdinalIgnoreCase))
+                                queriesToRun.Add(fallback);
+                        }
+                    }
 
                     if (releases.Count == 0)
                     {
@@ -432,9 +461,7 @@ public class AutomaticSearchService : IAutomaticSearchService
 
             var knownLeagues = await LeagueMatchContext.LoadAsync(_db);
             IReadOnlyCollection<Event>? datePeers = null;
-            if (!isManualSearch && !evt.BroadcastDateVerified
-                && !string.IsNullOrWhiteSpace(evt.HomeTeamName)
-                && !string.IsNullOrWhiteSpace(evt.AwayTeamName))
+            if (EventDateMatchContext.ShouldLoadPeers(evt))
             {
                 datePeers = await EventDateMatchContext.LoadAsync(_db, evt);
             }
@@ -789,7 +816,8 @@ public class AutomaticSearchService : IAutomaticSearchService
             if (matchedReleases == null && metadataProbe != null && allowMetadataProbe)
             {
                 // A separate raw entry records only a probe that was fetched.
-                var probeCacheKey = SearchResultCache.RequestKey(new[] { metadataProbe }, leagueTags, 100, true, sportarrId, sourceFingerprint);
+                var probeCacheKey = SearchResultCache.RequestKey(new[] { metadataProbe }, leagueTags, 100, true,
+                    sportarrId, sourceFingerprint, eventCacheScope);
                 List<ReleaseSearchResult> probeReleases;
                 using (await _searchResultCache.EnterFillAsync(probeCacheKey))
                 {
@@ -837,13 +865,46 @@ public class AutomaticSearchService : IAutomaticSearchService
             if (matchedReleases == null)
                 return result;
 
+            var isIncompletePartlessSearch = !isManualSearch && string.IsNullOrEmpty(part) && !evt.HasFile &&
+                config.EnableMultiPartEpisodes &&
+                EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? string.Empty, evt.League?.Name);
+            if (isIncompletePartlessSearch)
+            {
+                var presentParts = (await _db.EventFiles.AsNoTracking()
+                    .Where(f => f.EventId == eventId && f.Exists && f.PartNumber != null)
+                    .Select(f => f.PartNumber)
+                    .ToListAsync()).Where(n => n.HasValue).Select(n => n!.Value).ToHashSet();
+                if (presentParts.Count > 0)
+                {
+                    var beforeCount = matchedReleases.Count;
+                    matchedReleases = matchedReleases.Where(release =>
+                    {
+                        var identity = Helpers.PartIdentityResolver.Resolve(
+                            null, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
+                            config.EnableMultiPartEpisodes, release.IsPack);
+                        return identity.Kind != Helpers.PartIdentityKind.InferredPart ||
+                               identity.Part == null || !presentParts.Contains(identity.Part.PartNumber);
+                    }).ToList();
+                    if (matchedReleases.Count < beforeCount)
+                        _logger.LogInformation("[Automatic Search] Skipped {Count} release(s) for parts already present: {Title}",
+                            beforeCount - matchedReleases.Count, evt.Title);
+                    if (matchedReleases.Count == 0)
+                    {
+                        result.Success = false;
+                        result.Message = "Only releases for already downloaded parts were found";
+                        return result;
+                    }
+                }
+            }
+
             // MULTI-PART CONSISTENCY CHECK: For automatic searches, ensure new releases match existing parts
             // This prevents downloading mismatched quality/codec/source for multi-part episodes
             // Plex requires all parts to have matching quality and codec for proper playback
-            if (!isManualSearch && !string.IsNullOrEmpty(part))
+            if (!isManualSearch && (!string.IsNullOrEmpty(part) || isIncompletePartlessSearch))
             {
                 var existingPartFiles = await _db.EventFiles
-                    .Where(f => f.EventId == eventId && f.Exists && f.PartName != null && f.PartName != part)
+                    .Where(f => f.EventId == eventId && f.Exists && f.PartName != null &&
+                        (part == null || f.PartName != part))
                     .ToListAsync();
 
                 if (existingPartFiles.Any())
@@ -862,6 +923,15 @@ public class AutomaticSearchService : IAutomaticSearchService
 
                     var consistentReleases = matchedReleases.Where(r =>
                     {
+                        if (isIncompletePartlessSearch)
+                        {
+                            var identity = Helpers.PartIdentityResolver.Resolve(
+                                null, r.Title, null, evt.Sport, evt.Title, evt.League?.Name,
+                                config.EnableMultiPartEpisodes, r.IsPack);
+                            if (identity.Kind != Helpers.PartIdentityKind.InferredPart)
+                                return true;
+                        }
+
                         // Extract resolution from release Quality (format: "WEBDL-1080p")
                         var releaseResolution = ExtractResolution(r.Quality);
 
@@ -1028,6 +1098,61 @@ public class AutomaticSearchService : IAutomaticSearchService
                 }
             }
 
+            if (partlessMultiPartRequest && !isManualSearch)
+            {
+                var failuresByPart = new Dictionary<string, DownloadQueueItem?>(StringComparer.OrdinalIgnoreCase);
+                var availableReleases = new List<ReleaseSearchResult>();
+                string? firstRetryRefusal = null;
+                foreach (var release in matchedReleases)
+                {
+                    var identity = Helpers.PartIdentityResolver.Resolve(
+                        part, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
+                        config.EnableMultiPartEpisodes, release.IsPack);
+                    var releasePart = identity.Kind switch
+                    {
+                        Helpers.PartIdentityKind.NotApplicable => null,
+                        Helpers.PartIdentityKind.CompleteEventLabel => EventPartDetector.FullEventSegmentName,
+                        _ => identity.Part?.SegmentName ?? part
+                    };
+                    var partKey = releasePart ?? string.Empty;
+                    if (!failuresByPart.TryGetValue(partKey, out var failure))
+                    {
+                        failure = await DownloadRetryState.LatestFailureAsync(_db, eventId, releasePart);
+                        failuresByPart[partKey] = failure;
+                    }
+
+                    string? refusal = null;
+                    if (failure != null)
+                    {
+                        refusal = Helpers.DownloadFailurePolicy.AutomaticRetryBlockReason(failure, config);
+                        if (refusal == null)
+                        {
+                            var retryDelays = ParseRetryBackoff(config.AutoSearchRetryBackoffMinutes);
+                            var retryCountForPart = failure.RetryCount ?? 0;
+                            var delayMinutes = retryCountForPart < retryDelays.Length
+                                ? retryDelays[retryCountForPart] : retryDelays[^1];
+                            var nextRetryTime = (failure.FailedAt ?? failure.LastUpdate ?? failure.Added).AddMinutes(delayMinutes);
+                            if (DateTime.UtcNow < nextRetryTime)
+                                refusal = $"Recent failed download - retry available at {nextRetryTime:HH:mm}";
+                        }
+                    }
+                    if (refusal != null)
+                    {
+                        firstRetryRefusal ??= refusal;
+                        continue;
+                    }
+                    availableReleases.Add(release);
+                }
+
+                matchedReleases = availableReleases;
+                if (matchedReleases.Count == 0)
+                {
+                    result.Success = false;
+                    result.Message = firstRetryRefusal ?? "No releases available for retry";
+                    return result;
+                }
+            }
+
             // Select best release using delay profile and protocol priority (from validated releases only)
             var bestRelease = _delayProfileService.SelectBestReleaseWithDelayProfile(
                 matchedReleases, delayProfile, qualityProfile, config.DownloadPropersAndRepacks);
@@ -1043,10 +1168,42 @@ public class AutomaticSearchService : IAutomaticSearchService
             var acquiredIdentity = Helpers.PartIdentityResolver.Resolve(
                 part, bestRelease.Title, null, evt.Sport, evt.Title, evt.League?.Name,
                 config.EnableMultiPartEpisodes, bestRelease.IsPack);
-            var effectivePart = acquiredIdentity.Kind == Helpers.PartIdentityKind.CompleteEventLabel
-                ? EventPartDetector.FullEventSegmentName
-                : acquiredIdentity.Part?.SegmentName ?? part;
+            var effectivePart = acquiredIdentity.Kind switch
+            {
+                Helpers.PartIdentityKind.NotApplicable => null,
+                Helpers.PartIdentityKind.CompleteEventLabel => EventPartDetector.FullEventSegmentName,
+                _ => acquiredIdentity.Part?.SegmentName ?? part
+            };
             var isFullEventPart = EventPartDetector.IsFullEvent(effectivePart);
+
+            if (partlessMultiPartRequest)
+            {
+                recentFailedDownload = await DownloadRetryState.LatestFailureAsync(_db, eventId, effectivePart);
+
+                if (!isManualSearch && recentFailedDownload != null)
+                {
+                    var retryBlockReason = Helpers.DownloadFailurePolicy.AutomaticRetryBlockReason(
+                        recentFailedDownload, config);
+                    if (retryBlockReason != null)
+                    {
+                        result.Success = false;
+                        result.Message = retryBlockReason;
+                        return result;
+                    }
+
+                    var retryDelays = ParseRetryBackoff(config.AutoSearchRetryBackoffMinutes);
+                    var selectedRetryCount = recentFailedDownload.RetryCount ?? 0;
+                    var delayMinutes = selectedRetryCount < retryDelays.Length
+                        ? retryDelays[selectedRetryCount] : retryDelays[^1];
+                    var nextRetryTime = (recentFailedDownload.FailedAt ?? recentFailedDownload.LastUpdate ?? recentFailedDownload.Added).AddMinutes(delayMinutes);
+                    if (DateTime.UtcNow < nextRetryTime)
+                    {
+                        result.Success = false;
+                        result.Message = $"Recent failed download - retry available in {Math.Ceiling((nextRetryTime - DateTime.UtcNow).TotalMinutes)} minutes";
+                        return result;
+                    }
+                }
+            }
 
             // A whole-event request can select a part already downloading.
             using var eventDecision = await _downloadClientService.EnterEventDecisionAsync(eventId);
@@ -1416,7 +1573,7 @@ public class AutomaticSearchService : IAutomaticSearchService
 
             // UNIVERSAL: Add to download queue tracking (event-level, no fight card subdivisions)
             // If this is a retry, increment the retry count from the previous failed download
-            var retryCount = recentFailedDownload != null ? (recentFailedDownload.RetryCount ?? 0) + 1 : 0;
+            var retryCount = recentFailedDownload?.RetryCount ?? 0;
 
             var queueItem = new DownloadQueueItem
             {
@@ -1734,7 +1891,8 @@ public class AutomaticSearchService : IAutomaticSearchService
         foreach (var evt in events)
         {
             // Check if this is a fighting sport with multi-part episodes enabled
-            if (config.EnableMultiPartEpisodes && EventPartDetector.IsFightingSport(evt.Sport ?? ""))
+            if (config.EnableMultiPartEpisodes &&
+                EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? "", evt.League?.Name))
             {
                 // Get parts for this event type (respects Fight Night vs PPV differences)
                 var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
@@ -2052,7 +2210,7 @@ public class AutomaticSearchService : IAutomaticSearchService
     /// into a minutes array. Falls back to the default schedule on any parse
     /// error so a malformed config never blocks searches entirely.
     /// </summary>
-    private static int[] ParseRetryBackoff(string? csv)
+    internal static int[] ParseRetryBackoff(string? csv)
     {
         var defaults = new[] { 30, 60, 120, 240, 480 };
         if (string.IsNullOrWhiteSpace(csv)) return defaults;
