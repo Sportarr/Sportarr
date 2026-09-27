@@ -1136,7 +1136,12 @@ public class SportarrApiClient
     /// </summary>
     private async Task<List<Team>?> GetAllTeamsForSportsBulkAsync(List<string> supportedSports)
     {
-        var sportParam = Uri.EscapeDataString(string.Join(",", supportedSports));
+        var querySports = supportedSports
+            .Concat(TeamLeagueDiscoveryService.SupportedSports.Where(alias =>
+                supportedSports.Any(sport => LeagueSportRules.AreEquivalentSports(sport, alias))))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var sportParam = Uri.EscapeDataString(string.Join(",", querySports));
         var url = $"{_apiBaseUrl}/all/teams?sport={sportParam}";
         using var response = await _httpClient.GetAsync(url);
         response.EnsureSuccessStatusCode();
@@ -1158,6 +1163,12 @@ public class SportarrApiClient
         // "Football" also returns Australian Football teams. Keep only
         // exact sport matches for the requested set.
         var requested = new HashSet<string>(supportedSports, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var team in teams)
+        {
+            var sport = team.Sport?.Trim();
+            team.Sport = supportedSports.FirstOrDefault(s => LeagueSportRules.AreEquivalentSports(s, sport)) ?? sport;
+        }
 
         // Deduplicate by ExternalId (teams can appear in multiple
         // leagues; kept for parity with the per-league aggregator).
