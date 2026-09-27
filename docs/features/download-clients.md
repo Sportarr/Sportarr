@@ -42,6 +42,12 @@ A copy that is equal to the file an event already holds is not swapped in. It is
 
 A completed download that fails the rule stays in the queue with the reason and an **Import Anyway** button. A file that appears in a league folder and fails the rule is left where it is and listed in Activity with the reason. **Library Import** also lists it and imports whatever you select. The Remove button on such a row deletes the file too, to the recycle bin when one is set, unless you untick that in the remove dialog. Ignore keeps the file and only stops the scans listing it. When a copy that already sits beside the file it replaces takes over, the replaced file stays on disk untracked. A copy from anywhere else replaces it through the recycle bin.
 
+## Activity queue
+
+On phones and tablets, Queue shows compact rows. Open a row to see its release details and actions. The desktop sidebar shows the current download or import state and links to the queue item. If a job has made no recent progress, the sidebar says it needs attention instead of presenting it as active.
+
+Selecting rows shows bulk import and removal actions. Bulk import works only for eligible queue rows. Pending imports need per-item review, and **Import Anyway** needs individual confirmation. **Remove Selected** opens a confirmation. For downloads held by a client, the default **Remove from Download Client** method asks the client to delete the job and its files. Check that choice before confirming. Sportarr blocklists a removed pending import from a client even if that client cannot delete the job. Check the client if the download or files remain.
+
 ## Retry a completed import
 
 Activity shows **Retry Import** when a completed download has failed to import or a pack member is held for correction. Resolve the displayed reason, then retry the import. Retrying uses the completed download and does not submit another download job. Bulk import supports these retries. **Import Anyway** requires confirmation on each download and is not available in bulk.

@@ -31,6 +31,7 @@ import OnboardingWizard from './OnboardingWizard';
 import { useAuth } from '../contexts/AuthContext';
 import { SETTINGS_PAGES } from '../pages/settings/settingsPages';
 import { useResolvedTheme } from '../hooks/useTheme';
+import { useIsDesktopLayout } from '../hooks/useCompactView';
 
 interface MenuItem {
   label: string;
@@ -52,6 +53,7 @@ function PageFallback() {
 
 export default function Layout() {
   const location = useLocation();
+  const wideScreen = useIsDesktopLayout();
   const navPath = useNavTarget();
   // The lockup is a flat image, so it cannot pick up the palette the way
   // text does. Each theme gets the artwork drawn in its own ink.
@@ -432,7 +434,7 @@ export default function Layout() {
         </nav>
 
         {/* Sonarr-style status bar (inside sidebar) */}
-        <FooterStatusBar />
+        {wideScreen && <FooterStatusBar />}
 
         {/* Logout button - only show when auth is enabled */}
         {!isAuthDisabled && (

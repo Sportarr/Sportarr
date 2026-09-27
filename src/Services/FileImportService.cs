@@ -214,6 +214,7 @@ public class FileImportService : IFileImportService
         {
             if (!PackImportBoundary.IsHeld(download) || download.Progress < 100) return null!;
             download.Status = DownloadStatus.Importing;
+            download.LastUpdate = DateTime.UtcNow;
             download.ErrorMessage = null;
             await _db.SaveChangesAsync();
         }
@@ -269,6 +270,7 @@ public class FileImportService : IFileImportService
 
         // Update status to importing
         download.Status = DownloadStatus.Importing;
+        download.LastUpdate = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
         // Track the file we transfer this run so the catch can remove it if the

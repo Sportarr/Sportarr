@@ -24,9 +24,9 @@ import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import SegmentedTabs from '../components/SegmentedTabs';
 import WantedPage from './WantedPage';
-import { useCompactView } from '../hooks/useCompactView';
+import { useCompactView, useIsDesktopLayout } from '../hooks/useCompactView';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BADGE_BLUE, BADGE_PURPLE, BUTTON_DESTRUCTIVE, BUTTON_ICON_DESTRUCTIVE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_SUCCESS, BUTTON_ICON_WARNING, BUTTON_INFO, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_WARNING } from '../utils/designTokens';
+import { BADGE_BLUE, BADGE_PURPLE, BUTTON_DESTRUCTIVE, BUTTON_ICON_DESTRUCTIVE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_SUCCESS, BUTTON_ICON_WARNING, BUTTON_INFO, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_WARNING, COMPACT_LIST_FRAME, COMPACT_LIST_ROW } from '../utils/designTokens';
 import { formatRelativeDate } from '../utils/timezone';
 
 type TabType = 'queue' | 'history' | 'blocklist' | 'grabHistory' | 'missing' | 'cutoffUnmet';
@@ -425,6 +425,35 @@ export default function ActivityPage() {
   const [lastSelectedKey, setLastSelectedKey] = useState<string | null>(null);
 
   const compactView = useCompactView();
+  const wideScreen = useIsDesktopLayout();
+  const [expandedCompactRow, setExpandedCompactRow] = useState<string | null>(null);
+  const focusedQueueId = Number(new URLSearchParams(location.search).get('queue')) || null;
+  const lastFocusedQueueId = React.useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!focusedQueueId) return;
+    setActiveTab('queue');
+    setPage(1);
+  }, [focusedQueueId]);
+
+  useEffect(() => {
+    if (!focusedQueueId) {
+      lastFocusedQueueId.current = null;
+      return;
+    }
+    if (activeTab !== 'queue' || lastFocusedQueueId.current === focusedQueueId) return;
+    if (!queueItems.some(item => item.id === focusedQueueId)) return;
+    const view = wideScreen ? 'table' : 'list';
+    const timer = window.setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(`[data-queue-id="${focusedQueueId}"][data-view="${view}"]`);
+      if (row) {
+        row.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+        row.focus({ preventScroll: true });
+        lastFocusedQueueId.current = focusedQueueId;
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [focusedQueueId, activeTab, queueItems, wideScreen]);
 
   // Track user scrolling to pause auto-refresh
   useEffect(() => {
@@ -722,7 +751,7 @@ export default function ActivityPage() {
         downloadClient: item.downloadClient
       }));
 
-    const selectedPendings = pendingImports.filter(p => selectedPendingIds.has(p.id));
+    const selectedPendings = visiblePendingImports.filter(p => selectedPendingIds.has(p.id));
 
     if (selectedItems.length === 0 && selectedPendings.length === 0) return;
 
@@ -854,6 +883,10 @@ export default function ActivityPage() {
     && removeQueueDialog.items.length === 0
     && removeQueueDialog.pendingItems.length > 0
     && removeQueueDialog.pendingItems.every(isDiskFound);
+  const onlyClientPendings = !!removeQueueDialog
+    && removeQueueDialog.items.length === 0
+    && removeQueueDialog.pendingItems.length > 0
+    && removeQueueDialog.pendingItems.every(p => !isDiskFound(p));
 
   // A pending import has two removal endpoints. Pick the one that matches what
   // the dialog offered. Removing from the client always blocklists, because the
@@ -1021,28 +1054,16 @@ export default function ActivityPage() {
     );
   };
 
-  // One remove path for both layouts. A file the library found has no
-  // client to clear, so the remove dialog asks about the file itself; a
-  // row from a download client is cleared through the client.
-  const handleRemovePendingImport = async (pendingImport: PendingImport) => {
-    if (isDiskFound(pendingImport)) {
-      setRemoveQueueDialog({
-        type: 'queue',
-        items: [],
-        pendingItems: [{ id: pendingImport.id, title: pendingImport.title, downloadClientId: pendingImport.downloadClientId }]
-      });
-      setRemovalMethod('removeFromClient');
-      setBlocklistAction('none');
-      setDeleteDiskFile(true);
-      return;
-    }
-    try {
-      // Remove from download client AND pending imports list
-      await apiClient.post(`/pending-imports/${pendingImport.id}/remove-from-client`);
-      loadQueue();
-    } catch (error) {
-      console.error('Failed to remove pending import from client:', error);
-    }
+  // The dialog explains whether removal also deletes client or disk files.
+  const handleRemovePendingImport = (pendingImport: PendingImport) => {
+    setRemoveQueueDialog({
+      type: 'queue',
+      items: [],
+      pendingItems: [{ id: pendingImport.id, title: pendingImport.title, downloadClientId: pendingImport.downloadClientId }]
+    });
+    setRemovalMethod('removeFromClient');
+    setBlocklistAction('none');
+    setDeleteDiskFile(true);
   };
 
   const handleIgnorePendingImport = async (id: number) => {
@@ -1202,7 +1223,7 @@ export default function ActivityPage() {
   // controls see the same ordering as before.
   const queueRowsAll = (showUnknownEvents
     ? queueItems
-    : queueItems.filter(item => item.event && item.event.id)
+    : queueItems.filter(item => (item.event && item.event.id) || item.id === focusedQueueId)
   ).slice().sort((a, b) => {
     const dir = queueSortDirection === 'asc' ? 1 : -1;
     const cmpStr = (x: string | undefined, y: string | undefined) =>
@@ -1225,6 +1246,11 @@ export default function ActivityPage() {
       default:         return 0;
     }
   });
+
+  const focusedIndex = queueRowsAll.findIndex(item => item.id === focusedQueueId);
+  if (focusedIndex > 0) {
+    queueRowsAll.unshift(queueRowsAll.splice(focusedIndex, 1)[0]);
+  }
 
   // Pending imports follow the same sort the queue uses so clicking a
   // column header reorders both lists consistently. Field mapping mirrors
@@ -1256,7 +1282,7 @@ export default function ActivityPage() {
   // and typically few; whatever budget remains goes to queue rows. Without
   // this, "Page Size 200" with 95 pending imports rendered 295 rows total
   // and the bulk-select count silently exceeded the page size.
-  const visiblePendingImports = pendingImportsSorted.slice(0, pageSize);
+  const visiblePendingImports = pendingImportsSorted.slice(0, focusedIndex >= 0 ? Math.max(0, pageSize - 1) : pageSize);
   const queueRowBudget = Math.max(0, pageSize - visiblePendingImports.length);
   const queueRows = queueRowsAll.slice(0, queueRowBudget);
   const totalAvailable = pendingImports.length + queueRowsAll.length;
@@ -1272,8 +1298,24 @@ export default function ActivityPage() {
     ...queueRows.map(q => `q-${q.id}`),
   ];
 
-  const totalSelected = selectedQueueIds.size + selectedPendingIds.size;
+  const visibleSelectionKey = selectableRowKeys.join('|');
+  const visibleSelectedQueueIds = new Set(queueRows.filter(item => selectedQueueIds.has(item.id)).map(item => item.id));
+  const visibleSelectedPendingIds = new Set(visiblePendingImports.filter(item => selectedPendingIds.has(item.id)).map(item => item.id));
+  const totalSelected = visibleSelectedQueueIds.size + visibleSelectedPendingIds.size;
   const totalSelectable = selectableRowKeys.length;
+
+  useEffect(() => {
+    const visible = new Set(visibleSelectionKey ? visibleSelectionKey.split('|') : []);
+    setSelectedQueueIds(previous => {
+      const kept = [...previous].filter(id => visible.has(`q-${id}`));
+      return kept.length === previous.size ? previous : new Set(kept);
+    });
+    setSelectedPendingIds(previous => {
+      const kept = [...previous].filter(id => visible.has(`p-${id}`));
+      return kept.length === previous.size ? previous : new Set(kept);
+    });
+    setLastSelectedKey(previous => previous && !visible.has(previous) ? null : previous);
+  }, [visibleSelectionKey]);
 
   // Toggle a single row, with optional shift-click semantics: when shift is
   // held and there's a previous anchor row, every row between the anchor and
@@ -1353,16 +1395,15 @@ export default function ActivityPage() {
     return canImport || canRetryImport;
   };
 
-  const selectedQueueItems = queueRows.filter(item => selectedQueueIds.has(item.id));
+  const selectedQueueItems = queueRows.filter(item => visibleSelectedQueueIds.has(item.id));
   const canBulkImport =
     totalSelected > 0 &&
-    selectedPendingIds.size === 0 &&
-    selectedQueueItems.length === selectedQueueIds.size &&
+    visibleSelectedPendingIds.size === 0 &&
     selectedQueueItems.every(item => !item.canImportAnyway && isQueueRowImportable(item));
 
   const bulkImportDisabledReason = (() => {
     if (totalSelected === 0) return 'Select rows to import';
-    if (selectedPendingIds.size > 0) return 'Pending imports require per-item event mapping; remove them from the selection or open them individually';
+    if (visibleSelectedPendingIds.size > 0) return 'Pending imports require per-item event mapping; remove them from the selection or open them individually';
     if (selectedQueueItems.some(item => item.canImportAnyway)) return 'Import Anyway needs confirmation for each download. Open each row individually';
     if (selectedQueueItems.some(item => item.canChooseVideo)) return 'Choose a video for each download before importing';
     if (!selectedQueueItems.every(isQueueRowImportable)) return 'One or more selected items cannot be imported yet. Check each row for the reason';
@@ -1839,7 +1880,11 @@ export default function ActivityPage() {
             {queueRows.map((item) => (
               <tr
                 key={item.id}
-                className={`hover:bg-gray-800/50 transition-colors ${rowPadding} ${selectedQueueIds.has(item.id) ? 'bg-red-900/20 ring-1 ring-red-600/40' : ''}`}
+                data-queue-id={item.id}
+                data-view="table"
+                tabIndex={focusedQueueId === item.id ? -1 : undefined}
+                aria-label={focusedQueueId === item.id ? `Queue item: ${item.event?.title || item.title}` : undefined}
+                className={`hover:bg-gray-800/50 transition-colors ${rowPadding} ${focusedQueueId === item.id ? 'bg-amber-900/20 ring-1 ring-inset ring-amber-500/60' : selectedQueueIds.has(item.id) ? 'bg-red-900/20 ring-1 ring-red-600/40' : ''}`}
               >
                 {/* Row Checkbox - shift-click extends selection from
                     the previous click anchor across both queue rows
@@ -1867,6 +1912,191 @@ export default function ActivityPage() {
     );
   };
 
+  const renderCompactQueueList = () => (
+    <div>
+      <div className="mb-2 flex items-center gap-2 rounded-lg bg-gray-800 px-2 py-1 text-xs text-gray-300">
+        <label className="flex h-11 w-11 flex-none items-center justify-center">
+          <input
+            type="checkbox"
+            checked={isAllQueueSelected}
+            ref={el => { if (el) el.indeterminate = isSomeQueueSelected; }}
+            onChange={toggleSelectAllQueue}
+            aria-label={isAllQueueSelected ? 'Deselect all queue items' : 'Select all queue items'}
+            className="h-4 w-4 cursor-pointer rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-2 focus:ring-red-600"
+          />
+        </label>
+        <label htmlFor="compact-queue-sort" className="shrink-0 text-gray-400">Sort</label>
+        <select
+          id="compact-queue-sort"
+          value={queueSortField}
+          onChange={event => setQueueSortField(event.target.value as QueueSortField)}
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-800 px-2 text-gray-200 focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+        >
+          <option value="event">Event</option>
+          <option value="title">Episode Title</option>
+          <option value="quality">Quality</option>
+          <option value="status">Status</option>
+          <option value="progress">Progress</option>
+          <option value="size">Size</option>
+          <option value="client">Download Client</option>
+          <option value="added">Added</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => setQueueSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')}
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-lg bg-gray-700 text-white hover:bg-gray-600"
+          aria-label={`Sort ${queueSortDirection === 'asc' ? 'descending' : 'ascending'}`}
+        >
+          {queueSortDirection === 'asc' ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+        </button>
+      </div>
+      <div className={COMPACT_LIST_FRAME}>
+        {visiblePendingImports.map(pendingImport => {
+          const key = `p:${pendingImport.id}`;
+          const expanded = expandedCompactRow === key;
+          const title = pendingImport.suggestedEvent?.title || pendingImport.title;
+          return (
+            <article key={key} data-pending-id={pendingImport.id} data-view="list" className={`${COMPACT_LIST_ROW} ${selectedPendingIds.has(pendingImport.id) ? 'bg-red-900/20' : ''}`}>
+              <label className="flex h-11 w-11 items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={selectedPendingIds.has(pendingImport.id)}
+                  onClick={event => toggleSelectRow('p', pendingImport.id, event.shiftKey)}
+                  onChange={() => {}}
+                  aria-label={`Select ${title}`}
+                  className="h-4 w-4 cursor-pointer rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-2 focus:ring-red-600"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setExpandedCompactRow(expanded ? null : key)}
+                aria-expanded={expanded}
+                aria-controls={`compact-pending-${pendingImport.id}`}
+                aria-label={`${expanded ? 'Hide' : 'Show'} details for ${title}`}
+                className="flex min-h-11 min-w-0 items-center justify-between gap-2 text-left text-sm font-medium text-white"
+              >
+                <span className="min-w-0 truncate">{title}</span>
+                {expanded ? <ChevronUpIcon className="h-4 w-4 flex-none text-gray-400" /> : <ChevronDownIcon className="h-4 w-4 flex-none text-gray-400" />}
+              </button>
+              <div className="col-start-2 min-w-0 text-xs text-amber-400">
+                {pendingImport.isPack ? 'Pack import' : 'Manual import'}
+                {pendingImport.size > 0 && <span className="ml-2 text-gray-400">{formatBytes(pendingImport.size)}</span>}
+              </div>
+              {pendingImport.errorMessage && <p className="col-start-2 min-w-0 break-words text-xs text-amber-400">{pendingImport.errorMessage}</p>}
+              {expanded && (
+                <div id={`compact-pending-${pendingImport.id}`} className="col-start-2 mt-2 min-w-0 border-t border-gray-700 pt-2 text-xs text-gray-400">
+                  <p className="break-all">{pendingImport.title}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    {pendingImport.quality && <span>{pendingImport.quality}</span>}
+                    {pendingImport.protocol && <span>{pendingImport.protocol}</span>}
+                    {pendingImport.downloadClient?.name && <span>{pendingImport.downloadClient.name}</span>}
+                    {pendingImport.detected && <span>{formatDate(pendingImport.detected)}</span>}
+                    {pendingImport.isPack && pendingImport.matchedEventsCount != null && <span>{pendingImport.matchedEventsCount} matched</span>}
+                    {!pendingImport.isPack && pendingImport.suggestedEvent && <span>{pendingImport.suggestionConfidence}% match</span>}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {pendingImport.isPack ? (
+                      <>
+                        <button onClick={() => handleShowPackPreview(pendingImport)} className={`${BUTTON_SECONDARY} min-h-11`}><EyeIcon className="h-4 w-4" />Preview</button>
+                        <button onClick={() => handleImportPack(pendingImport)} disabled={importingPack === pendingImport.id} className={`${BUTTON_INFO} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Import Pack</button>
+                      </>
+                    ) : (
+                      <button onClick={() => setSelectedPendingImport(pendingImport)} className={`${BUTTON_WARNING} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Import</button>
+                    )}
+                    <button onClick={() => handleIgnorePendingImport(pendingImport.id)} className={`${BUTTON_SECONDARY} min-h-11`}><NoSymbolIcon className="h-4 w-4" />Ignore</button>
+                    <button onClick={() => handleRemovePendingImport(pendingImport)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Remove</button>
+                  </div>
+                </div>
+              )}
+            </article>
+          );
+        })}
+        {queueRows.map(item => {
+          const key = `q:${item.id}`;
+          const expanded = expandedCompactRow === key;
+          const title = item.event?.title || 'Unknown Event';
+          const isUnmonitored = item.statusMessages?.some(message => message.includes('no longer monitored'));
+          const canImportCard = isUnmonitored && (item.status === 5 || item.status === 3);
+          return (
+            <article
+              key={key}
+              data-queue-id={item.id}
+              data-view="list"
+              tabIndex={focusedQueueId === item.id ? -1 : undefined}
+              aria-label={focusedQueueId === item.id ? `Queue item: ${title}` : undefined}
+              className={`${COMPACT_LIST_ROW} ${focusedQueueId === item.id ? 'bg-amber-900/20 ring-1 ring-inset ring-amber-500/60' : selectedQueueIds.has(item.id) ? 'bg-red-900/20' : ''}`}
+            >
+              <label className="flex h-11 w-11 items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={selectedQueueIds.has(item.id)}
+                  onClick={event => toggleSelectRow('q', item.id, event.shiftKey)}
+                  onChange={() => {}}
+                  aria-label={`Select ${title}`}
+                  className="h-4 w-4 cursor-pointer rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-2 focus:ring-red-600"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setExpandedCompactRow(expanded ? null : key)}
+                aria-expanded={expanded}
+                aria-controls={`compact-queue-${item.id}`}
+                aria-label={`${expanded ? 'Hide' : 'Show'} details for ${title}`}
+                className="flex min-h-11 min-w-0 items-center justify-between gap-2 text-left text-sm font-medium text-white"
+              >
+                <span className="min-w-0 truncate">{title}{item.part && <span className="ml-1 text-blue-400">({item.part})</span>}</span>
+                {expanded ? <ChevronUpIcon className="h-4 w-4 flex-none text-gray-400" /> : <ChevronDownIcon className="h-4 w-4 flex-none text-gray-400" />}
+              </button>
+              <div className={`col-start-2 flex min-w-0 flex-wrap items-center gap-x-2 text-xs ${statusColors[item.status]}`}>
+                {getStatusIcon(item.status)}<span>{statusNames[item.status]}</span>
+                {item.event?.organization && <span className="text-gray-400">{item.event.organization}</span>}
+              </div>
+              {item.status === 1 && (
+                <div className="col-start-2 mt-1 flex min-w-0 items-center gap-2">
+                  <div role="progressbar" aria-label="Download progress" aria-valuenow={item.progress} aria-valuemin={0} aria-valuemax={100} className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-700">
+                    <div className="h-full rounded-full bg-red-600" style={{ width: `${item.progress}%` }} />
+                  </div>
+                  <span className="w-9 flex-none text-right text-xs text-gray-300">{item.progress.toFixed(0)}%</span>
+                </div>
+              )}
+              <div className="col-start-2 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-xs text-gray-400">
+                {item.size > 0 && <span>{formatBytes(item.downloaded)} / {formatBytes(item.size)}</span>}
+                {isMeaningfulTimeRemaining(item.timeRemaining) && <span>{item.timeRemaining} left</span>}
+              </div>
+              {item.statusMessages?.[0] && (
+                <p className="col-start-2 min-w-0 break-words text-xs text-amber-400">{item.statusMessages[0]}</p>
+              )}
+              {item.errorMessage && item.errorMessage !== item.statusMessages?.[0] && (
+                <p className="col-start-2 min-w-0 break-words text-xs text-red-400">{item.errorMessage}</p>
+              )}
+              {expanded && (
+                <div id={`compact-queue-${item.id}`} className="col-start-2 mt-2 min-w-0 border-t border-gray-700 pt-2 text-xs text-gray-400">
+                  <p className="break-all">{item.title}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    {item.quality && <span>{item.quality}</span>}
+                    {item.customFormatScore != null && <span>CF {item.customFormatScore >= 0 ? '+' : ''}{item.customFormatScore}</span>}
+                    {item.protocol && <span>{item.protocol}</span>}
+                    {item.indexer && <span>{item.indexer}</span>}
+                    {item.downloadClient?.name && <span>{item.downloadClient.name}</span>}
+                    <span>{formatDate(item.added)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.canRetryImport && <button onClick={() => handleRetryImport(item)} className={`${BUTTON_WARNING} min-h-11`}><ArrowPathIcon className="h-4 w-4" />Retry Import</button>}
+                    {item.canImportAnyway && <button onClick={() => openManualImportDialog(item)} className={`${BUTTON_WARNING} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Import Anyway</button>}
+                    {item.canChooseVideo && <button onClick={() => openVideoChoiceDialog(item)} className={`${BUTTON_WARNING} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Choose Video</button>}
+                    {canImportCard && <button onClick={() => handleForceImport(item)} className={`${BUTTON_SUCCESS} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Import</button>}
+                    {canImportCard && <button onClick={() => handleDeleteUnmonitored(item)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Delete</button>}
+                    {!canImportCard && <button onClick={() => handleOpenRemoveQueueDialog(item)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Remove</button>}
+                  </div>
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   // For multi-select, check if ANY item is completed and has post-import category option
   const removeDialogTotal = (removeQueueDialog?.items.length ?? 0) + (removeQueueDialog?.pendingItems.length ?? 0);
   const anyCompleted = removeQueueDialog?.items.some(item => item.status === 3 || item.status === 7);
@@ -1874,6 +2104,9 @@ export default function ActivityPage() {
     item => item.downloadClient?.postImportCategory != null && item.downloadClient?.postImportCategory !== ''
   );
   const showChangeCategory = anyCompleted && anyHasPostImportCategory;
+  const singleRemovalTitle = removeDialogTotal === 1
+    ? removeQueueDialog?.items[0]?.title || removeQueueDialog?.pendingItems[0]?.title
+    : null;
 
   return (
     <PageShell>
@@ -1913,6 +2146,11 @@ export default function ActivityPage() {
             ]}
             value={activeTab}
             onChange={(tab) => {
+              if (focusedQueueId) {
+                const params = new URLSearchParams(location.search);
+                params.delete('queue');
+                navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
+              }
               setActiveTab(tab);
               setPage(1);
             }}
@@ -1937,301 +2175,43 @@ export default function ActivityPage() {
               <>
               {/* Bulk Action Bar - Shows when items are selected */}
               {totalSelected > 0 && (
-                <div className="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
-                  <span className="text-gray-300 text-sm">
-                    {totalSelected} item{totalSelected !== 1 ? 's' : ''} selected
-                  </span>
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 border-b border-gray-700 bg-gray-800 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-gray-300">
+                      {totalSelected} item{totalSelected !== 1 ? 's' : ''} selected
+                    </span>
                     <button
                       onClick={clearRowSelections}
-                      className="px-3 py-1.5 text-gray-400 hover:text-white text-sm transition-colors"
+                      className="min-h-11 px-2 text-sm text-gray-400 transition-colors hover:text-white"
                     >
                       Clear Selection
                     </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:flex">
                     <button
                       onClick={handleBulkImport}
                       disabled={!canBulkImport}
                       title={canBulkImport ? 'Import selected items' : bulkImportDisabledReason}
-                      className={`px-4 py-1.5 text-white text-sm rounded transition-colors flex items-center gap-2 ${
+                      className={`flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-lg px-2 text-xs text-white transition-colors sm:px-4 sm:text-sm ${
                         canBulkImport
                           ? 'bg-green-600 hover:bg-green-700'
                           : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                       }`}
                     >
-                      <DocumentCheckIcon className="w-4 h-4" />
+                      <DocumentCheckIcon className="h-4 w-4 flex-none" />
                       Import Selected
                     </button>
                     <button
                       onClick={handleOpenBulkRemoveDialog}
-                      className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors flex items-center gap-2"
+                      className="flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-lg bg-red-600 px-2 text-xs text-white transition-colors hover:bg-red-700 sm:px-4 sm:text-sm"
                     >
-                      <TrashIcon className="w-4 h-4" />
+                      <TrashIcon className="h-4 w-4 flex-none" />
                       Remove Selected
                     </button>
                   </div>
                 </div>
               )}
-              {compactView ? (
-                renderQueueTable(true)
-              ) : (
-                /* Spacious: taller rows above sm, cards on a phone */
-                <div>
-                  {/* Phones get a Sort select instead of column headers. Nine
-                      column labels at ~40 px each overlap on a phone viewport,
-                      and the cards below already show every field. */}
-                  <div className="sm:hidden flex items-center gap-2 bg-gray-800 text-gray-300 text-xs px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={isAllQueueSelected}
-                      ref={(el) => {
-                        if (el) el.indeterminate = isSomeQueueSelected;
-                      }}
-                      onChange={toggleSelectAllQueue}
-                      className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer flex-shrink-0"
-                      title={isAllQueueSelected ? 'Deselect all' : 'Select all'}
-                    />
-                    <span className="text-gray-400 flex-shrink-0">Sort:</span>
-                    <select
-                      value={queueSortField}
-                      onChange={(e) => setQueueSortField(e.target.value as QueueSortField)}
-                      className="flex-1 min-w-0 px-2 py-1 bg-gray-800 border border-gray-700 text-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-red-500"
-                    >
-                      <option value="event">Event</option>
-                      <option value="title">Episode Title</option>
-                      <option value="quality">Quality</option>
-                      <option value="status">Status</option>
-                      <option value="progress">Progress</option>
-                      <option value="size">Size</option>
-                      <option value="client">Download Client</option>
-                      <option value="added">Added</option>
-                    </select>
-                    <button
-                      onClick={() => setQueueSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
-                      className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded flex-shrink-0"
-                      title={`Sort direction: ${queueSortDirection === 'asc' ? 'ascending' : 'descending'}`}
-                    >
-                      {queueSortDirection === 'asc'
-                        ? <ChevronUpIcon className="w-4 h-4" />
-                        : <ChevronDownIcon className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {/* Above sm the queue is the same table compact mode uses, so
-                      every value sits under its own column header. The card list
-                      below is the phone layout, where nine columns cannot fit. */}
-                  <div className="hidden sm:block">
-                    {renderQueueTable(false)}
-                  </div>
-                  <div className="space-y-3 mt-3 sm:hidden">
-                  {/* Pending Import Cards */}
-                  {visiblePendingImports.map((pendingImport) => (
-                    <div
-                      key={`pending-${pendingImport.id}`}
-                      className={`bg-gray-800 border rounded-lg p-4 hover:bg-gray-750 transition-colors ${selectedPendingIds.has(pendingImport.id) ? 'border-red-600' : pendingImport.isPack ? 'border-purple-700' : 'border-yellow-700'}`}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-y-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedPendingIds.has(pendingImport.id)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleSelectRow('p', pendingImport.id, e.shiftKey);
-                          }}
-                          onChange={() => { /* handled by onClick to read shiftKey */ }}
-                          className="mt-1.5 mr-3 w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-2 flex-wrap">
-                            <h3 className="text-lg font-semibold text-white">
-                              {pendingImport.suggestedEvent?.title || (
-                                pendingImport.isPack
-                                  ? <span className="text-gray-400 font-normal">{pendingImport.fileCount} files · {pendingImport.matchedEventsCount} matched</span>
-                                  : <span className="text-gray-500 italic font-normal">No match found</span>
-                              )}
-                            </h3>
-                            <span className={`px-2 py-1 text-xs rounded ${pendingImport.isPack ? 'bg-purple-600/30 text-purple-300' : 'bg-yellow-700/30 text-yellow-300'}`}>
-                              {pendingImport.isPack ? 'Pack' : 'Manual Import'}
-                            </span>
-                            {!pendingImport.isPack && pendingImport.suggestedEvent && (
-                              <span className="px-2 py-1 bg-gray-700 text-gray-400 text-xs rounded">{pendingImport.suggestionConfidence}% match</span>
-                            )}
-                            {pendingImport.isPack && pendingImport.suggestedEvent && (
-                              <span className="text-gray-500 text-xs">{pendingImport.fileCount} files · {pendingImport.matchedEventsCount} matched</span>
-                            )}
-                            {pendingImport.quality && <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{pendingImport.quality}</span>}
-                            {pendingImport.protocol && <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{pendingImport.protocol}</span>}
-                          </div>
-                          <p className="text-sm text-gray-400 truncate mb-1">{pendingImport.title}</p>
-                          {pendingImport.errorMessage && (
-                            <p className="text-sm text-yellow-400 mb-1">{pendingImport.errorMessage}</p>
-                          )}
-                          <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
-                            {pendingImport.size > 0 && <span>{formatBytes(pendingImport.size)}</span>}
-                            {pendingImport.downloadClient?.name && <><span className="text-gray-600">•</span><span>{pendingImport.downloadClient.name}</span></>}
-                            {pendingImport.detected && <><span className="text-gray-600">•</span><span>{formatDate(pendingImport.detected)}</span></>}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 w-full justify-end sm:w-auto sm:ml-4">
-                          {pendingImport.isPack ? (
-                            <>
-                              <button
-                                onClick={() => handleShowPackPreview(pendingImport)}
-                                className={BUTTON_SECONDARY}
-                              >
-                                <EyeIcon className="w-4 h-4" />
-                                Preview
-                              </button>
-                              <button
-                                onClick={() => handleImportPack(pendingImport)}
-                                disabled={importingPack === pendingImport.id}
-                                className={BUTTON_INFO}
-                              >
-                                {importingPack === pendingImport.id
-                                  ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                                  : <DocumentCheckIcon className="w-4 h-4" />}
-                                Import Pack
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              onClick={() => setSelectedPendingImport(pendingImport)}
-                              className={BUTTON_WARNING}
-                            >
-                              <DocumentCheckIcon className="w-4 h-4" />
-                              Import
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleIgnorePendingImport(pendingImport.id)}
-                            className={BUTTON_SECONDARY}
-                            title="Ignore this file: it stays on disk but Sportarr stops detecting or suggesting it (undo from the Blocklist tab)"
-                          >
-                            <NoSymbolIcon className="w-4 h-4" />
-                            Ignore
-                          </button>
-                          <button
-                            onClick={() => handleRemovePendingImport(pendingImport)}
-                            className={BUTTON_DESTRUCTIVE}
-                            title={isDiskFound(pendingImport)
-                              ? 'Remove this file from the list and from disk'
-                              : 'Remove download from client and delete files'}
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Queue Item Cards */}
-                  {queueRows.map((item) => {
-                    const isUnmonitored = item.statusMessages?.some(msg => msg.includes('no longer monitored'));
-                    const canImportCard = isUnmonitored && (item.status === 5 || item.status === 3);
-                    const canRetryImportCard = item.canRetryImport === true;
-                    const canImportAnywayCard = item.canImportAnyway === true;
-                    const canChooseVideoCard = item.canChooseVideo === true;
-                    return (
-                      <div
-                        key={item.id}
-                        className={`bg-gray-800 border rounded-lg p-4 hover:bg-gray-750 transition-colors ${selectedQueueIds.has(item.id) ? 'border-red-600' : 'border-gray-700'}`}
-                      >
-                        <div className="flex flex-col sm:flex-row flex-wrap items-start justify-between gap-y-3">
-                          <div className="flex items-start gap-3 flex-1 min-w-0 w-full sm:w-auto">
-                            <input
-                              type="checkbox"
-                              checked={selectedQueueIds.has(item.id)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSelectRow('q', item.id, e.shiftKey);
-                              }}
-                              onChange={() => { /* handled by onClick to read shiftKey */ }}
-                              className="mt-1.5 w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer flex-shrink-0"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-3 mb-2 flex-wrap">
-                                <h3 className="text-lg font-semibold text-white">
-                                  {item.event?.title || 'Unknown Event'}
-                                  {item.part && <span className="text-blue-400 text-sm ml-1">({item.part})</span>}
-                                </h3>
-                                {item.event?.organization && <span className="px-2 py-1 bg-red-900/30 text-red-400 text-xs rounded">{item.event.organization}</span>}
-                                <span className={`flex items-center gap-1 ${statusColors[item.status]}`}>
-                                  {getStatusIcon(item.status)}
-                                  <span className="text-xs">{statusNames[item.status]}</span>
-                                </span>
-                                {item.quality && <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality}</span>}
-                                {cfScoreBadge(item.customFormatScore)}
-                                {item.protocol && <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>}
-                              </div>
-                              <p className="text-sm text-gray-400 truncate mb-2">{item.title}</p>
-                              {item.status === 1 && (
-                                <div className="flex items-center gap-2 mb-2">
-                                  <div className="flex-1 bg-gray-700 rounded-full h-1.5">
-                                    <div className="bg-red-600 h-1.5 rounded-full transition-all" style={{ width: `${item.progress}%` }} />
-                                  </div>
-                                  <span className="text-xs text-gray-400 flex-shrink-0">{item.progress.toFixed(0)}%</span>
-                                </div>
-                              )}
-                              {item.statusMessages && item.statusMessages.length > 0 && (
-                                <p className="text-sm text-orange-400 mb-2">{item.statusMessages[0]}</p>
-                              )}
-                              {item.errorMessage && !item.statusMessages?.length && (
-                                <p className="text-sm text-red-400 mb-2">{item.errorMessage}</p>
-                              )}
-                              <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
-                                <span>{formatBytes(item.downloaded)} / {formatBytes(item.size)}</span>
-                                {isMeaningfulTimeRemaining(item.timeRemaining) && <><span className="text-gray-600">•</span><span>{item.timeRemaining} left</span></>}
-                                {item.indexer && <><span className="text-gray-600">•</span><span>{item.indexer}</span></>}
-                                <span className="text-gray-600">•</span>
-                                <span>{formatDate(item.added)}</span>
-                                {item.downloadClient?.name && <><span className="text-gray-600">•</span><span>{item.downloadClient.name}</span></>}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 w-full justify-end sm:w-auto sm:ml-4">
-                            {canRetryImportCard && (
-                              <button onClick={() => handleRetryImport(item)} className={BUTTON_WARNING}>
-                                <ArrowPathIcon className="w-4 h-4" />
-                                Retry Import
-                              </button>
-                            )}
-                            {canImportAnywayCard && (
-                              <button onClick={() => openManualImportDialog(item)} className={BUTTON_WARNING}>
-                                <DocumentCheckIcon className="w-4 h-4" />
-                                Import Anyway
-                              </button>
-                            )}
-                            {canChooseVideoCard && (
-                              <button onClick={() => openVideoChoiceDialog(item)} className={BUTTON_WARNING}>
-                                <DocumentCheckIcon className="w-4 h-4" />
-                                Choose Video
-                              </button>
-                            )}
-                            {canImportCard && (
-                              <>
-                                <button onClick={() => handleForceImport(item)} className={BUTTON_SUCCESS}>
-                                  <DocumentCheckIcon className="w-4 h-4" />
-                                  Import
-                                </button>
-                                <button onClick={() => handleDeleteUnmonitored(item)} className={BUTTON_DESTRUCTIVE}>
-                                  <TrashIcon className="w-4 h-4" />
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                            {!canImportCard && (
-                              <button onClick={() => handleOpenRemoveQueueDialog(item)} className={BUTTON_DESTRUCTIVE}>
-                                <TrashIcon className="w-4 h-4" />
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  </div>
-                </div>
-              )}
+              {!wideScreen ? renderCompactQueueList() : renderQueueTable(compactView)}
               {totalHidden > 0 && (
                 <div className="px-4 py-2 text-xs text-gray-400 text-center bg-gray-900/40 border-t border-gray-800">
                   Showing {totalVisible} of {totalAvailable} items. Increase the Page Size in View Options to show more.
@@ -2900,8 +2880,12 @@ export default function ActivityPage() {
             <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
               <div className="flex items-start justify-between mb-6">
                 <h3 className="text-xl font-bold text-white">
-                  {removeDialogTotal === 1 && removeQueueDialog.items.length === 1
-                    ? `Remove - ${removeQueueDialog.items[0].title.length > 60 ? removeQueueDialog.items[0].title.substring(0, 60) + '...' : removeQueueDialog.items[0].title}`
+                  {onlyClientPendings
+                    ? removeDialogTotal === 1 ? 'Remove pending download' : `Remove ${removeDialogTotal} pending downloads`
+                    : onlyDiskRows
+                      ? removeDialogTotal === 1 ? 'Remove file' : `Remove ${removeDialogTotal} files`
+                    : singleRemovalTitle
+                    ? `Remove - ${singleRemovalTitle.length > 60 ? singleRemovalTitle.substring(0, 60) + '...' : singleRemovalTitle}`
                     : `Remove ${removeDialogTotal} Selected ${onlyDiskRows ? (removeDialogTotal === 1 ? 'File' : 'Files') : 'Downloads'}`
                   }
                 </h3>
@@ -2913,9 +2897,13 @@ export default function ActivityPage() {
                 </button>
               </div>
 
-              {removeDialogTotal === 1 && removeQueueDialog.items.length === 1 ? (
+              {removeDialogTotal === 1 ? (
                 <p className="text-gray-300 mb-6">
-                  Are you sure you want to remove '{removeQueueDialog.items[0].title}' from the queue?
+                  {removeQueueDialog.items.length === 1
+                    ? `Are you sure you want to remove '${singleRemovalTitle}' from the queue?`
+                    : onlyDiskRows
+                      ? `Are you sure you want to remove '${singleRemovalTitle}' from the list?`
+                      : `Are you sure you want to remove '${singleRemovalTitle}' from the download client?`}
                 </p>
               ) : (
                 <div className="mb-6">
@@ -2943,21 +2931,27 @@ export default function ActivityPage() {
               {!onlyDiskRows && (
               <div className="mb-6">
                 <label className="block text-gray-300 font-medium mb-2">Removal Method</label>
-                <select
-                  value={removalMethod}
-                  onChange={(e) => setRemovalMethod(e.target.value as RemovalMethod)}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
-                >
-                  <option value="removeFromClient">Remove from Download Client</option>
-                  {showChangeCategory && <option value="changeCategory">Change Category</option>}
-                  <option value="ignoreDownload">Ignore Download</option>
-                </select>
+                {onlyClientPendings ? (
+                  <div className="w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-white">
+                    Remove from Download Client
+                  </div>
+                ) : (
+                  <select
+                    value={removalMethod}
+                    onChange={(e) => setRemovalMethod(e.target.value as RemovalMethod)}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+                  >
+                    <option value="removeFromClient">Remove from Download Client</option>
+                    {showChangeCategory && <option value="changeCategory">Change Category</option>}
+                    <option value="ignoreDownload">Ignore Download</option>
+                  </select>
+                )}
                 <p className="text-sm text-yellow-500 mt-2">
                   {removalMethod === 'removeFromClient' && 'Deletes the download and its files from the download client'}
                   {removalMethod === 'changeCategory' && 'Changes download to the \'Post-Import Category\' from Download Client'}
                   {removalMethod === 'ignoreDownload' && 'Stops Sportarr from processing this download further'}
                 </p>
-                {removeQueueDialog.pendingItems.some(p => !isDiskFound(p)) && (
+                {removeQueueDialog.pendingItems.some(p => !isDiskFound(p)) && !onlyClientPendings && (
                   <p className="text-sm text-gray-400 mt-2">
                     {pendingImportsSupported
                       ? 'Pending imports are always blocklisted when removed this way, or the scanner finds them again on its next pass.'
@@ -2993,12 +2987,14 @@ export default function ActivityPage() {
                   onChange={(e) => setBlocklistAction(e.target.value as BlocklistAction)}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
                 >
-                  <option value="none">Do not Blocklist</option>
+                  <option value="none">{onlyClientPendings ? 'Blocklist without searching' : 'Do not Blocklist'}</option>
                   <option value="blocklistAndSearch">Blocklist and Search for Replacement{removeDialogTotal > 1 ? 's' : ''}</option>
-                  <option value="blocklistOnly">Blocklist Only</option>
+                  {!onlyClientPendings && <option value="blocklistOnly">Blocklist Only</option>}
                 </select>
                 <p className="text-sm text-gray-400 mt-2">
-                  {blocklistAction === 'none' && `The release${removeDialogTotal > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`}
+                  {blocklistAction === 'none' && (onlyClientPendings
+                    ? 'Pending downloads are blocklisted so the scanner does not add them again.'
+                    : `The release${removeDialogTotal > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`)}
                   {blocklistAction === 'blocklistAndSearch' && `Blocklist release${removeDialogTotal > 1 ? 's' : ''} and search for replacement${removeDialogTotal > 1 ? 's' : ''}`}
                   {blocklistAction === 'blocklistOnly' && `Blocklist release${removeDialogTotal > 1 ? 's' : ''} without searching for replacement${removeDialogTotal > 1 ? 's' : ''}`}
                 </p>

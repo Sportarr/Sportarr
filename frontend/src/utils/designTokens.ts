@@ -47,6 +47,10 @@ export const CARD_GAP = 'gap-4';
 /** Standard responsive card grid (1 col → 2 cols at lg breakpoint). */
 export const CARD_GRID = `grid grid-cols-1 lg:grid-cols-2 ${CARD_GAP} ${CARD_PADDING}`;
 
+export const COMPACT_LIST_ROW = 'grid grid-cols-[44px_minmax(0,1fr)] gap-x-2 px-2 py-1.5';
+
+export const COMPACT_LIST_FRAME = 'divide-y divide-gray-800 rounded-lg border border-gray-700 bg-black/30';
+
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
 /** Standard page-level padding used by Activity, Wanted, Calendar, Leagues, etc. */

@@ -23,6 +23,15 @@ export function useIsWideScreen(breakpoint = COMPACT_VIEW_BREAKPOINT): boolean {
   return wideScreen;
 }
 
+export function useIsDesktopLayout(): boolean {
+  const wideScreen = useIsWideScreen();
+  if (typeof window === 'undefined') return wideScreen;
+  // iPadOS can identify as a Mac when it requests desktop sites.
+  const isTablet = /iPad|Android/i.test(window.navigator.userAgent)
+    || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+  return wideScreen && !isTablet;
+}
+
 export function useCompactView(): boolean {
   const { eventViewMode, loading } = useUISettings();
   const wideScreen = useIsWideScreen();

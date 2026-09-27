@@ -721,6 +721,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("IsPack")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("LastProgressAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("LastUpdate")
                         .HasColumnType("TEXT");
 

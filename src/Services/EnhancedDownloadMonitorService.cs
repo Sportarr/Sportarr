@@ -488,6 +488,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
         var previousStatus = download.Status;
         var previousProgress = download.Progress;
 
+        if (status.Downloaded > download.Downloaded || status.Progress > download.Progress)
+            download.LastProgressAt = DateTime.UtcNow;
+
         download.Progress = status.Progress;
         download.Downloaded = status.Downloaded;
         download.Size = status.Size;
@@ -749,6 +752,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
         try
         {
             download.Status = DownloadStatus.Importing;
+            download.LastUpdate = DateTime.UtcNow;
 
             // Import the download
             var importResult = download.IsPack

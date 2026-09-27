@@ -1768,6 +1768,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                         "queued" or "waiting" => DownloadStatus.Queued,
                         _ => DownloadStatus.Queued
                     };
+                    if (status.Downloaded > queueItem.Downloaded || status.Progress > queueItem.Progress)
+                        queueItem.LastProgressAt = DateTime.UtcNow;
                     queueItem.Progress = status.Progress;
                     queueItem.Downloaded = status.Downloaded;
                     queueItem.Size = status.Size > 0 ? status.Size : bestRelease.Size;

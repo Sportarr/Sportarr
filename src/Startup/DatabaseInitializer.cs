@@ -2705,6 +2705,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "Events", "TsdbId", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "OutputPath", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "FailedAt", "TEXT NULL");
+        EnsureColumn(db, "DownloadQueue", "LastProgressAt", "TEXT NULL");
 
         RelaxLegacyRootFolderColumns(db);
     }

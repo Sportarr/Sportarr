@@ -230,6 +230,7 @@ public class DownloadQueueItem
     public int? RetryCount { get; set; } = 0;
     public int? ImportRetryCount { get; set; } = 0; // Separate counter for import retries (path accessibility)
     public DateTime? LastUpdate { get; set; }
+    public DateTime? LastProgressAt { get; set; }
     public string? TorrentInfoHash { get; set; } // For blocklist tracking
     public string? Indexer { get; set; } // Which indexer this came from
     public int? IndexerId { get; set; } // Indexer ID for seed config lookup

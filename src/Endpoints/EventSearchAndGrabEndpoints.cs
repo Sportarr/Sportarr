@@ -524,6 +524,8 @@ app.MapPost("/api/release/grab", async (
             foreach (var item in queueItems)
             {
                 item.Status = newStatus;
+                if (status.Downloaded > item.Downloaded || status.Progress > item.Progress)
+                    item.LastProgressAt = DateTime.UtcNow;
                 item.Progress = status.Progress;
                 item.Downloaded = status.Downloaded;
                 item.Size = status.Size > 0 ? status.Size : release.Size;

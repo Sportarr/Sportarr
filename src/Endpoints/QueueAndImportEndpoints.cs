@@ -76,6 +76,8 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
         dq.ErrorMessage,
         dq.StatusMessages,
         dq.Added,
+        dq.LastUpdate,
+        dq.LastProgressAt,
         dq.CompletedAt,
         dq.ImportedAt,
         dq.RetryCount,
@@ -170,6 +172,8 @@ app.MapGet("/api/queue/{id:int}", async (int id, SportarrDbContext db) =>
         dq.ErrorMessage,
         dq.StatusMessages,
         dq.Added,
+        dq.LastUpdate,
+        dq.LastProgressAt,
         dq.CompletedAt,
         dq.ImportedAt,
         dq.RetryCount,
@@ -263,6 +267,7 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, F
     try
     {
         item.Status = DownloadStatus.Importing;
+        item.LastUpdate = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
         // The import service owns the terminal state. Stamping it again here
@@ -320,6 +325,7 @@ app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Fi
         if (!heldPackMember)
         {
             item.Status = DownloadStatus.Importing;
+            item.LastUpdate = DateTime.UtcNow;
             item.ErrorMessage = null;
             item.RetryCount = (item.RetryCount ?? 0) + 1;
             await db.SaveChangesAsync();
