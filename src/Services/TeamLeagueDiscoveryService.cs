@@ -102,7 +102,7 @@ public class TeamLeagueDiscoveryService
                 var league = await _sportsDbClient.LookupLeagueAsync(tl.Id);
                 discoveredLeagues.Add(new DiscoveredLeague
                 {
-                    ExternalId = tl.Id,
+                    ExternalId = league?.ExternalId ?? tl.Id,
                     Name = league?.Name ?? tl.Name,
                     Sport = league?.Sport ?? tl.Sport,
                     Country = league?.Country,

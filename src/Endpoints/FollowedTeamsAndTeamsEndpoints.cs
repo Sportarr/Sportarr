@@ -231,7 +231,18 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
             try
             {
                 // Check if league already exists
-                var existingLeague = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == externalId);
+                var leagueExternalId = externalId!;
+                League? leagueDetails = null;
+                var existingLeague = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == leagueExternalId);
+                if (existingLeague == null)
+                {
+                    leagueDetails = await sportsDbClient.LookupLeagueAsync(leagueExternalId);
+                    if (!string.IsNullOrEmpty(leagueDetails?.ExternalId) && leagueDetails.ExternalId != leagueExternalId)
+                    {
+                        leagueExternalId = leagueDetails.ExternalId;
+                        existingLeague = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == leagueExternalId);
+                    }
+                }
                 if (existingLeague != null)
                 {
                     // League exists - check if team is already monitored
@@ -294,7 +305,7 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
                 }
 
                 // Fetch league details from API
-                var leagueDetails = await sportsDbClient.LookupLeagueAsync(externalId!);
+                leagueDetails ??= await sportsDbClient.LookupLeagueAsync(leagueExternalId);
                 if (leagueDetails == null)
                 {
                     erroredLeagues.Add(new { externalId, reason = "League not found in Sportarr API" });
@@ -307,7 +318,7 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
 
                 var newLeague = new League
                 {
-                    ExternalId = externalId,
+                    ExternalId = leagueExternalId,
                     Name = leagueDetails.Name,
                     Sport = leagueDetails.Sport,
                     Country = leagueDetails.Country,
@@ -360,6 +371,22 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
                 await leagueTransaction.CommitAsync();
 
                 logger.LogInformation("[FOLLOWED-TEAMS] Added league {LeagueName} with team {TeamName} monitored", newLeague.Name, followedTeam.Name);
+
+                var newLeagueId = newLeague.Id;
+                _ = Task.Run(async () =>
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    var syncService = scope.ServiceProvider.GetRequiredService<LeagueEventSyncService>();
+                    try
+                    {
+                        await syncService.SyncLeagueEventsAsync(newLeagueId);
+                    }
+                    catch (Exception ex)
+                    {
+                        var scopedLogger = scope.ServiceProvider.GetRequiredService<ILogger<LeagueEventSyncService>>();
+                        scopedLogger.LogError(ex, "[FOLLOWED-TEAMS] Background sync failed for league {LeagueId}", newLeagueId);
+                    }
+                });
             }
             catch (Exception ex)
             {

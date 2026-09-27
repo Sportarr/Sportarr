@@ -2004,6 +2004,8 @@ public static class DatabaseInitializer
         }
         } // end: if (!db.Database.IsNpgsql()) - SQLite schema drift repairs/backfills
 
+        MergeFollowedTeamLegacyLeagues(db);
+
         // Recover imports on both database providers. A file from an older
         // download does not prove that this import finished.
         try
@@ -2475,6 +2477,88 @@ public static class DatabaseInitializer
         catch (Exception ex)
         {
             Console.WriteLine($"[Sportarr] Warning: orphan-league merge failed: {ex.Message}");
+        }
+    }
+
+    internal static void MergeFollowedTeamLegacyLeagues(SportarrDbContext db)
+    {
+        try
+        {
+            var leagues = db.Leagues
+                .AsNoTracking()
+                .Select(l => new { l.Id, l.ExternalId, l.Name, l.Sport, l.Monitored, l.MonitorType })
+                .ToList();
+            var linkedLeagueIds = db.LeagueTeams
+                .Select(lt => lt.LeagueId)
+                .Distinct()
+                .ToHashSet();
+
+            var duplicates = leagues.Where(l =>
+                !string.IsNullOrEmpty(l.ExternalId) &&
+                l.ExternalId.All(char.IsDigit) &&
+                linkedLeagueIds.Contains(l.Id));
+
+            foreach (var duplicate in duplicates)
+            {
+                var canonicals = leagues
+                    .Where(l => l.Id != duplicate.Id &&
+                                l.ExternalId?.StartsWith("lg-", StringComparison.Ordinal) == true &&
+                                l.Name == duplicate.Name &&
+                                LeagueSportRules.AreEquivalentSports(l.Sport, duplicate.Sport))
+                    .ToList();
+                if (canonicals.Count != 1)
+                {
+                    continue;
+                }
+
+                var canonical = canonicals[0];
+                int? canonicalId = canonical.Id;
+                var canonicalTeamIds = db.LeagueTeams
+                    .Where(lt => lt.LeagueId == canonical.Id)
+                    .Select(lt => lt.TeamId)
+                    .ToList();
+
+                using var transaction = db.Database.BeginTransaction();
+                var movedEvents = db.Events
+                    .Where(e => e.LeagueId == duplicate.Id)
+                    .ExecuteUpdate(s => s.SetProperty(e => e.LeagueId, canonicalId));
+                db.StreamEvents
+                    .Where(e => e.LeagueId == duplicate.Id)
+                    .ExecuteUpdate(s => s.SetProperty(e => e.LeagueId, canonicalId));
+                db.LeagueTeams
+                    .Where(lt => lt.LeagueId == duplicate.Id && canonicalTeamIds.Contains(lt.TeamId))
+                    .ExecuteDelete();
+                var movedTeams = db.LeagueTeams
+                    .Where(lt => lt.LeagueId == duplicate.Id)
+                    .ExecuteUpdate(s => s.SetProperty(lt => lt.LeagueId, canonical.Id));
+                db.Teams
+                    .Where(t => t.LeagueId == duplicate.Id)
+                    .ExecuteUpdate(s => s.SetProperty(t => t.LeagueId, canonicalId));
+                if (duplicate.Monitored && !canonical.Monitored)
+                {
+                    db.Leagues
+                        .Where(l => l.Id == canonical.Id)
+                        .ExecuteUpdate(s => s.SetProperty(l => l.Monitored, true));
+                }
+                if (duplicate.MonitorType != MonitorType.None && canonical.MonitorType == MonitorType.None)
+                {
+                    db.Leagues
+                        .Where(l => l.Id == canonical.Id)
+                        .ExecuteUpdate(s => s.SetProperty(l => l.MonitorType, duplicate.MonitorType));
+                }
+                db.Leagues
+                    .Where(l => l.Id == duplicate.Id)
+                    .ExecuteDelete();
+                transaction.Commit();
+
+                Console.WriteLine(
+                    $"[Sportarr] Merged followed-team league {duplicate.Id} '{duplicate.Name}' ({duplicate.Sport}, ExternalId='{duplicate.ExternalId}') " +
+                    $"into {canonical.Id} ({canonical.ExternalId}): {movedEvents} events and {movedTeams} team link(s) moved, duplicate deleted");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: followed-team league merge failed: {ex.Message}");
         }
     }
 
