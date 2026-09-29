@@ -201,6 +201,7 @@ public class ImportUpgradeBehaviourTests : IDisposable
     private readonly string _tempDir;
     private readonly SportarrDbContext _db;
     private readonly LibraryImportService _service;
+    private readonly Mock<IMetadataWriterService> _metadataWriter = new();
 
     public ImportUpgradeBehaviourTests()
     {
@@ -224,7 +225,7 @@ public class ImportUpgradeBehaviourTests : IDisposable
             new DiskSpaceService(Mock.Of<ILogger<DiskSpaceService>>()),
             new CustomFormatService(fileParser),
             new NotificationService(Mock.Of<IServiceProvider>(), Mock.Of<ILogger<NotificationService>>(), new HttpClient(), Mock.Of<IHttpClientFactory>()),
-            Mock.Of<IMetadataWriterService>());
+            _metadataWriter.Object);
     }
 
     public void Dispose()
@@ -335,6 +336,31 @@ public class ImportUpgradeBehaviourTests : IDisposable
         File.Exists(copy).Should().BeTrue();
         var files = _db.EventFiles.Where(f => f.EventId == evt.Id).ToList();
         files.Should().ContainSingle().Which.FilePath.Should().Be(copy);
+    }
+
+    [Fact]
+    public async Task AReplacementFromOutsideTheLeagueFolderCleansOldSubtitleSidecars()
+    {
+        var (evt, held) = SeedEventWithFile();
+        var root = new RootFolder { Path = _tempDir };
+        _db.RootFolders.Add(root);
+        await _db.SaveChangesAsync();
+        evt.League!.RootFolderId = root.Id;
+        await _db.SaveChangesAsync();
+        var oldPath = held.FilePath;
+        var incoming = Path.Combine(_tempDir, "incoming");
+        Directory.CreateDirectory(incoming);
+        var copy = Path.Combine(incoming, "NFL - S2025E06 - Better Copy - WEBDL-2160p - sportarr-ev-312923.mkv");
+        File.WriteAllBytes(copy, new byte[64 * 1024]);
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id, ImportMode = "copy" },
+        });
+
+        result.Failed.Should().BeEmpty();
+        result.Imported.Should().ContainSingle();
+        _metadataWriter.Verify(writer => writer.DeleteSubtitleSidecarsAsync(oldPath, It.IsAny<string?>()), Times.Once);
     }
 }
 

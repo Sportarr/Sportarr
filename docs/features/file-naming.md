@@ -16,6 +16,10 @@ Sports League - s2024e12 - pt3 - Event Title - sportarr-ev-2338110.mkv  (Main Ca
 
 Customize the naming format in **Settings > Media Management**.
 
+When Sportarr renames or moves a video, it also moves subtitle files beside it that share its old filename. For example, `Event.en.srt` follows `Event.mkv` to the new name and folder. Subtitles with a different base filename are left alone.
+
+If the new subtitle name is already taken, Sportarr keeps the older file in a `.sportarr-conflicts` folder beside the video. Check that folder before removing any files from it.
+
 ![Naming Settings](../images/naming-settings.png)
 
 ## Grouping events within seasons

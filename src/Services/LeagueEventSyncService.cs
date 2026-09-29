@@ -1784,7 +1784,7 @@ public class LeagueEventSyncService
                 }
 
                 existingEvent.Season = apiEvent.Season;
-                existingEvent.SeasonNumber = ParseSeasonNumber(apiEvent.Season);
+                existingEvent.SeasonNumber = SeasonNumberParser.Parse(apiEvent.Season);
                 needsUpdate = true;
             }
 
@@ -1863,7 +1863,7 @@ public class LeagueEventSyncService
             // Backfill Plex episode numbers for existing events (migration support)
             if (!existingEvent.SeasonNumber.HasValue && !string.IsNullOrEmpty(apiEvent.Season))
             {
-                existingEvent.SeasonNumber = ParseSeasonNumber(apiEvent.Season);
+                existingEvent.SeasonNumber = SeasonNumberParser.Parse(apiEvent.Season);
                 needsUpdate = true;
             }
 
@@ -2016,7 +2016,7 @@ public class LeagueEventSyncService
             AwayTeamName = apiEvent.AwayTeamName,
 
             Season = apiEvent.Season,
-            SeasonNumber = ParseSeasonNumber(apiEvent.Season),
+            SeasonNumber = SeasonNumberParser.Parse(apiEvent.Season),
             // Use API episode number (matches Plex metadata) or fall back to local calculation.
             // Postponed/cancelled events resolve to null (no episode index), matching the hub.
             EpisodeNumber = GetEpisodeNumberFromApiOrCalculate(
@@ -2315,27 +2315,6 @@ public class LeagueEventSyncService
             (title ?? string.Empty).ToLowerInvariant()
                 .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return $"{day}|{normalized}";
-    }
-
-    /// <summary>
-    /// Parse season string to extract year as integer for Plex compatibility
-    /// Examples: "2024" -> 2024, "2023-2024" -> 2023, "2023/24" -> 2023
-    /// </summary>
-    private static int? ParseSeasonNumber(string? season)
-    {
-        if (string.IsNullOrEmpty(season))
-            return null;
-
-        // Try to parse as direct integer first (most common case: "2024")
-        if (int.TryParse(season, out var year))
-            return year;
-
-        // Handle multi-year formats like "2023-2024" or "2023/24"
-        var parts = season.Split(new[] { '-', '/', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length > 0 && int.TryParse(parts[0], out var startYear))
-            return startYear;
-
-        return null;
     }
 
     /// <summary>

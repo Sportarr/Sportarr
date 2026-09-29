@@ -25,15 +25,17 @@ public interface IMetadataWriterService
     Task WriteLeagueMetadataAsync(League league);
 
     /// <summary>
-    /// Removes the NFO/thumb sidecars for a deleted file so Kodi never keeps
-    /// scraping a ghost entry.
+    /// Removes metadata and subtitle sidecars for a deleted file.
     /// </summary>
-    Task DeleteEventMetadataAsync(EventFile file);
+    Task DeleteEventMetadataAsync(EventFile file, string? recycledVideoPath = null);
 
     /// <summary>
-    /// Moves the NFO/thumb sidecars alongside a renamed video file. Kodi
-    /// matches an NFO to its video by basename, so the sidecars must move
-    /// with the file immediately rather than waiting for the next sync.
+    /// Removes or recycles subtitles without touching the replacement video's metadata.
+    /// </summary>
+    Task DeleteSubtitleSidecarsAsync(string videoPath, string? recycledVideoPath = null);
+
+    /// <summary>
+    /// Moves metadata and subtitle sidecars with a renamed video file.
     /// </summary>
     Task RenameEventMetadataAsync(string oldVideoPath, string newVideoPath);
 }

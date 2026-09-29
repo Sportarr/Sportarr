@@ -154,6 +154,41 @@ public class EventRetentionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RunRetentionPassAsync_RecyclesSubtitleWhenVideoIsAlreadyMissing()
+    {
+        var videoPath = Path.Combine(_tempDataPath, "missing-game.mkv");
+        var subtitlePath = Path.Combine(_tempDataPath, "missing-game.en.srt");
+        var recycleBin = Path.Combine(_tempDataPath, "recycle");
+        Directory.CreateDirectory(recycleBin);
+        await File.WriteAllTextAsync(subtitlePath, "subtitle");
+        using (var scope = _provider.CreateScope())
+        {
+            var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+            await configService.UpdateConfigAsync(config => config.RecycleBin = recycleBin);
+        }
+        await SeedAsync(db =>
+        {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 30));
+            db.Events.Add(new Event
+            {
+                Id = 1, LeagueId = 1, Title = "Missing Game", Sport = "Basketball",
+                Monitored = true, HasFile = true, EventDate = DateTime.UtcNow.AddDays(-100)
+            });
+            db.EventFiles.Add(new EventFile
+            {
+                Id = 1, EventId = 1, FilePath = videoPath, Quality = "1080p"
+            });
+        });
+
+        (await CreateService().RunRetentionPassAsync(CancellationToken.None)).Should().Be(1);
+
+        File.Exists(subtitlePath).Should().BeFalse();
+        var recycledSubtitle = Directory.GetFiles(recycleBin, "*_missing-game.en.srt")
+            .Should().ContainSingle().Subject;
+        File.ReadAllText(recycledSubtitle).Should().Be("subtitle");
+    }
+
+    [Fact]
     public async Task RunRetentionPassAsync_ReopensMissingPartWhenAnotherFileCannotBeDeleted()
     {
         var mainCardPath = Path.Combine(_tempDataPath, "main-card.mkv");

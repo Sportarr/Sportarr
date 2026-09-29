@@ -27,6 +27,10 @@ public class MetadataWriterService : IMetadataWriterService
     private readonly ILogger<MetadataWriterService> _logger;
 
     private const string SourceMarkerSuffix = ".sportarr-source";
+    private static readonly HashSet<string> SubtitleExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt", ".ttml", ".smi", ".sami", ".sup"
+    };
 
     public MetadataWriterService(SportarrDbContext db, IHttpClientFactory httpClientFactory, ILogger<MetadataWriterService> logger)
     {
@@ -127,7 +131,7 @@ public class MetadataWriterService : IMetadataWriterService
         }
     }
 
-    public Task DeleteEventMetadataAsync(EventFile file)
+    public Task DeleteEventMetadataAsync(EventFile file, string? recycledVideoPath = null)
     {
         try
         {
@@ -142,6 +146,15 @@ public class MetadataWriterService : IMetadataWriterService
         {
             _logger.LogWarning(ex, "[Metadata] Failed to delete metadata sidecars for '{Path}'", file.FilePath);
         }
+
+        DeleteSubtitleSidecars(file.FilePath, recycledVideoPath);
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteSubtitleSidecarsAsync(string videoPath, string? recycledVideoPath = null)
+    {
+        DeleteSubtitleSidecars(videoPath, recycledVideoPath);
 
         return Task.CompletedTask;
     }
@@ -162,7 +175,61 @@ public class MetadataWriterService : IMetadataWriterService
             _logger.LogWarning(ex, "[Metadata] Failed to move metadata sidecars: {Old} -> {New}", oldVideoPath, newVideoPath);
         }
 
+        try
+        {
+            foreach (var subtitlePath in GetSubtitleSidecars(oldVideoPath))
+            {
+                try
+                {
+                    var suffix = Path.GetFileName(subtitlePath)[Path.GetFileNameWithoutExtension(oldVideoPath).Length..];
+                    var destination = Path.Combine(Path.GetDirectoryName(newVideoPath)!,
+                        Path.GetFileNameWithoutExtension(newVideoPath) + suffix);
+                    MoveSubtitleSidecar(subtitlePath, destination);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Metadata] Failed to move subtitle {Path}", subtitlePath);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Metadata] Could not enumerate subtitles for {Path}", oldVideoPath);
+        }
+
         return Task.CompletedTask;
+    }
+
+    private void DeleteSubtitleSidecars(string videoPath, string? recycledVideoPath)
+    {
+        try
+        {
+            foreach (var subtitlePath in GetSubtitleSidecars(videoPath))
+            {
+                try
+                {
+                    if (recycledVideoPath is null)
+                    {
+                        TryDelete(subtitlePath);
+                    }
+                    else
+                    {
+                        var suffix = Path.GetFileName(subtitlePath)[Path.GetFileNameWithoutExtension(videoPath).Length..];
+                        var destination = Path.Combine(Path.GetDirectoryName(recycledVideoPath)!,
+                            Path.GetFileNameWithoutExtension(recycledVideoPath) + suffix);
+                        MoveSubtitleSidecar(subtitlePath, destination);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Metadata] Failed to remove subtitle {Path}", subtitlePath);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Metadata] Could not enumerate subtitles for {Path}", videoPath);
+        }
     }
 
     private async Task<List<MetadataProvider>> GetApplicableProvidersAsync(League? league)
@@ -272,6 +339,72 @@ public class MetadataWriterService : IMetadataWriterService
         if (File.Exists(path)) File.Delete(path);
     }
 
+    private static IEnumerable<string> GetSubtitleSidecars(string videoPath)
+    {
+        var directory = Path.GetDirectoryName(videoPath);
+        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            return [];
+
+        var stem = Path.GetFileNameWithoutExtension(videoPath);
+        var prefix = stem + ".";
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var siblingStems = Directory.EnumerateFiles(directory)
+            .Where(path => SupportedExtensions.Video.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(name => name != null && name.StartsWith(prefix, comparison))
+            .ToList();
+        return Directory.EnumerateFiles(directory)
+            .Where(path => Path.GetFileName(path).StartsWith(prefix, comparison)
+                && SubtitleExtensions.Contains(Path.GetExtension(path))
+                && !siblingStems.Any(name => Path.GetFileName(path).StartsWith(name + ".", comparison)))
+            .ToList();
+    }
+
+    private void MoveSubtitleSidecar(string source, string destination)
+    {
+        if (string.Equals(source, destination, StringComparison.Ordinal)) return;
+
+        var destinationDir = Path.GetDirectoryName(destination)!;
+        Directory.CreateDirectory(destinationDir);
+        if (OperatingSystem.IsWindows()
+            && string.Equals(Path.GetFullPath(source), Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase))
+        {
+            var temporary = RecyclePaths.FindFree(destinationDir, ".sportarr-case-rename-" + Path.GetFileName(source));
+            File.Move(source, temporary);
+            try
+            {
+                File.Move(temporary, destination);
+            }
+            catch
+            {
+                File.Move(temporary, source);
+                throw;
+            }
+            return;
+        }
+
+        if (File.Exists(destination))
+        {
+            var conflictDir = Path.Combine(destinationDir, ".sportarr-conflicts");
+            Directory.CreateDirectory(conflictDir);
+            var backup = RecyclePaths.FindFree(conflictDir, Path.GetFileName(destination));
+            File.Move(destination, backup);
+            _logger.LogWarning("[Metadata] Preserved conflicting subtitle at {Backup}", backup);
+        }
+
+        try
+        {
+            File.Move(source, destination);
+        }
+        catch (IOException) when (!File.Exists(destination) && File.Exists(source))
+        {
+            File.Copy(source, destination);
+            File.Delete(source);
+        }
+    }
+
     private void MoveIfExists(string oldPath, string newPath)
     {
         if (!File.Exists(oldPath)) return;
@@ -282,6 +415,14 @@ public class MetadataWriterService : IMetadataWriterService
             Directory.CreateDirectory(newDir);
         }
 
-        File.Move(oldPath, newPath, overwrite: true);
+        try
+        {
+            File.Move(oldPath, newPath, overwrite: true);
+        }
+        catch (IOException) when (File.Exists(oldPath))
+        {
+            File.Copy(oldPath, newPath, overwrite: true);
+            File.Delete(oldPath);
+        }
     }
 }

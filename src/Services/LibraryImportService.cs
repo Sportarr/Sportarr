@@ -1897,11 +1897,13 @@ public class LibraryImportService
             {
                 var config = await _configService.GetConfigAsync();
                 var recycleBin = config.RecycleBin;
+                string? recycledVideoPath = null;
                 if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
                 {
                     var recyclePath = Helpers.RecyclePaths.FindFree(
                         recycleBin, Path.GetFileName(staged.OriginalPath));
                     File.Move(staged.StagedPath, recyclePath);
+                    recycledVideoPath = recyclePath;
                     _logger.LogInformation("[Library Import] Moved replaced file to recycle bin: {Path} -> {RecyclePath}",
                         staged.OriginalPath, recyclePath);
                 }
@@ -1910,6 +1912,7 @@ public class LibraryImportService
                     File.Delete(staged.StagedPath);
                     _logger.LogInformation("[Library Import] Deleted replaced file: {Path}", staged.OriginalPath);
                 }
+                await _metadataWriterService.DeleteSubtitleSidecarsAsync(staged.OriginalPath, recycledVideoPath);
             }
             catch (Exception ex)
             {

@@ -109,6 +109,7 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
         HomeTeamId = request.HomeTeamId, // Team sports and combat sports
         AwayTeamId = request.AwayTeamId, // Team sports and combat sports
         Season = request.Season,
+        SeasonNumber = request.SeasonNumber,
         Round = request.Round,
         EventDate = request.EventDate,
         Venue = request.Venue,
@@ -411,20 +412,21 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
 
     // Delete from disk if it exists
     bool deletedFromDisk = false;
+    string? recycledVideoPath = null;
+    var deleteConfig = await configService.GetConfigAsync();
+    var recycleBinPath = deleteConfig.RecycleBin;
+    var useRecycleBin = !string.IsNullOrEmpty(recycleBinPath) && Directory.Exists(recycleBinPath);
     if (File.Exists(file.FilePath))
     {
         try
         {
-            // Check if recycle bin is configured
-            var config = await configService.GetConfigAsync();
-            var recycleBinPath = config.RecycleBin;
-
-            if (!string.IsNullOrEmpty(recycleBinPath) && Directory.Exists(recycleBinPath))
+            if (useRecycleBin)
             {
                 // Move to recycle bin instead of permanent deletion
                 var fileName = Path.GetFileName(file.FilePath);
                 var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath, fileName);
                 File.Move(file.FilePath, recyclePath);
+                recycledVideoPath = recyclePath;
                 logger.LogInformation("[FILES] Moved file to recycle bin: {RecyclePath}", recyclePath);
             }
             else
@@ -446,6 +448,8 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     else
     {
         logger.LogWarning("[FILES] File not found on disk (already deleted?): {FilePath}", file.FilePath);
+        if (useRecycleBin)
+            recycledVideoPath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, Path.GetFileName(file.FilePath));
     }
 
     var ownedGrabs = new List<GrabHistory>();
@@ -477,7 +481,7 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
 
     // Update event's HasFile status
     var remainingFiles = evt.Files.Where(f => f.Id != fileId && f.Exists).ToList();
-    var fileConfig = await configService.GetConfigAsync();
+    var fileConfig = deleteConfig;
     evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
         evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
         evt.League?.MonitoredParts, remainingFiles.Select(f => f.PartNumber).ToArray(),
@@ -500,21 +504,18 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
 
     await db.SaveChangesAsync();
 
-    // Tell media servers (Plex/Jellyfin/Emby) and webhooks the file is gone so
-    // they can drop the now-missing item — the same partial scan the import fires,
-    // just pointed at the deleted file's folder. Plex notices the file is missing
-    // on the rescan and removes it (when "empty trash after scan" is enabled).
-    await NotifyFileDeletedAsync(notificationService, logger, evt, file.FilePath,
-        new List<NotificationFileData> { new() { Path = file.FilePath, Quality = file.Quality, Size = file.Size } });
-
     try
     {
-        await metadataWriterService.DeleteEventMetadataAsync(file);
+        await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
     }
     catch (Exception ex)
     {
         logger.LogWarning(ex, "[FILES] Failed to delete local metadata sidecars for: {FilePath}", file.FilePath);
     }
+
+    // Notify media servers after removing the sidecars so a scan sees the final state.
+    await NotifyFileDeletedAsync(notificationService, logger, evt, file.FilePath,
+        new List<NotificationFileData> { new() { Path = file.FilePath, Quality = file.Quality, Size = file.Size } });
 
     // Handle blocklist action if specified
     if (blocklistAction == "blocklistAndSearch" || blocklistAction == "blocklistOnly")
@@ -669,6 +670,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
     foreach (var file in evt.Files.ToList())
     {
         var failed = false;
+        string? recycledVideoPath = null;
         if (File.Exists(file.FilePath))
         {
             try
@@ -678,6 +680,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
                     var fileName = Path.GetFileName(file.FilePath);
                     var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, fileName);
                     File.Move(file.FilePath, recyclePath);
+                    recycledVideoPath = recyclePath;
                 }
                 else
                 {
@@ -692,6 +695,10 @@ app.MapDelete("/api/events/{id:int}/files", async (
                 failed = true;
             }
         }
+        else if (useRecycleBin)
+        {
+            recycledVideoPath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, Path.GetFileName(file.FilePath));
+        }
 
         if (failed)
         {
@@ -702,7 +709,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
 
         try
         {
-            await metadataWriterService.DeleteEventMetadataAsync(file);
+            await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
         }
         catch (Exception ex)
         {

@@ -38,7 +38,8 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
     }
 
     public static async Task<PartIdentityIntegrationHarness> CreateAsync(bool rename = true, bool multipart = true,
-        string title = "UFC 9999", string sport = "Fighting", string leagueName = "UFC", bool relational = false)
+        string title = "UFC 9999", string sport = "Fighting", string leagueName = "UFC", bool relational = false,
+        bool writeMetadata = false)
     {
         var directory = Path.Combine(Path.GetTempPath(), "sportarr-part-identity-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -68,7 +69,10 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         paths.Setup(p => p.RemapRemoteToLocalAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync((string _, string path) => path);
         paths.Setup(p => p.GetLocalRootsAsync(It.IsAny<string>())).ReturnsAsync(new List<string> { directory });
         services.AddSingleton(paths.Object);
-        services.AddSingleton(Mock.Of<IMetadataWriterService>());
+        if (writeMetadata)
+            services.AddSingleton<IMetadataWriterService, MetadataWriterService>();
+        else
+            services.AddSingleton(Mock.Of<IMetadataWriterService>());
         services.AddSingleton(Mock.Of<IRateLimitService>());
         foreach (var type in new[] {
             typeof(ConfigService), typeof(DownloadClientService), typeof(NotificationService), typeof(SportarrApiClient),

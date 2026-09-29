@@ -152,8 +152,19 @@ public class EventRetentionService : BackgroundService
 
             foreach (var file in evt.Files.ToList())
             {
+                string? recycledVideoPath = null;
                 if (!File.Exists(file.FilePath))
                 {
+                    if (useRecycleBin)
+                        recycledVideoPath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, Path.GetFileName(file.FilePath));
+                    try
+                    {
+                        await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Event Retention] Failed to remove orphaned sidecars for: {FilePath}", file.FilePath);
+                    }
                     removableFiles.Add(file);
                     continue;
                 }
@@ -165,6 +176,7 @@ public class EventRetentionService : BackgroundService
                         var fileName = Path.GetFileName(file.FilePath);
                         var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, fileName);
                         File.Move(file.FilePath, recyclePath);
+                        recycledVideoPath = recyclePath;
                     }
                     else
                     {
@@ -181,7 +193,7 @@ public class EventRetentionService : BackgroundService
 
                 try
                 {
-                    await metadataWriterService.DeleteEventMetadataAsync(file);
+                    await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
                 }
                 catch (Exception ex)
                 {

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Interfaces;
 using System.Text.Json;
 
 namespace Sportarr.Api.Endpoints;
@@ -337,6 +338,7 @@ public static class SonarrSeriesEndpoints
             int id,
             SportarrDbContext db,
             ConfigService configService,
+            IMetadataWriterService metadataWriterService,
             ILogger<Program> logger,
             bool deleteFiles = false,
             bool addImportListExclusion = false) =>
@@ -399,6 +401,7 @@ public static class SonarrSeriesEndpoints
                 {
                     try
                     {
+                        string? recycledVideoPath = null;
                         if (File.Exists(eventFile.FilePath))
                         {
                             var fileDir = Path.GetDirectoryName(eventFile.FilePath);
@@ -412,6 +415,7 @@ public static class SonarrSeriesEndpoints
                                 var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(
                                     recycleBin!, Path.GetFileName(eventFile.FilePath));
                                 File.Move(eventFile.FilePath, recyclePath);
+                                recycledVideoPath = recyclePath;
                                 logger.LogDebug("[V3-COMPAT] Moved file to recycle bin: {Path}", eventFile.FilePath);
                             }
                             else
@@ -420,6 +424,12 @@ public static class SonarrSeriesEndpoints
                                 logger.LogDebug("[V3-COMPAT] Deleted file: {Path}", eventFile.FilePath);
                             }
                         }
+                        else if (useRecycleBin)
+                        {
+                            recycledVideoPath = Sportarr.Api.Helpers.RecyclePaths.FindFree(
+                                recycleBin!, Path.GetFileName(eventFile.FilePath));
+                        }
+                        await metadataWriterService.DeleteEventMetadataAsync(eventFile, recycledVideoPath);
                     }
                     catch (Exception ex)
                     {

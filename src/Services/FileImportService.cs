@@ -703,10 +703,12 @@ public class FileImportService : IFileImportService
                     {
                         var upgradeConfig = await _configService.GetConfigAsync();
                         var recycleBin = upgradeConfig.RecycleBin;
+                        string? recycledVideoPath = null;
                         if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
                         {
                             var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBin, Path.GetFileName(upgradedFile.FilePath));
                             File.Move(upgradedFile.FilePath, recyclePath);
+                            recycledVideoPath = recyclePath;
                             _logger.LogInformation("[Import] Moved old file to recycle bin during upgrade: {Path} -> {RecyclePath}",
                                 upgradedFile.FilePath, recyclePath);
                         }
@@ -715,6 +717,8 @@ public class FileImportService : IFileImportService
                             File.Delete(upgradedFile.FilePath);
                             _logger.LogInformation("[Import] Deleted old file during upgrade: {Path}", upgradedFile.FilePath);
                         }
+
+                        await _metadataWriterService.DeleteEventMetadataAsync(upgradedFile, recycledVideoPath);
 
                         // Try to clean up empty parent folder
                         var oldFileParentDir = Path.GetDirectoryName(upgradedFile.FilePath);
@@ -949,39 +953,6 @@ public class FileImportService : IFileImportService
                 eventInfo.FilePath = destinationPath;
                 eventInfo.FileSize = actualFileSize;
                 eventInfo.Quality = qualityString;
-            }
-
-            // An event holding a file must carry a season and episode number.
-            // Sync clears the episode index for postponed and cancelled events
-            // on purpose, so a file arriving for one leaves the pair missing,
-            // and a media server or an integration then has nothing to order or
-            // key the file by. Fill the gap here rather than change what sync
-            // does, because the contradiction belongs to this file, not to the
-            // schedule.
-            if (eventInfo.SeasonNumber is null)
-            {
-                eventInfo.SeasonNumber = int.TryParse(eventInfo.Season, out var parsedSeason)
-                    ? parsedSeason
-                    : eventInfo.EventDate.Year;
-                _logger.LogWarning(
-                    "[Import] Event {EventId} had no season number; derived {Season} so the imported file can be ordered",
-                    eventInfo.Id, eventInfo.SeasonNumber);
-            }
-
-            if (eventInfo.EpisodeNumber is null)
-            {
-                // Position by date within the same league and season, which is
-                // the same ordering sync uses.
-                var earlierInSeason = await _db.Events
-                    .Where(e => e.LeagueId == eventInfo.LeagueId
-                                && e.SeasonNumber == eventInfo.SeasonNumber
-                                && e.Id != eventInfo.Id
-                                && e.EventDate < eventInfo.EventDate)
-                    .CountAsync();
-                eventInfo.EpisodeNumber = earlierInSeason + 1;
-                _logger.LogWarning(
-                    "[Import] Event {EventId} had no episode number; derived {Episode} from its date within the season",
-                    eventInfo.Id, eventInfo.EpisodeNumber);
             }
 
             // Update grab history to mark as imported with file existing
@@ -1448,6 +1419,15 @@ public class FileImportService : IFileImportService
         string? indexerFlags = null)
     {
         var destinationPath = rootFolder;
+
+        if (eventInfo.SeasonNumber is null)
+        {
+            eventInfo.SeasonNumber = SeasonNumberParser.Parse(eventInfo.Season)
+                ?? eventInfo.EventDate.Year;
+            _logger.LogWarning(
+                "[Import] Event {EventId} had no season number; derived {Season} so the imported file can be ordered",
+                eventInfo.Id, eventInfo.SeasonNumber);
+        }
 
         // IMPORTANT: Fetch episode number from API BEFORE building folder path
         // This ensures the {Episode} token in EventFolderFormat has the correct value

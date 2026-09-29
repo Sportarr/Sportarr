@@ -173,6 +173,7 @@ An upgrade replaces a file in place. Sportarr removes the old row and adds the
 new one in a single write, and it no longer reports the event as file-less in
 between. An integration that deletes its own records for events with no file
 will not lose them across an upgrade.
+Sportarr removes or recycles subtitles that belong to the replaced file.
 
 ### Release names
 
@@ -193,12 +194,15 @@ name either.
 
 ### Season and episode numbers
 
-`seasonNumber` and `episodeNumber` are guaranteed on any event that has a
-file. Sportarr fills them at import if they are missing.
-
-They can be null on an event with no file. Sync clears the episode index for
-postponed and cancelled events on purpose, since an event that will not happen
-holds no place in the running order.
+`seasonNumber` and `episodeNumber` are usually present on imported files.
+Sportarr fills missing numbers during download import. Other import paths and
+later metadata syncs can still leave either value null, especially for
+postponed or cancelled events. Use event `id` to identify a local event and
+`externalId` when present for cross-install identity. A file `id` can change
+when Sportarr replaces a file, but a same-path library replacement can keep
+the same `id` while removing its subtitles. Refresh subtitle state when the
+file path or subtitle list changes. Do not require season and episode numbers
+for subtitle synchronization.
 
 ### Paging
 
@@ -242,15 +246,15 @@ or maps a path. With no `path` it returns the root drives.
 `files` is present only with `includeFiles=true` and has the same shape.
 Hidden and system entries are excluded.
 
-## Telling Sportarr a file changed
+## Scanning for video files
 
 ```
 POST /api/leagues/{id}/scan
 ```
 
-Rescans the league's folder and picks up files that changed outside Sportarr.
-Call it after writing a file next to existing media, for example a subtitle,
-so Sportarr notices without waiting for its own schedule.
+Scans the league's folder for video files that changed outside Sportarr.
+It does not index subtitles. Do not call it after writing a subtitle.
+Refresh the configured media server directly so it can read the new subtitle.
 
 ## Detecting removals safely
 

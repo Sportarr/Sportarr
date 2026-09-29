@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +10,7 @@ using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Models.Requests;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Interfaces;
 using System.Collections.Concurrent;
 using System.Text.Json;
 
@@ -1984,7 +1986,8 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 });
 
 // API: Delete league
-app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, FileNamingService naming, ILogger<Program> logger) =>
+app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, FileNamingService naming,
+    [FromServices] IMetadataWriterService metadataWriterService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -2020,6 +2023,7 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
                     File.Delete(eventFile.FilePath);
                     logger.LogDebug("[LEAGUES] Deleted file: {Path}", eventFile.FilePath);
                 }
+                await metadataWriterService.DeleteEventMetadataAsync(eventFile);
             }
             catch (Exception ex)
             {

@@ -11,6 +11,72 @@ namespace Sportarr.Api.Tests.Services;
 public class ManualQueueImportTests
 {
     [Fact]
+    public async Task UpgradeReplacesOldSubtitleAfterRemovingTheOldVideo()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            multipart: false, writeMetadata: true);
+        rig.Settings.ImportExtraFiles = true;
+        rig.Settings.ExtraFileExtensions = "srt";
+        await rig.Db.SaveChangesAsync();
+        var existing = await rig.ImportAsync("UFC.9999.720p.WEB-DL", "old.720p.WEB-DL.mkv");
+        var oldSubtitle = Path.ChangeExtension(existing.FilePath, ".fr.srt");
+        await File.WriteAllTextAsync(oldSubtitle, "old subtitle");
+
+        var folder = Path.Combine(Path.GetTempPath(), "sportarr-subtitle-upgrade-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var source = Path.Combine(folder, "new.2160p.WEB-DL.mkv");
+            await File.WriteAllBytesAsync(source, new byte[8192]);
+            await File.WriteAllTextAsync(Path.ChangeExtension(source, ".en.srt"), "new subtitle");
+            var row = new DownloadQueueItem
+            {
+                EventId = rig.Event.Id, Title = "UFC.9999.2160p.WEB-DL", DownloadId = "subtitle-upgrade",
+                Quality = "WEBDL-2160p", Protocol = "Usenet", Status = DownloadStatus.Completed
+            };
+            rig.Db.DownloadQueue.Add(row);
+            await rig.Db.SaveChangesAsync();
+
+            var result = await rig.Services.GetRequiredService<FileImportService>()
+                .ImportDownloadAsync(row, source, PostImportMode.Copy);
+
+            result.Should().NotBeNull();
+            var imported = await rig.Db.EventFiles.SingleAsync();
+            File.ReadAllText(Path.ChangeExtension(imported.FilePath, ".en.srt"))
+                .Should().Be("new subtitle");
+            File.Exists(oldSubtitle).Should().BeFalse("the old language is not part of the replacement");
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
+    public async Task ImportFillsMissingSeasonAndUsesChronologicalEpisodeNumber()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(multipart: false);
+        rig.Settings.StandardFileFormat = "{Event Title} - {Season}{Episode}";
+        rig.Event.Season = "2025-2026";
+        rig.Event.SeasonNumber = null;
+        rig.Event.EpisodeNumber = null;
+        rig.Event.EventDate = new DateTime(2026, 2, 1, 20, 0, 0, DateTimeKind.Utc);
+        rig.Db.Events.Add(new Event
+        {
+            Title = "Earlier event", Sport = rig.Event.Sport, LeagueId = rig.Event.LeagueId,
+            Season = "2025-2026", SeasonNumber = 2025, EpisodeNumber = 1,
+            EventDate = rig.Event.EventDate.AddDays(-1)
+        });
+        await rig.Db.SaveChangesAsync();
+
+        var imported = await rig.ImportAsync("UFC.9999.720p.WEB-DL", "season-gap.720p.WEB-DL.mkv");
+
+        rig.Event.SeasonNumber.Should().Be(2025);
+        rig.Event.EpisodeNumber.Should().Be(2);
+        Path.GetFileName(imported.FilePath).Should().Contain("S2025E02");
+    }
+
+    [Fact]
     public async Task AmbiguousUpgradeKeepsExistingFileUntilAFileIsChosen()
     {
         await using var rig = await PartIdentityIntegrationHarness.CreateAsync(multipart: false);

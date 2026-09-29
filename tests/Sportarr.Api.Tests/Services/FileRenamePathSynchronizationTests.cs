@@ -123,6 +123,28 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
     }
 
     [Fact]
+    public async Task BatchRenameMovesEachSubtitleThroughAnOverlappingDestination()
+    {
+        await using var rig = CreateRig();
+        var firstPath = WriteFile("NFL - S2026E57 - HOU vs BUF.mkv");
+        var secondPath = WriteFile("NFL - S2026E57 - HOU vs BUF - pt1.mkv");
+        File.WriteAllText(Path.ChangeExtension(firstPath, ".en.srt"), "first");
+        File.WriteAllText(Path.ChangeExtension(secondPath, ".en.srt"), "second");
+        var league = NewLeague(1);
+        var evt = NewEvent(1, league, 57, firstPath);
+        evt.Files.Add(NewFile(1, evt, firstPath, partNumber: 1));
+        evt.Files.Add(NewFile(2, evt, secondPath, partNumber: 2));
+        rig.Db.AddRange(league, evt, NewSettings());
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.Service.RenameAllFilesInSeasonAsync(league.Id, "2026")).Should().Be(2);
+
+        File.ReadAllText(Path.ChangeExtension(secondPath, ".en.srt")).Should().Be("first");
+        File.ReadAllText(Path.Combine(_tempDir, "NFL - S2026E57 - HOU vs BUF - pt2.en.srt"))
+            .Should().Be("second");
+    }
+
+    [Fact]
     public async Task LinuxRenameDoesNotMatchASeparatePathThatDiffersOnlyByCase()
     {
         if (Path.DirectorySeparatorChar == '\\')
@@ -154,6 +176,8 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
         var firstOldPath = WriteFile("NFL - S2026E85 - HOU vs BUF.mkv");
         var secondOldPath = WriteFile("NFL - S2026E86 - NYG vs DAL.mkv");
         var thirdOldPath = WriteFile("NFL - S2026E87 - NYG vs DAL.mkv");
+        File.WriteAllText(Path.ChangeExtension(firstOldPath, ".en.srt"), "first");
+        File.WriteAllText(Path.ChangeExtension(secondOldPath, ".en.srt"), "second");
         var blockedPath = Path.Combine(_tempDir, "NFL - S2026E58 - NYG vs DAL.mkv");
         // File.Exists ignores a directory. The final File.Move then fails.
         Directory.CreateDirectory(blockedPath);
@@ -175,6 +199,8 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
         File.Exists(firstOldPath).Should().BeTrue();
         File.Exists(secondOldPath).Should().BeTrue();
         File.Exists(thirdOldPath).Should().BeTrue();
+        File.ReadAllText(Path.ChangeExtension(firstOldPath, ".en.srt")).Should().Be("first");
+        File.ReadAllText(Path.ChangeExtension(secondOldPath, ".en.srt")).Should().Be("second");
         first.FilePath.Should().BeNull();
         first.Files.Single().FilePath.Should().Be(firstOldPath);
         second.FilePath.Should().Be(secondOldPath);
@@ -195,6 +221,7 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
     {
         await using var rig = CreateRig();
         var oldPath = WriteFile("NFL - S2026E57 - HOU vs BUF.mkv");
+        File.WriteAllText(Path.ChangeExtension(oldPath, ".en.srt"), "subtitle");
         var expectedPath = Path.Combine(_tempDir, "NFL - S2026E58 - NYG vs DAL.mkv");
         var league = NewLeague(1);
         var source = NewEvent(1, league, 57, oldPath);
@@ -210,6 +237,7 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
         result.Success.Should().BeTrue(result.Error);
         result.NewPath.Should().Be(expectedPath);
         File.Exists(expectedPath).Should().BeTrue();
+        File.ReadAllText(Path.ChangeExtension(expectedPath, ".en.srt")).Should().Be("subtitle");
         rig.Db.ChangeTracker.Clear();
         var persistedSource = await rig.Db.Events.SingleAsync(evt => evt.Id == source.Id);
         persistedSource.HasFile.Should().BeFalse();
@@ -446,7 +474,8 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
             new DiskSpaceService(Mock.Of<ILogger<DiskSpaceService>>()),
             new CustomFormatService(parser),
             notificationService,
-            Mock.Of<IMetadataWriterService>(),
+            new MetadataWriterService(db, Mock.Of<IHttpClientFactory>(),
+                Mock.Of<ILogger<MetadataWriterService>>()),
             configService);
         return new TestRig(db, provider, httpClient, service);
     }
