@@ -24,6 +24,11 @@ Sportarr adds each league with team scoping, so only your team's events are
 monitored, including cups and international competitions the team appears
 in.
 
+If the league is already in your library, you can still choose it for this
+team. Sportarr adds the team to that league instead of creating another copy.
+New leagues and changed team selections start a full event sync in the task queue.
+Leagues already in your library are not selected automatically.
+
 ## Follow an athlete
 
 Switch to the **Athletes** tab and search by name. Two kinds of athletes

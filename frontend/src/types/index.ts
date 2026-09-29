@@ -291,6 +291,7 @@ export interface DiscoveredLeague {
   badgeUrl?: string;
   eventCount: number;
   isAdded: boolean;
+  isInLibrary: boolean;
 }
 
 export interface Player {

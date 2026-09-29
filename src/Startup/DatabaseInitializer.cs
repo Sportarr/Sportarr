@@ -2376,12 +2376,9 @@ public static class DatabaseInitializer
     /// teams were never imported under the new identity), and many
     /// seasons disappear from the UI entirely.
     ///
-    /// Detection: a Leagues row whose ExternalId is purely numeric AND
-    /// has zero attached teams AND another Leagues row exists with the
-    /// same Name + Sport whose ExternalId starts with "lg-" AND has at
-    /// least one team. Move every Events.LeagueId from orphan → canonical,
-    /// drop the orphan's LeagueTeams entries (none expected, but safe),
-    /// then delete the orphan league row itself.
+    /// Only numeric leagues without teams or team links are candidates.
+    /// A same-name league with a hub ID must also exist.
+    /// Move event links before deleting the orphan.
     ///
     /// Idempotent: re-running on a clean DB finds zero candidates and
     /// exits without modifying anything.
@@ -2423,6 +2420,7 @@ public static class DatabaseInitializer
                       AND l_orphan.ExternalId NOT LIKE 'lg-%'
                       AND l_orphan.ExternalId GLOB '[0-9]*'
                       AND NOT EXISTS (SELECT 1 FROM Teams WHERE LeagueId = l_orphan.Id)
+                      AND NOT EXISTS (SELECT 1 FROM LeagueTeams WHERE LeagueId = l_orphan.Id)
                       AND EXISTS (SELECT 1 FROM Teams WHERE LeagueId = l_canonical.Id)";
 
                 using var reader = cmd.ExecuteReader();
@@ -2459,13 +2457,6 @@ public static class DatabaseInitializer
                 // next sync upserts by ExternalId and resolves it then.
                 db.Database.ExecuteSqlInterpolated(
                     $"UPDATE Events SET LeagueId = {canonicalId} WHERE LeagueId = {orphanId}");
-
-                // Defensive cleanup -- orphans by definition have no team
-                // rows, so LeagueTeams entries shouldn't exist either, but
-                // FK constraints on LeagueTeams.LeagueId block the league
-                // DELETE if any are present from a partial pre-flip state.
-                db.Database.ExecuteSqlInterpolated(
-                    $"DELETE FROM LeagueTeams WHERE LeagueId = {orphanId}");
 
                 // Drop the orphan league row. Teams are zero by definition;
                 // events were rewired one statement up.

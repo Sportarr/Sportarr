@@ -41,6 +41,32 @@ async function renderTeamsPage() {
 }
 
 describe('teams page render limit', () => {
+  it('preselects new leagues but leaves existing library leagues for an explicit choice', async () => {
+    transport.get.mockImplementation(async (path: string) => {
+      if (path === '/teams/all') return { data: teams };
+      if (path === '/followed-teams') return { data: [{ id: 1, externalId: '1000', name: 'Team 000', sport: 'Soccer' }] };
+      if (path === '/qualityprofile') return { data: [{ id: 1, name: 'Any' }] };
+      if (path === '/followed-teams/1/leagues') return { data: { leagues: [
+        { externalId: 'lg-existing', name: 'Existing League', sport: 'Soccer', eventCount: 4, isAdded: false, isInLibrary: true },
+        { externalId: 'lg-new', name: 'New League', sport: 'Soccer', eventCount: 4, isAdded: false, isInLibrary: false },
+      ] } };
+      throw new Error('Unconfigured page request ' + path);
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    clients.push(client);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><TeamsPage /></MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    fireEvent.click(await screen.findByTitle('Expand'));
+    expect(await screen.findByText('Existing League')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Selected Leagues (1)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Existing League'));
+    expect(screen.getByRole('button', { name: 'Add Selected Leagues (2)' })).toBeInTheDocument();
+  });
+
   it('renders the first page of teams and reveals more on demand', async () => {
     await renderTeamsPage();
 

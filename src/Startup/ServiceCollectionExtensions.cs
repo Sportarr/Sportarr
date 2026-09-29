@@ -480,6 +480,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddSportarrBackgroundServices(this IServiceCollection services)
     {
         services.AddSingleton<TaskService>();
+        services.AddSingleton<ITaskService>(sp => sp.GetRequiredService<TaskService>());
         services.AddHostedService<TaskQueueRecoveryService>();
 
         services.AddSingleton<DiskScanService>();
