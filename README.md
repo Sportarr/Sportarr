@@ -44,7 +44,7 @@
 - Organizes files with customizable naming schemes, including multi-part events for fighting sports
 - Integrates with Plex, Jellyfin, and Emby through dedicated metadata agents
 - Records live events from IPTV sources with automatic scheduling (alpha)
-- Fetches subtitles through Bazarr and notifies via Discord, ntfy, Apprise, webhooks, or custom scripts
+- Fetches subtitles through Bazarr or Bazarr+ and notifies via Discord, ntfy, Apprise, webhooks, or custom scripts
 
 ## Quick Start
 
@@ -76,7 +76,7 @@ Not on Docker? Native builds for Windows, macOS, and Linux are on the [releases 
 Everything lives on the wiki at **[wiki.sportarr.net](https://wiki.sportarr.net)**:
 
 - [Installation](https://wiki.sportarr.net/getting-started/installation/) and [Initial Setup](https://wiki.sportarr.net/getting-started/initial-setup/)
-- [Integrations](https://wiki.sportarr.net/integrations/prowlarr/): Prowlarr, Bazarr, Maintainerr, Homepage, autobrr, and the media server agents
+- [Integrations](https://wiki.sportarr.net/integrations/prowlarr/): Prowlarr, Bazarr, Bazarr+, Maintainerr, Homepage, autobrr, and the media server agents
 - [IPTV DVR recording](https://wiki.sportarr.net/features/iptv-dvr/)
 - [Troubleshooting](https://wiki.sportarr.net/troubleshooting/)
 - [Application API](https://wiki.sportarr.net/APPLICATION_API/) for tools integrating with Sportarr, and the [live metadata API explorer](https://wiki.sportarr.net/api-explorer/)
