@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
-import { MagnifyingGlassIcon, XMarkIcon, CheckIcon, InformationCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, XMarkIcon, CheckIcon, InformationCircleIcon, ExclamationTriangleIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPost } from '../utils/api';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../utils/designTokens';
@@ -15,6 +15,7 @@ import {
 } from '../utils/leagueSportRules';
 import ConfirmationModal from './ConfirmationModal';
 import TagSelector from './TagSelector';
+import { isOlderGroupForcedOpen, partitionTeamsByRecency } from '../utils/teamRecency';
 
 interface Team {
   idTeam: string;
@@ -148,6 +149,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   // enable team based filtering on league add --> teams to monitor
   const [searchQuery, setSearchQuery] = useState('');
+  const [showEarlierTeams, setShowEarlierTeams] = useState(false);
 
   // Track initialization state to prevent re-initialization when queries complete
   // or other dependencies change. We track separately for teams and settings.
@@ -160,10 +162,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   // Fetch teams for the league when modal opens (not for motorsports)
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
-    queryKey: ['league-teams', league?.idLeague],
+    queryKey: ['league-team-selection', league?.idLeague],
     queryFn: async () => {
       if (!league?.idLeague) return null;
-      const response = await apiGet(`/api/leagues/external/${league.idLeague}/teams`);
+      const response = await apiGet(`/api/leagues/external/${league.idLeague}/team-selection`);
       if (!response.ok) throw new Error('Failed to fetch teams');
       return response.json();
     },
@@ -171,7 +173,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     staleTime: 5 * 60 * 1000,
   });
 
-  const teams: Team[] = teamsResponse || [];
+  const teams: Team[] = teamsResponse?.teams || [];
+  const recentTeamIds: string[] = teamsResponse?.recentTeamIds || [];
 
   // Fetch quality profiles
   const { data: qualityProfiles = [] } = useQuery({
@@ -389,7 +392,16 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       );
     }
     return filtered;
-  }, [teams, searchQuery]);
+  }, [teams, searchQuery, selectedTeamIds]);
+  const teamGroups = useMemo(() => partitionTeamsByRecency(teams, recentTeamIds), [teams, recentTeamIds]);
+  const filteredGroups = useMemo(
+    () => partitionTeamsByRecency(filteredTeams, recentTeamIds),
+    [filteredTeams, recentTeamIds]
+  );
+  const hasEarlierTeams = teamGroups.earlier.length > 0;
+  const earlierSelected = teamGroups.earlier.some(team => selectedTeamIds.has(team.idTeam));
+  const earlierForcedOpen = isOlderGroupForcedOpen(searchQuery, earlierSelected, selectAll);
+  const earlierOpen = showEarlierTeams || earlierForcedOpen;
 
   // Load existing monitored teams when in edit mode (not for motorsports)
   // Only load once when existingLeague first becomes available
@@ -623,6 +635,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       initializedTeamsRef.current = false;
       initializedSettingsRef.current = false;
       initializedDataVersionRef.current = null;
+      setShowEarlierTeams(false);
     }
   }, [isOpen]);
 
@@ -646,6 +659,31 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSelectedTeamIds(new Set(teams.map(t => t.idTeam)));
       setSelectAll(true);
     }
+  };
+
+  const renderTeamButton = (team: Team) => {
+    const isSelected = selectedTeamIds.has(team.idTeam);
+    return (
+      <button
+        key={team.idTeam}
+        type="button"
+        onClick={() => handleTeamToggle(team.idTeam)}
+        className={`flex min-h-11 items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+          isSelected ? 'border-red-600 bg-red-600/20' : 'border-gray-700 bg-black/30 hover:border-gray-600'
+        }`}
+      >
+        {team.strTeamBadge && <img src={team.strTeamBadge} alt="" className="h-10 w-10 flex-none object-contain" />}
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-white">{team.strTeam}</div>
+          {team.strTeamShort && <div className="text-xs text-gray-400">{team.strTeamShort}</div>}
+        </div>
+        <div className={`flex h-5 w-5 flex-none items-center justify-center rounded border-2 ${
+          isSelected ? 'border-red-600 bg-red-600' : 'border-gray-600'
+        }`}>
+          {isSelected && <CheckIcon className="h-4 w-4 text-white" />}
+        </div>
+      </button>
+    );
   };
 
   const handlePartToggle = (part: string) => {
@@ -1025,42 +1063,37 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                           </div>
                         )}
 
-                        {/* Team Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                          {filteredTeams.map(team => {
-                            const isSelected = selectedTeamIds.has(team.idTeam);
-                            return (
-                              <button
-                                key={team.idTeam}
-                                onClick={() => handleTeamToggle(team.idTeam)}
-                                className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
-                                  isSelected
-                                    ? 'bg-red-600/20 border-red-600'
-                                    : 'bg-black/30 border-gray-700 hover:border-gray-600'
-                                }`}
-                              >
-                                {team.strTeamBadge && (
-                                  <img
-                                    src={team.strTeamBadge}
-                                    alt={team.strTeam}
-                                    className="w-10 h-10 object-contain"
-                                  />
-                                )}
-                                <div className="flex-1">
-                                  <div className="font-medium text-white">{team.strTeam}</div>
-                                  {team.strTeamShort && (
-                                    <div className="text-xs text-gray-400">{team.strTeamShort}</div>
-                                  )}
-                                </div>
-                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                  isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
-                                }`}>
-                                  {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
-                                </div>
-                              </button>
-                            );
-                          })}
+                        {hasEarlierTeams && (
+                          <div className="mb-3">
+                            <div className="font-semibold text-white">Recent teams ({filteredGroups.recent.length})</div>
+                            <div className="text-xs text-gray-400">Teams in the three newest seasons with events.</div>
+                          </div>
+                        )}
+                        <div className="grid max-h-96 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
+                          {filteredGroups.recent.map(renderTeamButton)}
                         </div>
+                        {hasEarlierTeams && (
+                          <div className="mt-4">
+                            {earlierForcedOpen ? (
+                              <div className="font-semibold text-white">Older teams ({filteredGroups.earlier.length})</div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setShowEarlierTeams(!showEarlierTeams)}
+                                aria-expanded={earlierOpen}
+                                className={`${BUTTON_SECONDARY} w-full gap-2`}
+                              >
+                                <span>Older teams ({filteredGroups.earlier.length})</span>
+                                <ChevronDownIcon className={`h-4 w-4 transition-transform ${earlierOpen ? 'rotate-180' : ''}`} />
+                              </button>
+                            )}
+                            {earlierOpen && (
+                              <div className="mt-3 grid max-h-96 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
+                                {filteredGroups.earlier.map(renderTeamButton)}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Special events: finals/playoffs bypass the team filter.
                             Placed below the team grid so the team selection reads

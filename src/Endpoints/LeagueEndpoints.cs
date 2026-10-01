@@ -705,6 +705,16 @@ app.MapGet("/api/leagues/external/{externalId}/teams", async (string externalId,
     return Results.Ok(teams);
 });
 
+app.MapGet("/api/leagues/external/{externalId}/team-selection", async (string externalId, SportarrApiClient sportsDbClient) =>
+{
+    var selection = await sportsDbClient.GetLeagueTeamSelectionAsync(externalId);
+    return Results.Ok(new
+    {
+        teams = selection?.Teams ?? new List<Team>(),
+        recentTeamIds = selection?._Meta?.RecentTeamIds ?? new List<string>()
+    });
+});
+
 // API: Get motorsport session types for a league (based on league name)
 // Used by the Add League modal to show which sessions can be monitored
 app.MapGet("/api/motorsport/session-types", (string leagueName) =>
