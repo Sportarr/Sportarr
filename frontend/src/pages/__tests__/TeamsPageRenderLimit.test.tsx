@@ -43,7 +43,10 @@ async function renderTeamsPage() {
 describe('teams page render limit', () => {
   it('preselects new leagues but leaves existing library leagues for an explicit choice', async () => {
     transport.get.mockImplementation(async (path: string) => {
-      if (path === '/teams/all') return { data: teams };
+      // One team is all this test follows. Serving the whole fixture drew 60
+      // badge cards before the test began, which on a slow runner took it
+      // past the default timeout without exercising anything it checks.
+      if (path === '/teams/all') return { data: teams.slice(0, 1) };
       if (path === '/followed-teams') return { data: [{ id: 1, externalId: '1000', name: 'Team 000', sport: 'Soccer' }] };
       if (path === '/qualityprofile') return { data: [{ id: 1, name: 'Any' }] };
       if (path === '/followed-teams/1/leagues') return { data: { leagues: [
