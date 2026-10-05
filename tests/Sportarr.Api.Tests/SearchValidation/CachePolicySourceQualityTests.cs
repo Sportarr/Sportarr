@@ -6,6 +6,7 @@ using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public class CachePolicySourceQualityTests
 {
     [Theory]

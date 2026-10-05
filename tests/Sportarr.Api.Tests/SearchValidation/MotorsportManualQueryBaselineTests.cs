@@ -9,6 +9,7 @@ using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class MotorsportManualQueryBaselineTests(ITestOutputHelper output)
 {
     private const string SilverstoneProbe = "Silverstone Grand Prix Practice 1";

@@ -7,6 +7,7 @@ using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Tests.Services;
 
+[Collection(WallClockFixtureCollection.Name)]
 public class QBittorrentClientSessionTests
 {
     private static DownloadClient Config() => new()

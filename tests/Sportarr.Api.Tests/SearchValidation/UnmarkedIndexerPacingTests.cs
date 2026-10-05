@@ -14,6 +14,7 @@ using Sportarr.Api.Startup;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class UnmarkedIndexerPacingTests
 {
     [Fact]
