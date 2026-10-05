@@ -276,7 +276,10 @@ public class DvrAssignmentServiceTests
                 new IptvChannel { Id = 2, SourceId = 1, Name = "Second", StreamUrl = "http://test/2" },
                 new IptvChannel { Id = 3, SourceId = 1, Name = "Third", StreamUrl = "http://test/3" },
                 new IptvChannel { Id = 4, SourceId = 1, Name = "Inactive", StreamUrl = "http://test/4", IsEnabled = false });
-            var start = new DateTime(2026, 10, 1, 18, 0, 0, DateTimeKind.Utc);
+            // Always a week out. The service refuses to edit a window that has
+            // already ended, so a fixed date turns every test that edits this
+            // recording red the day it passes.
+            var start = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(7).AddHours(18), DateTimeKind.Utc);
             var recording = new DvrRecording
             {
                 Title = "Test", ChannelId = 1, Quality = "HDTV-1080p",
