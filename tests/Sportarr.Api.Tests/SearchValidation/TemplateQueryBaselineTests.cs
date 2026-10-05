@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public class TemplateQueryBaselineTests(ITestOutputHelper output)
 {
     private static readonly string[] Queries =

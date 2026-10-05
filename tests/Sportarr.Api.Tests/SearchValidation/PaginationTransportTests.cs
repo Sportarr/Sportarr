@@ -9,6 +9,7 @@ using PageShape = Sportarr.Api.Tests.SearchValidation.RequestBudgetBaselineHarne
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class PaginationTransportTests(ITestOutputHelper output)
 {
     [Theory]

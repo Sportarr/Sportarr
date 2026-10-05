@@ -21,6 +21,7 @@ using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class CatalogFamily55PackHttpTests
 {
     private const string CorrectTitle = "Chinese Basketball Association 2024 25 1080p WEB DL H264 AAC TJUPT";

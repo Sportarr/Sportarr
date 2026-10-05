@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class MotorsportQueryIdentityBaselineTests(ITestOutputHelper output)
 {
     private const string SilverstoneMetadata = "Silverstone Grand Prix Practice 1";

@@ -14,6 +14,7 @@ using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Tests.Services;
 
+[Collection(WallClockFixtureCollection.Name)]
 public class PendingReleaseReaperPersistenceTests
 {
     [Theory]
