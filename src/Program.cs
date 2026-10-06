@@ -1111,7 +1111,7 @@ app.MapSystemAgentEndpoints();
 
 app.MapSystemUpdatesEndpoint();
 
-app.MapSystemEventEndpoints();
+app.MapSystemMaintenanceEndpoints();
 
 app.MapLibraryEndpoints();
 

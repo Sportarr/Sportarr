@@ -341,8 +341,7 @@ public class HousekeepingService : BackgroundService
     }
 
     /// <summary>
-    /// Prune system events older than 30 days (same default as the manual
-    /// cleanup endpoint) so the table stops growing unbounded.
+    /// Prune rows left by older versions of the system events feature.
     /// </summary>
     private async Task PruneSystemEventsAsync(SportarrDbContext db, CancellationToken ct)
     {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -10,17 +10,9 @@ import {
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
+import { useSystemHealth, type SystemHealthCheck } from '../api/hooks';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
-
-interface HealthCheckResult {
-  type: number;
-  level: number; // 0=Ok, 1=Notice, 2=Warning, 3=Error
-  message: string;
-  details?: string;
-  checkedAt: string;
-  dismissed?: boolean;
-}
 
 interface OrphanedEvent {
   id: number;
@@ -59,13 +51,18 @@ const levelBgColors = ['bg-green-900/20', 'bg-blue-900/20', 'bg-yellow-900/20', 
 const levelBorderColors = ['border-green-700/50', 'border-blue-700/50', 'border-yellow-700/50', 'border-red-700/50'];
 
 export default function SystemHealthPage() {
-  const [healthChecks, setHealthChecks] = useState<HealthCheckResult[]>([]);
+  const { data: sharedChecks, dataUpdatedAt, isPending, refetch } = useSystemHealth();
+  const [frozenChecks, setFrozenChecks] = useState<SystemHealthCheck[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [lastCheck, setLastCheck] = useState<Date | null>(null);
+  const [frozenLastCheck, setFrozenLastCheck] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [orphanedEvents, setOrphanedEvents] = useState<OrphanedEvent[] | null>(null);
   const [showOrphaned, setShowOrphaned] = useState(false);
   const [fixingOrphaned, setFixingOrphaned] = useState(false);
+  const healthChecks = autoRefresh ? sharedChecks ?? [] : frozenChecks;
+  const lastCheck = autoRefresh
+    ? (dataUpdatedAt ? new Date(dataUpdatedAt) : null)
+    : frozenLastCheck;
 
   const loadOrphanedEvents = async () => {
     try {
@@ -130,26 +127,15 @@ export default function SystemHealthPage() {
     }
   };
 
-  useEffect(() => {
-    loadHealthChecks();
-
-    // Auto-refresh every 60 seconds if enabled
-    let interval: number | null = null;
-    if (autoRefresh) {
-      interval = window.setInterval(loadHealthChecks, 60000);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [autoRefresh]);
-
   const loadHealthChecks = async () => {
     try {
       setIsLoading(true);
-      const response = await apiClient.get('/system/health');
-      setHealthChecks(response.data);
-      setLastCheck(new Date());
+      const result = await refetch();
+      if (result.isError) throw result.error;
+      if (result.data) {
+        setFrozenChecks(result.data);
+        setFrozenLastCheck(new Date(result.dataUpdatedAt));
+      }
     } catch (error) {
       console.error('Failed to load health checks:', error);
     } finally {
@@ -200,7 +186,13 @@ export default function SystemHealthPage() {
               <input
                 type="checkbox"
                 checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
+                onChange={(e) => {
+                  if (!e.target.checked) {
+                    setFrozenChecks(sharedChecks ?? []);
+                    setFrozenLastCheck(dataUpdatedAt ? new Date(dataUpdatedAt) : null);
+                  }
+                  setAutoRefresh(e.target.checked);
+                }}
                 className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
               />
               Auto-refresh
@@ -265,7 +257,7 @@ export default function SystemHealthPage() {
         </div>
 
         {/* Health Check Results */}
-        {isLoading && healthChecks.length === 0 ? (
+        {(isLoading || (autoRefresh && isPending)) && healthChecks.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-red-600 border-t-transparent"></div>
             <p className="mt-4 text-gray-400">Running health checks...</p>

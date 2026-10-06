@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
+using System.Runtime.InteropServices;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -114,6 +116,29 @@ public static class LogEndpoints
             {
                 logger.LogError(ex, "[LOG FILES] Error downloading log file: {Filename}", filename);
                 return Results.Problem("Error downloading log file");
+            }
+        });
+
+        app.MapGet("/api/log/support-bundle", (string filename, ILogger<Program> logger) =>
+        {
+            try
+            {
+                var version = Sportarr.Api.Version.GetFullVersion();
+                var files = SupportDiagnosticBundle.Read(logsPath, filename, version, RuntimeInformation.OSDescription);
+                return Results.Ok(new { files });
+            }
+            catch (ArgumentException)
+            {
+                return Results.BadRequest(new { message = "Select a valid log file" });
+            }
+            catch (FileNotFoundException)
+            {
+                return Results.NotFound(new { message = "Log file not found" });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[LOG FILES] Error creating support bundle");
+                return Results.Problem("Could not prepare the support bundle");
             }
         });
 

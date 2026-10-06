@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/test-utils';
 import { apiGet } from '../../utils/api';
@@ -6,6 +6,7 @@ import Layout from '../Layout';
 
 vi.mock('../../api/hooks', () => ({
   useSystemStatus: () => ({ data: undefined }),
+  useSystemHealth: () => ({ data: [] }),
   useActivityCounts: () => ({ data: undefined }),
 }));
 vi.mock('../../hooks/useNavTarget', () => ({
@@ -61,5 +62,16 @@ describe('setup guide entry', () => {
 
     renderWithProviders(<Layout />);
     await waitFor(() => expect(screen.getByTestId('setup-guide')).toHaveTextContent('first run'));
+  });
+
+  it('shows Support inside System instead of as a top-level desktop link', () => {
+    vi.mocked(apiGet).mockResolvedValue({ ok: false } as never);
+
+    renderWithProviders(<Layout />);
+    expect(screen.queryByRole('link', { name: 'Support' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'System' }));
+    expect(screen.getByRole('link', { name: 'Support' })).toHaveAttribute('href', '/support');
+    expect(screen.queryByRole('link', { name: 'Events' })).not.toBeInTheDocument();
   });
 });

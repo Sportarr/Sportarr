@@ -20,9 +20,12 @@ const SystemPage = lazy(() => import('./pages/SystemPage'));
 const SystemHealthPage = lazy(() => import('./pages/SystemHealthPage'));
 const StatsPage = lazy(() => import('./pages/StatsPage'));
 const BackupPage = lazy(() => import('./pages/BackupPage'));
-const SystemEventsPage = lazy(() => import('./pages/SystemEventsPage'));
 const SystemUpdatesPage = lazy(() => import('./pages/SystemUpdatesPage'));
 const LogFilesPage = lazy(() => import('./pages/LogFilesPage'));
+const SupportPage = lazy(() => import('./pages/SupportPage'));
+const SupportIssuePage = lazy(() => import('./pages/SupportIssuePage'));
+const SupportNewIssuePage = lazy(() => import('./pages/SupportNewIssuePage'));
+const SupportYourIssuesPage = lazy(() => import('./pages/SupportYourIssuesPage'));
 const TasksPage = lazy(() => import('./pages/TasksPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -190,6 +193,10 @@ function App() {
             {/* Other Main Sections */}
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="activity" element={<ActivityPage />} />
+            <Route path="support" element={<SupportPage />} />
+            <Route path="support/issues/:number" element={<SupportIssuePage />} />
+            <Route path="support/new" element={<SupportNewIssuePage />} />
+            <Route path="support/yours" element={<SupportYourIssuesPage />} />
             <Route path="wanted" element={<Navigate to="/activity" replace />} />
 
             {/* IPTV Section */}
@@ -232,7 +239,7 @@ function App() {
             <Route path="system/stats" element={<StatsPage />} />
             <Route path="system/backup" element={<BackupPage />} />
             <Route path="system/updates" element={<SystemUpdatesPage />} />
-            <Route path="system/events" element={<SystemEventsPage />} />
+            <Route path="system/events" element={<Navigate to="/system/logs" replace />} />
             <Route path="system/logs" element={<LogFilesPage />} />
 
             {/* 404 Not Found - catch-all for unknown routes */}
@@ -242,7 +249,7 @@ function App() {
             </Suspense>
           </AuthProvider>
       </BrowserRouter>
-      <ReactQueryDevtools initialIsOpen={false} />
+      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
     </ErrorBoundary>
   );

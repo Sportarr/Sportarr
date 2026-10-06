@@ -276,7 +276,7 @@ public class DvrAssignmentServiceTests
                 new IptvChannel { Id = 2, SourceId = 1, Name = "Second", StreamUrl = "http://test/2" },
                 new IptvChannel { Id = 3, SourceId = 1, Name = "Third", StreamUrl = "http://test/3" },
                 new IptvChannel { Id = 4, SourceId = 1, Name = "Inactive", StreamUrl = "http://test/4", IsEnabled = false });
-            var start = new DateTime(2026, 10, 1, 18, 0, 0, DateTimeKind.Utc);
+            var start = DateTime.UtcNow.AddDays(7);
             var recording = new DvrRecording
             {
                 Title = "Test", ChannelId = 1, Quality = "HDTV-1080p",

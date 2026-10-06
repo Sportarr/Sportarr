@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Sportarr.Api.Helpers;
 
 namespace Sportarr.Api.Services;
 
@@ -62,7 +63,7 @@ public static class LogSanitizer
 
         // HTTP Basic Auth in URLs (http://user:pass@host)
         new SanitizationPattern(
-            @"(https?://[^:]+:)([^@]+)(@)",
+            @"(https?://[^:/\s]+:)([^@\s]+)(@)",
             "$1***REDACTED***$3",
             RegexOptions.IgnoreCase
         ),
@@ -90,7 +91,7 @@ public static class LogSanitizer
             sanitized = pattern.Regex.Replace(sanitized, pattern.Replacement);
         }
 
-        return sanitized;
+        return SecretRedactor.Url(sanitized);
     }
 
     /// <summary>

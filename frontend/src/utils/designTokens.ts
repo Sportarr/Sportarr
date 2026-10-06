@@ -104,6 +104,8 @@ export const BUTTON_PRIMARY = `${BUTTON_BASE} bg-red-600 text-white hover:bg-red
 /** Secondary action button used for neutral actions. */
 export const BUTTON_SECONDARY = `${BUTTON_BASE} bg-gray-700 text-white hover:bg-gray-600`;
 
+export const BUTTON_TAB_BASE = 'inline-flex min-h-11 items-center justify-center rounded-lg px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors';
+
 export const OPTION_CARD_SELECTED = 'w-full rounded-xl border border-red-500 bg-red-950/20 p-4 text-left transition-colors';
 export const OPTION_CARD_UNSELECTED = 'w-full rounded-xl border border-gray-800 bg-gray-900 p-4 text-left transition-colors hover:border-gray-700';
 

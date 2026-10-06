@@ -1,12 +1,36 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { HeartIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
-import { useSystemStatus } from '../api/hooks';
+import { HeartIcon, ClipboardDocumentIcon, CheckIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { useNavigate } from 'react-router-dom';
+import { useSystemHealth, useSystemStatus, type SystemHealthCheck } from '../api/hooks';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
+import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../utils/designTokens';
+
+function getHealthSummary(checks: SystemHealthCheck[] | undefined, pending: boolean, failed: boolean) {
+  if (failed) return { text: 'Unable to check', color: 'text-gray-400' };
+  if (pending) return { text: 'Checking...', color: 'text-gray-400' };
+  if (!Array.isArray(checks) || checks.length === 0) {
+    return { text: 'No checks reported', color: 'text-gray-400' };
+  }
+
+  const activeLevel = Math.max(0, ...checks.filter((check) => !check.dismissed || check.level >= 3).map((check) => check.level));
+  if (activeLevel >= 3) return { text: 'Errors present', color: 'text-red-400' };
+  if (activeLevel === 2) return { text: 'Warnings present', color: 'text-yellow-400' };
+  if (activeLevel === 1) return { text: 'Notices present', color: 'text-blue-400' };
+  if (checks.some((check) => check.level === 2)) {
+    return { text: 'Warnings dismissed', color: 'text-yellow-400' };
+  }
+  if (checks.some((check) => check.level === 1)) {
+    return { text: 'Notices dismissed', color: 'text-blue-400' };
+  }
+  return { text: 'Healthy', color: 'text-green-400' };
+}
 
 export default function SystemPage() {
+  const navigate = useNavigate();
   const { data: status, isLoading, error } = useSystemStatus();
+  const { data: healthChecks, isPending: healthPending, isError: healthError } = useSystemHealth();
   const [btcCopied, setBtcCopied] = useState(false);
   const [infoCopied, setInfoCopied] = useState(false);
 
@@ -85,6 +109,26 @@ export default function SystemPage() {
     }
   };
 
+  const createSupportIssue = () => {
+    if (!status) return;
+    const info = [
+      'SPORTARR SYSTEM INFO v1',
+      `Version: ${status.version}`,
+      `Branch: ${status.branch}`,
+      `OS: ${status.osName} ${status.osVersion}`,
+      `Runtime: ${status.runtimeVersion}`,
+      `Database: ${status.databaseType} ${status.databaseVersion}`,
+      `Docker: ${status.isDocker ? 'Yes' : 'No'}`,
+      `Production: ${status.isProduction ? 'Yes' : 'No'}`,
+      `Migration Version: ${status.migrationVersion}`,
+    ].join('\n');
+    const file = new File([`${info}\n`], 'sportarr-system-info.txt', { type: 'text/plain' });
+    navigate('/support/new', { state: {
+      diagnosticFiles: [file],
+      versionAndInstallType: `${status.version} / ${status.isDocker ? 'Docker' : 'Non-Docker install'}`,
+    } });
+  };
+
   if (isLoading) {
     return (
       <PageShell>
@@ -124,15 +168,20 @@ export default function SystemPage() {
     { label: 'Data Directory', value: status.appData },
   ];
 
+  const healthState = getHealthSummary(healthChecks, healthPending, healthError);
+
   return (
     <PageShell>
       <PageHeader
         title="System Status"
         subtitle="View system information and application status"
-        actions={
+        actions={<>
+          <button type="button" onClick={createSupportIssue} className={BUTTON_PRIMARY}>
+            <PlusIcon className="h-5 w-5" />Create support issue
+          </button>
           <button
             onClick={copySystemInfo}
-            className="flex items-center gap-2 rounded-lg bg-gray-700 px-4 py-2 font-medium text-white transition-colors hover:bg-gray-600"
+            className={BUTTON_SECONDARY}
             title="Copy system info for GitHub issues"
           >
             {infoCopied ? (
@@ -147,7 +196,7 @@ export default function SystemPage() {
               </>
             )}
           </button>
-        }
+        </>}
       />
 
       <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden">
@@ -169,8 +218,8 @@ export default function SystemPage() {
 
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 shadow-xl">
-            <h3 className="text-sm font-medium text-gray-400 mb-2">Status</h3>
-            <p className="text-2xl font-bold text-green-400">Running</p>
+            <h3 className="text-sm font-medium text-gray-400 mb-2">Health</h3>
+            <p className={`text-2xl font-bold ${healthState.color}`}>{healthState.text}</p>
           </div>
           <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 shadow-xl">
             <h3 className="text-sm font-medium text-gray-400 mb-2">Mode</h3>

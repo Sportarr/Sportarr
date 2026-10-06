@@ -1,5 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useSystemStatus, useActivityCounts } from '../api/hooks';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { useSystemStatus, useSystemHealth, useActivityCounts, type SystemHealthCheck } from '../api/hooks';
 import {
   TrophyIcon as TrophySolidIcon,
   CalendarIcon as CalendarSolidIcon,
@@ -191,8 +193,8 @@ export default function Layout() {
         { label: 'Stats', path: '/system/stats' },
         { label: 'Backup', path: '/system/backup' },
         { label: 'Updates', path: '/system/updates' },
-        { label: 'Events', path: '/system/events' },
         { label: 'Log Files', path: '/system/logs' },
+        { label: 'Support', path: '/support' },
       ],
     },
   ];
@@ -526,34 +528,11 @@ export default function Layout() {
  * download client is visible without opening System > Health.
  */
 function HealthBanner() {
-  const [issues, setIssues] = useState<{ type: number; level: number; message: string; dismissed?: boolean }[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const check = async () => {
-      try {
-        const response = await apiGet('/api/system/health');
-        if (!response.ok) return;
-        const results: { type: number; level: number; message: string; dismissed?: boolean }[] =
-          await response.json();
-        if (!cancelled) {
-          // Warnings the user dismissed stay off the banner (they remain
-          // visible on System > Health, where they can be restored).
-          setIssues(results.filter((r) => r.level >= 2 && !r.dismissed));
-        }
-      } catch {
-        // Network errors are not health issues; leave the banner as-is.
-      }
-    };
-
-    check();
-    const interval = setInterval(check, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  const queryClient = useQueryClient();
+  const { data: healthChecks = [] } = useSystemHealth(true);
+  const [isDismissing, setIsDismissing] = useState(false);
+  const issues = healthChecks.filter((check) => check.level >= 2 && !check.dismissed
+    && !(isDismissing && check.level === 2));
 
   if (issues.length === 0) return null;
 
@@ -562,13 +541,34 @@ function HealthBanner() {
   const dismissable = issues.filter((i) => i.level === 2);
 
   const dismissAll = async () => {
-    setIssues((prev) => prev.filter((i) => i.level >= 3));
-    for (const issue of dismissable) {
-      try {
-        await apiPost('/api/system/health/dismiss', { type: issue.type });
-      } catch {
-        // Best effort; the health page offers the same action.
+    if (isDismissing) return;
+    setIsDismissing(true);
+    try {
+      await queryClient.cancelQueries({ queryKey: ['system', 'health'] });
+      const previousState = queryClient.getQueryState<SystemHealthCheck[]>(['system', 'health']);
+      const previous = previousState?.data;
+      const previousUpdatedAt = previousState?.dataUpdatedAt;
+      const dismissedTypes = new Set(dismissable.map((issue) => issue.type));
+      queryClient.setQueryData<SystemHealthCheck[]>(['system', 'health'], (current) =>
+        current?.map((check) => dismissedTypes.has(check.type) && check.level < 3
+          ? { ...check, dismissed: true }
+          : check), { updatedAt: previousUpdatedAt });
+      let failed = false;
+      for (const issue of dismissable) {
+        try {
+          const response = await apiPost('/api/system/health/dismiss', { type: issue.type });
+          if (!response.ok) failed = true;
+        } catch {
+          failed = true;
+        }
       }
+      if (failed) {
+        queryClient.setQueryData(['system', 'health'], previous, { updatedAt: previousUpdatedAt });
+        toast.error('Could not dismiss a health warning');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['system', 'health'] });
+    } finally {
+      setIsDismissing(false);
     }
   };
 
