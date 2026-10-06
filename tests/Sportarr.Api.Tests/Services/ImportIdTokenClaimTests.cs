@@ -304,6 +304,56 @@ public class ImportUpgradeBehaviourTests : IDisposable
     }
 
     [Fact]
+    public async Task AManualImportOfAnIptvRecordingLeavesTheIndexerFileUnderSourcePrecedence()
+    {
+        await TurnOnSourcePrecedence();
+        var (evt, held) = SeedEventWithFile();
+        var recording = Write("NFL - S2025E06 - Recording [HDTV-1080p] [] sportarr-ev-312923.ts");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = recording, EventId = evt.Id },
+        });
+
+        result.Imported.Should().BeEmpty();
+        result.Rejected.Should().ContainSingle().Which.Reason.Should().Be(SourcePrecedence.IptvRecordingRejection);
+        _db.EventFiles.Single(f => f.EventId == evt.Id).FilePath.Should().Be(held.FilePath);
+        File.Exists(held.FilePath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AManualImportOverridingSourcePrecedenceReplacesTheIndexerFile()
+    {
+        await TurnOnSourcePrecedence();
+        var (evt, held) = SeedEventWithFile();
+        var recording = Write("NFL - S2025E06 - Recording [HDTV-1080p] [] sportarr-ev-312923.ts");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = recording, EventId = evt.Id, OverrideSourcePrecedence = true },
+        });
+
+        result.Rejected.Should().BeEmpty();
+        var file = _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists);
+        file.FilePath.Should().NotBe(held.FilePath);
+        file.IsIptvRecording.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TheScanShowsThatSourcePrecedenceKeepsTheIndexerFile()
+    {
+        await TurnOnSourcePrecedence();
+        SeedEventWithFile();
+        Write("NFL - S2025E06 - Recording [HDTV-1080p] [] sportarr-ev-312923.ts");
+
+        var result = await _service.ScanFolderAsync(SeasonDir, includeSubfolders: false);
+
+        var copy = result.MatchedFiles.Should().ContainSingle(f => f.FileName.Contains("Recording")).Subject;
+        copy.Rejections.Should().ContainSingle().Which.Should().Be(SourcePrecedence.IptvRecordingRejection);
+        copy.HeldBySourcePrecedence.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task AFileFromAnIndexerReplacesAnIptvRecordingOfHigherQualityUnderSourcePrecedence()
     {
         await TurnOnSourcePrecedence();
