@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Models;
@@ -75,6 +77,50 @@ public class IptvSourcePrecedenceTests
         Assert.Equal(grabbed ? 1 : 0, rig.Transport.ClientAdds);
         if (grabbed)
             Assert.Equal("Prelims", (await rig.Db.DownloadQueue.SingleAsync()).Part);
+    }
+
+    [Theory]
+    [InlineData("Prelims", true)]
+    [InlineData("Main.Card", false)]
+    public async Task SearchWithoutAPartLiftsTheProfileOnlyForTheRecordedPart(string partToken, bool grabbed)
+    {
+        // The backlog searches multi-part events with no part. Main Card
+        // holds nothing, so an excluded quality must not be grabbed for it.
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(relational: true);
+        await SetReplaceRecordingsAsync(rig, true);
+        await ExcludeQualityAsync(rig, "WEBDL-720p");
+        await HoldAsync(rig, part: "Prelims", quality: "WEBDL-1080p", isIptvRecording: true);
+        var release = rig.Release($"UFC.9999.2020.09.01.{partToken}.720p.WEB-DL.H264-Fixture");
+        release.Size = 2_000_000_000;
+        release.IndexerId = await rig.Db.Indexers.Select(x => x.Id).SingleAsync();
+
+        var result = await rig.AutomaticAsync(release);
+
+        Assert.True(grabbed == result.Success, result.Message);
+        Assert.Equal(grabbed ? 1 : 0, rig.Transport.ClientAdds);
+    }
+
+    [Theory]
+    [InlineData(true, true, false, 1)]
+    [InlineData(false, true, false, 0)]
+    [InlineData(false, false, true, 1)]
+    public async Task SonarrCutoffListCountsRecordingsAndDisallowedQualities(
+        bool replaceRecordings, bool isIptvRecording, bool excludeHeldQuality, int expected)
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(multipart: false, relational: true);
+        await SetReplaceRecordingsAsync(rig, replaceRecordings);
+        var profile = await rig.Db.QualityProfiles.SingleAsync(p => p.Id == rig.Event.QualityProfileId);
+        profile.UpgradesAllowed = true;
+        profile.CutoffQuality = 15;
+        await rig.Db.SaveChangesAsync();
+        if (excludeHeldQuality)
+            await ExcludeQualityAsync(rig, "WEBDL-2160p");
+        // WEBDL-2160p sits above the WEBDL-1080p cutoff when it is allowed.
+        await HoldAsync(rig, part: null, quality: "WEBDL-2160p", isIptvRecording: isIptvRecording);
+
+        var body = await rig.Client.GetFromJsonAsync<JsonElement>("/api/v3/wanted/cutoff");
+
+        Assert.Equal(expected, body.GetProperty("totalRecords").GetInt32());
     }
 
     private static async Task SetReplaceRecordingsAsync(PartIdentityIntegrationHarness rig, bool on)

@@ -425,8 +425,8 @@ public class RssSyncService : BackgroundService
         // A null part here means the event isn't multi-part, so only the
         // whole-event file counts, as in ShouldGrabReleaseAsync.
         var heldFile = await db.EventFiles.AsNoTracking()
-            .HeldFor(evt.Id, part, nullPartMatchesAnyPart: false)
-            .FirstOrDefaultAsync(cancellationToken);
+            .HeldFiles(evt.Id)
+            .FirstOrDefaultAsync(f => f.PartName == part, cancellationToken);
         if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldFile))
             Helpers.SourcePrecedence.LiftQualityProfileRejections(release);
     }

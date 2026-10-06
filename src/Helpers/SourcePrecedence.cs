@@ -39,21 +39,28 @@ public static class SourcePrecedence
     }
 
     /// <summary>
+    /// Under source precedence an event holding an IPTV recording never
+    /// meets its cutoff, whatever the recording's quality string says.
+    /// </summary>
+    public static bool AwaitsIndexerRelease(Config config, bool hasIptvRecording) =>
+        hasIptvRecording && config.DvrReplaceRecordingsWithIndexerReleases;
+
+    /// <summary>
     /// Whether an indexer release would replace this file on source alone.
     /// </summary>
     public static bool IndexerReleaseReplaces(Config config, [NotNullWhen(true)] EventFile? existingFile) =>
         existingFile != null && Compare(config, incomingIsIptvRecording: false, existingFile.IsIptvRecording) == Verdict.IncomingWins;
 
     /// <summary>
-    /// The file an event holds for a part, whole-event file first. With
-    /// nullPartMatchesAnyPart a null part takes any held file; otherwise a
-    /// null part means the whole-event file only. The caller runs the query.
+    /// The files an event holds, whole-event file first, then oldest first,
+    /// so every caller that takes the first one agrees. The caller runs the
+    /// query.
     /// </summary>
-    public static IQueryable<EventFile> HeldFor(this IQueryable<EventFile> files, int eventId, string? part, bool nullPartMatchesAnyPart) =>
+    public static IQueryable<EventFile> HeldFiles(this IQueryable<EventFile> files, int eventId) =>
         files
             .Where(f => f.EventId == eventId && f.Exists)
-            .Where(f => f.PartName == part || (part == null && nullPartMatchesAnyPart))
-            .OrderBy(f => f.PartName != null);
+            .OrderBy(f => f.PartName != null)
+            .ThenBy(f => f.Id);
 
     /// <summary>
     /// Drop the quality profile's allowed-quality and minimum-score
@@ -62,6 +69,7 @@ public static class SourcePrecedence
     /// </summary>
     public static void LiftQualityProfileRejections(ReleaseSearchResult release)
     {
+        release.ReplacesIptvRecording = true;
         if (release.Rejections.RemoveAll(ReleaseEvaluator.IsQualityProfileRejection) > 0)
         {
             release.Approved = release.Rejections.Count == 0;

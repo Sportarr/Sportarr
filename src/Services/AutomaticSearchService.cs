@@ -653,17 +653,20 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // Under source precedence a release that would replace an IPTV
                 // recording isn't held to the profile's allowed qualities or
                 // minimum format score.
+                // Each release is judged against the file for the part it
+                // would fill, found as the upgrade check below finds it: the
+                // backlog searches multi-part events with no part.
                 if (config.DvrReplaceRecordingsWithIndexerReleases)
                 {
-                    // The backlog searches multi-part events with no part, so
-                    // a null part takes any held file, as in the upgrade
-                    // check below.
-                    var heldFile = await _db.EventFiles.AsNoTracking()
-                        .HeldFor(evt.Id, part, nullPartMatchesAnyPart: true)
-                        .FirstOrDefaultAsync();
-                    if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldFile))
+                    var heldFiles = await _db.EventFiles.AsNoTracking()
+                        .HeldFiles(evt.Id)
+                        .ToListAsync();
+                    foreach (var release in allReleases)
                     {
-                        foreach (var release in allReleases)
+                        var releasePart = EffectivePart(Helpers.PartIdentityResolver.Resolve(
+                            part, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
+                            config.EnableMultiPartEpisodes, release.IsPack), part);
+                        if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, HeldFileForPart(heldFiles, releasePart)))
                         {
                             Helpers.SourcePrecedence.LiftQualityProfileRejections(release);
                         }
@@ -1188,12 +1191,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             var acquiredIdentity = Helpers.PartIdentityResolver.Resolve(
                 part, bestRelease.Title, null, evt.Sport, evt.Title, evt.League?.Name,
                 config.EnableMultiPartEpisodes, bestRelease.IsPack);
-            var effectivePart = acquiredIdentity.Kind switch
-            {
-                Helpers.PartIdentityKind.NotApplicable => null,
-                Helpers.PartIdentityKind.CompleteEventLabel => EventPartDetector.FullEventSegmentName,
-                _ => acquiredIdentity.Part?.SegmentName ?? part
-            };
+            var effectivePart = EffectivePart(acquiredIdentity, part);
             var isFullEventPart = EventPartDetector.IsFullEvent(effectivePart);
 
             if (partlessMultiPartRequest)
@@ -1268,7 +1266,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             {
                 // Get existing files for this event
                 var existingFiles = await _db.EventFiles.AsNoTracking()
-                    .Where(f => f.EventId == eventId && f.Exists)
+                    .HeldFiles(eventId)
                     .ToListAsync();
 
                 EventFile? relevantFile = null;
@@ -1277,8 +1275,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 {
                     // Searching for a specific part - check for full event file OR matching part file
                     var fullEventFile = existingFiles.FirstOrDefault(f => f.PartName == null);
-                    var partSpecificFile = existingFiles.FirstOrDefault(f =>
-                        string.Equals(f.PartName, effectivePart, StringComparison.OrdinalIgnoreCase));
+                    var partSpecificFile = HeldFileForPart(existingFiles, effectivePart);
 
                     if (fullEventFile != null)
                     {
@@ -1307,7 +1304,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 {
                     // Not searching for a specific part - use event-level quality (legacy behavior)
                     // Or use the first/best existing file
-                    relevantFile = existingFiles.FirstOrDefault();
+                    relevantFile = HeldFileForPart(existingFiles, effectivePart);
                     if (relevantFile != null)
                     {
                         _logger.LogInformation("[Automatic Search] Event already has file: {Quality} (Part: {Part})",
@@ -2137,6 +2134,27 @@ public class AutomaticSearchService : IAutomaticSearchService
             || status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
             || status.Equals("Canceled", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// The part a release would fill: the part named in its title, or the
+    /// requested part when the title names none.
+    /// </summary>
+    private static string? EffectivePart(Helpers.PartIdentityResolution identity, string? requestedPart) => identity.Kind switch
+    {
+        Helpers.PartIdentityKind.NotApplicable => null,
+        Helpers.PartIdentityKind.CompleteEventLabel => EventPartDetector.FullEventSegmentName,
+        _ => identity.Part?.SegmentName ?? requestedPart
+    };
+
+    /// <summary>
+    /// The held file a release for this part is measured against: that
+    /// part's file, or for no part (or the full event) the first held file,
+    /// which HeldFiles orders whole-event first.
+    /// </summary>
+    private static EventFile? HeldFileForPart(IEnumerable<EventFile> heldFiles, string? effectivePart) =>
+        !string.IsNullOrEmpty(effectivePart) && !EventPartDetector.IsFullEvent(effectivePart)
+            ? heldFiles.FirstOrDefault(f => string.Equals(f.PartName, effectivePart, StringComparison.OrdinalIgnoreCase))
+            : heldFiles.FirstOrDefault();
 
     /// <summary>
     /// Extract resolution from quality string (handles multiple formats)

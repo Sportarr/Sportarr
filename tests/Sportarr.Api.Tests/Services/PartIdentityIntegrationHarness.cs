@@ -83,6 +83,7 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         app.MapEventSearchAndGrabEndpoints();
         app.MapSonarrReleasePushEndpoint();
         app.MapManualQueueImportEndpoint();
+        app.MapSonarrWantedEndpoint();
         await app.StartAsync();
         var rig = new PartIdentityIntegrationHarness(app, directory, transport);
         if (relational) await rig.Db.Database.EnsureCreatedAsync();

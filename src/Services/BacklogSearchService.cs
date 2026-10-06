@@ -164,7 +164,7 @@ public class BacklogSearchService : BackgroundService
             {
                 // Under source precedence an IPTV recording stays a candidate
                 // whatever its quality string says ("DVR" when the probe failed).
-                if (c.HasIptvRecording && config.DvrReplaceRecordingsWithIndexerReleases)
+                if (Helpers.SourcePrecedence.AwaitsIndexerRelease(config, c.HasIptvRecording))
                     return true;
                 // Prefer EventFile rows; fall back to Event-level Quality for legacy rows.
                 var qualities = c.FileQualities.Count > 0

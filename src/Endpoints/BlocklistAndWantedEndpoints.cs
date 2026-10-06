@@ -201,7 +201,7 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
             .ToDictionaryAsync(p => p.Id);
 
         var belowCutoff = candidates
-            .Where(e => AwaitsIndexerRelease(e.HasIptvRecording, config)
+            .Where(e => Helpers.SourcePrecedence.AwaitsIndexerRelease(config, e.HasIptvRecording)
                 || IsBelowCutoff(e.QualityProfileId, e.LeagueQualityProfileId, e.Quality, profiles))
             .Select(e => e.Id)
             .ToList();
@@ -304,7 +304,7 @@ app.MapPost("/api/wanted/cutoff-unmet/search-all", async (SportarrDbContext db, 
         .ToDictionaryAsync(p => p.Id);
 
     var cutoffUnmet = events
-        .Where(e => AwaitsIndexerRelease(e.HasIptvRecording, config)
+        .Where(e => Helpers.SourcePrecedence.AwaitsIndexerRelease(config, e.HasIptvRecording)
             || IsBelowCutoff(e.QualityProfileId, e.LeagueQualityProfileId, e.Quality, profiles))
         .ToList();
 
@@ -327,12 +327,6 @@ app.MapPost("/api/wanted/cutoff-unmet/search-all", async (SportarrDbContext db, 
 
         return app;
     }
-
-    /// <summary>
-    /// Under source precedence an IPTV recording never meets the cutoff.
-    /// </summary>
-    private static bool AwaitsIndexerRelease(bool hasIptvRecording, Config config) =>
-        hasIptvRecording && config.DvrReplaceRecordingsWithIndexerReleases;
 
     /// <summary>
     /// True when the event has a file whose quality sits below its profile

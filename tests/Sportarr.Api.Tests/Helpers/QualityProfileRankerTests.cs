@@ -118,6 +118,20 @@ public class QualityProfileRankerTests
             .Should().BePositive();
     }
 
+    [Fact]
+    public void ListedButDisallowedQualityIsBelowTheCutoffButAnUnlistedOneIsNot()
+    {
+        var profile = Profile(
+            Item("WEBDL-2160p", 19),
+            Item("WEBDL-1080p", 15));
+        profile.Items[0].Allowed = false;
+        profile.UpgradesAllowed = true;
+        profile.CutoffQuality = 15;
+
+        QualityProfileRanker.IsBelowCutoff(profile, "WEBDL-2160p").Should().BeTrue();
+        QualityProfileRanker.IsBelowCutoff(profile, "HDTV-720p").Should().BeFalse();
+    }
+
     private static QualityProfile Profile(params QualityItem[] items) => new()
     {
         Name = "Test",

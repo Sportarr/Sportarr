@@ -12,18 +12,39 @@ public static class QualityProfileRanker
             return ReleaseEvaluator.CalculateQualityScoreFromName(qualityName);
         }
 
+        var index = ListedIndex(profile, qualityName);
+        // A quality the profile lists but doesn't allow ranks below every
+        // allowed one, so any allowed release upgrades it.
+        return index >= 0 && profile.Items[index].Allowed ? profile.Items.Count - index : 0;
+    }
+
+    /// <summary>
+    /// The profile lists this quality but doesn't allow it. It ranks 0 like
+    /// an unparseable quality, but unlike one it is always below the cutoff.
+    /// </summary>
+    public static bool IsListedButDisallowed(QualityProfile? profile, string? qualityName)
+    {
+        var index = ListedIndex(profile, qualityName);
+        return index >= 0 && !profile!.Items[index].Allowed;
+    }
+
+    private static int ListedIndex(QualityProfile? profile, string? qualityName)
+    {
+        if (profile?.Items == null)
+        {
+            return -1;
+        }
+
         var quality = QualityParser.ParseQuality(qualityName ?? string.Empty).Quality;
         for (var index = 0; index < profile.Items.Count; index++)
         {
             if (Matches(profile.Items[index], quality))
             {
-                // A quality the profile lists but doesn't allow ranks below
-                // every allowed one, so any allowed release upgrades it.
-                return profile.Items[index].Allowed ? profile.Items.Count - index : 0;
+                return index;
             }
         }
 
-        return 0;
+        return -1;
     }
 
     public static int Compare(QualityProfile? profile, string? leftQuality, string? rightQuality)
@@ -61,7 +82,8 @@ public static class QualityProfileRanker
 
         var currentRank = GetRank(profile, qualityName);
         var cutoffRank = GetCutoffRank(profile, profile.CutoffQuality.Value);
-        return currentRank > 0 && cutoffRank > 0 && currentRank < cutoffRank;
+        return cutoffRank > 0 &&
+            (IsListedButDisallowed(profile, qualityName) || (currentRank > 0 && currentRank < cutoffRank));
     }
 
     internal static bool UsesAscendingImportedOrder(QualityProfile profile)

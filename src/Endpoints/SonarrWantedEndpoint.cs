@@ -113,6 +113,7 @@ public static class SonarrWantedEndpoint
         // have rank 0. The automatic search also refuses to upgrade them.
         app.MapGet("/api/v3/wanted/cutoff", async (
             SportarrDbContext db,
+            ConfigService configService,
             ILogger<Program> logger,
             int? page,
             int? pageSize,
@@ -126,6 +127,7 @@ public static class SonarrWantedEndpoint
             logger.LogDebug("[V3-COMPAT] GET /api/v3/wanted/cutoff - page={Page}, pageSize={PageSize}",
                 pageNumber, effectivePageSize);
 
+            var config = await configService.GetConfigAsync();
             var profiles = await db.QualityProfiles.ToListAsync();
             var cutoffRanks = profiles
                 .Where(p => p.UpgradesAllowed && p.CutoffQuality.HasValue)
@@ -138,20 +140,27 @@ public static class SonarrWantedEndpoint
                 .Select(e => new
                 {
                     Event = e,
-                    Qualities = e.Files.Select(f => f.Quality).ToList()
+                    Qualities = e.Files.Select(f => f.Quality).ToList(),
+                    HasIptvRecording = e.Files.Any(f => f.Exists && f.IsIptvRecording)
                 })
                 .ToListAsync();
 
             var unmet = candidates
                 .Where(x =>
                 {
+                    if (Helpers.SourcePrecedence.AwaitsIndexerRelease(config, x.HasIptvRecording))
+                        return true;
                     var profile = RssSyncService.ResolveQualityProfile(x.Event, profiles);
                     if (profile == null || !cutoffRanks.TryGetValue(profile.Id, out var cutoffRank) || cutoffRank <= 0)
                         return false;
                     var best = x.Qualities.Count == 0
                         ? 0
                         : x.Qualities.Max(q => Helpers.QualityProfileRanker.GetRank(profile, q));
-                    return best > 0 && best < cutoffRank;
+                    // Rank 0 is unparseable, unless the profile lists the
+                    // quality without allowing it: that is below the cutoff.
+                    return best > 0
+                        ? best < cutoffRank
+                        : x.Qualities.Any(q => Helpers.QualityProfileRanker.IsListedButDisallowed(profile, q));
                 })
                 .Select(x => x.Event);
 
