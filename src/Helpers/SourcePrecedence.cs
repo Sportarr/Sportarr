@@ -46,6 +46,16 @@ public static class SourcePrecedence
         hasIptvRecording && config.DvrReplaceRecordingsWithIndexerReleases;
 
     /// <summary>
+    /// A library file nothing told the import is a recording: an HDTV file
+    /// in MPEG-TS, the container the DVR records to. Indexer releases come
+    /// as mkv or mp4, so they never match. Keep in step with the
+    /// MarkIptvRecordings migration.
+    /// </summary>
+    public static bool LooksLikeIptvRecording(string? filePath, string? quality) =>
+        string.Equals(Path.GetExtension(filePath), ".ts", StringComparison.OrdinalIgnoreCase)
+        && quality?.Contains("HDTV", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>
     /// Whether an indexer release would replace this file on source alone.
     /// </summary>
     public static bool IndexerReleaseReplaces(Config config, [NotNullWhen(true)] EventFile? existingFile) =>

@@ -1397,7 +1397,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                                             // Not grabbed by Sportarr: it replaces what the
                                             // event holds only as an upgrade, else it waits
                                             // in Pending Imports with the reason.
-                                            OnlyIfUpgrade = true
+                                            OnlyIfUpgrade = true,
+                                            FromDownloadClient = true
                                         }
                                     });
                                     imported = importResult.Imported.Count + importResult.Created.Count > 0;

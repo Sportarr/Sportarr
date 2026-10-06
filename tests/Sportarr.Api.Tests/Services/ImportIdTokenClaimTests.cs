@@ -339,6 +339,63 @@ public class ImportUpgradeBehaviourTests : IDisposable
         _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("NFL - S2025E06 - Recording [HDTV-1080p] [] sportarr-ev-312923.ts", true)]
+    [InlineData("NFL - S2025E06 - Release [HDTV-1080p] [] sportarr-ev-312923.mkv", false)]
+    [InlineData("NFL - S2025E06 - Release [WEBDL-1080p] [] sportarr-ev-312923.ts", false)]
+    public async Task ARescanMarksAnHdtvTransportStreamAsAnIptvRecording(string name, bool marked)
+    {
+        // A rescan of the DVR's output isn't told the file is a recording;
+        // the MPEG-TS container the recorder writes is what gives it away.
+        var (evt, held) = SeedEventWithFile();
+        held.Quality = "SDTV";
+        _db.SaveChanges();
+        var file = Write(name);
+
+        await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = evt.Id, OnlyIfUpgrade = true },
+        });
+
+        _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().Be(marked);
+    }
+
+    [Fact]
+    public async Task AnHdtvTransportStreamFromADownloadClientIsNotMarkedAsAnIptvRecording()
+    {
+        // A download client only ever hands over releases; 720p HDTV
+        // captures are often posted as .ts.
+        var (evt, held) = SeedEventWithFile();
+        held.Quality = "SDTV";
+        _db.SaveChanges();
+        var release = Write("NFL - S2025E06 - Release [HDTV-1080p] [] sportarr-ev-312923.ts");
+
+        await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = release, EventId = evt.Id, OnlyIfUpgrade = true, FromDownloadClient = true },
+        });
+
+        _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReimportingAnHdtvTransportStreamWithAReleaseTitleLeavesItUnmarked()
+    {
+        var (evt, held) = SeedEventWithFile();
+        var release = Write("NFL - S2025E06 - Release [HDTV-1080p] [] sportarr-ev-312923.ts");
+        held.FilePath = release;
+        held.Quality = "HDTV-1080p";
+        held.ReleaseTitle = "NFL.2025.Panthers.Browns.1080p.HDTV.x264-GRP";
+        _db.SaveChanges();
+
+        await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = release, EventId = evt.Id, OnlyIfUpgrade = true },
+        });
+
+        _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().BeFalse();
+    }
+
     [Fact]
     public async Task AnAutomaticImportLeavesAWorseCopyWhereItIs()
     {

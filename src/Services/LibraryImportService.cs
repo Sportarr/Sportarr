@@ -574,6 +574,16 @@ public class LibraryImportService
                         partNumber ??= EventPartDetector.ResolvePartNumber(partName, existingEvent.Sport,
                             existingEvent.Title, existingEvent.League?.Name);
 
+                        // A rescan of the DVR's output isn't told the file is a
+                        // recording, so the file itself has to say so. A file
+                        // from a download client, or one already tracked with a
+                        // release title, is a release whatever its container.
+                        var isIptvRecording = request.IsIptvRecording
+                            || (!request.FromDownloadClient
+                                && existingFileRecord?.ReleaseTitle == null
+                                && SourcePrecedence.LooksLikeIptvRecording(request.FilePath,
+                                    request.Quality ?? _fileParser.BuildQualityString(parsedInfo)));
+
                         // The file the event already holds for this part decides whether
                         // this one may take its place. One rule for every import path
                         // (ImportUpgradeRule): an automatic import stops at a rejection
@@ -589,7 +599,7 @@ public class LibraryImportService
                         {
                             var decision = await DecideUpgradeAsync(occupant, request.FilePath,
                                 request.Quality ?? _fileParser.BuildQualityString(parsedInfo), existingEvent,
-                                request.IsIptvRecording);
+                                isIptvRecording);
                             importInPlace = IsBesideOccupant(request.FilePath, occupant.FilePath);
                             if (request.OnlyIfUpgrade
                                 && (!decision.IsUpgrade || (decision.Equal && (importInPlace || importMode != LibraryImportMode.Move))))
@@ -678,7 +688,7 @@ public class LibraryImportService
                             existingFileRecord.PartNumber = partNumber;
                             // A rescan of a recording isn't told it is one, so the
                             // mark is only ever added here, never cleared.
-                            existingFileRecord.IsIptvRecording |= request.IsIptvRecording;
+                            existingFileRecord.IsIptvRecording |= isIptvRecording;
                             existingFileRecord.LastVerified = DateTime.UtcNow;
                             existingFileRecord.Exists = true;
                             linkedFile = existingFileRecord;
@@ -702,7 +712,7 @@ public class LibraryImportService
                                 existingByDest.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                                 existingByDest.PartName = partName;
                                 existingByDest.PartNumber = partNumber;
-                                existingByDest.IsIptvRecording = request.IsIptvRecording;
+                                existingByDest.IsIptvRecording = isIptvRecording;
                                 existingByDest.LastVerified = DateTime.UtcNow;
                                 existingByDest.Exists = true;
                                 linkedFile = existingByDest;
@@ -730,7 +740,7 @@ public class LibraryImportService
                                     OriginalTitle = request.OriginalTitle,
                                     Languages = request.Languages ?? new List<string>(),
                                     IndexerFlags = request.IndexerFlags,
-                                    IsIptvRecording = request.IsIptvRecording,
+                                    IsIptvRecording = isIptvRecording,
                                     PartName = partName,
                                     PartNumber = partNumber,
                                     Added = DateTime.UtcNow,
@@ -2670,6 +2680,12 @@ public class FileImportRequest
     /// keeps it from replacing a file that came from an indexer.
     /// </summary>
     public bool IsIptvRecording { get; set; }
+
+    /// <summary>
+    /// The file came from a download client, so it is a release and never
+    /// an IPTV recording, whatever its container.
+    /// </summary>
+    public bool FromDownloadClient { get; set; }
     public string? EventTitle { get; set; }
     public string? Organization { get; set; }
     public DateTime? EventDate { get; set; }

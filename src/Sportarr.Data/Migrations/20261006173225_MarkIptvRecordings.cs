@@ -28,6 +28,19 @@ namespace Sportarr.Api.Migrations
                    OR ""FilePath"" LIKE '%p.DVR %'
                    OR ""FilePath"" LIKE '%SDTV.DVR.%'
                    OR ""FilePath"" LIKE '%SDTV.DVR %'");
+
+            // A recording that reached the library through a rescan or a
+            // manual import parses as "HDTV" and, under a naming format
+            // without the DVR quality token, carries nothing above. The DVR
+            // records to MPEG-TS and indexer releases carry a release title,
+            // so an HDTV .ts file without one is a recording
+            // (SourcePrecedence.LooksLikeIptvRecording).
+            migrationBuilder.Sql(@"
+                UPDATE ""EventFiles"" SET ""IsIptvRecording"" = 1
+                WHERE ""IsIptvRecording"" = 0
+                  AND ""ReleaseTitle"" IS NULL
+                  AND LOWER(""FilePath"") LIKE '%.ts'
+                  AND UPPER(""Quality"") LIKE '%HDTV%'");
         }
 
         /// <inheritdoc />
