@@ -2710,6 +2710,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "DownloadQueue", "OutputPath", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "FailedAt", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "LastProgressAt", "TEXT NULL");
+        EnsureColumn(db, "EventFiles", "IsIptvRecording", "INTEGER NOT NULL DEFAULT 0");
 
         RelaxLegacyRootFolderColumns(db);
     }

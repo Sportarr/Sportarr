@@ -12,7 +12,8 @@ namespace Sportarr.Api.Services;
 /// An explicit choice can override a preference rejection.
 /// A lower profile rank never replaces. The same rank replaces unless it is
 /// a revision downgrade while propers are preferred, or its custom format
-/// score is lower. A higher profile rank always replaces.
+/// score is lower. A higher profile rank always replaces. Source precedence,
+/// when it applies, decides before any of these.
 /// </summary>
 public static class ImportUpgradeRule
 {
@@ -35,8 +36,19 @@ public static class ImportUpgradeRule
         string? existingQuality, int existingFormatScore, string? existingTitle,
         string? newQuality, int newFormatScore, string? newTitle,
         string? propersSetting,
-        QualityProfile? profile = null)
+        QualityProfile? profile = null,
+        int sourceComparison = 0)
     {
+        // Source precedence outranks every quality rule (SourcePrecedence).
+        if (sourceComparison > 0)
+        {
+            return Accept;
+        }
+        if (sourceComparison < 0)
+        {
+            return new Decision(false, SourcePrecedence.IptvRecordingRejection);
+        }
+
         var qualityComparison = QualityProfileRanker.Compare(profile, newQuality, existingQuality);
 
         if (qualityComparison < 0)

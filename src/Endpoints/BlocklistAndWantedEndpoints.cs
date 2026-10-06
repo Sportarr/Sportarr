@@ -186,6 +186,7 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
                 e.QualityProfileId,
                 LeagueQualityProfileId = e.League != null ? e.League.QualityProfileId : null,
                 e.Quality,
+                HasIptvRecording = e.Files.Any(f => f.Exists && f.IsIptvRecording),
             })
             .ToListAsync();
 
@@ -200,7 +201,8 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
             .ToDictionaryAsync(p => p.Id);
 
         var belowCutoff = candidates
-            .Where(e => IsBelowCutoff(e.QualityProfileId, e.LeagueQualityProfileId, e.Quality, profiles))
+            .Where(e => AwaitsIndexerRelease(e.HasIptvRecording, config)
+                || IsBelowCutoff(e.QualityProfileId, e.LeagueQualityProfileId, e.Quality, profiles))
             .Select(e => e.Id)
             .ToList();
 
@@ -282,8 +284,9 @@ app.MapPost("/api/wanted/missing/search-all", async (SportarrDbContext db, Searc
 // API: Queue an upgrade search for every cutoff-unmet event (the Wanted
 // page Search All action on the Cutoff Unmet tab). Same filter the
 // cutoff-unmet listing uses.
-app.MapPost("/api/wanted/cutoff-unmet/search-all", async (SportarrDbContext db, SearchQueueService searchQueueService, ILogger<Program> logger) =>
+app.MapPost("/api/wanted/cutoff-unmet/search-all", async (SportarrDbContext db, SearchQueueService searchQueueService, ConfigService configService, ILogger<Program> logger) =>
 {
+    var config = await configService.GetConfigAsync();
     var events = await db.Events
         .Where(e => e.Monitored && e.HasFile && e.Quality != null)
         .Select(e => new
@@ -292,6 +295,7 @@ app.MapPost("/api/wanted/cutoff-unmet/search-all", async (SportarrDbContext db, 
             e.Quality,
             e.QualityProfileId,
             LeagueQualityProfileId = e.League != null ? e.League.QualityProfileId : null,
+            HasIptvRecording = e.Files.Any(f => f.Exists && f.IsIptvRecording),
         })
         .ToListAsync();
 
@@ -300,7 +304,8 @@ app.MapPost("/api/wanted/cutoff-unmet/search-all", async (SportarrDbContext db, 
         .ToDictionaryAsync(p => p.Id);
 
     var cutoffUnmet = events
-        .Where(e => IsBelowCutoff(e.QualityProfileId, e.LeagueQualityProfileId, e.Quality, profiles))
+        .Where(e => AwaitsIndexerRelease(e.HasIptvRecording, config)
+            || IsBelowCutoff(e.QualityProfileId, e.LeagueQualityProfileId, e.Quality, profiles))
         .ToList();
 
     var snapshot = searchQueueService.GetQueueStatus();
@@ -322,6 +327,12 @@ app.MapPost("/api/wanted/cutoff-unmet/search-all", async (SportarrDbContext db, 
 
         return app;
     }
+
+    /// <summary>
+    /// Under source precedence an IPTV recording never meets the cutoff.
+    /// </summary>
+    private static bool AwaitsIndexerRelease(bool hasIptvRecording, Config config) =>
+        hasIptvRecording && config.DvrReplaceRecordingsWithIndexerReleases;
 
     /// <summary>
     /// True when the event has a file whose quality sits below its profile

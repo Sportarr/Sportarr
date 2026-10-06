@@ -48,6 +48,23 @@ public class ReleaseEvaluator
     /// </summary>
     private const double SizeComparisonChunkMB = 200.0;
 
+    private const string QualityNotWantedSuffix = " is not wanted in quality profile";
+    private const string BelowMinimumFormatScorePrefix = "Custom format score ";
+
+    private static string QualityNotWantedRejection(string quality) => $"Quality {quality}{QualityNotWantedSuffix}";
+
+    private static string BelowMinimumFormatScoreRejection(int score, int minimum) =>
+        $"{BelowMinimumFormatScorePrefix}{score} is below minimum {minimum}";
+
+    /// <summary>
+    /// Whether a rejection comes from the quality profile's allowed
+    /// qualities or minimum custom format score, the two gates source
+    /// precedence lifts.
+    /// </summary>
+    public static bool IsQualityProfileRejection(string rejection) =>
+        (rejection.StartsWith("Quality ", StringComparison.Ordinal) && rejection.EndsWith(QualityNotWantedSuffix, StringComparison.Ordinal))
+        || rejection.StartsWith(BelowMinimumFormatScorePrefix, StringComparison.Ordinal);
+
     public ReleaseEvaluator(ILogger<ReleaseEvaluator> logger, EventPartDetector partDetector, CustomFormatMatchCache cfCache)
     {
         _logger = logger;
@@ -177,7 +194,7 @@ public class ReleaseEvaluator
                 var allowedItems = profile.Items.Where(q => q.Allowed).Select(q => q.Name).ToList();
                 _logger.LogInformation("[Release Evaluator] REJECTION: Quality '{Quality}' not in allowed list: [{AllowedItems}]",
                     evaluation.Quality, string.Join(", ", allowedItems));
-                evaluation.Rejections.Add($"Quality {evaluation.Quality} is not wanted in quality profile");
+                evaluation.Rejections.Add(QualityNotWantedRejection(evaluation.Quality));
             }
         }
 
@@ -245,7 +262,7 @@ public class ReleaseEvaluator
         if (!isPack && profile != null && profile.MinFormatScore.HasValue &&
             evaluation.CustomFormatScore < profile.MinFormatScore.Value)
         {
-            evaluation.Rejections.Add($"Custom format score {evaluation.CustomFormatScore} is below minimum {profile.MinFormatScore.Value}");
+            evaluation.Rejections.Add(BelowMinimumFormatScoreRejection(evaluation.CustomFormatScore, profile.MinFormatScore.Value));
         }
 
         // Check seeders for torrents

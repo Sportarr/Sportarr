@@ -17,7 +17,9 @@ public static class QualityProfileRanker
         {
             if (Matches(profile.Items[index], quality))
             {
-                return profile.Items.Count - index;
+                // A quality the profile lists but doesn't allow ranks below
+                // every allowed one, so any allowed release upgrades it.
+                return profile.Items[index].Allowed ? profile.Items.Count - index : 0;
             }
         }
 

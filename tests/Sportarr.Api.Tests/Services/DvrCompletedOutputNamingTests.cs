@@ -196,6 +196,21 @@ public class DvrCompletedOutputNamingTests
         (await fixture.Db.Events.SingleAsync()).HasFile.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ADirectImportMarksTheFileAsAnIptvRecording()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        fixture.Recording.OutputPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        await fixture.Db.SaveChangesAsync();
+
+        var imported = await fixture.CreateEventDvrService()
+            .ImportCompletedRecordingAsync(fixture.Recording.Id);
+
+        imported.Should().BeTrue();
+        fixture.Db.ChangeTracker.Clear();
+        (await fixture.Db.EventFiles.SingleAsync()).IsIptvRecording.Should().BeTrue();
+    }
+
     private sealed class NamingFixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;

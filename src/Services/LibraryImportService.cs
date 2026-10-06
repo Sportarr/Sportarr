@@ -588,7 +588,8 @@ public class LibraryImportService
                         if (occupant != null)
                         {
                             var decision = await DecideUpgradeAsync(occupant, request.FilePath,
-                                request.Quality ?? _fileParser.BuildQualityString(parsedInfo), existingEvent);
+                                request.Quality ?? _fileParser.BuildQualityString(parsedInfo), existingEvent,
+                                request.IsIptvRecording);
                             importInPlace = IsBesideOccupant(request.FilePath, occupant.FilePath);
                             if (request.OnlyIfUpgrade
                                 && (!decision.IsUpgrade || (decision.Equal && (importInPlace || importMode != LibraryImportMode.Move))))
@@ -675,6 +676,9 @@ public class LibraryImportService
                             existingFileRecord.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                             existingFileRecord.PartName = partName;
                             existingFileRecord.PartNumber = partNumber;
+                            // A rescan of a recording isn't told it is one, so the
+                            // mark is only ever added here, never cleared.
+                            existingFileRecord.IsIptvRecording |= request.IsIptvRecording;
                             existingFileRecord.LastVerified = DateTime.UtcNow;
                             existingFileRecord.Exists = true;
                             linkedFile = existingFileRecord;
@@ -698,6 +702,7 @@ public class LibraryImportService
                                 existingByDest.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                                 existingByDest.PartName = partName;
                                 existingByDest.PartNumber = partNumber;
+                                existingByDest.IsIptvRecording = request.IsIptvRecording;
                                 existingByDest.LastVerified = DateTime.UtcNow;
                                 existingByDest.Exists = true;
                                 linkedFile = existingByDest;
@@ -725,6 +730,7 @@ public class LibraryImportService
                                     OriginalTitle = request.OriginalTitle,
                                     Languages = request.Languages ?? new List<string>(),
                                     IndexerFlags = request.IndexerFlags,
+                                    IsIptvRecording = request.IsIptvRecording,
                                     PartName = partName,
                                     PartNumber = partNumber,
                                     Added = DateTime.UtcNow,
@@ -1716,7 +1722,8 @@ public class LibraryImportService
     /// the event's resolved quality profile. This judges a file that arrived
     /// without a grab the same way as one that did.
     /// </summary>
-    private async Task<ImportUpgradeRule.Decision> DecideUpgradeAsync(EventFile occupant, string incomingPath, string? incomingQuality, Event evt)
+    private async Task<ImportUpgradeRule.Decision> DecideUpgradeAsync(EventFile occupant, string incomingPath, string? incomingQuality, Event evt,
+        bool incomingIsIptvRecording = false)
     {
         var config = await _configService.GetConfigAsync();
         var incomingName = Path.GetFileNameWithoutExtension(incomingPath);
@@ -1725,7 +1732,8 @@ public class LibraryImportService
         return ImportUpgradeRule.Evaluate(
             occupant.Quality, await FormatScoreAsync(occupantName, profile), occupantName,
             incomingQuality, await FormatScoreAsync(incomingName, profile), incomingName,
-            config.DownloadPropersAndRepacks, profile);
+            config.DownloadPropersAndRepacks, profile,
+            SourcePrecedence.Compare(config, incomingIsIptvRecording, occupant.IsIptvRecording));
     }
 
     // Custom formats and a profile's scores, loaded once per service
@@ -2656,6 +2664,12 @@ public class FileImportRequest
     /// this false and replaces regardless.
     /// </summary>
     public bool OnlyIfUpgrade { get; set; }
+
+    /// <summary>
+    /// The file is an IPTV recording made by the DVR. Source precedence
+    /// keeps it from replacing a file that came from an indexer.
+    /// </summary>
+    public bool IsIptvRecording { get; set; }
     public string? EventTitle { get; set; }
     public string? Organization { get; set; }
     public DateTime? EventDate { get; set; }

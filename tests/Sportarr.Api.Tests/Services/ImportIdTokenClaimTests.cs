@@ -12,6 +12,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using Sportarr.Api.Services.Interfaces;
@@ -201,6 +202,7 @@ public class ImportUpgradeBehaviourTests : IDisposable
     private readonly string _tempDir;
     private readonly SportarrDbContext _db;
     private readonly LibraryImportService _service;
+    private readonly ConfigService _config;
 
     public ImportUpgradeBehaviourTests()
     {
@@ -212,6 +214,7 @@ public class ImportUpgradeBehaviourTests : IDisposable
         _db = new SportarrDbContext(options);
         var fileParser = new MediaFileParser(Mock.Of<ILogger<MediaFileParser>>());
         var config = new ConfigService(new ConfigurationBuilder().Build(), Mock.Of<ILogger<ConfigService>>());
+        _config = config;
         _service = new LibraryImportService(
             _db,
             Mock.Of<ILogger<LibraryImportService>>(),
@@ -278,6 +281,62 @@ public class ImportUpgradeBehaviourTests : IDisposable
         var copy = result.MatchedFiles.Should().ContainSingle(f => f.FileName.Contains("Second Copy")).Subject;
         copy.MatchedEventId.Should().NotBeNull();
         copy.Rejections.Should().ContainSingle().Which.Should().Contain("Not an upgrade");
+    }
+
+    private async Task TurnOnSourcePrecedence() =>
+        (await _config.GetConfigAsync()).DvrReplaceRecordingsWithIndexerReleases = true;
+
+    [Fact]
+    public async Task AnIptvRecordingNeverReplacesAFileFromAnIndexerUnderSourcePrecedence()
+    {
+        await TurnOnSourcePrecedence();
+        var (evt, held) = SeedEventWithFile();
+        var recording = Write("NFL - S2025E06 - Recording - HDTV-2160p.DVR.ts");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = recording, EventId = evt.Id, OnlyIfUpgrade = true, IsIptvRecording = true },
+        });
+
+        result.Imported.Should().BeEmpty();
+        result.Rejected.Should().ContainSingle().Which.Reason.Should().Be(SourcePrecedence.IptvRecordingRejection);
+        _db.EventFiles.Single(f => f.EventId == evt.Id).FilePath.Should().Be(held.FilePath);
+    }
+
+    [Fact]
+    public async Task AFileFromAnIndexerReplacesAnIptvRecordingOfHigherQualityUnderSourcePrecedence()
+    {
+        await TurnOnSourcePrecedence();
+        var (evt, held) = SeedEventWithFile();
+        held.IsIptvRecording = true;
+        _db.SaveChanges();
+        var copy = Write("NFL - S2025E06 - Release - HDTV-720p - sportarr-ev-312923.mkv");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id, OnlyIfUpgrade = true },
+        });
+
+        result.Rejected.Should().BeEmpty();
+        var file = _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists);
+        file.FilePath.Should().NotBe(held.FilePath);
+        file.IsIptvRecording.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AnImportedIptvRecordingIsMarkedAsOne()
+    {
+        var (evt, held) = SeedEventWithFile();
+        held.Quality = "SDTV";
+        _db.SaveChanges();
+        var recording = Write("NFL - S2025E06 - Recording - HDTV-1080p.DVR.ts");
+
+        await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = recording, EventId = evt.Id, OnlyIfUpgrade = true, IsIptvRecording = true },
+        });
+
+        _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().BeTrue();
     }
 
     [Fact]

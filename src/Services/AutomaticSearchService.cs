@@ -650,6 +650,27 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // - Quality cutoff checking
                 // - Custom format minimum score
                 // Releases with Approved=true and no rejections are valid candidates
+                // Under source precedence a release that would replace an IPTV
+                // recording isn't held to the profile's allowed qualities or
+                // minimum format score.
+                if (config.DvrReplaceRecordingsWithIndexerReleases)
+                {
+                    // Without a part, any held file stands for the event, as
+                    // in the upgrade check below.
+                    var heldFile = await _db.EventFiles.AsNoTracking()
+                        .Where(f => f.EventId == evt.Id && f.Exists)
+                        .Where(f => part == null || f.PartName == part)
+                        .OrderBy(f => f.PartName != null)
+                        .FirstOrDefaultAsync();
+                    if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldFile))
+                    {
+                        foreach (var release in allReleases)
+                        {
+                            Helpers.SourcePrecedence.LiftQualityProfileRejections(release);
+                        }
+                    }
+                }
+
                 var approvedReleases = allReleases
                     .Where(r => r.Approved && !r.Rejections.Any())
                     .ToList();
@@ -1320,7 +1341,14 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // 3. Check if existing file meets or exceeds CutoffQuality
                 // 4. Check if existing file meets or exceeds CutoffFormatScore
                 // 5. Compare profile rank and format score
-                if (relevantFile != null)
+                // Source precedence skips all of it: an indexer release
+                // replaces an IPTV recording whatever the profile says.
+                if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, relevantFile))
+                {
+                    _logger.LogInformation("[Automatic Search] Replacing IPTV recording ({Quality}) with indexer release {Title}",
+                        relevantFile.Quality ?? "null", bestRelease.Title);
+                }
+                else if (relevantFile != null)
                 {
                     // Use deterministic scoring only to identify an unreadable existing quality.
                     // Use the profile rank for preference decisions.

@@ -621,7 +621,8 @@ public class FileImportService : IFileImportService
                 var decision = ImportUpgradeRule.Evaluate(
                     upgradedFile.Quality, upgradedFile.CustomFormatScore, upgradedFile.OriginalTitle ?? upgradedFile.Quality,
                     qualityString, download.CustomFormatScore, download.Title,
-                    config.DownloadPropersAndRepacks, qualityProfile);
+                    config.DownloadPropersAndRepacks, qualityProfile,
+                    SourcePrecedence.Compare(config, incomingIsIptvRecording: false, upgradedFile.IsIptvRecording));
                 if (!decision.IsUpgrade && !allowPreferenceOverride)
                 {
                     _logger.LogWarning("[Import] {Rejection} ({Title})", decision.Rejection, download.Title);

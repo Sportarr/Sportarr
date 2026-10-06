@@ -566,6 +566,7 @@ public class EventDvrService
             QualityScore = qualityScore,
             CustomFormatScore = customFormatScore,
             Source = "IPTV",
+            IsIptvRecording = true,
             Codec = recording.VideoCodec,
             PartName = recording.PartName,
             PartNumber = EventPartDetector.ResolvePartNumber(
@@ -632,6 +633,7 @@ public class EventDvrService
                 // A recording replaces what the event holds only with an upgrade;
                 // a rejected recording stays in the DVR folder with the reason logged.
                 OnlyIfUpgrade = true,
+                IsIptvRecording = true,
             }
         });
 
