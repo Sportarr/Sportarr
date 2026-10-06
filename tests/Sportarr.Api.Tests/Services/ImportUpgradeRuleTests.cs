@@ -199,4 +199,18 @@ public class ImportUpgradeRuleTests
         SourcePrecedence.Compare(new Config(), incomingIsIptvRecording: false, existingIsIptvRecording: true)
             .Should().Be(SourcePrecedence.Verdict.None);
     }
+
+    [Fact]
+    public void OnlyThisRulesRejectionsCountAsUpgradeRejections()
+    {
+        var lower = ImportUpgradeRule.Evaluate("WEBDL-1080p", 0, "old", "HDTV-720p", 0, "new", Prefer).Rejection;
+        var score = ImportUpgradeRule.Evaluate("WEBDL-1080p", 500, "old", "WEBDL-1080p", 0, "new", Prefer).Rejection;
+
+        ImportUpgradeRule.IsRejection(lower).Should().BeTrue();
+        ImportUpgradeRule.IsRejection(score).Should().BeTrue();
+        ImportUpgradeRule.IsRejection(SourcePrecedence.IptvRecordingRejection).Should().BeTrue();
+        ImportUpgradeRule.IsRejection(ManualQueueImportPolicy.AmbiguousVideoWarning).Should().BeFalse();
+        ImportUpgradeRule.IsRejection(PackImportBoundary.WarningPrefix + "member missing").Should().BeFalse();
+        ImportUpgradeRule.IsRejection(null).Should().BeFalse();
+    }
 }

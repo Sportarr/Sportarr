@@ -109,5 +109,17 @@ public static class ImportUpgradeRule
         return whole ?? (multiPartEvents ? null : held.FirstOrDefault());
     }
 
+    /// <summary>
+    /// Whether an import warning came from this rule. Those are the only
+    /// rejections a later change to the held file, the profile or source
+    /// precedence can lift; the rest need the user.
+    /// </summary>
+    public static bool IsRejection(string? message) =>
+        message != null &&
+        (message.StartsWith(LowerQualityRejection, StringComparison.Ordinal) ||
+         message.StartsWith(RevisionRejection, StringComparison.Ordinal) ||
+         message.StartsWith(CustomFormatRejection, StringComparison.Ordinal) ||
+         message == SourcePrecedence.IptvRecordingRejection);
+
     private static string Label(string? quality) => string.IsNullOrWhiteSpace(quality) ? "unknown" : quality;
 }

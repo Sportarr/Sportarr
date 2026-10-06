@@ -170,6 +170,40 @@ public class FileImportService : IFileImportService
             allowPreferenceOverride: allowPreferenceOverride, allowSavedPath: allowSavedPath,
             selectedRelativePath: selectedRelativePath);
 
+    /// <summary>
+    /// Whether the upgrade rule would now let this download replace the file
+    /// its event holds, judged on the grab's recorded quality without
+    /// touching the download's files. The monitor uses it to decide when a
+    /// rejected import is worth running again: the held file, the profile or
+    /// source precedence may have changed since.
+    /// </summary>
+    public async Task<bool> WouldNowReplaceHeldFileAsync(DownloadQueueItem download)
+    {
+        var eventInfo = await _db.Events.AsNoTracking()
+            .Include(e => e.League)
+            .FirstOrDefaultAsync(e => e.Id == download.EventId);
+        if (eventInfo == null) return false;
+
+        // An estimate from the database alone: the grab's part and quality,
+        // not the ones the import reads from the file. The import makes the
+        // final call, and a retry it rejects again waits out the interval.
+        var held = await _db.EventFiles.AsNoTracking()
+            .HeldFiles(eventInfo.Id)
+            .ToListAsync();
+        var existing = string.IsNullOrEmpty(download.Part)
+            ? held.FirstOrDefault()
+            : held.FirstOrDefault(f => string.Equals(f.PartName, download.Part, StringComparison.OrdinalIgnoreCase));
+        if (existing == null) return true;
+
+        var config = await _configService.GetConfigAsync();
+        var profiles = await _db.QualityProfiles.AsNoTracking().ToListAsync();
+        return ImportUpgradeRule.Evaluate(
+            existing.Quality, existing.CustomFormatScore, existing.OriginalTitle ?? existing.Quality,
+            download.Quality, download.CustomFormatScore, download.Title,
+            config.DownloadPropersAndRepacks, RssSyncService.ResolveQualityProfile(eventInfo, profiles),
+            SourcePrecedence.Compare(config, incomingIsIptvRecording: false, existing.IsIptvRecording)).IsUpgrade;
+    }
+
     public async Task<IReadOnlyList<ImportVideoCandidate>> ListVideoCandidatesAsync(DownloadQueueItem download)
     {
         var path = await GetDownloadPathAsync(download, allowSavedPath: true);
