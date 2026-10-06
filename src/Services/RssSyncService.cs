@@ -422,8 +422,11 @@ public class RssSyncService : BackgroundService
                 ?? EventPartDetector.GetMainPartName(evt.Sport ?? "", evt.Title, evt.League?.Name);
         }
 
+        // A null part here means the event isn't multi-part, so only the
+        // whole-event file counts, as in ShouldGrabReleaseAsync.
         var heldFile = await db.EventFiles.AsNoTracking()
-            .FirstOrDefaultAsync(f => f.EventId == evt.Id && f.Exists && f.PartName == part, cancellationToken);
+            .HeldFor(evt.Id, part, nullPartMatchesAnyPart: false)
+            .FirstOrDefaultAsync(cancellationToken);
         if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldFile))
             Helpers.SourcePrecedence.LiftQualityProfileRejections(release);
     }

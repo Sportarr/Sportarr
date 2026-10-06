@@ -16,25 +16,44 @@ public static class SourcePrecedence
     public const string IptvRecordingRejection = "An IPTV recording never replaces a file from an indexer.";
 
     /// <summary>
-    /// Positive when the incoming file outranks the existing one on source
-    /// alone, negative when it loses on source alone, zero when source
-    /// decides nothing and the normal upgrade rules apply.
+    /// What source alone says about replacing one file with another.
     /// </summary>
-    public static int Compare(Config config, bool incomingIsIptvRecording, bool existingIsIptvRecording)
+    public enum Verdict
+    {
+        /// <summary>Source decides nothing; the normal upgrade rules apply.</summary>
+        None,
+        /// <summary>The incoming file replaces the existing one on source alone.</summary>
+        IncomingWins,
+        /// <summary>The existing file stays on source alone.</summary>
+        ExistingWins,
+    }
+
+    public static Verdict Compare(Config config, bool incomingIsIptvRecording, bool existingIsIptvRecording)
     {
         if (!config.DvrReplaceRecordingsWithIndexerReleases || incomingIsIptvRecording == existingIsIptvRecording)
         {
-            return 0;
+            return Verdict.None;
         }
 
-        return existingIsIptvRecording ? 1 : -1;
+        return existingIsIptvRecording ? Verdict.IncomingWins : Verdict.ExistingWins;
     }
 
     /// <summary>
     /// Whether an indexer release would replace this file on source alone.
     /// </summary>
     public static bool IndexerReleaseReplaces(Config config, [NotNullWhen(true)] EventFile? existingFile) =>
-        existingFile != null && Compare(config, incomingIsIptvRecording: false, existingFile.IsIptvRecording) > 0;
+        existingFile != null && Compare(config, incomingIsIptvRecording: false, existingFile.IsIptvRecording) == Verdict.IncomingWins;
+
+    /// <summary>
+    /// The file an event holds for a part, whole-event file first. With
+    /// nullPartMatchesAnyPart a null part takes any held file; otherwise a
+    /// null part means the whole-event file only. The caller runs the query.
+    /// </summary>
+    public static IQueryable<EventFile> HeldFor(this IQueryable<EventFile> files, int eventId, string? part, bool nullPartMatchesAnyPart) =>
+        files
+            .Where(f => f.EventId == eventId && f.Exists)
+            .Where(f => f.PartName == part || (part == null && nullPartMatchesAnyPart))
+            .OrderBy(f => f.PartName != null);
 
     /// <summary>
     /// Drop the quality profile's allowed-quality and minimum-score

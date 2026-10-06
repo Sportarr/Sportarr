@@ -37,14 +37,14 @@ public static class ImportUpgradeRule
         string? newQuality, int newFormatScore, string? newTitle,
         string? propersSetting,
         QualityProfile? profile = null,
-        int sourceComparison = 0)
+        SourcePrecedence.Verdict source = SourcePrecedence.Verdict.None)
     {
         // Source precedence outranks every quality rule (SourcePrecedence).
-        if (sourceComparison > 0)
+        if (source == SourcePrecedence.Verdict.IncomingWins)
         {
             return Accept;
         }
-        if (sourceComparison < 0)
+        if (source == SourcePrecedence.Verdict.ExistingWins)
         {
             return new Decision(false, SourcePrecedence.IptvRecordingRejection);
         }

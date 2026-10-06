@@ -179,7 +179,7 @@ public class ImportUpgradeRuleTests
     {
         var source = SourcePrecedence.Compare(SourcePrecedenceOn(), incomingIsIptvRecording: false, existingIsIptvRecording: true);
         ImportUpgradeRule.Evaluate("HDTV-1080p", 0, "DVR Recording - ESPN", "HDTV-720p", 0, "UFC.300.720p.HDTV.x264-GRP", Prefer,
-                sourceComparison: source)
+                source: source)
             .IsUpgrade.Should().BeTrue();
     }
 
@@ -188,7 +188,7 @@ public class ImportUpgradeRuleTests
     {
         var source = SourcePrecedence.Compare(SourcePrecedenceOn(), incomingIsIptvRecording: true, existingIsIptvRecording: false);
         var d = ImportUpgradeRule.Evaluate("HDTV-720p", 0, "UFC.300.720p.HDTV.x264-GRP", "HDTV-1080p", 0, "UFC 300 - HDTV-1080p", Prefer,
-            sourceComparison: source);
+            source: source);
         d.IsUpgrade.Should().BeFalse();
         d.Rejection.Should().Be(SourcePrecedence.IptvRecordingRejection);
     }
@@ -197,6 +197,6 @@ public class ImportUpgradeRuleTests
     public void SourceDecidesNothingWhenSourcePrecedenceIsOff()
     {
         SourcePrecedence.Compare(new Config(), incomingIsIptvRecording: false, existingIsIptvRecording: true)
-            .Should().Be(0);
+            .Should().Be(SourcePrecedence.Verdict.None);
     }
 }

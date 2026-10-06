@@ -105,6 +105,19 @@ public class QualityProfileRankerTests
         QualityProfileRanker.IsBelowCutoff(profile, "HDTV-1080p").Should().BeTrue();
     }
 
+    [Fact]
+    public void ListedButDisallowedQualityRanksBelowEveryAllowedOne()
+    {
+        var profile = Profile(
+            Item("HDTV-1080p", 6),
+            Item("SDTV", 1));
+        profile.Items[0].Allowed = false;
+
+        QualityProfileRanker.GetRank(profile, "HDTV-1080p").Should().Be(0);
+        QualityProfileRanker.Compare(profile, "SDTV", "HDTV-1080p")
+            .Should().BePositive();
+    }
+
     private static QualityProfile Profile(params QualityItem[] items) => new()
     {
         Name = "Test",

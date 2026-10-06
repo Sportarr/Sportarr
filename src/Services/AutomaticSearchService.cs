@@ -655,12 +655,11 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // minimum format score.
                 if (config.DvrReplaceRecordingsWithIndexerReleases)
                 {
-                    // Without a part, any held file stands for the event, as
-                    // in the upgrade check below.
+                    // The backlog searches multi-part events with no part, so
+                    // a null part takes any held file, as in the upgrade
+                    // check below.
                     var heldFile = await _db.EventFiles.AsNoTracking()
-                        .Where(f => f.EventId == evt.Id && f.Exists)
-                        .Where(f => part == null || f.PartName == part)
-                        .OrderBy(f => f.PartName != null)
+                        .HeldFor(evt.Id, part, nullPartMatchesAnyPart: true)
                         .FirstOrDefaultAsync();
                     if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldFile))
                     {
