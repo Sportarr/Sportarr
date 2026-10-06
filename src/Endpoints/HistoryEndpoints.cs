@@ -714,7 +714,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             IsManualSearch = true // Re-grab is always user-initiated
         };
 
-        db.DownloadQueue.Add(queueItem);
+        queueItem = await QueueJobAttachment.AddOrAttachAsync(db, queueItem);
 
         grabHistory.LastRegrabAttempt = DateTime.UtcNow;
         grabHistory.RegrabCount++;
@@ -934,7 +934,7 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 IsManualSearch = true // Bulk re-grab is user-initiated
             };
 
-            db.DownloadQueue.Add(queueItem);
+            queueItem = await QueueJobAttachment.AddOrAttachAsync(db, queueItem);
 
             grabHistory.LastRegrabAttempt = DateTime.UtcNow;
             grabHistory.RegrabCount++;

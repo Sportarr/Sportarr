@@ -1365,7 +1365,7 @@ public class RssSyncService : BackgroundService
             IsManualSearch = false // RSS sync is always automatic
         };
 
-        db.DownloadQueue.Add(queueItem);
+        queueItem = await QueueJobAttachment.AddOrAttachAsync(db, queueItem, cancellationToken);
 
         try
         {

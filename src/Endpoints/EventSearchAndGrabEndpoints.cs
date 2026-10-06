@@ -390,8 +390,7 @@ app.MapPost("/api/release/grab", async (
             PackGroupId = packGroupId,
             IsManualSearch = true // Release grab is user-initiated (interactive search)
         };
-        queueItems.Add(queueItem);
-        db.DownloadQueue.Add(queueItem);
+        queueItems.Add(await QueueJobAttachment.AddOrAttachAsync(db, queueItem));
     }
 
     // Save grab history for manual grabs (matches auto/RSS behavior)

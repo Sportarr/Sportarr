@@ -48,6 +48,37 @@ public class RejectedImportRetryTests
         Assert.Equal("WEBDL-720p", file.Quality);
     }
 
+    [Fact]
+    public async Task GrabbingAJobTheQueueAlreadyTracksReusesItsRow()
+    {
+        // The client hands back the job id it already holds (a qBittorrent
+        // duplicate add). That job is the rejected row's, so the grab rearms
+        // that row instead of tracking the same job twice.
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(multipart: false, relational: true);
+        await SetReplaceRecordingsAsync(rig, false);
+        await HoldRecordingAsync(rig);
+        var row = await CompletedDownloadAsync(rig, downloadId: "part-job-1");
+        await PollAsync(rig);
+        Assert.Equal(DownloadStatus.ImportWarning, (await ReloadAsync(rig, row.Id))!.Status);
+
+        await SetReplaceRecordingsAsync(rig, true);
+        var release = rig.Release(Title);
+        release.Size = 2_000_000_000;
+        release.IndexerId = await rig.Db.Indexers.Select(x => x.Id).SingleAsync();
+        var outcome = await rig.Services.GetRequiredService<RssSyncService>()
+            .ProcessPushedReleaseAsync(release, CancellationToken.None);
+
+        Assert.True(outcome.Grabbed);
+        var tracked = await rig.Db.DownloadQueue.AsNoTracking().ToListAsync();
+        var only = Assert.Single(tracked);
+        Assert.Equal(row.Id, only.Id);
+        Assert.Equal(DownloadStatus.Queued, only.Status);
+        Assert.Null(only.ErrorMessage);
+
+        await PollAsync(rig);
+        Assert.Equal(DownloadStatus.Imported, (await ReloadAsync(rig, row.Id))!.Status);
+    }
+
     internal static async Task PollAsync(PartIdentityIntegrationHarness rig)
     {
         using var wake = new DownloadMonitorWakeSignal();

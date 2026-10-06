@@ -1627,7 +1627,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 IsManualSearch = isManualSearch
             };
 
-            _db.DownloadQueue.Add(queueItem);
+            queueItem = await QueueJobAttachment.AddOrAttachAsync(_db, queueItem);
 
             try
             {
