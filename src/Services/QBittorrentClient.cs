@@ -411,6 +411,25 @@ public class QBittorrentClient
                 // qBittorrent returns "Fails." if the torrent URL returned invalid data (e.g., HTML error page)
                 if (responseContent.Contains("Fails", StringComparison.OrdinalIgnoreCase))
                 {
+                    // It also returns "Fails." for a torrent it already holds. When that
+                    // torrent sits in our category, the grab is the job we already have:
+                    // track it instead of failing, or every RSS sync grabs it again. One
+                    // under another app's category is not ours to claim.
+                    var alreadyHeld = string.IsNullOrEmpty(knownHash) ? null : torrentsBefore?.FirstOrDefault(t =>
+                        string.Equals(t.Hash, knownHash, StringComparison.OrdinalIgnoreCase));
+                    if (alreadyHeld != null && string.Equals(alreadyHeld.Category, category, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogInformation("[qBittorrent] Torrent {Hash} is already in qBittorrent under '{Category}'; tracking the existing torrent: {Name}",
+                            alreadyHeld.Hash, alreadyHeld.Category, alreadyHeld.Name);
+                        return AddDownloadResult.Succeeded(alreadyHeld.Hash);
+                    }
+                    if (alreadyHeld != null)
+                    {
+                        _logger.LogWarning("[qBittorrent] Torrent {Hash} is already in qBittorrent under another category ('{Category}'), not '{Expected}'",
+                            alreadyHeld.Hash, alreadyHeld.Category, category);
+                        return AddDownloadResult.Failed($"Torrent is already in qBittorrent under category '{alreadyHeld.Category}'", AddDownloadErrorType.TorrentRejected);
+                    }
+
                     _logger.LogError("[qBittorrent] ========== TORRENT ADD FAILED ==========");
                     _logger.LogError("[qBittorrent] qBittorrent reported 'Fails' - the torrent URL returned invalid data");
                     _logger.LogError("[qBittorrent] Possible causes:");

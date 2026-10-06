@@ -12,7 +12,8 @@ namespace Sportarr.Api.Services;
 /// An explicit choice can override a preference rejection.
 /// A lower profile rank never replaces. The same rank replaces unless it is
 /// a revision downgrade while propers are preferred, or its custom format
-/// score is lower. A higher profile rank always replaces.
+/// score is lower. A higher profile rank always replaces. Source precedence,
+/// when it applies, decides before any of these.
 /// </summary>
 public static class ImportUpgradeRule
 {
@@ -35,8 +36,19 @@ public static class ImportUpgradeRule
         string? existingQuality, int existingFormatScore, string? existingTitle,
         string? newQuality, int newFormatScore, string? newTitle,
         string? propersSetting,
-        QualityProfile? profile = null)
+        QualityProfile? profile = null,
+        SourcePrecedence.Verdict source = SourcePrecedence.Verdict.None)
     {
+        // Source precedence outranks every quality rule (SourcePrecedence).
+        if (source == SourcePrecedence.Verdict.IncomingWins)
+        {
+            return Accept;
+        }
+        if (source == SourcePrecedence.Verdict.ExistingWins)
+        {
+            return new Decision(false, SourcePrecedence.IptvRecordingRejection);
+        }
+
         var qualityComparison = QualityProfileRanker.Compare(profile, newQuality, existingQuality);
 
         if (qualityComparison < 0)
@@ -96,6 +108,18 @@ public static class ImportUpgradeRule
         var whole = held.FirstOrDefault(f => f.PartName == null && f.PartNumber == null);
         return whole ?? (multiPartEvents ? null : held.FirstOrDefault());
     }
+
+    /// <summary>
+    /// Whether an import warning came from this rule. Those are the only
+    /// rejections a later change to the held file, the profile or source
+    /// precedence can lift; the rest need the user.
+    /// </summary>
+    public static bool IsRejection(string? message) =>
+        message != null &&
+        (message.StartsWith(LowerQualityRejection, StringComparison.Ordinal) ||
+         message.StartsWith(RevisionRejection, StringComparison.Ordinal) ||
+         message.StartsWith(CustomFormatRejection, StringComparison.Ordinal) ||
+         message == SourcePrecedence.IptvRecordingRejection);
 
     private static string Label(string? quality) => string.IsNullOrWhiteSpace(quality) ? "unknown" : quality;
 }

@@ -417,7 +417,8 @@ public class LibraryImportService
                         MatchedSeason = matchedEvent?.Season ?? matchedEvent?.SeasonNumber?.ToString() ?? (matchedEvent?.BroadcastDate ?? matchedEvent?.EventDate)?.Year.ToString(),
                         DestinationPreview = destinationPreview,
                         MatchConfidence = matchConfidence > 0 ? Math.Min(100, matchConfidence) : null,
-                        Rejections = judged.Rejections
+                        Rejections = judged.Rejections,
+                        HeldBySourcePrecedence = judged.Rejections.Contains(SourcePrecedence.IptvRecordingRejection)
                     };
 
                     if (matchedEvent != null)
@@ -574,10 +575,22 @@ public class LibraryImportService
                         partNumber ??= EventPartDetector.ResolvePartNumber(partName, existingEvent.Sport,
                             existingEvent.Title, existingEvent.League?.Name);
 
+                        // A rescan of the DVR's output isn't told the file is a
+                        // recording, so the file itself has to say so. A file
+                        // from a download client, or one already tracked with a
+                        // release title, is a release whatever its container.
+                        var isIptvRecording = request.IsIptvRecording
+                            || (!request.FromDownloadClient
+                                && existingFileRecord?.ReleaseTitle == null
+                                && SourcePrecedence.LooksLikeIptvRecording(request.FilePath,
+                                    request.Quality ?? _fileParser.BuildQualityString(parsedInfo)));
+
                         // The file the event already holds for this part decides whether
                         // this one may take its place. One rule for every import path
                         // (ImportUpgradeRule): an automatic import stops at a rejection
-                        // and leaves the file where it is; a manual import replaces.
+                        // and leaves the file where it is; a manual import replaces,
+                        // except over source precedence, which only an explicit
+                        // override (Import anyway) lifts.
                         // A copy that already sits beside the file it replaces is imported
                         // in place and that file stays on disk untracked; a copy from
                         // anywhere else replaces it through the recycle bin.
@@ -588,10 +601,13 @@ public class LibraryImportService
                         if (occupant != null)
                         {
                             var decision = await DecideUpgradeAsync(occupant, request.FilePath,
-                                request.Quality ?? _fileParser.BuildQualityString(parsedInfo), existingEvent);
+                                request.Quality ?? _fileParser.BuildQualityString(parsedInfo), existingEvent,
+                                isIptvRecording);
                             importInPlace = IsBesideOccupant(request.FilePath, occupant.FilePath);
-                            if (request.OnlyIfUpgrade
-                                && (!decision.IsUpgrade || (decision.Equal && (importInPlace || importMode != LibraryImportMode.Move))))
+                            var heldBySourcePrecedence = decision.Rejection == SourcePrecedence.IptvRecordingRejection
+                                && !request.OverrideSourcePrecedence;
+                            if (heldBySourcePrecedence || (request.OnlyIfUpgrade
+                                && (!decision.IsUpgrade || (decision.Equal && (importInPlace || importMode != LibraryImportMode.Move)))))
                             {
                                 // An equal copy is kept out of an automatic import when
                                 // taking it over would only repeat: beside the held file
@@ -675,6 +691,9 @@ public class LibraryImportService
                             existingFileRecord.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                             existingFileRecord.PartName = partName;
                             existingFileRecord.PartNumber = partNumber;
+                            // A rescan of a recording isn't told it is one, so the
+                            // mark is only ever added here, never cleared.
+                            existingFileRecord.IsIptvRecording |= isIptvRecording;
                             existingFileRecord.LastVerified = DateTime.UtcNow;
                             existingFileRecord.Exists = true;
                             linkedFile = existingFileRecord;
@@ -698,6 +717,7 @@ public class LibraryImportService
                                 existingByDest.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                                 existingByDest.PartName = partName;
                                 existingByDest.PartNumber = partNumber;
+                                existingByDest.IsIptvRecording = isIptvRecording;
                                 existingByDest.LastVerified = DateTime.UtcNow;
                                 existingByDest.Exists = true;
                                 linkedFile = existingByDest;
@@ -725,6 +745,7 @@ public class LibraryImportService
                                     OriginalTitle = request.OriginalTitle,
                                     Languages = request.Languages ?? new List<string>(),
                                     IndexerFlags = request.IndexerFlags,
+                                    IsIptvRecording = isIptvRecording,
                                     PartName = partName,
                                     PartNumber = partNumber,
                                     Added = DateTime.UtcNow,
@@ -1700,7 +1721,9 @@ public class LibraryImportService
         var occupant = ImportUpgradeRule.ExistingFileForPart(held, partNumber, filePath, config.EnableMultiPartEpisodes);
         if (occupant == null) return none;
         var inPlace = IsBesideOccupant(filePath, occupant.FilePath);
-        var decision = await DecideUpgradeAsync(occupant, filePath, _fileParser.BuildQualityString(parsedInfo), evt);
+        var quality = _fileParser.BuildQualityString(parsedInfo);
+        var decision = await DecideUpgradeAsync(occupant, filePath, quality, evt,
+            SourcePrecedence.LooksLikeIptvRecording(filePath, quality));
         // The same test the import makes, so the scan shows every copy an
         // automatic import would leave out, the equal one included.
         var leftOut = decision.Equal
@@ -1716,7 +1739,8 @@ public class LibraryImportService
     /// the event's resolved quality profile. This judges a file that arrived
     /// without a grab the same way as one that did.
     /// </summary>
-    private async Task<ImportUpgradeRule.Decision> DecideUpgradeAsync(EventFile occupant, string incomingPath, string? incomingQuality, Event evt)
+    private async Task<ImportUpgradeRule.Decision> DecideUpgradeAsync(EventFile occupant, string incomingPath, string? incomingQuality, Event evt,
+        bool incomingIsIptvRecording)
     {
         var config = await _configService.GetConfigAsync();
         var incomingName = Path.GetFileNameWithoutExtension(incomingPath);
@@ -1725,7 +1749,8 @@ public class LibraryImportService
         return ImportUpgradeRule.Evaluate(
             occupant.Quality, await FormatScoreAsync(occupantName, profile), occupantName,
             incomingQuality, await FormatScoreAsync(incomingName, profile), incomingName,
-            config.DownloadPropersAndRepacks, profile);
+            config.DownloadPropersAndRepacks, profile,
+            SourcePrecedence.Compare(config, incomingIsIptvRecording, occupant.IsIptvRecording));
     }
 
     // Custom formats and a profile's scores, loaded once per service
@@ -2620,9 +2645,16 @@ public class ImportableFile
     /// Why the file may not take the place of the file the matched event
     /// already holds, as Library Import shows it. Empty when the event holds
     /// no file for this part or the file is an upgrade. A manual import
-    /// replaces regardless.
+    /// replaces regardless, except where source precedence holds it back.
     /// </summary>
     public List<string> Rejections { get; set; } = new();
+
+    /// <summary>
+    /// Source precedence keeps the event's indexer file: a manual import of
+    /// this recording is rejected unless the request sets
+    /// OverrideSourcePrecedence.
+    /// </summary>
+    public bool HeldBySourcePrecedence { get; set; }
 
     public string FileSizeFormatted => FormatBytes(FileSize);
 
@@ -2653,9 +2685,28 @@ public class FileImportRequest
     /// An automatic import (the file watcher, a rescan, a completed download
     /// Sportarr did not grab): the file may take the place of a file the
     /// event already holds only when it is an upgrade. A manual import leaves
-    /// this false and replaces regardless.
+    /// this false and replaces regardless, except where source precedence
+    /// keeps an indexer file from an IPTV recording.
     /// </summary>
     public bool OnlyIfUpgrade { get; set; }
+
+    /// <summary>
+    /// Import anyway: the user chose to let this IPTV recording replace the
+    /// indexer file source precedence would keep.
+    /// </summary>
+    public bool OverrideSourcePrecedence { get; set; }
+
+    /// <summary>
+    /// The file is an IPTV recording made by the DVR. Source precedence
+    /// keeps it from replacing a file that came from an indexer.
+    /// </summary>
+    public bool IsIptvRecording { get; set; }
+
+    /// <summary>
+    /// The file came from a download client, so it is a release and never
+    /// an IPTV recording, whatever its container.
+    /// </summary>
+    public bool FromDownloadClient { get; set; }
     public string? EventTitle { get; set; }
     public string? Organization { get; set; }
     public DateTime? EventDate { get; set; }

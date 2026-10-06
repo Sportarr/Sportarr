@@ -201,6 +201,11 @@ public class DelayProfileService
         // delay profile then threw it away.
         var qualityFiltered = availableReleases.Where(r =>
         {
+            if (r.ReplacesIptvRecording)
+            {
+                return true; // Source precedence already set the profile aside
+            }
+
             if (string.IsNullOrEmpty(r.Quality) ||
                 r.Quality.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
             {

@@ -444,7 +444,7 @@ public class PendingReleaseReaperService : BackgroundService
             IsPack = pending.IsPack ?? PackImportBoundary.IsPackRelease(pending.Title),
             IsManualSearch = false
         };
-        db.DownloadQueue.Add(queueOwner);
+        queueOwner = await QueueJobAttachment.AddOrAttachAsync(db, queueOwner, cancellationToken);
 
         var ownerPersisted = await AcceptedDownloadPersistence.PersistOwnerAsync(token => db.SaveChangesAsync(token));
         if (!ownerPersisted)

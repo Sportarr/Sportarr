@@ -571,6 +571,14 @@ public class ReleaseSearchResult
     public List<string> Rejections { get; set; } = new();
 
     /// <summary>
+    /// Source precedence lifted the quality profile's rejections because
+    /// this release would replace an IPTV recording, so later quality
+    /// filters let it through too.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ReplacesIptvRecording { get; set; }
+
+    /// <summary>
     /// Custom formats that matched this release
     /// </summary>
     public List<MatchedFormat> MatchedFormats { get; set; } = new();

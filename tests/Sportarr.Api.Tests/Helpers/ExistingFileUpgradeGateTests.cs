@@ -177,6 +177,92 @@ public class ExistingFileUpgradeGateTests
             .Should().BeNull();
     }
 
+    private static EventFile IptvRecording(string? quality) => new()
+    {
+        EventId = 1,
+        FilePath = "/data/UFC/prelims.ts",
+        Quality = quality,
+        Source = "IPTV",
+        IsIptvRecording = true,
+        Exists = true,
+    };
+
+    private static Config SourcePrecedence(bool on) => new()
+    {
+        DownloadPropersAndRepacks = "preferAndUpgrade",
+        DvrReplaceRecordingsWithIndexerReleases = on,
+    };
+
+    [Fact]
+    public void An_indexer_release_replaces_an_iptv_recording_of_higher_quality_under_source_precedence()
+    {
+        var profile = Profile(cutoffQuality: 9, items:
+        [
+            Item("HDTV-1080p", 9),
+            Item("HDTV-720p", 4),
+        ]);
+
+        ExistingFileUpgradeGate.RefusalReason(
+                IptvRecording("HDTV-1080p"), "UFC.300.Prelims.720p.HDTV.x264-GRP", "HDTV-720p", 0,
+                profile, SourcePrecedence(on: true))
+            .Should().BeNull();
+        ExistingFileUpgradeGate.RefusalReason(
+                IptvRecording("HDTV-1080p"), "UFC.300.Prelims.720p.HDTV.x264-GRP", "HDTV-720p", 0,
+                profile, SourcePrecedence(on: false))
+            .Should().NotBeNull("without source precedence the recording is just a 1080p file");
+    }
+
+    [Fact]
+    public void Source_precedence_replaces_an_iptv_recording_even_when_upgrades_are_off_or_its_quality_is_unreadable()
+    {
+        ExistingFileUpgradeGate.RefusalReason(
+                IptvRecording("DVR"), "UFC.300.Prelims.720p.HDTV.x264-GRP", "HDTV-720p", 0,
+                Profile(upgrades: false), SourcePrecedence(on: true))
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void Source_precedence_never_touches_a_file_that_came_from_an_indexer()
+    {
+        ExistingFileUpgradeGate.RefusalReason(
+                File("HDTV-1080p"), "UFC.300.Prelims.720p.HDTV.x264-GRP", "HDTV-720p", 0,
+                Profile(), SourcePrecedence(on: true))
+            .Should().NotBeNull();
+    }
+
+    [Fact]
+    public void A_file_whose_quality_the_profile_does_not_allow_is_upgraded_by_any_allowed_quality()
+    {
+        // An indexer release outside the profile can replace an IPTV
+        // recording; the next allowed release must still move it up.
+        var profile = Profile(cutoffQuality: 9, items:
+        [
+            Item("HDTV-1080p", 9),
+            Item("HDTV-720p", 4),
+        ]);
+
+        ExistingFileUpgradeGate.RefusalReason(
+                File("SDTV"), "UFC.300.Prelims.720p.HDTV.x264-GRP", "HDTV-720p", 0,
+                profile, Config())
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void A_file_whose_quality_the_profile_lists_but_does_not_allow_is_upgraded_by_any_allowed_quality()
+    {
+        var profile = Profile(cutoffQuality: 9, items:
+        [
+            new QualityItem { Name = "WEBDL-1080p", Quality = 3, Allowed = false },
+            Item("HDTV-1080p", 9),
+            Item("HDTV-720p", 4),
+        ]);
+
+        ExistingFileUpgradeGate.RefusalReason(
+                File("WEBDL-1080p"), "UFC.300.Prelims.720p.HDTV.x264-GRP", "HDTV-720p", 0,
+                profile, Config())
+            .Should().BeNull();
+    }
+
     private static QualityItem Item(string name, int quality) => new()
     {
         Name = name,

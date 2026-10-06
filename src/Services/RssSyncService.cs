@@ -251,6 +251,8 @@ public class RssSyncService : BackgroundService
                         release, matchedEvent, qualityProfile, customFormats, qualityDefinitions, releaseProfiles,
                         releaseEvaluator, releaseProfileService, config.EnableMultiPartEpisodes,
                         config.DefaultSportsRuntimeMinutes);
+                    await LiftRejectionsWhenReplacingIptvRecordingAsync(
+                        db, release, matchedEvent, config, partDetector, cancellationToken);
 
                     // Skip if evaluation rejected the release
                     if (release.Rejections.Any())
@@ -396,6 +398,40 @@ public class RssSyncService : BackgroundService
     }
 
     /// <summary>
+    /// Under source precedence a release that would replace an IPTV
+    /// recording isn't held to the quality profile's allowed qualities or
+    /// minimum format score. The part is found the way ShouldGrabReleaseAsync
+    /// finds it.
+    /// </summary>
+    private static async Task LiftRejectionsWhenReplacingIptvRecordingAsync(
+        SportarrDbContext db,
+        ReleaseSearchResult release,
+        Event evt,
+        Config config,
+        EventPartDetector partDetector,
+        CancellationToken cancellationToken)
+    {
+        if (!config.DvrReplaceRecordingsWithIndexerReleases || !release.Rejections.Any())
+            return;
+
+        string? part = null;
+        if (config.EnableMultiPartEpisodes
+            && EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? "", evt.League?.Name))
+        {
+            part = partDetector.DetectPart(release.Title, evt.Sport ?? "", evt.Title, evt.League?.Name)?.SegmentName
+                ?? EventPartDetector.GetMainPartName(evt.Sport ?? "", evt.Title, evt.League?.Name);
+        }
+
+        // A null part here means the event isn't multi-part, so only the
+        // whole-event file counts, as in ShouldGrabReleaseAsync.
+        var heldFile = await db.EventFiles.AsNoTracking()
+            .HeldFiles(evt.Id)
+            .FirstOrDefaultAsync(f => f.PartName == part, cancellationToken);
+        if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldFile))
+            Helpers.SourcePrecedence.LiftQualityProfileRejections(release);
+    }
+
+    /// <summary>
     /// Run a single externally pushed release (autobrr and similar IRC
     /// announce / RSS watchers posting to the Sonarr-compatible
     /// /api/v3/release/push endpoint) through the exact same
@@ -492,6 +528,8 @@ public class RssSyncService : BackgroundService
                 release, matchedEvent, qualityProfile, customFormats, qualityDefinitions, releaseProfiles,
                 releaseEvaluator, releaseProfileService, config.EnableMultiPartEpisodes,
                 config.DefaultSportsRuntimeMinutes);
+            await LiftRejectionsWhenReplacingIptvRecordingAsync(
+                db, release, matchedEvent, config, partDetector, cancellationToken);
 
             if (release.Rejections.Any())
                 return new PushedReleaseOutcome(false, false, matchedEvent.Title, release.Rejections.ToList());
@@ -1327,7 +1365,7 @@ public class RssSyncService : BackgroundService
             IsManualSearch = false // RSS sync is always automatic
         };
 
-        db.DownloadQueue.Add(queueItem);
+        queueItem = await QueueJobAttachment.AddOrAttachAsync(db, queueItem, cancellationToken);
 
         try
         {

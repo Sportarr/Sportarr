@@ -29,6 +29,14 @@ public static class ExistingFileUpgradeGate
         QualityProfile? profile,
         Config config)
     {
+        // Every release reaching this gate came from an indexer, so under
+        // source precedence it replaces an IPTV recording before any profile
+        // rule is asked.
+        if (SourcePrecedence.IndexerReleaseReplaces(config, existingFile))
+        {
+            return null;
+        }
+
         // Recalculate quality scores from quality strings (don't trust stored
         // values from old inverted scoring). CalculateQualityScoreFromName
         // returns 0 for null, empty, "Unknown", or any other unparseable

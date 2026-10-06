@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using Xunit;
@@ -171,4 +172,45 @@ public class ImportUpgradeRuleTests
         Allowed = true,
         Items = items.ToList(),
     };
+    private static Config SourcePrecedenceOn() => new() { DvrReplaceRecordingsWithIndexerReleases = true };
+
+    [Fact]
+    public void AnIndexerFileReplacesAnIptvRecordingOfHigherQualityUnderSourcePrecedence()
+    {
+        var source = SourcePrecedence.Compare(SourcePrecedenceOn(), incomingIsIptvRecording: false, existingIsIptvRecording: true);
+        ImportUpgradeRule.Evaluate("HDTV-1080p", 0, "DVR Recording - ESPN", "HDTV-720p", 0, "UFC.300.720p.HDTV.x264-GRP", Prefer,
+                source: source)
+            .IsUpgrade.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AnIptvRecordingNeverReplacesAnIndexerFileUnderSourcePrecedence()
+    {
+        var source = SourcePrecedence.Compare(SourcePrecedenceOn(), incomingIsIptvRecording: true, existingIsIptvRecording: false);
+        var d = ImportUpgradeRule.Evaluate("HDTV-720p", 0, "UFC.300.720p.HDTV.x264-GRP", "HDTV-1080p", 0, "UFC 300 - HDTV-1080p", Prefer,
+            source: source);
+        d.IsUpgrade.Should().BeFalse();
+        d.Rejection.Should().Be(SourcePrecedence.IptvRecordingRejection);
+    }
+
+    [Fact]
+    public void SourceDecidesNothingWhenSourcePrecedenceIsOff()
+    {
+        SourcePrecedence.Compare(new Config(), incomingIsIptvRecording: false, existingIsIptvRecording: true)
+            .Should().Be(SourcePrecedence.Verdict.None);
+    }
+
+    [Fact]
+    public void OnlyThisRulesRejectionsCountAsUpgradeRejections()
+    {
+        var lower = ImportUpgradeRule.Evaluate("WEBDL-1080p", 0, "old", "HDTV-720p", 0, "new", Prefer).Rejection;
+        var score = ImportUpgradeRule.Evaluate("WEBDL-1080p", 500, "old", "WEBDL-1080p", 0, "new", Prefer).Rejection;
+
+        ImportUpgradeRule.IsRejection(lower).Should().BeTrue();
+        ImportUpgradeRule.IsRejection(score).Should().BeTrue();
+        ImportUpgradeRule.IsRejection(SourcePrecedence.IptvRecordingRejection).Should().BeTrue();
+        ImportUpgradeRule.IsRejection(ManualQueueImportPolicy.AmbiguousVideoWarning).Should().BeFalse();
+        ImportUpgradeRule.IsRejection(PackImportBoundary.WarningPrefix + "member missing").Should().BeFalse();
+        ImportUpgradeRule.IsRejection(null).Should().BeFalse();
+    }
 }

@@ -515,7 +515,15 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
         if (ShouldPreserveImportWarning(download.Status, status.Status))
         {
-            return;
+            if (!await ShouldRetryRejectedImportAsync(download, status, fileImportService, enableCompletedHandling))
+            {
+                return;
+            }
+
+            // The status remap below reads "completed" and runs the import again.
+            _logger.LogInformation("[Enhanced Download Monitor] Rejected import now qualifies, importing again: {Title} (was: {Reason})",
+                download.Title, download.ErrorMessage);
+            download.ErrorMessage = null;
         }
 
         download.Status = status.Status switch
@@ -638,6 +646,36 @@ public class EnhancedDownloadMonitorService : BackgroundService
         return currentStatus == DownloadStatus.ImportWarning &&
                !string.Equals(clientStatus, "failed", StringComparison.Ordinal) &&
                !string.Equals(clientStatus, "error", StringComparison.Ordinal);
+    }
+
+    // The check before a rejected import runs again reads only the database,
+    // so it runs every poll. The import it starts is not cheap, so one row
+    // runs it at most once per interval, in case the import still rejects.
+    // In-memory like the stall timers: a restart just allows one more try.
+    internal static readonly TimeSpan RejectedImportRetryInterval = TimeSpan.FromMinutes(5);
+    private readonly Dictionary<int, DateTime> _rejectedImportRetries = new();
+
+    /// <summary>
+    /// A completed download rejected as not an upgrade stays in the queue
+    /// holding its warning. It imports once the upgrade rule would accept
+    /// it, for example after source precedence is turned on or the held
+    /// file goes, without anyone grabbing it again. Other import warnings
+    /// (ambiguous video, pack member holds) wait for the user.
+    /// </summary>
+    private async Task<bool> ShouldRetryRejectedImportAsync(
+        DownloadQueueItem download,
+        DownloadClientStatus status,
+        FileImportService? fileImportService,
+        bool enableCompletedHandling)
+    {
+        if (!enableCompletedHandling || fileImportService == null) return false;
+        if (status.Status != "completed") return false;
+        if (!ImportUpgradeRule.IsRejection(download.ErrorMessage)) return false;
+        if (_rejectedImportRetries.TryGetValue(download.Id, out var lastRetry) &&
+            DateTime.UtcNow - lastRetry < RejectedImportRetryInterval) return false;
+        if (!await fileImportService.WouldNowReplaceHeldFileAsync(download)) return false;
+        _rejectedImportRetries[download.Id] = DateTime.UtcNow;
+        return true;
     }
 
     // Last observed progress and when it last MOVED, per queue item. The
@@ -1397,7 +1435,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                                             // Not grabbed by Sportarr: it replaces what the
                                             // event holds only as an upgrade, else it waits
                                             // in Pending Imports with the reason.
-                                            OnlyIfUpgrade = true
+                                            OnlyIfUpgrade = true,
+                                            FromDownloadClient = true
                                         }
                                     });
                                     imported = importResult.Imported.Count + importResult.Created.Count > 0;
