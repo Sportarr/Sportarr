@@ -70,20 +70,27 @@ public class YearRoundFormatMatchingTests
     }
 
     [Theory]
-    // The round embedded in "2026x02" must feed the round-mismatch guard,
-    // otherwise the year bonus alone could push a wrong-round release over the
-    // threshold for a same-year event. Round 02 != event Round 3. The second
-    // case uses underscores: '_' is a word character, so the matcher's round
-    // extraction has to treat it as a separator (not rely on \b).
-    [InlineData("Formula.1.2026x02.China.Race.SkyF1HD.1080p")]
-    [InlineData("Formula_1_2026x02_China_Race_SkyF1HD_1080p")]
-    public void YearXRoundRelease_RoundIsUsedForTheMismatchGuard(string title)
+    // Formula 1 YYYYxNN numbering is not consistently a championship round.
+    // Some feeds use it as a chronological episode/session number, so an xNN
+    // mismatch alone must not trigger the authoritative round-mismatch guard.
+    [InlineData("Formula.1.2026x89.Bahrain.Race.F1TV.1080p.SS")]
+    [InlineData("Formula_1_2026x89_Bahrain_Race_F1TV_1080p_SS")]
+    public void YearXRoundRelease_MismatchIsNotAuthoritativeForFormula1(string title)
     {
-        var result = _svc.ValidateRelease(Rel(title), ChineseGrandPrix(2026, round: "3"));
+        var result = _svc.ValidateRelease(Rel(title), ChineseGrandPrix(2026, round: "16"));
 
-        result.IsHardRejection.Should().BeTrue();
-        result.IsMatch.Should().BeFalse();
-        result.Rejections.Should().Contain(r => r.Contains("Round mismatch"));
+        result.Rejections.Should().NotContain(r => r.Contains("Round mismatch"));
+    }
+
+    [Fact]
+    public void ExplicitRoundWinsOverYearXRoundForFormula1()
+    {
+        var result = _svc.ValidateRelease(
+            Rel("Formula.1.2025x26.Round.04.BahrainGP.Race.F1.Live.1080p.SS"),
+            ChineseGrandPrix(2025, round: "4"));
+
+        result.MatchReasons.Should().Contain("Round number matches: Round 4");
+        result.Rejections.Should().NotContain(r => r.Contains("Round mismatch"));
     }
 
     [Fact]
