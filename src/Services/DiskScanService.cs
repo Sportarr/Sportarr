@@ -817,7 +817,22 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                             "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         cleanTitle = cleanTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Trim();
 
-                        if (!string.IsNullOrEmpty(cleanTitle) && cleanTitle.Length > 3)
+                        // A sportarr event token names the event outright. A title
+                        // match can land on an older game between the same teams.
+                        var tokenEventId = SportarrIdToken.ExtractEventId(filename);
+                        if (tokenEventId != null)
+                        {
+                            var tokenEvent = await db.Events
+                                .AsNoTracking()
+                                .FirstOrDefaultAsync(e => e.ExternalId == tokenEventId, cancellationToken);
+                            if (tokenEvent != null)
+                            {
+                                suggestedEventId = tokenEvent.Id;
+                                confidence = 100;
+                            }
+                        }
+
+                        if (suggestedEventId == null && !string.IsNullOrEmpty(cleanTitle) && cleanTitle.Length > 3)
                         {
                             var pattern = $"%{cleanTitle}%";
                             var matchedEvent = await db.Events
