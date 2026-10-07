@@ -43,8 +43,10 @@ public static class ReleaseTypeDetector
         @"\b(WEEK|MATCHDAY|ROUND)[\.\-\s]?\d+\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // "Away @ Home" is how 720pier names a game. The @ stands alone, so an
+    // address-like "Me@Home" isn't a matchup.
     private static readonly Regex SingleMatchupPattern = new(
-        @"\b(?:vs|v)\b",
+        @"\b(?:vs|v)\b|(?<=[\s.])@(?=[\s.])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>

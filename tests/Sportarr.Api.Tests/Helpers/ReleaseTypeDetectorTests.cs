@@ -26,6 +26,24 @@ public class ReleaseTypeDetectorTests
         ReleaseTypeDetector.DetectForImport(title).Should().Be(ReleaseType.SingleEvent);
     }
 
+    // 720pier names a game "Away @ Home" next to the week number.
+    [Theory]
+    [InlineData("NFL 2026-2027 / Week 04 / 04.10.2026 / Miami Dolphins @ Minnesota Vikings [Football, WEB-DL HD/720p/60fps, MKV/H.264, EN/FOX]")]
+    [InlineData("NFL.2026.Week.04.Miami.Dolphins.@.Minnesota.Vikings.720p")]
+    public void Detect_WeekWithAtMatchup_IsNotAnImportPack(string title)
+    {
+        ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.SingleEvent);
+        ReleaseTypeDetector.DetectForImport(title).Should().Be(ReleaseType.SingleEvent);
+    }
+
+    [Theory]
+    [InlineData("NFL.2026.Week.04.Me@Home.Special.720p")]
+    [InlineData("NFL 2026 Week 04 PACK Miami Dolphins @ Minnesota Vikings and more 720p")]
+    public void Detect_AtWithoutAMatchup_RemainsAPack(string title)
+    {
+        ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.Pack);
+    }
+
     [Theory]
     [InlineData("AFL 2026 Round 1 Carlton V Richmond and Geelong V Fremantle PACK 1080p")]
     [InlineData("AFL 2026 Carlton V Richmond FULL SEASON 1080p")]
