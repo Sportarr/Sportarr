@@ -1392,6 +1392,27 @@ public class ReleaseMatchingService
             var releaseRound = ExtractRoundNumber(release.Title);
             var eventRound = !string.IsNullOrEmpty(evt.Round) ? ExtractRoundNumber($"Round {evt.Round}") : null;
 
+            // Formula 1 releases use YYYYxNN inconsistently. Some feeds use NN as
+            // the championship round, while others use it as a chronological
+            // episode/session number. Treat a YYYYxNN-only round as ambiguous for
+            // F1 when it conflicts with the event's authoritative Round metadata.
+            // Explicit Round/Rd/R tokens remain authoritative because
+            // ExtractRoundNumber checks those before YYYYxNN.
+            var hasExplicitReleaseRound =
+                Regex.IsMatch(release.Title, @"Round[\s\.\-]*\d+", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(release.Title, @"Rd[\s\.\-]*\d+", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(release.Title, @"R\d{1,2}", RegexOptions.IgnoreCase);
+
+            var isFormula1 =
+                evt.League?.Name.Contains("Formula 1", StringComparison.OrdinalIgnoreCase) == true;
+
+            var ambiguousFormula1YearXRound =
+                isFormula1 &&
+                !hasExplicitReleaseRound &&
+                releaseRound.HasValue &&
+                eventRound.HasValue &&
+                releaseRound.Value != eventRound.Value;
+
             if (releaseRound.HasValue && eventRound.HasValue)
             {
                 // Pre-season testing: indexers use Round 0 but Sportarr API uses Round 500
@@ -1403,6 +1424,15 @@ public class ReleaseMatchingService
                 {
                     result.Confidence += 25;
                     result.MatchReasons.Add($"Round number matches: Round {releaseRound}");
+                }
+                else if (ambiguousFormula1YearXRound)
+                {
+                    // Do not treat YYYYxNN as an authoritative championship round
+                    // for Formula 1. Other event-level checks (location, session,
+                    // year, title identity) still have to establish the match.
+                    _logger.LogTrace(
+                        "[Release Matching] Ignoring ambiguous Formula 1 YYYYxNN round mismatch ({ReleaseRound} vs {EventRound}): '{Release}'",
+                        releaseRound, eventRound, release.Title);
                 }
                 else if (nascarNamedIdentity)
                 {
