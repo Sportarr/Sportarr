@@ -11,6 +11,8 @@ namespace Sportarr.Api.Services;
 /// of adding a second one for the same job. A row whose import was rejected
 /// or failed starts over, so the monitor imports it again under the new
 /// grab. A row still in flight is left as it is.
+/// A single game the title once misread as a pack is held as an unresolved
+/// pack member; the grab takes that row over as one game.
 /// </summary>
 internal static class QueueJobAttachment
 {
@@ -24,10 +26,21 @@ internal static class QueueJobAttachment
                             q.DownloadId == grabbed.DownloadId &&
                             q.EventId == grabbed.EventId &&
                             q.Part == grabbed.Part &&
-                            !q.IsPack &&
                             q.Status != DownloadStatus.Imported)
                 .OrderByDescending(q => q.Id)
                 .FirstOrDefaultAsync(cancellationToken);
+
+        // A pack row is taken over only when it is a single game the title
+        // once misread as a pack: held as an unresolved member, and the only
+        // row on its job. A job other events share is a real pack.
+        if (existing is { IsPack: true } &&
+            (!PackImportBoundary.IsHeld(existing) ||
+             await db.DownloadQueue.AnyAsync(q => q.DownloadClientId == existing.DownloadClientId &&
+                                                  q.DownloadId == existing.DownloadId &&
+                                                  q.Id != existing.Id, cancellationToken)))
+        {
+            existing = null;
+        }
 
         if (existing == null)
         {
@@ -51,6 +64,8 @@ internal static class QueueJobAttachment
             existing.CustomFormatScore = grabbed.CustomFormatScore;
             existing.IsManualSearch = grabbed.IsManualSearch;
             existing.RetryCount = grabbed.RetryCount;
+            existing.IsPack = false;
+            existing.PackGroupId = null;
             existing.Status = DownloadStatus.Queued;
             existing.ErrorMessage = null;
             existing.StatusMessages = new List<string>();
