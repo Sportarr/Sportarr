@@ -151,6 +151,50 @@ public class PartIdentityPendingContractV2Tests
     }
 
     [Fact]
+    public async Task DiskPendingAccept_StoresTheCustomFormatScoreTheFileNameEarns()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync();
+        var directory = NewDirectory();
+        try
+        {
+            var format = new CustomFormat { Name = "WEB-DL", Specifications = new List<FormatSpecification>
+            {
+                new() { Name = "Title", Implementation = "ReleaseTitle", Required = true,
+                    Fields = new Dictionary<string, object> { { "value", "WEB-DL" } } },
+            } };
+            rig.Db.CustomFormats.Add(format);
+            await rig.Db.SaveChangesAsync();
+            var profile = await rig.Db.QualityProfiles.SingleAsync();
+            profile.FormatItems.Add(new ProfileFormatItem { FormatId = format.Id, Score = 25 });
+            await rig.Db.SaveChangesAsync();
+            var path = Path.Combine(directory, "UFC.9999.2020.09.01.720p.WEB-DL.mkv");
+            await File.WriteAllBytesAsync(path, Enumerable.Repeat((byte)'s', 4096).ToArray());
+            var pending = new PendingImport
+            {
+                DownloadId = "disk-format-score",
+                Title = Path.GetFileNameWithoutExtension(path),
+                FilePath = path,
+                Size = 4096,
+                Quality = "WEBDL-720p",
+                SuggestedEventId = rig.Event.Id,
+                SuggestedPart = "Main Card"
+            };
+            rig.Db.PendingImports.Add(pending);
+            await rig.Db.SaveChangesAsync();
+
+            await using var app = await CreatePendingHost(rig);
+            using var client = app.GetTestClient();
+            using var response = await client.PostAsync($"/api/pending-imports/{pending.Id}/accept", null);
+            var body = await response.Content.ReadAsStringAsync();
+
+            response.IsSuccessStatusCode.Should().BeTrue(body);
+            (await rig.Db.EventFiles.SingleAsync()).CustomFormatScore.Should().Be(25,
+                "a stored score of 0 makes every scored release look like an upgrade over this file");
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task DiskPendingAccept_InfersPartForExistingPendingRowWithoutAStoredPart()
     {
         await using var rig = await PartIdentityIntegrationHarness.CreateAsync();
@@ -470,6 +514,7 @@ public class PartIdentityPendingContractV2Tests
         builder.Services.AddSingleton(rig.Services.GetRequiredService<EventPartDetector>());
         builder.Services.AddSingleton(rig.Services.GetRequiredService<DownloadClientService>());
         builder.Services.AddSingleton(rig.Services.GetRequiredService<PackImportService>());
+        builder.Services.AddSingleton(rig.Services.GetRequiredService<CustomFormatService>());
         // The mapped sibling routes must resolve as services and must never run here.
         builder.Services.AddSingleton<QueueRemovalService>(_ => throw new InvalidOperationException("Unexpected queue removal route"));
         builder.Services.AddSingleton<ImportMatchingService>(_ => includeLeagueScan

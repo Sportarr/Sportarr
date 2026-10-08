@@ -430,7 +430,8 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     SportarrDbContext db,
     FileImportService fileImportService,
     ConfigService configService,
-    EventPartDetector partDetector) =>
+    EventPartDetector partDetector,
+    CustomFormatService customFormatService) =>
 {
     // Accept a pending import and perform the actual import.
     // Body is optional: when present, may carry { metadataOverrides: { quality, source,
@@ -518,6 +519,16 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 if (!excluded.Contains(rg.ToUpper())) releaseGroup = rg;
             }
 
+            // The file's name earns its custom format score. Left at 0,
+            // every release with a positive score would look like an upgrade.
+            var profile = RssSyncService.ResolveQualityProfile(evt,
+                await db.QualityProfiles.AsNoTracking().ToListAsync());
+            var formatScores = profile?.FormatItems.ToDictionary(fi => fi.FormatId, fi => fi.Score)
+                ?? new Dictionary<int, int>();
+            var formatScore = formatScores.Count == 0 ? 0 : customFormatService.EvaluateRelease(
+                overrides?.OriginalTitle ?? Path.GetFileNameWithoutExtension(import.FilePath),
+                await db.CustomFormats.AsNoTracking().ToListAsync(), formatScores).Sum(m => m.Score);
+
             // Create EventFile record
             var eventFile = new EventFile
             {
@@ -526,6 +537,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 Size = fileInfo.Length,
                 Quality = import.Quality ?? "Unknown",
                 ReleaseGroup = releaseGroup,
+                CustomFormatScore = formatScore,
                 PartName = storedPartName,
                 PartNumber = storedPartNumber,
                 Exists = true,

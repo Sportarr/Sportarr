@@ -336,6 +336,42 @@ public class ImportUpgradeBehaviourTests : IDisposable
         var files = _db.EventFiles.Where(f => f.EventId == evt.Id).ToList();
         files.Should().ContainSingle().Which.FilePath.Should().Be(copy);
     }
+
+    [Fact]
+    public async Task AnImportedFileKeepsTheCustomFormatScoreItsNameEarns()
+    {
+        var (evt, _) = SeedEventWithFile();
+        var format = new CustomFormat
+        {
+            Name = "Better",
+            Specifications = new List<FormatSpecification>
+            {
+                new()
+                {
+                    Name = "Title", Implementation = "ReleaseTitle", Required = true,
+                    Fields = new Dictionary<string, object> { { "value", "Better" } },
+                },
+            },
+        };
+        _db.CustomFormats.Add(format);
+        _db.SaveChanges();
+        _db.QualityProfiles.Add(new QualityProfile
+        {
+            Name = "Default", IsDefault = true,
+            FormatItems = new List<ProfileFormatItem> { new() { FormatId = format.Id, Score = 50 } },
+        });
+        _db.SaveChanges();
+        var copy = Write("NFL - S2025E06 - Better Copy - WEBDL-2160p - sportarr-ev-312923.mkv");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id },
+        });
+
+        result.Imported.Should().ContainSingle();
+        _db.EventFiles.Single(f => f.EventId == evt.Id).CustomFormatScore.Should().Be(50,
+            "a stored score of 0 makes every scored release look like an upgrade over this file");
+    }
 }
 
 internal static class EpisodeResolverFixture
