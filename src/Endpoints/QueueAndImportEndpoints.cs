@@ -521,13 +521,10 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
 
             // The file's name earns its custom format score. Left at 0,
             // every release with a positive score would look like an upgrade.
-            var profile = RssSyncService.ResolveQualityProfile(evt,
-                await db.QualityProfiles.AsNoTracking().ToListAsync());
-            var formatScores = profile?.FormatItems.ToDictionary(fi => fi.FormatId, fi => fi.Score)
-                ?? new Dictionary<int, int>();
-            var formatScore = formatScores.Count == 0 ? 0 : customFormatService.EvaluateRelease(
+            var formatScore = customFormatService.ScoreName(
                 overrides?.OriginalTitle ?? Path.GetFileNameWithoutExtension(import.FilePath),
-                await db.CustomFormats.AsNoTracking().ToListAsync(), formatScores).Sum(m => m.Score);
+                RssSyncService.ResolveQualityProfile(evt, await db.QualityProfiles.AsNoTracking().ToListAsync()),
+                await db.CustomFormats.AsNoTracking().ToListAsync());
 
             // Create EventFile record
             var eventFile = new EventFile
