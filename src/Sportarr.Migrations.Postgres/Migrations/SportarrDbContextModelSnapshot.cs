@@ -1362,6 +1362,8 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("LeagueId", "EventDate", "Id");
+
                     b.ToTable("Events");
                 });
 

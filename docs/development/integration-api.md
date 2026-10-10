@@ -218,6 +218,11 @@ a few thousand events, so page it during a first sync.
 returns the same set of events the Sportarr UI shows. That is almost
 always what an integration wants.
 
+`showAll` defaults to false. Pass `showAll=true` and the endpoint returns
+every stored event for the league instead, bypassing the monitoring
+filters, optionally narrowed by `season`. That is what a complete
+reconciliation read uses.
+
 ## Root folders
 
 ```

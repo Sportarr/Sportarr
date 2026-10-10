@@ -451,31 +451,6 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // One season at a time when the caller asks for one. The visibility rules
-    // are per season anyway (cup stage sizes are computed within a season), so
-    // narrowing here gives the same answer for less.
-    var query = db.Events
-        .AsNoTracking()
-        .Include(e => e.HomeTeam)
-        .Include(e => e.AwayTeam)
-        .Include(e => e.Files)
-        .Where(e => e.LeagueId == id);
-
-    if (!string.IsNullOrEmpty(season))
-    {
-        query = season == "Unknown"
-            ? query.Where(e => e.Season == null || e.Season == "")
-            : query.Where(e => e.Season == season);
-    }
-
-    var events = await query
-        .OrderByDescending(e => e.EventDate)
-        .ToListAsync();
-
-    var filteredEvents = SelectVisibleEvents(events, league, showAll == true);
-    logger.LogDebug("[LEAGUES] Showing {Filtered}/{Total} events (showAll: {ShowAll})",
-        filteredEvents.Count, events.Count, showAll == true);
-
     // Paging is opt-in so the frontend and every existing consumer keep the
     // plain array they already expect. Integrations ask for a page and get an
     // envelope instead. A full MLB season is around 2400 events, and an
@@ -483,28 +458,64 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
     // whole seasons in single responses does not scale.
     if (page.HasValue || pageSize.HasValue)
     {
-        var currentPage = Math.Max(1, page ?? 1);
-        var size = Math.Clamp(pageSize ?? 100, 1, 1000);
-        var totalRecords = filteredEvents.Count;
+        var (currentPage, size) = NormalizeLeagueEventsPaging(page, pageSize);
 
-        var pageItems = filteredEvents
-            .Skip((currentPage - 1) * size)
-            .Take(size)
+        if (showAll == true || league.KeepAllEvents)
+        {
+            // No visibility rule can hide an event when the caller asked for
+            // everything, so the count and the page window can come straight
+            // from the database instead of materializing the whole league.
+            var (countQuery, pageQuery) = ComposeUnfilteredEventPageQueries(db, id, season, currentPage, size);
+            var totalRecords = await countQuery.CountAsync();
+            var pageEvents = await pageQuery.ToListAsync();
+
+            logger.LogDebug("[LEAGUES] Showing {Filtered}/{Total} events (showAll: {ShowAll})",
+                pageEvents.Count, totalRecords, showAll == true);
+
+            var pageItems = pageEvents
+                .Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true, leagueOverride: league))
+                .ToList();
+
+            logger.LogInformation("[LEAGUES] Returning page {Page} ({Count} of {Total}) for league: {LeagueName}",
+                currentPage, pageItems.Count, totalRecords, league.Name);
+
+            return Results.Ok(new
+            {
+                page = currentPage,
+                pageSize = size,
+                totalRecords,
+                totalPages = LeagueEventsTotalPages(totalRecords, size),
+                records = pageItems
+            });
+        }
+
+        // The visibility rules run in memory over the whole season graph
+        // (cup stage sizes are computed within a season), so the filtered
+        // path still materializes the league before paging.
+        var slice = await GetFilteredEventPageAsync(db, league, season, showAll == true, currentPage, size);
+
+        var filteredPageItems = slice.Records
             .Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true, leagueOverride: league))
             .ToList();
 
         logger.LogInformation("[LEAGUES] Returning page {Page} ({Count} of {Total}) for league: {LeagueName}",
-            currentPage, pageItems.Count, totalRecords, league.Name);
+            currentPage, filteredPageItems.Count, slice.TotalRecords, league.Name);
 
         return Results.Ok(new
         {
             page = currentPage,
             pageSize = size,
-            totalRecords,
-            totalPages = (int)Math.Ceiling(totalRecords / (double)size),
-            records = pageItems
+            totalRecords = slice.TotalRecords,
+            totalPages = LeagueEventsTotalPages(slice.TotalRecords, size),
+            records = filteredPageItems
         });
     }
+
+    var events = await LoadLeagueEventsForVisibilityAsync(db, id, season);
+
+    var filteredEvents = SelectVisibleEvents(events, league, showAll == true);
+    logger.LogDebug("[LEAGUES] Showing {Filtered}/{Total} events (showAll: {ShowAll})",
+        filteredEvents.Count, events.Count, showAll == true);
 
     // Convert to DTOs
     var response = filteredEvents.Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true, leagueOverride: league)).ToList();
@@ -2990,5 +3001,123 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
                     league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
                     cupStageSizesBySeason[e.Season ?? ""], e.HasLaterSeasonFinal))
             .ToList();
+    }
+
+    /// <summary>
+    /// Normalizes the paging inputs of the league events endpoint. Callers
+    /// rely on these defaults and caps: page starts at 1, pageSize defaults
+    /// to 100 and never exceeds 1000.
+    /// </summary>
+    internal static (int CurrentPage, int Size) NormalizeLeagueEventsPaging(int? page, int? pageSize)
+        => (Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 100, 1, 1000));
+
+    /// <summary>
+    /// The paging envelope's total page count.
+    /// </summary>
+    internal static int LeagueEventsTotalPages(int totalRecords, int size)
+        => (int)Math.Ceiling(totalRecords / (double)size);
+
+    /// <summary>
+    /// Loads a league's whole event graph ordered by date, narrowed to one
+    /// season when asked. One season at a time when the caller asks for one:
+    /// the visibility rules are per season anyway (cup stage sizes are
+    /// computed within a season), so narrowing here gives the same answer
+    /// for less. The filtered paged path and the plain list both need the
+    /// complete graph in memory, which is why this stays a full load.
+    /// </summary>
+    internal static async Task<List<Event>> LoadLeagueEventsForVisibilityAsync(
+        SportarrDbContext db, int leagueId, string? season)
+    {
+        var query = db.Events
+            .AsNoTracking()
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Include(e => e.Files)
+            .Where(e => e.LeagueId == leagueId);
+
+        if (!string.IsNullOrEmpty(season))
+        {
+            query = season == "Unknown"
+                ? query.Where(e => e.Season == null || e.Season == "")
+                : query.Where(e => e.Season == season);
+        }
+
+        return await query
+            .OrderByDescending(e => e.EventDate)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// The filtered paged path, extracted verbatim from the endpoint: the
+    /// whole league event graph loads, the visibility rules run in memory,
+    /// and the visible list pages in memory. Cup classification needs every
+    /// round of a season before any paging decision, so this path cannot
+    /// move to the database until those rules translate to SQL.
+    /// </summary>
+    internal static async Task<LeagueEventsPageSlice> GetFilteredEventPageAsync(
+        SportarrDbContext db, League league, string? season, bool showAll, int currentPage, int size)
+    {
+        var events = await LoadLeagueEventsForVisibilityAsync(db, league.Id, season);
+        var filteredEvents = SelectVisibleEvents(events, league, showAll);
+
+        return new LeagueEventsPageSlice
+        {
+            TotalRecords = filteredEvents.Count,
+            Records = filteredEvents
+                .Skip((currentPage - 1) * size)
+                .Take(size)
+                .ToList(),
+        };
+    }
+
+    /// <summary>
+    /// The rows and row count one paged events response reports. The count
+    /// and the records travel together because the envelope promises both
+    /// from the same visible set.
+    /// </summary>
+    internal sealed class LeagueEventsPageSlice
+    {
+        public required int TotalRecords { get; init; }
+        public required List<Event> Records { get; init; }
+    }
+
+    /// <summary>
+    /// Composes the two queries an unfiltered, paged league events request
+    /// runs: a row count over the league's events with no relationship
+    /// includes, and the page window ordered by date with the Id tiebreaker,
+    /// with teams and files included only for the page's rows. The endpoint
+    /// used to materialize the whole event graph for every page and slice it
+    /// in memory, so an integration walking a 67k-event league at 1000 per
+    /// page made the server load the full graph once per page. The Id
+    /// tiebreaker keeps page boundaries deterministic when events share a
+    /// date; EventDate alone cannot order a boundary.
+    /// </summary>
+    internal static (IQueryable<Event> CountQuery, IQueryable<Event> PageQuery) ComposeUnfilteredEventPageQueries(
+        SportarrDbContext db, int leagueId, string? season, int currentPage, int size)
+    {
+        var query = db.Events
+            .AsNoTracking()
+            .Where(e => e.LeagueId == leagueId);
+
+        // One season at a time when the caller asks for one, mirroring the
+        // unpaged path. "Unknown" is the season-less bucket: null and empty
+        // Season strings.
+        if (!string.IsNullOrEmpty(season))
+        {
+            query = season == "Unknown"
+                ? query.Where(e => e.Season == null || e.Season == "")
+                : query.Where(e => e.Season == season);
+        }
+
+        var pageQuery = query
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Include(e => e.Files)
+            .OrderByDescending(e => e.EventDate)
+            .ThenByDescending(e => e.Id)
+            .Skip((int)Math.Min((currentPage - 1) * (long)size, int.MaxValue))
+            .Take(size);
+
+        return (CountQuery: query, PageQuery: pageQuery);
     }
 }

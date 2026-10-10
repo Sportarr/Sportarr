@@ -160,6 +160,10 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(e => e.EventDate);
             entity.HasIndex(e => e.Sport);
             entity.HasIndex(e => e.LeagueId);
+            // The paged league events walk filters by league and orders by date
+            // then id, so a composite index lets every page seek straight to
+            // its window instead of re-sorting the whole league.
+            entity.HasIndex(e => new { e.LeagueId, e.EventDate, e.Id });
             entity.HasIndex(e => e.ExternalId);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.Monitored); // Frequently filtered in searches
