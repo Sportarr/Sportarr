@@ -265,6 +265,13 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                 </a>
             </td>
             <td align="center">
+                <a href="https://github.com/LavX">
+                    <img src="https://avatars.githubusercontent.com/u/30391756?v=4" width="72;" alt="LavX"/>
+                    <br />
+                    <sub><b>LavX</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/lenaxia">
                     <img src="https://avatars.githubusercontent.com/u/6321838?v=4" width="72;" alt="lenaxia"/>
                     <br />
@@ -278,6 +285,8 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>lustered</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/lyrova-andy">
                     <img src="https://avatars.githubusercontent.com/u/277908091?v=4" width="72;" alt="lyrova-andy"/>
@@ -285,8 +294,6 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>lyrova-andy</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/nathanjcollins">
                     <img src="https://avatars.githubusercontent.com/u/53304818?v=4" width="72;" alt="nathanjcollins"/>
@@ -322,6 +329,8 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>schlort</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/skjaere">
                     <img src="https://avatars.githubusercontent.com/u/183823742?v=4" width="72;" alt="skjaere"/>
@@ -329,13 +338,18 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>skjaere</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/slflowfoon">
                     <img src="https://avatars.githubusercontent.com/u/94804320?v=4" width="72;" alt="slflowfoon"/>
                     <br />
                     <sub><b>slflowfoon</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/stormshaker">
+                    <img src="https://avatars.githubusercontent.com/u/2807460?v=4" width="72;" alt="stormshaker"/>
+                    <br />
+                    <sub><b>stormshaker</b></sub>
                 </a>
             </td>
             <td align="center">
