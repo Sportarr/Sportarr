@@ -704,9 +704,10 @@ public class ReleaseMatchingService
             result.MatchReasons.Add("Named NASCAR race and series match");
         }
 
-        if (isTeamSport && !PackImportBoundary.IsPackRelease(release.Title, release.IsPack,
-                release.SportarrLeagueId, release.SportarrEventId))
+        if (isTeamSport)
         {
+            // Packs too: a week or matchday pack holds that round's games only,
+            // so a "Week 05" pack cannot carry a round 4 game.
             var releaseRoundMatch = _teamScheduleRoundPattern.Match(release.Title);
             var hasExactPreseasonDate = SearchNormalizationService.HasExactDatedPreseasonIdentity(
                 release.Title, parseResult.EventDate, evt);
@@ -721,7 +722,11 @@ public class ReleaseMatchingService
                 result.Rejections.Add($"Round mismatch: release is round {releaseRound}, event is round {eventRound}");
                 return result;
             }
+        }
 
+        if (isTeamSport && !PackImportBoundary.IsPackRelease(release.Title, release.IsPack,
+                release.SportarrLeagueId, release.SportarrEventId))
+        {
             var releaseGames = ExtractTeamGameNumbers(release.Title, stripReleaseGroup: true, parseResult.EventDate);
             if (releaseGames.Count > 0)
             {
@@ -1949,19 +1954,19 @@ public class ReleaseMatchingService
         string? titleAwayName = null)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
-        var homeMatches = ContainsTeamName(normalizedRelease, homeTeamName, homeTeam) ||
-            (!string.IsNullOrWhiteSpace(titleHomeName) && ContainsTeamName(normalizedRelease, titleHomeName, homeTeam));
-        var awayMatches = ContainsTeamName(normalizedRelease, awayTeamName, awayTeam) ||
-            (!string.IsNullOrWhiteSpace(titleAwayName) && ContainsTeamName(normalizedRelease, titleAwayName, awayTeam));
+        var homeMatches = ContainsTeamName(normalizedRelease, homeTeamName, homeTeam, releaseTitle) ||
+            (!string.IsNullOrWhiteSpace(titleHomeName) && ContainsTeamName(normalizedRelease, titleHomeName, homeTeam, releaseTitle));
+        var awayMatches = ContainsTeamName(normalizedRelease, awayTeamName, awayTeam, releaseTitle) ||
+            (!string.IsNullOrWhiteSpace(titleAwayName) && ContainsTeamName(normalizedRelease, titleAwayName, awayTeam, releaseTitle));
 
         if (league != null && TitleNamesLeague(releaseTitle, league))
         {
             var baseHome = FootballReleaseNamePolicy.BaseParticipantName(titleHomeName ?? homeTeamName, league.Name);
             var baseAway = FootballReleaseNamePolicy.BaseParticipantName(titleAwayName ?? awayTeamName, league.Name);
             if (!homeMatches && !baseHome.Equals(titleHomeName ?? homeTeamName, StringComparison.OrdinalIgnoreCase))
-                homeMatches = ContainsTeamName(normalizedRelease, baseHome, homeTeam);
+                homeMatches = ContainsTeamName(normalizedRelease, baseHome, homeTeam, releaseTitle);
             if (!awayMatches && !baseAway.Equals(titleAwayName ?? awayTeamName, StringComparison.OrdinalIgnoreCase))
-                awayMatches = ContainsTeamName(normalizedRelease, baseAway, awayTeam);
+                awayMatches = ContainsTeamName(normalizedRelease, baseAway, awayTeam, releaseTitle);
         }
 
         var normalizedHomeTeam = NormalizeTitle(homeTeamName);
@@ -2057,7 +2062,8 @@ public class ReleaseMatchingService
     private bool ContainsTeamName(
         string normalizedRelease,
         string teamName,
-        Team? team = null)
+        Team? team = null,
+        string? rawRelease = null)
     {
         var normalizedName = NormalizeTitle(teamName);
 
@@ -2067,7 +2073,7 @@ public class ReleaseMatchingService
 
         // Check short name from database if Team navigation property is loaded (e.g., "LAC")
         if (team != null && !string.IsNullOrEmpty(team.ShortName) &&
-            normalizedRelease.Contains(NormalizeTitle(team.ShortName), StringComparison.OrdinalIgnoreCase))
+            ContainsAbbreviation(normalizedRelease, rawRelease, team.ShortName))
             return true;
 
         // Check upstream-API alternate names (TheSportsDB strAlternate). For
@@ -2155,14 +2161,41 @@ public class ReleaseMatchingService
                 // This team matches - check if any variation appears in release
                 foreach (var variation in variations)
                 {
-                    var normalizedVariation = NormalizeTitle(variation);
-                    if (GetWordBoundaryRegex(normalizedVariation).IsMatch(normalizedRelease))
+                    if (ContainsAbbreviation(normalizedRelease, rawRelease, variation))
                         return true;
                 }
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Match a team abbreviation or short variation as a whole word, or as an
+    /// all-caps code fused to its neighbours ("TORvsOAK"). A plain substring
+    /// check let "BAL" match inside "Football". An abbreviation that is a
+    /// number word ("TEN" for Tennessee) normalizes to digits, which would then
+    /// match any date or week number, so its spelled form is checked against
+    /// the raw title instead; with no raw title it cannot count.
+    /// </summary>
+    private static bool ContainsAbbreviation(string normalizedRelease, string? rawRelease, string abbreviation)
+    {
+        var normalized = NormalizeTitle(abbreviation);
+        if (normalized.Length == 0) return false;
+
+        var spelled = abbreviation.Trim();
+        if (rawRelease != null && spelled.Length >= 2 && spelled.All(char.IsAsciiLetterUpper) &&
+            Regex.IsMatch(rawRelease, $"(?<![A-Z]){spelled}(?![A-Z])"))
+            return true;
+
+        if (normalized.All(char.IsDigit) && !spelled.All(char.IsDigit))
+        {
+            return rawRelease != null && Regex.IsMatch(rawRelease,
+                $@"(?<![\p{{L}}\p{{N}}]){Regex.Escape(spelled)}(?![\p{{L}}\p{{N}}])",
+                RegexOptions.IgnoreCase);
+        }
+
+        return GetWordBoundaryRegex(normalized).IsMatch(normalizedRelease);
     }
 
     private static bool ContainsCanonicalTeamOrUserAlias(
