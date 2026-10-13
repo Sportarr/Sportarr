@@ -12,14 +12,30 @@ namespace Sportarr.Api.Services;
 /// or failed starts over, so the monitor imports it again under the new
 /// grab. A row still in flight is left as it is.
 /// A single game the title once misread as a pack is held as an unresolved
-/// pack member; the grab takes that row over as one game.
+/// pack member; the grab takes that row over as one game. A pack grab takes
+/// over its own event's row and joins the pack group the job already has, so
+/// the job's rows never disagree about which pack they belong to.
 /// </summary>
 internal static class QueueJobAttachment
 {
     public static async Task<DownloadQueueItem> AddOrAttachAsync(
         SportarrDbContext db, DownloadQueueItem grabbed, CancellationToken cancellationToken = default)
     {
-        var existing = grabbed.IsPack || grabbed.DownloadClientId == null
+        if (grabbed.IsPack && grabbed.DownloadClientId != null)
+        {
+            var groups = await db.DownloadQueue
+                .Where(q => q.DownloadClientId == grabbed.DownloadClientId &&
+                            q.DownloadId == grabbed.DownloadId &&
+                            q.IsPack &&
+                            q.Status != DownloadStatus.Imported)
+                .Select(q => q.PackGroupId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            if (groups.Count == 1)
+                grabbed.PackGroupId = groups[0];
+        }
+
+        var existing = grabbed.DownloadClientId == null
             ? null
             : await db.DownloadQueue
                 .Where(q => q.DownloadClientId == grabbed.DownloadClientId &&
@@ -33,7 +49,7 @@ internal static class QueueJobAttachment
         // A pack row is taken over only when it is a single game the title
         // once misread as a pack: held as an unresolved member, and the only
         // row on its job. A job other events share is a real pack.
-        if (existing is { IsPack: true } &&
+        if (!grabbed.IsPack && existing is { IsPack: true } &&
             (!PackImportBoundary.IsHeld(existing) ||
              await db.DownloadQueue.AnyAsync(q => q.DownloadClientId == existing.DownloadClientId &&
                                                   q.DownloadId == existing.DownloadId &&
@@ -64,8 +80,8 @@ internal static class QueueJobAttachment
             existing.CustomFormatScore = grabbed.CustomFormatScore;
             existing.IsManualSearch = grabbed.IsManualSearch;
             existing.RetryCount = grabbed.RetryCount;
-            existing.IsPack = false;
-            existing.PackGroupId = null;
+            existing.IsPack = grabbed.IsPack;
+            existing.PackGroupId = grabbed.PackGroupId;
             existing.Status = DownloadStatus.Queued;
             existing.ErrorMessage = null;
             existing.StatusMessages = new List<string>();

@@ -75,4 +75,48 @@ public class QueueJobAttachmentTests
         db.DownloadQueue.Where(q => q.IsPack).Should().HaveCount(2,
             "a job other events share is a pack, whatever one grab's title says");
     }
+
+    [Fact]
+    public async Task APackRegrabTakesOverItsEventsHeldRow()
+    {
+        using var db = CreateDb();
+        var held = HeldPackRow(104, Guid.NewGuid());
+        db.DownloadQueue.Add(held);
+        await db.SaveChangesAsync();
+
+        var regrab = Grab(104);
+        regrab.IsPack = true;
+        var tracked = await QueueJobAttachment.AddOrAttachAsync(db, regrab);
+        await db.SaveChangesAsync();
+
+        tracked.Id.Should().Be(held.Id);
+        var only = db.DownloadQueue.Should().ContainSingle().Subject;
+        only.IsPack.Should().BeTrue();
+        only.Status.Should().Be(DownloadStatus.Queued);
+        only.ErrorMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task APackRegrabKeepsTheJobOnOneGroup()
+    {
+        using var db = CreateDb();
+        var group = Guid.NewGuid();
+        db.DownloadQueue.AddRange(HeldPackRow(108, group), HeldPackRow(107, group));
+        await db.SaveChangesAsync();
+
+        var newGroup = Guid.NewGuid();
+        foreach (var eventId in new[] { 108, 107, 106 })
+        {
+            var regrab = Grab(eventId);
+            regrab.IsPack = true;
+            regrab.PackGroupId = newGroup;
+            await QueueJobAttachment.AddOrAttachAsync(db, regrab);
+            await db.SaveChangesAsync();
+        }
+
+        db.DownloadQueue.Should().HaveCount(3);
+        db.DownloadQueue.Select(q => q.PackGroupId).Distinct().Should().ContainSingle()
+            .Which.Should().Be(group);
+        db.DownloadQueue.Should().OnlyContain(q => q.IsPack && q.Status == DownloadStatus.Queued);
+    }
 }
