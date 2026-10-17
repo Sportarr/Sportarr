@@ -146,9 +146,13 @@ public class PackMemberOverlapTests(Xunit.Abstractions.ITestOutputHelper output)
         var client = await rig.Db.DownloadClients.SingleAsync();
         client.RemoveCompletedDownloads = twoMembers;
         client.PostImportCategory = twoMembers ? "imported" : null;
+        var indexer = new Indexer { Name = "Pack fixture", Url = "http://localhost", SeedRatio = 0.5 };
+        rig.Db.Indexers.Add(indexer);
+        await rig.Db.SaveChangesAsync();
         var group = Guid.NewGuid();
         var owners = events.Select(e => new DownloadQueueItem { EventId = e.Id, Event = e, DownloadClientId = client.Id,
             DownloadClient = client, DownloadId = "owned-pack-job", IsPack = true, PackGroupId = group,
+            IndexerId = indexer.Id,
             Title = "NFL.2020.Week1.720p.WEB-DL.H264-PackLifecycle", Quality = "WEBDL-720p", Protocol = "Torrent",
             Status = held ? DownloadStatus.ImportWarning : DownloadStatus.Completed, Progress = 100, RetryCount = 2,
             CompletedAt = DateTime.UtcNow, ErrorMessage = held ? "Pack member unresolved: No member uniquely identifies this event." : null }).ToArray();

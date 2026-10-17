@@ -325,6 +325,7 @@ public class Config
     public bool DvrReresolveChannelsEnabled { get; set; } = true; // Move a scheduled recording to a better channel when new EPG data arrives
     public int DvrReresolveLockMinutes { get; set; } = 45; // Stop changing the channel this many minutes before the recording starts
     public int DvrReresolveMinImprovement { get; set; } = 10; // Confidence points a rival channel must beat the current one by
+    public bool DvrReplaceRecordingsWithIndexerReleases { get; set; } = false; // Source precedence: an indexer release replaces an IPTV recording whatever its quality
 
     /// <summary>
     /// What happens when scheduling a new recording would push an

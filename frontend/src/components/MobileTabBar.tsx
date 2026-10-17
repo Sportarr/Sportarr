@@ -24,14 +24,7 @@ interface TabChild {
   path: string;
 }
 
-/**
- * Phone-only bottom tab bar covering every destination (owner-designed nav
- * end-state): Leagues, Calendar, Activity, IPTV, Status. There is no More
- * tab and no drawer on phones - tabs with sub-pages open a pill menu that
- * animates up from the bar instead of routing through a hub page, so no
- * back-navigation is ever needed. Settings lives behind the top bar's gear.
- * Childless tabs navigate immediately. Hidden at md+ where the sidebar exists.
- */
+/** Phone tabs open section menus above the selected button. */
 export default function MobileTabBar() {
   const location = useLocation();
   const navPath = useNavTarget();
@@ -80,7 +73,7 @@ export default function MobileTabBar() {
       ],
     },
     {
-      label: 'Status', path: '/system/status', match: ['/system'],
+      label: 'System', path: '/system/status', match: ['/system', '/support'],
       icon: ServerIcon, activeIcon: ServerSolidIcon,
       children: [
         { label: 'Status', path: '/system/status' },
@@ -89,8 +82,8 @@ export default function MobileTabBar() {
         { label: 'Stats', path: '/system/stats' },
         { label: 'Backup', path: '/system/backup' },
         { label: 'Updates', path: '/system/updates' },
-        { label: 'Events', path: '/system/events' },
         { label: 'Log Files', path: '/system/logs' },
+        { label: 'Support', path: '/support' },
       ],
     },
   ];

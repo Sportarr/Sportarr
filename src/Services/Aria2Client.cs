@@ -261,7 +261,10 @@ public class Aria2Client
             SavePath = savePath,
             ErrorMessage = errorMessage,
             Ratio = completedLength > 0 ? (double)uploadLength / completedLength : 0,
-            CompletedAt = mapped == "completed" ? DateTime.UtcNow : null
+            // Aria2 omits completion time here. Use the queue timestamp for seed limits.
+            CompletedAt = null,
+            TorrentIsStopped = totalLength > 0 && completedLength >= totalLength &&
+                (mapped == "paused" || mapped == "completed")
         };
     }
 

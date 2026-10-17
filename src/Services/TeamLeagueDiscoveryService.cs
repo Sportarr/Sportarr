@@ -102,7 +102,8 @@ public class TeamLeagueDiscoveryService
                 var league = await _sportsDbClient.LookupLeagueAsync(tl.Id);
                 discoveredLeagues.Add(new DiscoveredLeague
                 {
-                    ExternalId = tl.Id,
+                    ExternalId = !string.IsNullOrWhiteSpace(league?.ExternalId) ? league.ExternalId : tl.Id,
+                    LegacyExternalId = league?.TsdbId ?? (tl.Id.All(char.IsDigit) ? tl.Id : null),
                     Name = league?.Name ?? tl.Name,
                     Sport = league?.Sport ?? tl.Sport,
                     Country = league?.Country,
@@ -116,6 +117,7 @@ public class TeamLeagueDiscoveryService
                 discoveredLeagues.Add(new DiscoveredLeague
                 {
                     ExternalId = tl.Id,
+                    LegacyExternalId = tl.Id.All(char.IsDigit) ? tl.Id : null,
                     Name = tl.Name,
                     Sport = tl.Sport,
                     EventCount = tl.EventCount
@@ -133,6 +135,7 @@ public class TeamLeagueDiscoveryService
 public class DiscoveredLeague
 {
     public string ExternalId { get; set; } = string.Empty;
+    public string? LegacyExternalId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Sport { get; set; } = string.Empty;
     public string? Country { get; set; }

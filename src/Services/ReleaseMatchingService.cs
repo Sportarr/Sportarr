@@ -75,6 +75,7 @@ public class ReleaseMatchingService
     private static readonly Regex[] NonEventContentPatterns = new[]
     {
         new Regex(@"\bpress[\s\.\-_]*conf", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),           // press conference, press.conf, pressconf
+        new Regex(@"(?<![0-9A-Za-z])driver(?:s['’]?|['’]s)?[\s._-]*conference(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
         new Regex(@"\binterview", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),                      // interview, interviews
         new Regex(@"\bbuild[\s\.\-_]*up", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),              // build up, build-up, buildup
         new Regex(@"\bpre[\s\.\-_]*show", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),              // pre show, pre-show, preshow
@@ -122,6 +123,10 @@ public class ReleaseMatchingService
         new Regex(@"\bcoach(?:'?s|es)?[\s\.\-_]*(?:film|tape|cam)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), // coaches film/tape/cam
     };
 
+    private static readonly Regex _warmUpShowQualifierPattern = new(
+        @"\bweekend[\s\._-]*warm[\s\._-]*up\b|\bwarm[\s\._-]*up[\s\._-]*(?:show|weekend)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     // Pre-season test detection — fires inside per-event ValidateRelease loop.
     private static readonly Regex _preSeasonTestRegex = new(
         @"\bpre[\s\.\-_]*season[\s\.\-_]*test",
@@ -142,6 +147,12 @@ public class ReleaseMatchingService
         new(@"\b(?:round|rd)\s*\.?\s*\d{1,2}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _teamScheduleRoundPattern =
         new(@"\b(?:week|wk|round|matchday)[\s\.\-]*(\d{1,3})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _teamScheduleRoundRangeTailPattern =
+        new(@"^[\s._–-]*(?:-|–|to|thru|through)[\s._–-]*(?:(?:week|wk|round|rd|matchday)[\s._–-]*)?(\d{1,3})(?![A-Za-z0-9])(?![-./]\d{1,2}[-./]\d{2,4})(?![.,]\d{1,3}(?![0-9pi]|bit\b))",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _teamScheduleCountAfterRangePattern =
+        new(@"^[\s._-]*(?:games?|of|parts?|files?|hours?|hrs?|minutes?|mins?|days?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?![A-Za-z0-9])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly string[] _fusedTeamConnectors = ["vs", "at", "v", "x"];
     private static readonly Regex[] _eventNumberPatterns = new[]
     {
         new Regex(@"UFC[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
@@ -163,17 +174,10 @@ public class ReleaseMatchingService
 
     private static readonly Regex[] _roundNumberPatterns = new[]
     {
-        new Regex(@"Round[\s\.\-]*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),   // Round 22, Round22
-        new Regex(@"\bRd[\s\.\-]*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),    // Rd 22, Rd22
-        new Regex(@"\bR(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase),        // R22 (not R2025)
-        // {Year}x{Round} marker (e.g. "2026x02" -> round 2): the round follows
-        // the season-year after an 'x'. Some feeds (Sky's F1 releases among
-        // them) carry no "Round" keyword, so without this the round-mismatch
-        // guard below never fires and a wrong-round release could ride the year
-        // bonus over threshold. Listed last so explicit Round/Rd/R forms win
-        // when both are present. The boundaries are [^0-9A-Za-z] lookarounds
-        // rather than \b so underscore-delimited titles (Formula_1_2026x02_...)
-        // match too -- '_' is a word char, so \b would not fire around it.
+        new Regex(@"(?<![0-9A-Za-z])Round[\s\._\-]*(\d+)(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new Regex(@"(?<![0-9A-Za-z])Rd[\s\._\-]*(\d+)(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new Regex(@"(?<![0-9A-Za-z])R(\d{1,2})(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        // Year X can identify rounds outside Formula 1. Check explicit tokens first.
         new Regex(@"(?<![0-9A-Za-z])20[12]\dx(\d{1,2})(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase), // 2026x02
     };
 
@@ -335,6 +339,11 @@ public class ReleaseMatchingService
             ReleaseName = release.Title,
             EventTitle = evt.Title
         };
+        var formulaOne = evt.League?.Name.Contains("Formula 1", StringComparison.OrdinalIgnoreCase) == true;
+        var ambiguousFormulaOneYearX = formulaOne &&
+            _roundNumberPatterns[^1].IsMatch(release.Title) &&
+            !_roundNumberPatterns.Take(_roundNumberPatterns.Length - 1)
+                .Any(pattern => pattern.IsMatch(release.Title));
 
         // These lines run once per candidate release per event. At Debug they
         // buried every other subsystem and rotated support logs away in
@@ -376,8 +385,15 @@ public class ReleaseMatchingService
             var highlightsAllowed =
                 string.Equals(nonEventContent, "Highlights", StringComparison.OrdinalIgnoreCase)
                 && (evt.League?.AllowHighlights ?? false);
+            var scheduledWarmUp =
+                string.Equals(nonEventContent, "Warm-up Show", StringComparison.OrdinalIgnoreCase) &&
+                EventPartDetector.DetectMotorsportSessionIdentity(
+                    evt.Title, evt.League?.Name, releaseTitle: false) == "Warm Up" &&
+                EventPartDetector.DetectMotorsportSessionIdentity(
+                    release.Title, evt.League?.Name, releaseTitle: true) == "Warm Up" &&
+                !_warmUpShowQualifierPattern.IsMatch(release.Title);
 
-            if (highlightsAllowed || selectedWrestlingPackage)
+            if (highlightsAllowed || selectedWrestlingPackage || scheduledWarmUp)
             {
                 _logger.LogTrace("[Release Matching] Allowing selected package for '{Event}': '{Release}'",
                     evt.Title, release.Title);
@@ -393,12 +409,8 @@ public class ReleaseMatchingService
             }
         }
 
-        // VALIDATION 0b: Pre-event scene fake. Opt-in per-indexer via
-        // Indexer.EarlyReleaseLimit (days). When set to a positive value,
-        // reject releases posted to the indexer more than that many days
-        // before the event aired — legitimate recordings of live sports
-        // can't exist before the event. Null/0/missing limit skips the
-        // check entirely so the user controls how aggressive this is.
+        // VALIDATION 0b: Reject releases posted more than seven days before an event.
+        // A positive indexer limit can tighten this cutoff.
         //
         // Normalise both sides to UTC instants before comparing. release.PublishDate
         // comes off indexer feeds as DateTimeKind.Utc, but evt.EventDate is hydrated
@@ -409,21 +421,24 @@ public class ReleaseMatchingService
         // against a UTC publishDate by raw clock-time, letting genuine pre-event
         // scene fakes slip through (or rejecting legitimate releases) depending on
         // which side of the timezone offset the cutoff happened to fall.
-        if (earlyReleaseLimitDays.HasValue && earlyReleaseLimitDays.Value > 0
-            && release.PublishDate != default && evt.EventDate != default)
+        if (release.PublishDate != default && evt.EventDate != default)
         {
+            const int defaultEarlyReleaseLimitDays = 7;
+            var effectiveEarlyReleaseLimitDays = earlyReleaseLimitDays is > 0
+                ? Math.Min(earlyReleaseLimitDays.Value, defaultEarlyReleaseLimitDays)
+                : defaultEarlyReleaseLimitDays;
             var publishUtc = release.PublishDate.Kind == DateTimeKind.Unspecified
                 ? DateTime.SpecifyKind(release.PublishDate, DateTimeKind.Utc)
                 : release.PublishDate.ToUniversalTime();
             var eventUtc = evt.EventDate.Kind == DateTimeKind.Unspecified
                 ? DateTime.SpecifyKind(evt.EventDate, DateTimeKind.Utc)
                 : evt.EventDate.ToUniversalTime();
-            var publishCutoff = eventUtc.AddDays(-earlyReleaseLimitDays.Value);
+            var publishCutoff = eventUtc.AddDays(-effectiveEarlyReleaseLimitDays);
             if (publishUtc < publishCutoff)
             {
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
-                result.Rejections.Add($"Release posted {(eventUtc - publishUtc).TotalHours:F1}h before event aired, exceeds indexer's {earlyReleaseLimitDays.Value}d early-release limit");
+                result.Rejections.Add($"Release posted {(eventUtc - publishUtc).TotalHours:F1}h before event aired, exceeds {effectiveEarlyReleaseLimitDays}d early-release limit");
                 // Matches the log level used by every other Hard rejection
                 // branch in this method — the rejection is the matcher
                 // doing its job, not an operator-actionable event, and
@@ -432,7 +447,7 @@ public class ReleaseMatchingService
                 // alongside fresh releases.
                 _logger.LogDebug(
                     "[Release Matching] Hard rejection: pre-event release '{Release}' posted {PubDate} for event {EventDate} (limit {Limit}d)",
-                    release.Title, publishUtc, eventUtc, earlyReleaseLimitDays.Value);
+                    release.Title, publishUtc, eventUtc, effectiveEarlyReleaseLimitDays);
                 return result;
             }
         }
@@ -500,6 +515,23 @@ public class ReleaseMatchingService
                     release.Title, releaseLeagueId, evt.League.Name, evt.League.ExternalId);
                 return result;
             }
+        }
+
+        var motoGpIdentity = MotoGpGrandPrixIdentity.Evaluate(
+            release.Title, evt, ExtractRoundNumber(release.Title), parseResult.EventDate);
+        if (motoGpIdentity is MotoGpGrandPrixMatch.Conflict or MotoGpGrandPrixMatch.Insufficient)
+        {
+            result.Confidence = 0;
+            result.IsHardRejection = true;
+            result.Rejections.Add(motoGpIdentity == MotoGpGrandPrixMatch.Conflict
+                ? "Location mismatch: release names a different MotoGP Grand Prix"
+                : "Release does not identify the selected MotoGP Grand Prix");
+            return result;
+        }
+        if (motoGpIdentity == MotoGpGrandPrixMatch.Location)
+        {
+            result.Confidence += 25;
+            result.MatchReasons.Add("MotoGP Grand Prix location matches");
         }
 
         // Normalize titles for comparison (includes diacritic removal)
@@ -704,8 +736,9 @@ public class ReleaseMatchingService
             result.MatchReasons.Add("Named NASCAR race and series match");
         }
 
-        if (isTeamSport && !PackImportBoundary.IsPackRelease(release.Title, release.IsPack,
-                release.SportarrLeagueId, release.SportarrEventId))
+        var isTeamPack = isTeamSport && PackImportBoundary.IsPackRelease(release.Title, release.IsPack,
+            release.SportarrLeagueId, release.SportarrEventId);
+        if (isTeamSport)
         {
             var releaseRoundMatch = _teamScheduleRoundPattern.Match(release.Title);
             var hasExactPreseasonDate = SearchNormalizationService.HasExactDatedPreseasonIdentity(
@@ -714,6 +747,8 @@ public class ReleaseMatchingService
                 int.TryParse(releaseRoundMatch.Groups[1].Value, out var releaseRound) &&
                 int.TryParse(evt.Round, out var eventRound) &&
                 releaseRound != eventRound &&
+                !(isTeamPack && TeamScheduleRoundRangeIncludesEvent(release.Title, releaseRoundMatch,
+                    releaseRound, eventRound)) &&
                 !(eventRound == 500 && hasExactPreseasonDate))
             {
                 result.Confidence = 0;
@@ -721,7 +756,10 @@ public class ReleaseMatchingService
                 result.Rejections.Add($"Round mismatch: release is round {releaseRound}, event is round {eventRound}");
                 return result;
             }
+        }
 
+        if (isTeamSport && !isTeamPack)
+        {
             var releaseGames = ExtractTeamGameNumbers(release.Title, stripReleaseGroup: true, parseResult.EventDate);
             if (releaseGames.Count > 0)
             {
@@ -1389,7 +1427,8 @@ public class ReleaseMatchingService
             // VALIDATION 6b: Motorsport round number validation
             // For motorsport events, Round 20 release should NOT match Round 22 event
             // Extract round from release title and compare to event's Round field
-            var releaseRound = ExtractRoundNumber(release.Title);
+            // F1 uploader numbers do not reliably identify championship rounds.
+            var releaseRound = ExtractRoundNumber(release.Title, includeYearX: !formulaOne);
             var eventRound = !string.IsNullOrEmpty(evt.Round) ? ExtractRoundNumber($"Round {evt.Round}") : null;
 
             if (releaseRound.HasValue && eventRound.HasValue)
@@ -1481,7 +1520,7 @@ public class ReleaseMatchingService
         // VALIDATION 6c: Motorsport location mismatch detection
         // If event title contains a known location (e.g., "Australian"), reject releases
         // containing a DIFFERENT known location (e.g., "Thailand")
-        if (isMotorsport)
+        if (isMotorsport && motoGpIdentity == MotoGpGrandPrixMatch.NotApplicable)
         {
             var conflictingLocation = DetectConflictingLocation(release.Title, evt.Title);
             if (conflictingLocation != null)
@@ -1491,6 +1530,19 @@ public class ReleaseMatchingService
                 result.Rejections.Add($"Location mismatch: release contains '{conflictingLocation.Value.ReleaseLocation}' but event is '{conflictingLocation.Value.EventLocation}'");
                 _logger.LogTrace("[Release Matching] Hard rejection: location mismatch ({ReleaseLocation} vs {EventLocation}): '{Release}'",
                     conflictingLocation.Value.ReleaseLocation, conflictingLocation.Value.EventLocation, release.Title);
+            }
+
+            if (ambiguousFormulaOneYearX && !result.IsHardRejection)
+            {
+                var selectedRace = GetPrimaryMotorsportLocation(normalizedEvent);
+                var namedRace = GetPrimaryMotorsportLocation(normalizedRelease);
+                if (selectedRace != null && namedRace != null &&
+                    !HasMotorsportLocation(normalizedRelease, selectedRace))
+                {
+                    result.Confidence -= 100;
+                    result.IsHardRejection = true;
+                    result.Rejections.Add($"Location mismatch: release names '{namedRace}' but event is '{selectedRace}'");
+                }
             }
         }
 
@@ -1589,7 +1641,8 @@ public class ReleaseMatchingService
                 "Full event file",
             };
             bool hasEventLevelReason = result.MatchReasons.Any(r =>
-                !seasonLevelReasons.Any(w => r.StartsWith(w, StringComparison.OrdinalIgnoreCase)));
+                !seasonLevelReasons.Any(w => r.StartsWith(w, StringComparison.OrdinalIgnoreCase)) &&
+                !(ambiguousFormulaOneYearX && r.StartsWith("Session type matches", StringComparison.OrdinalIgnoreCase)));
 
             // Strong title overlap: the event's own distinctive (non-numeric)
             // words appear in the release. Covers tournament/individual sports
@@ -1604,7 +1657,10 @@ public class ReleaseMatchingService
             bool strongTitleMatch = eventWords.Count > 0 &&
                 (sharedEventWords >= 2 || (double)sharedEventWords / eventWords.Count >= 0.6);
 
-            if (!hasEventLevelReason && !strongTitleMatch)
+            bool sharedLocation = ambiguousFormulaOneYearX &&
+                HasSharedMotorsportLocation(normalizedRelease, normalizedEvent);
+
+            if (!hasEventLevelReason && !strongTitleMatch && !sharedLocation)
             {
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
@@ -1919,17 +1975,36 @@ public class ReleaseMatchingService
         return races;
     }
 
-    private int? ExtractRoundNumber(string title)
+    private int? ExtractRoundNumber(string title, bool includeYearX = true)
     {
-        foreach (var pattern in _roundNumberPatterns)
+        var patternCount = includeYearX ? _roundNumberPatterns.Length : _roundNumberPatterns.Length - 1;
+        for (var index = 0; index < patternCount; index++)
         {
-            var match = pattern.Match(title);
+            var match = _roundNumberPatterns[index].Match(title);
             if (match.Success && int.TryParse(match.Groups[1].Value, out var roundNum))
             {
                 return roundNum;
             }
         }
         return null;
+    }
+
+    private static bool TeamScheduleRoundRangeIncludesEvent(string title, Match firstRound,
+        int startRound, int eventRound)
+    {
+        var tail = title[(firstRound.Index + firstRound.Length)..];
+        var range = _teamScheduleRoundRangeTailPattern.Match(tail);
+        if (!range.Success || !int.TryParse(range.Groups[1].Value, out var endRound) || endRound < startRound)
+            return false;
+        if (_teamScheduleCountAfterRangePattern.IsMatch(tail[range.Length..]))
+            return false;
+
+        // A week followed by a game count is still one week.
+        if (firstRound.Value.StartsWith("Week", StringComparison.OrdinalIgnoreCase) &&
+            PackWeekParser.SingleWeek(title).HasValue)
+            return false;
+
+        return eventRound >= startRound && eventRound <= endRound;
     }
 
     /// <summary>
@@ -1949,19 +2024,19 @@ public class ReleaseMatchingService
         string? titleAwayName = null)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
-        var homeMatches = ContainsTeamName(normalizedRelease, homeTeamName, homeTeam) ||
-            (!string.IsNullOrWhiteSpace(titleHomeName) && ContainsTeamName(normalizedRelease, titleHomeName, homeTeam));
-        var awayMatches = ContainsTeamName(normalizedRelease, awayTeamName, awayTeam) ||
-            (!string.IsNullOrWhiteSpace(titleAwayName) && ContainsTeamName(normalizedRelease, titleAwayName, awayTeam));
+        var homeMatches = ContainsTeamName(normalizedRelease, homeTeamName, homeTeam, releaseTitle) ||
+            (!string.IsNullOrWhiteSpace(titleHomeName) && ContainsTeamName(normalizedRelease, titleHomeName, homeTeam, releaseTitle));
+        var awayMatches = ContainsTeamName(normalizedRelease, awayTeamName, awayTeam, releaseTitle) ||
+            (!string.IsNullOrWhiteSpace(titleAwayName) && ContainsTeamName(normalizedRelease, titleAwayName, awayTeam, releaseTitle));
 
         if (league != null && TitleNamesLeague(releaseTitle, league))
         {
             var baseHome = FootballReleaseNamePolicy.BaseParticipantName(titleHomeName ?? homeTeamName, league.Name);
             var baseAway = FootballReleaseNamePolicy.BaseParticipantName(titleAwayName ?? awayTeamName, league.Name);
             if (!homeMatches && !baseHome.Equals(titleHomeName ?? homeTeamName, StringComparison.OrdinalIgnoreCase))
-                homeMatches = ContainsTeamName(normalizedRelease, baseHome, homeTeam);
+                homeMatches = ContainsTeamName(normalizedRelease, baseHome, homeTeam, releaseTitle);
             if (!awayMatches && !baseAway.Equals(titleAwayName ?? awayTeamName, StringComparison.OrdinalIgnoreCase))
-                awayMatches = ContainsTeamName(normalizedRelease, baseAway, awayTeam);
+                awayMatches = ContainsTeamName(normalizedRelease, baseAway, awayTeam, releaseTitle);
         }
 
         var normalizedHomeTeam = NormalizeTitle(homeTeamName);
@@ -2037,11 +2112,11 @@ public class ReleaseMatchingService
         var first = NormalizeTitle(titleTeams[0]);
         var second = NormalizeTitle(titleTeams[1]);
         var alignedEvidence =
-            (ContainsTeamName(first, evt.HomeTeamName!, evt.HomeTeam) ? 1 : 0) +
-            (ContainsTeamName(second, evt.AwayTeamName!, evt.AwayTeam) ? 1 : 0);
+            (ContainsTeamName(first, evt.HomeTeamName!, evt.HomeTeam, titleTeams[0]) ? 1 : 0) +
+            (ContainsTeamName(second, evt.AwayTeamName!, evt.AwayTeam, titleTeams[1]) ? 1 : 0);
         var reversedEvidence =
-            (ContainsTeamName(first, evt.AwayTeamName!, evt.AwayTeam) ? 1 : 0) +
-            (ContainsTeamName(second, evt.HomeTeamName!, evt.HomeTeam) ? 1 : 0);
+            (ContainsTeamName(first, evt.AwayTeamName!, evt.AwayTeam, titleTeams[0]) ? 1 : 0) +
+            (ContainsTeamName(second, evt.HomeTeamName!, evt.HomeTeam, titleTeams[1]) ? 1 : 0);
 
         if (alignedEvidence == reversedEvidence) return (null, null);
         return alignedEvidence > reversedEvidence
@@ -2057,17 +2132,20 @@ public class ReleaseMatchingService
     private bool ContainsTeamName(
         string normalizedRelease,
         string teamName,
-        Team? team = null)
+        Team? team,
+        string rawRelease)
     {
         var normalizedName = NormalizeTitle(teamName);
 
         // Check full team name (e.g., "Los Angeles Clippers")
-        if (normalizedRelease.Contains(normalizedName, StringComparison.OrdinalIgnoreCase))
+        if (normalizedName.Length <= 4
+            ? ContainsTeamAlias(normalizedRelease, rawRelease, teamName)
+            : normalizedRelease.Contains(normalizedName, StringComparison.OrdinalIgnoreCase))
             return true;
 
         // Check short name from database if Team navigation property is loaded (e.g., "LAC")
         if (team != null && !string.IsNullOrEmpty(team.ShortName) &&
-            normalizedRelease.Contains(NormalizeTitle(team.ShortName), StringComparison.OrdinalIgnoreCase))
+            ContainsTeamAlias(normalizedRelease, rawRelease, team.ShortName))
             return true;
 
         // Check upstream-API alternate names (TheSportsDB strAlternate). For
@@ -2080,7 +2158,7 @@ public class ReleaseMatchingService
             foreach (var alt in SplitAliases(team.AlternateName))
             {
                 if (alt.Length < 2) continue;
-                if (normalizedRelease.Contains(NormalizeTitle(alt), StringComparison.OrdinalIgnoreCase))
+                if (ContainsTeamAlias(normalizedRelease, rawRelease, alt))
                     return true;
             }
         }
@@ -2139,7 +2217,7 @@ public class ReleaseMatchingService
             foreach (var alias in SplitAliases(team.UserAliases))
             {
                 if (alias.Length < 2) continue;
-                if (normalizedRelease.Contains(NormalizeTitle(alias), StringComparison.OrdinalIgnoreCase))
+                if (ContainsTeamAlias(normalizedRelease, rawRelease, alias))
                     return true;
             }
         }
@@ -2155,11 +2233,107 @@ public class ReleaseMatchingService
                 // This team matches - check if any variation appears in release
                 foreach (var variation in variations)
                 {
-                    var normalizedVariation = NormalizeTitle(variation);
-                    if (GetWordBoundaryRegex(normalizedVariation).IsMatch(normalizedRelease))
+                    if (ContainsTeamAlias(normalizedRelease, rawRelease, variation))
                         return true;
                 }
             }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsTeamAlias(string normalizedRelease, string? rawRelease, string alias)
+    {
+        var normalized = NormalizeTitle(alias);
+        if (normalized.Length == 0) return false;
+
+        // Keep spelled number words separate from dates and week numbers.
+        var isNumberWord = normalized.All(char.IsDigit) && alias.Any(char.IsLetter);
+        if (!isNumberWord && GetWordBoundaryRegex(normalized).IsMatch(normalizedRelease))
+            return true;
+
+        if (rawRelease == null) return false;
+        if (isNumberWord && ContainsRawWholeAlias(rawRelease, alias))
+            return true;
+
+        var spelled = alias.Trim();
+        if (spelled.Length < 2 || !spelled.All(char.IsLetter))
+            return false;
+
+        for (var offset = 0; offset < rawRelease.Length;)
+        {
+            var index = rawRelease.IndexOf(spelled, offset, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) return false;
+            var end = index + spelled.Length;
+            var leftBoundary = index == 0 || !char.IsLetterOrDigit(rawRelease[index - 1]);
+            var rightBoundary = end == rawRelease.Length || !char.IsLetterOrDigit(rawRelease[end]);
+            if (leftBoundary && HasFusedConnectorAfter(rawRelease, end) ||
+                rightBoundary && HasFusedConnectorBefore(rawRelease, index))
+                return true;
+            offset = index + 1;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsRawWholeAlias(string title, string alias)
+    {
+        for (var offset = 0; offset < title.Length;)
+        {
+            var index = title.IndexOf(alias, offset, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) return false;
+            var end = index + alias.Length;
+            if ((index == 0 || !char.IsLetterOrDigit(title[index - 1])) &&
+                (end == title.Length || !char.IsLetterOrDigit(title[end])) &&
+                !IsScheduleRoundLabelBefore(title, index))
+                return true;
+            offset = index + 1;
+        }
+
+        return false;
+    }
+
+    private static bool IsScheduleRoundLabelBefore(string title, int start)
+    {
+        var cursor = start - 1;
+        while (cursor >= 0 && !char.IsLetterOrDigit(title[cursor])) cursor--;
+        var end = cursor + 1;
+        while (cursor >= 0 && char.IsLetter(title[cursor])) cursor--;
+        var label = title.AsSpan(cursor + 1, end - cursor - 1);
+        return label.Equals("week".AsSpan(), StringComparison.OrdinalIgnoreCase) ||
+               label.Equals("wk".AsSpan(), StringComparison.OrdinalIgnoreCase) ||
+               label.Equals("round".AsSpan(), StringComparison.OrdinalIgnoreCase) ||
+               label.Equals("rd".AsSpan(), StringComparison.OrdinalIgnoreCase) ||
+               label.Equals("matchday".AsSpan(), StringComparison.OrdinalIgnoreCase) ||
+               label.Equals("game".AsSpan(), StringComparison.OrdinalIgnoreCase) ||
+               label.Equals("match".AsSpan(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasFusedConnectorAfter(string title, int end)
+    {
+        foreach (var connector in _fusedTeamConnectors)
+        {
+            if (end + connector.Length < title.Length &&
+                title.AsSpan(end, connector.Length).Equals(connector.AsSpan(), StringComparison.OrdinalIgnoreCase) &&
+                char.IsAsciiLetterLower(title[end + connector.Length - 1]) &&
+                char.IsAsciiLetterUpper(title[end + connector.Length]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasFusedConnectorBefore(string title, int start)
+    {
+        foreach (var connector in _fusedTeamConnectors)
+        {
+            var connectorStart = start - connector.Length;
+            if (connectorStart > 0 &&
+                title.AsSpan(connectorStart, connector.Length).Equals(connector.AsSpan(), StringComparison.OrdinalIgnoreCase) &&
+                char.IsAsciiLetterLower(title[start - 1]) &&
+                char.IsAsciiLetterUpper(title[start]) &&
+                char.IsLetter(title[connectorStart - 1]))
+                return true;
         }
 
         return false;
@@ -2578,6 +2752,8 @@ public class ReleaseMatchingService
                 // Map to friendly names
                 if (detected.Contains("press") && detected.Contains("conf"))
                     return "Press Conference";
+                if (detected.Contains("driver") && detected.Contains("conference"))
+                    return "Drivers Conference";
                 if (detected.Contains("interview"))
                     return "Interview";
                 if (detected.Contains("build") && detected.Contains("up"))
@@ -2933,6 +3109,40 @@ public class ReleaseMatchingService
         { "Thailand", new(StringComparer.OrdinalIgnoreCase) { "Buriram", "Chang" } },
         { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Zandvoort", "Assen" } },
     };
+
+    private static bool HasSharedMotorsportLocation(string normalizedRelease, string normalizedEvent)
+    {
+        var selectedRace = GetPrimaryMotorsportLocation(normalizedEvent);
+        return selectedRace != null && HasMotorsportLocation(normalizedRelease, selectedRace);
+    }
+
+    private static bool HasMotorsportLocation(string normalizedTitle, string location)
+    {
+        var names = MotorsportLocations[location].Append(location);
+        return names.Any(name => !SearchNormalizationService.SceneLanguageTags.Contains(name) &&
+            GetWordBoundaryRegex(name).IsMatch(normalizedTitle));
+    }
+
+    private static string? GetPrimaryMotorsportLocation(string normalizedTitle)
+    {
+        string? firstLocation = null;
+        var firstIndex = int.MaxValue;
+        foreach (var (location, aliases) in MotorsportLocations)
+        {
+            var names = aliases.Append(location);
+            foreach (var name in names)
+            {
+                var match = GetWordBoundaryRegex(name).Match(normalizedTitle);
+                if (!match.Success || match.Index >= firstIndex)
+                    continue;
+
+                firstLocation = location;
+                firstIndex = match.Index;
+            }
+        }
+
+        return firstLocation;
+    }
 
     /// <summary>
     /// Detect if a release title contains a different motorsport location than the event.

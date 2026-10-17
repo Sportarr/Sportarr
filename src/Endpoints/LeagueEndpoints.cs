@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
@@ -9,6 +11,8 @@ using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Models.Requests;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Interfaces;
+using System.Data;
 using System.Collections.Concurrent;
 using System.Text.Json;
 
@@ -197,6 +201,9 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.MonitorFinals,
         league.MonitorPlayoffs,
         league.MonitorPreseason,
+        league.FinalTeamMode,
+        league.PlayoffTeamMode,
+        league.PreseasonTeamMode,
         league.EventSortOrder,
         league.SpecialEventsMonitorType,
         league.KeepAllEvents,
@@ -400,10 +407,12 @@ app.MapGet("/api/leagues/{id:int}/seasons", async (int id, bool? showAll, Sporta
             Title = e.Title,
             Sport = e.Sport,
             Round = e.Round,
+            HasLaterSeasonFinal = e.HasLaterSeasonFinal,
             HomeTeamExternalId = e.HomeTeamExternalId,
             AwayTeamExternalId = e.AwayTeamExternalId,
             HasFile = e.HasFile,
             Monitored = e.Monitored,
+            ManuallyMonitored = e.ManuallyMonitored,
             EventDate = e.EventDate,
             Status = e.Status,
         })
@@ -451,31 +460,6 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // One season at a time when the caller asks for one. The visibility rules
-    // are per season anyway (cup stage sizes are computed within a season), so
-    // narrowing here gives the same answer for less.
-    var query = db.Events
-        .AsNoTracking()
-        .Include(e => e.HomeTeam)
-        .Include(e => e.AwayTeam)
-        .Include(e => e.Files)
-        .Where(e => e.LeagueId == id);
-
-    if (!string.IsNullOrEmpty(season))
-    {
-        query = season == "Unknown"
-            ? query.Where(e => e.Season == null || e.Season == "")
-            : query.Where(e => e.Season == season);
-    }
-
-    var events = await query
-        .OrderByDescending(e => e.EventDate)
-        .ToListAsync();
-
-    var filteredEvents = SelectVisibleEvents(events, league, showAll == true);
-    logger.LogDebug("[LEAGUES] Showing {Filtered}/{Total} events (showAll: {ShowAll})",
-        filteredEvents.Count, events.Count, showAll == true);
-
     // Paging is opt-in so the frontend and every existing consumer keep the
     // plain array they already expect. Integrations ask for a page and get an
     // envelope instead. A full MLB season is around 2400 events, and an
@@ -483,28 +467,60 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, int? page, int? pageSi
     // whole seasons in single responses does not scale.
     if (page.HasValue || pageSize.HasValue)
     {
-        var currentPage = Math.Max(1, page ?? 1);
-        var size = Math.Clamp(pageSize ?? 100, 1, 1000);
-        var totalRecords = filteredEvents.Count;
+        var (currentPage, size) = NormalizeLeagueEventsPaging(page, pageSize);
 
-        var pageItems = filteredEvents
-            .Skip((currentPage - 1) * size)
-            .Take(size)
+        if (showAll == true || league.KeepAllEvents)
+        {
+            // Unfiltered requests can page in the database.
+            var unfilteredSlice = await GetUnfilteredEventPageAsync(db, id, season, currentPage, size);
+            var totalRecords = unfilteredSlice.TotalRecords;
+            var pageEvents = unfilteredSlice.Records;
+
+            logger.LogDebug("[LEAGUES] Showing {Filtered}/{Total} events (showAll: {ShowAll})",
+                pageEvents.Count, totalRecords, showAll == true);
+
+            var pageItems = pageEvents
+                .Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true, leagueOverride: league))
+                .ToList();
+
+            logger.LogInformation("[LEAGUES] Returning page {Page} ({Count} of {Total}) for league: {LeagueName}",
+                currentPage, pageItems.Count, totalRecords, league.Name);
+
+            return Results.Ok(new
+            {
+                page = currentPage,
+                pageSize = size,
+                totalRecords,
+                totalPages = LeagueEventsTotalPages(totalRecords, size),
+                records = pageItems
+            });
+        }
+
+        // Filtered requests need the whole season for cup visibility.
+        var slice = await GetFilteredEventPageAsync(db, league, season, showAll == true, currentPage, size);
+
+        var filteredPageItems = slice.Records
             .Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true, leagueOverride: league))
             .ToList();
 
         logger.LogInformation("[LEAGUES] Returning page {Page} ({Count} of {Total}) for league: {LeagueName}",
-            currentPage, pageItems.Count, totalRecords, league.Name);
+            currentPage, filteredPageItems.Count, slice.TotalRecords, league.Name);
 
         return Results.Ok(new
         {
             page = currentPage,
             pageSize = size,
-            totalRecords,
-            totalPages = (int)Math.Ceiling(totalRecords / (double)size),
-            records = pageItems
+            totalRecords = slice.TotalRecords,
+            totalPages = LeagueEventsTotalPages(slice.TotalRecords, size),
+            records = filteredPageItems
         });
     }
+
+    var events = await LoadLeagueEventsForVisibilityAsync(db, id, season);
+
+    var filteredEvents = SelectVisibleEvents(events, league, showAll == true);
+    logger.LogDebug("[LEAGUES] Showing {Filtered}/{Total} events (showAll: {ShowAll})",
+        filteredEvents.Count, events.Count, showAll == true);
 
     // Convert to DTOs
     var response = filteredEvents.Select(e => EventResponse.FromEvent(e, config.EnableMultiPartEpisodes, filesLoaded: true, leagueOverride: league)).ToList();
@@ -701,6 +717,16 @@ app.MapGet("/api/leagues/external/{externalId}/teams", async (string externalId,
 
     logger.LogInformation("[LEAGUES] Found {Count} teams for external league ID: {ExternalId}", teams.Count, externalId);
     return Results.Ok(teams);
+});
+
+app.MapGet("/api/leagues/external/{externalId}/team-selection", async (string externalId, SportarrApiClient sportsDbClient) =>
+{
+    var selection = await sportsDbClient.GetLeagueTeamSelectionAsync(externalId);
+    return Results.Ok(new
+    {
+        teams = selection?.Teams ?? new List<Team>(),
+        recentTeamIds = selection?._Meta?.RecentTeamIds ?? new List<string>()
+    });
 });
 
 // API: Get motorsport session types for a league (based on league name)
@@ -1048,10 +1074,13 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         (monitorFinalsProp.ValueKind == JsonValueKind.True || monitorFinalsProp.ValueKind == JsonValueKind.False))
     {
         var newMonitorFinals = monitorFinalsProp.GetBoolean();
-        if (league.MonitorFinals != newMonitorFinals)
+        if (league.MonitorFinals != newMonitorFinals ||
+            (!body.TryGetProperty("finalTeamMode", out _) &&
+             league.FinalTeamMode != (newMonitorFinals ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off)))
         {
             logger.LogInformation("[LEAGUES] MonitorFinals changing from {Old} to {New}", league.MonitorFinals, newMonitorFinals);
             league.MonitorFinals = newMonitorFinals;
+            league.FinalTeamMode = newMonitorFinals ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off;
             eventTypesChanged = true;
             reachWidened |= newMonitorFinals;
         }
@@ -1060,10 +1089,13 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         (monitorPlayoffsProp.ValueKind == JsonValueKind.True || monitorPlayoffsProp.ValueKind == JsonValueKind.False))
     {
         var newMonitorPlayoffs = monitorPlayoffsProp.GetBoolean();
-        if (league.MonitorPlayoffs != newMonitorPlayoffs)
+        if (league.MonitorPlayoffs != newMonitorPlayoffs ||
+            (!body.TryGetProperty("playoffTeamMode", out _) &&
+             league.PlayoffTeamMode != (newMonitorPlayoffs ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off)))
         {
             logger.LogInformation("[LEAGUES] MonitorPlayoffs changing from {Old} to {New}", league.MonitorPlayoffs, newMonitorPlayoffs);
             league.MonitorPlayoffs = newMonitorPlayoffs;
+            league.PlayoffTeamMode = newMonitorPlayoffs ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off;
             eventTypesChanged = true;
             reachWidened |= newMonitorPlayoffs;
         }
@@ -1072,13 +1104,37 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         (monitorPreseasonProp.ValueKind == JsonValueKind.True || monitorPreseasonProp.ValueKind == JsonValueKind.False))
     {
         var newMonitorPreseason = monitorPreseasonProp.GetBoolean();
-        if (league.MonitorPreseason != newMonitorPreseason)
+        if (league.MonitorPreseason != newMonitorPreseason ||
+            (!body.TryGetProperty("preseasonTeamMode", out _) &&
+             league.PreseasonTeamMode != (newMonitorPreseason ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off)))
         {
             logger.LogInformation("[LEAGUES] MonitorPreseason changing from {Old} to {New}", league.MonitorPreseason, newMonitorPreseason);
             league.MonitorPreseason = newMonitorPreseason;
+            league.PreseasonTeamMode = newMonitorPreseason ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off;
             eventTypesChanged = true;
             reachWidened |= newMonitorPreseason;
         }
+    }
+
+    foreach (var (property, currentMode, apply) in new (string Property, SpecialEventTeamMode Current,
+        Action<SpecialEventTeamMode> Apply)[]
+    {
+        ("finalTeamMode", league.FinalTeamMode, mode => { league.FinalTeamMode = mode; league.MonitorFinals = mode == SpecialEventTeamMode.AllTeams; }),
+        ("playoffTeamMode", league.PlayoffTeamMode, mode => { league.PlayoffTeamMode = mode; league.MonitorPlayoffs = mode == SpecialEventTeamMode.AllTeams; }),
+        ("preseasonTeamMode", league.PreseasonTeamMode, mode => { league.PreseasonTeamMode = mode; league.MonitorPreseason = mode == SpecialEventTeamMode.AllTeams; })
+    })
+    {
+        if (!body.TryGetProperty(property, out var modeProp)) continue;
+        if (modeProp.ValueKind != JsonValueKind.String ||
+            !Enum.TryParse<SpecialEventTeamMode>(modeProp.GetString(), true, out var newMode) ||
+            !Enum.IsDefined(newMode))
+        {
+            return Results.BadRequest(new { error = $"Invalid {property}" });
+        }
+        if (currentMode == newMode) continue;
+        apply(newMode);
+        eventTypesChanged = true;
+        reachWidened = true;
     }
 
     // How far back those toggles reach. It decides which events the next sync
@@ -1266,7 +1322,8 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                 {
                     shouldMonitor = LeagueEventSyncService.ShouldMonitorEvent(
                         league, evt.EventDate, evt.Season, currentSeason, currentSeason,
-                        evt.Round, evt.Title, cupStageSizesBySeason[evt.Season ?? ""], evt.HasLaterSeasonFinal);
+                        evt.Round, evt.Title, cupStageSizesBySeason[evt.Season ?? ""], evt.HasLaterSeasonFinal,
+                        manualOverride: handPicked);
                 }
 
                 // Apply motorsport session type filter (only for F1 currently)
@@ -1984,7 +2041,8 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 });
 
 // API: Delete league
-app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, FileNamingService naming, ILogger<Program> logger) =>
+app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, FileNamingService naming,
+    [FromServices] IMetadataWriterService metadataWriterService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -2020,6 +2078,7 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
                     File.Delete(eventFile.FilePath);
                     logger.LogDebug("[LEAGUES] Deleted file: {Path}", eventFile.FilePath);
                 }
+                await metadataWriterService.DeleteEventMetadataAsync(eventFile);
             }
             catch (Exception ex)
             {
@@ -2960,7 +3019,7 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
 
         return monitoredTeamIds.Count == 0
             ? events
-            : FilterEventsByMonitoredTeams(events, monitoredTeamIds, league);
+            : FilterEventsByMonitoredTeams(events, monitoredTeamIds, league, includeManualSelections: true);
     }
 
     /// <summary>
@@ -2970,7 +3029,8 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
     /// same way the sync computes them.
     /// </summary>
     internal static List<Event> FilterEventsByMonitoredTeams(
-        List<Event> events, HashSet<string> monitoredTeamIds, League league)
+        List<Event> events, HashSet<string> monitoredTeamIds, League league,
+        bool includeManualSelections = false)
     {
         // Season-less strays would pool into one bucket and let bracket
         // arithmetic infer cup stages from unrelated events, so they get
@@ -2983,12 +3043,130 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
 
         return events
             .Where(e =>
-                (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
-                (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
+                (includeManualSelections && e.ManuallyMonitored) ||
                 e.HasFile ||
-                SpecialEventClassifier.BypassesTeamFilter(e.Round, e.Title,
-                    league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                SpecialEventClassifier.IsIncludedByTeamSelection(league, e.Round, e.Title,
+                    MatchesMonitoredTeams(e, monitoredTeamIds),
                     cupStageSizesBySeason[e.Season ?? ""], e.HasLaterSeasonFinal))
             .ToList();
+    }
+
+    internal static (int CurrentPage, int Size) NormalizeLeagueEventsPaging(int? page, int? pageSize)
+        => (Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 100, 1, 1000));
+
+    internal static int LeagueEventsTotalPages(int totalRecords, int size)
+        => (int)Math.Ceiling(totalRecords / (double)size);
+
+    internal static int LeagueEventsPageOffset(int currentPage, int size)
+        => (int)Math.Clamp(((long)currentPage - 1) * size, 0, int.MaxValue);
+
+    internal static async Task<List<Event>> LoadLeagueEventsForVisibilityAsync(
+        SportarrDbContext db, int leagueId, string? season)
+    {
+        var query = db.Events
+            .AsNoTracking()
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Include(e => e.Files)
+            .Where(e => e.LeagueId == leagueId);
+
+        if (!string.IsNullOrEmpty(season))
+        {
+            query = season == "Unknown"
+                ? query.Where(e => e.Season == null || e.Season == "")
+                : query.Where(e => e.Season == season);
+        }
+
+        return await query
+            .OrderByDescending(e => e.EventDate)
+            .ThenByDescending(e => e.Id)
+            .ToListAsync();
+    }
+
+    // Cup visibility needs every round in a season before paging.
+    internal static async Task<LeagueEventsPageSlice> GetFilteredEventPageAsync(
+        SportarrDbContext db, League league, string? season, bool showAll, int currentPage, int size)
+    {
+        var events = await LoadLeagueEventsForVisibilityAsync(db, league.Id, season);
+        var filteredEvents = SelectVisibleEvents(events, league, showAll);
+
+        return new LeagueEventsPageSlice
+        {
+            TotalRecords = filteredEvents.Count,
+            Records = filteredEvents
+                .Skip(LeagueEventsPageOffset(currentPage, size))
+                .Take(size)
+                .ToList(),
+        };
+    }
+
+    internal sealed class LeagueEventsPageSlice
+    {
+        public required int TotalRecords { get; init; }
+        public required List<Event> Records { get; init; }
+    }
+
+    internal static async Task<LeagueEventsPageSlice> GetUnfilteredEventPageAsync(
+        SportarrDbContext db, int leagueId, string? season, int currentPage, int size)
+    {
+        var (countQuery, pageQuery) = ComposeUnfilteredEventPageQueries(db, leagueId, season, currentPage, size);
+        async Task<LeagueEventsPageSlice> ReadPageAsync()
+        {
+            var totalRecords = await countQuery.CountAsync();
+            var records = await pageQuery.ToListAsync();
+            return new LeagueEventsPageSlice { TotalRecords = totalRecords, Records = records };
+        }
+
+        if (db.Database.IsSqlite())
+        {
+            await db.Database.OpenConnectionAsync();
+            try
+            {
+                var connection = (SqliteConnection)db.Database.GetDbConnection();
+                // A deferred transaction lets WAL writers proceed during the page read.
+                await using var sqliteTransaction = connection.BeginTransaction(IsolationLevel.Serializable, deferred: true);
+                await using var transaction = await db.Database.UseTransactionAsync(sqliteTransaction);
+                var page = await ReadPageAsync();
+                await transaction!.CommitAsync();
+                return page;
+            }
+            finally
+            {
+                await db.Database.CloseConnectionAsync();
+            }
+        }
+
+        await using var postgresTransaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead);
+        var result = await ReadPageAsync();
+        await postgresTransaction.CommitAsync();
+        return result;
+    }
+
+    // The Id tiebreaker keeps page boundaries stable for tied dates.
+    internal static (IQueryable<Event> CountQuery, IQueryable<Event> PageQuery) ComposeUnfilteredEventPageQueries(
+        SportarrDbContext db, int leagueId, string? season, int currentPage, int size)
+    {
+        var query = db.Events
+            .AsNoTracking()
+            .Where(e => e.LeagueId == leagueId);
+
+        // "Unknown" includes null and empty season values.
+        if (!string.IsNullOrEmpty(season))
+        {
+            query = season == "Unknown"
+                ? query.Where(e => e.Season == null || e.Season == "")
+                : query.Where(e => e.Season == season);
+        }
+
+        var pageQuery = query
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Include(e => e.Files)
+            .OrderByDescending(e => e.EventDate)
+            .ThenByDescending(e => e.Id)
+            .Skip(LeagueEventsPageOffset(currentPage, size))
+            .Take(size);
+
+        return (CountQuery: query, PageQuery: pageQuery);
     }
 }

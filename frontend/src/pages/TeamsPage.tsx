@@ -304,7 +304,7 @@ export default function TeamsPage() {
 
       const leagues = Array.isArray(response.data?.leagues) ? response.data.leagues : [];
       setDiscoveredLeagues(leagues);
-      setSelectedLeagueIds(new Set(leagues.filter((league: DiscoveredLeague) => !league.isAdded).map((league: DiscoveredLeague) => league.externalId)));
+      setSelectedLeagueIds(new Set(leagues.filter((league: DiscoveredLeague) => !league.isAdded && !league.isInLibrary).map((league: DiscoveredLeague) => league.externalId)));
     } catch {
       if (seq !== discoverSeq.current) return;
       toast.error('Failed to discover leagues');

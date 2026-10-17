@@ -58,6 +58,23 @@ public class CustomFormatService
     }
 
     /// <summary>
+    /// The custom format score a file's name earns under a quality profile,
+    /// or 0 when the profile scores no formats.
+    /// </summary>
+    public int ScoreName(string name, QualityProfile? profile, List<CustomFormat> customFormats)
+    {
+        var formatScores = ProfileScores(profile);
+        if (formatScores == null || formatScores.Count == 0) return 0;
+        return EvaluateRelease(name, customFormats, formatScores).Sum(m => m.Score);
+    }
+
+    public static Dictionary<int, int> ProfileScores(QualityProfile? profile) =>
+        profile?.FormatItems?
+            .GroupBy(item => item.FormatId)
+            .ToDictionary(group => group.Key, group => group.First().Score)
+        ?? new Dictionary<int, int>();
+
+    /// <summary>
     /// Evaluates a release against all custom formats and returns matches with scores
     /// </summary>
     public List<MatchedFormat> EvaluateRelease(string releaseTitle, List<CustomFormat> customFormats, Dictionary<int, int> formatScores)

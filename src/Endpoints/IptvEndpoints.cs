@@ -1562,7 +1562,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
     }
 
     logger.LogInformation("[StreamProxy] Starting stream proxy for channel {ChannelId}: {Name} -> {Url}",
-        channelId, channel.Name, channel.StreamUrl);
+        channelId, channel.Name, SecretRedactor.Url(channel.StreamUrl));
 
     try
     {
@@ -1719,7 +1719,7 @@ app.MapGet("/api/iptv/stream/url", async (
         return Results.BadRequest(new { error = "URL is not an allowed stream target" });
     }
 
-    logger.LogDebug("[StreamProxy] Proxying URL: {Url}", url);
+    logger.LogDebug("[StreamProxy] Proxying URL: {Url}", SecretRedactor.Url(url));
 
     try
     {
@@ -1780,7 +1780,8 @@ app.MapGet("/api/iptv/stream/url", async (
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "[StreamProxy] Error proxying URL: {Url}", url);
+        logger.LogError("[StreamProxy] Error proxying URL: {Url}. {Error}",
+            SecretRedactor.Url(url), SecretRedactor.Message(ex.ToString()));
         return Results.StatusCode(500);
     }
 }).AllowAnonymous(); // Allow anonymous - media players make their own HTTP requests

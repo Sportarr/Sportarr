@@ -38,9 +38,14 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
     }
 
     public static async Task<PartIdentityIntegrationHarness> CreateAsync(bool rename = true, bool multipart = true,
-        string title = "UFC 9999", string sport = "Fighting", string leagueName = "UFC", bool relational = false)
+        string title = "UFC 9999", string sport = "Fighting", string leagueName = "UFC", bool relational = false,
+        bool writeMetadata = false, string? mediaRoot = null)
     {
-        var directory = Path.Combine(Path.GetTempPath(), "sportarr-part-identity-" + Guid.NewGuid().ToString("N"));
+        if (mediaRoot != null && Path.GetFullPath(mediaRoot) != "/data/e2e-lib" &&
+            !Path.GetFullPath(mediaRoot).StartsWith("/data/e2e-lib/", StringComparison.Ordinal))
+            throw new InvalidOperationException("The test media root must be under /data/e2e-lib.");
+        var directory = Path.Combine(mediaRoot ?? Path.GetTempPath(),
+            "sportarr-part-identity-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Sportarr:DataPath"] = directory });
@@ -68,21 +73,26 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         paths.Setup(p => p.RemapRemoteToLocalAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync((string _, string path) => path);
         paths.Setup(p => p.GetLocalRootsAsync(It.IsAny<string>())).ReturnsAsync(new List<string> { directory });
         services.AddSingleton(paths.Object);
-        services.AddSingleton(Mock.Of<IMetadataWriterService>());
+        if (writeMetadata)
+            services.AddSingleton<IMetadataWriterService, MetadataWriterService>();
+        else
+            services.AddSingleton(Mock.Of<IMetadataWriterService>());
         services.AddSingleton(Mock.Of<IRateLimitService>());
         foreach (var type in new[] {
             typeof(ConfigService), typeof(DownloadClientService), typeof(NotificationService), typeof(SportarrApiClient),
             typeof(MediaFileParser), typeof(SportsFileNameParser), typeof(FileNamingService), typeof(EventPartDetector),
             typeof(DiskSpaceService), typeof(ImportFileSuppressionService), typeof(CustomFormatService),
-            typeof(CustomFormatMatchCache), typeof(ReleaseEvaluator), typeof(EpisodeNumberResolver), typeof(PackImportService), typeof(FileImportService),
+            typeof(CustomFormatMatchCache), typeof(ReleaseEvaluator), typeof(EpisodeNumberResolver), typeof(PackImportService), typeof(FileImportService), typeof(LibraryImportService),
             typeof(EventQueryService), typeof(DelayProfileService), typeof(ReleaseMatchingService), typeof(ReleaseCacheService),
             typeof(ReleaseMatchScorer), typeof(SearchResultCache), typeof(ReleaseProfileService), typeof(QualityDetectionService),
             typeof(IndexerStatusService), typeof(IndexerSearchService), typeof(AutomaticSearchService)
         }) services.AddSingleton(type);
         var app = builder.Build();
+        app.MapManualEventSearchEndpoints();
         app.MapEventSearchAndGrabEndpoints();
         app.MapSonarrReleasePushEndpoint();
         app.MapManualQueueImportEndpoint();
+        app.MapSonarrWantedEndpoint();
         await app.StartAsync();
         var rig = new PartIdentityIntegrationHarness(app, directory, transport);
         if (relational) await rig.Db.Database.EnsureCreatedAsync();

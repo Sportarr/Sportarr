@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
-import { MagnifyingGlassIcon, XMarkIcon, CheckIcon, InformationCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, XMarkIcon, CheckIcon, InformationCircleIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPost } from '../utils/api';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../utils/designTokens';
-import { PortalTooltip } from './PortalTooltip';
 import {
   isFightingSport,
   isMotorsport,
@@ -15,6 +14,7 @@ import {
 } from '../utils/leagueSportRules';
 import ConfirmationModal from './ConfirmationModal';
 import TagSelector from './TagSelector';
+import { isOlderGroupForcedOpen, partitionTeamsByRecency } from '../utils/teamRecency';
 
 interface Team {
   idTeam: string;
@@ -76,6 +76,9 @@ interface AddLeagueModalProps {
     specialEventsMonitorType: string,
     monitorPlayoffs: boolean,
     monitorPreseason: boolean,
+    finalTeamMode: string,
+    playoffTeamMode: string,
+    preseasonTeamMode: string,
     retentionDays: number,
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
@@ -94,12 +97,15 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [monitorType, setMonitorType] = useState('All');
-  const [monitorFinals, setMonitorFinals] = useState(false);
+  const [finalTeamMode, setFinalTeamMode] = useState('Off');
   // How far back the special-event toggles reach. New leagues follow the
   // league default rather than quietly meaning every season ever played.
   const [specialEventsMonitorType, setSpecialEventsMonitorType] = useState('Future');
-  const [monitorPlayoffs, setMonitorPlayoffs] = useState(false);
-  const [monitorPreseason, setMonitorPreseason] = useState(false);
+  const [playoffTeamMode, setPlayoffTeamMode] = useState('Off');
+  const [preseasonTeamMode, setPreseasonTeamMode] = useState('Off');
+  const monitorFinals = finalTeamMode === 'AllTeams';
+  const monitorPlayoffs = playoffTeamMode === 'AllTeams';
+  const monitorPreseason = preseasonTeamMode === 'AllTeams';
   const [keepAllEvents, setKeepAllEvents] = useState(false);
   const [allowHighlights, setAllowHighlights] = useState(false);
   // Add-only (#204): whether the DVR auto-scheduler may touch this league at
@@ -148,6 +154,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   // enable team based filtering on league add --> teams to monitor
   const [searchQuery, setSearchQuery] = useState('');
+  const [showEarlierTeams, setShowEarlierTeams] = useState(false);
 
   // Track initialization state to prevent re-initialization when queries complete
   // or other dependencies change. We track separately for teams and settings.
@@ -160,10 +167,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   // Fetch teams for the league when modal opens (not for motorsports)
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
-    queryKey: ['league-teams', league?.idLeague],
+    queryKey: ['league-team-selection', league?.idLeague],
     queryFn: async () => {
       if (!league?.idLeague) return null;
-      const response = await apiGet(`/api/leagues/external/${league.idLeague}/teams`);
+      const response = await apiGet(`/api/leagues/external/${league.idLeague}/team-selection`);
       if (!response.ok) throw new Error('Failed to fetch teams');
       return response.json();
     },
@@ -171,7 +178,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     staleTime: 5 * 60 * 1000,
   });
 
-  const teams: Team[] = teamsResponse || [];
+  const teams: Team[] = teamsResponse?.teams || [];
+  const recentTeamIds: string[] = teamsResponse?.recentTeamIds || [];
 
   // Fetch quality profiles
   const { data: qualityProfiles = [] } = useQuery({
@@ -308,9 +316,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     !isAdding &&
     !keepAllEvents &&
     existingLeague?.keepAllEvents === false &&
-    existingLeague?.monitorFinals === monitorFinals &&
-    existingLeague?.monitorPlayoffs === monitorPlayoffs &&
-    existingLeague?.monitorPreseason === monitorPreseason &&
+    (existingLeague?.finalTeamMode ?? (existingLeague?.monitorFinals ? 'AllTeams' : 'Off')) === finalTeamMode &&
+    (existingLeague?.playoffTeamMode ?? (existingLeague?.monitorPlayoffs ? 'AllTeams' : 'Off')) === playoffTeamMode &&
+    (existingLeague?.preseasonTeamMode ?? (existingLeague?.monitorPreseason ? 'AllTeams' : 'Off')) === preseasonTeamMode &&
     selectedTeamIds.size === savedTeamIds.size &&
     [...selectedTeamIds].every((id) => savedTeamIds.has(id));
 
@@ -389,7 +397,16 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       );
     }
     return filtered;
-  }, [teams, searchQuery]);
+  }, [teams, searchQuery, selectedTeamIds]);
+  const teamGroups = useMemo(() => partitionTeamsByRecency(teams, recentTeamIds), [teams, recentTeamIds]);
+  const filteredGroups = useMemo(
+    () => partitionTeamsByRecency(filteredTeams, recentTeamIds),
+    [filteredTeams, recentTeamIds]
+  );
+  const hasEarlierTeams = teamGroups.earlier.length > 0;
+  const earlierSelected = teamGroups.earlier.some(team => selectedTeamIds.has(team.idTeam));
+  const earlierForcedOpen = isOlderGroupForcedOpen(searchQuery, earlierSelected, selectAll);
+  const earlierOpen = showEarlierTeams || earlierForcedOpen;
 
   // Load existing monitored teams when in edit mode (not for motorsports)
   // Only load once when existingLeague first becomes available
@@ -430,6 +447,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         specialEventsMonitorType: existingLeague.specialEventsMonitorType,
         monitorPlayoffs: existingLeague.monitorPlayoffs,
         monitorPreseason: existingLeague.monitorPreseason,
+        finalTeamMode: existingLeague.finalTeamMode,
+        playoffTeamMode: existingLeague.playoffTeamMode,
+        preseasonTeamMode: existingLeague.preseasonTeamMode,
         keepAllEvents: existingLeague.keepAllEvents,
         allowHighlights: existingLeague.allowHighlights,
         searchQueryTemplate: existingLeague.searchQueryTemplate,
@@ -451,12 +471,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setRootFolderId(existingLeague.rootFolderId ?? null);
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
-      setMonitorFinals(existingLeague.monitorFinals || false);
+      setFinalTeamMode(existingLeague.finalTeamMode ?? (existingLeague.monitorFinals ? 'AllTeams' : 'Off'));
       // A league saved before this setting existed reports All, which is what
       // it was doing, so it stays as it was until changed here.
       setSpecialEventsMonitorType(existingLeague.specialEventsMonitorType || 'All');
-      setMonitorPlayoffs(existingLeague.monitorPlayoffs || false);
-      setMonitorPreseason(existingLeague.monitorPreseason || false);
+      setPlayoffTeamMode(existingLeague.playoffTeamMode ?? (existingLeague.monitorPlayoffs ? 'AllTeams' : 'Off'));
+      setPreseasonTeamMode(existingLeague.preseasonTeamMode ?? (existingLeague.monitorPreseason ? 'AllTeams' : 'Off'));
       setKeepAllEvents(existingLeague.keepAllEvents || false);
       setAllowHighlights(existingLeague.allowHighlights || false);
       setSearchQueryTemplate(existingLeague.searchQueryTemplate || '');
@@ -571,6 +591,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSelectAll(false);
       setSearchQuery('');
       setMonitorType('Future');
+      setFinalTeamMode('Off');
+      setPlayoffTeamMode('Off');
+      setPreseasonTeamMode('Off');
       setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
       setRetentionDays(0);
       // Default to the most-free-space accessible root folder so single-root
@@ -623,6 +646,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       initializedTeamsRef.current = false;
       initializedSettingsRef.current = false;
       initializedDataVersionRef.current = null;
+      setShowEarlierTeams(false);
     }
   }, [isOpen]);
 
@@ -646,6 +670,31 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSelectedTeamIds(new Set(teams.map(t => t.idTeam)));
       setSelectAll(true);
     }
+  };
+
+  const renderTeamButton = (team: Team) => {
+    const isSelected = selectedTeamIds.has(team.idTeam);
+    return (
+      <button
+        key={team.idTeam}
+        type="button"
+        onClick={() => handleTeamToggle(team.idTeam)}
+        className={`flex min-h-11 items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+          isSelected ? 'border-red-600 bg-red-600/20' : 'border-gray-700 bg-black/30 hover:border-gray-600'
+        }`}
+      >
+        {team.strTeamBadge && <img src={team.strTeamBadge} alt="" className="h-10 w-10 flex-none object-contain" />}
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-white">{team.strTeam}</div>
+          {team.strTeamShort && <div className="text-xs text-gray-400">{team.strTeamShort}</div>}
+        </div>
+        <div className={`flex h-5 w-5 flex-none items-center justify-center rounded border-2 ${
+          isSelected ? 'border-red-600 bg-red-600' : 'border-gray-600'
+        }`}>
+          {isSelected && <CheckIcon className="h-4 w-4 text-white" />}
+        </div>
+      </button>
+    );
   };
 
   const handlePartToggle = (part: string) => {
@@ -800,6 +849,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       specialEventsMonitorType,
       monitorPlayoffs,
       monitorPreseason,
+      finalTeamMode,
+      playoffTeamMode,
+      preseasonTeamMode,
       retentionDays,
       allowHighlights,
       sessionTypeQualityString,
@@ -1025,91 +1077,62 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                           </div>
                         )}
 
-                        {/* Team Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                          {filteredTeams.map(team => {
-                            const isSelected = selectedTeamIds.has(team.idTeam);
-                            return (
-                              <button
-                                key={team.idTeam}
-                                onClick={() => handleTeamToggle(team.idTeam)}
-                                className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
-                                  isSelected
-                                    ? 'bg-red-600/20 border-red-600'
-                                    : 'bg-black/30 border-gray-700 hover:border-gray-600'
-                                }`}
-                              >
-                                {team.strTeamBadge && (
-                                  <img
-                                    src={team.strTeamBadge}
-                                    alt={team.strTeam}
-                                    className="w-10 h-10 object-contain"
-                                  />
-                                )}
-                                <div className="flex-1">
-                                  <div className="font-medium text-white">{team.strTeam}</div>
-                                  {team.strTeamShort && (
-                                    <div className="text-xs text-gray-400">{team.strTeamShort}</div>
-                                  )}
-                                </div>
-                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                  isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
-                                }`}>
-                                  {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
-                                </div>
-                              </button>
-                            );
-                          })}
+                        {hasEarlierTeams && (
+                          <div className="mb-3">
+                            <div className="font-semibold text-white">Recent teams ({filteredGroups.recent.length})</div>
+                            <div className="text-xs text-gray-400">Teams in the three newest seasons with events.</div>
+                          </div>
+                        )}
+                        <div className="grid max-h-96 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
+                          {filteredGroups.recent.map(renderTeamButton)}
                         </div>
+                        {hasEarlierTeams && (
+                          <div className="mt-4">
+                            {earlierForcedOpen ? (
+                              <div className="font-semibold text-white">Older teams ({filteredGroups.earlier.length})</div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setShowEarlierTeams(!showEarlierTeams)}
+                                aria-expanded={earlierOpen}
+                                className={`${BUTTON_SECONDARY} w-full gap-2`}
+                              >
+                                <span>Older teams ({filteredGroups.earlier.length})</span>
+                                <ChevronDownIcon className={`h-4 w-4 transition-transform ${earlierOpen ? 'rotate-180' : ''}`} />
+                              </button>
+                            )}
+                            {earlierOpen && (
+                              <div className="mt-3 grid max-h-96 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
+                                {filteredGroups.earlier.map(renderTeamButton)}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
-                        {/* Special events: finals/playoffs bypass the team filter.
-                            Placed below the team grid so the team selection reads
-                            first. Only meaningful when a subset of teams is
-                            monitored - with all teams selected every event is
-                            synced anyway. */}
                         <div className="mt-4 p-3 bg-black/50 rounded-lg border border-red-900/20 space-y-3">
                           <div>
                             <div className="text-sm font-semibold text-white">Special events</div>
                             <div className="text-xs text-gray-400 mt-1">
-                              These are monitored <span className="text-gray-300 font-medium">regardless of the teams selected above</span>.
-                              Useful when you only follow certain teams but never want to miss the big games - leave unchecked to monitor only your teams' games.
+                              Choose which teams to follow for each part of the season. Off removes events without files after the next sync. Events you chose yourself stay.
                             </div>
                           </div>
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={monitorFinals}
-                              onChange={(e) => setMonitorFinals(e.target.checked)}
-                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
-                            />
-                            <div>
-                              <div className="text-sm font-medium text-white">Always monitor finals &amp; championships</div>
-                              <div className="text-xs text-gray-400">Title-deciding events - Super Bowl, NBA Finals, cup finals, Grand Finals, World Series</div>
-                            </div>
+                          <label className="block text-sm font-medium text-white">
+                            Finals and championships
+                            <select value={finalTeamMode} onChange={(e) => setFinalTeamMode(e.target.value)} className="mt-2 w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-white focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-500">
+                              <option value="Off">Off</option><option value="SelectedTeams">Selected teams</option><option value="AllTeams">All teams</option>
+                            </select>
                           </label>
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={monitorPlayoffs}
-                              onChange={(e) => setMonitorPlayoffs(e.target.checked)}
-                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
-                            />
-                            <div>
-                              <div className="text-sm font-medium text-white">Always monitor postseason</div>
-                              <div className="text-xs text-gray-400">Elimination rounds before the title - playoffs, wild card, knockout stages, quarter/semi-finals</div>
-                            </div>
+                          <label className="block text-sm font-medium text-white">
+                            Postseason
+                            <select value={playoffTeamMode} onChange={(e) => setPlayoffTeamMode(e.target.value)} className="mt-2 w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-white focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-500">
+                              <option value="Off">Off</option><option value="SelectedTeams">Selected teams</option><option value="AllTeams">All teams</option>
+                            </select>
                           </label>
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={monitorPreseason}
-                              onChange={(e) => setMonitorPreseason(e.target.checked)}
-                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
-                            />
-                            <div>
-                              <div className="text-sm font-medium text-white">Always monitor preseason</div>
-                              <div className="text-xs text-gray-400">Warm-up games before the regular season - preseason weeks, exhibition games</div>
-                            </div>
+                          <label className="block text-sm font-medium text-white">
+                            Preseason
+                            <select value={preseasonTeamMode} onChange={(e) => setPreseasonTeamMode(e.target.value)} className="mt-2 w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-white focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-500">
+                              <option value="Off">Off</option><option value="SelectedTeams">Selected teams</option><option value="AllTeams">All teams</option>
+                            </select>
                           </label>
 
 
@@ -1117,7 +1140,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               this they silently meant every season the league
                               has ever had, so switching on finals brought back
                               a championship from decades ago. */}
-                          {(monitorFinals || monitorPlayoffs || monitorPreseason) && (
+                          {(finalTeamMode !== 'Off' || playoffTeamMode !== 'Off' || preseasonTeamMode !== 'Off') && (
                             <div className="p-3 rounded-lg bg-gray-800">
                               <label className="block text-sm font-medium text-white mb-1">
                                 Monitor those special events from
@@ -1139,31 +1162,24 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               </select>
                             </div>
                           )}
-                          <label className="flex items-center gap-3 p-3 rounded-lg bg-gray-800 hover:bg-gray-750 cursor-pointer">
+                        </div>
+
+                        <div className="mt-4 space-y-3 rounded-lg border border-red-900/20 bg-black/50 p-3">
+                          <div>
+                            <div className="text-sm font-semibold text-white">League event visibility</div>
+                            <p id="league-event-visibility-description" className="mt-1 text-xs text-gray-400">
+                              Store and show events outside your selected teams. These extra events stay unmonitored and use database space. Finals, postseason, and preseason set to Off remain excluded.
+                            </p>
+                          </div>
+                          <label className="flex min-h-11 items-center gap-3 py-3 cursor-pointer text-sm font-medium text-white">
                             <input
                               type="checkbox"
+                              aria-describedby="league-event-visibility-description"
                               checked={keepAllEvents}
                               onChange={(e) => setKeepAllEvents(e.target.checked)}
                               className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
                             />
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-medium text-white">Show all events</span>
-                              <PortalTooltip
-                                className="w-72 p-2 text-left"
-                                content={
-                                  <>
-                                    <p className="text-gray-300 text-[11px]">
-                                      Only events for the teams and session types you follow are shown.
-                                    </p>
-                                    <p className="text-gray-400 text-[11px] mt-1">
-                                      Turn this on to show every event the league has. They arrive unmonitored, and the extra events use more disk.
-                                    </p>
-                                  </>
-                                }
-                              >
-                                <ExclamationTriangleIcon className="w-4 h-4 text-yellow-400 cursor-help" />
-                              </PortalTooltip>
-                            </div>
+                            Show all events
                           </label>
                           {/* Turning the setting off stops new games being
                               stored but leaves the ones already here, so the
@@ -1171,7 +1187,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               there. Shown only when there is something to
                               remove. */}
                           {cleanupOfferStands && removableCount > 0 && (
-                            <p className="px-3 text-xs text-gray-400">
+                            <p className="text-xs text-gray-400">
                               {removableCount.toLocaleString()} stored {removableCount === 1 ? 'game is' : 'games are'} not part of what you follow.{' '}
                               <button
                                 type="button"
@@ -1379,9 +1395,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         // Specials Only monitors nothing until at least one
                         // special-event toggle is on; default to finals +
                         // playoffs so the selection does something immediately.
-                        if (value === 'SpecialsOnly' && !monitorFinals && !monitorPlayoffs && !monitorPreseason) {
-                          setMonitorFinals(true);
-                          setMonitorPlayoffs(true);
+                        if (value === 'SpecialsOnly' && finalTeamMode === 'Off' && playoffTeamMode === 'Off' && preseasonTeamMode === 'Off') {
+                          setFinalTeamMode('AllTeams');
+                          setPlayoffTeamMode('AllTeams');
                         }
                       }}
                       className="w-full px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"

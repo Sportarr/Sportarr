@@ -534,8 +534,6 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       password: '',
       apiKey: '',
       category: 'sportarr',
-      // Per-client removal settings (Sonarr v4 parity)
-      // Default ON for Usenet (no seeding), user can disable for torrents to preserve seeding
       removeCompletedDownloads: true,
       removeFailedDownloads: true,
       postImportMode: 0,
@@ -1873,10 +1871,16 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                         <div>
                           <span className="text-white font-medium">Remove Completed Downloads</span>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            Remove successful downloads from the download client history after import.
+                            Remove the completed job and its source files after import.
                             {getProtocol(formData.type as number) === 'torrent' && (
                               <span className="text-yellow-500 ml-1">
-                                For torrents, disable this to preserve seeding.
+                                For torrents, removal waits until the client stops the job and a configured indexer seed goal is met.
+                                With no goal or while all goals remain unmet, Sportarr leaves the torrent in the client.
+                                {(formData.type === 3 || formData.type === 12) && (
+                                  <span className="block mt-1">
+                                    This client does not report when a job was added. Sportarr can remove it only if it has stopped by import time.
+                                  </span>
+                                )}
                               </span>
                             )}
                           </p>
@@ -1911,7 +1915,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           <option value={4}>Move</option>
                         </select>
                         <p className="text-xs text-gray-500 mt-1">
-                          Auto: hardlink (or copy) while a torrent is still seeding in this client, move once it is gone.
+                          Auto: hardlink (or copy) torrent files so the original stays available to the client. Usenet files move unless Copy Files is enabled.
                           Copy and Hardlink/Copy always leave the original in place for this client.
                           Move always relocates the file and frees the source. Hardlinks require the download and library
                           folders to be on the same filesystem and fall back to a copy when a link cannot be created.

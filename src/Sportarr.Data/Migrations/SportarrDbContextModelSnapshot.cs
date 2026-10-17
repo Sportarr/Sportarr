@@ -57,6 +57,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("LibraryFormatScoresBackfilled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("LoggingSettings")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -667,6 +670,12 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<DateTime>("Added")
                         .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ClientCleanupCheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ClientCleanupCompleted")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Codec")
                         .HasColumnType("TEXT");
@@ -1326,6 +1335,8 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("LeagueId", "EventDate", "Id");
+
                     b.ToTable("Events");
                 });
 
@@ -1361,6 +1372,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("IndexerFlags")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsIptvRecording")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Languages")
                         .IsRequired()
@@ -1819,6 +1833,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime>("Created")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("DisableSslCertificateValidation")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("DownloadClientId")
                         .HasColumnType("INTEGER");
 
@@ -2230,6 +2247,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "idLeague");
 
+                    b.Property<int>("FinalTeamMode")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("FormedYear")
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "intFormedYear");
@@ -2278,10 +2298,16 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strLeague");
 
+                    b.Property<int>("PlayoffTeamMode")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("PosterUrl")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strPoster");
+
+                    b.Property<int>("PreseasonTeamMode")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("QualityProfileId")
                         .HasColumnType("INTEGER");
@@ -3310,7 +3336,7 @@ namespace Sportarr.Api.Migrations
                         {
                             Id = 1,
                             CutoffQuality = 15,
-                            FormatItems = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":5},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":10}]",
+                            FormatItems = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":0}]",
                             FormatScoreIncrement = 1,
                             IsCustomized = false,
                             IsDefault = true,
@@ -3324,7 +3350,7 @@ namespace Sportarr.Api.Migrations
                         {
                             Id = 2,
                             CutoffQuality = 19,
-                            FormatItems = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":5},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":10}]",
+                            FormatItems = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":0}]",
                             FormatScoreIncrement = 1,
                             IsCustomized = false,
                             IsDefault = false,

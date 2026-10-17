@@ -32,6 +32,14 @@ Sportarr includes experimental support for recording live sports events directly
 
 5. When you monitor an event whose league has a mapped channel, a recording is scheduled automatically.
 
+## Replacing recordings with indexer releases
+
+**IPTV > Options > Recording > Advanced** has a **Replace recordings with indexer releases** setting. It is off by default. When enabled, recorded events remain eligible for RSS and scheduled searches. A matching Usenet or torrent release can replace an IPTV recording at any quality after the event, size, blocklist, and release-profile checks pass. A recording cannot automatically replace a file imported from an indexer.
+
+The setting applies to new recordings and recordings Sportarr can identify from their saved source or DVR filename. A generic `.ts` file is not treated as a recording just because of its extension. In **Library Import**, a recording held by an indexer file starts unselected. Choose **Import anyway** on that file if you want the recording to replace it.
+
+If an indexer file is already in the library when a DVR recording finishes, **Activity > Queue** holds the recording for your choice. This happens whether **Replace recordings with indexer releases** is on or off. Open **Import recording** to replace the downloaded file, or choose **Keep downloaded file** to leave the recording on disk without linking it to the event. Other imports keep their existing decision rules.
+
 External tools can change a scheduled recording's channel, fallback channels,
 time window, or quality through the [assignment API](../APPLICATION_API.md#scheduled-dvr-assignments).
 The update leaves other recording fields intact. Send `expectedChannelId` to

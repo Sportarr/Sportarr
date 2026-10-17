@@ -47,7 +47,7 @@ public static class GrabHistoryChurnGuard
     /// Decide whether an automatic re-fetch of the release represented by <paramref name="priorGrab"/>
     /// should proceed. <paramref name="nowUtc"/> is injected so the policy is deterministic in tests.
     /// </summary>
-    public static Decision Evaluate(GrabHistory? priorGrab, DateTime nowUtc)
+    public static Decision Evaluate(GrabHistory? priorGrab, DateTime nowUtc, int? effectiveRegrabCount = null)
     {
         // No prior grab, or it already imported: this is not churn. A successful import is
         // governed downstream by the existing-file score gate; a quality upgrade arrives as
@@ -55,7 +55,7 @@ public static class GrabHistoryChurnGuard
         if (priorGrab is null || priorGrab.WasImported)
             return Decision.Allow;
 
-        if (priorGrab.RegrabCount >= MaxAutomaticRegrabs)
+        if ((effectiveRegrabCount ?? priorGrab.RegrabCount) >= MaxAutomaticRegrabs)
             return Decision.BlockCapReached;
 
         var lastAttempt = priorGrab.LastRegrabAttempt ?? priorGrab.GrabbedAt;

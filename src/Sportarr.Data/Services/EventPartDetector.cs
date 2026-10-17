@@ -1343,11 +1343,8 @@ public class EventPartDetector
     // an unknown session and the matcher falls back to permissive behaviour,
     // letting it land on the wrong event.
     //
-    // This single shared, ordered table is the one place languages are added.
-    // It is consulted by BOTH matchers: ReleaseMatchingService (via
-    // DetectMotorsportSessionFromFilename below) and ReleaseMatchScorer (via
-    // its DetectSessionType). Order is most-specific-first; the canonical name
-    // on the left maps onto the exact session names the English tables emit.
+    // Both release matchers use this table. Order is most specific first.
+    // A distinct session name keeps a grid show separate from qualifying.
     // To add a language, append its rows here — no other code changes needed.
     // -----------------------------------------------------------------------
     private static readonly (string Session, Regex Pattern)[] MultilingualSessionPatterns = new[]
@@ -1359,7 +1356,9 @@ public class EventPartDetector
         ("Sprint Qualifying", new Regex(@"\b(?:essais\s*qualificatifs?|qualifications?)\s*sprint\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
         ("Sprint",            new Regex(@"\bcourse\s*sprint\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
         ("Qualifying",        new Regex(@"\b(?:essais\s*qualificatifs?|qualifications?|qualifs?)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
-        ("Race",              new Regex(@"\b(?:la\s+)?course\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Grid Show",         new Regex(@"\bla\s+grille\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Practice",          new Regex(@"\bessais\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Race",              new Regex(@"(?<!road\s+)(?<!street\s+)(?<!race\s+)\b(?:la\s+)?course\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
         // --- add other languages (de, it, es, ...) below ---
     };
 
@@ -1405,6 +1404,10 @@ public class EventPartDetector
         if (IsMotorsportMatch(cleanFilename, @"\b(notebook|ted'?s|highlights|review|analysis|preview|magazine|morning|afternoon)\b", RegexOptions.IgnoreCase))
             return null;
 
+        var multilingualSession = DetectMultilingualSession(cleanFilename);
+        if (multilingualSession != null)
+            return multilingualSession;
+
         List<MotorsportSessionType>? leagueSessions = null;
         if (!string.IsNullOrWhiteSpace(leagueName))
         {
@@ -1439,8 +1442,7 @@ public class EventPartDetector
             }
         }
 
-        // Fall back to non-English vocabulary (French, etc.) before giving up.
-        return DetectMultilingualSession(cleanFilename);
+        return null;
     }
 
     /// <summary>

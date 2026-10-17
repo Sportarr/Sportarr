@@ -150,10 +150,9 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
                             : 0;
                         break;
                     case "earlyReleaseLimit":
-                        // Empty, 0, negative, or non-numeric all persist as null so the
-                        // matcher's opt-in check stays off. Only a positive int enables it.
+                        // Null uses the seven-day default. A positive value can tighten it.
                         indexer.EarlyReleaseLimit = int.TryParse(fieldValue, out var earlyLimit) && earlyLimit > 0
-                            ? earlyLimit
+                            ? Math.Min(earlyLimit, 7)
                             : null;
                         break;
                     case "cookie":
@@ -198,9 +197,14 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
                     case "rejectBlocklistedTorrentHashes":
                         indexer.RejectBlocklistedTorrentHashes = string.Equals(fieldValue, "true", StringComparison.OrdinalIgnoreCase);
                         break;
+                    case "disableSslCertificateValidation":
+                        indexer.DisableSslCertificateValidation = string.Equals(fieldValue, "true", StringComparison.OrdinalIgnoreCase);
+                        break;
                 }
             }
         }
+
+        IndexerTlsPolicy.ClientName(indexer);
 
         // Auto-detect the parser variant for plain-RSS feeds so the user
         // doesn't have to fiddle with the ezRSS / enclosure /
@@ -349,10 +353,9 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                             : 0;
                         break;
                     case "earlyReleaseLimit":
-                        // Empty, 0, negative, or non-numeric all persist as null so the
-                        // matcher's opt-in check stays off. Only a positive int enables it.
+                        // Null uses the seven-day default. A positive value can tighten it.
                         indexer.EarlyReleaseLimit = int.TryParse(fieldValue, out var earlyLimitUpdate) && earlyLimitUpdate > 0
-                            ? earlyLimitUpdate
+                            ? Math.Min(earlyLimitUpdate, 7)
                             : null;
                         break;
                     case "cookie":
@@ -399,6 +402,9 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                     case "rejectBlocklistedTorrentHashes":
                         indexer.RejectBlocklistedTorrentHashes = string.Equals(fieldValue, "true", StringComparison.OrdinalIgnoreCase);
                         break;
+                    case "disableSslCertificateValidation":
+                        indexer.DisableSslCertificateValidation = string.Equals(fieldValue, "true", StringComparison.OrdinalIgnoreCase);
+                        break;
                 }
             }
         }
@@ -410,6 +416,7 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
             db.Entry(indexer).Property(i => i.Tags).IsModified = true;
         }
 
+        IndexerTlsPolicy.ClientName(indexer);
         indexer.LastModified = DateTime.UtcNow;
 
         logger.LogInformation("[INDEXER UPDATE] Updated {Type} indexer: {Name} at {Url}{ApiPath}",
@@ -577,6 +584,9 @@ app.MapPost("/api/indexer/caps", async (
                     case "apiKey":
                         probe.ApiKey = fieldValue;
                         break;
+                    case "disableSslCertificateValidation":
+                        probe.DisableSslCertificateValidation = string.Equals(fieldValue, "true", StringComparison.OrdinalIgnoreCase);
+                        break;
                 }
             }
         }
@@ -589,7 +599,7 @@ app.MapPost("/api/indexer/caps", async (
         // Newznab and Torznab share the same caps XML schema, so we
         // route both through TorznabClient.GetCapabilitiesAsync. Caps
         // lookup doesn't need quality detection, so we omit it.
-        var httpClient = httpClientFactory.CreateClient("IndexerClient");
+        var httpClient = httpClientFactory.CreateClient(IndexerTlsPolicy.ClientName(probe));
         var torznabLogger = loggerFactory.CreateLogger<TorznabClient>();
         var client = new TorznabClient(httpClient, torznabLogger);
 
@@ -625,7 +635,7 @@ app.MapPost("/api/indexer/test", async (
         // Read raw JSON to handle Prowlarr API format from frontend
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync();
-        logger.LogInformation("[INDEXER TEST] Received payload: {Json}", json);
+        logger.LogInformation("[INDEXER TEST] Received payload: {Json}", Sportarr.Api.Helpers.SecretRedactor.Json(json));
 
         // Deserialize as dynamic JSON to extract fields
         var apiIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
@@ -661,6 +671,9 @@ app.MapPost("/api/indexer/test", async (
                     case "apiKey":
                         indexer.ApiKey = fieldValue;
                         break;
+                    case "disableSslCertificateValidation":
+                        indexer.DisableSslCertificateValidation = string.Equals(fieldValue, "true", StringComparison.OrdinalIgnoreCase);
+                        break;
                     case "categories":
                         if (!string.IsNullOrEmpty(fieldValue))
                         {
@@ -692,6 +705,7 @@ app.MapPost("/api/indexer/test", async (
             }
         }
 
+        IndexerTlsPolicy.ClientName(indexer);
         logger.LogInformation("[INDEXER TEST] Testing {Type} indexer: {Name} at {Url}{ApiPath}",
             indexer.Type, indexer.Name, indexer.Url, indexer.ApiPath);
         logger.LogInformation("[INDEXER TEST] ApiKey present: {HasApiKey}, Categories: {Categories}",
@@ -791,6 +805,7 @@ app.MapPost("/api/indexer/test", async (
             new { name = "additionalParameters", value = i.AdditionalParameters ?? "" },
             new { name = "multiLanguages", value = i.MultiLanguages != null ? string.Join(",", i.MultiLanguages) : "" },
             new { name = "rejectBlocklistedTorrentHashes", value = i.RejectBlocklistedTorrentHashes.ToString() },
+            new { name = "disableSslCertificateValidation", value = i.DisableSslCertificateValidation.ToString().ToLowerInvariant() },
             new { name = "downloadClientId", value = i.DownloadClientId?.ToString() ?? "" },
             new { name = "cookie", value = i.Cookie ?? "" },
             new { name = "allowZeroSize", value = i.RssAllowZeroSize.ToString().ToLowerInvariant() },
@@ -829,7 +844,8 @@ app.MapPost("/api/indexer/test", async (
             new { name = "requestDelayMs", value = "0" },
             new { name = "seasonPackSeedTime", value = "" },
             new { name = "additionalParameters", value = "" },
-            new { name = "rejectBlocklistedTorrentHashes", value = "false" }
+            new { name = "rejectBlocklistedTorrentHashes", value = "false" },
+            new { name = "disableSslCertificateValidation", value = "false" }
         },
         tags = new List<int>()
     };

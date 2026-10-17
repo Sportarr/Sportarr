@@ -30,6 +30,10 @@ public class TrashGuideSyncService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    private sealed record PreparedRecommendation(
+        List<(string FileName, TrashCustomFormat Format)> Formats,
+        TrashQualitySizeData QualitySizes);
+
     // Regex to strip HTML tags
     private static readonly System.Text.RegularExpressions.Regex HtmlTagRegex =
         new(@"<[^>]+>", System.Text.RegularExpressions.RegexOptions.Compiled);
@@ -171,6 +175,11 @@ public class TrashGuideSyncService
                     {
                         result.Skipped++;
                     }
+                    else
+                    {
+                        result.Failed++;
+                        result.Errors.Add($"{fileName}: format could not be fetched");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -206,19 +215,14 @@ public class TrashGuideSyncService
     }
 
     /// <summary>
-    /// One-time first-run enrichment. The app ships with bundled "floor" quality
-    /// profiles and a handful of formats so a fresh (even offline) install always
-    /// has working profiles. The first time the app is online, this pulls the full
-    /// sport-relevant format set fresh from TRaSH Guides and applies real scores to
-    /// the seeded (non-customized) profiles, taking them from a few formats to the
-    /// full depth. It respects user edits (IsCustomized profiles are skipped) and,
-    /// if the app is offline, leaves the done-flag false so it retries next start
-    /// rather than losing the enrichment.
+    /// Finish pending first-run enrichment on older installs. Fresh installs
+    /// use Standard setup until the user selects Recommended setup. A failed
+    /// legacy sync retries on the next start.
     /// </summary>
     public async Task EnsureFirstRunEnrichmentAsync(CancellationToken cancellationToken = default)
     {
         var settings = await GetSyncSettingsAsync();
-        if (settings.FirstRunEnrichmentDone)
+        if (settings.FirstRunEnrichmentDone || settings.UseRecommendedReleaseSettings == false)
             return;
 
         _logger.LogInformation("[TRaSH Sync] First-run enrichment: pulling the full format set from TRaSH Guides");
@@ -230,9 +234,57 @@ public class TrashGuideSyncService
             return; // leave the flag unset so it retries next start
         }
 
-        settings.FirstRunEnrichmentDone = true;
-        await SaveSyncSettingsAsync(settings);
+        await UpdateSyncSettingsAsync(current =>
+        {
+            current.FirstRunEnrichmentDone = true;
+            return current;
+        });
         _logger.LogInformation("[TRaSH Sync] First-run enrichment complete");
+    }
+
+    public async Task<TrashSyncResult> SetOnboardingReleasePreferenceAsync(
+        string mode, CancellationToken cancellationToken = default)
+    {
+        if (mode == "standard")
+        {
+            await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+            if ((await GetSyncSettingsAsync()).UseRecommendedReleaseSettings == false)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return new TrashSyncResult { Success = true };
+            }
+            var profiles = await _db.QualityProfiles
+                .Where(profile => (profile.Id == 1 || profile.Id == 2) && !profile.IsCustomized)
+                .ToListAsync(cancellationToken);
+            foreach (var profile in profiles)
+            {
+                profile.FormatItems = profile.FormatItems.Select(item => new ProfileFormatItem
+                {
+                    Id = item.Id,
+                    FormatId = item.FormatId,
+                    Score = 0
+                }).ToList();
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+            await UpdateSyncSettingsAsync(current =>
+            {
+                current.UseRecommendedReleaseSettings = false;
+                current.AutoApplyScoresToProfiles = false;
+                current.EnableQualitySizeSync = false;
+                return current;
+            });
+            await transaction.CommitAsync(cancellationToken);
+            return new TrashSyncResult { Success = true };
+        }
+        if (mode != "recommended")
+            return new TrashSyncResult { Success = false, Error = "Choose Standard or Recommended setup." };
+
+        var result = await SyncAndApplyToManagedProfilesAsync(cancellationToken, requireCompleteRecommendation: true);
+        if (!result.Success)
+            return result;
+
+        return result;
     }
 
     /// <summary>
@@ -242,12 +294,27 @@ public class TrashGuideSyncService
     /// manual "sync now" button. User-created and user-edited profiles are never
     /// touched. Best-effort: returns a failed result if the format sync couldn't run.
     /// </summary>
-    public async Task<TrashSyncResult> SyncAndApplyToManagedProfilesAsync(CancellationToken cancellationToken = default)
+    public async Task<TrashSyncResult> SyncAndApplyToManagedProfilesAsync(
+        CancellationToken cancellationToken = default, bool requireCompleteRecommendation = false)
     {
+        PreparedRecommendation? prepared = null;
+        if (requireCompleteRecommendation)
+        {
+            var preparation = await PrepareRecommendationAsync(cancellationToken);
+            if (preparation.Error != null)
+                return preparation.Error;
+            prepared = preparation.Data;
+        }
+
+        await using var transaction = requireCompleteRecommendation
+            ? await _db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         TrashSyncResult syncResult;
         try
         {
-            syncResult = await SyncAllSportCustomFormatsAsync();
+            syncResult = prepared == null
+                ? await SyncAllSportCustomFormatsAsync()
+                : await SyncPreparedSportFormatsAsync(prepared.Formats);
         }
         catch (Exception ex)
         {
@@ -257,33 +324,127 @@ public class TrashGuideSyncService
 
         if (!syncResult.Success)
             return syncResult;
-
-        var profiles = await _db.QualityProfiles
-            .Where(p => p.IsSynced && !p.IsCustomized)
-            .ToListAsync(cancellationToken);
-
-        var settings = await GetSyncSettingsAsync();
-        foreach (var profile in profiles)
+        if (requireCompleteRecommendation &&
+            (syncResult.Failed > 0 || syncResult.Created + syncResult.Updated + syncResult.Skipped == 0))
         {
-            await ApplyTrashScoresToProfileAsync(profile.Id, settings.AutoApplyScoreSet);
+            syncResult.Success = false;
+            syncResult.Error = "Could not import all release preferences. Try again.";
+            return syncResult;
         }
 
-        // Also refresh the recommended quality size limits, so "one press" covers
-        // scoring and sizes together. Best-effort - a size-sync failure doesn't fail
-        // the whole operation.
+        var managedProfiles = _db.QualityProfiles
+            .Where(p => p.IsSynced && !p.IsCustomized);
+        if (requireCompleteRecommendation)
+            managedProfiles = managedProfiles.Where(p => p.Id == 1 || p.Id == 2);
+        var profiles = await managedProfiles.ToListAsync(cancellationToken);
+
+        var settings = await GetSyncSettingsAsync();
+        var scoresApplied = false;
         try
         {
-            await SyncQualitySizesFromTrashAsync(enableAutoSync: true);
+            foreach (var profile in profiles)
+            {
+                var scoreResult = await ApplyTrashScoresToProfileAsync(profile.Id,
+                    settings.AutoApplyScoreSet, requireCompleteFetch: requireCompleteRecommendation,
+                    preparedFormats: prepared?.Formats);
+                if (requireCompleteRecommendation && !scoreResult.Success)
+                    return scoreResult;
+            }
+            scoresApplied = true;
+
+            // Keep legacy sync best-effort. Onboarding requires both imports.
+            var qualityResult = await SyncQualitySizesFromTrashAsync(enableAutoSync: true,
+                preparedData: prepared?.QualitySizes);
+            if (requireCompleteRecommendation && !qualityResult.Success)
+                return qualityResult;
+            if (requireCompleteRecommendation && qualityResult.Created + qualityResult.Updated == 0)
+                return new TrashSyncResult { Success = false, Error = "No quality sizes were imported. Try again." };
+
+            if (requireCompleteRecommendation)
+            {
+                await UpdateSyncSettingsAsync(current =>
+                {
+                    current.UseRecommendedReleaseSettings = true;
+                    current.FirstRunEnrichmentDone = true;
+                    return current;
+                });
+                await transaction!.CommitAsync(cancellationToken);
+                if (syncResult.Created > 0 || syncResult.Updated > 0)
+                    _cfCache.InvalidateAll();
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[TRaSH Sync] Quality size sync failed during managed-profile sync");
+            _logger.LogWarning(ex, "[TRaSH Sync] Managed-profile sync failed");
+            if (requireCompleteRecommendation)
+                return new TrashSyncResult { Success = false, Error = ex.Message };
+            if (!scoresApplied)
+                throw;
         }
 
         _logger.LogInformation(
             "[TRaSH Sync] Synced {Formats} formats, applied scores to {Profiles} managed profiles, and refreshed sizes",
             syncResult.Created + syncResult.Updated, profiles.Count);
         return syncResult;
+    }
+
+    private async Task<(PreparedRecommendation? Data, TrashSyncResult? Error)> PrepareRecommendationAsync(
+        CancellationToken cancellationToken)
+    {
+        List<string> files;
+        try
+        {
+            files = (await FetchCustomFormatFileListAsync(allowFallback: false))
+                .Where(TrashCategories.IsRelevantForSports).ToList();
+        }
+        catch (Exception ex)
+        {
+            return (null, new TrashSyncResult
+            {
+                Success = false,
+                Error = $"Could not fetch the release preference list: {ex.Message}"
+            });
+        }
+        if (files.Count == 0)
+            return (null, new TrashSyncResult { Success = false, Error = "No sport-relevant release preferences were found. Try again." });
+
+        var formats = new List<(string FileName, TrashCustomFormat Format)>();
+        foreach (var fileName in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var format = await FetchCustomFormatAsync(fileName);
+            if (format == null)
+                return (null, new TrashSyncResult
+                {
+                    Success = false,
+                    Failed = 1,
+                    Error = $"Could not fetch release preferences for {fileName}. Try again."
+                });
+            formats.Add((fileName, format));
+        }
+
+        var (qualitySizes, error) = await FetchQualitySizeDataAsync();
+        if (qualitySizes == null)
+            return (null, new TrashSyncResult { Success = false, Error = error });
+
+        return (new PreparedRecommendation(formats, qualitySizes), null);
+    }
+
+    private async Task<TrashSyncResult> SyncPreparedSportFormatsAsync(
+        IReadOnlyList<(string FileName, TrashCustomFormat Format)> formats)
+    {
+        var result = new TrashSyncResult();
+        foreach (var (fileName, format) in formats)
+        {
+            var synced = await SyncCustomFormatFromDataAsync(format, fileName);
+            if (synced.created) result.Created++;
+            if (synced.updated) result.Updated++;
+            if (synced.skipped) result.Skipped++;
+            if (synced.created || synced.updated) result.SyncedFormats.Add(synced.name);
+        }
+        await _db.SaveChangesAsync();
+        result.Success = true;
+        return result;
     }
 
     /// <summary>
@@ -357,7 +518,9 @@ public class TrashGuideSyncService
     /// <param name="profileId">Profile ID to update</param>
     /// <param name="scoreSet">TRaSH score set to use (e.g., "default", "french-multi")</param>
     /// <param name="forceUpdate">If true, update even if profile is customized (used when user explicitly imports)</param>
-    public async Task<TrashSyncResult> ApplyTrashScoresToProfileAsync(int profileId, string scoreSet = "default", bool forceUpdate = false)
+    public async Task<TrashSyncResult> ApplyTrashScoresToProfileAsync(int profileId, string scoreSet = "default",
+        bool forceUpdate = false, bool requireCompleteFetch = false,
+        IReadOnlyList<(string FileName, TrashCustomFormat Format)>? preparedFormats = null)
     {
         var result = new TrashSyncResult();
 
@@ -405,13 +568,30 @@ public class TrashGuideSyncService
 
             // Fetch current TRaSH data to get scores for the specified score set
             var trashScores = new Dictionary<string, int>();
-            var cfFiles = await FetchCustomFormatFileListAsync();
+            var cfFiles = preparedFormats?.Select(item => item.FileName).ToList()
+                ?? await FetchCustomFormatFileListAsync();
+            if (requireCompleteFetch)
+                cfFiles = cfFiles.Where(TrashCategories.IsRelevantForSports).ToList();
+            if (requireCompleteFetch && cfFiles.Count == 0)
+            {
+                result.Success = false;
+                result.Error = "Could not fetch release scores. Try again.";
+                return result;
+            }
 
             foreach (var fileName in cfFiles)
             {
                 try
                 {
-                    var cf = await FetchCustomFormatAsync(fileName);
+                    var cf = preparedFormats == null
+                        ? await FetchCustomFormatAsync(fileName)
+                        : preparedFormats.First(item => item.FileName == fileName).Format;
+                    if (requireCompleteFetch && cf == null)
+                    {
+                        result.Success = false;
+                        result.Error = $"Could not fetch release scores for {fileName}. Try again.";
+                        return result;
+                    }
                     if (cf?.TrashScores != null)
                     {
                         // Try the specified score set, fall back to default.
@@ -438,9 +618,14 @@ public class TrashGuideSyncService
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Skip failed fetches
+                    if (requireCompleteFetch)
+                    {
+                        result.Success = false;
+                        result.Error = $"Could not fetch release scores for {fileName}: {ex.Message}";
+                        return result;
+                    }
                 }
             }
 
@@ -585,7 +770,7 @@ public class TrashGuideSyncService
 
     // Private helper methods
 
-    private async Task<List<string>> FetchCustomFormatFileListAsync()
+    private async Task<List<string>> FetchCustomFormatFileListAsync(bool allowFallback = true)
     {
         // Use GitHub API to list files in the cf directory
         var client = _httpClientFactory.CreateClient("TrashGuides");
@@ -609,6 +794,8 @@ public class TrashGuideSyncService
         }
         catch (Exception ex)
         {
+            if (!allowFallback)
+                throw new HttpRequestException("The format listing is unavailable.", ex);
             _logger.LogWarning(ex, "[TRaSH Sync] Failed to fetch file list from GitHub API, using fallback");
             return GetFallbackCustomFormatList();
         }
@@ -1498,13 +1685,18 @@ public class TrashGuideSyncService
     /// </summary>
     public async Task<TrashSyncSettings> GetSyncSettingsAsync()
     {
-        var appSettings = await _db.AppSettings.FirstOrDefaultAsync();
+        var appSettings = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync();
         if (appSettings == null)
             return new TrashSyncSettings();
 
+        return DeserializeSyncSettings(appSettings.TrashSyncSettings);
+    }
+
+    private static TrashSyncSettings DeserializeSyncSettings(string? json)
+    {
         try
         {
-            return JsonSerializer.Deserialize<TrashSyncSettings>(appSettings.TrashSyncSettings, JsonOptions)
+            return JsonSerializer.Deserialize<TrashSyncSettings>(json ?? "{}", JsonOptions)
                 ?? new TrashSyncSettings();
         }
         catch
@@ -1518,16 +1710,62 @@ public class TrashGuideSyncService
     /// </summary>
     public async Task SaveSyncSettingsAsync(TrashSyncSettings settings)
     {
-        var appSettings = await _db.AppSettings.FirstOrDefaultAsync();
-        if (appSettings == null)
+        await UpdateSyncSettingsAsync(current =>
         {
-            appSettings = new AppSettings();
-            _db.AppSettings.Add(appSettings);
+            if (settings.UseRecommendedReleaseSettings != current.UseRecommendedReleaseSettings)
+            {
+                settings.AutoApplyScoresToProfiles = current.AutoApplyScoresToProfiles;
+                settings.EnableQualitySizeSync = current.EnableQualitySizeSync;
+            }
+            settings.UseRecommendedReleaseSettings = current.UseRecommendedReleaseSettings;
+            settings.FirstRunEnrichmentDone = current.FirstRunEnrichmentDone;
+            return settings;
+        });
+    }
+
+    private async Task<TrashSyncSettings> UpdateSyncSettingsAsync(
+        Func<TrashSyncSettings, TrashSyncSettings> update)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var appSettings = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync();
+            if (appSettings == null)
+            {
+                var first = update(new TrashSyncSettings());
+                _db.AppSettings.Add(new AppSettings
+                {
+                    TrashSyncSettings = JsonSerializer.Serialize(first, JsonOptions)
+                });
+                await _db.SaveChangesAsync();
+                return first;
+            }
+
+            var next = update(DeserializeSyncSettings(appSettings.TrashSyncSettings));
+            var nextJson = JsonSerializer.Serialize(next, JsonOptions);
+            var modifiedAt = DateTime.UtcNow;
+            var updated = await _db.AppSettings
+                .Where(value => value.Id == appSettings.Id &&
+                    value.TrashSyncSettings == appSettings.TrashSyncSettings)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(value => value.TrashSyncSettings, nextJson)
+                    .SetProperty(value => value.LastModified, modifiedAt));
+            if (updated == 0)
+                continue;
+
+            var tracked = _db.ChangeTracker.Entries<AppSettings>()
+                .FirstOrDefault(entry => entry.Entity.Id == appSettings.Id);
+            if (tracked != null)
+            {
+                tracked.Property(value => value.TrashSyncSettings).CurrentValue = nextJson;
+                tracked.Property(value => value.TrashSyncSettings).OriginalValue = nextJson;
+                tracked.Property(value => value.LastModified).CurrentValue = modifiedAt;
+                tracked.Property(value => value.LastModified).OriginalValue = modifiedAt;
+            }
+
+            return next;
         }
 
-        appSettings.TrashSyncSettings = JsonSerializer.Serialize(settings, JsonOptions);
-        appSettings.LastModified = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        throw new DbUpdateConcurrencyException("Release settings changed during save. Try again.");
     }
 
     /// <summary>
@@ -1642,7 +1880,30 @@ public class TrashGuideSyncService
     /// Updates existing quality definitions with TRaSH recommended min/max/preferred values
     /// </summary>
     /// <param name="enableAutoSync">If true, enables automatic sync going forward (set when user manually imports)</param>
-    public async Task<TrashSyncResult> SyncQualitySizesFromTrashAsync(bool enableAutoSync = false)
+    private async Task<(TrashQualitySizeData? Data, string? Error)> FetchQualitySizeDataAsync()
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("TrashGuides");
+            using var response = await client.GetAsync(QualitySizeUrl);
+            if (!response.IsSuccessStatusCode)
+                return (null, $"Failed to fetch TRaSH quality sizes: {response.StatusCode}");
+
+            var json = await response.Content.ReadAsStringAsync();
+            var data = JsonSerializer.Deserialize<TrashQualitySizeData>(json, JsonOptions);
+            return data?.Qualities == null
+                ? (null, "Invalid TRaSH quality size data")
+                : (data, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[TRaSH Sync] Failed to fetch quality sizes");
+            return (null, ex.Message);
+        }
+    }
+
+    public async Task<TrashSyncResult> SyncQualitySizesFromTrashAsync(bool enableAutoSync = false,
+        TrashQualitySizeData? preparedData = null)
     {
         var result = new TrashSyncResult();
 
@@ -1650,23 +1911,13 @@ public class TrashGuideSyncService
         {
             _logger.LogInformation("[TRaSH Sync] Importing quality sizes from TRaSH Guides (enableAutoSync={EnableAutoSync})", enableAutoSync);
 
-            var client = _httpClientFactory.CreateClient("TrashGuides");
-
-            using var response = await client.GetAsync(QualitySizeUrl);
-            if (!response.IsSuccessStatusCode)
-            {
-                result.Success = false;
-                result.Error = $"Failed to fetch TRaSH quality sizes: {response.StatusCode}";
-                return result;
-            }
-
-            var json = await response.Content.ReadAsStringAsync();
-            var trashData = JsonSerializer.Deserialize<TrashQualitySizeData>(json, JsonOptions);
-
+            var (trashData, error) = preparedData == null
+                ? await FetchQualitySizeDataAsync()
+                : (preparedData, null);
             if (trashData?.Qualities == null)
             {
                 result.Success = false;
-                result.Error = "Invalid TRaSH quality size data";
+                result.Error = error ?? "Invalid TRaSH quality size data";
                 return result;
             }
 

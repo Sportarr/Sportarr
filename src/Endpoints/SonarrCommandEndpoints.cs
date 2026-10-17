@@ -271,7 +271,8 @@ public static class SonarrCommandEndpoints
                                             Quality = analysis.Quality,
                                             // A scan a download client asked for replaces what
                                             // an event holds only with an upgrade.
-                                            OnlyIfUpgrade = true
+                                            OnlyIfUpgrade = true,
+                                            FromDownloadClient = true
                                         }
                                     });
                                     rejectedReason = importResult.Rejected.Count > 0 ? importResult.Rejected[0].Reason : null;

@@ -308,6 +308,9 @@ public static class SonarrQueueEndpoints
 
         if (import is null) return Results.NotFound();
 
+        if (import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal))
+            return Results.BadRequest(new { error = "Choose a file to keep for this recording." });
+
         if (removeFromClient && import.DownloadClient != null && !string.IsNullOrEmpty(import.DownloadId))
         {
             try

@@ -79,7 +79,7 @@ nav:
   - Integrations:
       - Aria2: integrations/aria2.md
       - autobrr: integrations/autobrr.md
-      - Bazarr: integrations/bazarr.md
+      - Bazarr and Bazarr+: integrations/bazarr.md
       - Blackhole: integrations/blackhole.md
       - Decypharr: integrations/decypharr.md
       - Deluge: integrations/deluge.md

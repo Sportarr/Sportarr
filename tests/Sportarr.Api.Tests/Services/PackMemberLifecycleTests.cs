@@ -251,9 +251,13 @@ public class PackMemberLifecycleTests(Xunit.Abstractions.ITestOutputHelper outpu
             await rig.Db.SaveChangesAsync();
             var client = await rig.Db.DownloadClients.SingleAsync();
             client.RemoveCompletedDownloads = true; client.PostImportCategory = "imported";
+            var indexer = new Indexer { Name = "Pack fixture", Url = "http://localhost", SeedRatio = 0.5 };
+            rig.Db.Indexers.Add(indexer);
+            await rig.Db.SaveChangesAsync();
             var group = Guid.NewGuid();
             rig.Owners = rig.Events.Select(item => new DownloadQueueItem { EventId = item.Id, Event = item,
                 DownloadClientId = client.Id, DownloadClient = client, DownloadId = "owned-pack-job",
+                IndexerId = indexer.Id,
                 Title = ReleaseTitle, IsPack = true, PackGroupId = group, Quality = "WEBDL-720p",
                 Protocol = "Torrent", Status = DownloadStatus.Completed, Progress = 100, CompletedAt = DateTime.UtcNow }).ToArray();
             rig.Db.DownloadQueue.AddRange(rig.Owners); await rig.Db.SaveChangesAsync();

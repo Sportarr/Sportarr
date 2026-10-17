@@ -849,6 +849,9 @@ export default function LeagueDetailPage() {
       specialEventsMonitorType?: string;
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
+      finalTeamMode?: string;
+      playoffTeamMode?: string;
+      preseasonTeamMode?: string;
       retentionDays?: number;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
@@ -1003,6 +1006,9 @@ export default function LeagueDetailPage() {
     specialEventsMonitorType: string,
     monitorPlayoffs: boolean,
     monitorPreseason: boolean,
+    finalTeamMode: string,
+    playoffTeamMode: string,
+    preseasonTeamMode: string,
     retentionDays: number,
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
@@ -1028,6 +1034,9 @@ export default function LeagueDetailPage() {
       specialEventsMonitorType,
       monitorPlayoffs,
       monitorPreseason,
+      finalTeamMode,
+      playoffTeamMode,
+      preseasonTeamMode,
       retentionDays,
       allowHighlights,
       sessionTypeQualityProfiles,

@@ -108,6 +108,8 @@ http://localhost:1867/api
 | POST | `/api/qualityprofile` | Create profile |
 | PUT | `/api/qualityprofile/{id}` | Update profile |
 
+Profiles created through `POST /api/qualityprofile` are user-managed. The endpoint assigns a new ID, keeps quality and custom format scores, and clears automatic score sync metadata supplied in the request.
+
 ### System
 
 | Method | Endpoint | Description |

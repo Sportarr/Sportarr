@@ -186,7 +186,7 @@ public class SynologyDownloadStationClientTests
         var handler = new FakeSynologyHandler
         {
             ResponseForTaskMethod = (method, _) => method == "list"
-                ? """{"success":true,"data":{"task":[{"id":"dbid_17","title":"Match.mkv","status":"finished","size":5000000000,"additional":{"transfer":{"size_downloaded":5000000000,"size_uploaded":100,"speed_download":0},"detail":{"destination":"sportarr","completed_time":1700000000}}}]}}"""
+                ? """{"success":true,"data":{"task":[{"id":"dbid_17","title":"Match.mkv","status":"finished","size":5000000000,"additional":{"transfer":{"size_downloaded":5000000000,"size_uploaded":100,"speed_download":0},"detail":{"destination":"sportarr","create_time":"1699990000","completed_time":1700000000}}}]}}"""
                 : """{"success":true,"data":{}}"""
         };
         var client = new SynologyDownloadStationClient(new HttpClient(handler), NullLogger<SynologyDownloadStationClient>.Instance);
@@ -199,6 +199,7 @@ public class SynologyDownloadStationClientTests
         status.Size.Should().Be(5000000000);
         status.SavePath.Should().Be(Path.Combine("sportarr", "Match.mkv"));
         status.CompletedAt.Should().NotBeNull();
+        status.AddedAt.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1699990000).UtcDateTime);
     }
 
     [Fact]

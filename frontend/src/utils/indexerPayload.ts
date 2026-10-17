@@ -25,6 +25,7 @@ export interface IndexerFormData {
   additionalParameters?: string;
   multiLanguages?: string[];
   rejectBlocklistedTorrentHashes?: boolean;
+  disableSslCertificateValidation?: boolean;
   downloadClientId?: number;
   tags?: number[];
   cookie?: string;
@@ -90,6 +91,10 @@ export function toApiIndexer(indexer: IndexerFormData): ApiIndexerPayload {
       value: String(indexer.rejectBlocklistedTorrentHashes),
     });
   }
+  fields.push({
+    name: 'disableSslCertificateValidation',
+    value: String(indexer.disableSslCertificateValidation ?? false),
+  });
   if (indexer.downloadClientId !== undefined) {
     fields.push({ name: 'downloadClientId', value: String(indexer.downloadClientId) });
   }

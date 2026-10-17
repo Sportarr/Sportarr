@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
@@ -117,6 +118,8 @@ public class FileImportService : IFileImportService
         download.TimeRemaining = null;
         download.CompletedAt ??= importedAt;
         download.ImportedAt = importedAt;
+        download.ClientCleanupCompleted = false;
+        download.ClientCleanupCheckedAt = null;
         download.LastUpdate = importedAt;
         download.ErrorMessage = null;
     }
@@ -170,9 +173,73 @@ public class FileImportService : IFileImportService
             allowPreferenceOverride: allowPreferenceOverride, allowSavedPath: allowSavedPath,
             selectedRelativePath: selectedRelativePath);
 
+    /// <summary>
+    /// Identify changes that can alter a rejected upgrade decision.
+    /// </summary>
+    public async Task<string?> GetRejectedImportDecisionSignatureAsync(DownloadQueueItem download)
+    {
+        var eventInfo = await _db.Events.AsNoTracking()
+            .Include(e => e.League)
+            .FirstOrDefaultAsync(e => e.Id == download.EventId);
+        if (eventInfo == null) return null;
+
+        var held = await _db.EventFiles.AsNoTracking()
+            .HeldFiles(eventInfo.Id)
+            .ToListAsync();
+        var config = await _configService.GetConfigAsync();
+        var profiles = await _db.QualityProfiles.AsNoTracking().ToListAsync();
+        var profile = RssSyncService.ResolveQualityProfile(eventInfo, profiles);
+        return JsonSerializer.Serialize(new
+        {
+            download.EventId,
+            download.Part,
+            download.Quality,
+            download.CustomFormatScore,
+            download.Title,
+            download.OutputPath,
+            config.DvrReplaceRecordingsWithIndexerReleases,
+            config.DownloadPropersAndRepacks,
+            config.EnableMultiPartEpisodes,
+            Profile = profile == null ? null : new
+            {
+                profile.Id,
+                profile.UpgradesAllowed,
+                profile.CutoffQuality,
+                profile.MinFormatScore,
+                profile.CutoffFormatScore,
+                profile.FormatScoreIncrement,
+                profile.MinSize,
+                profile.MaxSize,
+                profile.Items,
+                FormatItems = profile.FormatItems.Select(item => new
+                {
+                    item.Id,
+                    item.FormatId,
+                    item.Score,
+                }).ToList(),
+            },
+            Held = held.Select(file => new
+            {
+                file.Id,
+                file.FilePath,
+                file.PartName,
+                file.PartNumber,
+                file.Quality,
+                file.CustomFormatScore,
+                file.OriginalTitle,
+                file.IsIptvRecording,
+            }).ToList(),
+        });
+    }
+
     public async Task<IReadOnlyList<ImportVideoCandidate>> ListVideoCandidatesAsync(DownloadQueueItem download)
     {
         var path = await GetDownloadPathAsync(download, allowSavedPath: true);
+        return ListVideoCandidatesAtPath(path);
+    }
+
+    public IReadOnlyList<ImportVideoCandidate> ListVideoCandidatesAtPath(string path)
+    {
         var root = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? path;
         return FindVideoFiles(path)
             .Select(file => new ImportVideoCandidate(Path.GetRelativePath(root, file), GetFileSizeResolvingSymlinks(file)))
@@ -267,6 +334,9 @@ public class FileImportService : IFileImportService
         {
             _db.Entry(download).State = EntityState.Unchanged;
         }
+
+        if (download.DownloadClient == null && download.DownloadClientId is int clientId)
+            download.DownloadClient = await _db.DownloadClients.FindAsync(clientId);
 
         // Update status to importing
         download.Status = DownloadStatus.Importing;
@@ -398,6 +468,10 @@ public class FileImportService : IFileImportService
 
             // Find video files
             var videoFiles = FindVideoFiles(downloadPath);
+            var partialSelection = selectedRelativePath != null && videoFiles.Count > 1;
+            if (partialSelection && manualImportMode == PostImportMode.Move &&
+                DownloadClientService.IsTorrentDownload(download))
+                throw new InvalidOperationException("A selected file from a torrent cannot be moved while other files remain in the download.");
 
             _logger.LogDebug("Found {Count} video file(s) in: {Path}", videoFiles.Count, downloadPath);
 
@@ -621,7 +695,8 @@ public class FileImportService : IFileImportService
                 var decision = ImportUpgradeRule.Evaluate(
                     upgradedFile.Quality, upgradedFile.CustomFormatScore, upgradedFile.OriginalTitle ?? upgradedFile.Quality,
                     qualityString, download.CustomFormatScore, download.Title,
-                    config.DownloadPropersAndRepacks, qualityProfile);
+                    config.DownloadPropersAndRepacks, qualityProfile,
+                    SourcePrecedence.Compare(config, incomingIsIptvRecording: false, upgradedFile.IsIptvRecording));
                 if (!decision.IsUpgrade && !allowPreferenceOverride)
                 {
                     _logger.LogWarning("[Import] {Rejection} ({Title})", decision.Rejection, download.Title);
@@ -703,10 +778,12 @@ public class FileImportService : IFileImportService
                     {
                         var upgradeConfig = await _configService.GetConfigAsync();
                         var recycleBin = upgradeConfig.RecycleBin;
+                        string? recycledVideoPath = null;
                         if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
                         {
                             var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBin, Path.GetFileName(upgradedFile.FilePath));
                             File.Move(upgradedFile.FilePath, recyclePath);
+                            recycledVideoPath = recyclePath;
                             _logger.LogInformation("[Import] Moved old file to recycle bin during upgrade: {Path} -> {RecyclePath}",
                                 upgradedFile.FilePath, recyclePath);
                         }
@@ -715,6 +792,8 @@ public class FileImportService : IFileImportService
                             File.Delete(upgradedFile.FilePath);
                             _logger.LogInformation("[Import] Deleted old file during upgrade: {Path}", upgradedFile.FilePath);
                         }
+
+                        await _metadataWriterService.DeleteEventMetadataAsync(upgradedFile, recycledVideoPath);
 
                         // Try to clean up empty parent folder
                         var oldFileParentDir = Path.GetDirectoryName(upgradedFile.FilePath);
@@ -786,7 +865,7 @@ public class FileImportService : IFileImportService
             // Seeding-aware transfer plan: symlink sources re-link, per-client
             // overrides win, and Auto preserves any torrent its client still
             // tracks so an import can never break seeding.
-            var isTorrentDownload = string.Equals(download.Protocol, "Torrent", StringComparison.OrdinalIgnoreCase);
+            var isTorrentDownload = DownloadClientService.IsTorrentDownload(download);
             TransferPlan plan;
             if (blackholeReadOnly)
             {
@@ -806,7 +885,8 @@ public class FileImportService : IFileImportService
             }
             else
             {
-                var stillInClient = isTorrentDownload && await IsStillInClientAsync(download);
+                // Client status cannot prove a torrent source is safe to move.
+                var stillInClient = isTorrentDownload;
                 plan = ImportTransferPlanner.Resolve(
                     download.DownloadClient?.PostImportMode ?? PostImportMode.Auto,
                     isTorrentDownload,
@@ -815,6 +895,9 @@ public class FileImportService : IFileImportService
                     settings.CopyFiles,
                     IsSymbolicLink(sourceFile));
             }
+            if (partialSelection && isTorrentDownload && !plan.PreserveSource)
+                plan = new TransferPlan(TransferAction.Copy, PreserveSource: true,
+                    "selected member of a multi-video torrent - source must stay for the remaining files");
             _logger.LogInformation("[Import] Transfer plan: {Action} (preserve source: {Preserve}) - {Reason}",
                 plan.Action, plan.PreserveSource, plan.Reason);
 
@@ -951,39 +1034,6 @@ public class FileImportService : IFileImportService
                 eventInfo.Quality = qualityString;
             }
 
-            // An event holding a file must carry a season and episode number.
-            // Sync clears the episode index for postponed and cancelled events
-            // on purpose, so a file arriving for one leaves the pair missing,
-            // and a media server or an integration then has nothing to order or
-            // key the file by. Fill the gap here rather than change what sync
-            // does, because the contradiction belongs to this file, not to the
-            // schedule.
-            if (eventInfo.SeasonNumber is null)
-            {
-                eventInfo.SeasonNumber = int.TryParse(eventInfo.Season, out var parsedSeason)
-                    ? parsedSeason
-                    : eventInfo.EventDate.Year;
-                _logger.LogWarning(
-                    "[Import] Event {EventId} had no season number; derived {Season} so the imported file can be ordered",
-                    eventInfo.Id, eventInfo.SeasonNumber);
-            }
-
-            if (eventInfo.EpisodeNumber is null)
-            {
-                // Position by date within the same league and season, which is
-                // the same ordering sync uses.
-                var earlierInSeason = await _db.Events
-                    .Where(e => e.LeagueId == eventInfo.LeagueId
-                                && e.SeasonNumber == eventInfo.SeasonNumber
-                                && e.Id != eventInfo.Id
-                                && e.EventDate < eventInfo.EventDate)
-                    .CountAsync();
-                eventInfo.EpisodeNumber = earlierInSeason + 1;
-                _logger.LogWarning(
-                    "[Import] Event {EventId} had no episode number; derived {Episode} from its date within the season",
-                    eventInfo.Id, eventInfo.EpisodeNumber);
-            }
-
             // Update grab history to mark as imported with file existing
             // This enables the re-grab feature if files are later deleted
             var grabHistoryEntry = await _db.GrabHistory
@@ -1055,8 +1105,22 @@ public class FileImportService : IFileImportService
             // POST-IMPORT CATEGORY: Change torrent category after successful import.
             // This allows users to move imported torrents to a different category for automated management
             // (e.g., move to "imported" category which uses different storage tier or seeding rules).
-            var packCoverageComplete = !packDirectory || await PackImportJobScope.HasCompleteCoverageAsync(_db, download, config);
+            var packCoverageComplete = !partialSelection &&
+                (!packDirectory || await PackImportJobScope.HasCompleteCoverageAsync(_db, download, config));
             if (packCoverageComplete) await ApplyPostImportCategoryAsync(download);
+
+            // KODI LOCAL METADATA: write the NFO/thumb sidecars for any enabled
+            // Kodi metadata provider. No-op when none are enabled. Never fails
+            // the import - a metadata-write failure is a Kodi-scraping problem,
+            // not an import problem.
+            try
+            {
+                await _metadataWriterService.WriteEventMetadataAsync(eventInfo, eventFile, eventInfo.League);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Import] Failed to write local metadata for '{Title}': {Error}", eventInfo.Title, ex.Message);
+            }
 
             // NOTIFICATIONS: Send notifications (Discord, Telegram, Plex, Jellyfin, Emby, etc.) for the import.
             // Media server refresh (Plex/Jellyfin/Emby) is handled through the notification system.
@@ -1091,19 +1155,6 @@ public class FileImportService : IFileImportService
             {
                 // Don't fail the import if notifications fail
                 _logger.LogWarning(ex, "[Import] Failed to send notifications about import: {Error}", ex.Message);
-            }
-
-            // KODI LOCAL METADATA: write the NFO/thumb sidecars for any enabled
-            // Kodi metadata provider. No-op when none are enabled. Never fails
-            // the import - a metadata-write failure is a Kodi-scraping problem,
-            // not an import problem.
-            try
-            {
-                await _metadataWriterService.WriteEventMetadataAsync(eventInfo, eventFile, eventInfo.League);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Import] Failed to write local metadata for '{Title}': {Error}", eventInfo.Title, ex.Message);
             }
 
             // Tell consumers which old file was removed after the new file imports.
@@ -1449,6 +1500,15 @@ public class FileImportService : IFileImportService
     {
         var destinationPath = rootFolder;
 
+        if (eventInfo.SeasonNumber is null)
+        {
+            eventInfo.SeasonNumber = SeasonNumberParser.Parse(eventInfo.Season)
+                ?? eventInfo.EventDate.Year;
+            _logger.LogWarning(
+                "[Import] Event {EventId} had no season number; derived {Season} so the imported file can be ordered",
+                eventInfo.Id, eventInfo.SeasonNumber);
+        }
+
         // IMPORTANT: Fetch episode number from API BEFORE building folder path
         // This ensures the {Episode} token in EventFolderFormat has the correct value
         // Episode number is the source of truth from sportarr.net API for Plex/Jellyfin/Emby metadata
@@ -1497,7 +1557,7 @@ public class FileImportService : IFileImportService
                 QualityFull = effectiveQualityFull,
                 ReleaseGroup = parsed.ReleaseGroup ?? string.Empty,
                 OriginalTitle = parsed.EventTitle,
-                OriginalFilename = Path.GetFileNameWithoutExtension(parsed.EventTitle),
+                OriginalFilename = FileNamingService.GetOriginalFilenameToken(sourceFile),
                 // Plex TV show structure
                 Series = eventInfo.League?.Name ?? eventInfo.Sport ?? string.Empty,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString(),
@@ -1710,60 +1770,6 @@ public class FileImportService : IFileImportService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Import] Failed to set file date on {Path}", destinationPath);
-        }
-    }
-
-    /// <summary>
-    /// Look up whether the download's client still tracks this item. Used by
-    /// the seeding-aware transfer plan: a torrent the client still has must
-    /// keep its source file. On any lookup failure the answer is TRUE - when
-    /// in doubt, preserving a seed beats breaking one.
-    /// </summary>
-    private async Task<bool> IsStillInClientAsync(DownloadQueueItem download)
-    {
-        if (download.DownloadClient == null || string.IsNullOrEmpty(download.DownloadId))
-        {
-            return false;
-        }
-
-        try
-        {
-            var status = await _downloadClientService.GetDownloadStatusAsync(download.DownloadClient, download.DownloadId);
-            if (status != null)
-            {
-                return true;
-            }
-
-            // A null status can mean EITHER "the torrent is gone" or "the
-            // check failed" - the client adapters swallow login failures,
-            // timeouts, and HTTP errors into null, so the catch below never
-            // sees them. Treating that ambiguity as "gone" moved seeding
-            // torrents out from under their client on any transient blip.
-            // Only trust "gone" when the client is provably reachable right
-            // now, and even then confirm with a second lookup.
-            var (reachable, _) = await _downloadClientService.TestConnectionAsync(download.DownloadClient, writeProbe: false);
-            if (!reachable)
-            {
-                _logger.LogWarning("[Import] {Client} is unreachable while checking whether the download is still seeding - assuming it is, to protect seeding",
-                    download.DownloadClient.Name);
-                return true;
-            }
-
-            status = await _downloadClientService.GetDownloadStatusAsync(download.DownloadClient, download.DownloadId);
-            if (status != null)
-            {
-                return true;
-            }
-
-            _logger.LogInformation("[Import] {Client} is reachable and does not track download {DownloadId} - treating it as removed from the client",
-                download.DownloadClient.Name, download.DownloadId);
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("[Import] Could not check whether the download is still in {Client} ({Error}) - assuming it is, to protect seeding",
-                download.DownloadClient.Name, ex.Message);
-            return true;
         }
     }
 

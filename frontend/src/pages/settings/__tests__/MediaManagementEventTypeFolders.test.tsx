@@ -59,7 +59,9 @@ describe('Media Management event type folders', () => {
     });
     renderWithProviders(<MediaManagementSettings />);
 
-    expect(await screen.findByRole('checkbox', { name: /Group Events by Type or Session/i })).toBeChecked();
+    // Wait for the saved setting before changing the related option.
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: /Group Events by Type or Session/i })).toBeChecked());
     await user.click(screen.getByRole('checkbox', { name: /Create Season Folders/i }));
 
     expect(screen.queryByRole('checkbox', { name: /Group Events by Type or Session/i })).not.toBeInTheDocument();

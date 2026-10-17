@@ -117,7 +117,8 @@ public class SeasonSearchService
 
         // Match releases to events
         var seasonReleases = new List<SeasonSearchRelease>();
-        var seenGuids = new HashSet<string>();
+        var deduplicator = new Helpers.ManualReleaseDeduplicator();
+        var seenEmptyGuid = false;
         var roundRaceNumbersByRound = seasonEvents
             .Where(evt => evt.League?.Name.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true &&
                 !string.IsNullOrEmpty(evt.Round))
@@ -128,10 +129,14 @@ public class SeasonSearchService
 
         foreach (var release in allReleases)
         {
-            // Skip duplicates
-            if (seenGuids.Contains(release.Guid))
+            if (string.IsNullOrEmpty(release.Guid))
+            {
+                if (seenEmptyGuid)
+                    continue;
+                seenEmptyGuid = true;
+            }
+            else if (!deduplicator.TryAdd(release))
                 continue;
-            seenGuids.Add(release.Guid);
 
             // Parse the release title once before the per-event loop. See
             // RssSyncService.FindMatchingEvent for the rationale — without

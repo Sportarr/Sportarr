@@ -153,6 +153,75 @@ public class DvrRecordingService
         }
     }
 
+    private async Task PreserveFailedCaptureAsync(DvrRecording recording)
+    {
+        if (recording.Status != DvrRecordingStatus.Failed ||
+            string.IsNullOrWhiteSpace(recording.OutputPath) || !File.Exists(recording.OutputPath))
+            return;
+
+        var originalPath = recording.OutputPath;
+        try
+        {
+            var config = await _configService.GetConfigAsync();
+            var configuredPath = config.DvrRecordingPath?.Trim();
+            string? basePath = null;
+            if (!string.IsNullOrWhiteSpace(configuredPath) && IsInsideDirectory(originalPath, configuredPath))
+                basePath = configuredPath;
+            else
+                basePath = (await _db.RootFolders.AsNoTracking().Select(root => root.Path).ToListAsync())
+                    .Where(root => IsInsideDirectory(originalPath, root))
+                    .OrderByDescending(root => root.Length)
+                    .FirstOrDefault();
+
+            if (basePath == null)
+            {
+                _logger.LogWarning("[DVR] Failed recording {Id} is outside DVR storage and media roots; keeping {Path}",
+                    recording.Id, originalPath);
+                return;
+            }
+
+            var recoveryDirectory = Path.Combine(basePath, ".sportarr-dvr-recovery");
+            if (IsInsideDirectory(originalPath, recoveryDirectory))
+                return;
+
+            Directory.CreateDirectory(recoveryDirectory);
+            var name = Path.GetFileName(originalPath).TrimStart('.');
+            var destination = Path.Combine(recoveryDirectory, $"{recording.Id}-{name}");
+            if (File.Exists(destination))
+                destination = Path.Combine(recoveryDirectory, $"{recording.Id}-{Guid.NewGuid():N}-{name}");
+
+            File.Move(originalPath, destination);
+            recording.OutputPath = destination;
+            recording.LastUpdated = DateTime.UtcNow;
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch
+            {
+                File.Move(destination, originalPath);
+                recording.OutputPath = originalPath;
+                throw;
+            }
+
+            _logger.LogInformation("[DVR] Kept failed recording {Id} in recovery folder: {Path}",
+                recording.Id, destination);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[DVR] Could not move failed recording {Id} to recovery folder; kept {Path}",
+                recording.Id, originalPath);
+        }
+    }
+
+    private static bool IsInsideDirectory(string path, string directory)
+    {
+        var relative = Path.GetRelativePath(directory, path);
+        return relative != "." && relative != ".." &&
+            !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
+            !Path.IsPathRooted(relative);
+    }
+
     /// <summary>
     /// Failure notification shared with the watchdog, which detects dead
     /// and stalled recorders on its own tick.
@@ -503,16 +572,26 @@ public class DvrRecordingService
 
         // A capture that already exists must not be written over. The output
         // path is deterministic, so starting one of these again records on top
-        // of the file the library may already hold. Failed and cancelled rows
-        // stay startable, because retrying those is the point.
+        // of the file the library may already hold.
         if (recording.Status is DvrRecordingStatus.Completed
             or DvrRecordingStatus.Importing
-            or DvrRecordingStatus.Imported)
+            or DvrRecordingStatus.Imported
+            or DvrRecordingStatus.Ignored)
         {
             return new RecordingResult
             {
                 Success = false,
                 Error = $"Recording is already {recording.Status.ToString().ToLowerInvariant()}. Delete it first to record the event again."
+            };
+        }
+
+        if (recording.Status is (DvrRecordingStatus.Failed or DvrRecordingStatus.Cancelled) &&
+            !string.IsNullOrWhiteSpace(recording.OutputPath) && File.Exists(recording.OutputPath))
+        {
+            return new RecordingResult
+            {
+                Success = false,
+                Error = "This recording still has a saved capture. Move it before retrying."
             };
         }
 
@@ -620,6 +699,7 @@ public class DvrRecordingService
 
             _logger.LogError("[DVR] Failed to start recording {Id}: {Error}", recordingId, result.Error);
             CleanupWorthlessPartial(recording);
+            await PreserveFailedCaptureAsync(recording);
 
             // Phase 3 — auto-rotate to fallback channel when start
             // fails. Most "failed to start" cases are channel-specific
@@ -725,6 +805,8 @@ public class DvrRecordingService
             ScheduledEnd = failed.ScheduledEnd,
             PrePadding = failed.PrePadding,
             PostPadding = failed.PostPadding,
+            PartName = failed.PartName,
+            ImportMode = failed.ImportMode,
             Status = DvrRecordingStatus.Scheduled,
             FallbackChannelIds = remainingBackups.Count > 0 ? JsonSerializer.Serialize(remainingBackups) : null,
             AutoRetryCount = failed.AutoRetryCount + 1,
@@ -874,6 +956,7 @@ public class DvrRecordingService
         recording.ErrorMessage = $"Recorder exited unexpectedly (code {exitCode})" +
             (string.IsNullOrEmpty(errorSummary) ? "" : $": {errorSummary}");
         await PersistRecordingStatusAsync(recording, "failed");
+        await PreserveFailedCaptureAsync(recording);
 
         _logger.LogWarning("[DVR] Recording {Id}: recorder exited mid-window (code {Code}); marked Failed", recordingId, exitCode);
 
@@ -1020,7 +1103,8 @@ public class DvrRecordingService
             or DvrRecordingStatus.Failed
             or DvrRecordingStatus.Cancelled
             or DvrRecordingStatus.Importing
-            or DvrRecordingStatus.Imported)
+            or DvrRecordingStatus.Imported
+            or DvrRecordingStatus.Ignored)
         {
             _logger.LogDebug("[DVR] Recording {Id} was already finalized as {Status} while stopping; not overwriting",
                 recordingId, recording.Status);
@@ -1065,6 +1149,9 @@ public class DvrRecordingService
         }
 
         await _db.SaveChangesAsync();
+
+        if (recording.Status == DvrRecordingStatus.Failed)
+            await PreserveFailedCaptureAsync(recording);
 
         // Phase 3 — if the recording errored partway through, also
         // try to rotate to a fallback channel so a brief blip doesn't

@@ -86,9 +86,10 @@ events are skipped), so when the upstream schedule shifts, the number shifts:
   and `s2026e012` all resolve to episode 12). The Sportarr app's naming format
   is customizable under **Settings → Media Management**.
 - **The Sportarr id wins.** Files the app names carry the event's id
-  (`sportarr-ev-2338110`); the plugin matches by it first, so a renumbered
-  season never points a file at another event. Naming by hand? Put the id
-  from the event's page in the name and the number no longer matters.
+  (`sportarr-ev-2338110`). Emby still needs season and episode numbers to
+  recognize the file as an episode before the plugin runs. Once it does,
+  the plugin sends the filename and the ID selects the exact catalog event.
+  When naming by hand, include both `S2026E12` and the event's Sportarr ID.
 
 ### Verify it works
 

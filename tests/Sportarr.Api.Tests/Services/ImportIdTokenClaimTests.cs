@@ -12,6 +12,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using Sportarr.Api.Services.Interfaces;
@@ -201,6 +202,8 @@ public class ImportUpgradeBehaviourTests : IDisposable
     private readonly string _tempDir;
     private readonly SportarrDbContext _db;
     private readonly LibraryImportService _service;
+    private readonly Mock<IMetadataWriterService> _metadataWriter = new();
+    private readonly ConfigService _config;
 
     public ImportUpgradeBehaviourTests()
     {
@@ -212,6 +215,7 @@ public class ImportUpgradeBehaviourTests : IDisposable
         _db = new SportarrDbContext(options);
         var fileParser = new MediaFileParser(Mock.Of<ILogger<MediaFileParser>>());
         var config = new ConfigService(new ConfigurationBuilder().Build(), Mock.Of<ILogger<ConfigService>>());
+        _config = config;
         _service = new LibraryImportService(
             _db,
             Mock.Of<ILogger<LibraryImportService>>(),
@@ -224,7 +228,7 @@ public class ImportUpgradeBehaviourTests : IDisposable
             new DiskSpaceService(Mock.Of<ILogger<DiskSpaceService>>()),
             new CustomFormatService(fileParser),
             new NotificationService(Mock.Of<IServiceProvider>(), Mock.Of<ILogger<NotificationService>>(), new HttpClient(), Mock.Of<IHttpClientFactory>()),
-            Mock.Of<IMetadataWriterService>());
+            _metadataWriter.Object);
     }
 
     public void Dispose()
@@ -278,6 +282,169 @@ public class ImportUpgradeBehaviourTests : IDisposable
         var copy = result.MatchedFiles.Should().ContainSingle(f => f.FileName.Contains("Second Copy")).Subject;
         copy.MatchedEventId.Should().NotBeNull();
         copy.Rejections.Should().ContainSingle().Which.Should().Contain("Not an upgrade");
+    }
+
+    private async Task TurnOnSourcePrecedence() =>
+        (await _config.GetConfigAsync()).DvrReplaceRecordingsWithIndexerReleases = true;
+
+    [Fact]
+    public async Task AnIptvRecordingNeverReplacesAFileFromAnIndexerUnderSourcePrecedence()
+    {
+        await TurnOnSourcePrecedence();
+        var (evt, held) = SeedEventWithFile();
+        var recording = Write("NFL - S2025E06 - Recording - HDTV-2160p.DVR.ts");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = recording, EventId = evt.Id, OnlyIfUpgrade = true, IsIptvRecording = true },
+        });
+
+        result.Imported.Should().BeEmpty();
+        result.Rejected.Should().ContainSingle().Which.Reason.Should().Be(SourcePrecedence.IptvRecordingRejection);
+        _db.EventFiles.Single(f => f.EventId == evt.Id).FilePath.Should().Be(held.FilePath);
+    }
+
+    [Fact]
+    public async Task AManualImportOfAnIptvRecordingLeavesTheIndexerFileUnderSourcePrecedence()
+    {
+        await TurnOnSourcePrecedence();
+        var (evt, held) = SeedEventWithFile();
+        var recording = Write("NFL - S2025E06 - Recording HDTV-1080p.DVR - sportarr-ev-312923.ts");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = recording, EventId = evt.Id },
+        });
+
+        result.Imported.Should().BeEmpty();
+        result.Rejected.Should().ContainSingle().Which.Reason.Should().Be(SourcePrecedence.IptvRecordingRejection);
+        _db.EventFiles.Single(f => f.EventId == evt.Id).FilePath.Should().Be(held.FilePath);
+        File.Exists(held.FilePath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AManualImportOverridingSourcePrecedenceReplacesTheIndexerFile()
+    {
+        await TurnOnSourcePrecedence();
+        var (evt, held) = SeedEventWithFile();
+        var recording = Write("NFL - S2025E06 - Recording HDTV-1080p.DVR - sportarr-ev-312923.ts");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = recording, EventId = evt.Id, OverrideSourcePrecedence = true },
+        });
+
+        result.Rejected.Should().BeEmpty();
+        var file = _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists);
+        file.FilePath.Should().NotBe(held.FilePath);
+        file.IsIptvRecording.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TheScanShowsThatSourcePrecedenceKeepsTheIndexerFile()
+    {
+        await TurnOnSourcePrecedence();
+        SeedEventWithFile();
+        Write("NFL - S2025E06 - Recording HDTV-1080p.DVR - sportarr-ev-312923.ts");
+
+        var result = await _service.ScanFolderAsync(SeasonDir, includeSubfolders: false);
+
+        var copy = result.MatchedFiles.Should().ContainSingle(f => f.FileName.Contains("Recording")).Subject;
+        copy.Rejections.Should().ContainSingle().Which.Should().Be(SourcePrecedence.IptvRecordingRejection);
+        copy.HeldBySourcePrecedence.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AFileFromAnIndexerReplacesAnIptvRecordingOfHigherQualityUnderSourcePrecedence()
+    {
+        await TurnOnSourcePrecedence();
+        var (evt, held) = SeedEventWithFile();
+        held.IsIptvRecording = true;
+        _db.SaveChanges();
+        var copy = Write("NFL - S2025E06 - Release - HDTV-720p - sportarr-ev-312923.mkv");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id, OnlyIfUpgrade = true },
+        });
+
+        result.Rejected.Should().BeEmpty();
+        var file = _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists);
+        file.FilePath.Should().NotBe(held.FilePath);
+        file.IsIptvRecording.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AnImportedIptvRecordingIsMarkedAsOne()
+    {
+        var (evt, held) = SeedEventWithFile();
+        held.Quality = "SDTV";
+        _db.SaveChanges();
+        var recording = Write("NFL - S2025E06 - Recording - HDTV-1080p.DVR.ts");
+
+        await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = recording, EventId = evt.Id, OnlyIfUpgrade = true, IsIptvRecording = true },
+        });
+
+        _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("NFL - S2025E06 - Recording HDTV-1080p.DVR - sportarr-ev-312923.ts", true)]
+    [InlineData("NFL - S2025E06 - Release [HDTV-1080p] [] sportarr-ev-312923.ts", false)]
+    [InlineData("NFL - S2025E06 - Release [HDTV-1080p] [] sportarr-ev-312923.mkv", false)]
+    [InlineData("NFL - S2025E06 - Release [WEBDL-1080p] [] sportarr-ev-312923.ts", false)]
+    public async Task ARescanUsesExplicitDvrMarkerAndNotTransportStream(string name, bool marked)
+    {
+        // MPEG-TS also carries indexer releases.
+        var (evt, held) = SeedEventWithFile();
+        held.Quality = "SDTV";
+        _db.SaveChanges();
+        var file = Write(name);
+
+        await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = evt.Id, OnlyIfUpgrade = true },
+        });
+
+        _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().Be(marked);
+    }
+
+    [Fact]
+    public async Task AnHdtvTransportStreamFromADownloadClientIsNotMarkedAsAnIptvRecording()
+    {
+        // A download client only ever hands over releases; 720p HDTV
+        // captures are often posted as .ts.
+        var (evt, held) = SeedEventWithFile();
+        held.Quality = "SDTV";
+        _db.SaveChanges();
+        var release = Write("NFL - S2025E06 - Release [HDTV-1080p] [] sportarr-ev-312923.ts");
+
+        await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = release, EventId = evt.Id, OnlyIfUpgrade = true, FromDownloadClient = true },
+        });
+
+        _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReimportingAnHdtvTransportStreamWithAReleaseTitleLeavesItUnmarked()
+    {
+        var (evt, held) = SeedEventWithFile();
+        var release = Write("NFL - S2025E06 - Release [HDTV-1080p] [] sportarr-ev-312923.ts");
+        held.FilePath = release;
+        held.Quality = "HDTV-1080p";
+        held.ReleaseTitle = "NFL.2025.Panthers.Browns.1080p.HDTV.x264-GRP";
+        _db.SaveChanges();
+
+        await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = release, EventId = evt.Id, OnlyIfUpgrade = true },
+        });
+
+        _db.EventFiles.Single(f => f.EventId == evt.Id && f.Exists).IsIptvRecording.Should().BeFalse();
     }
 
     [Fact]
@@ -335,6 +502,226 @@ public class ImportUpgradeBehaviourTests : IDisposable
         File.Exists(copy).Should().BeTrue();
         var files = _db.EventFiles.Where(f => f.EventId == evt.Id).ToList();
         files.Should().ContainSingle().Which.FilePath.Should().Be(copy);
+    }
+
+    [Fact]
+    public async Task AnImportedFileKeepsTheCustomFormatScoreItsNameEarns()
+    {
+        var (evt, _) = SeedEventWithFile();
+        var format = new CustomFormat
+        {
+            Name = "Better",
+            Specifications = new List<FormatSpecification>
+            {
+                new()
+                {
+                    Name = "Title", Implementation = "ReleaseTitle", Required = true,
+                    Fields = new Dictionary<string, object> { { "value", "Better" } },
+                },
+            },
+        };
+        _db.CustomFormats.Add(format);
+        _db.SaveChanges();
+        _db.QualityProfiles.Add(new QualityProfile
+        {
+            Name = "Default", IsDefault = true,
+            FormatItems = new List<ProfileFormatItem> { new() { FormatId = format.Id, Score = 50 } },
+        });
+        _db.SaveChanges();
+        var copy = Write("NFL - S2025E06 - Better Copy - WEBDL-2160p - sportarr-ev-312923.mkv");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id },
+        });
+
+        result.Imported.Should().ContainSingle();
+        _db.EventFiles.Single(f => f.EventId == evt.Id).CustomFormatScore.Should().Be(50);
+    }
+
+    [Fact]
+    public async Task AStoredFormatScoreSurvivesANameThatNoLongerContainsTheFormat()
+    {
+        var (evt, held) = SeedEventWithFile();
+        held.OriginalTitle = null;
+        held.CustomFormatScore = 50;
+        var better = new CustomFormat
+        {
+            Name = "Better",
+            Specifications = [new FormatSpecification
+            {
+                Name = "Title", Implementation = "ReleaseTitle", Required = true,
+                Fields = new Dictionary<string, object> { { "value", "Better" } },
+            }],
+        };
+        var basic = new CustomFormat
+        {
+            Name = "Basic",
+            Specifications = [new FormatSpecification
+            {
+                Name = "Title", Implementation = "ReleaseTitle", Required = true,
+                Fields = new Dictionary<string, object> { { "value", "Basic" } },
+            }],
+        };
+        _db.CustomFormats.AddRange(better, basic);
+        await _db.SaveChangesAsync();
+        _db.QualityProfiles.Add(new QualityProfile
+        {
+            Name = "Default", IsDefault = true,
+            FormatItems =
+            [
+                new ProfileFormatItem { FormatId = better.Id, Score = 50 },
+                new ProfileFormatItem { FormatId = basic.Id, Score = 25 },
+            ],
+        });
+        _db.RootFolders.Add(new RootFolder { Path = _tempDir });
+        await _db.SaveChangesAsync();
+        var reimport = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = held.FilePath, EventId = evt.Id, OnlyIfUpgrade = true },
+        });
+        reimport.Failed.Should().BeEmpty(string.Join("; ", reimport.Errors));
+        reimport.Imported.Should().ContainSingle();
+        _db.EventFiles.Single(f => f.EventId == evt.Id).CustomFormatScore.Should().Be(50);
+        var copy = Write("NFL - S2025E06 - Basic Copy - WEBDL-1080p - sportarr-ev-312923.mkv");
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id, OnlyIfUpgrade = true },
+        });
+
+        result.Imported.Should().BeEmpty();
+        result.Rejected.Should().ContainSingle().Which.Reason.Should().Contain("custom format");
+        _db.EventFiles.Single(f => f.EventId == evt.Id).FilePath.Should().Be(held.FilePath);
+        File.Exists(copy).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ARelinkedFileUsesTheNewEventsFormatScore()
+    {
+        var (evt, _) = SeedEventWithFile();
+        var format = new CustomFormat
+        {
+            Name = "Better",
+            Specifications = new List<FormatSpecification>
+            {
+                new()
+                {
+                    Name = "Title", Implementation = "ReleaseTitle", Required = true,
+                    Fields = new Dictionary<string, object> { { "value", "Better" } },
+                },
+            },
+        };
+        _db.CustomFormats.Add(format);
+        _db.SaveChanges();
+        _db.QualityProfiles.Add(new QualityProfile
+        {
+            Name = "Default", IsDefault = true,
+            FormatItems = new List<ProfileFormatItem> { new() { FormatId = format.Id, Score = 50 } },
+        });
+        var previousOwner = new Event
+        {
+            Title = "Earlier game", Sport = "American Football", Season = "2025",
+            EventDate = new DateTime(2025, 8, 1), LeagueId = evt.LeagueId,
+            ExternalId = "ev-previous-312923", SeasonNumber = 2025, EpisodeNumber = 5,
+            Status = "completed", HasFile = true, Monitored = true,
+        };
+        _db.Events.Add(previousOwner);
+        _db.SaveChanges();
+        var copy = Write("NFL - S2025E06 - Better Copy - WEBDL-2160p - sportarr-ev-312923.mkv");
+        _db.EventFiles.Add(new EventFile
+        {
+            EventId = previousOwner.Id, FilePath = copy, Quality = "WEBDL-2160p", Exists = true,
+            CustomFormatScore = 0,
+        });
+        _db.SaveChanges();
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id },
+        });
+
+        result.Imported.Should().ContainSingle();
+        var relinked = _db.EventFiles.Single(f => f.FilePath == copy);
+        relinked.EventId.Should().Be(evt.Id);
+        relinked.CustomFormatScore.Should().Be(50);
+    }
+
+    [Fact]
+    public async Task ARelinkedGrabbedFileScoresItsReleaseTitle()
+    {
+        var (evt, _) = SeedEventWithFile();
+        var format = new CustomFormat
+        {
+            Name = "Better",
+            Specifications = new List<FormatSpecification>
+            {
+                new()
+                {
+                    Name = "Title", Implementation = "ReleaseTitle", Required = true,
+                    Fields = new Dictionary<string, object> { { "value", "Better" } },
+                },
+            },
+        };
+        _db.CustomFormats.Add(format);
+        _db.SaveChanges();
+        _db.QualityProfiles.Add(new QualityProfile
+        {
+            Name = "Default", IsDefault = true,
+            FormatItems = new List<ProfileFormatItem> { new() { FormatId = format.Id, Score = 50 } },
+        });
+        var previousOwner = new Event
+        {
+            Title = "Earlier game", Sport = "American Football", Season = "2025",
+            EventDate = new DateTime(2025, 8, 1), LeagueId = evt.LeagueId,
+            ExternalId = "ev-previous-312924", SeasonNumber = 2025, EpisodeNumber = 5,
+            Status = "completed", HasFile = true, Monitored = true,
+        };
+        _db.Events.Add(previousOwner);
+        _db.SaveChanges();
+        var copy = Write("NFL - S2025E06 - Plain Copy - WEBDL-2160p - sportarr-ev-312923.mkv");
+        _db.EventFiles.Add(new EventFile
+        {
+            EventId = previousOwner.Id, FilePath = copy, Quality = "WEBDL-2160p", Exists = true,
+            ReleaseTitle = "NFL.2025.Week.6.Better.2160p.WEB-DL", CustomFormatScore = 75,
+        });
+        _db.SaveChanges();
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id },
+        });
+
+        result.Imported.Should().ContainSingle();
+        var relinked = _db.EventFiles.Single(f => f.FilePath == copy);
+        relinked.EventId.Should().Be(evt.Id);
+        relinked.CustomFormatScore.Should().Be(50);
+    }
+
+    [Fact]
+    public async Task AReplacementFromOutsideTheLeagueFolderCleansOldSubtitleSidecars()
+    {
+        var (evt, held) = SeedEventWithFile();
+        var root = new RootFolder { Path = _tempDir };
+        _db.RootFolders.Add(root);
+        await _db.SaveChangesAsync();
+        evt.League!.RootFolderId = root.Id;
+        await _db.SaveChangesAsync();
+        var oldPath = held.FilePath;
+        var incoming = Path.Combine(_tempDir, "incoming");
+        Directory.CreateDirectory(incoming);
+        var copy = Path.Combine(incoming, "NFL - S2025E06 - Better Copy - WEBDL-2160p - sportarr-ev-312923.mkv");
+        File.WriteAllBytes(copy, new byte[64 * 1024]);
+
+        var result = await _service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = copy, EventId = evt.Id, ImportMode = "copy" },
+        });
+
+        result.Failed.Should().BeEmpty();
+        result.Imported.Should().ContainSingle();
+        _metadataWriter.Verify(writer => writer.DeleteEventMetadataAsync(
+            It.Is<EventFile>(file => file.FilePath == oldPath), It.IsAny<string?>()), Times.Once);
     }
 }
 

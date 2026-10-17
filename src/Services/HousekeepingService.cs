@@ -9,7 +9,9 @@ namespace Sportarr.Api.Services;
 /// cleanup (Recycle Bin Cleanup days), DVR recording retention, and system
 /// event log pruning. Every chore is failure-isolated - one broken chore
 /// never blocks the others - and each is a no-op when its setting disables
-/// it, so default installs see no behavior change beyond scheduled backups.
+/// it, so default installs see no behavior change beyond scheduled backups
+/// and a one-time pass that stores the custom format score of library files
+/// that never got one.
 /// </summary>
 public class HousekeepingService : BackgroundService
 {
@@ -59,6 +61,7 @@ public class HousekeepingService : BackgroundService
         await PruneDvrRecordingsAsync(db, config, ct);
         await PruneSystemEventsAsync(db, ct);
         await PruneStreamEventsAsync(db, ct);
+        await RescoreLibraryFilesAsync(ct);
     }
 
     private bool _versionChecked;
@@ -275,7 +278,7 @@ public class HousekeepingService : BackgroundService
     /// imported into the library (an import moves the file; the recording row
     /// then just points at history).
     /// </summary>
-    private async Task PruneDvrRecordingsAsync(SportarrDbContext db, Config config, CancellationToken ct)
+    internal async Task PruneDvrRecordingsAsync(SportarrDbContext db, Config config, CancellationToken ct)
     {
         if (config.DvrRecordingRetentionDays <= 0 && config.DvrKeepLastRecordingsPerLeague <= 0)
             return;
@@ -285,6 +288,7 @@ public class HousekeepingService : BackgroundService
             var finished = await db.DvrRecordings
                 .Include(r => r.Event)
                 .Where(r => r.Status == DvrRecordingStatus.Completed ||
+                            r.Status == DvrRecordingStatus.Ignored ||
                             r.Status == DvrRecordingStatus.Failed ||
                             r.Status == DvrRecordingStatus.Cancelled)
                 .ToListAsync(ct);
@@ -310,6 +314,29 @@ public class HousekeepingService : BackgroundService
                 foreach (var r in overflow)
                     stale.Add(r);
             }
+
+            var pendingRecordingIds = (await db.PendingImports.AsNoTracking()
+                    .Where(p => p.DownloadId.StartsWith("dvr-"))
+                    .Select(p => p.DownloadId)
+                    .ToListAsync(ct))
+                .Select(id => int.TryParse(id.AsSpan(4), out var recordingId) ? recordingId : 0)
+                .ToHashSet();
+            var unresolvedEventIds = stale
+                .Where(r => r.Status == DvrRecordingStatus.Completed && r.ImportedAt == null && r.EventId.HasValue)
+                .Select(r => r.EventId!.Value)
+                .Distinct()
+                .ToList();
+            var missingFiles = await db.EventFiles.AsNoTracking()
+                .Where(f => !f.Exists && unresolvedEventIds.Contains(f.EventId))
+                .Select(f => new { f.EventId, f.PartName })
+                .ToListAsync(ct);
+            stale.RemoveWhere(r => r.Status == DvrRecordingStatus.Completed &&
+                r.ImportedAt == null &&
+                (pendingRecordingIds.Contains(r.Id) ||
+                 (r.EventId.HasValue && !string.IsNullOrEmpty(r.OutputPath) && File.Exists(r.OutputPath) &&
+                  missingFiles.Any(f => f.EventId == r.EventId.Value &&
+                      string.Equals(Helpers.SourcePrecedence.NormalizePart(f.PartName),
+                          Helpers.SourcePrecedence.NormalizePart(r.PartName), StringComparison.OrdinalIgnoreCase)))));
 
             if (stale.Count == 0)
                 return;
@@ -341,8 +368,7 @@ public class HousekeepingService : BackgroundService
     }
 
     /// <summary>
-    /// Prune system events older than 30 days (same default as the manual
-    /// cleanup endpoint) so the table stops growing unbounded.
+    /// Prune rows left by older versions of the system events feature.
     /// </summary>
     private async Task PruneSystemEventsAsync(SportarrDbContext db, CancellationToken ct)
     {
@@ -379,6 +405,29 @@ public class HousekeepingService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Housekeeping] Stream event pruning failed");
+        }
+    }
+
+    /// <summary>
+    /// Give library-imported files stored at a custom format score of 0 the
+    /// score their names earn. Older imports never stored one, so every
+    /// release with a positive score looked like an upgrade over them.
+    /// </summary>
+    private async Task RescoreLibraryFilesAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _services.CreateScope();
+            var rescored = await LibraryFileFormatScores.RescoreUnscoredAsync(
+                scope.ServiceProvider.GetRequiredService<SportarrDbContext>(),
+                scope.ServiceProvider.GetRequiredService<CustomFormatService>(), ct);
+
+            if (rescored > 0)
+                _logger.LogInformation("[Housekeeping] Stored the custom format score of {Count} library file(s)", rescored);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Housekeeping] Library file rescore failed");
         }
     }
 }

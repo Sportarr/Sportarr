@@ -509,7 +509,12 @@ public class DelugeClient
             TimeRemaining = timeRemaining,
             SavePath = computedSavePath,
             ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null,
-            Ratio = torrent.Ratio
+            Ratio = torrent.Ratio,
+            AddedAt = torrent.TimeAdded > 0
+                ? DateTimeOffset.FromUnixTimeSeconds(torrent.TimeAdded).UtcDateTime
+                : null,
+            TorrentIsStopped = torrent.Progress >= 100 &&
+                string.Equals(torrent.State, "Paused", StringComparison.OrdinalIgnoreCase)
         };
     }
 

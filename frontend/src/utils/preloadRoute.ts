@@ -18,6 +18,8 @@ const ROUTE_IMPORTS: Record<string, () => Promise<unknown>> = {
   '/library-import': () => import('../pages/LibraryImportPage'),
   '/calendar': () => import('../pages/CalendarPage'),
   '/activity': () => import('../pages/ActivityPage'),
+  '/support': () => import('../pages/SupportPage'),
+  '/support/new': () => import('../pages/SupportNewIssuePage'),
 
   // The parent entries redirect to their first child, so warm what the user
   // actually lands on.
@@ -53,7 +55,7 @@ const ROUTE_IMPORTS: Record<string, () => Promise<unknown>> = {
   '/system/stats': () => import('../pages/StatsPage'),
   '/system/backup': () => import('../pages/BackupPage'),
   '/system/updates': () => import('../pages/SystemUpdatesPage'),
-  '/system/events': () => import('../pages/SystemEventsPage'),
+  '/system/events': () => import('../pages/LogFilesPage'),
   '/system/logs': () => import('../pages/LogFilesPage'),
 };
 

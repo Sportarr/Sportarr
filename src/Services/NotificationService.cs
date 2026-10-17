@@ -912,9 +912,9 @@ public class NotificationService : INotificationService
                     }
                 }
             }
-            catch (JsonException ex)
+            catch (JsonException)
             {
-                _logger.LogWarning(ex, "[Webhook] Failed to parse custom headers JSON: {HeadersJson}", headersJson);
+                _logger.LogWarning("[Webhook] Failed to parse custom headers JSON");
             }
         }
 

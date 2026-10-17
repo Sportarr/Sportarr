@@ -23,6 +23,16 @@ public class FileNamingService
         _logger = logger;
     }
 
+    public static string GetOriginalFilenameToken(string sourceFile)
+    {
+        return Path.GetFileNameWithoutExtension(GetSourceFilename(sourceFile));
+    }
+
+    public static string GetSourceFilename(string sourceFile)
+    {
+        return Path.GetFileName(sourceFile);
+    }
+
     /// <summary>
     /// Build filename from format template and tokens
     /// </summary>

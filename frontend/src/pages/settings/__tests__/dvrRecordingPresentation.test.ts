@@ -37,6 +37,8 @@ describe('recordingMatchesView', () => {
       completedCount: 2,
       importedCount: 3,
       importingCount: 1,
-    })).toBe(6);
+      ignoredCount: 1,
+    })).toBe(7);
+    expect(recordingMatchesView('Ignored', 'completed')).toBe(true);
   });
 });

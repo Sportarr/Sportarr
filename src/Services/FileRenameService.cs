@@ -449,8 +449,7 @@ public class FileRenameService
             file.FilePath = expectedPath;
             UpdateLegacyFilePath(evt, originalLegacyPath, currentPath, expectedPath, repairMissingLegacyPath, out _);
 
-            // Kodi matches an NFO to its video by basename - move the sidecars
-            // with the file now, don't wait for the next sync to regenerate them.
+            // Readers match sidecars to the video's basename.
             try
             {
                 await _metadataWriterService.RenameEventMetadataAsync(currentPath, expectedPath);
@@ -723,9 +722,11 @@ public class FileRenameService
                 if (!string.IsNullOrEmpty(expectedDir) && !Directory.Exists(expectedDir))
                     Directory.CreateDirectory(expectedDir);
 
-                var tempPath = move.ExpectedPath + ".sportarr-rename-" + Guid.NewGuid().ToString("N") + ".tmp";
+                var tempPath = Path.Combine(expectedDir!,
+                    ".sportarr-rename-" + Guid.NewGuid().ToString("N") + ".tmp");
                 SelfMoveTracker.Register(move.CurrentPath, tempPath);
                 File.Move(move.CurrentPath, tempPath);
+                await _metadataWriterService.RenameEventMetadataAsync(move.CurrentPath, tempPath);
                 staged.Add((move.Event, move.File, move.CurrentPath, tempPath, move.ExpectedPath,
                     move.RepairMissingLegacyPath, move.OriginalLegacyPath));
             }
@@ -749,6 +750,7 @@ public class FileRenameService
 
                 SelfMoveTracker.Register(s.TempPath, s.ExpectedPath);
                 File.Move(s.TempPath, s.ExpectedPath);
+                await _metadataWriterService.RenameEventMetadataAsync(s.TempPath, s.ExpectedPath);
                 s.File.FilePath = s.ExpectedPath;
                 var legacyPathChanged = UpdateLegacyFilePath(
                     s.Event, s.OriginalLegacyPath, s.CurrentPath, s.ExpectedPath,
@@ -782,6 +784,7 @@ public class FileRenameService
                         {
                             SelfMoveTracker.Register(done.ExpectedPath, done.CurrentPath);
                             File.Move(done.ExpectedPath, done.CurrentPath);
+                            await _metadataWriterService.RenameEventMetadataAsync(done.ExpectedPath, done.CurrentPath);
                             done.File.FilePath = done.CurrentPath;
                             if (done.LegacyPathChanged && PathsEqual(done.Event.FilePath, done.ExpectedPath))
                                 done.Event.FilePath = done.PreviousLegacyPath;
@@ -808,9 +811,9 @@ public class FileRenameService
                 }
                 finalized.Clear();
 
-                RestoreStagedRename(s.TempPath, s.CurrentPath);
+                await RestoreStagedRenameAsync(s.TempPath, s.CurrentPath);
                 for (var remainingIndex = stagedIndex + 1; remainingIndex < staged.Count; remainingIndex++)
-                    RestoreStagedRename(staged[remainingIndex].TempPath, staged[remainingIndex].CurrentPath);
+                    await RestoreStagedRenameAsync(staged[remainingIndex].TempPath, staged[remainingIndex].CurrentPath);
                 break;
             }
         }
@@ -838,7 +841,7 @@ public class FileRenameService
     /// library: it sits under an opaque .tmp name while its record points at a
     /// path that no longer exists.
     /// </summary>
-    private void RestoreStagedRename(string tempPath, string originalPath)
+    private async Task RestoreStagedRenameAsync(string tempPath, string originalPath)
     {
         try
         {
@@ -849,6 +852,7 @@ public class FileRenameService
 
             SelfMoveTracker.Register(tempPath, originalPath);
             File.Move(tempPath, originalPath);
+            await _metadataWriterService.RenameEventMetadataAsync(tempPath, originalPath);
             _logger.LogInformation("[File Rename] Restored {Path} after a failed rename", originalPath);
         }
         catch (Exception ex)
@@ -1151,6 +1155,7 @@ public class FileRenameService
                 fileId, oldEventId, newEventId, currentPath, newPath);
             SelfMoveTracker.Register(currentPath, newPath);
             File.Move(currentPath, newPath);
+            await _metadataWriterService.RenameEventMetadataAsync(currentPath, newPath);
         }
         catch (Exception ex)
         {

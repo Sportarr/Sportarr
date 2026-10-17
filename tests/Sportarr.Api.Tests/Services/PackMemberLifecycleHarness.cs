@@ -21,6 +21,7 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
 {
     private readonly WebApplication _app;
     private readonly string _directory;
+    private readonly bool _externalMediaRoot;
     public SportarrDbContext Db { get; }
     public Event Event { get; private set; } = null!;
     public StubTransport Transport { get; }
@@ -28,17 +29,26 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
     public HttpClient Client { get; }
     public MediaManagementSettings Settings { get; private set; } = null!;
 
-    private PackMemberLifecycleHarness(WebApplication app, string directory, StubTransport transport)
+    private PackMemberLifecycleHarness(WebApplication app, string directory, StubTransport transport, bool externalMediaRoot)
     {
-        _app = app; _directory = directory; Transport = transport;
+        _app = app; _directory = directory; _externalMediaRoot = externalMediaRoot; Transport = transport;
         Db = Services.GetRequiredService<SportarrDbContext>();
         Client = app.GetTestClient();
     }
 
     public static async Task<PackMemberLifecycleHarness> CreateAsync(bool rename = true, bool multipart = true,
-        string title = "UFC 9999", string sport = "Fighting", string leagueName = "UFC")
+        string title = "UFC 9999", string sport = "Fighting", string leagueName = "UFC", string? mediaRoot = null)
     {
-        var directory = Path.Combine(Path.GetTempPath(), "sportarr-part-identity-" + Guid.NewGuid().ToString("N"));
+        if (mediaRoot != null)
+        {
+            mediaRoot = Path.GetFullPath(mediaRoot);
+            if (Path.GetDirectoryName(mediaRoot) != "/data/e2e-lib" ||
+                Directory.Exists(mediaRoot) || File.Exists(mediaRoot))
+                throw new InvalidOperationException("An unused direct child of /data/e2e-lib is required.");
+        }
+
+        var directory = mediaRoot ?? Path.Combine(Path.GetTempPath(),
+            "sportarr-part-identity-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Sportarr:DataPath"] = directory });
@@ -73,7 +83,7 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
         app.MapEventSearchAndGrabEndpoints();
         app.MapQueueAndImportEndpoints();
         await app.StartAsync();
-        var rig = new PackMemberLifecycleHarness(app, directory, transport);
+        var rig = new PackMemberLifecycleHarness(app, directory, transport, mediaRoot != null);
         await rig.Db.Database.EnsureCreatedAsync();
         var config = await rig.Services.GetRequiredService<ConfigService>().GetConfigAsync();
         config.EnableMultiPartEpisodes = multipart;
@@ -146,13 +156,33 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Client.Dispose(); await _app.DisposeAsync();
-        if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
+        if (!Directory.Exists(_directory)) return;
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(_directory, true);
+                return;
+            }
+            catch (IOException) when (attempt < 7)
+            {
+                await Task.Delay(250);
+            }
+            catch (IOException) when (_externalMediaRoot)
+            {
+                // The caller checks the directory after this process exits.
+                return;
+            }
+        }
     }
 
     internal sealed class StubTransport : HttpMessageHandler, IHttpClientFactory
     {
         public int ClientAdds { get; private set; }
         public string? JobPath { get; set; }
+        public bool HideJobFromStatus { get; set; }
+        public string JobState { get; set; } = "pausedUP";
+        public long JobAddedOn { get; set; }
         private string _category = "sportarr";
         public System.Collections.Concurrent.ConcurrentQueue<string> Calls { get; } = new();
         public System.Collections.Concurrent.ConcurrentQueue<(string Method, string Path, Dictionary<string, string> Form)> Requests { get; } = new();
@@ -175,10 +205,12 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
                 var path = uri.AbsolutePath;
                 string? response = null;
                 if (request.Method == HttpMethod.Post && path == "/api/v2/auth/login") response = "Ok.";
+                if (request.Method == HttpMethod.Get && path == "/api/v2/app/version") response = "5.0.0";
                 if (request.Method == HttpMethod.Get && path == "/api/v2/torrents/info")
-                    response = System.Text.Json.JsonSerializer.Serialize(new[] { new { hash = "owned-pack-job",
-                        name = "NFL.2020.Week1.720p.WEB-DL.H264-PackLifecycle", state = "pausedUP", progress = 1,
-                        total_size = 12288, downloaded = 12288, content_path = JobPath, save_path = JobPath, category = _category, ratio = 1 } });
+                    response = HideJobFromStatus ? "[]" : System.Text.Json.JsonSerializer.Serialize(new[] { new { hash = "owned-pack-job",
+                        name = "NFL.2020.Week1.720p.WEB-DL.H264-PackLifecycle", state = JobState, progress = 1,
+                        total_size = 12288, downloaded = 12288, content_path = JobPath, save_path = JobPath, category = _category, ratio = 1,
+                        added_on = JobAddedOn } });
                 if (request.Method == HttpMethod.Get && path == "/api/v2/torrents/categories") response = "{\"sportarr\":{},\"imported\":{}}";
                 if (request.Method == HttpMethod.Post && path == "/api/v2/torrents/setCategory")
                 { _category = form.GetValueOrDefault("category", ""); response = ""; }

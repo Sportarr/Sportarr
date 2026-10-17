@@ -18,7 +18,10 @@ public static partial class SecretRedactor
     {
         if (string.IsNullOrEmpty(url)) return url ?? string.Empty;
         var masked = UrlSecretRegex().Replace(url, m => $"{m.Groups[1].Value}={Mask}");
-        return UrlUserInfoRegex().Replace(masked, m => $"{m.Groups[1].Value}{Mask}@");
+        masked = UrlUserInfoRegex().Replace(masked, m => $"{m.Groups[1].Value}{Mask}@");
+        masked = XtreamPathRegex().Replace(masked, m => $"{m.Groups[1].Value}{Mask}/{Mask}");
+        masked = XtreamBarePathRegex().Replace(masked, m => $"{m.Groups[1].Value}{Mask}/{Mask}/");
+        return XtreamBareBaseRegex().Replace(masked, m => $"{m.Groups[1].Value}{Mask}/{Mask}/");
     }
 
     /// <summary>
@@ -58,12 +61,26 @@ public static partial class SecretRedactor
             .Replace('\n', ' ');
     }
 
-    [GeneratedRegex(@"\b(apikey|api_key|passkey|pass_key|rsskey|token|auth|password|secret|cookie)=[^&\s""]*",
+    [GeneratedRegex(@"\b(apikey|api_key|passkey|pass_key|rsskey|token|auth|username|password|secret|cookie)=[^&\s""]*",
         RegexOptions.IgnoreCase)]
     private static partial Regex UrlSecretRegex();
 
+    [GeneratedRegex(@"(https?://[^\s?""'<>]{0,2048}/(?:live|movie|series|timeshift)/)[^/?#\s""'<>]+/[^/?#\s""'<>]+",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex XtreamPathRegex();
+
+    [GeneratedRegex(@"(https?://[^/?#\s""'<>]+/)[^/?#\s""'<>]+/[^/?#\s""'<>]+/(?=[0-9]{1,12}\.(?:ts|m3u8?|mp4)(?:$|[?#\s""'<>).,;]|\]|\}))",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex XtreamBarePathRegex();
+
+    // Mask ambiguous bases. They can contain IPTV credentials.
+    // Keep versioned API routes visible for connection troubleshooting.
+    [GeneratedRegex(@"(https?://[^/?#\s""'<>]+/)(?!api/v[0-9]+/)[^/?#\s""'<>]+/[^/?#\s""'<>]+/(?=$|[?#\s""'<>).,;]|\]|\})",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex XtreamBareBaseRegex();
+
     // Credentials written into the host part, as http://user:pass@host.
-    [GeneratedRegex(@"(\w+://)[^/@\s]+@", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"([A-Za-z][A-Za-z0-9+.-]{0,23}://)[^/@\s]+@", RegexOptions.IgnoreCase)]
     private static partial Regex UrlUserInfoRegex();
 
     // The value consumes escaped quotes rather than stopping at the first

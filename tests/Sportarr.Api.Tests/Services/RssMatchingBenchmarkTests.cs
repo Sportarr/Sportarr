@@ -16,10 +16,11 @@ public class RssMatchingMeasurementCollection;
 public class RssMatchingBenchmarkTests(ITestOutputHelper output)
 {
     private delegate Event? FindMatch(ReleaseSearchResult release, List<Event> events,
-        ReleaseMatchingService matcher, EventPartDetector partDetector, bool multiPart,
+        ReleaseMatchingService matcher, ReleaseMatchScorer scorer, EventPartDetector partDetector, bool multiPart,
         IReadOnlyDictionary<int, int?> earlyLimits,
         IReadOnlyCollection<League> knownLeagues, IReadOnlyCollection<Event> datePeers,
-        IReadOnlyDictionary<(int? LeagueId, string? Season, string? Round), List<int>> roundRaceNumbersByRound);
+        IReadOnlyDictionary<(int? LeagueId, string? Season, string? Round), List<int>> roundRaceNumbersByRound,
+        IReadOnlyDictionary<(int? LeagueId, string? Season), NascarVenueMatchContext> nascarVenues);
 
     [Fact]
     public void MixedFeed_SelectsExpectedEvents_OnFirstAndRepeatPass()
@@ -113,12 +114,14 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
             release,
             new List<Event> { events[2] },
             matcher,
+            new ReleaseMatchScorer(),
             new EventPartDetector(NullLogger<EventPartDetector>.Instance),
             true,
             new Dictionary<int, int?>(),
             new[] { league },
             events,
-            RoundSchedule(events));
+            RoundSchedule(events),
+            new Dictionary<(int? LeagueId, string? Season), NascarVenueMatchContext>());
 
         result.Should().BeSameAs(events[2]);
     }
@@ -180,12 +183,14 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
             release,
             new List<Event> { adjacentGame },
             matcher,
+            new ReleaseMatchScorer(),
             new EventPartDetector(NullLogger<EventPartDetector>.Instance),
             true,
             new Dictionary<int, int?>(),
             new[] { league },
             new[] { adjacentGame, namedGame },
-            RoundSchedule(Array.Empty<Event>()));
+            RoundSchedule(Array.Empty<Event>()),
+            new Dictionary<(int? LeagueId, string? Season), NascarVenueMatchContext>());
 
         result.Should().BeNull();
     }
@@ -227,12 +232,14 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
                 release,
                 new List<Event> { evt },
                 matcher,
+                new ReleaseMatchScorer(),
                 new EventPartDetector(NullLogger<EventPartDetector>.Instance),
                 true,
                 new Dictionary<int, int?>(),
                 new[] { league },
                 Array.Empty<Event>(),
-                RoundSchedule(Array.Empty<Event>()))
+                RoundSchedule(Array.Empty<Event>()),
+                new Dictionary<(int? LeagueId, string? Season), NascarVenueMatchContext>())
             .Should().BeSameAs(evt);
     }
 
@@ -274,12 +281,14 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
             release,
             new List<Event> { evt },
             matcher,
+            new ReleaseMatchScorer(),
             partDetector,
             true,
             new Dictionary<int, int?>(),
             new[] { league },
             Array.Empty<Event>(),
-            RoundSchedule(Array.Empty<Event>())).Should().BeNull();
+            RoundSchedule(Array.Empty<Event>()),
+            new Dictionary<(int? LeagueId, string? Season), NascarVenueMatchContext>()).Should().BeNull();
     }
 
     private int?[] Measure(string pass, FindMatch findMatch,
@@ -294,18 +303,22 @@ public class RssMatchingBenchmarkTests(ITestOutputHelper output)
         var cpuBefore = process.TotalProcessorTime;
         var timer = Stopwatch.StartNew();
         var roundSchedule = RoundSchedule(Array.Empty<Event>());
+        var nascarVenues = new Dictionary<(int? LeagueId, string? Season), NascarVenueMatchContext>();
+        var scorer = new ReleaseMatchScorer();
         for (var index = 0; index < releases.Count; index++)
         {
             results[index] = findMatch(
                 releases[index].Release,
                 events,
                 matcher,
+                scorer,
                 partDetector,
                 true,
                 earlyLimits,
                 knownLeagues,
                 events,
-                roundSchedule)?.Id;
+                roundSchedule,
+                nascarVenues)?.Id;
         }
         timer.Stop();
         var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;

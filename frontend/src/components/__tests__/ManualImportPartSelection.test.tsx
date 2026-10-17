@@ -45,6 +45,9 @@ beforeEach(() => {
     if (path === '/api/settings') return ok({ mediaManagementSettings: '{}' });
     if (path === '/api/leagues') return ok([event.league]);
     if (path === '/api/pending-imports/11/matches') return ok([]);
+    if (path === '/api/pending-imports/11/video-candidates') return ok([
+      { relativePath: 'UFC.9999.Main.Card.720p.WEB-DL.mkv', size: 4096 },
+    ]);
     if (path.endsWith('/seasons')) return ok({ seasons: ['2020'] });
     if (path.includes('/events')) return ok({ events: [event] });
     if (path === '/api/library/parts/Fighting') return ok({ parts: [
@@ -59,6 +62,38 @@ beforeEach(() => {
 });
 
 describe('Manual import part selection', () => {
+  it('still allows a single-file import if the file list cannot load', async () => {
+    const originalGet = transport.get.getMockImplementation()!;
+    transport.get.mockImplementation((path: string) => path === '/api/pending-imports/11/video-candidates'
+      ? Promise.reject(new Error('Unavailable')) : originalGet(path));
+    renderWithProviders(<ManualImportModal pendingImport={pendingImport} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await screen.findByText(/Could not list the video files/);
+    expect(screen.getByRole('button', { name: /^Import$/ })).toBeEnabled();
+  });
+
+  it('requires a video choice for a multi-video download and sends the chosen path', async () => {
+    const user = userEvent.setup();
+    const originalGet = transport.get.getMockImplementation()!;
+    transport.get.mockImplementation((path: string) => path === '/api/pending-imports/11/video-candidates'
+      ? Promise.resolve(ok([
+        { relativePath: 'Main.Card.mkv', size: 4096 },
+        { relativePath: 'Prelims.mkv', size: 4096 },
+      ])) : originalGet(path));
+    renderWithProviders(<ManualImportModal
+      pendingImport={{ ...pendingImport, title: 'UFC.9999.Weekend.Pack', filePath: '/data/e2e-lib/weekend' }}
+      onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    const videoFiles = await screen.findByRole('radiogroup', { name: 'Video file' });
+    expect(within(videoFiles).getByRole('radio', { name: /Prelims.mkv/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Import$/ })).toBeDisabled();
+    await user.click(within(videoFiles).getByRole('radio', { name: /Main.Card.mkv/ }));
+    await user.click(screen.getByRole('button', { name: /^Import$/ }));
+
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith('/api/pending-imports/11/accept',
+      expect.objectContaining({ selectedRelativePath: 'Main.Card.mkv' })));
+  });
+
   it.each(['Full Event', 'Prelims'])('does not send the old part after selecting %s', async (part) => {
     const user = userEvent.setup();
     renderWithProviders(<ManualImportModal pendingImport={pendingImport} onClose={vi.fn()} onSuccess={vi.fn()} />);

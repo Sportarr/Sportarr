@@ -480,33 +480,18 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             }
         }
 
-        // Find events with duplicate Exists=true file records (same event, same part or both null)
-        // Keep the newest record (highest Id) and remove the rest
+        // Keep both rows until the files are reconciled. Dropping one row leaves its video untracked.
         var duplicateFiles = await db.EventFiles
             .Where(ef => ef.Exists)
             .GroupBy(ef => new { ef.EventId, ef.PartNumber })
             .Where(g => g.Count() > 1)
-            .Select(g => new { g.Key.EventId, g.Key.PartNumber, KeepId = g.Max(f => f.Id) })
+            .Select(g => new { g.Key.EventId, g.Key.PartNumber, Count = g.Count() })
             .ToListAsync(cancellationToken);
 
-        if (duplicateFiles.Count > 0)
+        foreach (var duplicate in duplicateFiles)
         {
-            var keepIds = duplicateFiles.Select(d => d.KeepId).ToHashSet();
-            var eventPartPairs = duplicateFiles.Select(d => new { d.EventId, d.PartNumber }).ToList();
-
-            // Remove all but the newest record for each duplicate group
-            foreach (var dup in duplicateFiles)
-            {
-                var dupsRemoved = await db.EventFiles
-                    .Where(ef => ef.EventId == dup.EventId && ef.PartNumber == dup.PartNumber && ef.Exists && ef.Id != dup.KeepId)
-                    .ExecuteDeleteAsync(cancellationToken);
-
-                if (dupsRemoved > 0)
-                {
-                    _logger.LogInformation("[Disk Scan] Removed {Count} duplicate EventFile records for EventId={EventId} PartNumber={Part}",
-                        dupsRemoved, dup.EventId, dup.PartNumber?.ToString() ?? "null");
-                }
-            }
+            _logger.LogWarning("[Disk Scan] Event {EventId} has {Count} tracked files for part {Part}",
+                duplicate.EventId, duplicate.Count, duplicate.PartNumber?.ToString() ?? "full event");
         }
 
         // Keep event completeness aligned with the parts still on disk.
@@ -742,6 +727,12 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                 .Select(pi => pi.FilePath)
                 .ToListAsync(cancellationToken),
             StringComparer.OrdinalIgnoreCase);
+        // Keep confidence-100 choices because the source is not recorded.
+        var refreshablePendingByPath = (await db.PendingImports
+                .Where(pi => pi.DownloadClientId == null && pi.Status == PendingImportStatus.Pending &&
+                    pi.SuggestionConfidence < 100)
+                .ToListAsync(cancellationToken))
+            .ToLookup(pi => pi.FilePath, StringComparer.OrdinalIgnoreCase);
 
         // Exclude paths the user has blocklisted. When a user rejects a
         // disk-discovered import via /api/pending-imports/{id}/remove-from-client
@@ -771,6 +762,21 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 
         var videoExtensions = new HashSet<string>(SupportedExtensions.Video, StringComparer.OrdinalIgnoreCase);
         var discoveredCount = 0;
+        var refreshedCount = 0;
+        var tokenEventCache = new Dictionary<string, int?>(StringComparer.Ordinal);
+
+        async Task<int?> UniqueTokenEventIdAsync(string tokenId)
+        {
+            if (tokenEventCache.TryGetValue(tokenId, out var cachedId)) return cachedId;
+            var eventIds = await db.Events.AsNoTracking()
+                .Where(e => e.ExternalId == tokenId)
+                .Select(e => e.Id)
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            var eventId = eventIds.Count == 1 ? eventIds[0] : (int?)null;
+            tokenEventCache[tokenId] = eventId;
+            return eventId;
+        }
 
         foreach (var rootFolder in rootFolders)
         {
@@ -798,9 +804,34 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                     if (cancellationToken.IsCancellationRequested) break;
 
                     // Skip if already tracked, already pending, or blocklisted
-                    if (trackedPaths.Contains(filePath) || pendingPaths.Contains(filePath) ||
+                    if (trackedPaths.Contains(filePath) ||
                         blocklistedPaths.Contains(filePath) || activeRecordingPaths.Contains(filePath))
                         continue;
+
+                    if (pendingPaths.Contains(filePath))
+                    {
+                        var pendingRows = refreshablePendingByPath[filePath].ToList();
+                        if (pendingRows.Count > 0)
+                        {
+                            var tokenIds = SportarrIdToken.ExtractEventIds(Path.GetFileNameWithoutExtension(filePath));
+                            if (tokenIds.Count > 0)
+                            {
+                                var tokenEventId = tokenIds.Count == 1
+                                    ? await UniqueTokenEventIdAsync(tokenIds[0])
+                                    : null;
+                                foreach (var pending in pendingRows)
+                                {
+                                    var confidence = tokenEventId.HasValue ? 100 : 0;
+                                    if (pending.SuggestedEventId == tokenEventId &&
+                                        pending.SuggestionConfidence == confidence) continue;
+                                    pending.SuggestedEventId = tokenEventId;
+                                    pending.SuggestionConfidence = confidence;
+                                    refreshedCount++;
+                                }
+                            }
+                        }
+                        continue;
+                    }
 
                     try
                     {
@@ -817,19 +848,31 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                             "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         cleanTitle = cleanTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Trim();
 
-                        if (!string.IsNullOrEmpty(cleanTitle) && cleanTitle.Length > 3)
+                        var tokenIds = SportarrIdToken.ExtractEventIds(filename);
+                        if (tokenIds.Count == 1)
+                        {
+                            var tokenEventId = await UniqueTokenEventIdAsync(tokenIds[0]);
+                            if (tokenEventId.HasValue)
+                            {
+                                suggestedEventId = tokenEventId;
+                                confidence = 100;
+                            }
+                        }
+
+                        if (tokenIds.Count == 0 && !string.IsNullOrEmpty(cleanTitle) && cleanTitle.Length > 3)
                         {
                             var pattern = $"%{cleanTitle}%";
-                            var matchedEvent = await db.Events
+                            var matchedEvents = await db.Events
                                 .AsNoTracking()
-                                .Where(e => !e.HasFile)
                                 .Where(e => EF.Functions.Like(e.Title, pattern) ||
                                            e.Title != null && cleanTitle.Contains(e.Title))
-                                .FirstOrDefaultAsync(cancellationToken);
+                                .Select(e => new { e.Id, e.HasFile })
+                                .Take(2)
+                                .ToListAsync(cancellationToken);
 
-                            if (matchedEvent != null)
+                            if (matchedEvents.Count == 1 && !matchedEvents[0].HasFile)
                             {
-                                suggestedEventId = matchedEvent.Id;
+                                suggestedEventId = matchedEvents[0].Id;
                                 confidence = 50;
                             }
                         }
@@ -878,9 +921,14 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             }
         }
 
+        if (discoveredCount > 0 || refreshedCount > 0)
+            await db.SaveChangesAsync(cancellationToken);
+
+        if (refreshedCount > 0)
+            _logger.LogInformation("[Disk Scan] Refreshed {Count} pending event suggestions", refreshedCount);
+
         if (discoveredCount > 0)
         {
-            await db.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("[Disk Scan] Discovered {Count} new untracked files (available as pending imports in Activity)",
                 discoveredCount);
 

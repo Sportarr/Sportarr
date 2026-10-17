@@ -272,6 +272,26 @@ public static class SpecialEventClassifier
         return SpecialTier.None;
     }
 
+    public static SpecialEventTeamMode TeamMode(League league, SpecialTier tier) => tier switch
+    {
+        SpecialTier.Final => league.MonitorFinals ? SpecialEventTeamMode.AllTeams : league.FinalTeamMode,
+        SpecialTier.Playoff => league.MonitorPlayoffs ? SpecialEventTeamMode.AllTeams : league.PlayoffTeamMode,
+        SpecialTier.Preseason => league.MonitorPreseason ? SpecialEventTeamMode.AllTeams : league.PreseasonTeamMode,
+        _ => SpecialEventTeamMode.SelectedTeams
+    };
+
+    public static bool IsIncludedByTeamSelection(League league, string? round, string? title,
+        bool matchesTeam, IReadOnlySet<int>? cupStageSizes = null, bool? hasLaterSeasonFinal = null)
+    {
+        var tier = Classify(round, title, cupStageSizes, hasLaterSeasonFinal);
+        return TeamMode(league, tier) switch
+        {
+            SpecialEventTeamMode.Off => false,
+            SpecialEventTeamMode.AllTeams => true,
+            _ => matchesTeam
+        };
+    }
+
     /// <summary>
     /// True when the event should bypass the monitored-team filter for a
     /// league with the given opt-ins.

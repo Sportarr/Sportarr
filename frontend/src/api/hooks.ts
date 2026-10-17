@@ -46,6 +46,28 @@ export const useSystemStatus = () => {
   });
 };
 
+export interface SystemHealthCheck {
+  type: number;
+  level: number;
+  message: string;
+  details?: string;
+  checkedAt: string;
+  dismissed?: boolean;
+}
+
+export const useSystemHealth = (poll = false) => {
+  return useQuery({
+    queryKey: ['system', 'health'],
+    queryFn: async ({ signal }) => {
+      const { data } = await apiClient.get<SystemHealthCheck[]>('/system/health', { signal });
+      return data;
+    },
+    staleTime: 60000,
+    refetchInterval: poll ? 60000 : false,
+    refetchOnWindowFocus: false,
+  });
+};
+
 // Tags
 export const useTags = () => {
   return useQuery({

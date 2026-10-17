@@ -8,6 +8,7 @@ using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public class CachePolicyAutomaticRetentionDiagnosticsTests
 {
     private readonly ITestOutputHelper _output;

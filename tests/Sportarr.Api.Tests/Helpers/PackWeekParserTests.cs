@@ -39,6 +39,9 @@ public class PackWeekParserTests
     [InlineData("NFL 2025 Week 5 - 10/05/2025", 5)]
     [InlineData("NFL 2025 Week 5 - 7.500GB", 5)]
     [InlineData("NFL 2025 Week 5 - 12.500 GB", 5)]
+    [InlineData("NFL 2025 Week 5 - 11 Oct 2025", 5)]
+    [InlineData("NFL 2025 Week 2 - 14 Sept 2025", 2)]
+    [InlineData("NFL 2025 Week 4 - 6 Hours", 4)]
     [InlineData("NFL 2025 Week 5 - 7,5GB", 5)]
     [InlineData("NFL 2025 Week 5 - 7,5 GB", 5)]
     // Ambiguous on purpose: a size joined to the range end by a bare dot
@@ -70,6 +73,7 @@ public class PackWeekParserTests
     [InlineData("NFL 2025 Week 1-18.720p.HDTV")]
     [InlineData("NFL 2025 Week 1-18.576i.HDTV")]
     [InlineData("NFL 2025 Week 5-7.1080i.HDTV")]
+    [InlineData("NFL 2025 Week 1-18.10bit Complete Season")]
     public void A_week_range_yields_no_week(string title)
     {
         PackWeekParser.SingleWeek(title).Should().BeNull();

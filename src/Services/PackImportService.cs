@@ -818,7 +818,7 @@ public class PackImportService
         // when set, fall back to the legacy free-space heuristic otherwise.
         var rootFolders = await RootFolderLoader.LoadAsync(_db, _diskSpaceService);
         var rootFolder = GetRootFolderForLeague(settings, rootFolders, eventInfo.League, fileInfo.Length);
-        var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder);
+        var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile);
 
         _logger.LogDebug("[Pack Import] Destination path: {Path}", destinationPath);
 
@@ -861,6 +861,15 @@ public class PackImportService
         _logger.LogInformation("[Pack Import] ✓ Imported: {FileName} -> {Event} (Quality: {Quality}, CF Score: {CFScore})",
             fileName, eventInfo.Title, eventInfo.Quality, customFormatScore);
 
+        try
+        {
+            await _metadataWriterService.WriteEventMetadataAsync(eventInfo, eventFile, eventInfo.League);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Pack Import] Failed to write local metadata for {FileName}", fileName);
+        }
+
         // NOTIFICATIONS: pack members fire the same OnDownload notification
         // as single-file imports, so media-server connections refresh for
         // every event a pack fills - previously pack imports never notified
@@ -887,14 +896,6 @@ public class PackImportService
             _logger.LogWarning(ex, "[Pack Import] Failed to send notification for {FileName}", fileName);
         }
 
-        try
-        {
-            await _metadataWriterService.WriteEventMetadataAsync(eventInfo, eventFile, eventInfo.League);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[Pack Import] Failed to write local metadata for {FileName}", fileName);
-        }
     }
 
     /// <summary>
@@ -905,7 +906,8 @@ public class PackImportService
         Event eventInfo,
         ParsedFileInfo parsed,
         string extension,
-        string rootFolder)
+        string rootFolder,
+        string sourceFile)
     {
         var destinationPath = rootFolder;
 
@@ -941,12 +943,13 @@ public class PackImportService
             {
                 EventTitle = eventInfo.Title,
                 EventTitleThe = eventInfo.Title,
+                SportarrId = eventInfo.ExternalId ?? string.Empty,
                 AirDate = brandingDate,
                 Quality = parsed.Quality ?? "Unknown",
                 QualityFull = _parser.BuildQualityString(parsed),
                 ReleaseGroup = parsed.ReleaseGroup ?? string.Empty,
                 OriginalTitle = parsed.EventTitle,
-                OriginalFilename = Path.GetFileNameWithoutExtension(parsed.EventTitle),
+                OriginalFilename = FileNamingService.GetOriginalFilenameToken(sourceFile),
                 Series = eventInfo.League?.Name ?? eventInfo.Sport,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString(),
                 Episode = episodeNumber.ToString("00"),
@@ -957,7 +960,7 @@ public class PackImportService
         }
         else
         {
-            filename = parsed.EventTitle + extension;
+            filename = FileNamingService.GetSourceFilename(sourceFile);
         }
 
         destinationPath = Path.Combine(destinationPath, filename);

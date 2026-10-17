@@ -65,6 +65,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("LibraryFormatScoresBackfilled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("LoggingSettings")
                         .IsRequired()
                         .HasColumnType("text");
@@ -691,6 +694,12 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<DateTime>("Added")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ClientCleanupCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ClientCleanupCompleted")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Codec")
                         .HasColumnType("text");
@@ -1362,6 +1371,8 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("LeagueId", "EventDate", "Id");
+
                     b.ToTable("Events");
                 });
 
@@ -1399,6 +1410,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("IndexerFlags")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("IsIptvRecording")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Languages")
                         .IsRequired()
@@ -1873,6 +1887,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<DateTime>("Created")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("DisableSslCertificateValidation")
+                        .HasColumnType("boolean");
+
                     b.Property<int?>("DownloadClientId")
                         .HasColumnType("integer");
 
@@ -2292,6 +2309,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("character varying(50)")
                         .HasAnnotation("Relational:JsonPropertyName", "idLeague");
 
+                    b.Property<int>("FinalTeamMode")
+                        .HasColumnType("integer");
+
                     b.Property<string>("FormedYear")
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "intFormedYear");
@@ -2340,10 +2360,16 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("character varying(200)")
                         .HasAnnotation("Relational:JsonPropertyName", "strLeague");
 
+                    b.Property<int>("PlayoffTeamMode")
+                        .HasColumnType("integer");
+
                     b.Property<string>("PosterUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasAnnotation("Relational:JsonPropertyName", "strPoster");
+
+                    b.Property<int>("PreseasonTeamMode")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("QualityProfileId")
                         .HasColumnType("integer");
@@ -3392,7 +3418,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         {
                             Id = 1,
                             CutoffQuality = 15,
-                            FormatItems = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":5},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":10}]",
+                            FormatItems = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":0}]",
                             FormatScoreIncrement = 1,
                             IsCustomized = false,
                             IsDefault = true,
@@ -3406,7 +3432,7 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         {
                             Id = 2,
                             CutoffQuality = 19,
-                            FormatItems = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":5},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":10}]",
+                            FormatItems = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":0}]",
                             FormatScoreIncrement = 1,
                             IsCustomized = false,
                             IsDefault = false,

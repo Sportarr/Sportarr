@@ -22,6 +22,9 @@ public class AppSettings
     public string TrashSyncSettings { get; set; } = "{}";
     public string DevelopmentSettings { get; set; } = "{}";
 
+    [JsonIgnore]
+    public bool LibraryFormatScoresBackfilled { get; set; }
+
     // Download handling settings (stored directly for frontend compatibility)
     public bool EnableCompletedDownloadHandling { get; set; } = true;
     // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings (per-client)

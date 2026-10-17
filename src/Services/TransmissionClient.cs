@@ -101,7 +101,7 @@ public class TransmissionClient
     /// its own configured directory.
     /// </summary>
     public Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
-        => AddTorrentCoreAsync(config, "filename", torrentUrl, seedRatioLimit, seedTimeLimitMinutes);
+        => AddTorrentCoreAsync(config, "filename", torrentUrl, category, seedRatioLimit, seedTimeLimitMinutes);
 
     /// <summary>
     /// Add a torrent from already-fetched .torrent file bytes via the 'metainfo'
@@ -109,22 +109,34 @@ public class TransmissionClient
     /// so Transmission never has to reach the indexer during torrent-add.
     /// </summary>
     public Task<string?> AddTorrentFromMetainfoAsync(DownloadClient config, byte[] torrentBytes, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
-        => AddTorrentCoreAsync(config, "metainfo", Convert.ToBase64String(torrentBytes), seedRatioLimit, seedTimeLimitMinutes);
+        => AddTorrentCoreAsync(config, "metainfo", Convert.ToBase64String(torrentBytes), category, seedRatioLimit, seedTimeLimitMinutes);
 
     /// <summary>
     /// Shared torrent-add implementation. <paramref name="sourceKey"/> is either
     /// "filename" (magnet/URL/path) or "metainfo" (base64 .torrent bytes).
     /// </summary>
-    private async Task<string?> AddTorrentCoreAsync(DownloadClient config, string sourceKey, string sourceValue, double? seedRatioLimit, int? seedTimeLimitMinutes)
+    private async Task<string?> AddTorrentCoreAsync(DownloadClient config, string sourceKey, string sourceValue, string category, double? seedRatioLimit, int? seedTimeLimitMinutes)
     {
         try
         {
             ConfigureClient(config);
 
-            // Note: Transmission doesn't have built-in category support like qBittorrent
-            // Categories would need to be handled via labels (which requires transmission-daemon 3.0+)
-            // For now, we don't set downloadDir - Transmission will use its configured default
-            // Handle initial state (Started, ForceStarted, Stopped)
+            int? rpcVersion = null;
+            if (!string.IsNullOrWhiteSpace(category))
+            {
+                var sessionResponse = await SendRpcRequestAsync(config, "session-get", null);
+                if (sessionResponse != null)
+                {
+                    using var session = JsonDocument.Parse(sessionResponse);
+                    if (session.RootElement.TryGetProperty("arguments", out var sessionArgs) &&
+                        sessionArgs.TryGetProperty("rpc-version", out var version) &&
+                        version.TryGetInt32(out var parsedVersion))
+                    {
+                        rpcVersion = parsedVersion;
+                    }
+                }
+            }
+
             var shouldPause = config.InitialState == TorrentInitialState.Stopped;
             if (shouldPause)
             {
@@ -138,8 +150,12 @@ public class TransmissionClient
             };
             if (!string.IsNullOrWhiteSpace(config.Directory))
             {
-                arguments["download_dir"] = config.Directory;
+                arguments["download-dir"] = config.Directory;
                 _logger.LogInformation("[Transmission] Using directory override: {Directory}", config.Directory);
+            }
+            if (!string.IsNullOrWhiteSpace(category) && rpcVersion >= 17)
+            {
+                arguments["labels"] = new[] { category };
             }
 
             var response = await SendRpcRequestAsync(config, "torrent-add", arguments);
@@ -158,6 +174,13 @@ public class TransmissionClient
                 {
                     var hashString = hash.GetString();
                     _logger.LogInformation("[Transmission] Torrent added: {Hash}", hashString);
+
+                    if (args.TryGetProperty("torrent-added", out _) && hashString != null &&
+                        !string.IsNullOrWhiteSpace(category) && (rpcVersion == null || rpcVersion == 16) &&
+                        !await SetCategoryAsync(config, hashString, category))
+                    {
+                        _logger.LogWarning("[Transmission] Torrent {Hash} was added without label '{Category}'", hashString, category);
+                    }
 
                     // Apply per-torrent seed limits from indexer settings
                     if (hashString != null && (seedRatioLimit.HasValue || seedTimeLimitMinutes.HasValue))
@@ -212,7 +235,10 @@ public class TransmissionClient
             };
 
             var response = await SendRpcRequestAsync(config, "torrent-set", setArgs);
-            return response != null;
+            if (response == null) return false;
+            using var doc = JsonDocument.Parse(response);
+            return doc.RootElement.TryGetProperty("result", out var result) &&
+                   result.GetString() == "success";
         }
         catch (Exception ex)
         {
@@ -563,6 +589,10 @@ public class TransmissionClient
                 Ratio = torrent.DownloadedEver > 0
                     ? (double)torrent.UploadedEver / torrent.DownloadedEver
                     : 0,
+                TorrentIsStopped = torrent.PercentDone >= 1.0 && torrent.Status == 0,
+                AddedAt = torrent.AddedDate > 0
+                    ? DateTimeOffset.FromUnixTimeSeconds(torrent.AddedDate).UtcDateTime
+                    : null,
                 CompletedAt = torrent.DoneDate > 0
                     ? DateTimeOffset.FromUnixTimeSeconds(torrent.DoneDate).UtcDateTime
                     : null,

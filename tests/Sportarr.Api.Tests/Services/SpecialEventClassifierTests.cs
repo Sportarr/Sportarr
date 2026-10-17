@@ -1,6 +1,7 @@
 using Sportarr.Api.Helpers;
 using FluentAssertions;
 using static Sportarr.Api.Helpers.SpecialEventClassifier;
+using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Tests.Services;
 
@@ -12,6 +13,30 @@ namespace Sportarr.Api.Tests.Services;
 /// </summary>
 public class SpecialEventClassifierTests
 {
+    [Theory]
+    [InlineData("500", false, SpecialEventTeamMode.Off, false)]
+    [InlineData("500", true, SpecialEventTeamMode.Off, false)]
+    [InlineData("500", false, SpecialEventTeamMode.SelectedTeams, false)]
+    [InlineData("500", true, SpecialEventTeamMode.SelectedTeams, true)]
+    [InlineData("500", false, SpecialEventTeamMode.AllTeams, true)]
+    [InlineData("500", true, SpecialEventTeamMode.AllTeams, true)]
+    [InlineData("7", true, SpecialEventTeamMode.Off, true)]
+    public void Category_mode_controls_admission(string round, bool matchesTeam,
+        SpecialEventTeamMode mode, bool expected)
+    {
+        var league = new League
+        {
+            Name = "NBA",
+            Sport = "Basketball",
+            PreseasonTeamMode = mode,
+            PlayoffTeamMode = mode,
+            FinalTeamMode = mode
+        };
+
+        IsIncludedByTeamSelection(league, round, "Home vs Away", matchesTeam)
+            .Should().Be(expected);
+    }
+
     [Theory]
     [InlineData("200", SpecialTier.Final)]   // Final
     [InlineData("180", SpecialTier.Final)]   // Playoff final (NBA Finals games carry this)

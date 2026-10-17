@@ -431,6 +431,7 @@ public class SynologyDownloadStationClient
 
         long downloaded = 0, uploaded = 0, speed = 0;
         string? destination = null;
+        DateTime? addedAt = null;
         DateTime? completedAt = null;
 
         if (task.TryGetProperty("additional", out var additional))
@@ -444,6 +445,11 @@ public class SynologyDownloadStationClient
             if (additional.TryGetProperty("detail", out var detail))
             {
                 destination = detail.TryGetProperty("destination", out var destEl) ? destEl.GetString() : null;
+                if (detail.TryGetProperty("create_time", out var created) &&
+                    long.TryParse(created.ToString(), out var createdUnix) && createdUnix > 0)
+                {
+                    addedAt = DateTimeOffset.FromUnixTimeSeconds(createdUnix).UtcDateTime;
+                }
                 if (detail.TryGetProperty("completed_time", out var ct) && ct.TryGetInt64(out var completedUnix) && completedUnix > 0)
                 {
                     completedAt = DateTimeOffset.FromUnixTimeSeconds(completedUnix).UtcDateTime;
@@ -468,7 +474,10 @@ public class SynologyDownloadStationClient
             TimeRemaining = timeRemaining,
             SavePath = savePath,
             Ratio = downloaded > 0 ? (double)uploaded / downloaded : 0,
-            CompletedAt = mapped == "completed" ? completedAt : null
+            AddedAt = addedAt,
+            CompletedAt = mapped == "completed" ? completedAt : null,
+            TorrentIsStopped = size > 0 && downloaded >= size &&
+                (statusStr == "paused" || statusStr == "finished")
         };
     }
 

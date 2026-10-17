@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sportarr.Api.Data;
@@ -187,9 +188,11 @@ public class LibraryImportNamedPartScanTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ExplicitFullEventKeepsRenamedFileAndStoredPartUnsegmented(bool createNew)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public async Task ExplicitFullEventKeepsRenamedFileAndStoredPartUnsegmented(
+        bool createNew, bool isIptvRecording, bool checkNfoAtNotification)
     {
         var folder = Path.Combine(Path.GetTempPath(), "sportarr-full-event-" + Guid.NewGuid());
         var sourceFolder = Path.Combine(folder, "source");
@@ -235,6 +238,30 @@ public class LibraryImportNamedPartScanTests
             var config = new ConfigService(new ConfigurationBuilder().AddInMemoryCollection(
                 new Dictionary<string, string?> { ["Sportarr:DataPath"] = Path.Combine(folder, "config") }).Build(),
                 Mock.Of<ILogger<ConfigService>>());
+            var handler = new NfoProbeHandler(libraryFolder);
+            using var client = new HttpClient(handler);
+            using var notificationServices = new ServiceCollection()
+                .AddSingleton(db)
+                .AddSingleton(config)
+                .BuildServiceProvider();
+            var notifications = new NotificationService(notificationServices,
+                Mock.Of<ILogger<NotificationService>>(), client, Mock.Of<IHttpClientFactory>());
+            IMetadataWriterService metadataWriter = Mock.Of<IMetadataWriterService>();
+            if (checkNfoAtNotification)
+            {
+                db.MetadataProviders.Add(new MetadataProvider
+                {
+                    Name = "Local NFO", EventNfo = true, EventImages = false
+                });
+                db.Notifications.Add(new Notification
+                {
+                    Name = "NFO probe", Implementation = "Webhook", Enabled = true,
+                    ConfigJson = "{\"webhook\":\"https://example.invalid/hook\",\"onDownload\":true}"
+                });
+                await db.SaveChangesAsync();
+                metadataWriter = new MetadataWriterService(db, Mock.Of<IHttpClientFactory>(),
+                    Mock.Of<ILogger<MetadataWriterService>>());
+            }
             var service = new LibraryImportService(
                 db, Mock.Of<ILogger<LibraryImportService>>(), parser,
                 new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>()),
@@ -242,7 +269,7 @@ public class LibraryImportNamedPartScanTests
                 new EventPartDetector(Mock.Of<ILogger<EventPartDetector>>()), config,
                 EpisodeResolverFixture.Create(db, config),
                 new DiskSpaceService(Mock.Of<ILogger<DiskSpaceService>>()),
-                new CustomFormatService(parser), null!, Mock.Of<IMetadataWriterService>());
+                new CustomFormatService(parser), notifications, metadataWriter);
 
             var result = await service.ImportFilesAsync(new List<FileImportRequest>
             {
@@ -256,6 +283,7 @@ public class LibraryImportNamedPartScanTests
                     EventDate = new DateTime(2026, 9, 1, 18, 0, 0, DateTimeKind.Utc),
                     Season = "2026",
                     PartName = "Full Event",
+                    IsIptvRecording = isIptvRecording,
                     ImportMode = "copy"
                 }
             });
@@ -264,12 +292,32 @@ public class LibraryImportNamedPartScanTests
             var imported = db.EventFiles.Should().ContainSingle().Subject;
             imported.PartName.Should().BeNull();
             imported.PartNumber.Should().BeNull();
+            imported.IsIptvRecording.Should().Be(isIptvRecording);
             Path.GetFileName(imported.FilePath).Should().Be("UFC - S2026E01 - UFC 9999.mkv");
             File.Exists(imported.FilePath).Should().BeTrue();
+            if (checkNfoAtNotification)
+            {
+                handler.RequestCount.Should().Be(1);
+                handler.NfoPresentAtRequest.Should().BeTrue();
+            }
         }
         finally
         {
             Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    private sealed class NfoProbeHandler(string libraryFolder) : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+        public bool NfoPresentAtRequest { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            NfoPresentAtRequest = Directory.EnumerateFiles(libraryFolder, "*.nfo", SearchOption.AllDirectories).Any();
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
         }
     }
 

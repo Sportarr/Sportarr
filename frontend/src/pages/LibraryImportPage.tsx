@@ -54,6 +54,7 @@ interface ImportableFile {
   matchConfidence?: number;
   existingEventId?: number;
   rejections?: string[];
+  heldBySourcePrecedence?: boolean;
 }
 
 interface ScanResult {
@@ -89,6 +90,7 @@ interface FileImportRequest {
   languages?: string[];
   indexerFlags?: string;
   importMode?: string;
+  overrideSourcePrecedence?: boolean;
 }
 
 function nonEmpty(s: string | undefined): string | undefined {
@@ -221,6 +223,9 @@ const LibraryImportPage: React.FC = () => {
   const [fileMetadataOverrides, setFileMetadataOverrides] =
     useState<Map<string, FileMetadataEditorValues>>(new Map());
   const [editorOpenForFile, setEditorOpenForFile] = useState<string | null>(null);
+  // Recordings the user chose to import over the indexer file source
+  // precedence would keep (Import anyway).
+  const [precedenceOverrides, setPrecedenceOverrides] = useState<Set<string>>(new Set());
   // How imported files transfer into the library. 'auto' follows the global
   // media-management settings (hardlink when Use Hardlinks is on, copy when
   // Copy Files is on, otherwise move); the explicit modes override per import
@@ -293,6 +298,7 @@ const LibraryImportPage: React.FC = () => {
     setScanProgress(null);
     setSelectedFiles(new Set());
     setFileEventMappings(new Map());
+    setPrecedenceOverrides(new Set());
 
     try {
       // The scan runs as a background task: a large root folder's ffprobe
@@ -356,7 +362,7 @@ const LibraryImportPage: React.FC = () => {
       rememberFolder(folderPath);
 
       // Auto-select all matched files
-      const autoSelected = new Set(result.matchedFiles.map(f => f.filePath));
+      const autoSelected = new Set(result.matchedFiles.filter(f => !f.heldBySourcePrecedence).map(f => f.filePath));
       setSelectedFiles(autoSelected);
 
       setCurrentStep('review');
@@ -543,6 +549,9 @@ const LibraryImportPage: React.FC = () => {
       if (importMode !== 'auto') {
         requests.forEach(r => { r.importMode = importMode; });
       }
+      requests.forEach(r => {
+        if (precedenceOverrides.has(r.filePath)) r.overrideSourcePrecedence = true;
+      });
 
       // The import runs as a background task: file transfers can take
       // minutes on big files, and holding the HTTP request open that long
@@ -608,6 +617,9 @@ const LibraryImportPage: React.FC = () => {
   };
 
   const toggleFileSelection = (filePath: string) => {
+    const file = scanResult && [...scanResult.matchedFiles, ...scanResult.unmatchedFiles, ...scanResult.alreadyInLibrary]
+      .find(f => f.filePath === filePath);
+    if (file?.heldBySourcePrecedence && !precedenceOverrides.has(filePath)) return;
     const newSelected = new Set(selectedFiles);
     if (newSelected.has(filePath)) {
       newSelected.delete(filePath);
@@ -619,15 +631,33 @@ const LibraryImportPage: React.FC = () => {
 
   const selectAll = () => {
     if (!scanResult) return;
-    const all = [...scanResult.matchedFiles, ...scanResult.unmatchedFiles, ...scanResult.alreadyInLibrary].map(f => f.filePath);
+    const all = [...scanResult.matchedFiles, ...scanResult.unmatchedFiles, ...scanResult.alreadyInLibrary]
+      .filter(f => !f.heldBySourcePrecedence || precedenceOverrides.has(f.filePath))
+      .map(f => f.filePath);
     setSelectedFiles(new Set(all));
   };
 
   const selectMatched = () => {
     if (!scanResult) return;
     // Include both matched and already-in-library (for re-import)
-    const matched = [...scanResult.matchedFiles, ...scanResult.alreadyInLibrary].map(f => f.filePath);
+    const matched = [...scanResult.matchedFiles, ...scanResult.alreadyInLibrary]
+      .filter(f => !f.heldBySourcePrecedence || precedenceOverrides.has(f.filePath))
+      .map(f => f.filePath);
     setSelectedFiles(new Set(matched));
+  };
+
+  const togglePrecedenceOverride = (filePath: string) => {
+    const next = new Set(precedenceOverrides);
+    const selected = new Set(selectedFiles);
+    if (next.has(filePath)) {
+      next.delete(filePath);
+      selected.delete(filePath);
+    } else {
+      next.add(filePath);
+      selected.add(filePath);
+    }
+    setPrecedenceOverrides(next);
+    setSelectedFiles(selected);
   };
 
   const clearSelection = () => {
@@ -641,6 +671,7 @@ const LibraryImportPage: React.FC = () => {
     setScanError(null);
     setSelectedFiles(new Set());
     setFileEventMappings(new Map());
+    setPrecedenceOverrides(new Set());
     setImportResult(null);
   };
 
@@ -889,6 +920,7 @@ const LibraryImportPage: React.FC = () => {
                           <input
                             type="checkbox"
                             checked={isSelected}
+                            disabled={file.heldBySourcePrecedence && !precedenceOverrides.has(file.filePath)}
                             onChange={() => toggleFileSelection(file.filePath)}
                             className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-green-600"
                           />
@@ -903,6 +935,17 @@ const LibraryImportPage: React.FC = () => {
                             </p>
                             {file.rejections && file.rejections.length > 0 && (
                               <p className="text-sm text-yellow-400">{file.rejections.join(' ')}</p>
+                            )}
+                            {file.heldBySourcePrecedence && (
+                              <label className="mt-1 flex items-center gap-2 text-sm text-gray-300">
+                                <input
+                                  type="checkbox"
+                                  checked={precedenceOverrides.has(file.filePath)}
+                                  onChange={() => togglePrecedenceOverride(file.filePath)}
+                                  className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-yellow-600"
+                                />
+                                Import anyway (replaces the indexer file)
+                              </label>
                             )}
                           </div>
                           {!mapping && getConfidenceBadge(file.matchConfidence)}

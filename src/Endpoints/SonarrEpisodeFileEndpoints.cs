@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Interfaces;
 using System.Text.Json;
 
 namespace Sportarr.Api.Endpoints;
@@ -122,7 +123,8 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // DELETE /api/v3/episodefile/{id} - Delete specific episode file
-        app.MapDelete("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, ConfigService configService, ILogger<Program> logger) =>
+        app.MapDelete("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, ConfigService configService,
+            IMetadataWriterService metadataWriterService, ILogger<Program> logger) =>
         {
             logger.LogInformation("[V3-COMPAT] DELETE /api/v3/episodefile/{Id}", id);
 
@@ -154,6 +156,8 @@ public static class SonarrEpisodeFileEndpoints
                     detail: $"Could not delete {eventFile.FilePath}: {ex.Message}",
                     statusCode: StatusCodes.Status500InternalServerError);
             }
+
+            await metadataWriterService.DeleteEventMetadataAsync(eventFile);
 
             if (eventFile.Event != null)
             {
@@ -191,7 +195,8 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // DELETE /api/v3/episodefile/bulk - Bulk delete episode files (Decypharr repair)
-        app.MapDelete("/api/v3/episodefile/bulk", async (HttpContext context, SportarrDbContext db, ConfigService configService, ILogger<Program> logger) =>
+        app.MapDelete("/api/v3/episodefile/bulk", async (HttpContext context, SportarrDbContext db, ConfigService configService,
+            IMetadataWriterService metadataWriterService, ILogger<Program> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
@@ -238,6 +243,7 @@ public static class SonarrEpisodeFileEndpoints
                             File.Delete(eventFile.FilePath);
                             logger.LogDebug("[V3-COMPAT] Deleted file: {Path}", eventFile.FilePath);
                         }
+                        await metadataWriterService.DeleteEventMetadataAsync(eventFile);
                     }
                     catch (Exception ex)
                     {

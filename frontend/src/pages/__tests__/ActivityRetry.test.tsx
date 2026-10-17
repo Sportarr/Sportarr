@@ -230,6 +230,48 @@ describe.each([['desktop', 1440], ['phone', 390]] as const)('Activity retry on %
   });
 });
 
+describe.each([['desktop', 1440], ['phone', 390]] as const)('Completed manual import on %s', (_view, width) => {
+  it('offers Import and enables bulk import for a completed download', async () => {
+    const { user, row } = await showQueue(width, 3, 100, false, false, [], false,
+      '/activity', 'Owned team event', true, [], { errorMessage: null });
+
+    const importButton = row.getByRole('button', { name: 'Import' });
+    await user.click(row.getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: 'Import Selected' })).toBeEnabled();
+    await user.click(importButton);
+
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith('/queue/41/import'));
+  });
+
+  it('sends completed downloads through bulk import', async () => {
+    const { user, row } = await showQueue(width, 3, 100, false, false, [], false,
+      '/activity', 'Owned team event', true, [], { errorMessage: null });
+
+    await user.click(row.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Import Selected' }));
+
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith('/queue/41/import'));
+  });
+
+  it('offers import when a client reports Completed at 99.9 percent', async () => {
+    const { user, row } = await showQueue(width, 3, 99.9, false, false, [], false,
+      '/activity', 'Owned team event', true, [], { errorMessage: null });
+
+    expect(row.getByRole('button', { name: 'Import' })).toBeInTheDocument();
+    await user.click(row.getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: 'Import Selected' })).toBeEnabled();
+  });
+
+  it('does not offer import for a download still in progress', async () => {
+    const { user, row } = await showQueue(width, 1, 99.9, false, false, [], false,
+      '/activity', 'Owned team event', true, [], { errorMessage: null });
+
+    expect(row.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument();
+    await user.click(row.getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: 'Import Selected' })).toBeDisabled();
+  });
+});
+
 describe.each([['desktop', 1440], ['phone', 390]] as const)('Activity video choice on %s', (_view, width) => {
   it('waits for a file choice before importing an ambiguous download', async () => {
     const { user, row } = await showQueue(width, 9, 100, false, false, [], true);

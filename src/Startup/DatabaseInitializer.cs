@@ -1226,6 +1226,28 @@ public static class DatabaseInitializer
             }
         }
 
+        foreach (var (modeColumn, oldColumn) in new[]
+        {
+            ("FinalTeamMode", "MonitorFinals"),
+            ("PlayoffTeamMode", "MonitorPlayoffs"),
+            ("PreseasonTeamMode", "MonitorPreseason")
+        })
+        {
+            try
+            {
+                var exists = db.Database.SqlQueryRaw<int>(
+                    $"SELECT COUNT(*) FROM pragma_table_info('Leagues') WHERE name='{modeColumn}'")
+                    .AsEnumerable().FirstOrDefault();
+                if (exists != 0) continue;
+                db.Database.ExecuteSqlRaw($"ALTER TABLE \"Leagues\" ADD COLUMN \"{modeColumn}\" INTEGER NOT NULL DEFAULT 0");
+                db.Database.ExecuteSqlRaw($"UPDATE \"Leagues\" SET \"{modeColumn}\" = 2 WHERE \"{oldColumn}\" = 1");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Sportarr] Warning: Could not verify Leagues.{modeColumn} column: {ex.Message}");
+            }
+        }
+
         // Ensure HubChangesCursor column exists in AppSettings (hub changes
         // feed poller). Stores the last consumed feed sequence so polling
         // resumes across restarts.
@@ -2271,6 +2293,8 @@ public static class DatabaseInitializer
         if (appSettings == null)
         {
             appSettings = new AppSettings { Id = 1 };
+            appSettings.TrashSyncSettings = System.Text.Json.JsonSerializer.Serialize(
+                new TrashSyncSettings { UseRecommendedReleaseSettings = false });
             db.AppSettings.Add(appSettings);
         }
 
@@ -2374,12 +2398,9 @@ public static class DatabaseInitializer
     /// teams were never imported under the new identity), and many
     /// seasons disappear from the UI entirely.
     ///
-    /// Detection: a Leagues row whose ExternalId is purely numeric AND
-    /// has zero attached teams AND another Leagues row exists with the
-    /// same Name + Sport whose ExternalId starts with "lg-" AND has at
-    /// least one team. Move every Events.LeagueId from orphan → canonical,
-    /// drop the orphan's LeagueTeams entries (none expected, but safe),
-    /// then delete the orphan league row itself.
+    /// Only numeric leagues without teams or team links are candidates.
+    /// A same-name league with a hub ID must also exist.
+    /// Move event links before deleting the orphan.
     ///
     /// Idempotent: re-running on a clean DB finds zero candidates and
     /// exits without modifying anything.
@@ -2421,6 +2442,7 @@ public static class DatabaseInitializer
                       AND l_orphan.ExternalId NOT LIKE 'lg-%'
                       AND l_orphan.ExternalId GLOB '[0-9]*'
                       AND NOT EXISTS (SELECT 1 FROM Teams WHERE LeagueId = l_orphan.Id)
+                      AND NOT EXISTS (SELECT 1 FROM LeagueTeams WHERE LeagueId = l_orphan.Id)
                       AND EXISTS (SELECT 1 FROM Teams WHERE LeagueId = l_canonical.Id)";
 
                 using var reader = cmd.ExecuteReader();
@@ -2457,13 +2479,6 @@ public static class DatabaseInitializer
                 // next sync upserts by ExternalId and resolves it then.
                 db.Database.ExecuteSqlInterpolated(
                     $"UPDATE Events SET LeagueId = {canonicalId} WHERE LeagueId = {orphanId}");
-
-                // Defensive cleanup -- orphans by definition have no team
-                // rows, so LeagueTeams entries shouldn't exist either, but
-                // FK constraints on LeagueTeams.LeagueId block the league
-                // DELETE if any are present from a partial pre-flip state.
-                db.Database.ExecuteSqlInterpolated(
-                    $"DELETE FROM LeagueTeams WHERE LeagueId = {orphanId}");
 
                 // Drop the orphan league row. Teams are zero by definition;
                 // events were rewired one statement up.
@@ -2675,6 +2690,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "EventFiles", "IndexerFlags", "TEXT");
         EnsureColumn(db, "EventFiles", "Languages", "TEXT NOT NULL DEFAULT '[]'");
         EnsureColumn(db, "EventFiles", "ReleaseGroup", "TEXT");
+        EnsureColumn(db, "AppSettings", "LibraryFormatScoresBackfilled", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "MediaManagementSettings", "UserRejectedExtensions", "TEXT");
         EnsureColumn(db, "MediaManagementSettings", "FileFormatTokenUpgradeApplied", "INTEGER NOT NULL DEFAULT 0");
         EnsureEventTypeFolderColumn(db);
@@ -2693,6 +2709,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "Leagues", "SessionTypeQualityProfiles", "TEXT NULL");
         EnsureColumn(db, "MediaManagementSettings", "UnmonitorDeletedEvents", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "Teams", "UserAliases", "TEXT");
+        EnsureColumn(db, "Indexers", "DisableSslCertificateValidation", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DownloadClients", "BlackholeFolder", "TEXT");
         EnsureColumn(db, "DownloadClients", "WatchFolder", "TEXT");
         EnsureColumn(db, "DownloadClients", "SaveMagnetFiles", "INTEGER NOT NULL DEFAULT 0");
@@ -2703,6 +2720,8 @@ public static class DatabaseInitializer
         EnsureColumn(db, "MetadataProviders", "ShowNfo", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumn(db, "Tasks", "Result", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "IndexerFlags", "TEXT");
+        EnsureColumn(db, "DownloadQueue", "ClientCleanupCompleted", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumn(db, "DownloadQueue", "ClientCleanupCheckedAt", "TEXT");
         EnsureColumn(db, "Notifications", "LastNotificationSucceeded", "INTEGER NULL");
         EnsureColumn(db, "Notifications", "LastNotificationError", "TEXT NULL");
         EnsureColumn(db, "Notifications", "LastNotificationAt", "TEXT NULL");
@@ -2710,6 +2729,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "DownloadQueue", "OutputPath", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "FailedAt", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "LastProgressAt", "TEXT NULL");
+        EnsureColumn(db, "EventFiles", "IsIptvRecording", "INTEGER NOT NULL DEFAULT 0");
 
         RelaxLegacyRootFolderColumns(db);
     }

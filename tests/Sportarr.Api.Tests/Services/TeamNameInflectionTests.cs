@@ -334,8 +334,13 @@ public class TeamNameInflectionTests
         result.MatchReasons.Should().Contain("Both team names found");
     }
 
-    [Fact]
-    public void Validator_preserves_fused_user_alias_matching()
+    [Theory]
+    [InlineData("ManCityvsArsenal")]
+    [InlineData("ManCityVsArsenal")]
+    [InlineData("ManCityxArsenal")]
+    [InlineData("ArsenalvsManCity")]
+    [InlineData("ArsenalxManCity")]
+    public void Validator_preserves_fused_user_alias_matching(string teams)
     {
         var game = new Event
         {
@@ -355,7 +360,7 @@ public class TeamNameInflectionTests
         };
 
         var result = _matcher.ValidateRelease(
-            Release("EPL 2026 09 09 ManCityvsArsenal 1080p WEB h264-GRP"),
+            Release($"EPL 2026 09 09 {teams} 1080p WEB h264-GRP"),
             game);
 
         result.MatchReasons.Should().Contain("Both team names found");

@@ -10,6 +10,7 @@ using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class FrozenMotorsportCohortTrafficTests(ITestOutputHelper output)
 {
     private sealed record EventCase(

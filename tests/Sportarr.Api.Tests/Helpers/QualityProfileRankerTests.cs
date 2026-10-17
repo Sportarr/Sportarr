@@ -56,6 +56,17 @@ public class QualityProfileRankerTests
     }
 
     [Fact]
+    public void CutoffGroupIdUsesItsGroupsRank()
+    {
+        var profile = Profile(
+            Group("Preferred feeds", Item("HDTV-1080p", 6), Item("WEBDL-1080p", 15)),
+            Item("SDTV", 1));
+        profile.Items[0].Id = 2001;
+
+        QualityProfileRanker.GetCutoffRank(profile, 2001).Should().Be(2);
+    }
+
+    [Fact]
     public void MissingProfileKeepsDeterministicFallbackOrder()
     {
         QualityProfileRanker.Compare(null, "WEBDL-2160p", "HDTV-1080p")

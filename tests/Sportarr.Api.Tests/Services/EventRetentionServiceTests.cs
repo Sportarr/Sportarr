@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Data;
@@ -154,6 +155,142 @@ public class EventRetentionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RunRetentionPassAsync_DeletesOldFileForUnmonitoredEvent()
+    {
+        var tempFile = Path.Combine(_tempDataPath, "old-import.mkv");
+        await File.WriteAllTextAsync(tempFile, "imported video");
+        await SeedAsync(db =>
+        {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 2));
+            db.Events.Add(new Event
+            {
+                Id = 1, LeagueId = 1, Title = "Old Import", Sport = "Soccer",
+                Monitored = false, HasFile = true, EventDate = DateTime.UtcNow.AddDays(-8)
+            });
+            db.EventFiles.Add(new EventFile { Id = 1, EventId = 1, FilePath = tempFile });
+        });
+
+        (await CreateService().RunRetentionPassAsync(CancellationToken.None)).Should().Be(1);
+
+        File.Exists(tempFile).Should().BeFalse();
+        using var db = await OpenDbAsync();
+        (await db.EventFiles.CountAsync()).Should().Be(0);
+        (await CreateService().RunRetentionPassAsync(CancellationToken.None)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RunRetentionPassAsync_SkipsOldUnmonitoredEventWithoutFiles()
+    {
+        await SeedAsync(db =>
+        {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 2));
+            db.Events.Add(new Event
+            {
+                Id = 1, LeagueId = 1, Title = "Old Missing Event", Sport = "Soccer",
+                Monitored = false, EventDate = DateTime.UtcNow.AddDays(-8)
+            });
+        });
+
+        (await CreateService().RunRetentionPassAsync(CancellationToken.None)).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(0, 8)]
+    [InlineData(2, 1)]
+    public async Task RunRetentionPassAsync_KeepsUnmonitoredFileOutsideRetention(int retentionDays, int ageDays)
+    {
+        var tempFile = Path.Combine(_tempDataPath, "kept-import.mkv");
+        await File.WriteAllTextAsync(tempFile, "imported video");
+        await SeedAsync(db =>
+        {
+            db.Leagues.Add(MakeLeague(1, retentionDays));
+            db.Events.Add(new Event
+            {
+                Id = 1, LeagueId = 1, Title = "Kept Import", Sport = "Soccer",
+                Monitored = false, HasFile = true, EventDate = DateTime.UtcNow.AddDays(-ageDays)
+            });
+            db.EventFiles.Add(new EventFile { Id = 1, EventId = 1, FilePath = tempFile });
+        });
+
+        (await CreateService().RunRetentionPassAsync(CancellationToken.None)).Should().Be(0);
+        File.Exists(tempFile).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunRetentionPassAsync_DeletesUnmonitoredFileWithSqlite()
+    {
+        var tempFile = Path.Combine(_tempDataPath, "sqlite-import.mkv");
+        await File.WriteAllTextAsync(tempFile, "imported video");
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var services = new ServiceCollection();
+        services.AddDbContext<SportarrDbContext>(o => o.UseSqlite(connection));
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Sportarr:DataPath"] = _tempDataPath })
+            .Build());
+        services.AddSingleton<ConfigService>();
+        services.AddSingleton<IHttpClientFactory>(Mock.Of<IHttpClientFactory>());
+        services.AddSingleton(new HttpClient());
+        services.AddScoped<NotificationService>();
+        services.AddScoped<IMetadataWriterService, MetadataWriterService>();
+        using var provider = services.BuildServiceProvider();
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            db.Leagues.Add(MakeLeague(1, retentionDays: 2));
+            db.Events.Add(new Event
+            {
+                Id = 1, LeagueId = 1, Title = "SQLite Import", Sport = "Soccer",
+                Monitored = false, HasFile = true, EventDate = DateTime.UtcNow.AddDays(-8)
+            });
+            db.EventFiles.Add(new EventFile { Id = 1, EventId = 1, FilePath = tempFile });
+            await db.SaveChangesAsync();
+        }
+
+        (await new EventRetentionService(provider,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EventRetentionService>.Instance)
+            .RunRetentionPassAsync(CancellationToken.None)).Should().Be(1);
+        File.Exists(tempFile).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RunRetentionPassAsync_RecyclesSubtitleWhenVideoIsAlreadyMissing()
+    {
+        var videoPath = Path.Combine(_tempDataPath, "missing-game.mkv");
+        var subtitlePath = Path.Combine(_tempDataPath, "missing-game.en.srt");
+        var recycleBin = Path.Combine(_tempDataPath, "recycle");
+        Directory.CreateDirectory(recycleBin);
+        await File.WriteAllTextAsync(subtitlePath, "subtitle");
+        using (var scope = _provider.CreateScope())
+        {
+            var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+            await configService.UpdateConfigAsync(config => config.RecycleBin = recycleBin);
+        }
+        await SeedAsync(db =>
+        {
+            db.Leagues.Add(MakeLeague(1, retentionDays: 30));
+            db.Events.Add(new Event
+            {
+                Id = 1, LeagueId = 1, Title = "Missing Game", Sport = "Basketball",
+                Monitored = true, HasFile = true, EventDate = DateTime.UtcNow.AddDays(-100)
+            });
+            db.EventFiles.Add(new EventFile
+            {
+                Id = 1, EventId = 1, FilePath = videoPath, Quality = "1080p"
+            });
+        });
+
+        (await CreateService().RunRetentionPassAsync(CancellationToken.None)).Should().Be(1);
+
+        File.Exists(subtitlePath).Should().BeFalse();
+        var recycledSubtitle = Directory.GetFiles(recycleBin, "*_missing-game.en.srt")
+            .Should().ContainSingle().Subject;
+        File.ReadAllText(recycledSubtitle).Should().Be("subtitle");
+    }
+
+    [Fact]
     public async Task RunRetentionPassAsync_ReopensMissingPartWhenAnotherFileCannotBeDeleted()
     {
         var mainCardPath = Path.Combine(_tempDataPath, "main-card.mkv");
@@ -210,6 +347,16 @@ public class EventRetentionServiceTests : IDisposable
             evt.FilePath.Should().Be(prelimsPath);
             (await db.EventFiles.Where(f => f.EventId == 1).ToListAsync())
                 .Should().ContainSingle().Which.PartName.Should().Be("Prelims");
+
+            var retryPath = Path.Combine(_tempDataPath, "prelims-retry.mkv");
+            await File.WriteAllTextAsync(retryPath, "prelims");
+            var remaining = await db.EventFiles.SingleAsync(f => f.EventId == 1);
+            remaining.FilePath = retryPath;
+            await db.SaveChangesAsync();
+
+            (await CreateService().RunRetentionPassAsync(CancellationToken.None)).Should().Be(1);
+            File.Exists(retryPath).Should().BeFalse();
+            (await db.EventFiles.CountAsync(f => f.EventId == 1)).Should().Be(0);
         }
         finally
         {

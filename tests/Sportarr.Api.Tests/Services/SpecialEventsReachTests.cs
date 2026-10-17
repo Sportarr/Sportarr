@@ -100,4 +100,21 @@ public class SpecialEventsReachTests
         Monitor(Nfl(MonitorType.None, MonitorType.All), "200", LongAgo)
             .Should().BeFalse("None is absolute and no toggle argues with it");
     }
+
+    [Fact]
+    public void Preseason_off_blocks_a_selected_teams_round_500_game()
+    {
+        var league = new League
+        {
+            Name = "NBA", Sport = "Basketball", Monitored = true,
+            MonitorType = MonitorType.All,
+            PreseasonTeamMode = SpecialEventTeamMode.Off
+        };
+
+        LeagueEventSyncService.ShouldMonitorEvent(league, DateTime.UtcNow.AddDays(2), "2026-2027",
+            "2026", "2026", "500", "Spurs vs Suns", NoCupStages).Should().BeFalse();
+        LeagueEventSyncService.ShouldMonitorEvent(league, DateTime.UtcNow.AddDays(2), "2026-2027",
+            "2026", "2026", "500", "Spurs vs Suns", NoCupStages,
+            manualOverride: true).Should().BeTrue();
+    }
 }

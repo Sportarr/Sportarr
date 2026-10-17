@@ -424,13 +424,32 @@ app.MapPut("/api/pending-imports/{id:int}/suggestion", async (
     return Results.Ok(import);
 });
 
+app.MapGet("/api/pending-imports/{id:int}/video-candidates", async (
+    int id, SportarrDbContext db, FileImportService fileImportService) =>
+{
+    var import = await db.PendingImports.FindAsync(id);
+    if (import is null) return Results.NotFound();
+    if (import.Status != PendingImportStatus.Pending)
+        return Results.BadRequest(new { error = "This import is no longer pending." });
+    try
+    {
+        return Results.Ok(fileImportService.ListVideoCandidatesAtPath(import.FilePath));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 app.MapPost("/api/pending-imports/{id:int}/accept", async (
     int id,
     HttpRequest req,
     SportarrDbContext db,
     FileImportService fileImportService,
+    LibraryImportService libraryImportService,
     ConfigService configService,
-    EventPartDetector partDetector) =>
+    EventPartDetector partDetector,
+    CustomFormatService customFormatService) =>
 {
     // Accept a pending import and perform the actual import.
     // Body is optional: when present, may carry { metadataOverrides: { quality, source,
@@ -440,6 +459,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     Sportarr.Api.Endpoints.EventFileEditorEndpoints.EventFileEditRequest? overrides = null;
     // Auto unless the import screen asked for something specific.
     var importMode = PostImportMode.Auto;
+    string? selectedRelativePath = null;
     if (req.ContentLength is null or > 0)
     {
         try
@@ -460,6 +480,13 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 modeProp.ValueKind == System.Text.Json.JsonValueKind.String)
             {
                 importMode = ParseImportMode(modeProp.GetString());
+            }
+
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("selectedRelativePath", out var pathProp) &&
+                pathProp.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                selectedRelativePath = pathProp.GetString();
             }
         }
         catch
@@ -483,7 +510,11 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
         await db.SaveChangesAsync();
 
         // Check if this is a disk-discovered file (no download client)
-        var isDiskDiscovered = import.DownloadId.StartsWith("disk-");
+        var dvrRecordingId = 0;
+        var isDvrConflict = import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal)
+            && int.TryParse(import.DownloadId.AsSpan(4), out dvrRecordingId);
+        var isDiskDiscovered = import.DownloadId.StartsWith("disk-", StringComparison.Ordinal)
+            || isDvrConflict;
         EventFile importedFile;
         ImportHistory? importedHistory = null;
         var overridesApplied = false;
@@ -506,6 +537,137 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
             var storedPartName = EventPartDetector.IsFullEvent(selectedPartName)
                 ? null : selectedPart?.Name ?? selectedPartName;
             var storedPartNumber = storedPartName == null ? null : selectedPart?.PartNumber;
+            var recording = isDvrConflict
+                ? await db.DvrRecordings.FirstOrDefaultAsync(r => r.Id == dvrRecordingId)
+                : await db.DvrRecordings.FirstOrDefaultAsync(r =>
+                    r.EventId == evt.Id && r.OutputPath == import.FilePath &&
+                    r.Status == DvrRecordingStatus.Completed);
+            if (isDvrConflict && (recording == null || recording.EventId != evt.Id
+                || recording.OutputPath != import.FilePath || recording.Status != DvrRecordingStatus.Completed))
+                throw new InvalidOperationException("This recording is no longer available for manual import.");
+            if (isDvrConflict)
+            {
+                var recordingPart = EventPartDetector.IsFullEvent(recording!.PartName)
+                    ? null : recording.PartName;
+                if (!string.Equals(storedPartName, recordingPart, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("This recording belongs to a different event part.");
+            }
+
+            var pathOwner = await db.EventFiles.FirstOrDefaultAsync(f => f.FilePath == import.FilePath);
+            if (pathOwner != null)
+            {
+                if (pathOwner.EventId != evt.Id || pathOwner.PartNumber != storedPartNumber)
+                    throw new InvalidOperationException("This file is already linked to another event or part.");
+
+                pathOwner.Exists = true;
+                pathOwner.LastVerified = DateTime.UtcNow;
+                pathOwner.Size = fileInfo.Length;
+                if (recording != null)
+                {
+                    pathOwner.Source = "IPTV";
+                    pathOwner.IsIptvRecording = true;
+                    recording.Status = DvrRecordingStatus.Imported;
+                    recording.ImportedAt = DateTime.UtcNow;
+                    recording.LastUpdated = DateTime.UtcNow;
+                    recording.ErrorMessage = null;
+                }
+                if (overrides != null)
+                    Sportarr.Api.Endpoints.EventFileEditorEndpoints.ApplyEdits(pathOwner, overrides);
+
+                var linkedParts = await db.EventFiles.AsNoTracking()
+                    .Where(file => file.EventId == evt.Id && file.Exists)
+                    .Select(file => file.PartNumber)
+                    .ToListAsync();
+                linkedParts.Add(pathOwner.PartNumber);
+                var linkedConfig = await configService.GetConfigAsync();
+                evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                    evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
+                    evt.League?.MonitoredParts, linkedParts, linkedConfig.EnableMultiPartEpisodes);
+                if (evt.FilePath == null || evt.FilePath == pathOwner.FilePath)
+                {
+                    evt.FilePath = pathOwner.FilePath;
+                    evt.FileSize = pathOwner.Size;
+                    evt.Quality = pathOwner.Quality;
+                }
+
+                import.Status = PendingImportStatus.Completed;
+                import.ResolvedAt = DateTime.UtcNow;
+                import.ErrorMessage = null;
+                await db.SaveChangesAsync();
+                return Results.Ok(import);
+            }
+
+            var heldFiles = await db.EventFiles
+                .Where(f => f.EventId == evt.Id && (f.Exists || isDvrConflict))
+                .ToListAsync();
+            if (!isDvrConflict && storedPartName == null && heldFiles.Any(f => f.PartNumber == null &&
+                    SourcePrecedence.NormalizePart(f.PartName) != null))
+                throw new InvalidOperationException("A full-event import cannot replace existing part files. Review them first.");
+
+            var occupiedCandidates = heldFiles.Where(f =>
+                string.Equals(SourcePrecedence.NormalizePart(f.PartName),
+                    SourcePrecedence.NormalizePart(storedPartName), StringComparison.OrdinalIgnoreCase)
+                || (storedPartNumber.HasValue && f.PartNumber == storedPartNumber)).ToList();
+            if (occupiedCandidates.Any(f => f.Exists))
+                occupiedCandidates = occupiedCandidates.Where(f => f.Exists).ToList();
+            if (occupiedCandidates.Count > 1)
+                throw new InvalidOperationException("Multiple tracked files cover this event part. Resolve them before importing.");
+            var occupiedPart = occupiedCandidates.SingleOrDefault();
+            if (occupiedPart != null)
+            {
+                if (isDvrConflict && !SourcePrecedence.RecordingConflictsWithIndexerFile(
+                    [occupiedPart], recording!.PartName, includeMissing: true))
+                    throw new InvalidOperationException("The file in this part has changed. Review the recording again.");
+
+                var request = new FileImportRequest
+                {
+                    FilePath = import.FilePath,
+                    EventId = evt.Id,
+                    Quality = overrides?.Quality ?? recording?.Quality ?? import.Quality,
+                    PartName = storedPartName ?? "Full Event",
+                    PartNumber = storedPartNumber,
+                    OnlyIfUpgrade = !isDvrConflict,
+                    OverrideSourcePrecedence = isDvrConflict,
+                    ReplaceOccupiedFile = isDvrConflict,
+                    IsIptvRecording = recording != null,
+                    Source = recording != null ? "IPTV" : overrides?.Source,
+                    ImportMode = "move",
+                    Codec = overrides?.Codec,
+                    ReleaseGroup = overrides?.ReleaseGroup,
+                    OriginalTitle = overrides?.OriginalTitle,
+                    Languages = overrides?.Languages,
+                    IndexerFlags = overrides?.IndexerFlags
+                };
+                var replacement = await libraryImportService.ImportFilesAsync([request]);
+                if (replacement.Imported.Count != 1)
+                {
+                    var reason = replacement.Rejected.FirstOrDefault()?.Reason
+                        ?? replacement.Errors.FirstOrDefault()
+                        ?? "The file did not replace the existing event file.";
+                    throw new InvalidOperationException(reason);
+                }
+
+                var replacementPath = replacement.Imported[0];
+                importedFile = await db.EventFiles.SingleAsync(f => f.EventId == evt.Id && f.FilePath == replacementPath);
+                if (recording != null)
+                {
+                    recording.OutputPath = replacementPath;
+                    recording.Status = DvrRecordingStatus.Imported;
+                    recording.ImportedAt = DateTime.UtcNow;
+                    recording.LastUpdated = DateTime.UtcNow;
+                    recording.ErrorMessage = null;
+                }
+                if (overrides != null)
+                {
+                    Sportarr.Api.Endpoints.EventFileEditorEndpoints.ApplyEdits(importedFile, overrides);
+                    overridesApplied = true;
+                }
+                import.Status = PendingImportStatus.Completed;
+                import.ResolvedAt = DateTime.UtcNow;
+                import.ErrorMessage = null;
+                await db.SaveChangesAsync();
+                return Results.Ok(import);
+            }
 
             // Extract release group from filename
             var rgMatch = System.Text.RegularExpressions.Regex.Match(
@@ -518,14 +680,26 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 if (!excluded.Contains(rg.ToUpper())) releaseGroup = rg;
             }
 
+            // The file's name earns its custom format score. Left at 0,
+            // every release with a positive score would look like an upgrade.
+            var formatScore = customFormatService.ScoreName(
+                overrides?.OriginalTitle ?? Path.GetFileNameWithoutExtension(import.FilePath),
+                RssSyncService.ResolveQualityProfile(evt, await db.QualityProfiles.AsNoTracking().ToListAsync()),
+                await db.CustomFormats.AsNoTracking().ToListAsync());
+
             // Create EventFile record
             var eventFile = new EventFile
             {
                 EventId = evt.Id,
                 FilePath = import.FilePath,
                 Size = fileInfo.Length,
-                Quality = import.Quality ?? "Unknown",
+                Quality = recording?.Quality ?? import.Quality ?? "Unknown",
+                QualityScore = recording?.QualityScore ?? 0,
+                Source = recording != null ? "IPTV" : overrides?.Source,
+                IsIptvRecording = recording != null,
+                Codec = recording?.VideoCodec,
                 ReleaseGroup = releaseGroup,
+                CustomFormatScore = formatScore,
                 PartName = storedPartName,
                 PartNumber = storedPartNumber,
                 Exists = true,
@@ -552,7 +726,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 evt.League?.MonitoredParts, presentParts, config.EnableMultiPartEpisodes);
             evt.FilePath = import.FilePath;
             evt.FileSize = fileInfo.Length;
-            evt.Quality = import.Quality;
+            evt.Quality = eventFile.Quality;
 
             // Create import history record
             db.ImportHistories.Add(new ImportHistory
@@ -560,12 +734,19 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 EventId = evt.Id,
                 SourcePath = import.FilePath,
                 DestinationPath = import.FilePath,
-                Quality = import.Quality ?? "Unknown",
+                Quality = eventFile.Quality,
                 Size = fileInfo.Length,
                 Part = eventFile.PartName,
                 Decision = ImportDecision.Approved,
                 ImportedAt = DateTime.UtcNow
             });
+            if (recording != null)
+            {
+                recording.Status = DvrRecordingStatus.Imported;
+                recording.ImportedAt = DateTime.UtcNow;
+                recording.LastUpdated = DateTime.UtcNow;
+                recording.ErrorMessage = null;
+            }
         }
         else
         {
@@ -581,7 +762,8 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
             // Import the download using FileImportService
             // Pass the stored FilePath directly since we already have it from the pending import
             // This avoids re-querying the download client which may return incomplete path info
-            var imported = await fileImportService.ImportDownloadAsync(tempQueueItem, import.FilePath, importMode);
+            var imported = await fileImportService.ImportDownloadAsync(tempQueueItem, import.FilePath, importMode,
+                selectedRelativePath: selectedRelativePath);
             if (imported == null)
                 throw new InvalidOperationException(tempQueueItem.ErrorMessage ?? "The file was not imported.");
             importedHistory = imported;
@@ -645,6 +827,27 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();
 
+    var isDvrChoice = import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal);
+    if (isDvrChoice
+        && int.TryParse(import.DownloadId.AsSpan(4), out var dvrRecordingId))
+    {
+        var recording = await db.DvrRecordings.FirstOrDefaultAsync(r => r.Id == dvrRecordingId
+            && r.OutputPath == import.FilePath && r.Status == DvrRecordingStatus.Completed);
+        if (recording != null)
+        {
+            var downloadedFiles = await db.EventFiles.AsNoTracking().Where(file =>
+                file.EventId == recording.EventId && file.Exists && !file.IsIptvRecording)
+                .ToListAsync();
+            if (!downloadedFiles.Any(file =>
+                    string.Equals(SourcePrecedence.NormalizePart(file.PartName),
+                        SourcePrecedence.NormalizePart(recording.PartName), StringComparison.OrdinalIgnoreCase) &&
+                    File.Exists(file.FilePath)))
+                return Results.BadRequest(new { error = "The downloaded file is missing. Import the recording or restore the downloaded file first." });
+            recording.Status = DvrRecordingStatus.Ignored;
+            recording.LastUpdated = DateTime.UtcNow;
+        }
+    }
+
     db.Blocklist.Add(new BlocklistItem
     {
         EventId = import.SuggestedEventId,
@@ -666,12 +869,12 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
 
     logger.LogInformation("[Pending Import] Rejected and blocklisted {Title} (path {FilePath}, hash {Hash})",
         import.Title, import.FilePath, import.TorrentInfoHash ?? "n/a");
-    await RemoveDiskFoundFileAsync(import, deleteFile, db, configService, logger);
+    await RemoveDiskFoundFileAsync(import, isDvrChoice ? false : deleteFile, db, configService, logger);
 
     // "Blocklist and search for replacement" asked for a replacement. Without
     // this the choice did nothing that plain blocklisting did not, even though
     // the same dialog honours it for queue items.
-    if (search && suggestedEventId.HasValue)
+    if (search && !isDvrChoice && suggestedEventId.HasValue)
     {
         await StartReplacementSearchAsync(scopeFactory, suggestedEventId.Value, suggestedPart, db, logger);
     }
@@ -691,6 +894,9 @@ app.MapDelete("/api/pending-imports/{id:int}", async (
     // the download's files, unless the caller says deleteFile=false.
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();
+
+    if (import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal))
+        return Results.BadRequest(new { error = "Choose a file to keep for this recording." });
 
     db.PendingImports.Remove(import);
     await db.SaveChangesAsync();
@@ -713,6 +919,9 @@ app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
         .FirstOrDefaultAsync(pi => pi.Id == id);
 
     if (import is null) return Results.NotFound();
+
+    if (import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal))
+        return Results.BadRequest(new { error = "Choose a file to keep for this recording." });
 
     // Try to remove from download client
     if (import.DownloadClient != null && !string.IsNullOrEmpty(import.DownloadId))

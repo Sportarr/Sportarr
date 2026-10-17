@@ -4,15 +4,21 @@ import { ArrowDownTrayIcon, ChevronDoubleDownIcon, DocumentTextIcon, XMarkIcon, 
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import { parseAsUtc } from '../utils/timezone';
+import { useNavigate } from 'react-router-dom';
+import apiClient from '../api/client';
+import { BUTTON_PRIMARY } from '../utils/designTokens';
 
 // Log level hierarchy (higher index = more severe)
 const LOG_LEVELS = ['TRC', 'DBG', 'INF', 'WRN', 'ERR', 'FTL'] as const;
 type LogLevel = typeof LOG_LEVELS[number] | 'ALL';
 
 export default function LogFilesPage() {
+  const navigate = useNavigate();
   const { data: logFiles, isLoading, error } = useLogFiles();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<LogLevel>('ALL');
+  const [preparingIssue, setPreparingIssue] = useState(false);
+  const [supportError, setSupportError] = useState<string | null>(null);
   const { data: logContent, isLoading: isLoadingContent } = useLogFileContent(selectedFile);
 
   // Tail behavior: the newest lines are what people open logs for, so the
@@ -121,6 +127,23 @@ export default function LogFilesPage() {
     }
   };
 
+  async function createIssueWithLog() {
+    if (!selectedFile) return;
+    setPreparingIssue(true);
+    setSupportError(null);
+    try {
+      const response = await apiClient.get<{ files: { filename: string; content: string }[] }>(
+        '/log/support-bundle', { params: { filename: selectedFile } },
+      );
+      const diagnosticFiles = response.data.files.map((part) => new File([part.content], part.filename, { type: 'text/plain' }));
+      navigate('/support/new', { state: { diagnosticFiles } });
+    } catch {
+      setSupportError('Could not prepare this log for sharing. Try again shortly.');
+    } finally {
+      setPreparingIssue(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <PageShell>
@@ -146,8 +169,9 @@ export default function LogFilesPage() {
     <PageShell>
       <PageHeader
         title="Log Files"
-        subtitle="View and download application log files"
+        subtitle="Select a log to read it or attach a redacted copy to a new issue."
       />
+      {supportError && <p role="alert" className="mb-4 rounded-lg border border-red-800 bg-red-950/30 p-3 text-sm text-red-200">{supportError}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Log Files List */}
@@ -237,6 +261,11 @@ export default function LogFilesPage() {
                   )}
                 </div>
               </div>
+              {selectedFile && <div className="flex items-center justify-between gap-3 border-b border-red-900/30 px-4 py-2 text-xs text-gray-400 sm:px-6">
+                <span>A redacted copy of this log will be attached.</span>
+                <button type="button" className={`${BUTTON_PRIMARY} shrink-0`} disabled={preparingIssue}
+                  onClick={() => void createIssueWithLog()}>{preparingIssue ? 'Preparing...' : 'Create issue'}</button>
+              </div>}
               <div ref={scrollRef} onScroll={handleViewerScroll} className="flex-1 overflow-auto p-6">
                 {!selectedFile ? (
                   <div className="flex items-center justify-center h-full text-gray-400">

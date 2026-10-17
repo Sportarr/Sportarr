@@ -33,6 +33,14 @@ public static class QualityProfileRanker
     {
         for (var index = 0; index < profile.Items.Count; index++)
         {
+            if (profile.Items[index].Id == qualityId)
+            {
+                return profile.Items.Count - index;
+            }
+        }
+
+        for (var index = 0; index < profile.Items.Count; index++)
+        {
             if (profile.Items[index].Quality == qualityId)
             {
                 return profile.Items.Count - index;
@@ -94,7 +102,7 @@ public static class QualityProfileRanker
 
     private static bool ContainsQualityId(QualityItem item, int qualityId)
     {
-        return item.Quality == qualityId
+        return item.Id == qualityId || item.Quality == qualityId
             || item.Items?.Any(child => ContainsQualityId(child, qualityId)) == true;
     }
 }

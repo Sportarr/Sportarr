@@ -183,4 +183,153 @@ public class MetadataWriterServiceTests : IDisposable
         File.Exists(oldNfo).Should().BeFalse();
         File.Exists(newNfo).Should().BeTrue();
     }
+
+    [Fact]
+    public async Task RenameEventMetadataAsync_MovesOnlyMatchingSubtitleSidecars()
+    {
+        var (_, file) = MakeEventAndFile("Old Name.mkv");
+        var matching = Path.Combine(_tempDir, "Old Name.en.forced.srt");
+        var unrelated = Path.Combine(_tempDir, "Old Name Extended.en.srt");
+        File.WriteAllText(matching, "matching");
+        File.WriteAllText(unrelated, "unrelated");
+
+        await _service.RenameEventMetadataAsync(file.FilePath, Path.Combine(_tempDir, "New Name.mkv"));
+
+        File.Exists(matching).Should().BeFalse();
+        File.ReadAllText(Path.Combine(_tempDir, "New Name.en.forced.srt")).Should().Be("matching");
+        File.ReadAllText(unrelated).Should().Be("unrelated");
+    }
+
+    [Fact]
+    public async Task RenameEventMetadataAsync_PreservesConflictingDestinationSubtitle()
+    {
+        var (_, file) = MakeEventAndFile("Old Name.mkv");
+        File.WriteAllText(Path.Combine(_tempDir, "Old Name.en.srt"), "new subtitle");
+        File.WriteAllText(Path.Combine(_tempDir, "New Name.en.srt"), "old destination");
+
+        await _service.RenameEventMetadataAsync(file.FilePath, Path.Combine(_tempDir, "New Name.mkv"));
+
+        File.ReadAllText(Path.Combine(_tempDir, "New Name.en.srt")).Should().Be("new subtitle");
+        Directory.GetFiles(Path.Combine(_tempDir, ".sportarr-conflicts"))
+            .Select(File.ReadAllText).Should().ContainSingle().Which.Should().Be("old destination");
+    }
+
+    [Fact]
+    public async Task RenameEventMetadataAsync_RenamesSubtitleWhenOnlyCaseChanges()
+    {
+        var (_, file) = MakeEventAndFile("old name.mkv");
+        var original = Path.Combine(_tempDir, "old name.en.srt");
+        var expected = Path.Combine(_tempDir, "Old Name.en.srt");
+        File.WriteAllText(original, "subtitle");
+
+        await _service.RenameEventMetadataAsync(file.FilePath, Path.Combine(_tempDir, "Old Name.mkv"));
+
+        File.ReadAllText(expected).Should().Be("subtitle");
+        Directory.Exists(Path.Combine(_tempDir, ".sportarr-conflicts")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RenameEventMetadataAsync_DoesNotTakeAnotherVideosSubtitle()
+    {
+        var (_, file) = MakeEventAndFile("Name.mkv");
+        File.WriteAllText(Path.Combine(_tempDir, "Name.en.srt"), "mine");
+        File.WriteAllText(Path.Combine(_tempDir, "Name.Part2.mkv"), "video");
+        File.WriteAllText(Path.Combine(_tempDir, "Name.Part2.en.srt"), "sibling");
+
+        await _service.RenameEventMetadataAsync(file.FilePath, Path.Combine(_tempDir, "Renamed.mkv"));
+
+        File.ReadAllText(Path.Combine(_tempDir, "Renamed.en.srt")).Should().Be("mine");
+        File.ReadAllText(Path.Combine(_tempDir, "Name.Part2.en.srt")).Should().Be("sibling");
+    }
+
+    [Fact]
+    public async Task DeleteEventMetadataAsync_DoesNotDeleteAnotherVideosSubtitle()
+    {
+        var (_, file) = MakeEventAndFile("Name.mkv");
+        File.WriteAllText(Path.Combine(_tempDir, "Name.Part2.mkv"), "video");
+        File.WriteAllText(Path.Combine(_tempDir, "Name.Part2.en.srt"), "sibling");
+
+        await _service.DeleteEventMetadataAsync(file);
+
+        File.ReadAllText(Path.Combine(_tempDir, "Name.Part2.en.srt")).Should().Be("sibling");
+    }
+
+    [Fact]
+    public async Task DeleteEventMetadataAsync_RemovesOnlyMatchingSubtitleSidecars()
+    {
+        var (_, file) = MakeEventAndFile("To Delete.mkv");
+        var matching = Path.Combine(_tempDir, "To Delete.en.ass");
+        var unrelated = Path.Combine(_tempDir, "To Delete Extended.en.ass");
+        File.WriteAllText(matching, "matching");
+        File.WriteAllText(unrelated, "unrelated");
+
+        await _service.DeleteEventMetadataAsync(file);
+
+        File.Exists(matching).Should().BeFalse();
+        File.ReadAllText(unrelated).Should().Be("unrelated");
+    }
+
+    [Fact]
+    public async Task DeleteSubtitleSidecarsAsync_KeepsTheReplacementMetadata()
+    {
+        var (_, file) = MakeEventAndFile("Race.mkv");
+        var subtitle = Path.Combine(_tempDir, "Race.en.srt");
+        var nfo = Path.Combine(_tempDir, "Race.nfo");
+        File.WriteAllText(subtitle, "old subtitle");
+        File.WriteAllText(nfo, "new metadata");
+
+        await _service.DeleteSubtitleSidecarsAsync(file.FilePath);
+
+        File.Exists(subtitle).Should().BeFalse();
+        File.ReadAllText(nfo).Should().Be("new metadata");
+    }
+
+    [Fact]
+    public async Task DeleteEventMetadataAsync_RecyclesSubtitleWithVideo()
+    {
+        var (_, file) = MakeEventAndFile("Old Name.mkv");
+        var matching = Path.Combine(_tempDir, "Old Name.en.srt");
+        File.WriteAllText(matching, "subtitle");
+        var recycledVideo = Path.Combine(_tempDir, "recycle", "20260929_120000_Old Name.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(recycledVideo)!);
+
+        await _service.DeleteEventMetadataAsync(file, recycledVideo);
+
+        File.Exists(matching).Should().BeFalse();
+        File.ReadAllText(Path.Combine(_tempDir, "recycle", "20260929_120000_Old Name.en.srt"))
+            .Should().Be("subtitle");
+    }
+
+    [Fact]
+    public async Task DeleteSubtitleSidecarsAsync_RecyclesSubtitleAfterVideoIsGone()
+    {
+        var (_, file) = MakeEventAndFile("Old Name.mkv");
+        var matching = Path.Combine(_tempDir, "Old Name.en.srt");
+        File.WriteAllText(matching, "subtitle");
+        File.Delete(file.FilePath);
+        var recycledVideo = Path.Combine(_tempDir, "recycle", "20260929_120000_Old Name.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(recycledVideo)!);
+
+        await _service.DeleteSubtitleSidecarsAsync(file.FilePath, recycledVideo);
+
+        File.Exists(matching).Should().BeFalse();
+        File.ReadAllText(Path.Combine(_tempDir, "recycle", "20260929_120000_Old Name.en.srt"))
+            .Should().Be("subtitle");
+    }
+
+    [Fact]
+    public async Task RenameEventMetadataAsync_DoesNotMoveAnotherCaseSensitiveFile()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        var (_, file) = MakeEventAndFile("Old Name.mkv");
+        var unrelated = Path.Combine(_tempDir, "old name.en.srt");
+        File.WriteAllText(unrelated, "other file");
+
+        await _service.RenameEventMetadataAsync(file.FilePath, Path.Combine(_tempDir, "New Name.mkv"));
+
+        File.ReadAllText(unrelated).Should().Be("other file");
+        File.Exists(Path.Combine(_tempDir, "New Name.en.srt")).Should().BeFalse();
+    }
 }

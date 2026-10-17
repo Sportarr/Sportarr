@@ -667,11 +667,17 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
     {
 
         using var acquisition = await downloadClientService.BeginAcquisitionAsync(cancellationToken);
+        var tracking = await HistoryRegrabTracking.ResolveAsync(db, grabHistory, downloadClient, cancellationToken);
+        if (grabHistory.FileExists &&
+            await HistoryRegrabTracking.HasImportedFileForSameReleaseAsync(
+                db, grabHistory, downloadClient, cancellationToken))
+            return Results.Conflict(new { error = "This download was already imported and its file still exists" });
+
         // Attempt to re-grab with seed config from indexer
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             grabHistory.DownloadUrl,
-            downloadClient.Category,
+            tracking.Category,
             grabHistory.Title,
             indexerRecord?.SeedRatio,
             indexerRecord?.SeedTime
@@ -694,7 +700,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             Title = grabHistory.Title,
             DownloadId = downloadId,
             DownloadClientId = downloadClient.Id,
-            GrabCategory = downloadClient.Category,
+            GrabCategory = tracking.Category,
             Status = DownloadStatus.Queued,
             Quality = grabHistory.Quality,
             Codec = grabHistory.Codec,
@@ -711,10 +717,15 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             QualityScore = grabHistory.QualityScore,
             CustomFormatScore = grabHistory.CustomFormatScore,
             Part = grabHistory.PartName,
+            IsPack = tracking.IsPack,
             IsManualSearch = true // Re-grab is always user-initiated
         };
 
-        db.DownloadQueue.Add(queueItem);
+        queueItem = await QueueJobAttachment.AddOrAttachAsync(
+            db, queueItem, cancellationToken, rearmImported: !grabHistory.FileExists);
+
+        if (queueItem.Status == DownloadStatus.Imported && grabHistory.FileExists)
+            return Results.Conflict(new { error = "This download was already imported and its file still exists" });
 
         grabHistory.LastRegrabAttempt = DateTime.UtcNow;
         grabHistory.RegrabCount++;
@@ -867,10 +878,11 @@ app.MapPost("/api/grab-history/regrab-missing", async (
         {
 
             using var acquisition = await downloadClientService.BeginAcquisitionAsync(cancellationToken);
+            var tracking = await HistoryRegrabTracking.ResolveAsync(db, grabHistory, downloadClient, cancellationToken);
             var downloadId = await downloadClientService.AddDownloadAsync(
                 downloadClient,
                 grabHistory.DownloadUrl,
-                downloadClient.Category,
+                tracking.Category,
                 grabHistory.Title,
                 bulkIndexerRecord?.SeedRatio,
                 bulkIndexerRecord?.SeedTime
@@ -914,7 +926,7 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 Title = grabHistory.Title,
                 DownloadId = downloadId,
                 DownloadClientId = downloadClient.Id,
-                GrabCategory = downloadClient.Category,
+                GrabCategory = tracking.Category,
                 Status = DownloadStatus.Queued,
                 Quality = grabHistory.Quality,
                 Codec = grabHistory.Codec,
@@ -931,10 +943,12 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 QualityScore = grabHistory.QualityScore,
                 CustomFormatScore = grabHistory.CustomFormatScore,
                 Part = grabHistory.PartName,
+                IsPack = tracking.IsPack,
                 IsManualSearch = true // Bulk re-grab is user-initiated
             };
 
-            db.DownloadQueue.Add(queueItem);
+            queueItem = await QueueJobAttachment.AddOrAttachAsync(
+                db, queueItem, cancellationToken, rearmImported: true);
 
             grabHistory.LastRegrabAttempt = DateTime.UtcNow;
             grabHistory.RegrabCount++;

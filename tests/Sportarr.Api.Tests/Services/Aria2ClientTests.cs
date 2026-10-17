@@ -123,6 +123,22 @@ public class Aria2ClientTests
     }
 
     [Fact]
+    public async Task GetTorrentStatusAsync_DoesNotResetSeedTimeOnEveryPoll()
+    {
+        var handler = new FakeAria2Handler
+        {
+            ResponseFor = (_, _) => """{"jsonrpc":"2.0","id":"sportarr","result":{"gid":"gid1","status":"complete","totalLength":"1000","completedLength":"1000","uploadLength":"2000","dir":"/downloads"}}"""
+        };
+        var client = new Aria2Client(new HttpClient(handler), NullLogger<Aria2Client>.Instance);
+
+        var status = await client.GetTorrentStatusAsync(MakeConfig(), "gid1");
+
+        Assert.NotNull(status);
+        Assert.True(status.TorrentIsStopped);
+        Assert.Null(status.CompletedAt);
+    }
+
+    [Fact]
     public async Task GetTorrentStatusAsync_FollowsFollowedByChain_ToTheRealContentDownload()
     {
         // gid1 is the magnet's metadata-fetch task: it reports "complete"

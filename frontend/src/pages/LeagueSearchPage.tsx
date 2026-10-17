@@ -210,6 +210,9 @@ export default function LeagueSearchPage() {
       specialEventsMonitorType,
       monitorPlayoffs,
       monitorPreseason,
+      finalTeamMode,
+      playoffTeamMode,
+      preseasonTeamMode,
       retentionDays,
       allowHighlights,
       sessionTypeQualityProfiles,
@@ -231,6 +234,9 @@ export default function LeagueSearchPage() {
       specialEventsMonitorType?: string;
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
+      finalTeamMode?: string;
+      playoffTeamMode?: string;
+      preseasonTeamMode?: string;
       retentionDays?: number;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
@@ -267,6 +273,9 @@ export default function LeagueSearchPage() {
         specialEventsMonitorType: specialEventsMonitorType ?? "All",
         monitorPlayoffs: monitorPlayoffs ?? false,
         monitorPreseason: monitorPreseason ?? false,
+        finalTeamMode: finalTeamMode ?? 'Off',
+        playoffTeamMode: playoffTeamMode ?? 'Off',
+        preseasonTeamMode: preseasonTeamMode ?? 'Off',
         allowHighlights: allowHighlights ?? false,
         retentionDays: retentionDays ?? 0,
         enableDvr: enableDvr ?? true,
@@ -350,6 +359,9 @@ export default function LeagueSearchPage() {
       specialEventsMonitorType,
       monitorPlayoffs,
       monitorPreseason,
+      finalTeamMode,
+      playoffTeamMode,
+      preseasonTeamMode,
       retentionDays,
       allowHighlights,
       sessionTypeQualityProfiles,
@@ -375,6 +387,9 @@ export default function LeagueSearchPage() {
       specialEventsMonitorType?: string;
       monitorPlayoffs?: boolean;
       monitorPreseason?: boolean;
+      finalTeamMode?: string;
+      playoffTeamMode?: string;
+      preseasonTeamMode?: string;
       retentionDays?: number;
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
@@ -403,6 +418,9 @@ export default function LeagueSearchPage() {
         specialEventsMonitorType: specialEventsMonitorType ?? "All",
         monitorPlayoffs: monitorPlayoffs ?? false,
         monitorPreseason: monitorPreseason ?? false,
+        finalTeamMode: finalTeamMode ?? 'Off',
+        playoffTeamMode: playoffTeamMode ?? 'Off',
+        preseasonTeamMode: preseasonTeamMode ?? 'Off',
         allowHighlights: allowHighlights ?? false,
         retentionDays: retentionDays ?? 0,
       });
@@ -547,6 +565,9 @@ export default function LeagueSearchPage() {
     specialEventsMonitorType: string,
     monitorPlayoffs: boolean,
     monitorPreseason: boolean,
+    finalTeamMode: string,
+    playoffTeamMode: string,
+    preseasonTeamMode: string,
     retentionDays: number,
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
@@ -574,6 +595,9 @@ export default function LeagueSearchPage() {
         specialEventsMonitorType,
         monitorPlayoffs,
         monitorPreseason,
+        finalTeamMode,
+        playoffTeamMode,
+        preseasonTeamMode,
         retentionDays,
         allowHighlights,
         sessionTypeQualityProfiles,
@@ -598,6 +622,9 @@ export default function LeagueSearchPage() {
         specialEventsMonitorType,
         monitorPlayoffs,
         monitorPreseason,
+        finalTeamMode,
+        playoffTeamMode,
+        preseasonTeamMode,
         retentionDays,
         allowHighlights,
         sessionTypeQualityProfiles,

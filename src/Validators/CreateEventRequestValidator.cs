@@ -21,6 +21,9 @@ public class CreateEventRequestValidator : AbstractValidator<CreateEventRequest>
         RuleFor(x => x.ExternalId)
             .MaximumLength(64);
 
+        RuleFor(x => x.SeasonNumber)
+            .GreaterThanOrEqualTo(0).When(x => x.SeasonNumber.HasValue);
+
         RuleFor(x => x.Venue).MaximumLength(500);
         RuleFor(x => x.Location).MaximumLength(500);
         RuleFor(x => x.Broadcast).MaximumLength(500);

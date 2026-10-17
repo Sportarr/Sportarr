@@ -636,6 +636,11 @@ public class SportarrApiClient
     /// </summary>
     public async Task<List<Team>?> GetLeagueTeamsAsync(string leagueId)
     {
+        return (await GetLeagueTeamSelectionAsync(leagueId))?.Teams;
+    }
+
+    public async Task<SportarrApiTeamsResponse?> GetLeagueTeamSelectionAsync(string leagueId)
+    {
         try
         {
             var url = $"{_apiBaseUrl}/list/teams/{Uri.EscapeDataString(leagueId)}";
@@ -652,12 +657,13 @@ public class SportarrApiClient
                 // Only deserialize if it's actually an array
                 if (listElement.ValueKind == JsonValueKind.Array)
                 {
-                    return JsonSerializer.Deserialize<List<Team>>(listElement.GetRawText(), _jsonOptions) ?? new List<Team>();
+                    return JsonSerializer.Deserialize<SportarrApiTeamsResponse>(json, _jsonOptions)
+                        ?? new SportarrApiTeamsResponse { Teams = new List<Team>() };
                 }
             }
 
             // list is null, an object (error message), or missing - return empty
-            return new List<Team>();
+            return new SportarrApiTeamsResponse { Teams = new List<Team>() };
         }
         catch (Exception ex)
         {
@@ -1614,6 +1620,7 @@ public class MetaData
 {
     public bool Cached { get; set; }
     public string? Source { get; set; }
+    public List<string>? RecentTeamIds { get; set; }
 }
 /// <summary>
 /// Response wrapper for all leagues endpoint

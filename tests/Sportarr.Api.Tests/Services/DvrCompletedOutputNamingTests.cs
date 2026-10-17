@@ -13,6 +13,52 @@ namespace Sportarr.Api.Tests.Services;
 public class DvrCompletedOutputNamingTests
 {
     [Fact]
+    public async Task FallbackRecordingKeepsPartAndImportMode()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var failed = fixture.Recording;
+        failed.Status = DvrRecordingStatus.Failed;
+        failed.PartName = "Main Card";
+        failed.ImportMode = "move";
+        failed.ScheduledStart = DateTime.UtcNow.AddHours(1);
+        failed.ScheduledEnd = failed.ScheduledStart.AddHours(3);
+        var backup = new IptvChannel
+        {
+            Id = 2,
+            SourceId = failed.Channel!.SourceId,
+            Name = "Backup",
+            StreamUrl = "https://iptv.invalid/backup"
+        };
+        fixture.Db.IptvChannels.Add(backup);
+        failed.FallbackChannelIds = "[2]";
+        await fixture.Db.SaveChangesAsync();
+
+        var rotatedId = await fixture.Service.TryRescheduleOnFallbackAsync(failed, "stream failed");
+
+        rotatedId.Should().NotBeNull();
+        var rotated = await fixture.Db.DvrRecordings.SingleAsync(recording => recording.Id == rotatedId);
+        rotated.PartName.Should().Be("Main Card");
+        rotated.ImportMode.Should().Be("move");
+    }
+
+    [Fact]
+    public async Task RetryKeepsAUsableFailedCaptureUntilTheUserMovesIt()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var savedPath = fixture.CreateRecordingFile("failed-capture.ts");
+        fixture.Recording.Status = DvrRecordingStatus.Failed;
+        fixture.Recording.OutputPath = savedPath;
+        await fixture.Db.SaveChangesAsync();
+
+        var result = await fixture.Service.StartRecordingAsync(fixture.Recording.Id);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("saved capture");
+        fixture.Recording.OutputPath.Should().Be(savedPath);
+        File.Exists(savedPath).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task CompletedImportUsesProbedQualityInFileAndDatabasePaths()
     {
         if (OperatingSystem.IsWindows())
@@ -196,6 +242,249 @@ public class DvrCompletedOutputNamingTests
         (await fixture.Db.Events.SingleAsync()).HasFile.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ADirectImportMarksTheFileAsAnIptvRecording()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        fixture.Recording.OutputPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        await fixture.Db.SaveChangesAsync();
+
+        var imported = await fixture.CreateEventDvrService()
+            .ImportCompletedRecordingAsync(fixture.Recording.Id);
+
+        imported.Should().BeTrue();
+        fixture.Db.ChangeTracker.Clear();
+        (await fixture.Db.EventFiles.SingleAsync()).IsIptvRecording.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CompletedRecordingAlreadyLinkedByPathSettlesWithoutAddingAnotherFile()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var path = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        fixture.Recording.OutputPath = path;
+        fixture.Db.EventFiles.Add(new EventFile
+        {
+            EventId = fixture.Recording.EventId!.Value,
+            FilePath = path,
+            Quality = "HDTV-1080p",
+            Exists = false
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var imported = await fixture.CreateEventDvrService()
+            .ImportCompletedRecordingAsync(fixture.Recording.Id);
+
+        imported.Should().BeTrue();
+        fixture.Db.ChangeTracker.Clear();
+        (await fixture.Db.EventFiles.CountAsync()).Should().Be(1);
+        (await fixture.Db.EventFiles.SingleAsync()).Exists.Should().BeTrue();
+        (await fixture.Db.Events.SingleAsync()).HasFile.Should().BeTrue();
+        (await fixture.Db.Events.SingleAsync()).FilePath.Should().Be(path);
+        var recording = await fixture.Db.DvrRecordings.SingleAsync();
+        recording.Status.Should().Be(DvrRecordingStatus.Imported);
+        recording.ImportedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task BulkImportQueuesLateRecordingForManualChoiceWhenIndexerOwnsItsPart()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var recordingPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        var indexerPath = fixture.CreateRecordingFile("Fixture - WEBDL-1080p.mkv");
+        fixture.Recording.OutputPath = recordingPath;
+        fixture.Db.EventFiles.Add(new EventFile
+        {
+            EventId = fixture.Recording.EventId!.Value,
+            FilePath = indexerPath,
+            Quality = "WEBDL-1080p",
+            Added = fixture.Recording.ScheduledEnd.AddMinutes(-1),
+            Exists = true
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var service = fixture.CreateEventDvrService();
+        var imported = await service.ImportAllCompletedRecordingsAsync();
+        (await service.ImportAllCompletedRecordingsAsync()).Should().Be(0);
+
+        imported.Should().Be(0);
+        File.Exists(recordingPath).Should().BeTrue();
+        fixture.Db.ChangeTracker.Clear();
+        (await fixture.Db.EventFiles.SingleAsync()).FilePath.Should().Be(indexerPath);
+        (await fixture.Db.DvrRecordings.SingleAsync()).Status.Should().Be(DvrRecordingStatus.Completed);
+        var pending = await fixture.Db.PendingImports.SingleAsync();
+        pending.FilePath.Should().Be(recordingPath);
+        pending.SuggestedEventId.Should().Be(fixture.Recording.EventId);
+        pending.Status.Should().Be(PendingImportStatus.Pending);
+
+        pending.Status = PendingImportStatus.Importing;
+        await fixture.Db.SaveChangesAsync();
+        (await service.ImportAllCompletedRecordingsAsync()).Should().Be(0);
+        (await fixture.Db.PendingImports.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task BulkImportDoesNotQueueAnotherRecordingAsAnIndexerConflict()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var recordingPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        var heldPath = fixture.CreateRecordingFile("Fixture - HDTV-720p.DVR.ts");
+        fixture.Recording.OutputPath = recordingPath;
+        fixture.Db.EventFiles.Add(new EventFile
+        {
+            EventId = fixture.Recording.EventId!.Value,
+            FilePath = heldPath,
+            Quality = "HDTV-720p",
+            Source = "IPTV",
+            Exists = true
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var service = fixture.CreateEventDvrService();
+        (await service.ImportAllCompletedRecordingsAsync()).Should().Be(0);
+        (await service.ImportAllCompletedRecordingsAsync()).Should().Be(0);
+        (await fixture.Db.PendingImports.CountAsync()).Should().Be(0);
+        File.Exists(recordingPath).Should().BeTrue();
+        File.Exists(heldPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DirectImportDoesNotQueueAnotherRecordingAsAChoice()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var recordingPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        var heldPath = fixture.CreateRecordingFile("Fixture - HDTV-720p.DVR.ts");
+        fixture.Recording.OutputPath = recordingPath;
+        fixture.Db.EventFiles.Add(new EventFile
+        {
+            EventId = fixture.Recording.EventId!.Value,
+            FilePath = heldPath,
+            Quality = "HDTV-720p",
+            Source = "IPTV",
+            IsIptvRecording = true,
+            Exists = true
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        (await fixture.CreateEventDvrService().ImportCompletedRecordingAsync(fixture.Recording.Id)).Should().BeFalse();
+        (await fixture.Db.PendingImports.CountAsync()).Should().Be(0);
+        (await fixture.Db.EventFiles.SingleAsync()).FilePath.Should().Be(heldPath);
+    }
+
+    [Fact]
+    public async Task MissingIndexerFileKeepsItsRowAndQueuesTheRecordingForChoice()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var recordingPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        var missingPath = Path.Combine(fixture.Directory, "temporarily-unavailable.mkv");
+        fixture.Recording.OutputPath = recordingPath;
+        var missingFile = new EventFile
+        {
+            EventId = fixture.Recording.EventId!.Value,
+            FilePath = missingPath,
+            Quality = "WEBDL-1080p",
+            Added = fixture.Recording.ScheduledEnd.AddMinutes(-1),
+            Exists = false,
+            MissingSince = DateTime.UtcNow
+        };
+        fixture.Db.EventFiles.Add(missingFile);
+        await fixture.Db.SaveChangesAsync();
+
+        var service = fixture.CreateEventDvrService();
+        (await service.ImportCompletedRecordingAsync(fixture.Recording.Id)).Should().BeFalse();
+        (await service.ImportAllCompletedRecordingsAsync()).Should().Be(0);
+        fixture.Db.ChangeTracker.Clear();
+        (await fixture.Db.EventFiles.SingleAsync()).FilePath.Should().Be(missingPath);
+        (await fixture.Db.DvrRecordings.SingleAsync()).Status.Should().Be(DvrRecordingStatus.Completed);
+        (await fixture.Db.DvrRecordings.SingleAsync()).ImportedAt.Should().BeNull();
+        File.Exists(recordingPath).Should().BeTrue();
+        var choice = await fixture.Db.PendingImports.SingleAsync();
+        choice.DownloadId.Should().Be($"dvr-{fixture.Recording.Id}");
+        choice.Status.Should().Be(PendingImportStatus.Pending);
+        choice.ErrorMessage.Should().Contain("missing from disk");
+    }
+
+    [Fact]
+    public async Task ExistingIndexerFileTakesPriorityOverAnOlderMissingRow()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var recordingPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        var livePath = fixture.CreateRecordingFile("Fixture - WEBDL-1080p.mkv");
+        fixture.Recording.OutputPath = recordingPath;
+        fixture.Db.EventFiles.AddRange(
+            new EventFile
+            {
+                EventId = fixture.Recording.EventId!.Value,
+                FilePath = Path.Combine(fixture.Directory, "missing.mkv"), Quality = "WEBDL-720p",
+                Added = fixture.Recording.ScheduledEnd.AddMinutes(-10), Exists = false
+            },
+            new EventFile
+            {
+                EventId = fixture.Recording.EventId!.Value,
+                FilePath = livePath, Quality = "WEBDL-1080p",
+                Added = fixture.Recording.ScheduledEnd.AddMinutes(-5), Exists = true
+            });
+        await fixture.Db.SaveChangesAsync();
+
+        (await fixture.CreateEventDvrService().ImportCompletedRecordingAsync(fixture.Recording.Id)).Should().BeFalse();
+        var pending = await fixture.Db.PendingImports.SingleAsync();
+        pending.ErrorMessage.Should().NotContain("missing from disk");
+        pending.ErrorMessage.Should().Contain("WEBDL-1080p");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LaterIndexerWithSourcePrecedenceSettlesRecordingWithoutRetry(bool markedAsExisting)
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var recordingPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        var livePath = fixture.CreateRecordingFile("Fixture - WEBDL-1080p.mkv");
+        fixture.Recording.OutputPath = recordingPath;
+        var configService = fixture.CreateConfigService();
+        var config = await configService.GetConfigAsync();
+        config.DvrReplaceRecordingsWithIndexerReleases = true;
+        await configService.SaveConfigAsync(config);
+        fixture.Db.EventFiles.Add(new EventFile
+        {
+            EventId = fixture.Recording.EventId!.Value,
+            FilePath = livePath, Quality = "WEBDL-1080p",
+            Added = fixture.Recording.ScheduledEnd.AddMinutes(5), Exists = markedAsExisting
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var service = fixture.CreateEventDvrService();
+        (await service.ImportCompletedRecordingAsync(fixture.Recording.Id)).Should().BeFalse();
+        (await service.ImportAllCompletedRecordingsAsync()).Should().Be(0);
+        (await fixture.Db.PendingImports.CountAsync()).Should().Be(0);
+        (await fixture.Db.DvrRecordings.SingleAsync()).Status.Should().Be(DvrRecordingStatus.Ignored);
+        (await fixture.Db.EventFiles.SingleAsync()).Exists.Should().BeTrue();
+        File.Exists(recordingPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task FailedCaptureIsKeptInRecoveryFolderOutsideTheLibraryScan()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var path = Path.Combine(fixture.Directory, ".Fixture - HDTV-1080p.DVR.ts");
+        await File.WriteAllBytesAsync(path, new byte[2 * 1024 * 1024]);
+        fixture.Recording.OutputPath = path;
+        fixture.Recording.Status = DvrRecordingStatus.Recording;
+        fixture.Recording.ScheduledStart = DateTime.UtcNow.AddMinutes(-10);
+        fixture.Recording.ScheduledEnd = DateTime.UtcNow.AddHours(1);
+        await fixture.Db.SaveChangesAsync();
+
+        await fixture.Service.HandleRecorderExitAsync(fixture.Recording.Id, 1, "stream ended");
+
+        fixture.Db.ChangeTracker.Clear();
+        var recording = await fixture.Db.DvrRecordings.SingleAsync();
+        recording.Status.Should().Be(DvrRecordingStatus.Failed);
+        recording.OutputPath.Should().Contain(".sportarr-dvr-recovery");
+        File.Exists(path).Should().BeFalse();
+        File.Exists(recording.OutputPath).Should().BeTrue();
+        Sportarr.Api.Helpers.LibraryPathFilter.IsExcluded(recording.OutputPath).Should().BeTrue();
+    }
+
     private sealed class NamingFixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;
@@ -252,6 +541,8 @@ public class DvrCompletedOutputNamingTests
                 GetConfig(),
                 null!);
         }
+
+        public ConfigService CreateConfigService() => GetConfig();
 
         private ConfigService GetConfig()
         {

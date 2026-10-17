@@ -55,6 +55,14 @@ public enum MonitorType
     SpecialsOnly
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum SpecialEventTeamMode
+{
+    Off,
+    SelectedTeams,
+    AllTeams
+}
+
 /// <summary>
 /// Represents a sports league/competition (e.g., NFL, NBA, UFC, Premier League).
 /// A container for events/games/matches that share monitoring and quality settings.
@@ -256,6 +264,10 @@ public class League
     /// TheSportsDB reserves round code 500 for pre-season.
     /// </summary>
     public bool MonitorPreseason { get; set; } = false;
+
+    public SpecialEventTeamMode FinalTeamMode { get; set; } = SpecialEventTeamMode.Off;
+    public SpecialEventTeamMode PlayoffTeamMode { get; set; } = SpecialEventTeamMode.Off;
+    public SpecialEventTeamMode PreseasonTeamMode { get; set; } = SpecialEventTeamMode.Off;
 
     /// <summary>
     /// Which end of a season the event list starts at. "desc" puts the newest
@@ -512,6 +524,9 @@ public class AddLeagueRequest
 
     /// <summary>Monitor preseason/exhibition games even when monitored teams are not playing.</summary>
     public bool MonitorPreseason { get; set; } = false;
+    public SpecialEventTeamMode? FinalTeamMode { get; set; }
+    public SpecialEventTeamMode? PlayoffTeamMode { get; set; }
+    public SpecialEventTeamMode? PreseasonTeamMode { get; set; }
     public MonitorType SpecialEventsMonitorType { get; set; } = MonitorType.Future;
 
     /// <summary>Allow Highlights releases to match and grab for this league.</summary>
@@ -551,9 +566,12 @@ public class AddLeagueRequest
             MonitoredSessionTypes = MonitoredSessionTypes,
             MonitoredEventTypes = MonitoredEventTypes,
             SessionTypeQualityProfiles = SessionTypeQualityProfiles,
-            MonitorFinals = MonitorFinals,
-            MonitorPlayoffs = MonitorPlayoffs,
-            MonitorPreseason = MonitorPreseason,
+            MonitorFinals = FinalTeamMode.HasValue ? FinalTeamMode == SpecialEventTeamMode.AllTeams : MonitorFinals,
+            MonitorPlayoffs = PlayoffTeamMode.HasValue ? PlayoffTeamMode == SpecialEventTeamMode.AllTeams : MonitorPlayoffs,
+            MonitorPreseason = PreseasonTeamMode.HasValue ? PreseasonTeamMode == SpecialEventTeamMode.AllTeams : MonitorPreseason,
+            FinalTeamMode = FinalTeamMode ?? (MonitorFinals ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off),
+            PlayoffTeamMode = PlayoffTeamMode ?? (MonitorPlayoffs ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off),
+            PreseasonTeamMode = PreseasonTeamMode ?? (MonitorPreseason ? SpecialEventTeamMode.AllTeams : SpecialEventTeamMode.Off),
             SpecialEventsMonitorType = SpecialEventsMonitorType,
             AllowHighlights = AllowHighlights,
             KeepAllEvents = KeepAllEvents,
@@ -606,6 +624,9 @@ public class LeagueResponse
     public bool MonitorFinals { get; set; }
     public bool MonitorPlayoffs { get; set; }
     public bool MonitorPreseason { get; set; }
+    public SpecialEventTeamMode FinalTeamMode { get; set; }
+    public SpecialEventTeamMode PlayoffTeamMode { get; set; }
+    public SpecialEventTeamMode PreseasonTeamMode { get; set; }
     public MonitorType SpecialEventsMonitorType { get; set; }
     public bool AllowHighlights { get; set; }
 
@@ -751,6 +772,9 @@ public class LeagueResponse
             MonitorFinals = league.MonitorFinals,
             MonitorPlayoffs = league.MonitorPlayoffs,
             MonitorPreseason = league.MonitorPreseason,
+            FinalTeamMode = league.FinalTeamMode,
+            PlayoffTeamMode = league.PlayoffTeamMode,
+            PreseasonTeamMode = league.PreseasonTeamMode,
             SpecialEventsMonitorType = league.SpecialEventsMonitorType,
             AllowHighlights = league.AllowHighlights,
             EnableDvr = league.EnableDvr,

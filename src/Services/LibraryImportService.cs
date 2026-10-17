@@ -417,7 +417,8 @@ public class LibraryImportService
                         MatchedSeason = matchedEvent?.Season ?? matchedEvent?.SeasonNumber?.ToString() ?? (matchedEvent?.BroadcastDate ?? matchedEvent?.EventDate)?.Year.ToString(),
                         DestinationPreview = destinationPreview,
                         MatchConfidence = matchConfidence > 0 ? Math.Min(100, matchConfidence) : null,
-                        Rejections = judged.Rejections
+                        Rejections = judged.Rejections,
+                        HeldBySourcePrecedence = judged.Rejections.Contains(SourcePrecedence.IptvRecordingRejection)
                     };
 
                     if (matchedEvent != null)
@@ -574,24 +575,50 @@ public class LibraryImportService
                         partNumber ??= EventPartDetector.ResolvePartNumber(partName, existingEvent.Sport,
                             existingEvent.Title, existingEvent.League?.Name);
 
+                        // Preserve a known source on rescan. Only an explicit
+                        // DVR marker can classify an untracked library file.
+                        var isIptvRecording = request.IsIptvRecording
+                            || (!request.FromDownloadClient &&
+                                (existingFileRecord?.IsIptvRecording == true ||
+                                 string.Equals(request.Source, "IPTV", StringComparison.OrdinalIgnoreCase) ||
+                                 (existingFileRecord?.ReleaseTitle == null &&
+                                  SourcePrecedence.LooksLikeIptvRecording(request.FilePath,
+                                      request.Quality ?? _fileParser.BuildQualityString(parsedInfo)))));
+
                         // The file the event already holds for this part decides whether
                         // this one may take its place. One rule for every import path
                         // (ImportUpgradeRule): an automatic import stops at a rejection
-                        // and leaves the file where it is; a manual import replaces.
+                        // and leaves the file where it is; a manual import replaces,
+                        // except over source precedence, which only an explicit
+                        // override (Import anyway) lifts.
                         // A copy that already sits beside the file it replaces is imported
                         // in place and that file stays on disk untracked; a copy from
                         // anywhere else replaces it through the recycle bin.
+                        var replacementCandidates = request.ReplaceOccupiedFile
+                            ? existingEvent.Files.Where(f => f.Exists &&
+                                !string.Equals(f.FilePath, request.FilePath, StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(SourcePrecedence.NormalizePart(f.PartName),
+                                    SourcePrecedence.NormalizePart(partName), StringComparison.OrdinalIgnoreCase)).ToList()
+                            : null;
+                        if (replacementCandidates?.Count > 1)
+                            throw new InvalidOperationException("Multiple tracked files cover this event part. Resolve them before importing.");
                         var occupant = existingFileRecord == null
-                            ? ImportUpgradeRule.ExistingFileForPart(existingEvent.Files, partNumber, request.FilePath, config.EnableMultiPartEpisodes)
+                            ? request.ReplaceOccupiedFile
+                                ? replacementCandidates?.SingleOrDefault()
+                                : ImportUpgradeRule.ExistingFileForPart(existingEvent.Files, partNumber, request.FilePath, config.EnableMultiPartEpisodes)
                             : null;
                         var importInPlace = false;
                         if (occupant != null)
                         {
                             var decision = await DecideUpgradeAsync(occupant, request.FilePath,
-                                request.Quality ?? _fileParser.BuildQualityString(parsedInfo), existingEvent);
-                            importInPlace = IsBesideOccupant(request.FilePath, occupant.FilePath);
-                            if (request.OnlyIfUpgrade
-                                && (!decision.IsUpgrade || (decision.Equal && (importInPlace || importMode != LibraryImportMode.Move))))
+                                request.Quality ?? _fileParser.BuildQualityString(parsedInfo), existingEvent,
+                                isIptvRecording);
+                            importInPlace = IsBesideOccupant(request.FilePath, occupant.FilePath)
+                                && !request.ReplaceOccupiedFile;
+                            var heldBySourcePrecedence = decision.Rejection == SourcePrecedence.IptvRecordingRejection
+                                && !request.OverrideSourcePrecedence;
+                            if (heldBySourcePrecedence || (request.OnlyIfUpgrade
+                                && (!decision.IsUpgrade || (decision.Equal && (importInPlace || importMode != LibraryImportMode.Move)))))
                             {
                                 // An equal copy is kept out of an automatic import when
                                 // taking it over would only repeat: beside the held file
@@ -618,7 +645,7 @@ public class LibraryImportService
                         StagedPartReplacement? stagedPart = null;
                         if (existingFileRecord == null && !importInPlace)
                         {
-                            stagedPart = await StageOccupiedPartAsync(existingEvent, partNumber, request.FilePath, occupant);
+                            stagedPart = await StageOccupiedPartAsync(existingEvent, partName, partNumber, request.FilePath, occupant);
                         }
 
                         // Build destination path and transfer file - pass part info and import mode
@@ -673,8 +700,14 @@ public class LibraryImportService
                             existingFileRecord.FilePath = destinationPath;
                             existingFileRecord.Size = sourceFileSize;
                             existingFileRecord.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
+                            existingFileRecord.CustomFormatScore = await ExistingFormatScoreAsync(
+                                request, existingEvent, existingFileRecord, false);
                             existingFileRecord.PartName = partName;
                             existingFileRecord.PartNumber = partNumber;
+                            // A rescan of a recording isn't told it is one, so the
+                            // mark is only ever added here, never cleared.
+                            existingFileRecord.IsIptvRecording = SourcePrecedence.PreserveRecordingOnRescan(
+                                isIptvRecording, existingFileRecord.IsIptvRecording, request.FromDownloadClient);
                             existingFileRecord.LastVerified = DateTime.UtcNow;
                             existingFileRecord.Exists = true;
                             linkedFile = existingFileRecord;
@@ -696,8 +729,12 @@ public class LibraryImportService
                                 existingByDest.EventId = existingEvent.Id;
                                 existingByDest.Size = sourceFileSize;
                                 existingByDest.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
+                                existingByDest.CustomFormatScore = await ExistingFormatScoreAsync(
+                                    request, existingEvent, existingByDest, previousOwnerId != existingEvent.Id);
                                 existingByDest.PartName = partName;
                                 existingByDest.PartNumber = partNumber;
+                                existingByDest.IsIptvRecording = SourcePrecedence.PreserveRecordingOnRescan(
+                                    isIptvRecording, existingByDest.IsIptvRecording, request.FromDownloadClient);
                                 existingByDest.LastVerified = DateTime.UtcNow;
                                 existingByDest.Exists = true;
                                 linkedFile = existingByDest;
@@ -725,6 +762,8 @@ public class LibraryImportService
                                     OriginalTitle = request.OriginalTitle,
                                     Languages = request.Languages ?? new List<string>(),
                                     IndexerFlags = request.IndexerFlags,
+                                    CustomFormatScore = await ImportedFormatScoreAsync(request, existingEvent),
+                                    IsIptvRecording = isIptvRecording,
                                     PartName = partName,
                                     PartNumber = partNumber,
                                     Added = DateTime.UtcNow,
@@ -885,6 +924,13 @@ public class LibraryImportService
                     // a row for this path, and a second insert violates the unique
                     // FilePath index.
                     var fileAtDestination = await FindEventFileByPathAsync(destinationPath);
+                    var isIptvRecording = request.IsIptvRecording
+                        || (!request.FromDownloadClient &&
+                            (fileAtDestination?.IsIptvRecording == true ||
+                             string.Equals(request.Source, "IPTV", StringComparison.OrdinalIgnoreCase) ||
+                             (fileAtDestination?.ReleaseTitle == null &&
+                              SourcePrecedence.LooksLikeIptvRecording(request.FilePath,
+                                  request.Quality ?? _fileParser.BuildQualityString(parsedInfo)))));
                     EventFile eventFile;
                     if (fileAtDestination != null)
                     {
@@ -892,10 +938,14 @@ public class LibraryImportService
                         fileAtDestination.EventId = newEvent.Id;
                         fileAtDestination.Size = sourceFileSize;
                         fileAtDestination.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
+                        fileAtDestination.CustomFormatScore = await ExistingFormatScoreAsync(
+                            request, newEvent, fileAtDestination, previousOwnerId != newEvent.Id);
                         fileAtDestination.PartName = partName;
                         fileAtDestination.PartNumber = partNumber;
                         fileAtDestination.LastVerified = DateTime.UtcNow;
                         fileAtDestination.Exists = true;
+                        fileAtDestination.IsIptvRecording = SourcePrecedence.PreserveRecordingOnRescan(
+                            isIptvRecording, fileAtDestination.IsIptvRecording, request.FromDownloadClient);
                         eventFile = fileAtDestination;
                         await RefreshPreviousOwnerAsync(previousOwnerId, newEvent.Id,
                             fileAtDestination, config);
@@ -920,6 +970,8 @@ public class LibraryImportService
                             OriginalTitle = request.OriginalTitle,
                             Languages = request.Languages ?? new List<string>(),
                             IndexerFlags = request.IndexerFlags,
+                            CustomFormatScore = await ImportedFormatScoreAsync(request, newEvent),
+                            IsIptvRecording = isIptvRecording,
                             PartName = partName,
                             PartNumber = partNumber,
                             Added = DateTime.UtcNow,
@@ -969,6 +1021,15 @@ public class LibraryImportService
         {
             try
             {
+                await _metadataWriterService.WriteEventMetadataAsync(evt, file, evt.League);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Import] Failed to write local metadata for manual import: {Path}", path);
+            }
+
+            try
+            {
                 await _notificationService.SendNotificationAsync(
                     NotificationTrigger.OnDownload,
                     $"Imported: {evt.Title}",
@@ -987,15 +1048,6 @@ public class LibraryImportService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[Import] Failed to send notification for manual import: {Path}", path);
-            }
-
-            try
-            {
-                await _metadataWriterService.WriteEventMetadataAsync(evt, file, evt.League);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Import] Failed to write local metadata for manual import: {Path}", path);
             }
         }
 
@@ -1700,7 +1752,9 @@ public class LibraryImportService
         var occupant = ImportUpgradeRule.ExistingFileForPart(held, partNumber, filePath, config.EnableMultiPartEpisodes);
         if (occupant == null) return none;
         var inPlace = IsBesideOccupant(filePath, occupant.FilePath);
-        var decision = await DecideUpgradeAsync(occupant, filePath, _fileParser.BuildQualityString(parsedInfo), evt);
+        var quality = _fileParser.BuildQualityString(parsedInfo);
+        var decision = await DecideUpgradeAsync(occupant, filePath, quality, evt,
+                            SourcePrecedence.LooksLikeIptvRecording(filePath, quality));
         // The same test the import makes, so the scan shows every copy an
         // automatic import would leave out, the equal one included.
         var leftOut = decision.Equal
@@ -1711,21 +1765,22 @@ public class LibraryImportService
     }
 
     /// <summary>
-    /// The shared rule applied to one incoming file against the file the
-    /// event holds. Custom format scores are read from both names against
-    /// the event's resolved quality profile. This judges a file that arrived
-    /// without a grab the same way as one that did.
+    /// Compare the incoming file with the event's current file. Score the
+    /// incoming name against the profile. Keep the held file's saved score
+    /// when its library name no longer contains the original format tag.
     /// </summary>
-    private async Task<ImportUpgradeRule.Decision> DecideUpgradeAsync(EventFile occupant, string incomingPath, string? incomingQuality, Event evt)
+    private async Task<ImportUpgradeRule.Decision> DecideUpgradeAsync(EventFile occupant, string incomingPath, string? incomingQuality, Event evt,
+        bool incomingIsIptvRecording)
     {
         var config = await _configService.GetConfigAsync();
         var incomingName = Path.GetFileNameWithoutExtension(incomingPath);
         var occupantName = occupant.OriginalTitle ?? Path.GetFileNameWithoutExtension(occupant.FilePath ?? string.Empty);
         var profile = await QualityProfileAsync(evt);
         return ImportUpgradeRule.Evaluate(
-            occupant.Quality, await FormatScoreAsync(occupantName, profile), occupantName,
+            occupant.Quality, occupant.CustomFormatScore, occupantName,
             incomingQuality, await FormatScoreAsync(incomingName, profile), incomingName,
-            config.DownloadPropersAndRepacks, profile);
+            config.DownloadPropersAndRepacks, profile,
+            SourcePrecedence.Compare(config, incomingIsIptvRecording, occupant.IsIptvRecording));
     }
 
     // Custom formats and a profile's scores, loaded once per service
@@ -1740,13 +1795,32 @@ public class LibraryImportService
         return RssSyncService.ResolveQualityProfile(evt, _qualityProfiles);
     }
 
+    /// <summary>
+    /// The custom format score a library import stores on its new file, read
+    /// from the name the upgrade decision scored. Left at 0, every release
+    /// with a positive score would look like an upgrade over this file.
+    /// </summary>
+    private async Task<int> ImportedFormatScoreAsync(FileImportRequest request, Event evt) =>
+        await FormatScoreAsync(request.OriginalTitle ?? Path.GetFileNameWithoutExtension(request.FilePath),
+            await QualityProfileAsync(evt));
+
+    private async Task<int> ExistingFormatScoreAsync(
+        FileImportRequest request, Event evt, EventFile file, bool ownerChanged)
+    {
+        if (!ownerChanged)
+            return file.CustomFormatScore;
+        if (string.IsNullOrWhiteSpace(file.ReleaseTitle))
+            return await ImportedFormatScoreAsync(request, evt);
+        return await FormatScoreAsync(file.ReleaseTitle, await QualityProfileAsync(evt));
+    }
+
     private async Task<int> FormatScoreAsync(string title, QualityProfile? profile)
     {
         if (string.IsNullOrEmpty(title) || profile == null) return 0;
         var profileId = profile.Id;
         if (!_formatScoreCache.TryGetValue(profileId, out var cached))
         {
-            var scores = profile.FormatItems?.ToDictionary(fi => fi.FormatId, fi => fi.Score) ?? new Dictionary<int, int>();
+            var scores = CustomFormatService.ProfileScores(profile);
             var formats = scores.Count == 0 ? new List<CustomFormat>() : await _db.CustomFormats.AsNoTracking().ToListAsync();
             cached = (formats, scores);
             _formatScoreCache[profileId] = cached;
@@ -1774,12 +1848,15 @@ public class LibraryImportService
     /// Renames the file already holding this part out of the way. Nothing is
     /// deleted here, so a failed transfer can put it back.
     /// </summary>
-    private async Task<StagedPartReplacement?> StageOccupiedPartAsync(Event existingEvent, int? partNumber, string incomingPath, EventFile? chosen = null)
+    private async Task<StagedPartReplacement?> StageOccupiedPartAsync(Event existingEvent, string? partName, int? partNumber, string incomingPath, EventFile? chosen = null)
     {
         // The file judged by the upgrade rule is the file replaced, so the
         // decision and the replacement always concern the same file.
         var occupant = chosen ?? existingEvent.Files
-            .FirstOrDefault(f => f.PartNumber == partNumber &&
+            .FirstOrDefault(f => (partNumber.HasValue
+                    ? f.PartNumber == partNumber
+                    : string.Equals(SourcePrecedence.NormalizePart(f.PartName),
+                        SourcePrecedence.NormalizePart(partName), StringComparison.OrdinalIgnoreCase)) &&
                                  !string.Equals(f.FilePath, incomingPath, StringComparison.OrdinalIgnoreCase));
 
         if (occupant == null) return null;
@@ -1897,11 +1974,13 @@ public class LibraryImportService
             {
                 var config = await _configService.GetConfigAsync();
                 var recycleBin = config.RecycleBin;
+                string? recycledVideoPath = null;
                 if (!string.IsNullOrEmpty(recycleBin) && Directory.Exists(recycleBin))
                 {
                     var recyclePath = Helpers.RecyclePaths.FindFree(
                         recycleBin, Path.GetFileName(staged.OriginalPath));
                     File.Move(staged.StagedPath, recyclePath);
+                    recycledVideoPath = recyclePath;
                     _logger.LogInformation("[Library Import] Moved replaced file to recycle bin: {Path} -> {RecyclePath}",
                         staged.OriginalPath, recyclePath);
                 }
@@ -1910,6 +1989,8 @@ public class LibraryImportService
                     File.Delete(staged.StagedPath);
                     _logger.LogInformation("[Library Import] Deleted replaced file: {Path}", staged.OriginalPath);
                 }
+                await _metadataWriterService.DeleteEventMetadataAsync(
+                    new EventFile { FilePath = staged.OriginalPath }, recycledVideoPath);
             }
             catch (Exception ex)
             {
@@ -2444,6 +2525,7 @@ public class LibraryImportService
             {
                 EventTitle = matchedEvent.Title,
                 EventTitleThe = matchedEvent.Title,
+                SportarrId = matchedEvent.ExternalId ?? string.Empty,
                 AirDate = brandingDate,
                 Quality = parsedPreview.Quality ?? "Unknown",
                 QualityFull = _fileParser.BuildQualityString(parsedPreview),
@@ -2620,9 +2702,16 @@ public class ImportableFile
     /// Why the file may not take the place of the file the matched event
     /// already holds, as Library Import shows it. Empty when the event holds
     /// no file for this part or the file is an upgrade. A manual import
-    /// replaces regardless.
+    /// replaces regardless, except where source precedence holds it back.
     /// </summary>
     public List<string> Rejections { get; set; } = new();
+
+    /// <summary>
+    /// Source precedence keeps the event's indexer file: a manual import of
+    /// this recording is rejected unless the request sets
+    /// OverrideSourcePrecedence.
+    /// </summary>
+    public bool HeldBySourcePrecedence { get; set; }
 
     public string FileSizeFormatted => FormatBytes(FileSize);
 
@@ -2653,9 +2742,33 @@ public class FileImportRequest
     /// An automatic import (the file watcher, a rescan, a completed download
     /// Sportarr did not grab): the file may take the place of a file the
     /// event already holds only when it is an upgrade. A manual import leaves
-    /// this false and replaces regardless.
+    /// this false and replaces regardless, except where source precedence
+    /// keeps an indexer file from an IPTV recording.
     /// </summary>
     public bool OnlyIfUpgrade { get; set; }
+
+    /// <summary>
+    /// Import anyway: the user chose to let this IPTV recording replace the
+    /// indexer file source precedence would keep.
+    /// </summary>
+    public bool OverrideSourcePrecedence { get; set; }
+
+    /// <summary>
+    /// Remove the held file after an explicit replacement, even when both files share a folder.
+    /// </summary>
+    public bool ReplaceOccupiedFile { get; set; }
+
+    /// <summary>
+    /// The file is an IPTV recording made by the DVR. Source precedence
+    /// keeps it from replacing a file that came from an indexer.
+    /// </summary>
+    public bool IsIptvRecording { get; set; }
+
+    /// <summary>
+    /// The file came from a download client, so it is a release and never
+    /// an IPTV recording, whatever its container.
+    /// </summary>
+    public bool FromDownloadClient { get; set; }
     public string? EventTitle { get; set; }
     public string? Organization { get; set; }
     public DateTime? EventDate { get; set; }

@@ -5,6 +5,8 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   test: {
+    // Limit contention in jsdom tests on shared runners.
+    maxWorkers: 4,
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',

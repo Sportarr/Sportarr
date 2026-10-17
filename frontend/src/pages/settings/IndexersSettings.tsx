@@ -39,6 +39,7 @@ interface Indexer {
   additionalParameters?: string;
   multiLanguages?: string[];
   rejectBlocklistedTorrentHashes?: boolean;
+  disableSslCertificateValidation?: boolean;
   downloadClientId?: number;
   tags?: number[];
   cookie?: string;
@@ -169,6 +170,7 @@ export default function IndexersSettings() {
       const additionalParameters = getField('additionalParameters') as string;
       const multiLanguages = getField('multiLanguages') as string;
       const rejectBlocklistedTorrentHashes = getField('rejectBlocklistedTorrentHashes') as string;
+      const disableSslCertificateValidation = getField('disableSslCertificateValidation') as string;
       const downloadClientId = getField('downloadClientId') as string;
       const cookie = getField('cookie') as string;
       const allowZeroSize = getField('allowZeroSize') as string;
@@ -204,10 +206,11 @@ export default function IndexersSettings() {
         grabLimit: grabLimit ? parseInt(grabLimit, 10) : undefined,
         requestDelayMs: requestDelayMs ? parseInt(requestDelayMs, 10) : undefined,
         seasonPackSeedTime: seasonPackSeedTime ? parseInt(seasonPackSeedTime, 10) : undefined,
-        earlyReleaseLimit: earlyReleaseLimit ? parseInt(earlyReleaseLimit, 10) : undefined,
+        earlyReleaseLimit: earlyReleaseLimit ? Math.min(parseInt(earlyReleaseLimit, 10), 7) : undefined,
         additionalParameters: additionalParameters || undefined,
         multiLanguages: multiLanguages ? multiLanguages.split(',').map(l => l.trim()) : undefined,
         rejectBlocklistedTorrentHashes: rejectBlocklistedTorrentHashes ? rejectBlocklistedTorrentHashes === 'true' : true,
+        disableSslCertificateValidation: disableSslCertificateValidation === 'true',
         downloadClientId: downloadClientId ? parseInt(downloadClientId, 10) : undefined,
         cookie: cookie || undefined,
         allowZeroSize: allowZeroSize === 'true',
@@ -366,6 +369,7 @@ export default function IndexersSettings() {
     seedRatio: 1.0,
     seedTime: 0,
     rejectBlocklistedTorrentHashes: true,
+    disableSslCertificateValidation: false,
     tags: []
   });
 
@@ -380,6 +384,7 @@ export default function IndexersSettings() {
       baseUrl: template.implementation === 'BroadcasTheNet' ? 'https://api.broadcasthe.net' : '',
       apiPath: template.implementation === 'BroadcasTheNet' ? '' : '/api',
       apiKey: '',
+      disableSslCertificateValidation: false,
       categories: [],
       minimumSeeders: template.protocol === 'torrent' ? 1 : undefined,
       seedRatio: template.protocol === 'torrent' ? 1.0 : undefined,
@@ -430,7 +435,7 @@ export default function IndexersSettings() {
     // Other Torznab-compatible templates (TorrentLeech, IPTorrents, etc.)
     // all expose a Newznab-style /caps endpoint.
     selectedTemplate?.protocol === 'torrent' && implementation !== 'Rss';
-  const capsKey = `${implementation}|${formData.baseUrl || ''}|${formData.apiPath || ''}|${formData.apiKey || ''}`;
+  const capsKey = `${implementation}|${formData.baseUrl || ''}|${formData.apiPath || ''}|${formData.apiKey || ''}|${formData.disableSslCertificateValidation ?? false}`;
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -513,7 +518,8 @@ export default function IndexersSettings() {
         categories: [],
         minimumSeeders: 1,
         seedRatio: 1.0,
-        seedTime: 0
+        seedTime: 0,
+        disableSslCertificateValidation: false
       });
     } catch (err) {
       console.error('Error saving indexer:', err);
@@ -621,7 +627,8 @@ export default function IndexersSettings() {
       categories: [],
       minimumSeeders: 1,
       seedRatio: 1.0,
-      seedTime: 0
+      seedTime: 0,
+      disableSslCertificateValidation: false
     });
   };
 
@@ -746,6 +753,23 @@ export default function IndexersSettings() {
                 API path for the indexer (usually /api for Newznab/Torznab)
               </p>
             </div>
+            )}
+
+            {formData.implementation !== 'BroadcasTheNet' && (
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.disableSslCertificateValidation ?? false}
+                  onChange={(e) => handleFormChange('disableSslCertificateValidation', e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-gray-300">Disable certificate validation</span>
+                  <span className="block text-xs text-gray-500 mt-1">
+                    Only for local HTTPS URLs with a private IPv4 address. Anyone who can intercept this connection may read the indexer API key. If the same proxy serves downloads, enable the download client's certificate option too.
+                  </span>
+                </span>
+              </label>
             )}
           </div>
         )}
@@ -987,14 +1011,15 @@ export default function IndexersSettings() {
                     handleFormChange('earlyReleaseLimit', undefined);
                   } else {
                     const parsed = parseInt(raw, 10);
-                    handleFormChange('earlyReleaseLimit', Number.isNaN(parsed) ? undefined : parsed);
+                    handleFormChange('earlyReleaseLimit', Number.isNaN(parsed) ? undefined : Math.min(parsed, 7));
                   }
                 }}
                 min="0"
+                max="7"
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Reject releases posted more than this many days before the event aired. Leave blank or 0 to disable.
+                Releases posted more than 7 days before the event are always rejected. Set a smaller number for a stricter limit. Blank or 0 uses 7 days.
               </p>
             </div>
 

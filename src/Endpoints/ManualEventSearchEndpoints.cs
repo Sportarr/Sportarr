@@ -152,7 +152,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     }
 
     var allResults = new List<ReleaseSearchResult>();
-    var seenGuids = new HashSet<string>();
+    var releaseDeduplicator = new ManualReleaseDeduplicator();
     var skippedIndexers = new List<SkippedIndexer>();
 
     // UNIVERSAL: Build search queries using sport-agnostic approach
@@ -289,10 +289,10 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     foreach (var query in queries)
     {
         var results = await SearchQueryAsync(query, queries.Count);
-        // Add results with GUID deduplication (fallback queries may overlap)
+        // Add each release once across search variants.
         foreach (var result in results)
         {
-            if (string.IsNullOrEmpty(result.Guid) || seenGuids.Add(result.Guid))
+            if (releaseDeduplicator.TryAdd(result))
             {
                 allResults.Add(result);
             }
@@ -308,7 +308,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             var results = await SearchQueryAsync(query, queries.Count + fallbackQueries.Count);
             foreach (var result in results)
             {
-                if (string.IsNullOrEmpty(result.Guid) || seenGuids.Add(result.Guid))
+                if (releaseDeduplicator.TryAdd(result))
                 {
                     allResults.Add(result);
                 }
@@ -349,6 +349,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     var knownLeagues = await LeagueMatchContext.LoadAsync(db);
     var roundRaceNumbers = await LoadRoundRaceNumbersAsync(db, evt);
     var datePeers = await EventDateMatchContext.LoadAsync(db, evt);
+    var venueContext = await NascarVenueMatchContext.LoadAsync(db, evt);
 
     var dateRejectionCount = 0;
     var identityRejectedResults = new HashSet<ReleaseSearchResult>(ReferenceEqualityComparer.Instance);
@@ -385,7 +386,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     {
         result.MatchScore = releaseMatchScorer.CalculateMatchScore(
             result.Title, evt, knownLeagues, part, config.EnableMultiPartEpisodes,
-            roundRaceNumbers);
+            roundRaceNumbers, venueContext, result.SportarrEventId);
 
         // Mark non-matching releases as rejected (so UI "Hide Rejected" filter works)
         if (result.MatchScore < ReleaseMatchScorer.MinimumMatchScore)
@@ -408,7 +409,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         var uniqueProbeResults = new List<ReleaseSearchResult>();
         foreach (var release in probeResults)
         {
-            if (string.IsNullOrEmpty(release.Guid) || seenGuids.Add(release.Guid))
+            if (releaseDeduplicator.TryAdd(release))
             {
                 uniqueProbeResults.Add(release);
             }
@@ -441,7 +442,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                 release.MatchScore = releaseMatchScorer.CalculateMatchScore(
                     release.Title, evt, knownLeagues, requestedPart: part,
                     enableMultiPartEpisodes: config.EnableMultiPartEpisodes,
-                    roundRaceNumbers: roundRaceNumbers);
+                    roundRaceNumbers: roundRaceNumbers, venueContext: venueContext,
+                    sportarrEventId: release.SportarrEventId);
                 if (release.MatchScore < ReleaseMatchScorer.MinimumMatchScore)
                 {
                     release.Approved = false;
@@ -558,7 +560,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     }
 
     var allResults = new List<ReleaseSearchResult>();
-    var seenGuids = new HashSet<string>();
+    var releaseDeduplicator = new ManualReleaseDeduplicator();
     var skippedIndexers = new List<SkippedIndexer>();
     var packConfig = await configService.GetConfigAsync();
     var sportarrId = Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.League?.ExternalId);
@@ -608,7 +610,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
         {
             // A release with no GUID used to be discarded outright. Some
             // indexers do not send one, and those releases simply vanished.
-            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Add(result.Guid)) continue;
+            if (!releaseDeduplicator.TryAdd(result)) continue;
 
             // Mark as pack result
             result.IsPack = true;
@@ -628,6 +630,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     var knownLeagues = await LeagueMatchContext.LoadAsync(db);
     var roundRaceNumbers = await LoadRoundRaceNumbersAsync(db, evt);
     var datePeers = await EventDateMatchContext.LoadAsync(db, evt);
+    var venueContext = await NascarVenueMatchContext.LoadAsync(db, evt);
 
     // The week the event belongs to. The general validation compares numbers
     // found in the release title against numbers in the event title, and a
@@ -663,7 +666,8 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
         result.MatchScore = releaseMatchScorer.CalculateMatchScore(
             result.Title, evt, knownLeagues, requestedPart: null,
             enableMultiPartEpisodes: packConfig.EnableMultiPartEpisodes,
-            roundRaceNumbers: roundRaceNumbers);
+            roundRaceNumbers: roundRaceNumbers, venueContext: venueContext,
+            sportarrEventId: result.SportarrEventId);
         if (result.IsPack &&
             LeagueReleaseNamePolicy.HasChineseCbaSeasonPackIdentity(result.Title, evt))
         {

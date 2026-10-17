@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -11,6 +12,7 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class EventDvrService
 {
+    private static readonly SemaphoreSlim PendingChoiceGate = new(1, 1);
     private readonly ILogger<EventDvrService> _logger;
     private readonly SportarrDbContext _db;
     private readonly DvrRecordingService _dvrService;
@@ -484,7 +486,7 @@ public class EventDvrService
     /// <summary>
     /// Import a completed DVR recording as an event file.
     /// </summary>
-    public async Task<bool> ImportCompletedRecordingAsync(int recordingId)
+    public async Task<bool> ImportCompletedRecordingAsync(int recordingId, bool bulkSweep = false)
     {
         var recording = await _db.DvrRecordings
             .Include(r => r.Event)
@@ -522,8 +524,135 @@ public class EventDvrService
             return false;
         }
 
+        var pathOwner = await _db.EventFiles
+            .FirstOrDefaultAsync(file => file.FilePath == recording.OutputPath);
+        if (pathOwner != null)
+        {
+            if (pathOwner.EventId != recording.EventId || pathOwner.PartName != recording.PartName)
+            {
+                _logger.LogWarning("[EventDVR] Recording {RecordingId} output is linked to a different event part", recordingId);
+                return false;
+            }
+
+            pathOwner.Source = "IPTV";
+            pathOwner.IsIptvRecording = true;
+            pathOwner.Exists = true;
+            pathOwner.LastVerified = DateTime.UtcNow;
+            pathOwner.Size = new FileInfo(recording.OutputPath).Length;
+            var configForLinkedFile = await _configService.GetConfigAsync();
+            var linkedParts = await _db.EventFiles
+                .Where(file => file.EventId == recording.EventId && file.Exists)
+                .Select(file => file.PartNumber)
+                .ToListAsync();
+            linkedParts.Add(pathOwner.PartNumber);
+            recording.Event.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
+                recording.Event.Sport, recording.Event.Title, recording.Event.League?.Name,
+                recording.Event.MonitoredParts, recording.Event.League?.MonitoredParts,
+                linkedParts, configForLinkedFile.EnableMultiPartEpisodes);
+            if (recording.Event.FilePath == null || recording.Event.FilePath == pathOwner.FilePath)
+            {
+                recording.Event.FilePath = pathOwner.FilePath;
+                recording.Event.FileSize = pathOwner.Size;
+                recording.Event.Quality = pathOwner.Quality;
+            }
+            recording.Status = DvrRecordingStatus.Imported;
+            recording.ImportedAt = DateTime.UtcNow;
+            recording.ErrorMessage = null;
+            recording.LastUpdated = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            return true;
+        }
+
+        var pendingDownloadId = $"dvr-{recording.Id}";
+        if (await _db.PendingImports.AnyAsync(pending => pending.DownloadId == pendingDownloadId))
+        {
+            return false;
+        }
+
+        var heldFiles = await _db.EventFiles
+            .Where(file => file.EventId == recording.EventId)
+            .ToListAsync();
+        var refreshed = false;
+        foreach (var file in heldFiles)
+        {
+            if (!SourcePrecedence.RecordingConflictsWithIndexerFile([file], recording.PartName,
+                    includeMissing: true))
+                continue;
+            var existsOnDisk = File.Exists(file.FilePath);
+            if (file.Exists == existsOnDisk)
+                continue;
+            file.Exists = existsOnDisk;
+            file.LastVerified = DateTime.UtcNow;
+            refreshed = true;
+        }
+        if (refreshed)
+            await _db.SaveChangesAsync();
+        var indexerFiles = heldFiles.Where(file =>
+            SourcePrecedence.RecordingConflictsWithIndexerFile([file], recording.PartName,
+                includeMissing: true)).ToList();
+        var preferredFiles = indexerFiles.Any(file => file.Exists)
+            ? indexerFiles.Where(file => file.Exists)
+            : indexerFiles;
+        EventFile? indexerFile = null;
+        foreach (var file in preferredFiles)
+        {
+            var grabbedAt = await _db.GrabHistory.AsNoTracking()
+                .Where(grab => grab.EventId == recording.EventId &&
+                    grab.DestinationPath == file.FilePath && grab.WasImported)
+                .OrderByDescending(grab => grab.GrabbedAt)
+                .Select(grab => (DateTime?)grab.GrabbedAt)
+                .FirstOrDefaultAsync();
+            if ((grabbedAt ?? file.Added) <= (recording.ActualEnd ?? recording.ScheduledEnd))
+            {
+                indexerFile = file;
+                break;
+            }
+        }
+        var laterIndexerFile = indexerFiles.Count > 0;
+        if (indexerFile == null && !laterIndexerFile && string.IsNullOrWhiteSpace(recording.ImportMode) &&
+            heldFiles.Any(file => string.Equals(SourcePrecedence.NormalizePart(file.PartName),
+                SourcePrecedence.NormalizePart(recording.PartName), StringComparison.OrdinalIgnoreCase)))
+        {
+            _logger.LogInformation("[EventDVR] Event {EventId} still tracks another file for part {Part}; recording {RecordingId} remains completed",
+                recording.EventId, recording.PartName ?? "Main", recordingId);
+            return false;
+        }
+
         // Probe the file to detect quality
         await ProbeAndUpdateRecordingQualityAsync(recording);
+
+        var config = await _configService.GetConfigAsync();
+        if (indexerFile != null)
+        {
+            await PendingChoiceGate.WaitAsync();
+            try
+            {
+                if (!await _db.PendingImports.AnyAsync(pending => pending.DownloadId == pendingDownloadId))
+                {
+                    _db.PendingImports.Add(new PendingImport
+                    {
+                        DownloadId = pendingDownloadId,
+                        Title = Path.GetFileName(recording.OutputPath),
+                        FilePath = recording.OutputPath,
+                        Size = new FileInfo(recording.OutputPath).Length,
+                        Quality = recording.Quality,
+                        QualityScore = recording.QualityScore ?? 0,
+                        SuggestedEventId = recording.EventId,
+                        SuggestedPart = recording.PartName,
+                        SuggestionConfidence = 100,
+                        Protocol = "DVR",
+                        ErrorMessage = $"Downloaded file{(indexerFile.Exists ? "" : " (missing from disk)")}: {indexerFile.Quality ?? "Unknown"} (quality {indexerFile.QualityScore}, score {indexerFile.CustomFormatScore}). Recording: {recording.Quality ?? "Unknown"} (quality {recording.QualityScore ?? 0}, score {recording.CustomFormatScore ?? 0}). Choose which file to keep."
+                    });
+                    await _db.SaveChangesAsync();
+                }
+            }
+            finally
+            {
+                PendingChoiceGate.Release();
+            }
+            _logger.LogInformation("[EventDVR] Recording {RecordingId} awaits a manual choice because an indexer file already covers its part", recordingId);
+            return false;
+        }
 
         // A recording with an import mode goes through the library import, so
         // it lands in the event's folder under the normal naming rules. Without
@@ -535,16 +664,19 @@ public class EventDvrService
             return await ImportRecordingIntoLibraryAsync(recording);
         }
 
-        // Check if file already exists for this event
-        var existingFile = await _db.EventFiles
-            .FirstOrDefaultAsync(f => f.EventId == recording.EventId &&
-                                     f.PartName == recording.PartName);
-
-        if (existingFile != null)
+        if (laterIndexerFile)
         {
-            _logger.LogDebug("[EventDVR] Event {EventId} already has a file for part {Part}, skipping import",
-                recording.EventId, recording.PartName ?? "Main");
-            return true;
+            var usableIndexerFile = indexerFiles.Any(file => file.Exists);
+            if (usableIndexerFile && SourcePrecedence.Compare(config, incomingIsIptvRecording: true,
+                    existingIsIptvRecording: false) == SourcePrecedence.Verdict.ExistingWins)
+            {
+                recording.Status = DvrRecordingStatus.Ignored;
+                recording.ErrorMessage = SourcePrecedence.IptvRecordingRejection;
+                recording.LastUpdated = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+                return false;
+            }
+            return await ImportRecordingIntoLibraryAsync(recording, "move", settleRejection: usableIndexerFile);
         }
 
         if (recording.Method == DvrRecordingMethod.Catchup)
@@ -566,6 +698,7 @@ public class EventDvrService
             QualityScore = qualityScore,
             CustomFormatScore = customFormatScore,
             Source = "IPTV",
+            IsIptvRecording = true,
             Codec = recording.VideoCodec,
             PartName = recording.PartName,
             PartNumber = EventPartDetector.ResolvePartNumber(
@@ -585,7 +718,6 @@ public class EventDvrService
             .Select(file => file.PartNumber)
             .ToListAsync();
         presentParts.Add(eventFile.PartNumber);
-        var config = await _configService.GetConfigAsync();
         recording.Event.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
             recording.Event.Sport, recording.Event.Title, recording.Event.League?.Name,
             recording.Event.MonitoredParts, recording.Event.League?.MonitoredParts,
@@ -618,7 +750,8 @@ public class EventDvrService
     /// the file name and the transfer, so the recording ends up organised the
     /// same way a downloaded release does.
     /// </summary>
-    private async Task<bool> ImportRecordingIntoLibraryAsync(DvrRecording recording)
+    private async Task<bool> ImportRecordingIntoLibraryAsync(DvrRecording recording, string? modeOverride = null,
+        bool settleRejection = false)
     {
         var result = await _libraryImport.ImportFilesAsync(new List<FileImportRequest>
         {
@@ -628,10 +761,11 @@ public class EventDvrService
                 EventId = recording.EventId,
                 Quality = recording.Quality,
                 PartName = recording.PartName,
-                ImportMode = recording.ImportMode,
+                ImportMode = modeOverride ?? recording.ImportMode,
                 // A recording replaces what the event holds only with an upgrade;
                 // a rejected recording stays in the DVR folder with the reason logged.
                 OnlyIfUpgrade = true,
+                IsIptvRecording = true,
             }
         });
 
@@ -645,6 +779,8 @@ public class EventDvrService
             _logger.LogWarning(
                 "[EventDVR] Recording {RecordingId} was not imported: {Reason}", recording.Id, reason);
             recording.ErrorMessage = reason;
+            if (settleRejection && result.Rejected.Count > 0)
+                recording.Status = DvrRecordingStatus.Ignored;
             recording.LastUpdated = DateTime.UtcNow;
             await _db.SaveChangesAsync();
             return false;
@@ -660,7 +796,7 @@ public class EventDvrService
 
         _logger.LogInformation(
             "[EventDVR] Imported recording {RecordingId} into the library for event {EventId} using {Mode}",
-            recording.Id, recording.EventId, recording.ImportMode);
+            recording.Id, recording.EventId, modeOverride ?? recording.ImportMode);
         return true;
     }
 
@@ -852,8 +988,10 @@ public class EventDvrService
     public async Task<int> ImportAllCompletedRecordingsAsync()
     {
         var completedRecordings = await _db.DvrRecordings
-            .Where(r => r.Status == DvrRecordingStatus.Completed)
+            .Where(r => r.Status == DvrRecordingStatus.Completed && r.ImportedAt == null)
             .Where(r => r.EventId != null)
+            .Where(r => r.OutputPath != null)
+            .OrderBy(r => r.Id)
             .Select(r => r.Id)
             .ToListAsync();
 
@@ -861,9 +999,14 @@ public class EventDvrService
 
         foreach (var recordingId in completedRecordings)
         {
-            if (await ImportCompletedRecordingAsync(recordingId))
+            try
             {
-                importedCount++;
+                if (await ImportCompletedRecordingAsync(recordingId, bulkSweep: true))
+                    importedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[EventDVR] Could not import completed recording {RecordingId}", recordingId);
             }
         }
 

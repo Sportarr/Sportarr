@@ -111,4 +111,36 @@ public class CacheEvidenceMatchingTests
         Assert.True(after.IsHardRejection);
         after.Rejections.Should().Equal(before.Rejections);
     }
+
+    [Theory]
+    [InlineData(300, true)]
+    [InlineData(8, true)]
+    [InlineData(7, false)]
+    public void DefaultEarlyReleaseLimitRejectsOnlyReleasesOlderThanOneWeek(
+        int daysBeforeEvent, bool shouldReject)
+    {
+        var evt = CacheEvidenceFixtures.Event();
+        var release = CacheEvidenceFixtures.Release();
+        release.PublishDate = evt.EventDate.AddDays(-daysBeforeEvent);
+
+        var result = CacheEvidenceFixtures.Matcher().ValidateRelease(release, evt);
+
+        result.IsHardRejection.Should().Be(shouldReject);
+        if (shouldReject)
+            result.Rejections.Should().Contain(reason => reason.Contains("early-release limit"));
+    }
+
+    [Fact]
+    public void IndexerLimitCannotPermitAReleaseOlderThanOneWeek()
+    {
+        var evt = CacheEvidenceFixtures.Event();
+        var release = CacheEvidenceFixtures.Release();
+        release.PublishDate = evt.EventDate.AddDays(-8);
+
+        var result = CacheEvidenceFixtures.Matcher().ValidateRelease(
+            release, evt, earlyReleaseLimitDays: 30);
+
+        result.IsHardRejection.Should().BeTrue();
+        result.Rejections.Should().Contain(reason => reason.Contains("early-release limit"));
+    }
 }

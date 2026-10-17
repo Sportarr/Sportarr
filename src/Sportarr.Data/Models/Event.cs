@@ -470,6 +470,13 @@ public class EventFile
     public string? Source { get; set; }
 
     /// <summary>
+    /// True when the file is an IPTV recording made by the DVR. Source can't
+    /// say this: a recording imported through the library parses as "HDTV",
+    /// the same as an HDTV release from an indexer.
+    /// </summary>
+    public bool IsIptvRecording { get; set; }
+
+    /// <summary>
     /// Part name for multi-part episodes (e.g., "Early Prelims", "Prelims", "Main Card")
     /// Null for single-file events
     /// </summary>

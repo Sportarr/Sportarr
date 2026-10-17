@@ -1,5 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useSystemStatus, useActivityCounts } from '../api/hooks';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { useSystemStatus, useSystemHealth, useActivityCounts, type SystemHealthCheck } from '../api/hooks';
 import {
   TrophyIcon as TrophySolidIcon,
   CalendarIcon as CalendarSolidIcon,
@@ -24,7 +26,7 @@ import {
   SignalIcon,
   ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import FooterStatusBar from './FooterStatusBar';
 import MobileTabBar from './MobileTabBar';
 import OnboardingWizard from './OnboardingWizard';
@@ -70,6 +72,8 @@ export default function Layout() {
   // First-run setup guide: show it once when the install isn't set up yet and
   // the user hasn't dismissed it. Runs once when the shell mounts.
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isFirstRunGuide, setIsFirstRunGuide] = useState(false);
+  const manualGuideOpenedRef = useRef(false);
   useEffect(() => {
     if (localStorage.getItem('sportarr.onboardingDismissed') === '1') return;
     let cancelled = false;
@@ -80,7 +84,11 @@ export default function Layout() {
         const status = await res.json();
         // The server remembers a dismissal, so a guide closed on one machine
         // stays closed on every other machine and browser.
-        if (!cancelled && status && status.isReady === false && status.dismissed !== true) {
+        if (!cancelled && !manualGuideOpenedRef.current && status
+          && status.isReady === false && status.dismissed !== true) {
+          setIsFirstRunGuide(!status.hasRootFolder && !status.hasDownloadClient
+            && !status.hasEnabledIndexer && !status.hasIptvSource
+            && status.monitoredLeagueCount === 0);
           setShowOnboarding(true);
         }
       } catch {
@@ -94,7 +102,11 @@ export default function Layout() {
   // regardless of the dismissed flag or how configured the install is -
   // the guide hydrates from current settings and shows what's already set.
   useEffect(() => {
-    const open = () => setShowOnboarding(true);
+    const open = () => {
+      manualGuideOpenedRef.current = true;
+      setIsFirstRunGuide(false);
+      setShowOnboarding(true);
+    };
     window.addEventListener('sportarr:open-setup-guide', open);
     return () => window.removeEventListener('sportarr:open-setup-guide', open);
   }, []);
@@ -181,8 +193,8 @@ export default function Layout() {
         { label: 'Stats', path: '/system/stats' },
         { label: 'Backup', path: '/system/backup' },
         { label: 'Updates', path: '/system/updates' },
-        { label: 'Events', path: '/system/events' },
         { label: 'Log Files', path: '/system/logs' },
+        { label: 'Support', path: '/support' },
       ],
     },
   ];
@@ -502,6 +514,7 @@ export default function Layout() {
         <OnboardingWizard
           onClose={() => setShowOnboarding(false)}
           onComplete={() => setShowOnboarding(false)}
+          isFirstRunGuide={isFirstRunGuide}
         />
       )}
     </div>
@@ -515,34 +528,11 @@ export default function Layout() {
  * download client is visible without opening System > Health.
  */
 function HealthBanner() {
-  const [issues, setIssues] = useState<{ type: number; level: number; message: string; dismissed?: boolean }[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const check = async () => {
-      try {
-        const response = await apiGet('/api/system/health');
-        if (!response.ok) return;
-        const results: { type: number; level: number; message: string; dismissed?: boolean }[] =
-          await response.json();
-        if (!cancelled) {
-          // Warnings the user dismissed stay off the banner (they remain
-          // visible on System > Health, where they can be restored).
-          setIssues(results.filter((r) => r.level >= 2 && !r.dismissed));
-        }
-      } catch {
-        // Network errors are not health issues; leave the banner as-is.
-      }
-    };
-
-    check();
-    const interval = setInterval(check, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  const queryClient = useQueryClient();
+  const { data: healthChecks = [] } = useSystemHealth(true);
+  const [isDismissing, setIsDismissing] = useState(false);
+  const issues = healthChecks.filter((check) => check.level >= 2 && !check.dismissed
+    && !(isDismissing && check.level === 2));
 
   if (issues.length === 0) return null;
 
@@ -551,13 +541,34 @@ function HealthBanner() {
   const dismissable = issues.filter((i) => i.level === 2);
 
   const dismissAll = async () => {
-    setIssues((prev) => prev.filter((i) => i.level >= 3));
-    for (const issue of dismissable) {
-      try {
-        await apiPost('/api/system/health/dismiss', { type: issue.type });
-      } catch {
-        // Best effort; the health page offers the same action.
+    if (isDismissing) return;
+    setIsDismissing(true);
+    try {
+      await queryClient.cancelQueries({ queryKey: ['system', 'health'] });
+      const previousState = queryClient.getQueryState<SystemHealthCheck[]>(['system', 'health']);
+      const previous = previousState?.data;
+      const previousUpdatedAt = previousState?.dataUpdatedAt;
+      const dismissedTypes = new Set(dismissable.map((issue) => issue.type));
+      queryClient.setQueryData<SystemHealthCheck[]>(['system', 'health'], (current) =>
+        current?.map((check) => dismissedTypes.has(check.type) && check.level < 3
+          ? { ...check, dismissed: true }
+          : check), { updatedAt: previousUpdatedAt });
+      let failed = false;
+      for (const issue of dismissable) {
+        try {
+          const response = await apiPost('/api/system/health/dismiss', { type: issue.type });
+          if (!response.ok) failed = true;
+        } catch {
+          failed = true;
+        }
       }
+      if (failed) {
+        queryClient.setQueryData(['system', 'health'], previous, { updatedAt: previousUpdatedAt });
+        toast.error('Could not dismiss a health warning');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['system', 'health'] });
+    } finally {
+      setIsDismissing(false);
     }
   };
 

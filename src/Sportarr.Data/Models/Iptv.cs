@@ -228,7 +228,12 @@ public enum DvrRecordingStatus
     /// <summary>
     /// Recording was imported successfully
     /// </summary>
-    Imported
+    Imported,
+
+    /// <summary>
+    /// The user kept the existing file instead of this recording.
+    /// </summary>
+    Ignored
 }
 
 /// <summary>

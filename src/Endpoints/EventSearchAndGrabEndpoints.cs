@@ -273,19 +273,20 @@ app.MapPost("/api/release/grab", async (
 
     if (!downloadResult.Success || downloadResult.DownloadId == null)
     {
+        var safeErrorMessage = Sportarr.Api.Helpers.SecretRedactor.Message(downloadResult.ErrorMessage);
         logger.LogError("[GRAB] ========== DOWNLOAD GRAB FAILED ==========");
-        logger.LogError("[GRAB] Error: {ErrorMessage}", downloadResult.ErrorMessage);
+        logger.LogError("[GRAB] Error: {ErrorMessage}", safeErrorMessage);
         logger.LogError("[GRAB] Error Type: {ErrorType}", downloadResult.ErrorType);
 
         // Return a user-friendly error message based on the error type
         var userMessage = downloadResult.ErrorType switch
         {
             AddDownloadErrorType.LoginFailed => $"Failed to login to {downloadClient.Name}. Check username/password in Settings > Download Clients.",
-            AddDownloadErrorType.InvalidTorrent => downloadResult.ErrorMessage ?? "The indexer returned invalid torrent data. The torrent link may have expired.",
-            AddDownloadErrorType.TorrentRejected => downloadResult.ErrorMessage ?? $"{downloadClient.Name} rejected the torrent. Check download client logs.",
+            AddDownloadErrorType.InvalidTorrent => downloadResult.ErrorMessage == null ? "The indexer returned invalid torrent data. The torrent link may have expired." : safeErrorMessage,
+            AddDownloadErrorType.TorrentRejected => downloadResult.ErrorMessage == null ? $"{downloadClient.Name} rejected the torrent. Check download client logs." : safeErrorMessage,
             AddDownloadErrorType.ConnectionFailed => $"Could not connect to {downloadClient.Name}. Check the host/port in Settings > Download Clients.",
             AddDownloadErrorType.Timeout => $"Request to {downloadClient.Name} timed out. The server may be overloaded or unreachable.",
-            _ => downloadResult.ErrorMessage ?? $"Failed to add download to {downloadClient.Name}. Check System > Logs for details."
+            _ => downloadResult.ErrorMessage == null ? $"Failed to add download to {downloadClient.Name}. Check System > Logs for details." : safeErrorMessage
         };
 
         return Results.BadRequest(new
@@ -390,8 +391,7 @@ app.MapPost("/api/release/grab", async (
             PackGroupId = packGroupId,
             IsManualSearch = true // Release grab is user-initiated (interactive search)
         };
-        queueItems.Add(queueItem);
-        db.DownloadQueue.Add(queueItem);
+        queueItems.Add(await QueueJobAttachment.AddOrAttachAsync(db, queueItem));
     }
 
     // Save grab history for manual grabs (matches auto/RSS behavior)
@@ -523,6 +523,8 @@ app.MapPost("/api/release/grab", async (
             // Update all queue items in the pack with the same status
             foreach (var item in queueItems)
             {
+                if (item.Status is DownloadStatus.Importing or DownloadStatus.Imported)
+                    continue;
                 item.Status = newStatus;
                 if (status.Downloaded > item.Downloaded || status.Progress > item.Progress)
                     item.LastProgressAt = DateTime.UtcNow;

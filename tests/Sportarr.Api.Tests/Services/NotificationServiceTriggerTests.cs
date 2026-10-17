@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sportarr.Api.Data;
+using Sportarr.Api.Endpoints;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 
@@ -61,6 +63,50 @@ public class NotificationServiceTriggerTests : IDisposable
 
         delivered.Should().BeFalse();
         handler.RequestCount.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(true, 1)]
+    [InlineData(false, 0)]
+    public async Task V3WebhookDownloadTriggerControlsDispatch(bool onDownload, int expectedRequests)
+    {
+        var options = new DbContextOptionsBuilder<SportarrDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+        var parse = typeof(SonarrConfigEndpoints)
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(method => method.Name == "ParseV3Notification" && method.GetParameters().Length == 1);
+        var request = "{\"name\":\"Webhook\",\"implementation\":\"Webhook\",\"onDownload\":" +
+            (onDownload ? "true" : "false") +
+            ",\"fields\":[{\"name\":\"webhook\",\"value\":\"https://example.test/hook\"}]}";
+        var notification = (Notification)parse.Invoke(null, [request])!;
+
+        await using (var setupDb = new SportarrDbContext(options))
+        {
+            await setupDb.Database.EnsureCreatedAsync();
+            setupDb.Notifications.Add(notification);
+            await setupDb.SaveChangesAsync();
+        }
+
+        var handler = new CountingHandler();
+        using var services = new ServiceCollection()
+            .AddScoped(_ => new SportarrDbContext(options))
+            .AddSingleton(new ConfigService(new ConfigurationBuilder().Build(), NullLogger<ConfigService>.Instance))
+            .BuildServiceProvider();
+        using var httpClient = new HttpClient(handler);
+        var service = new NotificationService(
+            services,
+            NullLogger<NotificationService>.Instance,
+            httpClient,
+            new FixedHttpClientFactory(httpClient));
+
+        var delivered = await service.SendNotificationAsync(
+            NotificationTrigger.OnDownload,
+            "Imported",
+            "A file was imported.");
+
+        delivered.Should().Be(onDownload);
+        handler.RequestCount.Should().Be(expectedRequests);
     }
 
     [Fact]

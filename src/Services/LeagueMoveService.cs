@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Services;
 
@@ -45,11 +46,14 @@ public class LeagueMoveService
 {
     private readonly SportarrDbContext _db;
     private readonly ILogger<LeagueMoveService> _logger;
+    private readonly IMetadataWriterService _metadataWriterService;
 
-    public LeagueMoveService(SportarrDbContext db, ILogger<LeagueMoveService> logger)
+    public LeagueMoveService(SportarrDbContext db, ILogger<LeagueMoveService> logger,
+        IMetadataWriterService metadataWriterService)
     {
         _db = db;
         _logger = logger;
+        _metadataWriterService = metadataWriterService;
     }
 
     /// <summary>
@@ -446,6 +450,8 @@ public class LeagueMoveService
                     File.Delete(oldPath);
                 }
 
+                await _metadataWriterService.RenameEventMetadataAsync(oldPath, newPath);
+
                 moved.Add((ef, oldPath, newPath));
                 ef.FilePath = newPath;
 
@@ -492,6 +498,7 @@ public class LeagueMoveService
                             Directory.CreateDirectory(oldDir);
                         }
                         File.Move(newPath, oldPath);
+                        await _metadataWriterService.RenameEventMetadataAsync(newPath, oldPath);
                     }
 
                     restored = File.Exists(oldPath);

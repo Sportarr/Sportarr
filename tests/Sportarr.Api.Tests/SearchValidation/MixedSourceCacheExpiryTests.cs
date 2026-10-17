@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class MixedSourceCacheExpiryTests(ITestOutputHelper output)
 {
     [Theory]

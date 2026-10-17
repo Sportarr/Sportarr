@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Sportarr.Api.Helpers;
 
 namespace Sportarr.Api.Services;
 
@@ -35,7 +36,7 @@ public static class TorrentFileResolver
         {
             if (!Uri.TryCreate(torrentUrl, UriKind.Absolute, out var uri))
             {
-                return TorrentDownloadResult.Failure($"Invalid URL format: {torrentUrl}");
+                return TorrentDownloadResult.Failure("Invalid torrent URL format.");
             }
 
             if (string.IsNullOrEmpty(uri.Host) || uri.Host.Contains(' ') || uri.Host.StartsWith(".") || uri.Host.EndsWith("."))
@@ -60,7 +61,7 @@ public static class TorrentFileResolver
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-bittorrent"));
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*", 0.8));
 
-            logger.LogDebug("[Torrent Download] Downloading torrent from: {Url}", torrentUrl);
+            logger.LogDebug("[Torrent Download] Downloading torrent from: {Url}", SecretRedactor.Url(torrentUrl));
 
             var response = await downloadClient.SendAsync(request, ct);
 
@@ -84,8 +85,7 @@ public static class TorrentFileResolver
                 // The case this resolver exists for: a redirect to a magnet link.
                 if (location.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
                 {
-                    logger.LogInformation("[Torrent Download] Redirect to magnet link detected: {Magnet}",
-                        location.Length > 100 ? location.Substring(0, 100) + "..." : location);
+                    logger.LogInformation("[Torrent Download] Redirect to magnet link detected");
                     return TorrentDownloadResult.MagnetRedirect(location);
                 }
 
@@ -101,7 +101,7 @@ public static class TorrentFileResolver
                 else
                 {
                     logger.LogWarning("[Torrent Download] Invalid redirect URL from indexer: {Location}",
-                        location.Length > 100 ? location.Substring(0, 100) + "..." : location);
+                        SecretRedactor.Url(location.Length > 100 ? location.Substring(0, 100) + "..." : location));
                     return TorrentDownloadResult.Failure(
                         "Indexer returned an invalid redirect URL. The indexer may be misconfigured.");
                 }
@@ -114,7 +114,7 @@ public static class TorrentFileResolver
                 }
 
                 logger.LogDebug("[Torrent Download] Following redirect ({Count}/{Max}): {Url}",
-                    redirectCount + 1, maxRedirects, redirectUri.ToString());
+                    redirectCount + 1, maxRedirects, SecretRedactor.Url(redirectUri.ToString()));
 
                 response.Dispose();
                 var redirectRequest = new HttpRequestMessage(HttpMethod.Get, redirectUri);
@@ -136,7 +136,7 @@ public static class TorrentFileResolver
                 var errorBody = await response.Content.ReadAsStringAsync(ct);
 
                 logger.LogWarning("[Torrent Download] Torrent download failed with HTTP {StatusCode}: {Body}",
-                    statusCode, errorBody.Length > 200 ? errorBody.Substring(0, 200) : errorBody);
+                    statusCode, SecretRedactor.Message(errorBody.Length > 200 ? errorBody.Substring(0, 200) : errorBody));
 
                 if (statusCode == 429)
                 {
@@ -240,8 +240,8 @@ public static class TorrentFileResolver
         }
         catch (HttpRequestException ex)
         {
-            logger.LogError(ex, "[Torrent Download] Network error downloading torrent: {Message}", ex.Message);
-            return TorrentDownloadResult.Failure($"Network error downloading torrent: {ex.Message}");
+            logger.LogError("[Torrent Download] Network error downloading torrent: {Error}", SecretRedactor.Message(ex.ToString()));
+            return TorrentDownloadResult.Failure($"Network error downloading torrent: {SecretRedactor.Message(ex.Message)}");
         }
         catch (TaskCanceledException)
         {
@@ -250,16 +250,16 @@ public static class TorrentFileResolver
         }
         catch (UriFormatException ex)
         {
-            logger.LogError(ex, "[Torrent Download] Invalid URL from indexer: {Message}. URL: {Url}",
-                ex.Message, torrentUrl.Length > 100 ? torrentUrl.Substring(0, 100) + "..." : torrentUrl);
+            logger.LogError("[Torrent Download] Invalid URL from indexer: {Error}. URL: {Url}",
+                SecretRedactor.Message(ex.ToString()), SecretRedactor.Url(torrentUrl.Length > 100 ? torrentUrl.Substring(0, 100) + "..." : torrentUrl));
             return TorrentDownloadResult.Failure(
                 "Indexer returned an invalid download URL. The indexer may be misconfigured or returning malformed links. " +
                 "Try a different indexer or check the indexer settings in Prowlarr.");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "[Torrent Download] Unexpected error downloading torrent: {Message}", ex.Message);
-            return TorrentDownloadResult.Failure($"Error downloading torrent: {ex.Message}");
+            logger.LogError("[Torrent Download] Unexpected error downloading torrent: {Error}", SecretRedactor.Message(ex.ToString()));
+            return TorrentDownloadResult.Failure($"Error downloading torrent: {SecretRedactor.Message(ex.Message)}");
         }
     }
 }

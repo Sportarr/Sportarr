@@ -27,8 +27,17 @@ public static class ExistingFileUpgradeGate
         string? releaseQuality,
         int releaseCustomFormatScore,
         QualityProfile? profile,
-        Config config)
+        Config config,
+        bool hasHigherPositivePreferredScore = false)
     {
+        // Every release reaching this gate came from an indexer, so under
+        // source precedence it replaces an IPTV recording before any profile
+        // rule is asked.
+        if (SourcePrecedence.IndexerReleaseReplaces(config, existingFile))
+        {
+            return null;
+        }
+
         // Recalculate quality scores from quality strings (don't trust stored
         // values from old inverted scoring). CalculateQualityScoreFromName
         // returns 0 for null, empty, "Unknown", or any other unparseable
@@ -86,7 +95,7 @@ public static class ExistingFileUpgradeGate
         }
 
         if (!revisionUpgrade && qualityCutoffMet
-            && (formatCutoffMet || profile?.CutoffFormatScore == null))
+            && (qualityComparison > 0 || formatCutoffMet || profile?.CutoffFormatScore == null))
         {
             return "Existing file meets the quality profile cutoff";
         }
@@ -100,12 +109,9 @@ public static class ExistingFileUpgradeGate
             return $"Existing file has same or better custom format score ({existingFile.CustomFormatScore} vs {releaseCustomFormatScore})";
         }
 
-        // COSMETIC-DUPLICATE GUARD: broadcasters repost the identical release
-        // under a branded name. When the only tokens separating the new title
-        // from the existing file's original title are broadcaster words, it
-        // is the same content; only a proper/repack revision justifies
-        // replacing it.
-        if (sameQuality && !revisionUpgrade &&
+        // Broadcasters can repost the same file under a branded title.
+        // Keep it unless a configured preference favors the new feed.
+        if (sameQuality && !revisionUpgrade && !hasHigherPositivePreferredScore &&
             RssSyncService.TitlesDifferOnlyByBroadcasterBranding(existingFile.OriginalTitle, releaseTitle))
         {
             return "Same release as the existing file (title differs only by broadcaster branding)";

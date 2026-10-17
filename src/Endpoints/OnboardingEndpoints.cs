@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
+using Sportarr.Api.Validators;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -73,6 +75,17 @@ public static class OnboardingEndpoints
             return Results.Ok(new { dismissed = true });
         });
 
+        app.MapPost("/api/onboarding/release-preferences", async (
+            ReleasePreferencesRequest request, TrashGuideSyncService trashService) =>
+        {
+            var result = await trashService.SetOnboardingReleasePreferenceAsync(request.Mode);
+            return result.Success
+                ? Results.Ok(new { success = true })
+                : Results.BadRequest(new { success = false, error = result.Error ?? "Could not apply release preferences" });
+        }).WithRequestValidation<ReleasePreferencesRequest>();
+
         return app;
     }
 }
+
+public sealed record ReleasePreferencesRequest(string Mode);

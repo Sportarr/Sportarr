@@ -160,6 +160,8 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(e => e.EventDate);
             entity.HasIndex(e => e.Sport);
             entity.HasIndex(e => e.LeagueId);
+            // The index serves league pages in date and Id order.
+            entity.HasIndex(e => new { e.LeagueId, e.EventDate, e.Id });
             entity.HasIndex(e => e.ExternalId);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.Monitored); // Frequently filtered in searches
@@ -530,22 +532,20 @@ public class SportarrDbContext : DbContext
                 Id = 1,
                 Name = "WEB-1080p (Alternative)",
                 IsDefault = true,
-                // TRaSH-managed: first-run enrichment and auto-sync may refresh its
-                // scores, but only until the user edits it (which sets IsCustomized).
+                // Recommendations can update this profile until the user edits it.
                 IsSynced = true,
                 UpgradesAllowed = true,
                 CutoffQuality = 15, // WEBDL-1080p
                 MinFormatScore = 0,
-                // TRaSH Guides recommended scores for essential custom formats
                 FormatItems = new List<ProfileFormatItem>
                 {
-                    new() { FormatId = 1, Score = -10000 }, // BR-DISK
-                    new() { FormatId = 2, Score = -10000 }, // LQ
-                    new() { FormatId = 3, Score = 5 },      // Repack/Proper
-                    new() { FormatId = 4, Score = -10000 }, // x265 (HD)
-                    new() { FormatId = 5, Score = -10000 }, // Upscaled
-                    new() { FormatId = 6, Score = 0 },      // Scene
-                    new() { FormatId = 7, Score = 10 }      // WEB-DL
+                    new() { FormatId = 1, Score = 0 },
+                    new() { FormatId = 2, Score = 0 },
+                    new() { FormatId = 3, Score = 0 },
+                    new() { FormatId = 4, Score = 0 },
+                    new() { FormatId = 5, Score = 0 },
+                    new() { FormatId = 6, Score = 0 },
+                    new() { FormatId = 7, Score = 0 }
                 },
                 Items = new List<QualityItem>
                 {
@@ -597,16 +597,15 @@ public class SportarrDbContext : DbContext
                 UpgradesAllowed = true,
                 CutoffQuality = 19, // WEBDL-2160p
                 MinFormatScore = 0,
-                // TRaSH Guides recommended scores for essential custom formats
                 FormatItems = new List<ProfileFormatItem>
                 {
-                    new() { FormatId = 1, Score = -10000 }, // BR-DISK
-                    new() { FormatId = 2, Score = -10000 }, // LQ
-                    new() { FormatId = 3, Score = 5 },      // Repack/Proper
-                    new() { FormatId = 4, Score = -10000 }, // x265 (HD)
-                    new() { FormatId = 5, Score = -10000 }, // Upscaled
-                    new() { FormatId = 6, Score = 0 },      // Scene
-                    new() { FormatId = 7, Score = 10 }      // WEB-DL
+                    new() { FormatId = 1, Score = 0 },
+                    new() { FormatId = 2, Score = 0 },
+                    new() { FormatId = 3, Score = 0 },
+                    new() { FormatId = 4, Score = 0 },
+                    new() { FormatId = 5, Score = 0 },
+                    new() { FormatId = 6, Score = 0 },
+                    new() { FormatId = 7, Score = 0 }
                 },
                 Items = new List<QualityItem>
                 {

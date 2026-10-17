@@ -80,9 +80,11 @@ public class PendingReleaseReaperService : BackgroundService
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
         var rssSyncService = scope.ServiceProvider.GetRequiredService<RssSyncService>();
+        var releaseProfileService = scope.ServiceProvider.GetRequiredService<ReleaseProfileService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var config = await configService.GetConfigAsync();
         var qualityProfiles = await db.QualityProfiles.ToListAsync(cancellationToken);
+        var releaseProfiles = await releaseProfileService.LoadReleaseProfilesAsync();
 
         var now = DateTime.UtcNow;
 
@@ -198,8 +200,22 @@ public class PendingReleaseReaperService : BackgroundService
             var eligible = new List<PendingRelease>();
             foreach (var candidate in ranked)
             {
+                var preferredBroadcasterUpgrade = partFile != null &&
+                    RssSyncService.TitlesDifferOnlyByBroadcasterBranding(partFile.OriginalTitle, candidate.Title) &&
+                    await releaseProfileService.HasHigherPositivePreferredScoreAsync(
+                        partFile,
+                        new ReleaseSearchResult
+                        {
+                            Title = candidate.Title,
+                            Guid = candidate.Guid,
+                            DownloadUrl = candidate.DownloadUrl,
+                            Indexer = candidate.Indexer,
+                            IndexerId = candidate.IndexerId
+                        },
+                        releaseProfiles, evt.League?.Tags, cancellationToken);
                 var refusal = partFile == null ? null : Helpers.ExistingFileUpgradeGate.RefusalReason(
-                    partFile, candidate.Title, candidate.Quality, candidate.CustomFormatScore, profile, config);
+                    partFile, candidate.Title, candidate.Quality, candidate.CustomFormatScore, profile, config,
+                    preferredBroadcasterUpgrade);
                 if (refusal != null)
                 {
                     candidate.Status = PendingReleaseStatus.Cancelled;
@@ -444,7 +460,7 @@ public class PendingReleaseReaperService : BackgroundService
             IsPack = pending.IsPack ?? PackImportBoundary.IsPackRelease(pending.Title),
             IsManualSearch = false
         };
-        db.DownloadQueue.Add(queueOwner);
+        queueOwner = await QueueJobAttachment.AddOrAttachAsync(db, queueOwner, cancellationToken);
 
         var ownerPersisted = await AcceptedDownloadPersistence.PersistOwnerAsync(token => db.SaveChangesAsync(token));
         if (!ownerPersisted)
@@ -463,6 +479,8 @@ public class PendingReleaseReaperService : BackgroundService
 
         foreach (var loser in losers)
         {
+            if (loser.Id == queueOwner.Id || QueueJobAttachment.IsSameClientJob(loser, queueOwner))
+                continue;
             var loserClient = await db.DownloadClients
                 .FirstOrDefaultAsync(dc => dc.Id == loser.DownloadClientId, cancellationToken);
             if (loserClient != null && !string.IsNullOrEmpty(loser.DownloadId))

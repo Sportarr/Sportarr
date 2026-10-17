@@ -71,6 +71,24 @@ public class SportarrApiClientAllTeamsTests
         Assert.Equal("Hockey", teams.Single(t => t.Name == "Toronto Maple Leafs").Sport);
     }
 
+    [Fact]
+    public async Task LeagueTeamSelectionPreservesAllTeamsAndRecentIds()
+    {
+        await using var fixture = Fixture.Create("""
+            {"list":[
+              {"idTeam":"tm-000001","strTeam":"Current Club"},
+              {"idTeam":"tm-000002","strTeam":"Historic Club"}
+            ],"_meta":{"recentTeamIds":["tm-000001"]}}
+            """);
+
+        var selection = await fixture.Api.GetLeagueTeamSelectionAsync("4328");
+
+        Assert.NotNull(selection);
+        Assert.Equal(2, selection.Teams!.Count);
+        Assert.Equal(new[] { "tm-000001" }, selection._Meta?.RecentTeamIds);
+        Assert.EndsWith("/list/teams/4328", fixture.RequestUris.Single().AbsolutePath);
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly string _directory;

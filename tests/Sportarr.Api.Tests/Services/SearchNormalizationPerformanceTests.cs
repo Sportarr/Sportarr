@@ -20,6 +20,7 @@ namespace Sportarr.Api.Tests.Services;
 /// can never flake it while still catching any reintroduction of
 /// per-call regex construction.
 /// </summary>
+[Collection(WallClockFixtureCollection.Name)]
 public class SearchNormalizationPerformanceTests
 {
     [Fact]

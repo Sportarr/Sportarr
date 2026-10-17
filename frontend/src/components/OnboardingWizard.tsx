@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -12,11 +12,14 @@ import {
   SparklesIcon,
   LockClosedIcon,
   ExclamationTriangleIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import FileBrowserModal from './FileBrowserModal';
 import { toApiIndexer } from '../utils/indexerPayload';
+import { NAMING_CONTEXT_PANEL, NAMING_GUIDANCE, OPTION_CARD_SELECTED, OPTION_CARD_UNSELECTED } from '../utils/designTokens';
+import { getNamingWarning, NAMING_CONTEXT_TEXT, renderNamingExample } from '../utils/namingGuidance';
 
 /**
  * First-run setup guide. Walks a new install from nothing to a working setup in
@@ -30,6 +33,7 @@ import { toApiIndexer } from '../utils/indexerPayload';
 interface OnboardingWizardProps {
   onClose: () => void;
   onComplete: () => void;
+  isFirstRunGuide?: boolean;
 }
 
 // Steps are assembled from the source selection: both acquisition paths can
@@ -41,7 +45,7 @@ function buildSteps(wantsDownload: boolean, wantsIptv: boolean): { key: string; 
     { key: 'security', title: 'Security' },
     { key: 'welcome', title: 'Sources' },
     { key: 'root', title: 'Library' },
-    { key: 'quality', title: 'Quality' },
+    { key: 'quality', title: 'Preferences' },
   ];
   if (wantsDownload) {
     steps.push({ key: 'client', title: 'Downloader' });
@@ -91,35 +95,6 @@ const APP_STEPS: Record<string, string[]> = {
   ],
 };
 
-interface SampleScore {
-  title: string;
-  quality: string;
-  customFormatScore: number;
-  matchedFormats: { name: string; score: number }[];
-  accepted: boolean;
-  /** Why a sample is skipped ("WEBDL-2160p not in this profile"). */
-  reason?: string | null;
-}
-
-// The example filename shown under the naming preset picker. Token values
-// match the preview in Settings > Media Management so both screens teach
-// the same thing.
-function renderNamingExample(format: string): string {
-  return (
-    format
-      .replace(/{Series}/g, 'MMA League')
-      .replace(/{Season}/g, 's2026')
-      .replace(/{Episode}/g, 'e12')
-      .replace(/{Part}/g, ' - pt3')
-      .replace(/{Event Title}/g, 'Event 100 Main Event')
-      .replace(/{League}/g, 'MMA League')
-      .replace(/{Event Date}/g, '2026-11-16')
-      .replace(/{Quality Full}/g, 'WEBDL-1080p')
-      .replace(/{Sportarr Id}/g, 'sportarr-ev-2338110')
-      .replace(/{Release Group}/g, 'GROUP') + '.mkv'
-  );
-}
-
 // Order the naming presets with the recommended full-details preset first so
 // it reads as the default it actually is.
 function orderNamingPresets(keys: string[], presets: Record<string, { description: string }>): string[] {
@@ -138,7 +113,7 @@ const CLIENT_TYPES = [
   { value: 6, label: 'NZBGet', port: 6789, auth: 'userpass', protocol: 'usenet' },
 ] as const;
 
-export default function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps) {
+export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide = false }: OnboardingWizardProps) {
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -170,9 +145,10 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
   const [rpHost, setRpHost] = useState('');
   const [rpRemote, setRpRemote] = useState('');
   const [rpLocal, setRpLocal] = useState('');
-  // Naming: default to the most detailed preset; user can pick another.
   const [namingPresets, setNamingPresets] = useState<Record<string, { format: string; description: string }>>({});
-  const [namingKey, setNamingKey] = useState<string>('');
+  const [namingChoice, setNamingChoice] = useState<string | null>(null);
+  const [namingContextLoaded, setNamingContextLoaded] = useState(false);
+  const [namingPresetsLoaded, setNamingPresetsLoaded] = useState(false);
 
   // Download client form plus the list already saved (this session or
   // before), each entry editable so a typo doesn't require Settings.
@@ -210,12 +186,7 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
   // settings and shows what's already in place instead of starting blank.
   const [hasExistingCreds, setHasExistingCreds] = useState(false);
   const [currentNamingFormat, setCurrentNamingFormat] = useState('');
-  // "Configured" means someone actually set this install up (root folder
-  // exists). Only then does the current naming format override the
-  // recommended default - on a fresh install the stored format is just the
-  // shipped default and must not beat the recommendation.
-  const [installConfigured, setInstallConfigured] = useState(false);
-
+  const [currentRenameEvents, setCurrentRenameEvents] = useState(false);
   // IPTV provider form plus the editable list of connected providers
   // (multiple providers are fully supported, same as the sources page).
   const [pName, setPName] = useState('');
@@ -228,12 +199,10 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
   const [addedProviders, setAddedProviders] = useState<{ id: number; label: string; raw: any }[]>([]);
   const [editingProviderId, setEditingProviderId] = useState<number | null>(null);
 
-  // Quality: the two seeded, TRaSH-scored profiles. HD is the default.
-  const [qualityChoice, setQualityChoice] = useState<'hd' | '4k'>('hd');
-  const [hdProfileId, setHdProfileId] = useState<number | null>(null);
-  const [fourKProfileId, setFourKProfileId] = useState<number | null>(null);
-  const [qualitySamples, setQualitySamples] = useState<SampleScore[]>([]);
-  const [loadingSamples, setLoadingSamples] = useState(false);
+  const [releaseSetup, setReleaseSetup] = useState<'standard' | 'recommended' | null>('standard');
+  const [releaseSetupTouched, setReleaseSetupTouched] = useState(false);
+  const releaseSetupTouchedRef = useRef(false);
+  const [hasLegacyReleasePreferences, setHasLegacyReleasePreferences] = useState(false);
 
   // Hydrate from the current install so a reopened guide reflects reality:
   // sources selected from what exists, library path prefilled, existing
@@ -242,7 +211,6 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
     (async () => {
       try {
         const { data: st } = await apiClient.get<any>('/onboarding/status');
-        if (st?.hasRootFolder) setInstallConfigured(true);
         if (st && (st.hasDownloadClient || st.hasEnabledIndexer || st.hasIptvSource)) {
           setWantsDownload(Boolean(st.hasDownloadClient || st.hasEnabledIndexer));
           setWantsIptv(Boolean(st.hasIptvSource));
@@ -261,7 +229,9 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
         }
         const media = JSON.parse(settings.mediaManagementSettings || '{}');
         if (media.standardFileFormat) setCurrentNamingFormat(media.standardFileFormat);
+        setCurrentRenameEvents(media.renameEvents === true);
       } catch { /* defaults stand */ }
+      finally { setNamingContextLoaded(true); }
       try {
         const { data: roots } = await apiClient.get<any[]>('/rootfolder');
         if (Array.isArray(roots) && roots.length > 0 && roots[0]?.path) setRootPath(roots[0].path);
@@ -287,30 +257,19 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
     })();
   }, []);
 
-  // Pre-select the preset the install is already using - but only on a
-  // CONFIGURED install. A fresh database carries the shipped default
-  // format, and letting that beat the recommended preset is how "Plex
-  // Standard" ended up pre-selected on brand-new installs.
-  useEffect(() => {
-    if (!currentNamingFormat || !installConfigured) return;
-    const match = Object.entries(namingPresets).find(([, p]) => p.format === currentNamingFormat);
-    if (match) setNamingKey(match[0]);
-  }, [currentNamingFormat, namingPresets, installConfigured]);
-
-  // Find the seeded HD / 4K profiles by resolution in their name.
+  // Show the recommendation choice saved on an existing install.
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await apiClient.get<{ id: number; name: string; isDefault: boolean }[]>('/qualityprofile');
-        const hd = data.find((p) => p.name.includes('1080p'));
-        const fourK = data.find((p) => p.name.includes('2160p'));
-        if (hd) setHdProfileId(hd.id);
-        if (fourK) setFourKProfileId(fourK.id);
-        // Default the choice to whichever is currently the default (HD out of the box).
-        if (fourK?.isDefault) setQualityChoice('4k');
-      } catch {
-        // Non-fatal: the quality step just won't show a preview.
-      }
+        const { data } = await apiClient.get<{ useRecommendedReleaseSettings?: boolean }>('/trash/settings');
+        if (data.useRecommendedReleaseSettings === true) {
+          if (!releaseSetupTouchedRef.current) setReleaseSetup('recommended');
+        }
+        if (data.useRecommendedReleaseSettings == null) {
+          if (!releaseSetupTouchedRef.current) setReleaseSetup(null);
+          setHasLegacyReleasePreferences(true);
+        }
+      } catch { /* The new-install choice remains Standard. */ }
     })();
   }, []);
 
@@ -323,36 +282,23 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
         );
         const file = data.file ?? {};
         setNamingPresets(file);
-        // Full-details preset first and selected by default; the picker
-        // renders in this same order so the recommendation is the top row.
-        const ordered = orderNamingPresets(Object.keys(file), file);
-        setNamingKey(ordered[0] ?? '');
       } catch {
         // Non-fatal: naming just won't be offered.
+      } finally {
+        setNamingPresetsLoaded(true);
       }
     })();
   }, []);
 
-  // Load the sample-score preview for the chosen profile.
-  const selectedProfileId = qualityChoice === '4k' ? fourKProfileId : hdProfileId;
-  useEffect(() => {
-    if (stepKey !== 'quality' || selectedProfileId == null) return;
-    let cancelled = false;
-    (async () => {
-      setLoadingSamples(true);
-      try {
-        const { data } = await apiClient.get<{ samples: SampleScore[] }>(`/qualityprofile/${selectedProfileId}/preview`);
-        if (!cancelled) setQualitySamples(data.samples ?? []);
-      } catch {
-        if (!cancelled) setQualitySamples([]);
-      } finally {
-        if (!cancelled) setLoadingSamples(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProfileId, stepKey]);
-
+  const stockNamingFormat = namingPresets['plex-standard']?.format === currentNamingFormat
+    || currentNamingFormat === '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}';
+  const recommendedNamingKey = orderNamingPresets(Object.keys(namingPresets), namingPresets)[0] ?? '';
+  const namingKey = namingChoice ?? (isFirstRunGuide && stockNamingFormat ? recommendedNamingKey : '');
+  const shouldApplyNamingPreset = Boolean(namingKey);
+  const namingWarning = getNamingWarning(
+    shouldApplyNamingPreset ? namingPresets[namingKey]?.format ?? '' : currentNamingFormat,
+    shouldApplyNamingPreset || currentRenameEvents,
+  );
   const steps = buildSteps(wantsDownload, wantsIptv);
   const stepIndex = Math.max(0, steps.findIndex((s) => s.key === stepKey));
   const clientAuth = CLIENT_TYPES.find((c) => c.value === dcType)?.auth ?? 'userpass';
@@ -545,28 +491,23 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
 
   const saveQualityStep = async (): Promise<boolean> => {
     setBusy(true);
-    // Every failure here used to be swallowed and the step reported as done,
-    // so a user who picked 4K could go on to create leagues on the old HD
-    // default, and a naming change that never landed left imported files under
-    // a format that does not match reliably.
     const failures: string[] = [];
     try {
-      // 1) Make the chosen resolution the default profile.
-      const id = qualityChoice === '4k' ? fourKProfileId : hdProfileId;
-      if (id != null) {
-        try { await apiClient.post(`/qualityprofile/${id}/set-default`); }
-        catch (err: any) { failures.push(`quality profile (${err?.response?.data?.error || err?.message || 'unknown error'})`); }
+      if (releaseSetup && releaseSetupTouched) {
+        try {
+          await apiClient.post('/onboarding/release-preferences', { mode: releaseSetup });
+        }
+        catch (err: any) {
+          failures.push(`release preferences (${err?.response?.data?.error || err?.message || 'unknown error'})`);
+        }
       }
-      // 2) Import the recommended TRaSH size limits.
-      try { await apiClient.post('/qualitydefinition/trash/import', {}); } catch { /* non-fatal */ }
-      // 3) Apply the chosen naming scheme (media-management file format).
       const preset = namingPresets[namingKey];
-      if (preset?.format) {
+      if (preset?.format && shouldApplyNamingPreset) {
         try {
           const { data: settings } = await apiClient.get<any>('/settings');
           const media = JSON.parse(settings.mediaManagementSettings || '{}');
           media.standardFileFormat = preset.format;
-          media.renameEpisodes = true;
+          media.renameEvents = true;
           await apiClient.put('/settings', { ...settings, mediaManagementSettings: JSON.stringify(media) });
         } catch (err: any) {
           failures.push(`file naming (${err?.response?.data?.error || err?.message || 'unknown error'})`);
@@ -952,9 +893,7 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
 
   // Advance to the next step without applying this step's settings. The user still
   // passes through every step, they just opt out of this one.
-  const skipStep = () => {
-    goTo(nextKey());
-  };
+  const skipStep = () => goTo(nextKey());
 
   const inputCls =
     'w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-white focus:border-red-600 focus:outline-none';
@@ -963,10 +902,9 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="animate-wizard-modal flex max-h-[85dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-800 bg-gray-950 shadow-2xl">
-        {/* Header + stepper. Numbered dots for every step, with the current
-            step's name shown so the row stays compact even with many steps. */}
+        {/* Keep the step count readable on narrow screens. */}
         <div className="flex items-center justify-between gap-4 border-b border-gray-800 px-6 py-4">
-          <div className="flex items-center gap-1.5">
+          <div className="hidden items-center gap-1.5 sm:flex">
             {steps.map((s, i) => (
               <div key={s.key} className="flex items-center gap-1.5">
                 <div
@@ -984,8 +922,11 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
               </div>
             ))}
           </div>
-          <span className="flex-shrink-0 text-sm font-medium text-white">
+          <span className="hidden flex-shrink-0 text-sm font-medium text-white sm:block">
             {steps[stepIndex]?.title}
+          </span>
+          <span className="text-sm font-medium text-white sm:hidden">
+            Step {stepIndex + 1} of {steps.length} · {steps[stepIndex]?.title}
           </span>
         </div>
 
@@ -1007,7 +948,7 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
                 {[
                   { icon: LockClosedIcon, label: 'Secure it' },
                   { icon: FolderIcon, label: 'Library folder' },
-                  { icon: SparklesIcon, label: 'Quality scoring' },
+                  { icon: SparklesIcon, label: 'Release setup' },
                   { icon: ServerIcon, label: 'Downloader / IPTV' },
                   { icon: MagnifyingGlassIcon, label: 'Indexer' },
                   { icon: CheckCircleIcon, label: 'Pick your sports' },
@@ -1227,97 +1168,74 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
 
           {stepKey === 'quality' && (
             <div>
-              <SparklesIcon className="mb-2 h-7 w-7 text-yellow-400" />
-              <h2 className="mb-1 text-2xl font-bold text-white">How good should your files be?</h2>
+              <SparklesIcon className="mb-2 h-7 w-7 text-red-500" />
+              <h2 className="mb-1 text-2xl font-bold text-white">Choose your release setup</h2>
               <p className="mb-4 text-sm text-gray-400">
-                Sportarr scores releases with TRaSH Guides formats so it grabs the good ones and skips
-                junk. Pick a target - you can change it any time.
+                Both 1080p and 4K profiles are ready. Sportarr starts with 1080p.
+                You can change it later in Settings.
               </p>
               <div className="mb-4 grid gap-3 sm:grid-cols-2">
                 <button
-                  onClick={() => setQualityChoice('hd')}
-                  className={`rounded-xl border p-4 text-left transition-colors ${
-                    qualityChoice === 'hd' ? 'border-red-500 bg-red-950/20' : 'border-gray-800 bg-gray-900 hover:border-gray-700'
-                  }`}
+                  type="button"
+                  aria-pressed={releaseSetup === 'standard'}
+                  onClick={() => { releaseSetupTouchedRef.current = true; setReleaseSetup('standard'); setReleaseSetupTouched(true); }}
+                  className={releaseSetup === 'standard' ? OPTION_CARD_SELECTED : OPTION_CARD_UNSELECTED}
                 >
-                  <div className="font-semibold text-white">HD - 1080p <span className="text-xs font-normal text-gray-400">(recommended)</span></div>
-                  <p className="mt-1 text-xs text-gray-400">Broadcast and streaming quality. What most sports releases are.</p>
+                  <div className="font-semibold text-white">Standard setup</div>
+                  <p className="mt-1 text-xs text-gray-400">Use built-in profiles. Fine-tune preferences later in Settings.</p>
                 </button>
                 <button
-                  onClick={() => setQualityChoice('4k')}
-                  className={`rounded-xl border p-4 text-left transition-colors ${
-                    qualityChoice === '4k' ? 'border-red-500 bg-red-950/20' : 'border-gray-800 bg-gray-900 hover:border-gray-700'
-                  }`}
+                  type="button"
+                  aria-pressed={releaseSetup === 'recommended'}
+                  onClick={() => { releaseSetupTouchedRef.current = true; setReleaseSetup('recommended'); setReleaseSetupTouched(true); }}
+                  className={releaseSetup === 'recommended' ? OPTION_CARD_SELECTED : OPTION_CARD_UNSELECTED}
                 >
-                  <div className="font-semibold text-white">4K - 2160p</div>
-                  <p className="mt-1 text-xs text-gray-400">Ultra HD when it's available, HD as a fallback.</p>
+                  <div className="font-semibold text-white">Recommended setup</div>
+                  <p className="mt-1 text-xs text-gray-400">Import TRaSH Guides scores and quality size limits.</p>
                 </button>
               </div>
-
+              {hasLegacyReleasePreferences && !releaseSetupTouched && (
+                <p className="mb-4 text-sm text-gray-400">
+                  Your current release preferences will stay in place unless you choose a setup above.
+                </p>
+              )}
               {Object.keys(namingPresets).length > 0 && (
                 <div className="mb-4">
-                  <label className={labelCls}>File naming</label>
-                  <select value={namingKey} onChange={(e) => setNamingKey(e.target.value)} className={inputCls}>
+                  <label htmlFor="onboarding-naming-preset" className={labelCls}>File naming (optional)</label>
+                  <select id="onboarding-naming-preset" value={namingKey} onChange={(e) => setNamingChoice(e.target.value)} className={inputCls}>
+                    <option value="">Keep current naming</option>
                     {orderNamingPresets(Object.keys(namingPresets), namingPresets).map((key, i) => (
                       <option key={key} value={key}>
-                        {key.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}{i === 0 ? ' (recommended)' : ''}
+                        {key === 'original' ? 'Original Filename (check source)' : key.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}{i === 0 ? ' (recommended)' : ''}
                       </option>
                     ))}
                   </select>
-                  {namingPresets[namingKey]?.description && (
-                    <p className="mt-1 text-xs text-gray-500">{namingPresets[namingKey].description}</p>
+                  {namingWarning && (
+                    <div role="alert" className={`mt-3 ${NAMING_GUIDANCE}`}>
+                      <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />
+                      <p>{namingWarning}</p>
+                    </div>
                   )}
-                  {namingPresets[namingKey]?.format && (
+                  <div role="note" className={`mt-3 ${NAMING_CONTEXT_PANEL}`}>
+                    <InformationCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+                    <p>{NAMING_CONTEXT_TEXT}</p>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {namingKey ? namingPresets[namingKey]?.description : 'Your current naming settings will stay in place.'}
+                  </p>
+                  {(namingKey ? namingPresets[namingKey]?.format : currentNamingFormat) && (
                     <div className="mt-2 rounded-lg border border-gray-800 bg-gray-900/60 p-3">
-                      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">Files will be named like</p>
+                      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                        {namingKey ? 'Files will be named like' : 'Current format'}
+                      </p>
                       <p className="break-all font-mono text-xs text-gray-200">
-                        {renderNamingExample(namingPresets[namingKey].format)}
+                        {namingKey ? renderNamingExample(namingPresets[namingKey].format) : currentNamingFormat}
                       </p>
                     </div>
                   )}
                 </div>
               )}
 
-              <p className="mb-4 rounded-lg border border-gray-800 bg-gray-900/40 p-3 text-xs text-gray-400">
-                Save &amp; Next also imports the recommended <span className="text-gray-200">custom format scores</span>,{' '}
-                <span className="text-gray-200">size limits</span>, and this <span className="text-gray-200">naming scheme</span>.
-                These defaults are what the developers recommend for the best experience - you can change any of them in
-                Settings whenever you like.
-              </p>
-
-              <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-4">
-                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">How it scores sample releases</div>
-                {loadingSamples ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-400"><ArrowPathIcon className="h-4 w-4 animate-spin" /> Scoring...</div>
-                ) : qualitySamples.length === 0 ? (
-                  <p className="text-xs text-gray-500">Preview unavailable right now.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {qualitySamples.map((s, i) => (
-                      <div key={i} className="flex items-center justify-between gap-3 border-b border-gray-800/60 pb-1.5 last:border-0 last:pb-0">
-                        <div className="min-w-0">
-                          <div className="truncate text-xs text-gray-300">{s.title}</div>
-                          <div className="truncate text-[10px] text-gray-500">
-                            {s.quality}{s.matchedFormats.length ? ' · ' + s.matchedFormats.map((f) => f.name).slice(0, 3).join(', ') : ''}
-                          </div>
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-2">
-                          <span className={`font-mono text-xs ${s.customFormatScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {s.customFormatScore > 0 ? '+' : ''}{s.customFormatScore}
-                          </span>
-                          <span
-                            className={`text-[10px] ${s.accepted ? 'text-green-400' : 'text-red-400'}`}
-                            title={s.reason ?? undefined}
-                          >
-                            {s.accepted ? '✓ grab' : `✕ skip${s.reason ? ` · ${s.reason}` : ''}`}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <p className="mt-2 text-[10px] text-gray-600">Sample names are format examples only - no files or content involved.</p>
-              </div>
             </div>
           )}
 
@@ -1824,7 +1742,7 @@ export default function OnboardingWizard({ onClose, onComplete }: OnboardingWiza
               </button>
               <button
                 onClick={goNext}
-                disabled={busy}
+                disabled={busy || (stepKey === 'quality' && (!namingContextLoaded || !namingPresetsLoaded))}
                 className="flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
               >
                 {busy && <ArrowPathIcon className="h-4 w-4 animate-spin" />}

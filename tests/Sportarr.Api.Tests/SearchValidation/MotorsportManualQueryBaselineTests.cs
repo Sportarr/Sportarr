@@ -9,6 +9,7 @@ using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class MotorsportManualQueryBaselineTests(ITestOutputHelper output)
 {
     private const string SilverstoneProbe = "Silverstone Grand Prix Practice 1";
@@ -75,6 +76,57 @@ public sealed class MotorsportManualQueryBaselineTests(ITestOutputHelper output)
         await using var rig = await CreateMeetingAsync("Silverstone");
         rig.AddRelease(ProbeOnlyTitle, suppliedEventId: null);
         await UnchangedAsync(rig, new[] { "Silverstone Grand Prix" }, "Silverstone Grand Prix", "offer-target");
+    }
+
+    [Fact]
+    public async Task NascarManualSearchScoresBristolButRejectsAnotherSeasonVenue()
+    {
+        await using var rig = await MotorsportManualQueryHttpHarness.CreateAsync(output, "phrase");
+        rig.Event.League!.Name = "NASCAR Cup Series";
+        rig.Event.Title = "Bass Pro Shops Night - Race";
+        rig.Event.Round = "29";
+        rig.Event.Venue = "Bristol Motor Speedway";
+        rig.Event.Location = "United States";
+        rig.Event.EventDate = new DateTime(2026, 9, 19, 23, 30, 0, DateTimeKind.Utc);
+        rig.Db.Events.Add(new Event
+        {
+            Title = "Coca-Cola 600 - Race", Sport = "Motorsport", Season = "2026", Round = "12",
+            EventDate = new DateTime(2026, 5, 24, 22, 0, 0, DateTimeKind.Utc),
+            Venue = "Charlotte Motor Speedway", Location = "United States", League = rig.Event.League
+        });
+        await rig.Db.SaveChangesAsync();
+        rig.AddRelease("NASCAR Cup Series 2026 Round29 Bristol Motor Speedway TN Race 1080p WEB-DL H264", suppliedEventId: null, guid: "bristol");
+        rig.AddRelease("NASCAR Cup Series 2026 Round29 Charlotte Race 1080p WEB-DL H264", suppliedEventId: null, guid: "charlotte");
+
+        var results = await rig.ManualAsync("NASCAR Cup Series 2026 Round29");
+
+        results.Single(row => row.Guid == "bristol").MatchScore
+            .Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.AutoGrabMatchScore);
+        results.Single(row => row.Guid == "charlotte").MatchScore.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task NascarManualSearchKeepsExactIdDespiteWrongVenueText()
+    {
+        await using var rig = await MotorsportManualQueryHttpHarness.CreateAsync(output, "phrase");
+        rig.Event.League!.Name = "NASCAR Cup Series";
+        rig.Event.Title = "Bass Pro Shops Night - Race";
+        rig.Event.Round = "29";
+        rig.Event.Venue = "Bristol Motor Speedway";
+        rig.Event.Location = "United States";
+        rig.Event.EventDate = new DateTime(2026, 9, 19, 23, 30, 0, DateTimeKind.Utc);
+        rig.Db.Events.Add(new Event
+        {
+            Title = "Coca-Cola 600 - Race", Sport = "Motorsport", Season = "2026", Round = "12",
+            EventDate = new DateTime(2026, 5, 24, 22, 0, 0, DateTimeKind.Utc),
+            Venue = "Charlotte Motor Speedway", Location = "United States", League = rig.Event.League
+        });
+        await rig.Db.SaveChangesAsync();
+        rig.AddRelease("NASCAR Cup Series 2026 Round29 Charlotte Race 1080p WEB-DL H264", guid: "exact-id");
+
+        var results = await rig.ManualAsync("NASCAR Cup Series 2026 Round29");
+
+        results.Single(row => row.Guid == "exact-id").MatchScore.Should().Be(100);
     }
 
     [Fact]

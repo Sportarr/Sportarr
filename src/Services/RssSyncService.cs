@@ -116,6 +116,7 @@ public class RssSyncService : BackgroundService
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
         var releaseMatchingService = scope.ServiceProvider.GetRequiredService<ReleaseMatchingService>();
+        var releaseMatchScorer = scope.ServiceProvider.GetRequiredService<ReleaseMatchScorer>();
         var releaseEvaluator = scope.ServiceProvider.GetRequiredService<ReleaseEvaluator>();
         var releaseProfileService = scope.ServiceProvider.GetRequiredService<ReleaseProfileService>();
 
@@ -212,6 +213,7 @@ public class RssSyncService : BackgroundService
             cancellationToken);
         var roundRaceNumbersByRound = await LoadSupercarsRoundRaceNumbersAsync(
             db, monitoredEvents, cancellationToken);
+        var nascarVenues = await LoadNascarVenueContextsAsync(db, monitoredEvents, cancellationToken);
 
         _logger.LogDebug("[RSS Sync] Loaded {ProfileCount} quality profiles, {FormatCount} custom formats, {ReleaseProfileCount} release profiles for evaluation",
             qualityProfiles.Count, customFormats.Count, releaseProfiles.Count);
@@ -229,12 +231,14 @@ public class RssSyncService : BackgroundService
                     release,
                     monitoredEvents,
                     releaseMatchingService,
+                    releaseMatchScorer,
                     partDetector,
                     config.EnableMultiPartEpisodes,
                     earlyReleaseLimits,
                     knownLeagues,
                     datePeers,
-                    roundRaceNumbersByRound);
+                    roundRaceNumbersByRound,
+                    nascarVenues);
 
                 if (matchedEvent == null)
                     continue;
@@ -251,6 +255,8 @@ public class RssSyncService : BackgroundService
                         release, matchedEvent, qualityProfile, customFormats, qualityDefinitions, releaseProfiles,
                         releaseEvaluator, releaseProfileService, config.EnableMultiPartEpisodes,
                         config.DefaultSportsRuntimeMinutes);
+                    await LiftRejectionsWhenReplacingIptvRecordingAsync(
+                        db, release, matchedEvent, config, partDetector, cancellationToken);
 
                     // Skip if evaluation rejected the release
                     if (release.Rejections.Any())
@@ -267,7 +273,8 @@ public class RssSyncService : BackgroundService
                 // Check if we should grab this release (now returns part info too)
                 using var eventDecision = await downloadClientService.EnterEventDecisionAsync(matchedEvent.Id, cancellationToken);
                 var shouldGrab = await ShouldGrabReleaseAsync(
-                    db, matchedEvent, release, config, qualityProfile, partDetector, delayProfileService, downloadClientService, cancellationToken);
+                    db, matchedEvent, release, config, qualityProfile, partDetector, delayProfileService,
+                    downloadClientService, releaseProfileService, releaseProfiles, cancellationToken);
 
                 if (!shouldGrab.Grab)
                 {
@@ -396,6 +403,45 @@ public class RssSyncService : BackgroundService
     }
 
     /// <summary>
+    /// Under source precedence a release that would replace an IPTV
+    /// recording isn't held to the quality profile's allowed qualities or
+    /// minimum format score. The part is found the way ShouldGrabReleaseAsync
+    /// finds it.
+    /// </summary>
+    private static async Task LiftRejectionsWhenReplacingIptvRecordingAsync(
+        SportarrDbContext db,
+        ReleaseSearchResult release,
+        Event evt,
+        Config config,
+        EventPartDetector partDetector,
+        CancellationToken cancellationToken)
+    {
+        if (!config.DvrReplaceRecordingsWithIndexerReleases || !release.Rejections.Any())
+            return;
+
+        string? part = null;
+        if (config.EnableMultiPartEpisodes
+            && EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? "", evt.League?.Name))
+        {
+            part = partDetector.DetectPart(release.Title, evt.Sport ?? "", evt.Title, evt.League?.Name)?.SegmentName
+                ?? EventPartDetector.GetMainPartName(evt.Sport ?? "", evt.Title, evt.League?.Name);
+        }
+
+        // A null part here means the event isn't multi-part, so only the
+        // whole-event file counts, as in ShouldGrabReleaseAsync.
+        var heldFiles = await db.EventFiles.AsNoTracking()
+            .HeldFiles(evt.Id)
+            .ToListAsync(cancellationToken);
+        if (part != null && heldFiles.Any(f => f.PartName == null))
+            return;
+        if (release.IsPack && heldFiles.Any(f => !f.IsIptvRecording))
+            return;
+        var heldFile = heldFiles.FirstOrDefault(f => f.PartName == part);
+        if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldFile))
+            Helpers.SourcePrecedence.LiftQualityProfileRejections(release);
+    }
+
+    /// <summary>
     /// Run a single externally pushed release (autobrr and similar IRC
     /// announce / RSS watchers posting to the Sonarr-compatible
     /// /api/v3/release/push endpoint) through the exact same
@@ -414,6 +460,7 @@ public class RssSyncService : BackgroundService
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
         var releaseMatchingService = scope.ServiceProvider.GetRequiredService<ReleaseMatchingService>();
+        var releaseMatchScorer = scope.ServiceProvider.GetRequiredService<ReleaseMatchScorer>();
         var releaseEvaluator = scope.ServiceProvider.GetRequiredService<ReleaseEvaluator>();
         var releaseProfileService = scope.ServiceProvider.GetRequiredService<ReleaseProfileService>();
 
@@ -461,17 +508,20 @@ public class RssSyncService : BackgroundService
             cancellationToken);
         var roundRaceNumbersByRound = await LoadSupercarsRoundRaceNumbersAsync(
             db, monitoredEvents, cancellationToken);
+        var nascarVenues = await LoadNascarVenueContextsAsync(db, monitoredEvents, cancellationToken);
 
         var matchedEvent = FindMatchingEvent(
             release,
             monitoredEvents,
             releaseMatchingService,
+            releaseMatchScorer,
             partDetector,
             config.EnableMultiPartEpisodes,
             earlyReleaseLimits,
             knownLeagues,
             datePeers,
-            roundRaceNumbersByRound);
+            roundRaceNumbersByRound,
+            nascarVenues);
 
         if (matchedEvent == null)
         {
@@ -492,6 +542,8 @@ public class RssSyncService : BackgroundService
                 release, matchedEvent, qualityProfile, customFormats, qualityDefinitions, releaseProfiles,
                 releaseEvaluator, releaseProfileService, config.EnableMultiPartEpisodes,
                 config.DefaultSportsRuntimeMinutes);
+            await LiftRejectionsWhenReplacingIptvRecordingAsync(
+                db, release, matchedEvent, config, partDetector, cancellationToken);
 
             if (release.Rejections.Any())
                 return new PushedReleaseOutcome(false, false, matchedEvent.Title, release.Rejections.ToList());
@@ -499,7 +551,8 @@ public class RssSyncService : BackgroundService
 
         using var eventDecision = await downloadClientService.EnterEventDecisionAsync(matchedEvent.Id, cancellationToken);
         var shouldGrab = await ShouldGrabReleaseAsync(
-            db, matchedEvent, release, config, qualityProfile, partDetector, delayProfileService, downloadClientService, cancellationToken);
+            db, matchedEvent, release, config, qualityProfile, partDetector, delayProfileService,
+            downloadClientService, releaseProfileService, releaseProfiles, cancellationToken);
 
         if (!shouldGrab.Grab)
         {
@@ -603,12 +656,14 @@ public class RssSyncService : BackgroundService
         ReleaseSearchResult release,
         List<Event> monitoredEvents,
         ReleaseMatchingService matchingService,
+        ReleaseMatchScorer matchScorer,
         EventPartDetector partDetector,
         bool enableMultiPartEpisodes,
         IReadOnlyDictionary<int, int?> earlyReleaseLimits,
         IReadOnlyCollection<League> knownLeagues,
         IReadOnlyCollection<Event> datePeers,
-        IReadOnlyDictionary<(int? LeagueId, string? Season, string? Round), List<int>> roundRaceNumbersByRound)
+        IReadOnlyDictionary<(int? LeagueId, string? Season, string? Round), List<int>> roundRaceNumbersByRound,
+        IReadOnlyDictionary<(int? LeagueId, string? Season), NascarVenueMatchContext> nascarVenues)
     {
         Event? bestMatch = null;
         int bestConfidence = int.MinValue;
@@ -646,6 +701,14 @@ public class RssSyncService : BackgroundService
                 earlyReleaseLimitDays: earlyLimit, roundRaceNumbers: roundRaceNumbers,
                 knownLeagues: knownLeagues, datePeers: datePeers);
             if (!matchResult.IsMatch || matchResult.IsHardRejection)
+                continue;
+
+            var releaseEventId = preParsed.SportarrEventId ?? release.SportarrEventId;
+            var exactEventId = !string.IsNullOrEmpty(releaseEventId) &&
+                evt.ExternalId?.StartsWith("ev-", StringComparison.OrdinalIgnoreCase) == true &&
+                string.Equals(releaseEventId, evt.ExternalId, StringComparison.OrdinalIgnoreCase);
+            if (!exactEventId && nascarVenues.TryGetValue((evt.LeagueId, evt.Season), out var venues) &&
+                matchScorer.GetNascarLocationScore(release.Title, evt, venues) < 0)
                 continue;
 
             // Honor league custom-search-template required keywords.
@@ -690,6 +753,23 @@ public class RssSyncService : BackgroundService
         }
 
         return bestMatch;
+    }
+
+    private static async Task<Dictionary<(int? LeagueId, string? Season), NascarVenueMatchContext>>
+        LoadNascarVenueContextsAsync(SportarrDbContext db, IReadOnlyCollection<Event> monitoredEvents,
+            CancellationToken cancellationToken)
+    {
+        var contexts = new Dictionary<(int? LeagueId, string? Season), NascarVenueMatchContext>();
+        foreach (var group in monitoredEvents
+            .Where(evt => evt.League?.Name.StartsWith("NASCAR Cup", StringComparison.OrdinalIgnoreCase) == true)
+            .GroupBy(evt => (evt.LeagueId, evt.Season)))
+        {
+            var context = await NascarVenueMatchContext.LoadAsync(db, group.First(), cancellationToken);
+            if (context != null)
+                contexts.Add(group.Key, context);
+        }
+
+        return contexts;
     }
 
     private static async Task<Dictionary<(int? LeagueId, string? Season, string? Round), List<int>>> LoadSupercarsRoundRaceNumbersAsync(
@@ -772,6 +852,8 @@ public class RssSyncService : BackgroundService
         EventPartDetector partDetector,
         DelayProfileService delayProfileService,
         DownloadClientService downloadClientService,
+        ReleaseProfileService releaseProfileService,
+        List<ReleaseProfile> releaseProfiles,
         CancellationToken cancellationToken)
     {
         await db.Entry(evt).ReloadAsync(cancellationToken);
@@ -924,32 +1006,8 @@ public class RssSyncService : BackgroundService
         // filter let two releases for one missing event ping-pong and re-grab on every RSS
         // cycle (the duplicate-download loop indexers flag). "Superseded" means the file
         // was replaced — it must NOT erase the memory that we already fetched this URL.
-        GrabHistory? priorGrab = null;
-        if (!string.IsNullOrEmpty(release.TorrentInfoHash))
-        {
-            priorGrab = await db.GrabHistory
-                .Where(g => g.EventId == evt.Id && g.TorrentInfoHash == release.TorrentInfoHash)
-                .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-        }
-        if (priorGrab == null && !string.IsNullOrEmpty(release.Guid))
-        {
-            priorGrab = await db.GrabHistory
-                .Where(g => g.EventId == evt.Id && g.Guid == release.Guid)
-                .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-        }
-        // Usenet newznab feeds sometimes omit <guid> (NewznabClient leaves Guid=""), and
-        // Usenet releases carry no InfoHash — so neither key above can dedup them. Fall back
-        // to the actual fetch URL, which is always present and uniquely identifies the exact
-        // .nzb we would otherwise re-download from the indexer.
-        if (priorGrab == null && !string.IsNullOrEmpty(release.DownloadUrl))
-        {
-            priorGrab = await db.GrabHistory
-                .Where(g => g.EventId == evt.Id && g.DownloadUrl == release.DownloadUrl)
-                .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-        }
+        var priorGrab = await GrabHistoryReleaseIdentity.LoadPriorAsync(
+            db, evt.Id, release, cancellationToken);
 
         // Decide whether re-fetching this exact release is churn. The decision is a pure
         // function of the prior grab's state (imported?, attempt count, last-attempt age),
@@ -959,7 +1017,8 @@ public class RssSyncService : BackgroundService
         if (priorGrab != null)
         {
             var now = DateTime.UtcNow;
-            switch (GrabHistoryChurnGuard.Evaluate(priorGrab, now))
+            switch (GrabHistoryChurnGuard.Evaluate(
+                priorGrab.History, now, priorGrab.RegrabCount))
             {
                 case GrabHistoryChurnGuard.Decision.BlockCapReached:
                     return (false,
@@ -967,7 +1026,7 @@ public class RssSyncService : BackgroundService
                         releasePart);
 
                 case GrabHistoryChurnGuard.Decision.BlockCooldown:
-                    var sinceLast = now - (priorGrab.LastRegrabAttempt ?? priorGrab.GrabbedAt);
+                    var sinceLast = now - (priorGrab.History.LastRegrabAttempt ?? priorGrab.History.GrabbedAt);
                     return (false,
                         $"Anti-churn: grabbed this exact release {sinceLast.TotalMinutes:F0}m ago, within the {GrabHistoryChurnGuard.RegrabCooldownHours}h cooldown",
                         releasePart);
@@ -975,12 +1034,12 @@ public class RssSyncService : BackgroundService
                 case GrabHistoryChurnGuard.Decision.AllowControlledRetry:
                     // Cooldown elapsed and under the cap: allow ONE controlled retry,
                     // recording it so the cooldown and cap advance for next time.
-                    priorGrab.RegrabCount += 1;
-                    priorGrab.LastRegrabAttempt = now;
+                    priorGrab.History.RegrabCount = priorGrab.RegrabCount + 1;
+                    priorGrab.History.LastRegrabAttempt = now;
                     await db.SaveChangesAsync(cancellationToken);
                     _logger.LogInformation(
                         "[RSS Sync] Controlled re-grab {Count}/{Max} of '{Title}' for event {EventId} after {Cooldown}h cooldown",
-                        priorGrab.RegrabCount, GrabHistoryChurnGuard.MaxAutomaticRegrabs, release.Title, evt.Id, GrabHistoryChurnGuard.RegrabCooldownHours);
+                        priorGrab.History.RegrabCount, GrabHistoryChurnGuard.MaxAutomaticRegrabs, release.Title, evt.Id, GrabHistoryChurnGuard.RegrabCooldownHours);
                     break;
 
                 // Decision.Allow: prior grab imported (or none) — fall through to normal flow.
@@ -1020,8 +1079,13 @@ public class RssSyncService : BackgroundService
             // lived inline here and the reaper mirrored only the score half
             // of them, so a hold released later grabbed over files this gate
             // refuses and dropped propers it lets through.
+            var preferredBroadcasterUpgrade =
+                TitlesDifferOnlyByBroadcasterBranding(existingFile.OriginalTitle, release.Title) &&
+                await releaseProfileService.HasHigherPositivePreferredScoreAsync(
+                    existingFile, release, releaseProfiles, evt.League?.Tags, cancellationToken);
             var refusal = Helpers.ExistingFileUpgradeGate.RefusalReason(
-                existingFile, release.Title, release.Quality, release.CustomFormatScore, profile, config);
+                existingFile, release.Title, release.Quality, release.CustomFormatScore, profile, config,
+                preferredBroadcasterUpgrade);
             if (refusal != null)
             {
                 return (false, refusal, releasePart);
@@ -1327,7 +1391,7 @@ public class RssSyncService : BackgroundService
             IsManualSearch = false // RSS sync is always automatic
         };
 
-        db.DownloadQueue.Add(queueItem);
+        queueItem = await QueueJobAttachment.AddOrAttachAsync(db, queueItem, cancellationToken);
 
         try
         {
@@ -1373,12 +1437,12 @@ public class RssSyncService : BackgroundService
         // grab and the guard reads only the most recent one. Without this the
         // new row reset the count to zero every time, so the cap never applied
         // and the same release went to the download client every 6 hours.
-        var priorGrabOfRelease = await db.GrabHistory
-            .Where(g => g.EventId == evt.Id && g.DownloadUrl == release.DownloadUrl)
-            .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        var carriedRegrabCount = priorGrabOfRelease is { WasImported: false } ? priorGrabOfRelease.RegrabCount : 0;
-        var carriedLastRegrabAttempt = priorGrabOfRelease is { WasImported: false } ? priorGrabOfRelease.LastRegrabAttempt : null;
+        var priorGrabOfRelease = await GrabHistoryReleaseIdentity.LoadPriorAsync(
+            db, evt.Id, release, cancellationToken);
+        var carriedRegrabCount = priorGrabOfRelease is { History.WasImported: false }
+            ? priorGrabOfRelease.RegrabCount : 0;
+        var carriedLastRegrabAttempt = priorGrabOfRelease is { History.WasImported: false }
+            ? priorGrabOfRelease.History.LastRegrabAttempt : null;
 
         var grabHistory = new GrabHistory
         {

@@ -16,14 +16,17 @@ public class RTorrentClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<RTorrentClient> _logger;
     private readonly Sportarr.Api.Services.Interfaces.IRemotePathMappingService? _pathMappingService;
+    private readonly ConfigService? _configService;
     private HttpClient? _customHttpClient; // For SSL bypass
 
     public RTorrentClient(HttpClient httpClient, ILogger<RTorrentClient> logger,
-        Sportarr.Api.Services.Interfaces.IRemotePathMappingService? pathMappingService = null)
+        Sportarr.Api.Services.Interfaces.IRemotePathMappingService? pathMappingService = null,
+        ConfigService? configService = null)
     {
         _httpClient = httpClient;
         _logger = logger;
         _pathMappingService = pathMappingService;
+        _configService = configService;
     }
 
     /// <summary>
@@ -474,7 +477,11 @@ public class RTorrentClient
             ErrorMessage = null,
             Ratio = torrent.CompletedBytes > 0
                 ? (double)torrent.TotalUploaded / torrent.CompletedBytes
-                : 0
+                : 0,
+            CompletedAt = torrent.TimeFinished > 0 && isComplete
+                ? DateTimeOffset.FromUnixTimeSeconds(torrent.TimeFinished).UtcDateTime
+                : null,
+            TorrentIsStopped = isComplete && !isStarted
         };
     }
 
@@ -676,6 +683,11 @@ public class RTorrentClient
             {
                 RemoteCertificateValidationCallback = (_, _, _, _) => true
             };
+        }
+        else if (config.UseSsl && _configService != null)
+        {
+            var policy = new CertificateValidationPolicy(_configService);
+            policy.Configure(handler);
         }
 
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };

@@ -24,7 +24,7 @@ Sportarr is a sports PVR for Usenet and torrents. It monitors leagues and events
 
     ---
 
-    Connect Prowlarr, Bazarr, Maintainerr, Homepage, autobrr, the Plex/Jellyfin/Emby metadata agents, and Kodi.
+    Connect Prowlarr, Bazarr, Bazarr+, Maintainerr, Homepage, autobrr, the Plex/Jellyfin/Emby metadata agents, and Kodi.
 
     [:octicons-arrow-right-24: Integrations](integrations/prowlarr.md)
 
@@ -68,7 +68,7 @@ Sportarr is a sports PVR for Usenet and torrents. It monitors leagues and events
 - Searches Usenet and torrent indexers automatically and upgrades quality when better releases appear
 - Organizes files with customizable naming schemes, including multi-part events (prelims, main cards) for fighting sports
 - Integrates with Plex, Jellyfin, Emby, and Kodi for library updates and rich sports metadata
-- Fetches subtitles through Bazarr and notifies you through Discord, Telegram, Slack, Mattermost, Pushover, Gotify, Join, Pushbullet, SimplePush, email, ntfy, Apprise, webhooks, or custom scripts
+- Fetches subtitles through Bazarr or Bazarr+ and notifies you through Discord, Telegram, Slack, Mattermost, Pushover, Gotify, Join, Pushbullet, SimplePush, email, ntfy, Apprise, webhooks, or custom scripts
 - Records live events from IPTV sources with automatic scheduling (alpha)
 
 ## Community

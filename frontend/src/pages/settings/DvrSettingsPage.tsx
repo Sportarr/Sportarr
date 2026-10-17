@@ -51,6 +51,9 @@ interface DvrSettings {
   // (active Recording rows are never preempted).
   conflictPolicy: string;
   deleteAfterImport: boolean;
+  // Source precedence: a usenet/torrent release replaces an IPTV recording
+  // whatever its quality.
+  replaceRecordingsWithIndexerReleases: boolean;
   recordingRetentionDays: number;
   keepLastRecordingsPerLeague: number;
   hardwareAcceleration: number;
@@ -168,6 +171,7 @@ const defaultDvrSettings: DvrSettings = {
   simultaneousChannels: 1,
   conflictPolicy: 'Refuse',
   deleteAfterImport: false,
+  replaceRecordingsWithIndexerReleases: false,
   recordingRetentionDays: 0,
   keepLastRecordingsPerLeague: 0,
   hardwareAcceleration: 99,
@@ -1374,6 +1378,20 @@ export default function DvrSettingsPage() {
                       />
                       <span className="ml-2 text-sm text-gray-300">Delete after import</span>
                     </label>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dvrSettings.replaceRecordingsWithIndexerReleases}
+                        onChange={(e) => handleSettingsChange('replaceRecordingsWithIndexerReleases', e.target.checked)}
+                        className="w-4 h-4 text-red-600 bg-gray-800 border-gray-700 rounded focus:ring-red-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-300">Replace recordings with indexer releases</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Keep recorded events eligible for RSS and scheduled searches. A Usenet or torrent release that passes event, size, blocklist, and release-profile checks can replace the recording at any quality. A recording cannot replace an indexer file.
+                    </p>
                   </div>
                 </div>
               </div>

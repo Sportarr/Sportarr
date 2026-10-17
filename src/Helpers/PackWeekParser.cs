@@ -68,10 +68,10 @@ public static partial class PackWeekParser
     // the search list, while a hidden week approves a wrong-week pack in
     // silence.
     [GeneratedRegex(
-        @"^[\s\.\-_–]*(?:-|–|(?<![A-Za-z0-9])(?:to|thru|through)(?![A-Za-z0-9]))[\s\.\-_]*(?:Week[\s\.\-_]*)?(?<end>\d{1,2})(?![A-Za-z0-9])(?![\-\.\/]\d{1,2}[\-\.\/]\d{2,4})(?![\.,]\d{1,3}(?![0-9pi]))",
+        @"^[\s\.\-_–]*(?:-|–|(?<![A-Za-z0-9])(?:to|thru|through)(?![A-Za-z0-9]))[\s\.\-_]*(?:Week[\s\.\-_]*)?(?<end>\d{1,2})(?![A-Za-z0-9])(?![\-\.\/]\d{1,2}[\-\.\/]\d{2,4})(?![\.,]\d{1,3}(?![0-9pi]|bit\b))",
         RegexOptions.IgnoreCase)]
     private static partial Regex RangeTailRegex();
 
-    [GeneratedRegex(@"^[\s\.\-_]*(?:games?|of|parts?|files?)(?![A-Za-z0-9])", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^[\s\.\-_]*(?:games?|of|parts?|files?|hours?|hrs?|minutes?|mins?|days?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?![A-Za-z0-9])", RegexOptions.IgnoreCase)]
     private static partial Regex CountWordRegex();
 }

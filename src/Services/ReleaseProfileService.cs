@@ -128,6 +128,47 @@ public class ReleaseProfileService
         return evaluation;
     }
 
+    public async Task<bool> HasHigherPositivePreferredScoreAsync(
+        EventFile existingFile,
+        ReleaseSearchResult candidate,
+        List<ReleaseProfile> releaseProfiles,
+        List<int>? leagueTags,
+        CancellationToken cancellationToken)
+    {
+        var existingTitle = existingFile.ReleaseTitle ?? existingFile.OriginalTitle;
+        if (string.IsNullOrWhiteSpace(existingTitle))
+            return false;
+
+        var candidateEvaluation = EvaluateRelease(candidate, releaseProfiles, leagueTags);
+        if (candidateEvaluation.IsRejected || candidateEvaluation.PreferredScore <= 0)
+            return false;
+
+        var originalGrab = await _db.GrabHistory.AsNoTracking()
+            .Where(g => existingFile.ReleaseTitle != null &&
+                g.EventId == existingFile.EventId && g.Title == existingFile.ReleaseTitle &&
+                g.WasImported && g.FileExists)
+            .OrderByDescending(g => g.DestinationPath == existingFile.FilePath)
+            .ThenByDescending(g => g.GrabbedAt)
+            .Select(g => new { g.IndexerId, g.Indexer })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (originalGrab?.IndexerId == null && releaseProfiles.Any(p =>
+            p.Enabled && p.Preferred.Any() && p.IndexerId.Any() &&
+            Helpers.TagHelper.TagsMatch(p.Tags, leagueTags ?? new List<int>())))
+            return false;
+
+        var existing = new ReleaseSearchResult
+        {
+            Title = existingTitle,
+            Guid = candidate.Guid,
+            DownloadUrl = candidate.DownloadUrl,
+            Indexer = originalGrab?.Indexer ?? string.Empty,
+            IndexerId = originalGrab?.IndexerId
+        };
+        var existingScore = EvaluateRelease(existing, releaseProfiles, leagueTags).PreferredScore;
+        return candidateEvaluation.PreferredScore > existingScore;
+    }
+
     /// <summary>
     /// Load all enabled release profiles from the database.
     /// Call this once per search operation for efficiency.

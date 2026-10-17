@@ -2,6 +2,7 @@ using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public class CachePolicyRequestIdentityTests
 {
     [Theory]

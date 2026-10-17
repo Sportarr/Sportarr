@@ -24,6 +24,7 @@ public class RssPackAcquisitionTests(Xunit.Abstractions.ITestOutputHelper output
     [InlineData("F1.2026.Round10.Race.1080p", false, null, null, false)]
     [InlineData("F1.2026.Round10.Qualifying.1080p", false, null, null, false)]
     [InlineData("NFL.2026.Week10.Alpha.vs.Beta", false, null, null, false)]
+    [InlineData("NFL 2026-2027 / Week 04 / 04.10.2026 / Miami Dolphins @ Minnesota Vikings [Football, WEB-DL HD/720p]", false, null, null, false)]
     [InlineData("NFL.2026.Week10.Pack", false, null, null, true)]
     [InlineData("NFL.2026.Week10.Pack", false, null, "ev-9900301", false)]
     [InlineData("unknown", false, "lg-9900300", null, true)]
@@ -40,6 +41,63 @@ public class RssPackAcquisitionTests(Xunit.Abstractions.ITestOutputHelper output
         const string title = "UFC.9999.Main.Card.COMPLETE.BLURAY";
         Assert.Equal(Sportarr.Api.Helpers.ReleaseType.Pack, Sportarr.Api.Helpers.ReleaseTypeDetector.Detect(title));
         Assert.False(PackImportBoundary.IsPackRelease(title));
+    }
+
+    [Fact]
+    public async Task NamedAtMatchupImportsAsOneEvent()
+    {
+        const string title = "NFL 2026-2027 / Week 04 / 04.10.2026 / Miami Dolphins @ Minnesota Vikings [Football, WEB-DL HD/720p]";
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            title: "Miami Dolphins vs Minnesota Vikings", sport: "American Football",
+            leagueName: "NFL", mediaRoot: "/data/e2e-lib/issue331");
+        rig.Event.ExternalId = "ev-1969755";
+        rig.Event.HomeTeamName = "Minnesota Vikings";
+        rig.Event.AwayTeamName = "Miami Dolphins";
+        await rig.Db.SaveChangesAsync();
+
+        var isPack = PackImportBoundary.IsPackRelease(title);
+        Assert.False(isPack);
+        var imported = await rig.ImportAsync(title,
+            "NFL 2026-10-04-Week 04_MIA@MIN_1080p_NBC {sportarr-ev-1969755}.mkv", isPack: isPack);
+
+        Assert.Equal(rig.Event.Id, imported.EventId);
+        Assert.StartsWith("/data/e2e-lib/issue331/", imported.FilePath, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RssNamedAtMatchupQueuesOneEvent()
+    {
+        const string title = "NFL.2026.Week.04.Miami.Dolphins.@.Minnesota.Vikings.720p.WEB-DL.H264-Fixture";
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            title: "Miami Dolphins vs Minnesota Vikings", sport: "American Football",
+            leagueName: "NFL", relational: true, mediaRoot: "/data/e2e-lib/issue331");
+        rig.Event.ExternalId = "ev-1969755";
+        rig.Event.HomeTeamName = "Minnesota Vikings";
+        rig.Event.AwayTeamName = "Miami Dolphins";
+        rig.Event.EventDate = new DateTime(2026, 10, 4, 17, 0, 0, DateTimeKind.Utc);
+        rig.Event.Season = "2026";
+        rig.Event.SeasonNumber = 2026;
+        var indexer = await rig.Db.Indexers.SingleAsync();
+        indexer.EnableRss = true;
+        indexer.ApiPath = "";
+        await rig.Db.SaveChangesAsync();
+        var published = DateTime.UtcNow.AddHours(-1);
+        XNamespace ns = "http://www.newznab.com/DTD/2010/feeds/attributes/";
+        rig.Transport.RssResponse = new XDocument(new XElement("rss", new XAttribute("version", "2.0"),
+            new XElement("channel", new XElement("item", new XElement("title", title),
+                new XElement("guid", "rss-at-matchup"), new XElement("pubDate", published.ToString("R")),
+                new XElement("enclosure", new XAttribute("url", "http://part-source.invalid/at-matchup.nzb"),
+                    new XAttribute("length", 4_000_000_000L), new XAttribute("type", "application/x-nzb")),
+                new XElement(ns + "attr", new XAttribute("name", "size"),
+                    new XAttribute("value", 4_000_000_000L)))))).ToString();
+
+        await rig.Services.GetRequiredService<RssSyncService>().SyncNowAsync(CancellationToken.None);
+
+        Assert.Equal(1, rig.Transport.ClientAdds);
+        var queued = await rig.Db.DownloadQueue.SingleAsync();
+        Assert.False(queued.IsPack);
+        Assert.Equal(rig.Event.Id, queued.EventId);
+        Assert.Empty(rig.Transport.UnexpectedRequests);
     }
 
     [Theory]
@@ -297,6 +355,289 @@ public class RssPackAcquisitionTests(Xunit.Abstractions.ITestOutputHelper output
             (await rig.Db.PendingReleases.SingleAsync(p => p.Guid == "other-encode")).Status);
     }
 
+    [Fact]
+    public async Task PreferredBroadcasterFeedReplacesExistingFileFromPush()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            multipart: false, title: "Alpha vs Beta", sport: "American Football",
+            leagueName: "NFL", relational: true);
+        rig.Event.HomeTeamName = "Alpha";
+        rig.Event.AwayTeamName = "Beta";
+        rig.Event.HasFile = true;
+        const string originalTitle = "NFL.2020.09.01.Alpha.vs.Beta.720p.WEB-DL.H264-Fixture";
+        rig.Db.EventFiles.Add(new EventFile
+        {
+            EventId = rig.Event.Id,
+            FilePath = "/fixture/library/alpha-beta-720p.mkv",
+            Quality = "WEBDL-720p",
+            OriginalTitle = originalTitle,
+            Exists = true
+        });
+        rig.Db.ReleaseProfiles.Add(new ReleaseProfile
+        {
+            Name = "Home feed",
+            Preferred = new List<PreferredKeyword> { new() { Key = "ESPN", Value = 100 } }
+        });
+        rig.Db.ReleaseProfiles.Add(new ReleaseProfile
+        {
+            Name = "Other league feed", Tags = new List<int> { 999 },
+            IndexerId = new List<int> { 999 },
+            Preferred = new List<PreferredKeyword> { new() { Key = "Sky", Value = 500 } }
+        });
+        await rig.Db.SaveChangesAsync();
+        var release = rig.Release("ESPN." + originalTitle, suffix: "preferred-feed");
+        release.IndexerId = await rig.Db.Indexers.Select(i => i.Id).SingleAsync();
+        release.Size = 2_000_000_000;
+
+        var outcome = await rig.Services.GetRequiredService<RssSyncService>()
+            .ProcessPushedReleaseAsync(release, CancellationToken.None);
+
+        Assert.True(outcome.Grabbed, string.Join("; ", outcome.Rejections));
+        Assert.Equal(100, (await rig.Db.DownloadQueue.SingleAsync()).CustomFormatScore);
+    }
+
+    [Fact]
+    public async Task PreferredFeedFromAnotherIndexerUsesOriginalIndexerScore()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            multipart: false, title: "Alpha vs Beta", sport: "American Football",
+            leagueName: "NFL", relational: true);
+        rig.Event.HomeTeamName = "Alpha";
+        rig.Event.AwayTeamName = "Beta";
+        rig.Event.HasFile = true;
+        var originalIndexer = await rig.Db.Indexers.SingleAsync();
+        var incomingIndexer = new Indexer
+        {
+            Name = "Other fixture", Type = IndexerType.Newznab,
+            Url = "http://other-source.invalid/api", ApiKey = "fixture", Enabled = true
+        };
+        rig.Db.Indexers.Add(incomingIndexer);
+        await rig.Db.SaveChangesAsync();
+
+        const string baseTitle = "NFL.2020.09.01.Alpha.vs.Beta.720p.WEB-DL.H264-Fixture";
+        var originalTitle = "Sky." + baseTitle;
+        var incomingTitle = "ESPN." + baseTitle;
+        const string filePath = "/fixture/library/alpha-beta-720p.mkv";
+        rig.Db.EventFiles.Add(new EventFile
+        {
+            EventId = rig.Event.Id, FilePath = filePath, Quality = "WEBDL-720p",
+            CustomFormatScore = 100, OriginalTitle = originalTitle,
+            ReleaseTitle = originalTitle, Exists = true
+        });
+        rig.Db.GrabHistory.Add(new GrabHistory
+        {
+            EventId = rig.Event.Id, Title = originalTitle, Indexer = originalIndexer.Name,
+            IndexerId = originalIndexer.Id, DownloadUrl = "http://part-source.invalid/old.nzb",
+            Guid = "old-feed", Protocol = "Usenet",
+            DestinationPath = "/fixture/library/before-rename.mkv",
+            WasImported = true, FileExists = true
+        });
+        rig.Db.GrabHistory.Add(new GrabHistory
+        {
+            EventId = rig.Event.Id, Title = "Unrelated.Release.720p.WEB-DL",
+            Indexer = incomingIndexer.Name, IndexerId = incomingIndexer.Id,
+            DownloadUrl = "http://other-source.invalid/stale.nzb", Guid = "stale-feed",
+            Protocol = "Usenet", DestinationPath = filePath,
+            WasImported = true, FileExists = true
+        });
+        rig.Db.ReleaseProfiles.AddRange(
+            new ReleaseProfile
+            {
+                Name = "Original feed", IndexerId = new List<int> { originalIndexer.Id },
+                Preferred = new List<PreferredKeyword> { new() { Key = "Sky", Value = 100 } }
+            },
+            new ReleaseProfile
+            {
+                Name = "New feed", IndexerId = new List<int> { incomingIndexer.Id },
+                Preferred = new List<PreferredKeyword>
+                {
+                    new() { Key = "Sky", Value = 300 },
+                    new() { Key = "ESPN", Value = 200 }
+                }
+            });
+        await rig.Db.SaveChangesAsync();
+        var release = rig.Release(incomingTitle, suffix: "preferred-other-indexer");
+        release.Indexer = incomingIndexer.Name;
+        release.IndexerId = incomingIndexer.Id;
+        release.Size = 2_000_000_000;
+
+        var outcome = await rig.Services.GetRequiredService<RssSyncService>()
+            .ProcessPushedReleaseAsync(release, CancellationToken.None);
+
+        Assert.True(outcome.Grabbed, string.Join("; ", outcome.Rejections));
+        Assert.Equal(200, (await rig.Db.DownloadQueue.SingleAsync()).CustomFormatScore);
+    }
+
+    [Fact]
+    public async Task ScopedPreferredFeedWithoutGrabHistoryDoesNotBypassBrandingGuard()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(relational: true);
+        var originalIndexer = await rig.Db.Indexers.SingleAsync();
+        var incomingIndexer = new Indexer
+        {
+            Name = "Other fixture", Type = IndexerType.Newznab,
+            Url = "http://other-source.invalid/api", ApiKey = "fixture", Enabled = true
+        };
+        rig.Db.Indexers.Add(incomingIndexer);
+        await rig.Db.SaveChangesAsync();
+
+        var original = new EventFile
+        {
+            EventId = rig.Event.Id, FilePath = "/fixture/library/old.mkv",
+            OriginalTitle = "Sky.NFL.Game.720p.WEB-DL", Quality = "WEBDL-720p",
+            CustomFormatScore = 100, Exists = true
+        };
+        var candidate = rig.Release("ESPN.NFL.Game.720p.WEB-DL");
+        candidate.IndexerId = incomingIndexer.Id;
+        candidate.Indexer = incomingIndexer.Name;
+        var profiles = new List<ReleaseProfile>
+        {
+            new()
+            {
+                Name = "Original feed", IndexerId = new List<int> { originalIndexer.Id },
+                Preferred = new List<PreferredKeyword> { new() { Key = "Sky", Value = 100 } }
+            },
+            new()
+            {
+                Name = "New feed", IndexerId = new List<int> { incomingIndexer.Id },
+                Preferred = new List<PreferredKeyword> { new() { Key = "ESPN", Value = 200 } }
+            }
+        };
+
+        var preferredUpgrade = await rig.Services.GetRequiredService<ReleaseProfileService>()
+            .HasHigherPositivePreferredScoreAsync(original, candidate, profiles, null, CancellationToken.None);
+
+        Assert.False(preferredUpgrade);
+    }
+
+    [Fact]
+    public async Task PreferredBroadcasterFeedSurvivesDelayWindow()
+    {
+        await using var rig = await CreateDelayedNflRssRigAsync();
+        var indexer = await rig.Db.Indexers.SingleAsync();
+        const string originalTitle = "NFL.2020.09.01.Alpha.vs.Beta.720p.WEB-DL.H264-Fixture";
+        rig.Event.HasFile = true;
+        rig.Db.EventFiles.Add(new EventFile
+        {
+            EventId = rig.Event.Id,
+            FilePath = "/fixture/library/alpha-beta-720p.mkv",
+            Quality = "WEBDL-720p",
+            OriginalTitle = originalTitle,
+            Exists = true
+        });
+        rig.Db.ReleaseProfiles.Add(new ReleaseProfile
+        {
+            Name = "Home feed",
+            Preferred = new List<PreferredKeyword> { new() { Key = "ESPN", Value = 100 } }
+        });
+        AddDelayedNflCandidate(rig, indexer, "720p", "preferred-feed",
+            DateTime.UtcNow.AddHours(-2), DateTime.UtcNow.AddMinutes(-1));
+        var pending = rig.Db.PendingReleases.Local.Single(p => p.Guid == "preferred-feed");
+        pending.Title = "ESPN." + originalTitle;
+        pending.CustomFormatScore = 100;
+        await rig.Db.SaveChangesAsync();
+
+        await RunDelayedNflReaperAsync(rig);
+
+        var result = await rig.Db.PendingReleases.SingleAsync();
+        Assert.True(result.Status == PendingReleaseStatus.Released, result.Reason);
+        Assert.Equal(100, (await rig.Db.DownloadQueue.SingleAsync()).CustomFormatScore);
+    }
+
+    [Fact]
+    public async Task DelayedPreferredFeedUsesOriginalIndexerScore()
+    {
+        await using var rig = await CreateDelayedNflRssRigAsync();
+        var originalIndexer = await rig.Db.Indexers.SingleAsync();
+        var incomingIndexer = new Indexer
+        {
+            Name = "Other fixture", Type = IndexerType.Newznab,
+            Url = "http://other-source.invalid/api", ApiKey = "fixture", Enabled = true
+        };
+        rig.Db.Indexers.Add(incomingIndexer);
+        await rig.Db.SaveChangesAsync();
+
+        const string baseTitle = "NFL.2020.09.01.Alpha.vs.Beta.720p.WEB-DL.H264-Fixture";
+        var originalTitle = "Sky." + baseTitle;
+        const string filePath = "/fixture/library/alpha-beta-720p.mkv";
+        rig.Event.HasFile = true;
+        rig.Db.EventFiles.Add(new EventFile
+        {
+            EventId = rig.Event.Id, FilePath = filePath, Quality = "WEBDL-720p",
+            CustomFormatScore = 100, OriginalTitle = originalTitle,
+            ReleaseTitle = originalTitle, Exists = true
+        });
+        rig.Db.GrabHistory.Add(new GrabHistory
+        {
+            EventId = rig.Event.Id, Title = originalTitle, Indexer = originalIndexer.Name,
+            IndexerId = originalIndexer.Id, DownloadUrl = "http://part-source.invalid/old.nzb",
+            Guid = "old-feed", Protocol = "Usenet", DestinationPath = filePath,
+            WasImported = true, FileExists = true
+        });
+        rig.Db.ReleaseProfiles.AddRange(
+            new ReleaseProfile
+            {
+                Name = "Original feed", IndexerId = new List<int> { originalIndexer.Id },
+                Preferred = new List<PreferredKeyword> { new() { Key = "Sky", Value = 100 } }
+            },
+            new ReleaseProfile
+            {
+                Name = "New feed", IndexerId = new List<int> { incomingIndexer.Id },
+                Preferred = new List<PreferredKeyword>
+                {
+                    new() { Key = "Sky", Value = 300 },
+                    new() { Key = "ESPN", Value = 200 }
+                }
+            });
+        AddDelayedNflCandidate(rig, incomingIndexer, "720p", "preferred-other-indexer",
+            DateTime.UtcNow.AddHours(-2), DateTime.UtcNow.AddMinutes(-1));
+        var pending = rig.Db.PendingReleases.Local.Single(p => p.Guid == "preferred-other-indexer");
+        pending.Title = "ESPN." + baseTitle;
+        pending.CustomFormatScore = 200;
+        await rig.Db.SaveChangesAsync();
+
+        await RunDelayedNflReaperAsync(rig);
+
+        Assert.Equal(PendingReleaseStatus.Released, (await rig.Db.PendingReleases.SingleAsync()).Status);
+        Assert.Equal(200, (await rig.Db.DownloadQueue.SingleAsync()).CustomFormatScore);
+    }
+
+    [Fact]
+    public async Task DelayedPreferredFeedStillObeysIgnoredKeyword()
+    {
+        await using var rig = await CreateDelayedNflRssRigAsync();
+        var indexer = await rig.Db.Indexers.SingleAsync();
+        const string originalTitle = "NFL.2020.09.01.Alpha.vs.Beta.720p.WEB-DL.H264-Fixture";
+        rig.Event.HasFile = true;
+        rig.Db.EventFiles.Add(new EventFile
+        {
+            EventId = rig.Event.Id,
+            FilePath = "/fixture/library/alpha-beta-720p.mkv",
+            Quality = "WEBDL-720p",
+            OriginalTitle = originalTitle,
+            Exists = true
+        });
+        rig.Db.ReleaseProfiles.AddRange(
+            new ReleaseProfile
+            {
+                Name = "Home feed",
+                Preferred = new List<PreferredKeyword> { new() { Key = "ESPN", Value = 100 } }
+            },
+            new ReleaseProfile { Name = "Exclude feed", Ignored = "ESPN" });
+        AddDelayedNflCandidate(rig, indexer, "720p", "excluded-feed",
+            DateTime.UtcNow.AddHours(-2), DateTime.UtcNow.AddMinutes(-1));
+        var pending = rig.Db.PendingReleases.Local.Single(p => p.Guid == "excluded-feed");
+        pending.Title = "ESPN." + originalTitle;
+        pending.CustomFormatScore = 100;
+        await rig.Db.SaveChangesAsync();
+
+        await RunDelayedNflReaperAsync(rig);
+
+        Assert.Equal(PendingReleaseStatus.Cancelled,
+            (await rig.Db.PendingReleases.SingleAsync()).Status);
+        Assert.Empty(await rig.Db.DownloadQueue.ToListAsync());
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -527,6 +868,84 @@ public class RssPackAcquisitionTests(Xunit.Abstractions.ITestOutputHelper output
         Assert.Empty(outcome.Rejections);
         Assert.Equal(1, rig.Transport.ClientAdds);
         Assert.True((await rig.Db.DownloadQueue.SingleAsync()).IsPack);
+    }
+
+    [Fact]
+    public async Task PushedNascarReleaseDoesNotGrabAnotherSeasonVenue()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            rename: false, multipart: false, title: "Bass Pro Shops Night - Race",
+            sport: "Motorsport", leagueName: "NASCAR Cup Series", relational: true);
+        rig.Event.Round = "29";
+        rig.Event.Venue = "Bristol Motor Speedway";
+        rig.Event.Location = "United States";
+        rig.Db.Events.Add(new Event
+        {
+            Title = "Coca-Cola 600 - Race", Sport = "Motorsport", Season = "2020", Round = "12",
+            EventDate = new DateTime(2020, 5, 24, 22, 0, 0, DateTimeKind.Utc),
+            Venue = "Charlotte Motor Speedway", Location = "United States", League = rig.Event.League
+        });
+        await rig.Db.SaveChangesAsync();
+        var indexerId = await rig.Db.Indexers.Select(indexer => indexer.Id).SingleAsync();
+        var wrong = rig.Release("NASCAR Cup Series 2020 Round29 Charlotte Race 720p WEB-DL H264", suffix: "charlotte");
+        wrong.IndexerId = indexerId;
+        wrong.Size = 4_000_000_000;
+
+        var outcome = await rig.Services.GetRequiredService<RssSyncService>()
+            .ProcessPushedReleaseAsync(wrong, CancellationToken.None);
+
+        Assert.False(outcome.Grabbed);
+        Assert.Equal(0, rig.Transport.ClientAdds);
+
+        var wrongCountry = rig.Release(
+            "NASCAR Cup Series 2020 Round29 Bristol Motor Speedway Canada Race 720p WEB-DL H264",
+            suffix: "canada");
+        wrongCountry.IndexerId = indexerId;
+        wrongCountry.Size = 4_000_000_000;
+        var wrongCountryOutcome = await rig.Services.GetRequiredService<RssSyncService>()
+            .ProcessPushedReleaseAsync(wrongCountry, CancellationToken.None);
+
+        Assert.False(wrongCountryOutcome.Grabbed);
+        Assert.Equal(0, rig.Transport.ClientAdds);
+
+        var right = rig.Release("NASCAR Cup Series 2020 Round29 Bristol Motor Speedway Race 720p WEB-DL H264",
+            suffix: "bristol");
+        right.IndexerId = indexerId;
+        right.Size = 4_000_000_000;
+        var accepted = await rig.Services.GetRequiredService<RssSyncService>()
+            .ProcessPushedReleaseAsync(right, CancellationToken.None);
+
+        Assert.True(accepted.Grabbed, string.Join("; ", accepted.Rejections));
+        Assert.Equal(1, rig.Transport.ClientAdds);
+    }
+
+    [Fact]
+    public async Task PushedNascarReleaseHonorsExactEventIdOverVenueText()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(
+            rename: false, multipart: false, title: "Bass Pro Shops Night - Race",
+            sport: "Motorsport", leagueName: "NASCAR Cup Series", relational: true);
+        rig.Event.Round = "29";
+        rig.Event.Venue = "Bristol Motor Speedway";
+        rig.Event.Location = "United States";
+        rig.Event.ExternalId = "ev-123456";
+        rig.Db.Events.Add(new Event
+        {
+            Title = "Coca-Cola 600 - Race", Sport = "Motorsport", Season = "2020", Round = "12",
+            EventDate = new DateTime(2020, 5, 24, 22, 0, 0, DateTimeKind.Utc),
+            Venue = "Charlotte Motor Speedway", Location = "United States", League = rig.Event.League
+        });
+        await rig.Db.SaveChangesAsync();
+        var release = rig.Release("NASCAR Cup Series 2020 Round29 Charlotte Race 720p WEB-DL H264", suffix: "exact-id");
+        release.SportarrEventId = rig.Event.ExternalId;
+        release.IndexerId = await rig.Db.Indexers.Select(indexer => indexer.Id).SingleAsync();
+        release.Size = 4_000_000_000;
+
+        var outcome = await rig.Services.GetRequiredService<RssSyncService>()
+            .ProcessPushedReleaseAsync(release, CancellationToken.None);
+
+        Assert.True(outcome.Grabbed, string.Join("; ", outcome.Rejections));
+        Assert.Equal(1, rig.Transport.ClientAdds);
     }
 
     [Fact]

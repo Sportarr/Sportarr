@@ -505,6 +505,9 @@ public static class TrashScoreSets
 /// </summary>
 public class TrashSyncSettings
 {
+    // Null keeps the existing first-run behavior on upgraded installations.
+    public bool? UseRecommendedReleaseSettings { get; set; }
+
     /// <summary>
     /// Enable automatic scheduled sync
     /// </summary>
@@ -527,10 +530,9 @@ public class TrashSyncSettings
 
     /// <summary>
     /// Whether the one-time first-run enrichment has completed. On first run the
-    /// app ships bundled "floor" profiles/formats; once online it pulls the full
-    /// format set fresh from TRaSH Guides and applies scores to the seeded
-    /// profiles, then sets this so it never repeats. Stays false (retries next
-    /// start) if the app was offline, so the enrichment isn't lost.
+    /// Older installs may pull formats and scores once. Fresh installs wait for
+    /// the user to choose Recommended setup. A failed sync retries on startup
+    /// only for older installs.
     /// </summary>
     public bool FirstRunEnrichmentDone { get; set; } = false;
 
@@ -609,22 +611,22 @@ public static class TrashNamingTemplates
 
         // Simple date-based (TRaSH style)
         { "date-based", (
-            "{Event Title} ({Air Date Year}) - {Quality Full} - {Sportarr Id}",
-            "Simple date-based naming without episode numbers",
+            "{Series} - {Season}{Episode} - {Event Title} ({Air Date Year}) - {Quality Full} - {Sportarr Id}",
+            "Date-focused naming with TV episode numbers and an exact event ID",
             false
         )},
 
         // Sports-focused with league prefix
         { "sports-league", (
-            "{Series} - {Air Date} - {Event Title}{Part} [{Quality Full}] {Sportarr Id}",
-            "League-first naming with date. Good for sports organization.",
+            "{Series} - {Season}{Episode}{Part} - {Air Date} - {Event Title} [{Quality Full}] {Sportarr Id}",
+            "League-first naming with date, episode numbers, and event ID",
             true
         )},
 
         // Minimal clean naming
         { "minimal", (
-            "{Event Title} - {Quality}",
-            "Minimal naming - event title and quality only",
+            "{Series} - {Season}{Episode} - {Event Title} - {Sportarr Id}",
+            "Short naming with episode numbers and an exact event ID",
             false
         )},
 
@@ -638,7 +640,7 @@ public static class TrashNamingTemplates
         // Original filename preservation
         { "original", (
             "{Original Filename}",
-            "Keep original filename from release",
+            "Keep the release filename. Media-server matching depends on its contents.",
             false
         )},
     };

@@ -224,6 +224,8 @@ public class DownloadQueueItem
     public DateTime Added { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
     public DateTime? ImportedAt { get; set; }
+    public bool ClientCleanupCompleted { get; set; }
+    public DateTime? ClientCleanupCheckedAt { get; set; }
     public DateTime? FailedAt { get; set; }
 
     // Enhanced download monitoring fields
@@ -340,6 +342,7 @@ public class Indexer
     public required string Url { get; set; }
     public string? ApiKey { get; set; }
     public string ApiPath { get; set; } = "/api";
+    public bool DisableSslCertificateValidation { get; set; } = false;
 
     // Enable/Disable controls
     public bool Enabled { get; set; } = true;
@@ -569,6 +572,14 @@ public class ReleaseSearchResult
     /// Reasons why this release was rejected (empty if approved)
     /// </summary>
     public List<string> Rejections { get; set; } = new();
+
+    /// <summary>
+    /// Source precedence lifted the quality profile's rejections because
+    /// this release would replace an IPTV recording, so later quality
+    /// filters let it through too.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ReplacesIptvRecording { get; set; }
 
     /// <summary>
     /// Custom formats that matched this release
@@ -1256,6 +1267,8 @@ public class DownloadClientStatus
     // Seed tracking fields for torrent clients
     public double? Ratio { get; set; } // Current upload/download ratio
     public DateTime? CompletedAt { get; set; } // When the download completed
+    public DateTime? AddedAt { get; set; } // When the client created this job
+    public bool TorrentIsStopped { get; set; }
 }
 
 /// <summary>

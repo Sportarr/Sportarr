@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -63,7 +64,7 @@ public class FFmpegRecorderService
         try
         {
             _logger.LogInformation("[DVR] Starting recording {RecordingId}: {StreamUrl} -> {OutputPath}",
-                recordingId, streamUrl, outputPath);
+                recordingId, SecretRedactor.Url(streamUrl), outputPath);
 
             // Validate stream URL
             if (string.IsNullOrEmpty(streamUrl))
@@ -134,7 +135,7 @@ public class FFmpegRecorderService
             // Build FFmpeg arguments using config settings
             var arguments = await BuildFFmpegArgumentsFromConfigAsync(ffmpegPath, streamUrl, outputPath, userAgent, extraInputArgs);
 
-            _logger.LogInformation("[DVR] FFmpeg command: {FFmpegPath} {Arguments}", ffmpegPath, arguments);
+            _logger.LogInformation("[DVR] FFmpeg command: {FFmpegPath} {Arguments}", ffmpegPath, SecretRedactor.Message(arguments));
 
             // Start FFmpeg process
             var processInfo = new ProcessStartInfo
@@ -159,7 +160,7 @@ public class FFmpegRecorderService
             {
                 var stderr = await process.StandardError.ReadToEndAsync();
                 _logger.LogError("[DVR] FFmpeg exited immediately with code {ExitCode}. Error: {Error}",
-                    process.ExitCode, stderr);
+                    process.ExitCode, SecretRedactor.Message(stderr));
 
                 // Check if failure was due to hardware acceleration issues
                 if (stderr.Contains("Device creation failed") ||
@@ -173,7 +174,7 @@ public class FFmpegRecorderService
 
                     // Retry without hardware acceleration
                     var softwareArguments = await BuildFFmpegArgumentsFromConfigAsync(ffmpegPath, streamUrl, outputPath, userAgent, extraInputArgs, forceNoHwAccel: true);
-                    _logger.LogInformation("[DVR] FFmpeg retry command (software): {FFmpegPath} {Arguments}", ffmpegPath, softwareArguments);
+                    _logger.LogInformation("[DVR] FFmpeg retry command (software): {FFmpegPath} {Arguments}", ffmpegPath, SecretRedactor.Message(softwareArguments));
 
                     var retryProcessInfo = new ProcessStartInfo
                     {
@@ -196,12 +197,12 @@ public class FFmpegRecorderService
                     if (process.HasExited)
                     {
                         var retryStderr = await process.StandardError.ReadToEndAsync();
-                        _logger.LogError("[DVR] FFmpeg software fallback also failed: {Error}", retryStderr);
+                        _logger.LogError("[DVR] FFmpeg software fallback also failed: {Error}", SecretRedactor.Message(retryStderr));
 
                         return new RecordingResult
                         {
                             Success = false,
-                            Error = $"Recording failed. Hardware acceleration unavailable in Docker (check /dev/dri permissions). Software fallback error: {retryStderr}"
+                            Error = $"Recording failed. Hardware acceleration unavailable in Docker (check /dev/dri permissions). Software fallback error: {SecretRedactor.Message(retryStderr)}"
                         };
                     }
 
@@ -212,7 +213,7 @@ public class FFmpegRecorderService
                     return new RecordingResult
                     {
                         Success = false,
-                        Error = $"FFmpeg failed to start recording: {stderr}"
+                        Error = $"FFmpeg failed to start recording: {SecretRedactor.Message(stderr)}"
                     };
                 }
             }
@@ -234,12 +235,12 @@ public class FFmpegRecorderService
                 {
                     var stderr = await process.StandardError.ReadToEndAsync();
                     _logger.LogError("[DVR] FFmpeg exited during startup with code {ExitCode}. Error: {Error}",
-                        process.ExitCode, stderr);
+                        process.ExitCode, SecretRedactor.Message(stderr));
 
                     return new RecordingResult
                     {
                         Success = false,
-                        Error = $"FFmpeg stopped unexpectedly: {stderr}"
+                        Error = $"FFmpeg stopped unexpectedly: {SecretRedactor.Message(stderr)}"
                     };
                 }
 
@@ -1699,7 +1700,7 @@ public class FFmpegRecorderService
                     {
                         hasReceivedData = true;
                         _logger.LogDebug("[DVR] Recording {RecordingId}: {Message}",
-                            recording.RecordingId, line);
+                            recording.RecordingId, SecretRedactor.Message(line));
                     }
                     // Log progress lines (time=, size=, bitrate=)
                     else if (line.Contains("time=", StringComparison.OrdinalIgnoreCase) ||
@@ -1708,7 +1709,7 @@ public class FFmpegRecorderService
                         hasReceivedData = true;
                         // Only log occasionally to avoid spam
                         _logger.LogDebug("[DVR] Recording {RecordingId} progress: {Message}",
-                            recording.RecordingId, line.Trim());
+                            recording.RecordingId, SecretRedactor.Message(line.Trim()));
                     }
                     // Log significant error messages
                     else if (line.Contains("error", StringComparison.OrdinalIgnoreCase) ||
@@ -1718,14 +1719,14 @@ public class FFmpegRecorderService
                              line.Contains("Connection timed out", StringComparison.OrdinalIgnoreCase) ||
                              line.Contains("Server returned", StringComparison.OrdinalIgnoreCase))
                     {
-                        errorMessages.Add(line);
+                        errorMessages.Add(SecretRedactor.Message(line));
                         _logger.LogError("[DVR] Recording {RecordingId} ERROR: {Message}",
-                            recording.RecordingId, line);
+                            recording.RecordingId, SecretRedactor.Message(line));
                     }
                     else if (line.Contains("warning", StringComparison.OrdinalIgnoreCase))
                     {
                         _logger.LogWarning("[DVR] Recording {RecordingId}: {Message}",
-                            recording.RecordingId, line);
+                            recording.RecordingId, SecretRedactor.Message(line));
                     }
                 }
             }

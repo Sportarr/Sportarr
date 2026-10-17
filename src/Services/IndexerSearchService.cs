@@ -929,7 +929,7 @@ public class IndexerSearchService : IIndexerSearchService
             : string.Join(",", NewznabCategories.DefaultSportCategories);
         _logger.LogDebug("[RSS Feed] {Indexer}: Fetching with categories [{Categories}]", indexer.Name, categories);
 
-        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var httpClient = _httpClientFactory.CreateClient(IndexerTlsPolicy.ClientName(indexer));
         var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
         var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection, new IndexerQueryContext(indexer.Id));
         client.SearchRequestSender = (request, completion) =>
@@ -984,7 +984,7 @@ public class IndexerSearchService : IIndexerSearchService
             : string.Join(",", NewznabCategories.DefaultSportCategories);
         _logger.LogDebug("[RSS Feed] {Indexer}: Fetching with categories [{Categories}]", indexer.Name, categories);
 
-        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var httpClient = _httpClientFactory.CreateClient(IndexerTlsPolicy.ClientName(indexer));
         var newznabLogger = _loggerFactory.CreateLogger<NewznabClient>();
         var client = new NewznabClient(httpClient, newznabLogger, _qualityDetection, new IndexerQueryContext(indexer.Id));
         client.SearchRequestSender = (request, completion) =>
@@ -997,7 +997,7 @@ public class IndexerSearchService : IIndexerSearchService
 
     private async Task<IndexerSearchOutcome> SearchTorznabAsync(Indexer indexer, string query, int maxResults, string? sportarrId = null, bool useCategoryFilter = true, IndexerSearchRequestBatch? requestBatch = null, RawIndexerRetrievalCache? retrievalCache = null)
     {
-        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var httpClient = _httpClientFactory.CreateClient(IndexerTlsPolicy.ClientName(indexer));
         var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
         var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection, new IndexerQueryContext(indexer.Id));
         client.RetrievalCache = retrievalCache;
@@ -1010,7 +1010,7 @@ public class IndexerSearchService : IIndexerSearchService
 
     private async Task<IndexerSearchOutcome> SearchNewznabAsync(Indexer indexer, string query, int maxResults, string? sportarrId = null, bool useCategoryFilter = true, IndexerSearchRequestBatch? requestBatch = null, RawIndexerRetrievalCache? retrievalCache = null)
     {
-        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var httpClient = _httpClientFactory.CreateClient(IndexerTlsPolicy.ClientName(indexer));
         var newznabLogger = _loggerFactory.CreateLogger<NewznabClient>();
         var client = new NewznabClient(httpClient, newznabLogger, _qualityDetection, new IndexerQueryContext(indexer.Id));
         client.RetrievalCache = retrievalCache;
@@ -1029,7 +1029,7 @@ public class IndexerSearchService : IIndexerSearchService
 
     private async Task<bool> TestTorznabAsync(Indexer indexer)
     {
-        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var httpClient = _httpClientFactory.CreateClient(IndexerTlsPolicy.ClientName(indexer));
         var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
         var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection);
 
@@ -1038,7 +1038,7 @@ public class IndexerSearchService : IIndexerSearchService
 
     private async Task<bool> TestNewznabAsync(Indexer indexer)
     {
-        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var httpClient = _httpClientFactory.CreateClient(IndexerTlsPolicy.ClientName(indexer));
         var newznabLogger = _loggerFactory.CreateLogger<NewznabClient>();
         var client = new NewznabClient(httpClient, newznabLogger);
 
@@ -1047,7 +1047,7 @@ public class IndexerSearchService : IIndexerSearchService
 
     private async Task<List<ReleaseSearchResult>> FetchPlainRssAsync(Indexer indexer, int maxResults)
     {
-        var client = BuildRssClient();
+        var client = BuildRssClient(indexer);
         return await client.FetchRssFeedAsync(indexer, maxResults);
     }
 
@@ -1062,7 +1062,7 @@ public class IndexerSearchService : IIndexerSearchService
     /// </summary>
     private async Task<List<ReleaseSearchResult>> SearchPlainRssAsync(Indexer indexer, string query, int maxResults)
     {
-        var client = BuildRssClient();
+        var client = BuildRssClient(indexer);
         var feed = await client.FetchRssFeedAsync(indexer, maxResults);
 
         var tokens = System.Text.RegularExpressions.Regex
@@ -1094,7 +1094,7 @@ public class IndexerSearchService : IIndexerSearchService
 
     private async Task<bool> TestRssAsync(Indexer indexer)
     {
-        var client = BuildRssClient();
+        var client = BuildRssClient(indexer);
         return await client.TestConnectionAsync(indexer);
     }
 
@@ -1111,13 +1111,13 @@ public class IndexerSearchService : IIndexerSearchService
         {
             return new RssDetectionResult(false, "Auto-detect only runs for plain-RSS indexers.");
         }
-        var client = BuildRssClient();
+        var client = BuildRssClient(indexer);
         return await client.DetectAndSaveSettingsAsync(indexer);
     }
 
-    private RssClient BuildRssClient()
+    private RssClient BuildRssClient(Indexer indexer)
     {
-        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var httpClient = _httpClientFactory.CreateClient(IndexerTlsPolicy.ClientName(indexer));
         var rssLogger = _loggerFactory.CreateLogger<RssClient>();
         return new RssClient(httpClient, rssLogger);
     }

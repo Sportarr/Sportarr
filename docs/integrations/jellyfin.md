@@ -6,6 +6,12 @@
 
 Sportarr provides a metadata plugin for Jellyfin that fetches posters, banners, descriptions, and episode organization from sportarr.net. Requires Jellyfin 10.9 or later.
 
+## Local NFO metadata
+
+Sportarr can also write local NFO files for a Jellyfin **Shows** library. In **Settings > Local Metadata**, turn on the local metadata provider with **Enabled**, turn on **Episode NFO**, and save. Then import an event and point a Jellyfin Shows library at the same sports folder. This writes metadata during future imports; it does not rewrite every file already in the library. Files without a season and episode number cannot get an episode NFO.
+
+Use the plugin below when you want Jellyfin to look up metadata from Sportarr instead of relying on local files.
+
 ## Plugin repository (recommended)
 
 Installing through a plugin repository means Jellyfin checks for plugin updates automatically.

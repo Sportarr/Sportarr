@@ -199,6 +199,18 @@ public class EnhancedDownloadMonitorService : BackgroundService
             .Include(d => d.Event)
             .Where(DownloadMonitorEligibility.ActiveDownloads)
             .ToListAsync(cancellationToken);
+        var rejectedIds = activeDownloads
+            .Where(d => d.Status == DownloadStatus.ImportWarning &&
+                        ImportUpgradeRule.IsRejection(d.ErrorMessage))
+            .Select(d => d.Id)
+            .ToHashSet();
+        foreach (var id in _rejectedImportSignatures.Keys.ToList())
+        {
+            if (!rejectedIds.Contains(id))
+                _rejectedImportSignatures.Remove(id);
+        }
+
+        await CleanupImportedTorrentsAsync(db, downloadClientService, cancellationToken);
 
         if (activeDownloads.Count == 0)
             return;
@@ -260,6 +272,81 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 {
                     _logger.LogError(saveEx, "[Enhanced Download Monitor] Failed to save error state for download: {Title}", download.Title);
                 }
+            }
+        }
+    }
+
+    private async Task CleanupImportedTorrentsAsync(
+        SportarrDbContext db, DownloadClientService downloadClientService, CancellationToken cancellationToken)
+    {
+        var checkBefore = DateTime.UtcNow.AddMinutes(-5);
+        var pending = await db.DownloadQueue
+            .Include(download => download.DownloadClient)
+            .Where(download => download.Status == DownloadStatus.Imported &&
+                               !download.ClientCleanupCompleted &&
+                               download.DownloadClient != null &&
+                               download.DownloadClient.RemoveCompletedDownloads &&
+                               download.DownloadClient.Type != DownloadClientType.Sabnzbd &&
+                               download.DownloadClient.Type != DownloadClientType.NzbGet &&
+                               download.DownloadClient.Type != DownloadClientType.DecypharrUsenet &&
+                               download.DownloadClient.Type != DownloadClientType.NZBdav &&
+                               download.DownloadClient.Type != DownloadClientType.UsenetBlackhole &&
+                               download.DownloadClient.Type != DownloadClientType.SynologyDownloadStationUsenet &&
+                               (download.ClientCleanupCheckedAt == null ||
+                                download.ClientCleanupCheckedAt < checkBefore))
+            .OrderBy(download => download.ClientCleanupCheckedAt)
+            .Take(20)
+            .ToListAsync(cancellationToken);
+
+        var coordinator = _serviceProvider.GetRequiredService<DownloadOwnershipCoordinator>();
+        foreach (var download in pending)
+        {
+            using var ownershipDecision = coordinator.TryEnterExternalDecision(download.DownloadClientId, download.DownloadId);
+            if (ownershipDecision == null) continue;
+            cancellationToken.ThrowIfCancellationRequested();
+            await db.Entry(download).ReloadAsync(cancellationToken);
+            if (db.Entry(download).State == EntityState.Detached ||
+                download.Status != DownloadStatus.Imported || download.ClientCleanupCompleted) continue;
+
+            try
+            {
+                var statusCategory = !string.IsNullOrWhiteSpace(download.DownloadClient!.PostImportCategory)
+                    ? download.DownloadClient.PostImportCategory
+                    : download.GrabCategory;
+                var status = await CompletedDownloadCleanup.GetTorrentStatusForCleanupAsync(
+                    download, downloadClientService, statusCategory);
+                if (status == null)
+                {
+                    download.MissingFromClientCount++;
+                    if (download.MissingFromClientCount >= 3 &&
+                        (await downloadClientService.TestConnectionAsync(download.DownloadClient, writeProbe: false)).Success)
+                    {
+                        download.ClientCleanupCompleted = true;
+                        _logger.LogInformation("[Enhanced Download Monitor] Imported torrent is no longer in the client: {Title}", download.Title);
+                    }
+                    continue;
+                }
+
+                download.MissingFromClientCount = 0;
+                var originalJobDeadline = download.CompletedAt ?? download.ImportedAt ?? download.Added.AddMinutes(5);
+                if (status.AddedAt == null || status.AddedAt > originalJobDeadline)
+                {
+                    download.ClientCleanupCompleted = true;
+                    _logger.LogWarning("[Enhanced Download Monitor] Cannot verify the original imported torrent job, leaving it in the client: {Title}", download.Title);
+                    continue;
+                }
+
+                await new CompletedDownloadCleanup(_serviceProvider, _logger)
+                    .RunAsync(download, downloadClientService, db, requireJobIdentity: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Enhanced Download Monitor] Could not clean up imported torrent: {Title}", download.Title);
+            }
+            finally
+            {
+                download.ClientCleanupCheckedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(cancellationToken);
             }
         }
     }
@@ -487,6 +574,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // Update download metadata
         var previousStatus = download.Status;
         var previousProgress = download.Progress;
+        if (previousStatus != DownloadStatus.ImportWarning)
+            _rejectedImportSignatures.Remove(download.Id);
 
         if (status.Downloaded > download.Downloaded || status.Progress > download.Progress)
             download.LastProgressAt = DateTime.UtcNow;
@@ -515,7 +604,15 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
         if (ShouldPreserveImportWarning(download.Status, status.Status))
         {
-            return;
+            if (!await ShouldRetryRejectedImportAsync(download, status, fileImportService, enableCompletedHandling))
+            {
+                return;
+            }
+
+            // Let the completed state run the import again.
+            _logger.LogInformation("[Enhanced Download Monitor] Rejected import now qualifies, importing again: {Title} (was: {Reason})",
+                download.Title, download.ErrorMessage);
+            download.ErrorMessage = null;
         }
 
         download.Status = status.Status switch
@@ -640,6 +737,33 @@ public class EnhancedDownloadMonitorService : BackgroundService
                !string.Equals(clientStatus, "error", StringComparison.Ordinal);
     }
 
+    // Retry only when inputs to the import decision change.
+    private readonly Dictionary<int, string> _rejectedImportSignatures = new();
+
+    /// <summary>
+    /// Retry only warnings that the upgrade rule can later reverse.
+    /// </summary>
+    private async Task<bool> ShouldRetryRejectedImportAsync(
+        DownloadQueueItem download,
+        DownloadClientStatus status,
+        FileImportService? fileImportService,
+        bool enableCompletedHandling)
+    {
+        if (!enableCompletedHandling || fileImportService == null) return false;
+        if (!ManualQueueImportPolicy.IsCompletedClientStatus(status)) return false;
+        if (!ImportUpgradeRule.IsRejection(download.ErrorMessage))
+        {
+            _rejectedImportSignatures.Remove(download.Id);
+            return false;
+        }
+        var signature = await fileImportService.GetRejectedImportDecisionSignatureAsync(download);
+        if (signature == null) return false;
+        if (_rejectedImportSignatures.TryGetValue(download.Id, out var previous) && previous == signature)
+            return false;
+        _rejectedImportSignatures[download.Id] = signature;
+        return true;
+    }
+
     // Last observed progress and when it last MOVED, per queue item. The
     // old check compared against the download's Added time, which flagged
     // any slow-but-moving torrent older than the threshold; this tracks
@@ -699,27 +823,6 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Delete the job folder the download client left behind, together with
-    /// whatever the import did not take (nfo, samples, leftover archives).
-    /// Users expect the whole folder to be gone once the import is in the
-    /// library. The folder is the job's own by resolution, and the policy
-    /// still refuses a configured path or anything that contains one.
-    ///
-    /// The caller resolves the client-reported path to the owned folder
-    /// before it removes the job from the client, while the directory can
-    /// still be seen.
-    /// </summary>
-    private Task TryRemoveCompletedFolderAsync(string? folder, string title, SportarrDbContext? db) =>
-        new CompletedDownloadCleanup(_serviceProvider, _logger).TryRemoveCompletedFolderAsync(folder, title, db);
-
-    /// <summary>
-    /// Check if a torrent has reached its seed limits (ratio and/or time) from the indexer settings.
-    /// Returns true if all configured limits are met, or if no limits are configured.
-    /// </summary>
-    private static bool HasReachedSeedLimit(DownloadClientStatus status, Indexer indexer) =>
-        CompletedDownloadCleanup.HasReachedSeedLimit(status, indexer);
-
     private async Task HandleCompletedDownload(
         DownloadQueueItem download,
         DownloadClientService downloadClientService,
@@ -775,130 +878,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
             _logger.LogInformation("[Enhanced Download Monitor] ✓ Import successful: {Title}", download.Title);
 
             if (!download.IsPack)
-            {
-            // Remove from download client if configured in the client's settings
-            // Pass deleteFiles: true to also remove the download folder from disk
-            // The video files have already been moved/hardlinked to the library, but non-video files (nfo, srr, etc.)
-            // and the folder itself may remain - the download client should clean these up
-            //
-            // Uses per-client RemoveCompletedDownloads setting which allows users to configure
-            // differently for each client (e.g., remove for Usenet, preserve for seeding torrents)
-            if (download.DownloadClient?.RemoveCompletedDownloads == true)
-            {
-                // For torrents with indexer seed settings, check if seeding goals are met before removal.
-                // Torrents seed until ratio/time limits are reached.
-                if (download.Protocol == "Torrent" && db != null)
-                {
-                    var indexer = download.IndexerId != null
-                        ? await db.Indexers.FindAsync(download.IndexerId)
-                        : !string.IsNullOrEmpty(download.Indexer)
-                            ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == download.Indexer)
-                            : null;
-
-                    if (indexer != null && (indexer.SeedRatio.HasValue || indexer.SeedTime.HasValue))
-                    {
-                        var status = await downloadClientService.GetDownloadStatusAsync(
-                            download.DownloadClient, download.DownloadId, download.GrabCategory);
-
-                        if (status != null && !HasReachedSeedLimit(status, indexer))
-                        {
-                            _logger.LogInformation(
-                                "[Enhanced Download Monitor] Torrent still seeding, skipping removal: {Title} " +
-                                "(Ratio: {Ratio:F2}/{Target}, Time: {Time})",
-                                download.Title,
-                                status.Ratio ?? 0,
-                                indexer.SeedRatio?.ToString("F1") ?? "N/A",
-                                indexer.SeedTime.HasValue ? $"{indexer.SeedTime}min" : "N/A");
-
-                            // Mark as imported but don't remove — monitor will re-check on next poll
-                            return;
-                        }
-                    }
-                }
-
-                // Ask the client where the job landed BEFORE removing it. Once
-                // the job is gone from history the path is gone with it, and
-                // that path is the only safe way to find the folder to tidy up.
-                string? completedFolder = null;
-                try
-                {
-                    var statusForPath = await downloadClientService.GetDownloadStatusAsync(
-                        download.DownloadClient, download.DownloadId, download.GrabCategory);
-                    completedFolder = statusForPath?.SavePath;
-
-                    // The client reports its own view of the path. Behind a
-                    // remote path mapping the local view differs, and only a
-                    // local path can be resolved and removed.
-                    if (!string.IsNullOrWhiteSpace(completedFolder))
-                    {
-                        using var mapScope = _serviceProvider.CreateScope();
-                        var pathMapping = mapScope.ServiceProvider.GetRequiredService<IRemotePathMappingService>();
-                        completedFolder = await pathMapping.RemapRemoteToLocalAsync(
-                            download.DownloadClient.Host, completedFolder);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "[Enhanced Download Monitor] Could not read the completed path for {Title}", download.Title);
-                }
-
-                // SABnzbd reports a single-file job as the file itself, which
-                // the move-mode import has already taken away. Resolve to the
-                // job folder that owns it now, while the directory still
-                // exists. The removal below can delete the directory, and a
-                // path that stopped existing reads as a vanished file, whose
-                // parent would then be judged in its place.
-                completedFolder = LeftoverFolderPolicy.ResolveOwnedFolder(completedFolder, download.Title);
-
-                try
-                {
-                    var removed = await downloadClientService.RemoveDownloadAsync(
-                        download.DownloadClient,
-                        download.DownloadId,
-                        deleteFiles: true);
-
-                    if (!removed)
-                    {
-                        _logger.LogWarning("[Enhanced Download Monitor] Import succeeded, but {Client} did not confirm removal of {Title}; skipping remaining download folder cleanup",
-                            download.DownloadClient.Name, download.Title);
-                        return;
-                    }
-
-                    // Info, not Debug: whether the download-dir folder was
-                    // cleaned up is the question every "empty folders left
-                    // behind" support thread turns on, and at Debug the
-                    // default log couldn't answer it in either direction.
-                    // SABnzbd only deletes files for FAILED history entries;
-                    // del_files on a completed job removes the history row
-                    // and nothing else. The folder tidy-up below is what
-                    // actually cleans the disk for usenet.
-                    _logger.LogInformation("[Enhanced Download Monitor] Removed completed download from client: {Title}", download.Title);
-
-                    await TryRemoveCompletedFolderAsync(completedFolder, download.Title, db);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Enhanced Download Monitor] Failed to remove download from client: {Title}", download.Title);
-                    // Don't fail the import if we can't remove from client
-                }
-            }
-            else if (download.DownloadClient == null)
-            {
-                // Log when download client removal is skipped due to missing client association
-                // This helps diagnose why folders might not be removed from the download client
-                _logger.LogInformation("[Enhanced Download Monitor] Skipped removal from download client: No download client associated with {Title}",
-                    download.Title);
-            }
-            else
-            {
-                // The toggle-off case was completely silent, which made every
-                // "empty folders left behind" report unanswerable from a log:
-                // no line existed in either direction. One info line per
-                // import names the setting that decides the behavior.
-                _logger.LogInformation("[Enhanced Download Monitor] Leaving download in client (Remove Completed Downloads is off for '{Client}'): {Title}",
-                    download.DownloadClient!.Name, download.Title);
-            }
-            }
+                await new CompletedDownloadCleanup(_serviceProvider, _logger).RunAsync(download, downloadClientService, db);
         }
         catch (IndexerFailDownloadException ex)
         {
@@ -1397,7 +1377,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                                             // Not grabbed by Sportarr: it replaces what the
                                             // event holds only as an upgrade, else it waits
                                             // in Pending Imports with the reason.
-                                            OnlyIfUpgrade = true
+                                            OnlyIfUpgrade = true,
+                                            FromDownloadClient = true
                                         }
                                     });
                                     imported = importResult.Imported.Count + importResult.Created.Count > 0;

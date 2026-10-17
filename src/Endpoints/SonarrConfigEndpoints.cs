@@ -983,7 +983,7 @@ public static class SonarrConfigEndpoints
             Notification incoming;
             try
             {
-                incoming = ParseV3Notification(json);
+                incoming = ParseV3Notification(json, existing.Enabled);
             }
             catch (JsonException)
             {
@@ -1140,6 +1140,8 @@ public static class SonarrConfigEndpoints
     private static object ToV3Notification(Notification n)
     {
         var configFields = new List<object>();
+        var onDownload = false;
+        var onUpgrade = false;
         try
         {
             using var configDoc = JsonDocument.Parse(string.IsNullOrWhiteSpace(n.ConfigJson) ? "{}" : n.ConfigJson);
@@ -1147,6 +1149,10 @@ public static class SonarrConfigEndpoints
             {
                 configFields.Add(new { name = prop.Name, value = JsonElementToObject(prop.Value) });
             }
+            onDownload = configDoc.RootElement.TryGetProperty("onDownload", out var download)
+                && download.ValueKind == JsonValueKind.True;
+            onUpgrade = configDoc.RootElement.TryGetProperty("onUpgrade", out var upgrade)
+                && upgrade.ValueKind == JsonValueKind.True;
         }
         catch (JsonException)
         {
@@ -1157,12 +1163,13 @@ public static class SonarrConfigEndpoints
         {
             id = n.Id,
             name = n.Name,
+            enabled = n.Enabled,
             implementation = n.Implementation,
             implementationName = n.Implementation,
             configContract = n.Implementation + "Settings",
             onGrab = false,
-            onDownload = true,
-            onUpgrade = true,
+            onDownload,
+            onUpgrade,
             onRename = false,
             onSeriesDelete = false,
             onEpisodeFileDelete = false,
@@ -1177,7 +1184,9 @@ public static class SonarrConfigEndpoints
         };
     }
 
-    private static Notification ParseV3Notification(string json)
+    private static Notification ParseV3Notification(string json) => ParseV3Notification(json, true);
+
+    private static Notification ParseV3Notification(string json, bool enabledFallback)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -1189,8 +1198,10 @@ public static class SonarrConfigEndpoints
             // Hard-coding this to true switched a deliberately disabled
             // connection back on the moment anything edited it, and the user
             // started getting notifications they had turned off.
-            Enabled = !root.TryGetProperty("enabled", out var enabledProp)
-                || enabledProp.ValueKind != JsonValueKind.False,
+            Enabled = root.TryGetProperty("enabled", out var enabledProp)
+                && enabledProp.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? enabledProp.GetBoolean()
+                : enabledFallback,
         };
 
         var config = new Dictionary<string, object>();
@@ -1205,6 +1216,15 @@ public static class SonarrConfigEndpoints
                 }
 
                 config[name] = JsonElementToObject(value);
+            }
+        }
+
+        foreach (var trigger in new[] { "onDownload", "onUpgrade" })
+        {
+            if (root.TryGetProperty(trigger, out var value) &&
+                value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                config[trigger] = value.GetBoolean();
             }
         }
 

@@ -101,7 +101,7 @@ public static class SsrfGuard
         try
         {
             await socket.ConnectAsync(target, endpoint.Port, cancellationToken);
-            return new NetworkStream(socket, ownsSocket: true);
+            return new PeerNetworkStream(socket, endpoint.Host);
         }
         catch
         {

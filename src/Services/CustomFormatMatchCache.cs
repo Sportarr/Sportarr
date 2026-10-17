@@ -280,8 +280,7 @@ public class CustomFormatMatchCache : IDisposable
         var totalScore = 0;
 
         // Build FormatId → Score lookup from profile
-        var formatScores = profile?.FormatItems?.ToDictionary(fi => fi.FormatId, fi => fi.Score)
-            ?? new Dictionary<int, int>();
+        var formatScores = CustomFormatService.ProfileScores(profile);
 
         // Pack penalty patterns to skip
         var packSkipNames = new[] { "no-rlsgroup", "no-releasegroup", "no-group", "unknown-group" };

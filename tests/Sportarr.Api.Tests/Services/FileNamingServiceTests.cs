@@ -441,6 +441,26 @@ public class FileNamingServiceTests
         result.Should().Be("original_file_name.mkv");
     }
 
+    [Fact]
+    public void GetOriginalFilenameToken_KeepsFullReleaseNameWithoutExtension()
+    {
+        var sourceFile = Path.Combine("downloads", "Formula1.2026.Dutch.Sprint.S2026E50.1080p.WEB-GROUP.mkv");
+
+        var result = FileNamingService.GetOriginalFilenameToken(sourceFile);
+
+        result.Should().Be("Formula1.2026.Dutch.Sprint.S2026E50.1080p.WEB-GROUP");
+    }
+
+    [Fact]
+    public void GetSourceFilename_KeepsFullReleaseNameWhenRenamingIsOff()
+    {
+        var sourceFile = Path.Combine("downloads", "Formula1.2026.Dutch.Sprint.S2026E50.1080p.WEB-GROUP.mkv");
+
+        var result = FileNamingService.GetSourceFilename(sourceFile);
+
+        result.Should().Be("Formula1.2026.Dutch.Sprint.S2026E50.1080p.WEB-GROUP.mkv");
+    }
+
     // Issue #170: {Part Name} renders the human part label ("Prelims",
     // "Main Card") instead of the opaque pt1/pt2, with the separator embedded
     // (same convention as {Part}) so single-part files render cleanly.

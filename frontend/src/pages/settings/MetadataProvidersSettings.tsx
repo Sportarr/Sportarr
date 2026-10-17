@@ -97,7 +97,7 @@ export default function MetadataProvidersSettings() {
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-white mb-2">Local Metadata</h2>
-          <p className="text-gray-400">NFO files and artwork for Kodi</p>
+          <p className="text-gray-400">Local NFO files for Kodi and Jellyfin</p>
         </div>
         <div className="text-center py-12">
           <p className="text-gray-500">Loading...</p>
@@ -111,7 +111,7 @@ export default function MetadataProvidersSettings() {
       <div className="max-w-4xl mx-auto px-6">
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-white mb-2">Local Metadata</h2>
-          <p className="text-gray-400">NFO files and artwork for Kodi</p>
+          <p className="text-gray-400">Local NFO files for Kodi and Jellyfin</p>
         </div>
         <p className="text-gray-500">Could not load the metadata provider.</p>
       </div>
@@ -122,7 +122,7 @@ export default function MetadataProvidersSettings() {
     <div>
       <SettingsHeader
         title="Local Metadata"
-        subtitle="NFO files and artwork for Kodi - Kodi reads these directly, no plugin needed"
+        subtitle="Write local NFO files for Kodi and Jellyfin"
         onSave={handleSave}
         isSaving={saving}
         hasUnsavedChanges={hasUnsavedChanges}
@@ -141,8 +141,8 @@ export default function MetadataProvidersSettings() {
             <div>
               <span className="text-sm font-medium text-white">Enabled</span>
               <p className="text-xs text-gray-500">
-                Write .nfo files and artwork alongside imported videos whenever this is on. For Kodi rescanning
-                after an import, see the Kodi connection under Notifications.
+                Write .nfo files and artwork beside future imports. Jellyfin reads episode NFO files in a TV
+                library after a metadata refresh. For Kodi rescanning, see the connection under Notifications.
               </p>
             </div>
           </label>
@@ -170,7 +170,7 @@ export default function MetadataProvidersSettings() {
               />
               <div>
                 <span className="text-sm font-medium text-gray-300">Episode NFO</span>
-                <p className="text-xs text-gray-500">Write an NFO for each imported video, named to match the video file</p>
+                <p className="text-xs text-gray-500">Write an NFO beside each imported video with an assigned episode number</p>
               </div>
             </label>
 

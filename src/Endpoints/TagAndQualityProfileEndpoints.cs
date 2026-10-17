@@ -117,6 +117,14 @@ app.MapPost("/api/qualityprofile", async (QualityProfile profile, SportarrDbCont
         return Results.BadRequest(new { error = "A quality profile with this name already exists" });
     }
 
+    // Keep copies of synced profiles under user control.
+    profile.Id = 0;
+    profile.IsSynced = false;
+    profile.IsCustomized = false;
+    profile.TrashId = null;
+    profile.TrashScoreSet = null;
+    profile.LastTrashScoreSync = null;
+
     // Only one profile can be the default. Accepting the flag from the payload
     // without clearing it elsewhere left several marked default at once, and
     // whichever consumer asked next got an arbitrary one of them.

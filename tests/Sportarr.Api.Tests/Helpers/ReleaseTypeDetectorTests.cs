@@ -27,6 +27,46 @@ public class ReleaseTypeDetectorTests
     }
 
     [Theory]
+    [InlineData("NFL 2026-2027 / Week 04 / 04.10.2026 / Miami Dolphins @ Minnesota Vikings [Football, WEB-DL HD/720p]")]
+    [InlineData("NFL.2026.Week.04.Miami.Dolphins.@.Minnesota.Vikings.720p")]
+    [InlineData("NFL.2026.Week.04.Jets.@.Patriots.720p")]
+    [InlineData("NFL.2026.Week.04.MIA.Dolphins.@.Vikings.720p")]
+    [InlineData("NBA.2026.Week.04.Philadelphia.76ers.@.Orlando.Magic.720p")]
+    public void Detect_WeekWithNamedAtMatchup_IsSingleGame(string title)
+    {
+        ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.SingleEvent);
+        ReleaseTypeDetector.DetectForImport(title).Should().Be(ReleaseType.SingleEvent);
+    }
+
+    [Theory]
+    [InlineData("NFL 2026 Week 04 @ Tracker")]
+    [InlineData("NFL 2026 Week04 @ Tracker")]
+    [InlineData("NFL 2026 Round04 @ Tracker")]
+    [InlineData("NFL 2026 Matchday04 @ Tracker")]
+    [InlineData("NFL 2026 Week 04 Sunday Games @ 1080p")]
+    [InlineData("NFL.2026.Week.04.Sunday.Games.@.1080p.WEB-DL.H264")]
+    [InlineData("NFL 2026 Week 04 Sunday Games @ 1080p WEB-DL")]
+    [InlineData("NFL Week 04 Highlights Show @ Netflix")]
+    [InlineData("NFL Week 04 Highlights Show @ Netflix WEB-DL")]
+    [InlineData("NFL 2026 Week 04 Sunday Games @ Full HD 720p")]
+    [InlineData("NFL 2026 Week 04 Sunday Games @ Blu-Ray 720p")]
+    [InlineData("NFL 2026 Week 04 Sunday Games @ Patriots 720p")]
+    [InlineData("NFL 2026 Week 04 PACK Miami Dolphins @ Minnesota Vikings and more 720p")]
+    [InlineData("NFL.2026.Week.04.Miami.Dolphins.@.Minnesota.Vikings.Green.Bay.Packers.@.Chicago.Bears.720p")]
+    [InlineData("NFL.2026.Week.04.Me@Home.Special.720p")]
+    public void Detect_AtWithoutASingleGameRemainsPack(string title)
+    {
+        ReleaseTypeDetector.Detect(title).Should().Be(ReleaseType.Pack);
+        ReleaseTypeDetector.DetectForImport(title).Should().Be(ReleaseType.Pack);
+    }
+
+    [Fact]
+    public void Detect_AtWithoutRoundIdentityIsUnknown()
+    {
+        ReleaseTypeDetector.Detect("Sports.Upload.@.Tracker.720p").Should().Be(ReleaseType.Unknown);
+    }
+
+    [Theory]
     [InlineData("AFL 2026 Round 1 Carlton V Richmond and Geelong V Fremantle PACK 1080p")]
     [InlineData("AFL 2026 Carlton V Richmond FULL SEASON 1080p")]
     [InlineData("AFL 2026 Carlton V Richmond ALL GAMES 1080p")]

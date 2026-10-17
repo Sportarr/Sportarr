@@ -141,6 +141,8 @@ public class DvrSchedulerService : BackgroundService
                 _logger.LogError(ex, "[DVR Scheduler] Exception stopping recording {Id}", recording.Id);
             }
         }
+
+        await eventDvrService.ImportAllCompletedRecordingsAsync();
     }
 
     public override async Task StopAsync(CancellationToken stoppingToken)

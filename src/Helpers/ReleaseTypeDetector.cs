@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Helpers;
 
@@ -46,6 +47,31 @@ public static class ReleaseTypeDetector
     private static readonly Regex SingleMatchupPattern = new(
         @"\b(?:vs|v)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex StandaloneAtPattern = new(
+        @"(?<=[.\s])@(?=[.\s])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly string[] KnownTeamNames = TeamNameVariationData.Variations
+        .SelectMany(entry => entry.Value.Append(entry.Key))
+        .Select(NormalizeTeamText)
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+
+    private static string NormalizeTeamText(string value) =>
+        " " + Regex.Replace(value, @"[^\p{L}\p{N}]+", " ").Trim().ToLowerInvariant() + " ";
+
+    private static bool HasKnownAtMatchup(string title)
+    {
+        var markers = StandaloneAtPattern.Matches(title);
+        if (markers.Count != 1) return false;
+
+        var left = NormalizeTeamText(title[..markers[0].Index]);
+        var right = NormalizeTeamText(title[(markers[0].Index + 1)..]);
+        // Generic words beside @ can name a bundle or a quality label.
+        return KnownTeamNames.Any(team => left.EndsWith(team, StringComparison.Ordinal)) &&
+            KnownTeamNames.Any(team => right.StartsWith(team, StringComparison.Ordinal));
+    }
 
     /// <summary>
     /// Names of a single session or a single race.
@@ -100,12 +126,12 @@ public static class ReleaseTypeDetector
             }
         }
 
-        if (SingleMatchupPattern.IsMatch(releaseTitle))
+        var hasBareRoundMarker = RoundMarkerPattern.IsMatch(releaseTitle);
+        if (SingleMatchupPattern.IsMatch(releaseTitle) ||
+            (hasBareRoundMarker && HasKnownAtMatchup(releaseTitle)))
         {
             return ReleaseType.SingleEvent;
         }
-
-        var hasBareRoundMarker = RoundMarkerPattern.IsMatch(releaseTitle);
 
         if (hasExplicitPackMarker)
         {

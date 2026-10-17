@@ -81,12 +81,17 @@ public class NflConferenceChampionshipTests
     }
 
     [Fact]
-    public void AFollowedTeamsConferenceGameStillQualifies()
+    public void AFollowedTeamsConferenceGameNeedsPostseasonSelected()
     {
         var game = Game("180");
         game.HomeTeamExternalId = "tm-cowboys";
 
         LeagueEventSyncService.IsInsideTeamSelection(game, Nfl(false, false), FollowedTeams, NoCupStages)
+            .Should().BeFalse();
+
+        var league = Nfl(false, false);
+        league.PlayoffTeamMode = SpecialEventTeamMode.SelectedTeams;
+        LeagueEventSyncService.IsInsideTeamSelection(game, league, FollowedTeams, NoCupStages)
             .Should().BeTrue();
     }
 

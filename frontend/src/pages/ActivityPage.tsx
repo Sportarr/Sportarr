@@ -74,6 +74,14 @@ interface QueueItem {
   customFormatScore?: number;
 }
 
+const isQueueItemUnmonitored = (item: QueueItem): boolean =>
+  item.statusMessages?.some(message => message.includes('no longer monitored')) ?? false;
+
+const canImportQueueItem = (item: QueueItem): boolean => {
+  if (item.canRetryImport || item.canImportAnyway || item.canChooseVideo) return false;
+  return item.status === 3 || (isQueueItemUnmonitored(item) && item.status === 5);
+};
+
 interface ColumnVisibility {
   event: boolean;
   title: boolean;
@@ -198,6 +206,9 @@ interface PendingImport {
   fileCount?: number;
   matchedEventsCount?: number;
 }
+
+const isDvrChoice = (pending: PendingImport) =>
+  pending.protocol === 'DVR' && pending.downloadId.startsWith('dvr-');
 
 interface PackMatchPreview {
   fileName: string;
@@ -751,7 +762,7 @@ export default function ActivityPage() {
         downloadClient: item.downloadClient
       }));
 
-    const selectedPendings = visiblePendingImports.filter(p => selectedPendingIds.has(p.id));
+    const selectedPendings = visiblePendingImports.filter(p => !isDvrChoice(p) && selectedPendingIds.has(p.id));
 
     if (selectedItems.length === 0 && selectedPendings.length === 0) return;
 
@@ -770,9 +781,7 @@ export default function ActivityPage() {
     const items = selectedQueueItems;
     try {
       await Promise.all(items.map(async item => {
-        const isUnmonitored = item.statusMessages?.some(msg => msg.includes('no longer monitored')) ?? false;
-        const canImport = isUnmonitored && (item.status === 5 || item.status === 3);
-        if (canImport) {
+        if (canImportQueueItem(item)) {
           await apiClient.post(`/queue/${item.id}/import`);
         } else {
           await apiClient.post(`/queue/${item.id}/retry`);
@@ -951,7 +960,6 @@ export default function ActivityPage() {
     }
   };
 
-  // Force import for unmonitored event downloads (Sonarr-style)
   const handleForceImport = async (item: QueueItem) => {
     try {
       await apiClient.post(`/queue/${item.id}/import`);
@@ -1283,6 +1291,7 @@ export default function ActivityPage() {
   // this, "Page Size 200" with 95 pending imports rendered 295 rows total
   // and the bulk-select count silently exceeded the page size.
   const visiblePendingImports = pendingImportsSorted.slice(0, focusedIndex >= 0 ? Math.max(0, pageSize - 1) : pageSize);
+  const selectablePendingImports = visiblePendingImports.filter(p => !isDvrChoice(p));
   const queueRowBudget = Math.max(0, pageSize - visiblePendingImports.length);
   const queueRows = queueRowsAll.slice(0, queueRowBudget);
   const totalAvailable = pendingImports.length + queueRowsAll.length;
@@ -1294,13 +1303,13 @@ export default function ActivityPage() {
   // here mirrors that. The keys ('p-' / 'q-' prefix + numeric id) drive
   // shift-click range selection and select-all across both kinds.
   const selectableRowKeys: string[] = [
-    ...visiblePendingImports.map(p => `p-${p.id}`),
+    ...selectablePendingImports.map(p => `p-${p.id}`),
     ...queueRows.map(q => `q-${q.id}`),
   ];
 
   const visibleSelectionKey = selectableRowKeys.join('|');
   const visibleSelectedQueueIds = new Set(queueRows.filter(item => selectedQueueIds.has(item.id)).map(item => item.id));
-  const visibleSelectedPendingIds = new Set(visiblePendingImports.filter(item => selectedPendingIds.has(item.id)).map(item => item.id));
+  const visibleSelectedPendingIds = new Set(selectablePendingImports.filter(item => selectedPendingIds.has(item.id)).map(item => item.id));
   const totalSelected = visibleSelectedQueueIds.size + visibleSelectedPendingIds.size;
   const totalSelectable = selectableRowKeys.length;
 
@@ -1374,7 +1383,7 @@ export default function ActivityPage() {
       setSelectedPendingIds(new Set());
     } else {
       setSelectedQueueIds(new Set(queueRows.map(item => item.id)));
-      setSelectedPendingIds(new Set(visiblePendingImports.map(p => p.id)));
+      setSelectedPendingIds(new Set(selectablePendingImports.map(p => p.id)));
     }
   };
 
@@ -1389,10 +1398,8 @@ export default function ActivityPage() {
 
   // Pending imports need individual event mapping before import.
   const isQueueRowImportable = (item: QueueItem): boolean => {
-    const isUnmonitored = item.statusMessages?.some(msg => msg.includes('no longer monitored')) ?? false;
-    const canImport = isUnmonitored && (item.status === 5 || item.status === 3);
     const canRetryImport = item.canRetryImport === true;
-    return canImport || canRetryImport;
+    return canImportQueueItem(item) || canRetryImport;
   };
 
   const selectedQueueItems = queueRows.filter(item => visibleSelectedQueueIds.has(item.id));
@@ -1527,9 +1534,8 @@ export default function ActivityPage() {
           </td>
         );
       case 'actions':
-        const isUnmonitored = item.statusMessages?.some(msg => msg.includes('no longer monitored'));
-        // Show import button for Warning (5) or Completed (3) status when unmonitored
-        const canImport = isUnmonitored && (item.status === 5 || item.status === 3);
+        const isUnmonitored = isQueueItemUnmonitored(item);
+        const canImport = canImportQueueItem(item);
         const canRetryImport = item.canRetryImport === true;
         const canImportAnyway = item.canImportAnyway === true;
         const canChooseVideo = item.canChooseVideo === true;
@@ -1565,27 +1571,26 @@ export default function ActivityPage() {
                   <DocumentCheckIcon className="w-4 h-4" />
                 </button>
               )}
-              {/* Show Import/Delete buttons for unmonitored downloads (Sonarr-style) */}
               {canImport && (
-                <>
-                  <button
-                    onClick={() => handleForceImport(item)}
-                    className={BUTTON_ICON_SUCCESS}
-                    title="Import Anyway"
-                  >
-                    <DocumentCheckIcon className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteUnmonitored(item)}
-                    className={BUTTON_ICON_DESTRUCTIVE}
-                    title="Delete Download"
-                  >
-                    <TrashIcon className="w-4 h-4" />
-                  </button>
-                </>
+                <button
+                  onClick={() => handleForceImport(item)}
+                  className={BUTTON_ICON_SUCCESS}
+                  title="Import"
+                  aria-label="Import"
+                >
+                  <DocumentCheckIcon className="w-4 h-4" />
+                </button>
               )}
-              {/* Regular remove button (only show when not already showing delete button for unmonitored) */}
-              {!canImport && (
+              {canImport && isUnmonitored && (
+                <button
+                  onClick={() => handleDeleteUnmonitored(item)}
+                  className={BUTTON_ICON_DESTRUCTIVE}
+                  title="Delete Download"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                </button>
+              )}
+              {(!canImport || !isUnmonitored) && (
                 <button
                   onClick={() => handleOpenRemoveQueueDialog(item)}
                   className={BUTTON_ICON_DESTRUCTIVE}
@@ -1709,7 +1714,7 @@ export default function ActivityPage() {
                 className={`${pendingImport.isPack ? 'bg-purple-900/10 hover:bg-purple-900/20 border-l-4 border-purple-500' : 'bg-yellow-900/10 hover:bg-yellow-900/20 border-l-4 border-yellow-500'} transition-colors ${rowPadding} ${selectedPendingIds.has(pendingImport.id) ? 'ring-1 ring-red-600' : ''}`}
               >
                 <td className="px-3 py-1.5 w-10">
-                  <input
+                  {!isDvrChoice(pendingImport) && <input
                     type="checkbox"
                     checked={selectedPendingIds.has(pendingImport.id)}
                     onClick={(e) => {
@@ -1718,7 +1723,7 @@ export default function ActivityPage() {
                     }}
                     onChange={() => { /* handled by onClick to read shiftKey */ }}
                     className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
-                  />
+                  />}
                 </td>
                 {visibleQueueColumns.map(column => {
                   switch (column) {
@@ -1742,7 +1747,7 @@ export default function ActivityPage() {
                               }
                             </span>
                           </div>
-                          <div className="text-xs text-gray-500">Manual Import</div>
+                          <div className="text-xs text-gray-500">{isDvrChoice(pendingImport) ? 'Choose file to keep' : 'Manual Import'}</div>
                         </td>
                       );
                     case 'title':
@@ -1781,7 +1786,7 @@ export default function ActivityPage() {
                         <td key="status" className="px-2 py-1.5 text-center">
                           <div className={`flex items-center justify-center gap-1 ${pendingImport.isPack ? 'text-purple-400' : 'text-yellow-400'}`}>
                             <ExclamationCircleIcon className="w-4 h-4" />
-                            <span className="text-xs">{pendingImport.isPack ? 'Pack Import' : 'Manual Import'}</span>
+                            <span className="text-xs">{pendingImport.isPack ? 'Pack Import' : isDvrChoice(pendingImport) ? 'Choose file' : 'Manual Import'}</span>
                           </div>
                         </td>
                       );
@@ -1845,7 +1850,7 @@ export default function ActivityPage() {
                               <button
                                 onClick={() => setSelectedPendingImport(pendingImport)}
                                 className={BUTTON_ICON_WARNING}
-                                title="Manual Import"
+                                title={isDvrChoice(pendingImport) ? 'Import recording and replace the downloaded file' : 'Manual Import'}
                               >
                                 <DocumentCheckIcon className="w-4 h-4" />
                               </button>
@@ -1853,11 +1858,13 @@ export default function ActivityPage() {
                             <button
                               onClick={() => handleIgnorePendingImport(pendingImport.id)}
                               className={BUTTON_ICON_SECONDARY}
-                              title="Ignore this file: it stays on disk but Sportarr stops detecting or suggesting it (undo from the Blocklist tab)"
+                              title={isDvrChoice(pendingImport)
+                                ? 'Keep the downloaded file. The recording stays on disk.'
+                                : 'Ignore this file: it stays on disk but Sportarr stops detecting or suggesting it (undo from the Blocklist tab)'}
                             >
                               <NoSymbolIcon className="w-4 h-4" />
                             </button>
-                            <button
+                            {!isDvrChoice(pendingImport) && <button
                               onClick={() => handleRemovePendingImport(pendingImport)}
                               className={BUTTON_ICON_DESTRUCTIVE}
                               title={isDiskFound(pendingImport)
@@ -1865,7 +1872,7 @@ export default function ActivityPage() {
                                 : 'Remove download from client and delete files'}
                             >
                               <TrashIcon className="w-4 h-4" />
-                            </button>
+                            </button>}
                           </div>
                         </td>
                       );
@@ -1958,14 +1965,14 @@ export default function ActivityPage() {
           return (
             <article key={key} data-pending-id={pendingImport.id} data-view="list" className={`${COMPACT_LIST_ROW} ${selectedPendingIds.has(pendingImport.id) ? 'bg-red-900/20' : ''}`}>
               <label className="flex h-11 w-11 items-center justify-center">
-                <input
+                {!isDvrChoice(pendingImport) && <input
                   type="checkbox"
                   checked={selectedPendingIds.has(pendingImport.id)}
                   onClick={event => toggleSelectRow('p', pendingImport.id, event.shiftKey)}
                   onChange={() => {}}
                   aria-label={`Select ${title}`}
                   className="h-4 w-4 cursor-pointer rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-2 focus:ring-red-600"
-                />
+                />}
               </label>
               <button
                 type="button"
@@ -1979,7 +1986,7 @@ export default function ActivityPage() {
                 {expanded ? <ChevronUpIcon className="h-4 w-4 flex-none text-gray-400" /> : <ChevronDownIcon className="h-4 w-4 flex-none text-gray-400" />}
               </button>
               <div className="col-start-2 min-w-0 text-xs text-amber-400">
-                {pendingImport.isPack ? 'Pack import' : 'Manual import'}
+                {pendingImport.isPack ? 'Pack import' : isDvrChoice(pendingImport) ? 'Choose file to keep' : 'Manual import'}
                 {pendingImport.size > 0 && <span className="ml-2 text-gray-400">{formatBytes(pendingImport.size)}</span>}
               </div>
               {pendingImport.errorMessage && <p className="col-start-2 min-w-0 break-words text-xs text-amber-400">{pendingImport.errorMessage}</p>}
@@ -2001,10 +2008,10 @@ export default function ActivityPage() {
                         <button onClick={() => handleImportPack(pendingImport)} disabled={importingPack === pendingImport.id} className={`${BUTTON_INFO} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Import Pack</button>
                       </>
                     ) : (
-                      <button onClick={() => setSelectedPendingImport(pendingImport)} className={`${BUTTON_WARNING} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Import</button>
+                      <button onClick={() => setSelectedPendingImport(pendingImport)} className={`${BUTTON_WARNING} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />{isDvrChoice(pendingImport) ? 'Import recording' : 'Import'}</button>
                     )}
-                    <button onClick={() => handleIgnorePendingImport(pendingImport.id)} className={`${BUTTON_SECONDARY} min-h-11`}><NoSymbolIcon className="h-4 w-4" />Ignore</button>
-                    <button onClick={() => handleRemovePendingImport(pendingImport)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Remove</button>
+                    <button onClick={() => handleIgnorePendingImport(pendingImport.id)} className={`${BUTTON_SECONDARY} min-h-11`}><NoSymbolIcon className="h-4 w-4" />{isDvrChoice(pendingImport) ? 'Keep downloaded file' : 'Ignore'}</button>
+                    {!isDvrChoice(pendingImport) && <button onClick={() => handleRemovePendingImport(pendingImport)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Remove</button>}
                   </div>
                 </div>
               )}
@@ -2015,8 +2022,8 @@ export default function ActivityPage() {
           const key = `q:${item.id}`;
           const expanded = expandedCompactRow === key;
           const title = item.event?.title || 'Unknown Event';
-          const isUnmonitored = item.statusMessages?.some(message => message.includes('no longer monitored'));
-          const canImportCard = isUnmonitored && (item.status === 5 || item.status === 3);
+          const isUnmonitored = isQueueItemUnmonitored(item);
+          const canImportCard = canImportQueueItem(item);
           return (
             <article
               key={key}
@@ -2085,8 +2092,8 @@ export default function ActivityPage() {
                     {item.canImportAnyway && <button onClick={() => openManualImportDialog(item)} className={`${BUTTON_WARNING} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Import Anyway</button>}
                     {item.canChooseVideo && <button onClick={() => openVideoChoiceDialog(item)} className={`${BUTTON_WARNING} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Choose Video</button>}
                     {canImportCard && <button onClick={() => handleForceImport(item)} className={`${BUTTON_SUCCESS} min-h-11`}><DocumentCheckIcon className="h-4 w-4" />Import</button>}
-                    {canImportCard && <button onClick={() => handleDeleteUnmonitored(item)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Delete</button>}
-                    {!canImportCard && <button onClick={() => handleOpenRemoveQueueDialog(item)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Remove</button>}
+                    {canImportCard && isUnmonitored && <button onClick={() => handleDeleteUnmonitored(item)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Delete</button>}
+                    {(!canImportCard || !isUnmonitored) && <button onClick={() => handleOpenRemoveQueueDialog(item)} className={`${BUTTON_DESTRUCTIVE} min-h-11`}><TrashIcon className="h-4 w-4" />Remove</button>}
                   </div>
                 </div>
               )}

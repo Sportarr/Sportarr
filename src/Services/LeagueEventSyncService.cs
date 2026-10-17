@@ -397,21 +397,28 @@ public class LeagueEventSyncService
             SpecialEventClassifier.ApplySeasonFinalContext(fullSeasonEvents);
             var cupStageSizes = SpecialEventClassifier.ComputeCupStageSizes(events.Select(e => e.Round));
             var fullSeasonById = SpecialEventClassifier.IndexSourceEvents(fullSeasonEvents);
-            bool BypassesSeasonTeamFilter(Event e)
+            bool MatchesTeamFilter(Event e) =>
+                (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
+                (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId));
+            bool IsDisabledSpecial(Event e)
             {
-                // Cleanup must use the same source round and title as admission.
                 var current = SpecialEventClassifier.ResolveSourceEvent(e, fullSeasonById);
-                return SpecialEventClassifier.BypassesTeamFilter(current.Round, current.Title,
-                    league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                var tier = SpecialEventClassifier.Classify(current.Round, current.Title,
                     cupStageSizes, current.HasLaterSeasonFinal);
+                return tier != SpecialEventClassifier.SpecialTier.None &&
+                    SpecialEventClassifier.TeamMode(league, tier) == SpecialEventTeamMode.Off;
             }
-            if (monitoredTeamIds.Any() && !league.KeepAllEvents)
+            bool IsIncluded(Event e)
             {
-                events = events.Where(e =>
-                    (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
-                    (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
-                    BypassesSeasonTeamFilter(e)
-                ).ToList();
+                if (IsDisabledSpecial(e)) return false;
+                if (monitoredTeamIds.Count == 0) return true;
+                var current = SpecialEventClassifier.ResolveSourceEvent(e, fullSeasonById);
+                return SpecialEventClassifier.IsIncludedByTeamSelection(league, current.Round,
+                    current.Title, MatchesTeamFilter(e), cupStageSizes, current.HasLaterSeasonFinal);
+            }
+            if (monitoredTeamIds.Any() || fullSeasonEvents.Any(IsDisabledSpecial))
+            {
+                events = events.Where(e => !IsDisabledSpecial(e) && (IsIncluded(e) || league.KeepAllEvents)).ToList();
 
                 _logger.LogInformation("[League Event Sync] Season {Season}: Filtered {Original} events to {Filtered} based on monitored teams{SpecialNote}",
                     season, originalEventCount, events.Count,
@@ -523,7 +530,8 @@ public class LeagueEventSyncService
 
             // Remove events that the API no longer returns (cancelled/deleted from schedule).
             //
-            // Build the "do not delete" set from BOTH the new
+            // Build the "do not delete" set from the full source response,
+            // including events excluded by monitoring choices. Include the new
             // short_id (apiEvent.ExternalId) AND the TheSportsDB
             // cross-reference (apiEvent.TsdbId) for every returned
             // event. Legacy local rows whose ExternalId still holds
@@ -532,7 +540,7 @@ public class LeagueEventSyncService
             // hard-deletes them on every sync until they happen to
             // be processed by ProcessEvent's migration step.
             var apiExternalIds = new HashSet<string>();
-            foreach (var ev in events)
+            foreach (var ev in fullSeasonEvents)
             {
                 if (!string.IsNullOrEmpty(ev.ExternalId))
                 {
@@ -547,21 +555,9 @@ public class LeagueEventSyncService
             // Safety guard. The cleanup pass below hard-deletes every
             // local event whose ExternalId isn't in apiExternalIds, so
             // an empty apiExternalIds set wipes the entire season for
-            // the league. That state has two real causes — both
-            // representing "the response can't be trusted as ground
-            // truth", neither representing "everything was cancelled":
-            //   1. The upstream API timed out / returned an error and
-            //      the events list is empty.
-            //   2. The team-filter at the top of this method removed
-            //      every event because the upstream stopped emitting
-            //      idHomeTeam / idAwayTeam (sportarr-hub had a period
-            //      where NBA events shipped with empty team ids due
-            //      to a participant side=NULL bug — see hub commit
-            //      'emit team identifiers when participants lack
-            //      side'). The filter cascaded into an empty
-            //      apiExternalIds and the cleanup deleted 1,363 NBA
-            //      rows in a single refresh before we caught it.
-            // Bail before the cleanup if either signal looks unsafe.
+            // the league. A missing upstream response is not proof that
+            // every game was cancelled. Stop cleanup when the source has
+            // no events or no usable identifiers.
             if (originalEventCount == 0)
             {
                 _logger.LogWarning(
@@ -572,7 +568,7 @@ public class LeagueEventSyncService
             if (apiExternalIds.Count == 0)
             {
                 _logger.LogWarning(
-                    "[League Event Sync] Season {Season}: apiExternalIds is empty after filtering ({OriginalCount} events returned, 0 retained). Refusing to run cleanup — would hard-delete every local event for this season",
+                    "[League Event Sync] Season {Season}: source returned {OriginalCount} events without usable identifiers. Refusing to clean up local events",
                     season, originalEventCount);
                 continue;
             }
@@ -631,10 +627,7 @@ public class LeagueEventSyncService
             // truncated response for a KeepAll league cleared the floor and
             // took those games with it.
             var localEventsForSeason = monitoredTeamIds.Any() && !league.KeepAllEvents
-                ? allLocalSeasonEvents.Where(e =>
-                        (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
-                        (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId)) ||
-                        BypassesSeasonTeamFilter(e))
+                ? allLocalSeasonEvents.Where(IsIncluded)
                     .ToList()
                 : allLocalSeasonEvents;
 
@@ -793,16 +786,12 @@ public class LeagueEventSyncService
             // and get picked up here on the next sync). Rows holding files
             // are kept but unmonitored, so they stop upgrade-grabbing and
             // the user decides what to do with the media.
-            if (monitoredTeamIds.Any() && !league.KeepAllEvents)
+            if (monitoredTeamIds.Any() || fullSeasonEvents.Any(IsDisabledSpecial))
             {
                 var orphanedIds = orphanedEvents.Select(e => e.Id).ToHashSet();
-                bool MatchesTeamFilter(Event e) =>
-                    (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
-                    (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId));
                 var outOfFilter = allLocalSeasonEvents
                     .Where(e => !orphanedIds.Contains(e.Id))
-                    .Where(e => !MatchesTeamFilter(e) &&
-                        !BypassesSeasonTeamFilter(e))
+                    .Where(e => !IsIncluded(e) && (!league.KeepAllEvents || IsDisabledSpecial(e)))
                     .ToList();
 
                 // SAFETY GUARD: a broken team-id mapping (the pre-short-id
@@ -815,7 +804,11 @@ public class LeagueEventSyncService
                 {
                     _logger.LogWarning("[League Event Sync] Season {Season}: every local event fails the monitored-team filter ({Count} candidates). This looks like a team id mismatch, not a real selection - skipping out-of-filter cleanup.",
                         season, outOfFilter.Count);
-                    outOfFilter.Clear();
+                    outOfFilter = outOfFilter.Where(e =>
+                        SpecialEventClassifier.Classify(e.Round, e.Title, cupStageSizes,
+                            e.HasLaterSeasonFinal) != SpecialEventClassifier.SpecialTier.None &&
+                        SpecialEventClassifier.TeamMode(league, SpecialEventClassifier.Classify(e.Round,
+                            e.Title, cupStageSizes, e.HasLaterSeasonFinal)) == SpecialEventTeamMode.Off).ToList();
                 }
 
                 if (outOfFilter.Any())
@@ -1784,7 +1777,7 @@ public class LeagueEventSyncService
                 }
 
                 existingEvent.Season = apiEvent.Season;
-                existingEvent.SeasonNumber = ParseSeasonNumber(apiEvent.Season);
+                existingEvent.SeasonNumber = SeasonNumberParser.Parse(apiEvent.Season);
                 needsUpdate = true;
             }
 
@@ -1863,7 +1856,7 @@ public class LeagueEventSyncService
             // Backfill Plex episode numbers for existing events (migration support)
             if (!existingEvent.SeasonNumber.HasValue && !string.IsNullOrEmpty(apiEvent.Season))
             {
-                existingEvent.SeasonNumber = ParseSeasonNumber(apiEvent.Season);
+                existingEvent.SeasonNumber = SeasonNumberParser.Parse(apiEvent.Season);
                 needsUpdate = true;
             }
 
@@ -1921,11 +1914,18 @@ public class LeagueEventSyncService
             // that they chose it.
             if (!existingEvent.ManuallyMonitored && !existingEvent.Monitored && league.Monitored)
             {
-                var isSpecial = SpecialEventClassifier.BypassesTeamFilter(
-                    apiEvent.Round,
-                    LeagueSportRules.IsTeamlessSport(league.Sport, league.Name, league.SportFormat) ? null : apiEvent.Title,
-                    league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
-                    cupStageSizes, apiEvent.HasLaterSeasonFinal);
+                var isTeamless = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name, league.SportFormat);
+                var isSpecial = isTeamless
+                    ? SpecialEventClassifier.BypassesTeamFilter(apiEvent.Round, null,
+                        league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+                        cupStageSizes, apiEvent.HasLaterSeasonFinal)
+                    : SpecialEventClassifier.Classify(apiEvent.Round, apiEvent.Title, cupStageSizes,
+                        apiEvent.HasLaterSeasonFinal) != SpecialEventClassifier.SpecialTier.None &&
+                      SpecialEventClassifier.IsIncludedByTeamSelection(league, apiEvent.Round,
+                        apiEvent.Title,
+                        (apiEvent.HomeTeamExternalId != null && monitoredTeamIds.Contains(apiEvent.HomeTeamExternalId)) ||
+                        (apiEvent.AwayTeamExternalId != null && monitoredTeamIds.Contains(apiEvent.AwayTeamExternalId)),
+                        cupStageSizes, apiEvent.HasLaterSeasonFinal);
 
                 if (isSpecial
                     && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
@@ -2016,7 +2016,7 @@ public class LeagueEventSyncService
             AwayTeamName = apiEvent.AwayTeamName,
 
             Season = apiEvent.Season,
-            SeasonNumber = ParseSeasonNumber(apiEvent.Season),
+            SeasonNumber = SeasonNumberParser.Parse(apiEvent.Season),
             // Use API episode number (matches Plex metadata) or fall back to local calculation.
             // Postponed/cancelled events resolve to null (no episode index), matching the hub.
             EpisodeNumber = GetEpisodeNumberFromApiOrCalculate(
@@ -2128,16 +2128,16 @@ public class LeagueEventSyncService
             (!string.IsNullOrEmpty(apiEvent.HomeTeamExternalId) && monitoredTeamIds.Contains(apiEvent.HomeTeamExternalId!)) ||
             (!string.IsNullOrEmpty(apiEvent.AwayTeamExternalId) && monitoredTeamIds.Contains(apiEvent.AwayTeamExternalId!));
 
-        return matchesTeam || SpecialEventClassifier.BypassesTeamFilter(
-            apiEvent.Round, apiEvent.Title,
-            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason, cupStageSizes, apiEvent.HasLaterSeasonFinal);
+        return SpecialEventClassifier.IsIncludedByTeamSelection(league, apiEvent.Round,
+            apiEvent.Title, matchesTeam, cupStageSizes, apiEvent.HasLaterSeasonFinal);
     }
 
     /// <summary>
     /// Determines if an event should be monitored based on the league's MonitorType setting
     /// </summary>
     internal static bool ShouldMonitorEvent(League league, DateTime eventDate, string? eventSeason, string currentSeason, string latestSeasonWithData,
-        string? round, string? title, IReadOnlySet<int> cupStageSizes, bool? hasLaterSeasonFinal = null)
+        string? round, string? title, IReadOnlySet<int> cupStageSizes, bool? hasLaterSeasonFinal = null,
+        bool manualOverride = false)
     {
         var now = DateTime.UtcNow;
 
@@ -2147,11 +2147,18 @@ public class LeagueEventSyncService
             return false;
         }
 
-        var isSpecial = SpecialEventClassifier.BypassesTeamFilter(
-            round,
-            LeagueSportRules.IsTeamlessSport(league.Sport, league.Name, league.SportFormat) ? null : title,
-            league.MonitorFinals, league.MonitorPlayoffs, league.MonitorPreseason,
+        var isTeamless = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name, league.SportFormat);
+        var tier = SpecialEventClassifier.Classify(round, isTeamless ? null : title,
             cupStageSizes, hasLaterSeasonFinal);
+        var isSpecial = isTeamless
+            ? SpecialEventClassifier.BypassesTeamFilter(round, null, league.MonitorFinals,
+                league.MonitorPlayoffs, league.MonitorPreseason, cupStageSizes, hasLaterSeasonFinal)
+            : tier != SpecialEventClassifier.SpecialTier.None &&
+                (manualOverride || SpecialEventClassifier.TeamMode(league, tier) != SpecialEventTeamMode.Off);
+        if (!isTeamless && tier != SpecialEventClassifier.SpecialTier.None && !isSpecial)
+        {
+            return false;
+        }
 
         // Special events only. Which kinds is the toggles above, how far back
         // is the reach beside them, so this reads the same way as every other
@@ -2315,27 +2322,6 @@ public class LeagueEventSyncService
             (title ?? string.Empty).ToLowerInvariant()
                 .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return $"{day}|{normalized}";
-    }
-
-    /// <summary>
-    /// Parse season string to extract year as integer for Plex compatibility
-    /// Examples: "2024" -> 2024, "2023-2024" -> 2023, "2023/24" -> 2023
-    /// </summary>
-    private static int? ParseSeasonNumber(string? season)
-    {
-        if (string.IsNullOrEmpty(season))
-            return null;
-
-        // Try to parse as direct integer first (most common case: "2024")
-        if (int.TryParse(season, out var year))
-            return year;
-
-        // Handle multi-year formats like "2023-2024" or "2023/24"
-        var parts = season.Split(new[] { '-', '/', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length > 0 && int.TryParse(parts[0], out var startYear))
-            return startYear;
-
-        return null;
     }
 
     /// <summary>

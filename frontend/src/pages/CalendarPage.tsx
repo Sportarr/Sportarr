@@ -969,7 +969,7 @@ export default function CalendarPage() {
                               {day.date.getDate()}
                             </div>
                           )}
-                          <div className="flex h-full flex-col px-1 py-0.5">
+                          <div className="flex flex-col px-1 py-0.5">
                             {/* Day Header */}
                             <div className={`flex items-center justify-between ${currentDayIsToday ? 'mb-1' : 'mb-0.5'}`}>
                               <div className={`text-xs ${currentDayIsToday ? 'invisible font-bold' : 'font-semibold text-gray-300'}`}>
@@ -1021,7 +1021,7 @@ export default function CalendarPage() {
                             ) : (
                               <div
                                 data-testid={`calendar-day-events-${formatDateInputValue(day.date)}`}
-                                className="space-y-1 overflow-y-auto pr-0.5"
+                                className="space-y-1 pr-0.5"
                               >
                                 {dayEvents.map(event => (
                                   <EventCard

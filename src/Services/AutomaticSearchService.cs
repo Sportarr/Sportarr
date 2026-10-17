@@ -460,6 +460,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             result.SearchComplete = searchComplete;
 
             var knownLeagues = await LeagueMatchContext.LoadAsync(_db);
+            var venueContext = await NascarVenueMatchContext.LoadAsync(_db, evt);
             IReadOnlyCollection<Event>? datePeers = null;
             if (EventDateMatchContext.ShouldLoadPeers(evt))
             {
@@ -498,8 +499,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // an unmonitored pre-lims release could be grabbed while the monitored main
                 // card is ignored. When the event (or, by inheritance, its league) monitors
                 // only specific parts, drop releases whose detected part is not monitored.
-                // Full-event files (no detected part) are kept; manual searches are untouched
-                // so an explicit user search still sees everything.
+                // Packs and full-event releases remain eligible. Manual searches still show every part.
                 if (!isManualSearch && string.IsNullOrEmpty(part) &&
                     config.EnableMultiPartEpisodes && EventPartDetector.IsFightingSport(evt.Sport ?? ""))
                 {
@@ -513,10 +513,17 @@ public class AutomaticSearchService : IAutomaticSearchService
                         var beforeCount = allReleases.Count;
                         allReleases = allReleases.Where(r =>
                         {
-                            var detected = _partDetector.DetectPart(
-                                r.Title, evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
-                            // Keep full-event files (no part) and monitored parts; drop the rest.
-                            return detected == null || monitoredSet.Contains(detected.SegmentName);
+                            if (r.IsPack)
+                                return true;
+                            var identity = Helpers.PartIdentityResolver.Resolve(
+                                null, r.Title, null, evt.Sport, evt.Title, evt.League?.Name,
+                                config.EnableMultiPartEpisodes);
+                            var releasePart = EffectivePart(identity, null, evt, r.Title, false);
+                            if (identity.Kind is Helpers.PartIdentityKind.Ambiguous or Helpers.PartIdentityKind.UnsupportedLabel)
+                                releasePart = _partDetector.DetectPart(
+                                    r.Title, evt.Sport ?? string.Empty, evt.Title, evt.League?.Name)?.SegmentName;
+                            return releasePart == null || EventPartDetector.IsFullEvent(releasePart) ||
+                                   monitoredSet.Contains(releasePart);
                         }).ToList();
 
                         var dropped = beforeCount - allReleases.Count;
@@ -548,7 +555,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                     {
                         release.MatchScore = _releaseMatchScorer.CalculateMatchScore(
                             release.Title, evt, knownLeagues, part, config.EnableMultiPartEpisodes,
-                            roundRaceNumbers);
+                            roundRaceNumbers, venueContext, release.SportarrEventId);
                         scoredCount++;
                     }
 
@@ -650,6 +657,41 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // - Quality cutoff checking
                 // - Custom format minimum score
                 // Releases with Approved=true and no rejections are valid candidates
+                // Under source precedence a release that would replace an IPTV
+                // recording isn't held to the profile's allowed qualities or
+                // minimum format score.
+                // Each release is judged against the file for the part it
+                // would fill, found as the upgrade check below finds it: the
+                // backlog searches multi-part events with no part.
+                if (config.DvrReplaceRecordingsWithIndexerReleases)
+                {
+                    var heldFiles = await _db.EventFiles.AsNoTracking()
+                        .HeldFiles(evt.Id)
+                        .ToListAsync();
+                    foreach (var release in allReleases)
+                    {
+                        var releasePart = EffectivePart(Helpers.PartIdentityResolver.Resolve(
+                            part, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
+                            config.EnableMultiPartEpisodes, release.IsPack), part, evt, release.Title, release.IsPack);
+                        var heldForLift = releasePart == null
+                            ? heldFiles.FirstOrDefault(f => f.PartName == null)
+                            : HeldFileForPart(heldFiles, releasePart, evt);
+                        if (releasePart == null && heldFiles.Any(f => f.PartName != null))
+                            continue;
+                        if (!string.IsNullOrEmpty(releasePart) &&
+                            !EventPartDetector.IsFullEvent(releasePart) &&
+                            heldFiles.Any(f => f.PartName == null))
+                            continue;
+                        if ((release.IsPack || EventPartDetector.IsFullEvent(releasePart)) &&
+                            heldFiles.Any(f => !f.IsIptvRecording))
+                            continue;
+                        if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldForLift))
+                        {
+                            Helpers.SourcePrecedence.LiftQualityProfileRejections(release);
+                        }
+                    }
+                }
+
                 var approvedReleases = allReleases
                     .Where(r => r.Approved && !r.Rejections.Any())
                     .ToList();
@@ -870,11 +912,10 @@ public class AutomaticSearchService : IAutomaticSearchService
                 EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? string.Empty, evt.League?.Name);
             if (isIncompletePartlessSearch)
             {
-                var presentParts = (await _db.EventFiles.AsNoTracking()
-                    .Where(f => f.EventId == eventId && f.Exists && f.PartNumber != null)
-                    .Select(f => f.PartNumber)
-                    .ToListAsync()).Where(n => n.HasValue).Select(n => n!.Value).ToHashSet();
-                if (presentParts.Count > 0)
+                var presentPartFiles = await _db.EventFiles.AsNoTracking()
+                    .Where(f => f.EventId == eventId && f.Exists && (f.PartName != null || f.PartNumber != null))
+                    .ToListAsync();
+                if (presentPartFiles.Count > 0)
                 {
                     var beforeCount = matchedReleases.Count;
                     matchedReleases = matchedReleases.Where(release =>
@@ -882,8 +923,11 @@ public class AutomaticSearchService : IAutomaticSearchService
                         var identity = Helpers.PartIdentityResolver.Resolve(
                             null, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
                             config.EnableMultiPartEpisodes, release.IsPack);
-                        return identity.Kind != Helpers.PartIdentityKind.InferredPart ||
-                               identity.Part == null || !presentParts.Contains(identity.Part.PartNumber);
+                        var releasePart = EffectivePart(identity, null, evt, release.Title, release.IsPack);
+                        var heldForPart = releasePart == null || EventPartDetector.IsFullEvent(releasePart)
+                            ? null : HeldFileForPart(presentPartFiles, releasePart, evt);
+                        return heldForPart == null ||
+                            Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldForPart);
                     }).ToList();
                     if (matchedReleases.Count < beforeCount)
                         _logger.LogInformation("[Automatic Search] Skipped {Count} release(s) for parts already present: {Title}",
@@ -903,70 +947,74 @@ public class AutomaticSearchService : IAutomaticSearchService
             if (!isManualSearch && (!string.IsNullOrEmpty(part) || isIncompletePartlessSearch))
             {
                 var existingPartFiles = await _db.EventFiles
-                    .Where(f => f.EventId == eventId && f.Exists && f.PartName != null &&
-                        (part == null || f.PartName != part))
+                    .Where(f => f.EventId == eventId && f.Exists && f.PartName != null)
                     .ToListAsync();
 
                 if (existingPartFiles.Any())
                 {
-                    var referenceFile = existingPartFiles.First();
-
-                    // Extract resolution from EventFile.Quality (format: "1080p WEB-DL H.264")
-                    var referenceResolution = ExtractResolution(referenceFile.Quality);
-                    // Build quality string for group matching (e.g., "WEBDL-1080p" from source "WEB-DL" and resolution "1080p")
-                    var referenceQualityForGroup = BuildQualityString(referenceFile.Source, referenceResolution);
-                    var referenceQualityGroup = FindQualityGroup(referenceQualityForGroup);
-                    var referenceCodec = referenceFile.Codec;
-
-                    _logger.LogInformation("[Automatic Search] Multi-part consistency check: Found existing parts with Resolution={Resolution}, Source={Source}, QualityGroup={Group}, Codec={Codec}",
-                        referenceResolution, referenceFile.Source, referenceQualityGroup ?? "none", referenceCodec ?? "none");
-
                     var consistentReleases = matchedReleases.Where(r =>
                     {
+                        var releasePart = part;
                         if (isIncompletePartlessSearch)
                         {
                             var identity = Helpers.PartIdentityResolver.Resolve(
                                 null, r.Title, null, evt.Sport, evt.Title, evt.League?.Name,
                                 config.EnableMultiPartEpisodes, r.IsPack);
-                            if (identity.Kind != Helpers.PartIdentityKind.InferredPart)
+                            releasePart = EffectivePart(identity, null, evt, r.Title, r.IsPack);
+                            if (releasePart == null || EventPartDetector.IsFullEvent(releasePart))
                                 return true;
                         }
+                        var replacedFile = !string.IsNullOrEmpty(releasePart) &&
+                            !EventPartDetector.IsFullEvent(releasePart)
+                            ? HeldFileForPart(existingPartFiles, releasePart, evt) : null;
+                        var survivingFiles = existingPartFiles.Where(f => f != replacedFile);
 
                         // Extract resolution from release Quality (format: "WEBDL-1080p")
                         var releaseResolution = ExtractResolution(r.Quality);
+                        var releaseQualityGroup = FindQualityGroup(r.Quality);
 
-                        // Check resolution match - REQUIRED for Plex compatibility
-                        bool resolutionMatch = string.IsNullOrEmpty(referenceResolution) ||
-                            string.Equals(releaseResolution, referenceResolution, StringComparison.OrdinalIgnoreCase);
+                        foreach (var referenceFile in survivingFiles)
+                        {
+                            var referenceResolution = ExtractResolution(referenceFile.Quality);
+                            var referenceQualityForGroup = BuildQualityString(referenceFile.Source, referenceResolution);
+                            var referenceQualityGroup = FindQualityGroup(referenceQualityForGroup);
+                            var referenceCodec = referenceFile.Codec;
+
+                            // Check resolution match - REQUIRED for Plex compatibility
+                            bool resolutionMatch = string.IsNullOrEmpty(referenceResolution) ||
+                                string.Equals(releaseResolution, referenceResolution, StringComparison.OrdinalIgnoreCase);
 
                         // Check quality group match (WEBDL and WEBRip are in same "WEB" group)
                         // This allows downloading WEBRip when existing file is WEBDL, as they're equivalent quality
-                        var releaseQualityGroup = FindQualityGroup(r.Quality);
-                        bool qualityGroupMatch = string.IsNullOrEmpty(referenceQualityGroup) ||
-                            string.IsNullOrEmpty(releaseQualityGroup) ||
-                            string.Equals(releaseQualityGroup, referenceQualityGroup, StringComparison.OrdinalIgnoreCase);
+                            bool qualityGroupMatch = string.IsNullOrEmpty(referenceQualityGroup) ||
+                                string.IsNullOrEmpty(releaseQualityGroup) ||
+                                string.Equals(releaseQualityGroup, referenceQualityGroup, StringComparison.OrdinalIgnoreCase);
 
                         // Codec match - REQUIRED for Plex compatibility when reference has a codec
                         // Mismatched codecs (e.g., H.264 vs H.265) cause playback issues in Plex
-                        bool codecMatch = Helpers.VideoCodecIdentity.Matches(referenceCodec, r.Codec);
+                            bool codecMatch = Helpers.VideoCodecIdentity.Matches(referenceCodec, r.Codec);
 
-                        if (!resolutionMatch)
-                        {
-                            _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Resolution mismatch (need {Ref}, got {Release})",
-                                r.Title, referenceResolution, releaseResolution);
-                        }
-                        else if (!qualityGroupMatch)
-                        {
-                            _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Quality group mismatch (need {Ref}, got {Release})",
-                                r.Title, referenceQualityGroup, releaseQualityGroup);
-                        }
-                        else if (!codecMatch)
-                        {
-                            _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Codec mismatch (need {Ref}, got {Release})",
-                                r.Title, referenceCodec, r.Codec);
+                            if (!resolutionMatch)
+                            {
+                                _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Resolution mismatch (need {Ref}, got {Release})",
+                                    r.Title, referenceResolution, releaseResolution);
+                            }
+                            else if (!qualityGroupMatch)
+                            {
+                                _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Quality group mismatch (need {Ref}, got {Release})",
+                                    r.Title, referenceQualityGroup, releaseQualityGroup);
+                            }
+                            else if (!codecMatch)
+                            {
+                                _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Codec mismatch (need {Ref}, got {Release})",
+                                    r.Title, referenceCodec, r.Codec);
+                            }
+
+                            if (!resolutionMatch || !qualityGroupMatch || !codecMatch)
+                                return false;
                         }
 
-                        return resolutionMatch && qualityGroupMatch && codecMatch;
+                        return true;
                     }).ToList();
 
                     if (consistentReleases.Any())
@@ -977,11 +1025,9 @@ public class AutomaticSearchService : IAutomaticSearchService
                     }
                     else
                     {
-                        _logger.LogWarning("[Automatic Search] No releases match existing part specs (Resolution={Resolution}, QualityGroup={QualityGroup}, Codec={Codec}). Skipping to avoid Plex playback issues.",
-                            referenceResolution, referenceQualityGroup, referenceCodec);
-                        // Return failure - don't download mismatched quality/codec as it breaks Plex
+                        _logger.LogWarning("[Automatic Search] No releases match the other parts' specs. Skipping to avoid Plex playback issues.");
                         result.Success = false;
-                        result.Message = $"No releases found matching existing parts (need {referenceResolution} {referenceQualityGroup} {referenceCodec})";
+                        result.Message = "No releases found matching existing parts";
                         return result;
                     }
                 }
@@ -1055,21 +1101,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                     .Where(g => g.EventId == eventId)
                     .ToListAsync();
 
-                // Title and indexer are the last resort on purpose. Some
-                // indexers mint a fresh guid and download url per query, so the
-                // identifier match alone found nothing and the guard waved the
-                // same release through on every pass.
-                GrabHistory? FindPriorGrab(ReleaseSearchResult r) =>
-                    eventGrabs
-                        .Where(g =>
-                            (!string.IsNullOrEmpty(r.TorrentInfoHash) && g.TorrentInfoHash == r.TorrentInfoHash) ||
-                            (!string.IsNullOrEmpty(r.Guid) && g.Guid == r.Guid) ||
-                            (!string.IsNullOrEmpty(r.DownloadUrl) && g.DownloadUrl == r.DownloadUrl) ||
-                            (!string.IsNullOrEmpty(r.Title)
-                                && string.Equals(g.Title, r.Title, StringComparison.OrdinalIgnoreCase)
-                                && string.Equals(g.Indexer, r.Indexer, StringComparison.OrdinalIgnoreCase)))
-                        .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
-                        .FirstOrDefault();
+                GrabHistoryReleaseIdentity.PriorGrab? FindPriorGrab(ReleaseSearchResult r) =>
+                    GrabHistoryReleaseIdentity.FindPrior(eventGrabs, r);
 
                 if (eventGrabs.Count > 0)
                 {
@@ -1078,7 +1111,9 @@ public class AutomaticSearchService : IAutomaticSearchService
                     matchedReleases = matchedReleases
                         .Where(r =>
                         {
-                            var decision = GrabHistoryChurnGuard.Evaluate(FindPriorGrab(r), nowUtc);
+                            var prior = FindPriorGrab(r);
+                            var decision = GrabHistoryChurnGuard.Evaluate(
+                                prior?.History, nowUtc, prior?.RegrabCount);
                             return decision is GrabHistoryChurnGuard.Decision.Allow
                                 or GrabHistoryChurnGuard.Decision.AllowControlledRetry;
                         })
@@ -1100,6 +1135,25 @@ public class AutomaticSearchService : IAutomaticSearchService
 
             if (partlessMultiPartRequest && !isManualSearch)
             {
+                // A release without a part can otherwise be compared with another part's file.
+                var heldReleaseTitles = (await _db.EventFiles.AsNoTracking()
+                        .HeldFiles(eventId)
+                        .Select(f => new { f.ReleaseTitle, f.OriginalTitle })
+                        .ToListAsync())
+                    .SelectMany(f => new[] { f.ReleaseTitle, f.OriginalTitle })
+                    .OfType<string>()
+                    .Where(title => !string.IsNullOrWhiteSpace(title))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                matchedReleases = matchedReleases
+                    .Where(release => release.IsPack || !heldReleaseTitles.Contains(release.Title))
+                    .ToList();
+                if (matchedReleases.Count == 0)
+                {
+                    result.Success = false;
+                    result.Message = "Only releases already held for this event were found";
+                    return result;
+                }
+
                 var failuresByPart = new Dictionary<string, DownloadQueueItem?>(StringComparer.OrdinalIgnoreCase);
                 var availableReleases = new List<ReleaseSearchResult>();
                 string? firstRetryRefusal = null;
@@ -1108,12 +1162,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                     var identity = Helpers.PartIdentityResolver.Resolve(
                         part, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
                         config.EnableMultiPartEpisodes, release.IsPack);
-                    var releasePart = identity.Kind switch
-                    {
-                        Helpers.PartIdentityKind.NotApplicable => null,
-                        Helpers.PartIdentityKind.CompleteEventLabel => EventPartDetector.FullEventSegmentName,
-                        _ => identity.Part?.SegmentName ?? part
-                    };
+                    var releasePart = EffectivePart(identity, part, evt, release.Title, release.IsPack);
                     var partKey = releasePart ?? string.Empty;
                     if (!failuresByPart.TryGetValue(partKey, out var failure))
                     {
@@ -1153,6 +1202,51 @@ public class AutomaticSearchService : IAutomaticSearchService
                 }
             }
 
+            // Keep score upgrades at the cutoff visible to the release picker.
+            if (qualityProfile.CutoffQuality.HasValue)
+            {
+                var cutoffRank = Helpers.QualityProfileRanker.GetCutoffRank(qualityProfile, qualityProfile.CutoffQuality.Value);
+                if (cutoffRank > 0)
+                {
+                    var heldFilesAtCutoff = await _db.EventFiles.AsNoTracking()
+                        .HeldFiles(eventId)
+                        .ToListAsync();
+                    if (heldFilesAtCutoff.Count > 0 || (evt.HasFile && !string.IsNullOrEmpty(evt.FilePath)))
+                    {
+                        matchedReleases = matchedReleases.Where(release =>
+                        {
+                            var identity = Helpers.PartIdentityResolver.Resolve(
+                                part, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
+                                config.EnableMultiPartEpisodes, release.IsPack);
+                            var releasePart = EffectivePart(identity, part, evt, release.Title, release.IsPack);
+                            if (!evt.HasFile && (releasePart == null || EventPartDetector.IsFullEvent(releasePart)))
+                                return true;
+
+                            var heldFile = HeldFileForPart(heldFilesAtCutoff, releasePart, evt);
+                            if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, heldFile))
+                                return true;
+
+                            var existingQuality = heldFile?.Quality;
+                            if (heldFile == null && evt.HasFile && !string.IsNullOrEmpty(evt.FilePath)
+                                && (releasePart == null || EventPartDetector.IsFullEvent(releasePart)))
+                                existingQuality = evt.Quality;
+                            if (existingQuality == null)
+                                return true;
+
+                            var existingRank = Helpers.QualityProfileRanker.GetRank(qualityProfile, existingQuality);
+                            return existingRank < cutoffRank
+                                || Helpers.QualityProfileRanker.GetRank(qualityProfile, release.Quality) <= existingRank;
+                        }).ToList();
+                        if (matchedReleases.Count == 0)
+                        {
+                            result.Success = false;
+                            result.Message = "Only releases above the reached quality cutoff were found";
+                            return result;
+                        }
+                    }
+                }
+            }
+
             // Select best release using delay profile and protocol priority (from validated releases only)
             var bestRelease = _delayProfileService.SelectBestReleaseWithDelayProfile(
                 matchedReleases, delayProfile, qualityProfile, config.DownloadPropersAndRepacks);
@@ -1168,12 +1262,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             var acquiredIdentity = Helpers.PartIdentityResolver.Resolve(
                 part, bestRelease.Title, null, evt.Sport, evt.Title, evt.League?.Name,
                 config.EnableMultiPartEpisodes, bestRelease.IsPack);
-            var effectivePart = acquiredIdentity.Kind switch
-            {
-                Helpers.PartIdentityKind.NotApplicable => null,
-                Helpers.PartIdentityKind.CompleteEventLabel => EventPartDetector.FullEventSegmentName,
-                _ => acquiredIdentity.Part?.SegmentName ?? part
-            };
+            var effectivePart = EffectivePart(acquiredIdentity, part, evt, bestRelease.Title, bestRelease.IsPack);
             var isFullEventPart = EventPartDetector.IsFullEvent(effectivePart);
 
             if (partlessMultiPartRequest)
@@ -1244,11 +1333,11 @@ public class AutomaticSearchService : IAutomaticSearchService
             // 1. A full event file exists (PartName is null) - full event covers all parts, skip download
             // 2. A file for THIS specific part exists - do quality comparison
             // 3. No file for this part exists - allow download (other parts may exist)
-            if (evt.HasFile || acquiredIdentity.Part != null)
+            if (evt.HasFile || (effectivePart != null && !isFullEventPart))
             {
                 // Get existing files for this event
                 var existingFiles = await _db.EventFiles.AsNoTracking()
-                    .Where(f => f.EventId == eventId && f.Exists)
+                    .HeldFiles(eventId)
                     .ToListAsync();
 
                 EventFile? relevantFile = null;
@@ -1257,8 +1346,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 {
                     // Searching for a specific part - check for full event file OR matching part file
                     var fullEventFile = existingFiles.FirstOrDefault(f => f.PartName == null);
-                    var partSpecificFile = existingFiles.FirstOrDefault(f =>
-                        string.Equals(f.PartName, effectivePart, StringComparison.OrdinalIgnoreCase));
+                    var partSpecificFile = HeldFileForPart(existingFiles, effectivePart, evt);
 
                     if (fullEventFile != null)
                     {
@@ -1287,7 +1375,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 {
                     // Not searching for a specific part - use event-level quality (legacy behavior)
                     // Or use the first/best existing file
-                    relevantFile = existingFiles.FirstOrDefault();
+                    relevantFile = HeldFileForPart(existingFiles, effectivePart, evt);
                     if (relevantFile != null)
                     {
                         _logger.LogInformation("[Automatic Search] Event already has file: {Quality} (Part: {Part})",
@@ -1320,7 +1408,14 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // 3. Check if existing file meets or exceeds CutoffQuality
                 // 4. Check if existing file meets or exceeds CutoffFormatScore
                 // 5. Compare profile rank and format score
-                if (relevantFile != null)
+                // Source precedence skips all of it: an indexer release
+                // replaces an IPTV recording whatever the profile says.
+                if (Helpers.SourcePrecedence.IndexerReleaseReplaces(config, relevantFile))
+                {
+                    _logger.LogInformation("[Automatic Search] Replacing IPTV recording ({Quality}) with indexer release {Title}",
+                        relevantFile.Quality ?? "null", bestRelease.Title);
+                }
+                else if (relevantFile != null)
                 {
                     // Use deterministic scoring only to identify an unreadable existing quality.
                     // Use the profile rank for preference decisions.
@@ -1413,7 +1508,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                                           (newReleaseFormatScore - existingFormatScore) >= qualityProfile.FormatScoreIncrement;
 
                     // If quality cutoff not met, allow quality upgrades
-                    // If quality cutoff met but format cutoff not met, only allow format upgrades
+                    // If quality cutoff met but format cutoff not met, only allow format upgrades at the same quality
                     bool shouldUpgrade;
                     string upgradeReason;
 
@@ -1427,7 +1522,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                         shouldUpgrade = true;
                         upgradeReason = "proper/repack revision of the same quality rank";
                     }
-                    else if (qualityCutoffMet && !formatCutoffMet && isFormatUpgrade)
+                    else if (qualityCutoffMet && !formatCutoffMet && isFormatUpgrade && newReleaseQualityRank == existingQualityRank)
                     {
                         shouldUpgrade = true;
                         upgradeReason = $"format score upgrade ({existingFormatScore} -> {newReleaseFormatScore})";
@@ -1524,7 +1619,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             // the indexer defines one (packs are typically expected to seed
             // longer than single events).
             using var acquisition = await _downloadClientService.BeginAcquisitionAsync();
-            var downloadId = await _downloadClientService.AddDownloadAsync(
+            var downloadResult = await _downloadClientService.AddDownloadWithResultAsync(
                 downloadClient,
                 bestRelease.DownloadUrl,
                 grabCategory,
@@ -1535,11 +1630,18 @@ public class AutomaticSearchService : IAutomaticSearchService
                     : indexerRecord?.SeedTime
             );
 
-            if (downloadId == null)
+            var downloadId = downloadResult.DownloadId;
+            if (!downloadResult.Success || downloadId == null)
             {
                 result.Success = false;
-                result.Message = "Failed to add to download client";
-                _logger.LogError("[Automatic Search] Failed to add to download client: {Client}", downloadClient.Name);
+                var reason = string.IsNullOrWhiteSpace(downloadResult.ErrorMessage)
+                    ? null
+                    : SecretRedactor.Message(downloadResult.ErrorMessage);
+                result.Message = reason == null || reason == "Download client returned null - check logs for details"
+                    ? $"Failed to add to {downloadClient.Name}. Check System > Logs for details."
+                    : $"Failed to add to {downloadClient.Name}: {reason}";
+                _logger.LogError("[Automatic Search] Failed to add to download client {Client}: {Error}",
+                    downloadClient.Name, result.Message);
                 return result;
             }
 
@@ -1603,7 +1705,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 IsManualSearch = isManualSearch
             };
 
-            _db.DownloadQueue.Add(queueItem);
+            queueItem = await QueueJobAttachment.AddOrAttachAsync(_db, queueItem);
 
             try
             {
@@ -1645,17 +1747,8 @@ public class AutomaticSearchService : IAutomaticSearchService
             DateTime? lastRegrabAttempt = null;
             if (!isManualSearch)
             {
-                var priorGrabOfSelected = eventGrabs
-                    .Where(g =>
-                        (!string.IsNullOrEmpty(bestRelease.TorrentInfoHash) && g.TorrentInfoHash == bestRelease.TorrentInfoHash) ||
-                        (!string.IsNullOrEmpty(bestRelease.Guid) && g.Guid == bestRelease.Guid) ||
-                        (!string.IsNullOrEmpty(bestRelease.DownloadUrl) && g.DownloadUrl == bestRelease.DownloadUrl) ||
-                        (!string.IsNullOrEmpty(bestRelease.Title)
-                            && string.Equals(g.Title, bestRelease.Title, StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(g.Indexer, bestRelease.Indexer, StringComparison.OrdinalIgnoreCase)))
-                    .OrderByDescending(g => g.LastRegrabAttempt ?? g.GrabbedAt)
-                    .FirstOrDefault();
-                if (priorGrabOfSelected != null && !priorGrabOfSelected.WasImported)
+                var priorGrabOfSelected = GrabHistoryReleaseIdentity.FindPrior(eventGrabs, bestRelease);
+                if (priorGrabOfSelected != null && !priorGrabOfSelected.History.WasImported)
                 {
                     regrabCount = priorGrabOfSelected.RegrabCount + 1;
                     lastRegrabAttempt = DateTime.UtcNow;
@@ -1758,7 +1851,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 _logger.LogDebug("[Automatic Search] Checking status after 2s delay...");
 
                 var status = await _downloadClientService.GetDownloadStatusAsync(downloadClient, downloadId);
-                if (status != null)
+                if (status != null && queueItem.Status is not (DownloadStatus.Importing or DownloadStatus.Imported))
                 {
                     queueItem.Status = status.Status switch
                     {
@@ -2109,6 +2202,39 @@ public class AutomaticSearchService : IAutomaticSearchService
         return status.Equals("Postponed", StringComparison.OrdinalIgnoreCase)
             || status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
             || status.Equals("Canceled", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The part a release would fill: the part named in its title, or the
+    /// requested part when the title names none.
+    /// </summary>
+    private string? EffectivePart(Helpers.PartIdentityResolution identity, string? requestedPart, Event evt,
+        string releaseTitle, bool isPack) => identity.Kind switch
+    {
+        Helpers.PartIdentityKind.NotApplicable => null,
+        Helpers.PartIdentityKind.CompleteEventLabel => EventPartDetector.FullEventSegmentName,
+        Helpers.PartIdentityKind.Unlabelled when string.IsNullOrEmpty(requestedPart) && !isPack =>
+            _partDetector.DetectPart(releaseTitle, evt.Sport ?? string.Empty, evt.Title, evt.League?.Name)?.SegmentName,
+        _ => identity.Part?.SegmentName ?? requestedPart
+    };
+
+    /// <summary>
+    /// The held file a release for this part is measured against: that
+    /// part's file, or for no part (or the full event) the first held file,
+    /// which HeldFiles orders whole-event first.
+    /// </summary>
+    private static EventFile? HeldFileForPart(IEnumerable<EventFile> heldFiles, string? effectivePart, Event evt)
+    {
+        if (string.IsNullOrEmpty(effectivePart) || EventPartDetector.IsFullEvent(effectivePart))
+            return heldFiles.FirstOrDefault();
+
+        var partNumber = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? string.Empty, evt.Title, evt.League?.Name)
+            .FirstOrDefault(part => string.Equals(part.Name, effectivePart, StringComparison.OrdinalIgnoreCase))?.PartNumber;
+        return heldFiles.FirstOrDefault(file =>
+                   string.Equals(file.PartName, effectivePart, StringComparison.OrdinalIgnoreCase))
+               ?? (partNumber > 0
+                   ? heldFiles.FirstOrDefault(file => file.PartNumber == partNumber)
+                   : null);
     }
 
     /// <summary>

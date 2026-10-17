@@ -38,6 +38,7 @@ app.MapGet("/api/dvr/stats", async (SportarrDbContext db) =>
         importingCount = recordings.Count(r => r.Status == DvrRecordingStatus.Importing),
         failedCount = recordings.Count(r => r.Status == DvrRecordingStatus.Failed),
         cancelledCount = recordings.Count(r => r.Status == DvrRecordingStatus.Cancelled),
+        ignoredCount = recordings.Count(r => r.Status == DvrRecordingStatus.Ignored),
         // Bytes sitting in the DVR folders, and only those. Recordings are a
         // separate acquisition path from indexer grabs, so this number never
         // counts a torrent or a usenet download, and those totals never count
@@ -644,6 +645,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         simultaneousChannels = config.DvrSimultaneousChannels,
         conflictPolicy = config.DvrConflictPolicy,
         deleteAfterImport = config.DvrDeleteAfterImport,
+        replaceRecordingsWithIndexerReleases = config.DvrReplaceRecordingsWithIndexerReleases,
         recordingRetentionDays = config.DvrRecordingRetentionDays,
         keepLastRecordingsPerLeague = config.DvrKeepLastRecordingsPerLeague,
         hardwareAcceleration = config.DvrHardwareAcceleration,
@@ -738,6 +740,8 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
     }
     if (settings.TryGetProperty("deleteAfterImport", out var deleteAfter))
         config.DvrDeleteAfterImport = deleteAfter.GetBoolean();
+    if (settings.TryGetProperty("replaceRecordingsWithIndexerReleases", out var replaceRecordings))
+        config.DvrReplaceRecordingsWithIndexerReleases = replaceRecordings.GetBoolean();
     if (settings.TryGetProperty("recordingRetentionDays", out var retention))
         config.DvrRecordingRetentionDays = retention.GetInt32();
     if (settings.TryGetProperty("keepLastRecordingsPerLeague", out var keepLast))

@@ -14,6 +14,57 @@ namespace Sportarr.Api.Tests.Services;
 public class DiskScanPartCompletenessTests
 {
     [Fact]
+    public async Task DiskScanKeepsBothTrackedRowsWhenTwoFilesClaimOnePart()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "sportarr-scan-duplicate-" + Guid.NewGuid());
+        Directory.CreateDirectory(root);
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            await using var db = new SportarrDbContext(new DbContextOptionsBuilder<SportarrDbContext>()
+                .UseSqlite(connection).Options);
+            await db.Database.EnsureCreatedAsync();
+            var evt = new Event
+            {
+                Title = "Hull City vs Everton", Sport = "Soccer",
+                League = new League { Name = "Premier League", Sport = "Soccer" },
+                EventDate = new DateTime(2026, 10, 11, 15, 0, 0, DateTimeKind.Utc),
+                HasFile = true
+            };
+            db.Events.Add(evt);
+            await db.SaveChangesAsync();
+            var dvrPath = Path.Combine(root, "hull-dvr.mp4");
+            var webPath = Path.Combine(root, "hull-web.mkv");
+            await File.WriteAllTextAsync(dvrPath, "dvr");
+            await File.WriteAllTextAsync(webPath, "web");
+            db.EventFiles.AddRange(
+                new EventFile { EventId = evt.Id, FilePath = dvrPath, Exists = true },
+                new EventFile { EventId = evt.Id, FilePath = webPath, Exists = true });
+            await db.SaveChangesAsync();
+
+            var settings = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?> { ["Sportarr:DataPath"] = Path.Combine(root, "config") })
+                .Build();
+            var config = new ConfigService(settings, NullLogger<ConfigService>.Instance);
+            using var services = new ServiceCollection().AddSingleton(db).AddSingleton(config)
+                .BuildServiceProvider();
+            var scan = new DiskScanService(services, NullLogger<DiskScanService>.Instance);
+            var method = typeof(DiskScanService).GetMethod("ScanAllFilesAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            await (Task)method.Invoke(scan, new object[] { CancellationToken.None })!;
+
+            (await db.EventFiles.AsNoTracking().CountAsync()).Should().Be(2);
+            File.Exists(dvrPath).Should().BeTrue();
+            File.Exists(webPath).Should().BeTrue();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task DiskScanUnmonitorsPartialEventWhenItsLastFileWasDeleted()
     {
         var root = Path.Combine(Path.GetTempPath(), "sportarr-scan-deleted-part-" + Guid.NewGuid());

@@ -1,11 +1,13 @@
 using FluentAssertions;
 using FluentAssertions.Execution;
 using Microsoft.EntityFrameworkCore;
+using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class MotorsportQueryBaselineTests(ITestOutputHelper output)
 {
     private const string SilverstoneProbe = "Silverstone Grand Prix Practice 1";
@@ -21,6 +23,56 @@ public sealed class MotorsportQueryBaselineTests(ITestOutputHelper output)
         "Formula 1 2026 Round08", "Formula 1 2026 Monaco", "Formula 1 2026",
         "Formula1 2026 Round08", "Formula1 2026 Monaco", "Formula1 2026"
     };
+
+    [Fact]
+    public async Task NascarAutomaticSearchSelectsBristolOverAnotherSeasonVenue()
+    {
+        await using var rig = await MotorsportQueryHttpHarness.CreateAsync(output, "phrase");
+        rig.Event.League!.Name = "NASCAR Cup Series";
+        rig.Event.Title = "Bass Pro Shops Night - Race";
+        rig.Event.Round = "29";
+        rig.Event.Venue = "Bristol Motor Speedway";
+        rig.Event.Location = "United States";
+        rig.Event.EventDate = new DateTime(2026, 9, 19, 23, 30, 0, DateTimeKind.Utc);
+        rig.Db.Events.Add(new Event
+        {
+            Title = "Coca-Cola 600 - Race", Sport = "Motorsport", Season = "2026", Round = "12",
+            EventDate = new DateTime(2026, 5, 24, 22, 0, 0, DateTimeKind.Utc),
+            Venue = "Charlotte Motor Speedway", Location = "United States", League = rig.Event.League
+        });
+        await rig.Db.SaveChangesAsync();
+        rig.AddRelease("NASCAR Cup Series 2026 Round29 Charlotte Race 1080p WEB-DL H264", suppliedEventId: null, guid: "charlotte");
+        var bristol = rig.AddRelease(
+            "NASCAR Cup Series 2026 Round29 Bristol Motor Speedway TN Race 1080p WEB-DL H264", suppliedEventId: null, guid: "bristol");
+
+        var result = await rig.AutomaticAsync();
+
+        result.SelectedRelease.Should().Be(bristol);
+    }
+
+    [Fact]
+    public async Task NascarAutomaticSearchKeepsExactIdDespiteWrongVenueText()
+    {
+        await using var rig = await MotorsportQueryHttpHarness.CreateAsync(output, "phrase");
+        rig.Event.League!.Name = "NASCAR Cup Series";
+        rig.Event.Title = "Bass Pro Shops Night - Race";
+        rig.Event.Round = "29";
+        rig.Event.Venue = "Bristol Motor Speedway";
+        rig.Event.Location = "United States";
+        rig.Event.EventDate = new DateTime(2026, 9, 19, 23, 30, 0, DateTimeKind.Utc);
+        rig.Db.Events.Add(new Event
+        {
+            Title = "Coca-Cola 600 - Race", Sport = "Motorsport", Season = "2026", Round = "12",
+            EventDate = new DateTime(2026, 5, 24, 22, 0, 0, DateTimeKind.Utc),
+            Venue = "Charlotte Motor Speedway", Location = "United States", League = rig.Event.League
+        });
+        await rig.Db.SaveChangesAsync();
+        var exactId = rig.AddRelease("NASCAR Cup Series 2026 Round29 Charlotte Race 1080p WEB-DL H264", guid: "exact-id");
+
+        var result = await rig.AutomaticAsync();
+
+        result.SelectedRelease.Should().Be(exactId);
+    }
 
     [Theory]
     [InlineData("and")]

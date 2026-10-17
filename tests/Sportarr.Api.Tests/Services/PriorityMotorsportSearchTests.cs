@@ -487,6 +487,169 @@ public class PriorityMotorsportSearchTests
     }
 
     [Fact]
+    public void NascarRoundAtNamedVenueMatchesWhenReleaseIncludesCountry()
+    {
+        const string release = "NASCAR Cup Series 2026 Round29 Bristol Motor Speedway TN Race 1080p USA HDTV DD 5.1 H.264 English-egortech";
+        var wanted = Event(
+            "NASCAR Cup Series",
+            "Bass Pro Shops Night - Race",
+            "29",
+            eventDate: new DateTime(2026, 9, 19, 23, 30, 0, DateTimeKind.Utc));
+        wanted.Venue = "Bristol Motor Speedway";
+        wanted.Location = "United States";
+
+        var candidate = Release(release);
+        candidate.PublishDate = new DateTime(2026, 9, 20, 4, 0, 0, DateTimeKind.Utc);
+        var validation = Matcher.ValidateRelease(candidate, wanted);
+
+        validation.IsHardRejection.Should().BeFalse(
+            $"rejections {string.Join("; ", validation.Rejections)}");
+        validation.IsMatch.Should().BeTrue();
+        var venues = NascarVenueMatchContext.FromVenues(
+            "Bristol Motor Speedway", "Daytona International Speedway", "Charlotte Motor Speedway");
+        Scorer.CalculateMatchScore(release, wanted, venueContext: venues)
+            .Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.AutoGrabMatchScore);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Tennessee")]
+    public void NascarBristolMatchesWithoutCountryMetadata(string? location)
+    {
+        const string release = "NASCAR Cup Series 2026 Round29 Bristol Motor Speedway TN Race 1080p USA HDTV";
+        var wanted = Event(
+            "NASCAR Cup Series",
+            "Bass Pro Shops Night - Race",
+            "29",
+            eventDate: new DateTime(2026, 9, 19, 23, 30, 0, DateTimeKind.Utc));
+        wanted.Venue = "Bristol Motor Speedway";
+        wanted.Location = location;
+
+        var venues = NascarVenueMatchContext.FromVenues(
+            "Bristol Motor Speedway", "Daytona International Speedway", "Charlotte Motor Speedway");
+        Scorer.CalculateMatchScore(release, wanted, venueContext: venues)
+            .Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.AutoGrabMatchScore);
+    }
+
+    [Theory]
+    [InlineData("DuraMAX Grand Prix - Race", "3", "Circuit of the Americas", "NASCAR Cup Series 2026 Round03 COTA Circuit Race 1080p USA HDTV")]
+    [InlineData("South Point 400 - Race", "31", "Las Vegas Motor Speedway", "NASCAR Cup Series 2026 Round31 Vegas Speedway Race 1080p USA HDTV")]
+    public void NascarVenueAliasesRemainEligible(string title, string round, string venue, string release)
+    {
+        var wanted = Event("NASCAR Cup Series", title, round, "United States");
+        wanted.Venue = venue;
+
+        var venues = NascarVenueMatchContext.FromVenues(
+            "Circuit of the Americas", "Las Vegas Motor Speedway", "Bristol Motor Speedway");
+        Scorer.CalculateMatchScore(release, wanted, venueContext: venues)
+            .Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.AutoGrabMatchScore);
+    }
+
+    [Theory]
+    [InlineData("NASCAR Cup Series 2026 Round28 Bristol Motor Speedway TN Race 1080p USA HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Daytona International Speedway FL Race 1080p HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Daytona Race 1080p USA HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Miami Race 1080p USA HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Indy Race 1080p USA HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Talladega Race 1080p USA HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Charlotte Race 1080p USA HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Bristol Motor Speedway Daytona International Speedway Race 1080p USA HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Bristol Motor Speedway Canada Race 1080p HDTV")]
+    [InlineData("NASCAR Cup Series 2026 Round29 Bristol Motor Speedway USA Canada Race 1080p HDTV")]
+    public void NascarBristolRejectsWrongRoundOrVenue(string release)
+    {
+        var wanted = Event(
+            "NASCAR Cup Series",
+            "Bass Pro Shops Night - Race",
+            "29",
+            eventDate: new DateTime(2026, 9, 19, 23, 30, 0, DateTimeKind.Utc));
+        wanted.Venue = "Bristol Motor Speedway";
+        wanted.Location = "United States";
+
+        var venues = NascarVenueMatchContext.FromVenues(
+            "Bristol Motor Speedway", "Daytona International Speedway", "Charlotte Motor Speedway",
+            "Circuit of the Americas", "Miami International Autodrome", "Indianapolis Motor Speedway",
+            "Talladega Superspeedway");
+        Scorer.CalculateMatchScore(release, wanted, venueContext: venues).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("NASCAR Cup Series 2026 Round29 Charlotte Race 1080p HDTV {sportarr-ev-123456}", null)]
+    [InlineData("NASCAR Cup Series 2026 Round29 Charlotte Race 1080p HDTV", "ev-123456")]
+    public void ExactSportarrEventIdTakesPriorityOverVenue(string release, string? suppliedEventId)
+    {
+        var wanted = Event("NASCAR Cup Series", "Bass Pro Shops Night - Race", "29", "United States");
+        wanted.ExternalId = "ev-123456";
+        wanted.Venue = "Bristol Motor Speedway";
+        var venues = NascarVenueMatchContext.FromVenues("Bristol Motor Speedway", "Charlotte Motor Speedway");
+
+        Scorer.CalculateMatchScore(release, wanted, venueContext: venues, sportarrEventId: suppliedEventId)
+            .Should().Be(100);
+    }
+
+    [Fact]
+    public void NascarKnownLocationConflictStillRejectsWhenCountryMetadataIsMissing()
+    {
+        var wanted = Event("NASCAR Cup Series", "Las Vegas 400 - Race", "31");
+        wanted.Venue = "Las Vegas Motor Speedway";
+        wanted.Location = null;
+        var venues = NascarVenueMatchContext.FromVenues(
+            "Las Vegas Motor Speedway", "Bristol Motor Speedway");
+
+        Scorer.CalculateMatchScore("NASCAR Cup Series 2026 Round31 Qatar Race 1080p HDTV", wanted,
+            venueContext: venues).Should().Be(0);
+        Scorer.CalculateMatchScore("NASCAR Cup Series 2026 Round31 Race USA 1080p HDTV", wanted,
+            venueContext: venues).Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.AutoGrabMatchScore);
+    }
+
+    [Fact]
+    public void NascarHomesteadMiamiAliasRejectsBristolWithoutCountryMetadata()
+    {
+        const string release = "NASCAR Cup Series 2026 Round29 Miami Race 1080p HDTV";
+        var wanted = Event("NASCAR Cup Series", "Bass Pro Shops Night - Race", "29");
+        wanted.Venue = "Bristol Motor Speedway";
+        wanted.Location = null;
+        var venues = NascarVenueMatchContext.FromVenues(
+            "Bristol Motor Speedway", "Homestead-Miami Speedway");
+
+        venues.Evaluate(release, "Homestead-Miami Speedway").Should().Be(NascarVenueMatch.Match);
+        Scorer.CalculateMatchScore(release, wanted, venueContext: venues).Should().Be(0);
+
+        var ambiguous = NascarVenueMatchContext.FromVenues(
+            "Bristol Motor Speedway", "Homestead-Miami Speedway", "Miami International Autodrome");
+        ambiguous.Evaluate(release, "Homestead-Miami Speedway").Should().Be(NascarVenueMatch.Unknown);
+        ambiguous.Evaluate(release, "Miami International Autodrome").Should().Be(NascarVenueMatch.Unknown);
+    }
+
+    [Fact]
+    public async Task NascarVenueContextLoadsOnlyTheSameLeagueAndSeason()
+    {
+        using var db = Database();
+        var wanted = Event("NASCAR Cup Series", "Bass Pro Shops Night - Race", "29", "United States");
+        wanted.Venue = "Bristol Motor Speedway";
+        var sameSeason = Event("NASCAR Cup Series", "Coca-Cola 600 - Race", "12", "United States");
+        sameSeason.League = wanted.League;
+        sameSeason.Venue = "Charlotte Motor Speedway";
+        var olderSeason = Event("NASCAR Cup Series", "Test Race", "4", "United States");
+        olderSeason.League = wanted.League;
+        olderSeason.Season = "2025";
+        olderSeason.Venue = "Riverton Speedway";
+        var anotherLeague = Event("NASCAR Truck Series", "Test Race", "4", "United States");
+        anotherLeague.Venue = "Pinehurst Speedway";
+        db.Events.AddRange(wanted, sameSeason, olderSeason, anotherLeague);
+        await db.SaveChangesAsync();
+
+        var venues = await NascarVenueMatchContext.LoadAsync(db, wanted);
+
+        Scorer.CalculateMatchScore("NASCAR Cup Series 2026 Round29 Charlotte Race 1080p USA HDTV", wanted,
+            venueContext: venues).Should().Be(0);
+        Scorer.CalculateMatchScore("NASCAR Cup Series 2026 Round29 Riverton Race 1080p USA HDTV", wanted,
+            venueContext: venues).Should().BeGreaterThan(0);
+        Scorer.CalculateMatchScore("NASCAR Cup Series 2026 Round29 Pinehurst Race 1080p USA HDTV", wanted,
+            venueContext: venues).Should().BeGreaterThan(0);
+    }
+
+    [Fact]
     public void ImportScoringUsesNascarVenueAndDateWhenTheSponsoredRaceNameIsMissing()
     {
         using var db = Database();

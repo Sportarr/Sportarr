@@ -1,3 +1,4 @@
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Services;
 using Sportarr.Api.Models;
 using FluentAssertions;
@@ -611,4 +612,59 @@ public class ReleaseEvaluatorTests
         Indexer = "TestIndexer",
         Size = 1024 * 1024 * 1024,
     };
+    [Fact]
+    public void Replacing_an_iptv_recording_lifts_only_the_quality_profile_rejections()
+    {
+        var profile = new QualityProfile
+        {
+            Name = "HD",
+            Items = [new QualityItem { Name = "HDTV-1080p", Quality = 9, Allowed = true }],
+            MinFormatScore = 100,
+        };
+        var release = new ReleaseSearchResult
+        {
+            Title = "UFC.300.480p.HDTV.x264-GRP",
+            Guid = "test-guid",
+            DownloadUrl = "http://test.com/download",
+            Indexer = "TestIndexer",
+            Size = 1024 * 1024 * 500,
+            Seeders = 0,
+        };
+        var evaluation = _evaluator.EvaluateRelease(release, profile);
+        release.Approved = evaluation.Approved;
+        release.Rejections = evaluation.Rejections;
+        release.Rejections.Should().HaveCount(3);
+
+        SourcePrecedence.LiftQualityProfileRejections(release);
+
+        release.Rejections.Should().Equal("No seeders available");
+        release.Approved.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_release_rejected_only_by_the_quality_profile_is_approved_once_lifted()
+    {
+        var profile = new QualityProfile
+        {
+            Name = "HD",
+            Items = [new QualityItem { Name = "HDTV-1080p", Quality = 9, Allowed = true }],
+            MinFormatScore = 100,
+        };
+        var release = new ReleaseSearchResult
+        {
+            Title = "UFC.300.480p.HDTV.x264-GRP",
+            Guid = "test-guid",
+            DownloadUrl = "http://test.com/download",
+            Indexer = "TestIndexer",
+            Size = 1024 * 1024 * 500,
+        };
+        var evaluation = _evaluator.EvaluateRelease(release, profile);
+        release.Approved = evaluation.Approved;
+        release.Rejections = evaluation.Rejections;
+
+        SourcePrecedence.LiftQualityProfileRejections(release);
+
+        release.Rejections.Should().BeEmpty();
+        release.Approved.Should().BeTrue();
+    }
 }

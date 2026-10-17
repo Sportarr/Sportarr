@@ -3,18 +3,22 @@
 Sportarr uses a TV show-style naming convention that works well with Plex, Jellyfin, Emby, and Kodi:
 
 ```
-/data/Sports League/Season 2024/Sports League - s2024e12 - Event Title - 1080p.mkv
+/data/Sports League/Season 2024/Sports League - s2024e12 - Event Title - 1080p - sportarr-ev-2338110.mkv
 ```
 
 For fighting sports with multi-part episodes enabled:
 
 ```
-Sports League - s2024e12 - pt1 - Event Title.mkv  (Early Prelims)
-Sports League - s2024e12 - pt2 - Event Title.mkv  (Prelims)
-Sports League - s2024e12 - pt3 - Event Title.mkv  (Main Card)
+Sports League - s2024e12 - pt1 - Event Title - sportarr-ev-2338110.mkv  (Early Prelims)
+Sports League - s2024e12 - pt2 - Event Title - sportarr-ev-2338110.mkv  (Prelims)
+Sports League - s2024e12 - pt3 - Event Title - sportarr-ev-2338110.mkv  (Main Card)
 ```
 
 Customize the naming format in **Settings > Media Management**.
+
+When Sportarr renames or moves a video, it also moves subtitle files beside it that share its old filename. For example, `Event.en.srt` follows `Event.mkv` to the new name and folder. Subtitles with a different base filename are left alone.
+
+If the new subtitle name is already taken, Sportarr keeps the older file in a `.sportarr-conflicts` folder beside the video. Check that folder before removing any files from it.
 
 ![Naming Settings](../images/naming-settings.png)
 
@@ -28,7 +32,13 @@ For the release title patterns Sportarr's parser understands per sport, see the 
 
 ## The Sportarr id token
 
-`{Sportarr Id}` writes the event's id into the name as `sportarr-ev-2338110`. Imports and rescans read it back and match the file to its event exactly, so a renamed or moved file never lands on the wrong event. The media server agents read it the same way. Jellyfin and Emby match each file by its Sportarr id first, like a tvdb id, and fall back to the league folder name and the season and episode numbers only for a file that carries no id. Plex matches the show by the id in your file names, the way it reads a tvdb id in a folder name, and then places each file by its season and episode numbers, because that is how Plex places every episode; the Plex legacy bundle matches each file by its id. Kodi gets the id from the `.nfo` Sportarr writes next to the file. Keep the token in your format and a renumbered season can never send a file to another league or, on Jellyfin and Emby, to another game. Sportarr still keeps the numbers current on its own, for files that carry no id and for the episode order your media server shows.
+TV libraries use season and episode numbers to recognize a file as an episode. Sports events do not have a common event ID across those libraries, so Sportarr supplies one. `{Sportarr Id}` writes that event's ID into the filename as `sportarr-ev-2338110`. It works like a TVDB or IMDb ID for lookup. When that ID exists in Sportarr's catalog, imports and metadata agents can use it to select the exact event, even if episode numbering later changes.
+
+Use **both** `{Season}{Episode}` and `{Sportarr Id}` for reliable matching in Plex, Jellyfin, and Emby TV libraries. Jellyfin and Emby must first recognize season and episode numbers before their Sportarr providers can read the ID. An ID alone is not a reliable replacement for TV-style episode naming. Numbers alone can match, but they depend on the right league and current episode order. Kodi can also read the ID from the `.nfo` file Sportarr writes next to the video.
+
+The built-in naming presets include both markers, except **Original Filename**. That option preserves the release name, so its matching depends on what the release group supplied. If **Rename Events** is off, Sportarr also keeps the source filename. Settings warns about both cases without blocking them.
+
+The preset dropdown shows the preset that matches your saved format. If you edited the format, or a built-in preset changed since you saved it, the dropdown shows **Custom format** and leaves your saved format alone. Select a current preset to replace it.
 
 ## Changing the format
 

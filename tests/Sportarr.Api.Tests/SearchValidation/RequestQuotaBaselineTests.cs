@@ -5,6 +5,7 @@ using Xunit.Abstractions;
 
 namespace Sportarr.Api.Tests.SearchValidation;
 
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class RequestQuotaBaselineTests(ITestOutputHelper output)
 {
     [Fact]

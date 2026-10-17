@@ -57,7 +57,7 @@ public class EventRetentionService : BackgroundService
     }
 
     /// <summary>
-    /// Find monitored events older than their league's retention window,
+    /// Find old monitored events and old unmonitored events with files,
     /// delete their files (respecting the recycle bin, same as the manual
     /// "delete all files" action), and unmonitor them so they stop being
     /// re-searched. Returns the number of events processed. Public so the
@@ -121,7 +121,8 @@ public class EventRetentionService : BackgroundService
             var expired = await db.Events
                 .Include(e => e.Files)
                 .Include(e => e.League)
-                .Where(e => e.LeagueId == league.Id && e.Monitored && e.EventDate < cutoff)
+                .Where(e => e.LeagueId == league.Id && e.EventDate < cutoff
+                    && (e.Monitored || e.Files.Any()))
                 .ToListAsync(cancellationToken);
             eventsToProcess.AddRange(expired);
         }
@@ -152,8 +153,19 @@ public class EventRetentionService : BackgroundService
 
             foreach (var file in evt.Files.ToList())
             {
+                string? recycledVideoPath = null;
                 if (!File.Exists(file.FilePath))
                 {
+                    if (useRecycleBin)
+                        recycledVideoPath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, Path.GetFileName(file.FilePath));
+                    try
+                    {
+                        await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Event Retention] Failed to remove orphaned sidecars for: {FilePath}", file.FilePath);
+                    }
                     removableFiles.Add(file);
                     continue;
                 }
@@ -165,6 +177,7 @@ public class EventRetentionService : BackgroundService
                         var fileName = Path.GetFileName(file.FilePath);
                         var recyclePath = Sportarr.Api.Helpers.RecyclePaths.FindFree(recycleBinPath!, fileName);
                         File.Move(file.FilePath, recyclePath);
+                        recycledVideoPath = recyclePath;
                     }
                     else
                     {
@@ -181,7 +194,7 @@ public class EventRetentionService : BackgroundService
 
                 try
                 {
-                    await metadataWriterService.DeleteEventMetadataAsync(file);
+                    await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
                 }
                 catch (Exception ex)
                 {
@@ -226,12 +239,7 @@ public class EventRetentionService : BackgroundService
 
             evt.Monitored = false;
 
-            // Retention is the user's own policy saying to stop caring about this
-
-
-            // one, so it releases the claim that kept it out of the clean-up.
-
-
+            // Retention releases the event's manual monitoring claim.
             evt.ManuallyMonitored = false;
 
             _logger.LogInformation(

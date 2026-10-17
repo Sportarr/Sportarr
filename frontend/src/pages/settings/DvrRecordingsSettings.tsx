@@ -35,7 +35,7 @@ import {
 
 
 // DVR Recording Types
-type RecordingStatus = 'Scheduled' | 'Recording' | 'Completed' | 'Failed' | 'Cancelled' | 'Importing' | 'Imported';
+type RecordingStatus = 'Scheduled' | 'Recording' | 'Completed' | 'Failed' | 'Cancelled' | 'Importing' | 'Imported' | 'Ignored';
 
 interface DvrRecording {
   id: number;
@@ -83,6 +83,7 @@ interface DvrStats {
   importingCount: number;
   failedCount: number;
   cancelledCount: number;
+  ignoredCount: number;
   totalStorageUsed: number;
 }
 
@@ -430,7 +431,7 @@ export default function DvrRecordingsSettings() {
   const handleSelectAll = () => {
     // Only select recordings that can be deleted (Scheduled, Completed, Failed, Cancelled, Imported)
     const deletableRecordings = visibleRecordings.filter(
-      r => r.status === 'Scheduled' || r.status === 'Completed' || r.status === 'Failed' || r.status === 'Cancelled' || r.status === 'Imported'
+      r => r.status === 'Scheduled' || r.status === 'Completed' || r.status === 'Failed' || r.status === 'Cancelled' || r.status === 'Imported' || r.status === 'Ignored'
     );
     if (selectedIds.size === deletableRecordings.length && deletableRecordings.length > 0) {
       setSelectedIds(new Set());
@@ -441,7 +442,7 @@ export default function DvrRecordingsSettings() {
 
   // Check if a recording can be selected for bulk operations
   const canSelectRecording = (recording: DvrRecording) => {
-    return recording.status === 'Scheduled' || recording.status === 'Completed' || recording.status === 'Failed' || recording.status === 'Cancelled' || recording.status === 'Imported';
+    return recording.status === 'Scheduled' || recording.status === 'Completed' || recording.status === 'Failed' || recording.status === 'Cancelled' || recording.status === 'Imported' || recording.status === 'Ignored';
   };
 
   // Get deletable recordings count
@@ -496,6 +497,8 @@ export default function DvrRecordingsSettings() {
         return <CheckCircleIcon className="w-5 h-5 text-green-400" />;
       case 'Imported':
         return <ArrowDownOnSquareIcon className="w-5 h-5 text-green-400" />;
+      case 'Ignored':
+        return <CheckCircleIcon className="w-5 h-5 text-gray-400" />;
       case 'Failed':
         return <XCircleIcon className="w-5 h-5 text-red-400" />;
       case 'Cancelled':
@@ -515,6 +518,8 @@ export default function DvrRecordingsSettings() {
         return 'bg-green-900/30 text-green-400';
       case 'Imported':
         return 'bg-green-900/30 text-green-400';
+      case 'Ignored':
+        return 'bg-gray-800 text-gray-400';
       case 'Failed':
         return 'bg-red-900/30 text-red-400';
       case 'Cancelled':
@@ -927,13 +932,13 @@ export default function DvrRecordingsSettings() {
                           </div>
                         )}
                         {/* Actual quality for completed/imported recordings */}
-                        {(recording.status === 'Completed' || recording.status === 'Imported') && recording.quality && (
+                        {(recording.status === 'Completed' || recording.status === 'Imported' || recording.status === 'Ignored') && recording.quality && (
                           <p>
                             <span className="text-gray-500">Quality:</span>{' '}
                             <span className="text-green-400">{recording.quality}</span>
                           </p>
                         )}
-                        {(recording.status === 'Completed' || recording.status === 'Imported') && recording.qualityScore !== undefined && (
+                        {(recording.status === 'Completed' || recording.status === 'Imported' || recording.status === 'Ignored') && recording.qualityScore !== undefined && (
                           <p>
                             <span className="text-gray-500">Score:</span>{' '}
                             <span className={`font-semibold ${
@@ -1015,7 +1020,7 @@ export default function DvrRecordingsSettings() {
                         Imported
                       </span>
                     )}
-                    {(recording.status === 'Completed' || recording.status === 'Failed' || recording.status === 'Cancelled') && (
+                    {(recording.status === 'Completed' || recording.status === 'Failed' || recording.status === 'Cancelled' || recording.status === 'Ignored') && (
                       <button
                         onClick={() => setShowDeleteConfirm(recording.id)}
                         className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
