@@ -71,13 +71,7 @@ public class DvrCompletedOutputNamingTests
         fixture.Recording.OutputPath = originalPath;
         fixture.Recording.Method = DvrRecordingMethod.Catchup;
         await fixture.Db.SaveChangesAsync();
-        var ffprobePath = Path.Combine(AppContext.BaseDirectory, "ffprobe");
-        File.Exists(ffprobePath).Should().BeFalse("the test must not replace a real ffprobe binary");
-        await File.WriteAllTextAsync(ffprobePath,
-            "#!/bin/sh\n" +
-            "printf '%s\\n' '{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"width\":1280,\"height\":720,\"avg_frame_rate\":\"60/1\"},{\"codec_type\":\"audio\",\"codec_name\":\"aac\",\"channels\":2}],\"format\":{\"format_name\":\"mov,mp4\"}}'\n");
-        File.SetUnixFileMode(ffprobePath,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var ffprobePath = await InstallFakeFfprobeReporting720pAsync();
 
         try
         {
@@ -98,6 +92,66 @@ public class DvrCompletedOutputNamingTests
         {
             File.Delete(ffprobePath);
         }
+    }
+
+    [Fact]
+    public async Task CompletedImportScoresTheRecordingAgainstTheProfilesCustomFormats()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        await using var fixture = await NamingFixture.CreateAsync();
+        var format = new CustomFormat { Name = "720p", Specifications = new List<FormatSpecification>
+        {
+            new() { Name = "Title", Implementation = "ReleaseTitleSpecification", Required = true,
+                Fields = new Dictionary<string, object> { { "value", "720p" } } },
+        } };
+        fixture.Db.CustomFormats.Add(format);
+        await fixture.Db.SaveChangesAsync();
+        var profile = new QualityProfile { Name = "DVR fixture" };
+        profile.FormatItems.Add(new ProfileFormatItem { FormatId = format.Id, Score = 25 });
+        fixture.Db.QualityProfiles.Add(profile);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Recording.Event!.League!.QualityProfileId = profile.Id;
+        fixture.Recording.OutputPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mp4");
+        fixture.Recording.Method = DvrRecordingMethod.Catchup;
+        await fixture.Db.SaveChangesAsync();
+        var ffprobePath = await InstallFakeFfprobeReporting720pAsync();
+        using var formatCache = new CustomFormatMatchCache(NullLogger<CustomFormatMatchCache>.Instance);
+        var evaluator = new ReleaseEvaluator(NullLogger<ReleaseEvaluator>.Instance,
+            new EventPartDetector(NullLogger<EventPartDetector>.Instance), formatCache);
+
+        try
+        {
+            var imported = await fixture.CreateEventDvrService(evaluator).ImportCompletedRecordingAsync(fixture.Recording.Id);
+
+            imported.Should().BeTrue();
+            var recording = await fixture.Db.DvrRecordings.SingleAsync();
+            recording.CustomFormatScore.Should().Be(25,
+                "the probed 720p recording matches the profile's 720p custom format");
+        }
+        finally
+        {
+            File.Delete(ffprobePath);
+        }
+    }
+
+    /// <summary>
+    /// Puts an ffprobe next to the test assembly that reports a 1280x720 h264
+    /// file with stereo AAC; the caller deletes it.
+    /// </summary>
+    private static async Task<string> InstallFakeFfprobeReporting720pAsync()
+    {
+        var ffprobePath = Path.Combine(AppContext.BaseDirectory, "ffprobe");
+        File.Exists(ffprobePath).Should().BeFalse("the test must not replace a real ffprobe binary");
+        await File.WriteAllTextAsync(ffprobePath,
+            "#!/bin/sh\n" +
+            "printf '%s\\n' '{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"width\":1280,\"height\":720,\"avg_frame_rate\":\"60/1\"},{\"codec_type\":\"audio\",\"codec_name\":\"aac\",\"channels\":2}],\"format\":{\"format_name\":\"mov,mp4\"}}'\n");
+        File.SetUnixFileMode(ffprobePath,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return ffprobePath;
     }
 
     [Fact]
@@ -526,7 +580,7 @@ public class DvrCompletedOutputNamingTests
                 new DbContextOptionsBuilder<SportarrDbContext>().UseSqlite(_connection).Options);
         }
 
-        public EventDvrService CreateEventDvrService()
+        public EventDvrService CreateEventDvrService(ReleaseEvaluator? releaseEvaluator = null)
         {
             return new EventDvrService(
                 NullLogger<EventDvrService>.Instance,
@@ -535,7 +589,7 @@ public class DvrCompletedOutputNamingTests
                 null!,
                 null!,
                 new FFmpegRecorderService(NullLogger<FFmpegRecorderService>.Instance, GetConfig(), null!),
-                null!,
+                releaseEvaluator!,
                 null!,
                 null!,
                 GetConfig(),
