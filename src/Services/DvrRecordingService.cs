@@ -1051,10 +1051,10 @@ public class DvrRecordingService
 
         var config = await _configService.GetConfigAsync();
         var desired = (config.DvrContainer ?? "mp4").TrimStart('.').ToLowerInvariant();
-        if (desired != "mp4")
+        if (!ContainersCapturedAsTransportStream.Contains(desired))
             return;
 
-        var target = Path.ChangeExtension(recording.OutputPath, ".mp4");
+        var target = Path.ChangeExtension(recording.OutputPath, "." + desired);
         SelfMoveTracker.Register(recording.OutputPath, target);
         if (await _ffmpegRecorder.RemuxAsync(recording.OutputPath, target))
         {
@@ -1067,7 +1067,8 @@ public class DvrRecordingService
         }
         else
         {
-            _logger.LogWarning("[DVR] Keeping transport-stream capture {Path}; remux to mp4 failed", recording.OutputPath);
+            _logger.LogWarning("[DVR] Keeping transport-stream capture {Path}; remux to {Container} failed",
+                recording.OutputPath, desired);
         }
     }
 
@@ -1836,19 +1837,7 @@ public class DvrRecordingService
         var container = config.DvrContainer ?? "mp4";
         container = container.TrimStart('.').ToLowerInvariant();
 
-        // CAPTURE always goes to a transport stream when the mp4 container
-        // is paired with stream copy. Muxing a live IPTV feed's ADTS AAC
-        // straight into mp4 runs it through ffmpeg's aac_adtstoasc filter,
-        // and a single corrupt frame (routine on IPTV) aborts the whole
-        // recording mid-event with "Error parsing ADTS frame header". A .ts
-        // capture survives corruption AND a crashed recorder still leaves a
-        // playable file. Finalization remuxes to the configured mp4 and
-        // keeps the .ts when even that fails.
-        var videoCodecForCapture = (config.DvrVideoCodec ?? "copy").ToLowerInvariant();
-        if (container == "mp4" && videoCodecForCapture == "copy")
-        {
-            container = "ts";
-        }
+        container = CaptureContainer(container, config.DvrVideoCodec ?? "copy");
 
         // Build destination path using same logic as FileImportService
         var destinationPath = basePath;
@@ -1992,8 +1981,8 @@ public class DvrRecordingService
 
     /// <summary>
     /// True when no other recording holds this name and nothing sits there.
-    /// Both containers are checked, since a capture is written as .ts and may
-    /// then be remuxed to .mp4 under the same stem.
+    /// Every container is checked, since a capture is written as .ts and may
+    /// then be remuxed to .mp4 or .mkv under the same stem.
     /// </summary>
     private async Task<bool> IsOutputPathFreeAsync(string path, DvrRecording recording)
     {
@@ -2004,7 +1993,7 @@ public class DvrRecordingService
             return true;
         }
 
-        foreach (var container in new[] { path, Path.ChangeExtension(path, ".ts"), Path.ChangeExtension(path, ".mp4") })
+        foreach (var container in new[] { path, Path.ChangeExtension(path, ".ts"), Path.ChangeExtension(path, ".mp4"), Path.ChangeExtension(path, ".mkv") })
         {
             if (File.Exists(container) || File.Exists(HideWhileWriting(container)))
             {
@@ -2042,6 +2031,30 @@ public class DvrRecordingService
             : StringComparison.Ordinal;
 
         return string.Equals(a.TrimEnd(Path.DirectorySeparatorChar), b.TrimEnd(Path.DirectorySeparatorChar), comparison);
+    }
+
+    /// <summary>
+    /// Containers whose stream-copy capture goes to a transport stream first.
+    /// Muxing a live IPTV feed's ADTS AAC straight into mp4 or matroska runs
+    /// it through ffmpeg's aac_adtstoasc filter, and a single corrupt frame
+    /// (routine on IPTV) aborts the whole recording mid-event - exit 183,
+    /// "Error applying bitstream filters to an output packet" on matroska.
+    /// A .ts capture survives corruption AND a crashed recorder still leaves
+    /// a playable file. Finalization remuxes to the configured container and
+    /// keeps the .ts when even that fails.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> ContainersCapturedAsTransportStream =
+        new HashSet<string> { "mp4", "mkv" };
+
+    /// <summary>
+    /// The container a recording is captured in, for the configured output
+    /// container and video codec. Re-encoding writes the output container
+    /// directly; see <see cref="ContainersCapturedAsTransportStream"/>.
+    /// </summary>
+    internal static string CaptureContainer(string container, string videoCodec)
+    {
+        var copiesVideo = string.Equals(videoCodec, "copy", StringComparison.OrdinalIgnoreCase);
+        return copiesVideo && ContainersCapturedAsTransportStream.Contains(container) ? "ts" : container;
     }
 
     /// <summary>
