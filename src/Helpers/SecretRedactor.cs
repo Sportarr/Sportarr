@@ -90,14 +90,25 @@ public static partial class SecretRedactor
         RegexOptions.IgnoreCase)]
     private static partial Regex JsonSecretRegex();
 
+    // Another property of the same field object, between "name" and "value":
+    // a string, a literal (null, false, 2) or an array with no object in it.
+    // Prowlarr's field is {"order":2,"name":"apiKey","label":"API Key",
+    // "helpText":null,"helpLink":null,"value":"...",...}, so the two are not
+    // side by side, and a pattern that wanted them adjacent wrote the key out
+    // in full on every indexer test. No brace can match here, so the pair
+    // never spans two objects.
+    private const string OtherFieldProperty =
+        @"\s*,\s*""(?!value""|name"")(?:[^""\\]|\\.)*""\s*:\s*" +
+        @"(?:""(?:[^""\\]|\\.)*""|\[(?:[^\[\]{}""]|""(?:[^""\\]|\\.)*"")*\]|[^\s,{}\[\]""]+)";
+
     // The Prowlarr-shaped payload carries credentials as
     // {"name":"apiKey","value":"..."} rather than a named property.
-    [GeneratedRegex(@"(""name""\s*:\s*""(?:apikey|api_key|passkey|pass_key|rsskey|token|password|secret|cookie)""\s*,\s*""value""\s*:\s*)""(?:[^""\\]|\\.)*""",
+    [GeneratedRegex(@"(""name""\s*:\s*""(?:apikey|api_key|passkey|pass_key|rsskey|token|password|secret|cookie)""(?:" + OtherFieldProperty + @")*\s*,\s*""value""\s*:\s*)""(?:[^""\\]|\\.)*""",
         RegexOptions.IgnoreCase)]
     private static partial Regex JsonFieldSecretRegex();
 
     // {"value":"...","name":"apiKey"}, the same pair emitted the other way.
-    [GeneratedRegex(@"(""value""\s*:\s*)""(?:[^""\\]|\\.)*""(\s*,\s*""name""\s*:\s*""(?:apikey|api_key|passkey|pass_key|rsskey|token|password|secret|cookie)"")",
+    [GeneratedRegex(@"(""value""\s*:\s*)""(?:[^""\\]|\\.)*""((?:" + OtherFieldProperty + @")*\s*,\s*""name""\s*:\s*""(?:apikey|api_key|passkey|pass_key|rsskey|token|password|secret|cookie)"")",
         RegexOptions.IgnoreCase)]
     private static partial Regex JsonFieldSecretReversedRegex();
 }
