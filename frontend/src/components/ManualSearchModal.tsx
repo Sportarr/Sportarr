@@ -19,6 +19,8 @@ import {
   CheckCircleIcon,
   ArchiveBoxIcon,
 } from '@heroicons/react/24/outline';
+import LastSearchLine from './LastSearchLine';
+import { useEventSearchHistory } from '../api/searchHistory';
 import { apiPost, apiGet, apiDelete } from '../utils/api';
 
 interface ExistingPartFile {
@@ -139,6 +141,10 @@ export default function ManualSearchModal({
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [hideRejected, setHideRejected] = useState(true); // Default: hide rejected results
+  // The newest search for the part this window is for. Without a part,
+  // the newest search of the event.
+  const { data: eventSearches } = useEventSearchHistory(eventId, isOpen);
+  const lastSearch = eventSearches?.find((record) => !part || (record.part ?? '') === part);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
 
   // Custom search state
@@ -909,9 +915,15 @@ export default function ManualSearchModal({
                     {/* Search Controls */}
                     <div className="px-3 md:px-6 py-2 md:py-3 border-b border-gray-800 flex flex-col gap-2">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <p className="text-gray-400 text-xs md:text-sm hidden sm:block">
-                          Search indexers for available releases
-                        </p>
+                        {lastSearch ? (
+                          <div className="min-w-0 sm:max-w-[60%]">
+                            <LastSearchLine record={lastSearch} eventTitle={eventTitle} />
+                          </div>
+                        ) : (
+                          <p className="text-gray-400 text-xs md:text-sm hidden sm:block">
+                            Search indexers for available releases
+                          </p>
+                        )}
                         <div className="flex items-center gap-2">
                         <div className="relative" ref={filterDropdownRef}>
                           <button

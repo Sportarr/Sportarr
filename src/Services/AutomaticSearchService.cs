@@ -30,6 +30,7 @@ public class AutomaticSearchService : IAutomaticSearchService
     private readonly NotificationService _notificationService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AutomaticSearchService> _logger;
+    private readonly SearchHistoryService? _searchHistory;
 
     // Max 3 concurrent event searches to prevent overwhelming indexers
     private static readonly SemaphoreSlim _eventSearchSemaphore = new(3, 3);
@@ -53,10 +54,12 @@ public class AutomaticSearchService : IAutomaticSearchService
         EventPartDetector partDetector,
         NotificationService notificationService,
         IServiceScopeFactory scopeFactory,
-        ILogger<AutomaticSearchService> logger)
+        ILogger<AutomaticSearchService> logger,
+        SearchHistoryService? searchHistory = null)
     {
         _db = db;
         _scopeFactory = scopeFactory;
+        _searchHistory = searchHistory;
         _indexerSearchService = indexerSearchService;
         _downloadClientService = downloadClientService;
         _eventQueryService = eventQueryService;
@@ -81,6 +84,16 @@ public class AutomaticSearchService : IAutomaticSearchService
     /// <param name="part">Optional multi-part episode segment (e.g., "Early Prelims", "Prelims", "Main Card")</param>
     /// <param name="isManualSearch">If true, bypasses monitored check and retry backoff (user-initiated search)</param>
     public async Task<AutomaticSearchResult> SearchAndDownloadEventAsync(int eventId, int? qualityProfileId = null, string? part = null, bool isManualSearch = false)
+    {
+        var trace = new SearchTrace(DateTime.UtcNow);
+        var result = await SearchAndDownloadEventCoreAsync(eventId, qualityProfileId, part, isManualSearch, trace);
+        if (trace.Started && _searchHistory != null)
+            await _searchHistory.RecordAsync(eventId, isManualSearch, result, trace);
+        return result;
+    }
+
+    private async Task<AutomaticSearchResult> SearchAndDownloadEventCoreAsync(int eventId, int? qualityProfileId,
+        string? part, bool isManualSearch, SearchTrace trace)
     {
         var result = new AutomaticSearchResult { EventId = eventId };
         var searchType = isManualSearch ? "Manual Search" : "Automatic Search";
@@ -274,6 +287,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             var searchTarget = part != null ? $"{evt.Title} ({part})" : evt.Title;
             _logger.LogInformation("[Automatic Search] Starting search for event: {Title} ({Sport})",
                 searchTarget, evt.Sport);
+            trace.Start(evt.Title, part);
 
             // Load related entities for query building (universal - league/teams used for all sports)
             await _db.Entry(evt).Reference(e => e.HomeTeam).LoadAsync();
@@ -300,6 +314,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             {
                 qualityProfileId = RssSyncService.ResolveQualityProfile(evt, profiles)?.Id;
             }
+            trace.QualityProfile = profiles.FirstOrDefault(p => p.Id == qualityProfileId)?.Name;
 
             // No quality profile anywhere = nothing to evaluate releases against.
             // Abort cleanly so we don't run a search whose results can never be approved
@@ -328,6 +343,7 @@ public class AutomaticSearchService : IAutomaticSearchService
 
             // Reuse a complete source request for repeated searches of this event.
             var allReleases = new List<ReleaseSearchResult>();
+            trace.TrackReleases(() => allReleases);
             var seenGuids = new HashSet<string>();
             var primaryQuery = queries.FirstOrDefault();
             bool usedCache = false;
@@ -722,6 +738,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                     approvedReleases = approvedReleases
                         .Where(r => r.PublishDate == default || r.PublishDate <= ageThreshold)
                         .ToList();
+                    foreach (var young in beforeAgeFilter.Except(approvedReleases))
+                        trace.Hold(young, $"{SearchHistoryService.MinimumAgePrefix}the minimum age is {config.IndexerMinimumAgeMinutes} minutes");
                     if (metadataProbe != null && beforeFilter > 0 && approvedReleases.Count == 0)
                     {
                         // A young wrong-event release must not suppress retrieval.
@@ -748,6 +766,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                     var highConfidenceReleases = approvedReleases
                         .Where(r => r.MatchScore >= AutoGrabMinMatchScore)
                         .ToList();
+                    foreach (var low in approvedReleases.Where(r => r.MatchScore < AutoGrabMinMatchScore))
+                        trace.Hold(low, $"{SearchHistoryService.LowConfidencePrefix}{low.MatchScore} is below the automatic grab minimum of {AutoGrabMinMatchScore}");
 
                     if (highConfidenceReleases.Count < approvedReleases.Count)
                     {
@@ -1325,6 +1345,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             result.SelectedRelease = bestRelease.Title;
             result.SelectedIndexer = bestRelease.Indexer;
             result.Quality = bestRelease.Quality;
+            trace.Selected = bestRelease;
             _logger.LogInformation("[Automatic Search] Selected: {Release} from {Indexer} (Score: {Score})",
                 bestRelease.Title, bestRelease.Indexer, bestRelease.Score);
 

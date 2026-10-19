@@ -9,6 +9,8 @@ import ManualSearchModal from '../components/ManualSearchModal';
 import SeasonSearchModal from '../components/SeasonSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
 import EventFileDetailModal from '../components/EventFileDetailModal';
+import LastSearchLine from '../components/LastSearchLine';
+import { needsAttention, newestCompletion, useLatestSearches } from '../api/searchHistory';
 import LeagueFilesModal from '../components/LeagueFilesModal';
 import TeamAliasesModal from '../components/TeamAliasesModal';
 import EventStatusBadge from '../components/EventStatusBadge';
@@ -601,6 +603,13 @@ export default function LeagueDetailPage() {
 
   // Fetch search queue and download queue status for real-time progress display
   const { data: searchQueue } = useSearchQueueStatus();
+
+  // The last search result for each loaded event that still has no file.
+  const missingEventIds = useMemo(
+    () => Object.values(eventsBySeason).flat().filter((event) => !event.hasFile).map((event) => event.id),
+    [eventsBySeason]);
+  const { data: latestSearches } = useLatestSearches(missingEventIds, true, newestCompletion(searchQueue));
+
   const { data: downloadQueue } = useDownloadQueue();
 
   // Track locally pending searches for immediate UI feedback on rapid clicks
@@ -2338,6 +2347,7 @@ export default function LeagueDetailPage() {
                             const isCompleted = lifecycle === 'completed';
                             const isLive = lifecycle === 'live';
                             const hasParts = config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event);
+                            const lastSearch = hasFile ? undefined : latestSearches?.[event.id];
 
                             return (
                               <div
@@ -2512,6 +2522,12 @@ export default function LeagueDetailPage() {
                                   {hasParts && <div className="hidden sm:block sm:w-20 sm:flex-shrink-0" />}
                                 </div>
 
+                                {!isCancelled && !isPostponed && needsAttention(lastSearch) && (
+                                  <div className="px-4 pb-1.5 pl-10 sm:pl-44">
+                                    <LastSearchLine record={lastSearch} eventTitle={event.title} />
+                                  </div>
+                                )}
+
                                 {/* Compact Multi-Part - Single horizontal row with all parts inline */}
                                 {hasParts && (
                                   <div className="flex flex-wrap items-center gap-3 px-4 py-1 pl-12 bg-gray-900/30 border-t border-red-900/10 text-xs">
@@ -2612,6 +2628,9 @@ export default function LeagueDetailPage() {
                 const hasFile = event.hasFile;
                 const eventDate = new Date(event.eventDate);
                 const isPast = eventDate < new Date();
+                const cardLifecycle = getEventLifecycle({ status: event.status, eventDate: event.eventDate, hasFile });
+                const lastSearch = hasFile || cardLifecycle === 'cancelled' || cardLifecycle === 'postponed'
+                  ? undefined : latestSearches?.[event.id];
 
                 return (
                   <div
@@ -2754,6 +2773,10 @@ export default function LeagueDetailPage() {
                             return null;
                           })()}
                         </div>
+
+                        {needsAttention(lastSearch) && (
+                          <LastSearchLine record={lastSearch} eventTitle={event.title} />
+                        )}
 
                         {/* Team Names */}
                         {event.homeTeamName && event.awayTeamName && (

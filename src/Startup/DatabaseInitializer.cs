@@ -1418,6 +1418,36 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] Warning: Could not verify FollowedAthletes table: {ex.Message}");
         }
 
+        // Ensure SearchHistory exists. A legacy EnsureCreated()-era install
+        // can mark AddSearchHistory as applied without creating the table.
+        try
+        {
+            db.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""SearchHistory"" (
+                    ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    ""EventId"" INTEGER NOT NULL,
+                    ""Part"" TEXT NULL,
+                    ""SearchedAt"" TEXT NOT NULL,
+                    ""IsManual"" INTEGER NOT NULL,
+                    ""Outcome"" TEXT NOT NULL,
+                    ""Message"" TEXT NOT NULL,
+                    ""ReleasesFound"" INTEGER NOT NULL,
+                    ""ReleasesPassed"" INTEGER NOT NULL,
+                    ""SelectedRelease"" TEXT NULL,
+                    ""QualityProfile"" TEXT NULL,
+                    ""ReasonsJson"" TEXT NOT NULL,
+                    ""ReleasesJson"" TEXT NULL,
+                    ""IndexersJson"" TEXT NOT NULL,
+                    CONSTRAINT ""FK_SearchHistory_Events_EventId"" FOREIGN KEY (""EventId"") REFERENCES ""Events"" (""Id"") ON DELETE CASCADE
+                )");
+            db.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_SearchHistory_EventId_SearchedAt"" ON ""SearchHistory"" (""EventId"", ""SearchedAt"")");
+            db.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_SearchHistory_SearchedAt"" ON ""SearchHistory"" (""SearchedAt"")");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify SearchHistory table: {ex.Message}");
+        }
+
         // Ensure ChannelTeamMappings table exists (per-team DVR channel
         // preference, checked by the resolver before the league mapping).
         try

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
+using Sportarr.Api.Data;
 using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Endpoints;
@@ -119,12 +120,23 @@ public static class LogEndpoints
             }
         });
 
-        app.MapGet("/api/log/support-bundle", (string filename, ILogger<Program> logger) =>
+        app.MapGet("/api/log/support-bundle", async (string filename, SportarrDbContext db,
+            SearchHistoryService searchHistory, ILogger<Program> logger) =>
         {
             try
             {
                 var version = Sportarr.Api.Version.GetFullVersion();
-                var files = SupportDiagnosticBundle.Read(logsPath, filename, version, RuntimeInformation.OSDescription);
+                string? recentSearches = null;
+                try
+                {
+                    recentSearches = await searchHistory.FormatRecentForSupportAsync(db);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[LOG FILES] Could not add recent searches to the support bundle");
+                }
+                var files = SupportDiagnosticBundle.Read(logsPath, filename, version, RuntimeInformation.OSDescription,
+                    recentSearches);
                 return Results.Ok(new { files });
             }
             catch (ArgumentException)

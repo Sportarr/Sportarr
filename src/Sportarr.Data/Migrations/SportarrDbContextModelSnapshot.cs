@@ -3650,6 +3650,65 @@ namespace Sportarr.Api.Migrations
                     b.ToTable("RootFolders");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.SearchHistoryEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("IndexersJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsManual")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Part")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QualityProfile")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasonsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReleasesFound")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ReleasesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReleasesPassed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("SearchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SelectedRelease")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SearchedAt");
+
+                    b.HasIndex("EventId", "SearchedAt");
+
+                    b.ToTable("SearchHistory", (string)null);
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.SeasonPoster", b =>
                 {
                     b.Property<int>("Id")
@@ -4214,6 +4273,17 @@ namespace Sportarr.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Format");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.SearchHistoryEntry", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.SeasonPoster", b =>

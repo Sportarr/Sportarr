@@ -192,9 +192,13 @@ public class ReleaseEvaluator
 
             if (!isAllowed)
             {
-                var allowedItems = profile.Items.Where(q => q.Allowed).Select(q => q.Name).ToList();
-                _logger.LogInformation("[Release Evaluator] REJECTION: Quality '{Quality}' not in allowed list: [{AllowedItems}]",
-                    evaluation.Quality, string.Join(", ", allowedItems));
+                _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Quality '{Quality}' is not allowed by profile '{Profile}'",
+                    release.Title, evaluation.Quality, profile.Name);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.LogDebug("[Release Evaluator] Profile '{Profile}' allows: [{AllowedItems}]",
+                        profile.Name, string.Join(", ", profile.Items.Where(q => q.Allowed).Select(q => q.Name)));
+                }
                 evaluation.Rejections.Add(QualityNotWantedRejection(evaluation.Quality));
             }
         }

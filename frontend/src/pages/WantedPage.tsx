@@ -19,6 +19,8 @@ import { useCompactView } from '../hooks/useCompactView';
 import { useTableSortFilter, applyTableSortFilter } from '../hooks/useTableSortFilter';
 import { useColumnVisibility } from '../hooks/useColumnVisibility';
 import ManualSearchModal from '../components/ManualSearchModal';
+import LastSearchLine from '../components/LastSearchLine';
+import { needsAttention, newestCompletion, useLatestSearches } from '../api/searchHistory';
 import { useSearchQueueStatus } from '../api/hooks';
 import { apiGet, apiPost, apiPut } from '../utils/api';
 import { formatTimeInTimezone, dayDifferenceInTimezone } from '../utils/timezone';
@@ -108,6 +110,7 @@ const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) =
   }, [fixedTab]);
   const { timezone } = useUISettings();
   const compactView = useCompactView();
+
   const missingSortFilter = useTableSortFilter('eventDate');
   const cutoffSortFilter = useTableSortFilter('eventDate');
   const { sortCol, sortDir, colFilters, activeFilterCol, handleColSort, onFilterChange, onFilterToggle } =
@@ -137,6 +140,9 @@ const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) =
 
   // Get server-side search queue status
   const { data: searchQueue } = useSearchQueueStatus();
+  const shownEvents = activeTab === 'missing' ? missingEvents : cutoffUnmetEvents;
+  const { data: latestSearches } = useLatestSearches(
+    shownEvents.map((event) => event.id), true, newestCompletion(searchQueue));
 
   const totalPages = Math.ceil(totalRecords / pageSize);
 
@@ -415,6 +421,7 @@ const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) =
           <tbody className="divide-y divide-gray-700">
             {tableData.map((event) => {
               const searchStatus = getSearchStatus(event.id);
+              const lastSearch = latestSearches?.[event.id];
 
               return (
                 <tr key={event.id} className={TABLE_ROW_HOVER}>
@@ -482,7 +489,9 @@ const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) =
                         Searching
                       </span>
                     )}
-                    {searchStatus === 'idle' && '—'}
+                    {searchStatus === 'idle' && (needsAttention(lastSearch)
+                      ? <LastSearchLine record={lastSearch} eventTitle={event.title} compact />
+                      : '—')}
                   </td>
                   <td className="px-2 py-1.5 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -524,6 +533,7 @@ const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) =
         ? `${event.homeTeamName} vs ${event.awayTeamName}`
         : null;
     const searchStatus = getSearchStatus(event.id);
+    const lastSearch = latestSearches?.[event.id];
 
     return (
       <div
@@ -595,6 +605,12 @@ const WantedPage: React.FC<WantedPageProps> = ({ embedded = false, fixedTab }) =
                 <span className="text-xs text-yellow-400">
                   Current Quality: {event.quality} (Below cutoff)
                 </span>
+              </div>
+            )}
+
+            {searchStatus === 'idle' && needsAttention(lastSearch) && (
+              <div className="mt-2">
+                <LastSearchLine record={lastSearch} eventTitle={event.title} />
               </div>
             )}
           </div>
