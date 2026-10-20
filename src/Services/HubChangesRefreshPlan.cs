@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Sportarr.Api.Data;
 
 namespace Sportarr.Api.Services;
 
@@ -196,5 +198,29 @@ public static class HubChangesRefreshPlan
             }
         }
         return (pending, dropped);
+    }
+}
+
+/// <summary>
+/// Stores the poller's progress.
+///
+/// A league sync clears the change tracker of the database context it
+/// shares with the poller. That detaches the settings object the poller
+/// loaded at the start of the cycle, and a save on a detached object
+/// writes nothing. The poller logged "Cursor advanced" and kept the old
+/// cursor, so every cycle after a league refresh read the same pages again.
+/// A league sync that fails mid-save can also leave bad entities tracked,
+/// and a normal save would then fail on them too. This store writes the two
+/// columns with a direct update, so the tracker state does not matter.
+/// </summary>
+public static class HubChangesProgressStore
+{
+    public static async Task<bool> SaveAsync(SportarrDbContext db, long cursor, string? pendingJson,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.AppSettings.ExecuteUpdateAsync(setters => setters
+            .SetProperty(row => row.HubChangesCursor, cursor)
+            .SetProperty(row => row.HubChangesPendingRefresh, pendingJson), cancellationToken);
+        return rows > 0;
     }
 }

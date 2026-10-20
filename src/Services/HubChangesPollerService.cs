@@ -417,6 +417,10 @@ public class HubChangesPollerService : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "[Changes Poller] Refresh of {LeagueName} failed; it will be retried next cycle", league.Name);
+                    // A failed save leaves its entities tracked. Drop them so
+                    // the next league starts clean. The poller reads no
+                    // tracked entity after this point.
+                    db.ChangeTracker.Clear();
                     results[league.ExternalId!] = HubChangesRefreshResult.Failed;
                 }
             }
@@ -441,12 +445,16 @@ public class HubChangesPollerService : BackgroundService
                 pending.Count, string.Join(", ", pending.Keys));
         }
 
+        // The settings object loaded at the start of the cycle may be
+        // detached by now, because a league sync clears the shared change
+        // tracker. The store writes the two columns with a direct update.
         var pendingJson = HubChangesRefreshPlan.Save(pending);
-        if (cursor != settings.HubChangesCursor || pendingJson != settings.HubChangesPendingRefresh)
+        if (!await HubChangesProgressStore.SaveAsync(db, cursor, pendingJson, cancellationToken))
         {
-            settings.HubChangesCursor = cursor;
-            settings.HubChangesPendingRefresh = pendingJson;
-            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogWarning("[Changes Poller] The settings row is missing; the cursor was not stored");
+        }
+        else if (cursor != previousCursor)
+        {
             _logger.LogDebug("[Changes Poller] Cursor advanced to {Cursor}", cursor);
         }
 
