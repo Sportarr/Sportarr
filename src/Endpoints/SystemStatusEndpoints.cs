@@ -76,9 +76,12 @@ public static class SystemStatusEndpoints
         // Returns: wanted (missing events), queued (download queue), leagues count, events count
         app.MapGet("/api/stats", async (SportarrDbContext db) =>
         {
+            // Same rule as the Wanted page: an event that has not started
+            // yet is upcoming, not missing.
+            var now = DateTime.UtcNow;
             var wantedCount = await db.Events
                 .AsNoTracking()
-                .Where(e => e.Monitored && !e.HasFile)
+                .Where(e => e.Monitored && !e.HasFile && e.EventDate <= now)
                 .CountAsync();
 
             var queuedCount = await db.DownloadQueue

@@ -235,7 +235,8 @@ export interface League {
   fileCount?: number;
   // Download progress stats
   downloadedMonitoredCount?: number; // Monitored events that have files
-  missingCount?: number; // Monitored events missing files
+  missingCount?: number; // Monitored events that have started and have no file
+  upcomingCount?: number; // Monitored events without a file that start later
   progressPercent?: number; // 0-100 download completion
   progressStatus?: 'complete' | 'continuing' | 'partial' | 'missing' | 'unmonitored';
   tags?: number[];
