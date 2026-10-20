@@ -25,6 +25,8 @@ public class RssPackAcquisitionTests(Xunit.Abstractions.ITestOutputHelper output
     [InlineData("F1.2026.Round10.Qualifying.1080p", false, null, null, false)]
     [InlineData("NFL.2026.Week10.Alpha.vs.Beta", false, null, null, false)]
     [InlineData("NFL 2026-2027 / Week 04 / 04.10.2026 / Miami Dolphins @ Minnesota Vikings [Football, WEB-DL HD/720p]", false, null, null, false)]
+    [InlineData("NFL 2026-2027 / Week 06 / 12.10.2026 / Seattle Seahawks @ Los Angeles Rams [Football, WEB-DL HD/720p/60fps, MKV/H.264, EN/ESPN]", false, null, null, false)]
+    [InlineData("NFL 2026-2027 / Week 06 / 12.10.2026 / Los Angeles Rams @ Baltimore Ravens [Football, WEB-DL HD/720p/60fps, MKV/H.264, EN/ESPN]", false, null, null, false)]
     [InlineData("NFL.2026.Week10.Pack", false, null, null, true)]
     [InlineData("NFL.2026.Week10.Pack", false, null, "ev-9900301", false)]
     [InlineData("unknown", false, "lg-9900300", null, true)]

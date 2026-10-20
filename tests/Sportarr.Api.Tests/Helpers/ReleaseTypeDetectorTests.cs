@@ -29,6 +29,8 @@ public class ReleaseTypeDetectorTests
     [Theory]
     [InlineData("NFL 2026-2027 / Week 04 / 04.10.2026 / Miami Dolphins @ Minnesota Vikings [Football, WEB-DL HD/720p]")]
     [InlineData("NFL.2026.Week.04.Miami.Dolphins.@.Minnesota.Vikings.720p")]
+    [InlineData("NFL 2026-2027 / Week 06 / 12.10.2026 / Seattle Seahawks @ Los Angeles Rams [Football, WEB-DL HD/720p/60fps, MKV/H.264, EN/ESPN]")]
+    [InlineData("NFL 2026-2027 / Week 06 / 12.10.2026 / Los Angeles Rams @ Baltimore Ravens [Football, WEB-DL HD/720p/60fps, MKV/H.264, EN/ESPN]")]
     [InlineData("NFL.2026.Week.04.Jets.@.Patriots.720p")]
     [InlineData("NFL.2026.Week.04.MIA.Dolphins.@.Vikings.720p")]
     [InlineData("NBA.2026.Week.04.Philadelphia.76ers.@.Orlando.Magic.720p")]

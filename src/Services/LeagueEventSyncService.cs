@@ -299,10 +299,12 @@ public class LeagueEventSyncService
                 // Fallback to old method if API fails
                 _logger.LogWarning("[League Event Sync] Could not fetch seasons from API, falling back to year range");
                 result.SeasonListUnavailable = true;
+                result.HubListedNoSeasons = availableSeasons != null;
                 seasons = GenerateSeasonRange(league.Sport);
             }
         }
 
+        result.SeasonsTried = seasons.Count;
         _logger.LogInformation("[League Event Sync] Syncing {Count} seasons for league: {LeagueName}",
             seasons.Count, league.Name);
 
@@ -421,6 +423,7 @@ public class LeagueEventSyncService
             if (monitoredTeamIds.Any() || fullSeasonEvents.Any(IsDisabledSpecial))
             {
                 events = events.Where(e => !IsDisabledSpecial(e) && (IsIncluded(e) || league.KeepAllEvents)).ToList();
+                result.FilteredOutCount += originalEventCount - events.Count;
 
                 _logger.LogInformation("[League Event Sync] Season {Season}: Filtered {Original} events to {Filtered} based on monitored teams{SpecialNote}",
                     season, originalEventCount, events.Count,
@@ -2550,4 +2553,42 @@ public class LeagueEventSyncResult
     // True when the hub's season list was unavailable and the sync walked
     // a guessed year range instead.
     public bool SeasonListUnavailable { get; set; }
+
+    // True when the hub answered the season request with an empty list.
+    // SeasonListUnavailable is also true then. This tells "no answer" apart
+    // from "nothing to list".
+    public bool HubListedNoSeasons { get; set; }
+
+    // How many seasons the sync asked the hub about.
+    public int SeasonsTried { get; set; }
+
+    // Events the hub returned that the league settings left out, such as
+    // events that involve none of the followed teams.
+    public int FilteredOutCount { get; set; }
+
+    /// <summary>
+    /// A plain sentence that says why a sync found nothing, or null when it
+    /// found, changed or removed at least one event. A sync with an empty
+    /// result used to end as "Synced 0 new events", which left the league
+    /// page waiting for events that were never coming.
+    /// </summary>
+    public string? DescribeNothingSynced()
+    {
+        if (NewCount + UpdatedCount + SkippedCount + RemovedCount + FailedCount > 0)
+            return null;
+
+        if (FilteredOutCount > 0)
+            return "Sportarr found events for this league, but none match the teams or event types you follow. Change what you follow to see them.";
+
+        if (SeasonListUnavailable && !HubListedNoSeasons)
+            return "Sportarr could not get the list of seasons from its data source. The data source may be busy or offline. Try Sync again later.";
+
+        if (HubListedNoSeasons && SkippedSeasons.Count >= SeasonsTried)
+            return "Sportarr's data source has no seasons or events for this league yet. Try Sync again later.";
+
+        if (SkippedSeasons.Count > 0 && SkippedSeasons.Count >= SeasonsTried)
+            return "Sportarr's data source did not return any events for this league. It may be busy or offline. Try Sync again later.";
+
+        return "Sportarr's data source has no events for this league yet. Try Sync again later.";
+    }
 }
