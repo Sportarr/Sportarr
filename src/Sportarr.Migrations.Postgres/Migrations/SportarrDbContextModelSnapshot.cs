@@ -56,6 +56,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<long>("HubChangesCursor")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("HubChangesPendingRefresh")
+                        .HasColumnType("text");
+
                     b.Property<int>("IndexerMinimumAgeMinutes")
                         .HasColumnType("integer");
 

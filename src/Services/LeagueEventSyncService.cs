@@ -298,6 +298,7 @@ public class LeagueEventSyncService
             {
                 // Fallback to old method if API fails
                 _logger.LogWarning("[League Event Sync] Could not fetch seasons from API, falling back to year range");
+                result.SeasonListUnavailable = true;
                 seasons = GenerateSeasonRange(league.Sport);
             }
         }
@@ -354,6 +355,7 @@ public class LeagueEventSyncService
             if (events == null)
             {
                 _logger.LogWarning("[League Event Sync] Season {Season}: API returned null (skipping cleanup to avoid data loss)", season);
+                result.SkippedSeasons.Add(season);
                 continue;
             }
 
@@ -2540,4 +2542,12 @@ public class LeagueEventSyncResult
     public int FailedCount { get; set; }
     public int RemovedCount { get; set; }
     public int TotalCount => NewCount + UpdatedCount + SkippedCount;
+
+    // Seasons the hub did not answer for. Their events were left as they
+    // were, so a caller that must apply a change knows to try again.
+    public List<string> SkippedSeasons { get; } = new();
+
+    // True when the hub's season list was unavailable and the sync walked
+    // a guessed year range instead.
+    public bool SeasonListUnavailable { get; set; }
 }

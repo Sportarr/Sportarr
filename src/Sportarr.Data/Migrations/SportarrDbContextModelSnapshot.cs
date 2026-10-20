@@ -48,6 +48,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<long>("HubChangesCursor")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("HubChangesPendingRefresh")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("IndexerMinimumAgeMinutes")
                         .HasColumnType("INTEGER");
 

@@ -2721,6 +2721,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "EventFiles", "Languages", "TEXT NOT NULL DEFAULT '[]'");
         EnsureColumn(db, "EventFiles", "ReleaseGroup", "TEXT");
         EnsureColumn(db, "AppSettings", "LibraryFormatScoresBackfilled", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "AppSettings", "HubChangesPendingRefresh", "TEXT NULL");
         EnsureColumn(db, "MediaManagementSettings", "UserRejectedExtensions", "TEXT");
         EnsureColumn(db, "MediaManagementSettings", "FileFormatTokenUpgradeApplied", "INTEGER NOT NULL DEFAULT 0");
         EnsureEventTypeFolderColumn(db);
