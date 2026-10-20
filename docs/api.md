@@ -165,8 +165,7 @@ Series responses include the fields required by strict Sonarr clients, including
 `includeSeries=true` embed a series with a `seasons` array containing the event's
 season number and the league's monitored flag. This shape is checked against
 [Ruddarr's Series and Episode models](https://github.com/ruddarr/app/tree/main/Ruddarr/Models/Series).
-Interactive release search (`GET /api/v3/release`) is not implemented; this
-compatibility does not cover every Ruddarr feature.
+Interactive release search (`GET /api/v3/release`) is not implemented.
 
 ### Mapping
 
@@ -188,7 +187,7 @@ compatibility does not cover every Ruddarr feature.
 | POST | `/api/v3/series` | Add a league |
 | PUT | `/api/v3/series/{id}` | Update series (monitored) |
 | PUT | `/api/v3/series` | Update series using the ID in the body |
-| PUT | `/api/v3/series/editor` | Update tags on multiple series |
+| PUT | `/api/v3/series/editor` | Update tags on multiple series, returns the updated series |
 | DELETE | `/api/v3/series/{id}` | Delete series |
 | GET | `/api/v3/calendar` | List events, optionally including their series |
 | GET | `/api/v3/episode` | Get episodes by seriesId |

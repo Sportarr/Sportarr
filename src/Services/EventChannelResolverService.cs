@@ -329,15 +329,12 @@ public class EventChannelResolverService
         }
         // For non-team events, throw in title-derived tokens too so
         // "UFC 310" matches "UFC 310: Pereira vs Ankalaev" in EPG. Two-letter
-        // words ("in", "of", "de") are left out: they occur in nearly every
-        // description, so with them any two-hit programme anywhere matched -
-        // "Bahrain in Malaysia Grand Prix - Race" matched "Race Café".
+        // filler words ("in", "of", "de") are left out: they occur in nearly
+        // every description, so with them any two-hit programme anywhere
+        // matched - "Bahrain in Malaysia Grand Prix - Race" matched "Race Café".
         if (!hasTeamNames && !string.IsNullOrEmpty(evt.Title))
         {
-            foreach (var word in NormalizeForSearch(evt.Title).Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (word.Length >= MinTitleTokenLength) searchTerms.Add(word);
-            }
+            foreach (var word in TitleSearchTokens(evt.Title)) searchTerms.Add(word);
         }
 
         var matches = new Dictionary<int, EpgProgram>();
@@ -388,7 +385,18 @@ public class EventChannelResolverService
         return matches;
     }
 
-    private const int MinTitleTokenLength = 3;
+    // Two-letter words that carry no meaning in a title. Short words that name
+    // a series or a place ("f1", "gp", "us") are not in this list on purpose.
+    private static readonly HashSet<string> TitleFillerWords = new(StringComparer.Ordinal)
+    {
+        "in", "of", "de", "la", "le", "el", "du", "da", "di", "at", "on", "to",
+        "by", "an", "as", "or", "en", "et", "vs"
+    };
+
+    internal static IEnumerable<string> TitleSearchTokens(string title) =>
+        NormalizeForSearch(title)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(word => word.Length >= 3 || (word.Length == 2 && !TitleFillerWords.Contains(word)));
 
     /// <summary>
     /// How many search terms occur in a programme's text as whole words.

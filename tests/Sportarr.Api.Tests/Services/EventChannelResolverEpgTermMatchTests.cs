@@ -96,4 +96,19 @@ public class EventChannelResolverEpgTermMatchTests
         EventChannelResolverService.CountTermHits(new[] { "red sox" }, "MLB: Yankees vs Red  Sox")
             .Should().Be(1);
     }
+
+    [Fact]
+    public void ShortSeriesNamesStayInTheSearchTerms()
+    {
+        EventChannelResolverService.TitleSearchTokens("F1 Monaco GP - Qualifying")
+            .Should().BeEquivalentTo(new[] { "f1", "monaco", "gp", "qualifying" });
+    }
+
+    [Fact]
+    public void TwoLetterFillerWordsAreLeftOut()
+    {
+        EventChannelResolverService.TitleSearchTokens("Bahrain in Malaysia Grand Prix - Race")
+            .Should().BeEquivalentTo(new[] { "bahrain", "malaysia", "grand", "prix", "race" });
+    }
 }
+

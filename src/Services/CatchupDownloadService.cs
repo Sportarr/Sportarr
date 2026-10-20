@@ -380,8 +380,9 @@ public class CatchupDownloadService : BackgroundService
         {
             // The download is written under a hidden name so a media server
             // scan passes over it while it grows. Give it its real name now
-            // that nothing is writing to it.
-            outputPath = await dvrService.RevealFinishedCaptureAsync(outputPath);
+            // that nothing is writing to it. A transport-stream capture also
+            // becomes the container the user configured.
+            outputPath = await dvrService.FinalizeCapturePathAsync(outputPath);
             recording.OutputPath = outputPath;
 
             recording.Status = DvrRecordingStatus.Completed;
