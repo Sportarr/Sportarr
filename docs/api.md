@@ -153,10 +153,20 @@ Sportarr emulates a [SiliconDust HDHomeRun](https://www.silicondust.com/) networ
 ## Sonarr v3 Compatibility
 
 Sportarr implements Sonarr v3 API endpoints to enable integration with:
+
 - **Prowlarr** - Indexer sync
 - **Maintainerr** - Media lifecycle management
 - **Decypharr** - Symlink repair and media management
+- **Ruddarr** - Library and calendar response models
 - **Other tools** expecting Sonarr API
+
+Series responses include the fields required by strict Sonarr clients, including
+`ended: false` for ongoing leagues. Calendar events requested with
+`includeSeries=true` embed a series with a `seasons` array containing the event's
+season number and the league's monitored flag. This shape is checked against
+[Ruddarr's Series and Episode models](https://github.com/ruddarr/app/tree/main/Ruddarr/Models/Series).
+Interactive release search (`GET /api/v3/release`) is not implemented; this
+compatibility does not cover every Ruddarr feature.
 
 ### Mapping
 
@@ -174,8 +184,13 @@ Sportarr implements Sonarr v3 API endpoints to enable integration with:
 | GET | `/api/v3/system/status` | System status |
 | GET | `/api/v3/series` | List leagues as series |
 | GET | `/api/v3/series/{id}` | Get series by ID |
+| GET | `/api/v3/series/lookup` | Look up library and catalog leagues |
+| POST | `/api/v3/series` | Add a league |
 | PUT | `/api/v3/series/{id}` | Update series (monitored) |
+| PUT | `/api/v3/series` | Update series using the ID in the body |
+| PUT | `/api/v3/series/editor` | Update tags on multiple series |
 | DELETE | `/api/v3/series/{id}` | Delete series |
+| GET | `/api/v3/calendar` | List events, optionally including their series |
 | GET | `/api/v3/episode` | Get episodes by seriesId |
 | GET | `/api/v3/episode/{id}` | Get episode by ID |
 | GET | `/api/v3/episodefile` | Get episode files by seriesId |

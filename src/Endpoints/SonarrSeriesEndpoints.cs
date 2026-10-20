@@ -98,11 +98,11 @@ public static class SonarrSeriesEndpoints
 
                 var images = new List<object>();
                 if (!string.IsNullOrEmpty(league.PosterUrl))
-                    images.Add(new { coverType = "poster", url = league.PosterUrl });
+                    images.Add(new { coverType = "poster", url = league.PosterUrl, remoteUrl = league.PosterUrl });
                 if (!string.IsNullOrEmpty(league.BannerUrl))
-                    images.Add(new { coverType = "banner", url = league.BannerUrl });
+                    images.Add(new { coverType = "banner", url = league.BannerUrl, remoteUrl = league.BannerUrl });
                 if (!string.IsNullOrEmpty(league.LogoUrl))
-                    images.Add(new { coverType = "clearlogo", url = league.LogoUrl });
+                    images.Add(new { coverType = "clearlogo", url = league.LogoUrl, remoteUrl = league.LogoUrl });
 
                 return new
                 {
@@ -143,6 +143,7 @@ public static class SonarrSeriesEndpoints
                     tvdbId = externalId,
                     tvRageId = 0,
                     tvMazeId = 0,
+                    ended = false,
                     seriesType = "standard",
                     cleanTitle = league.Name.ToLowerInvariant().Replace(" ", ""),
                     titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
@@ -215,11 +216,11 @@ public static class SonarrSeriesEndpoints
 
             var images = new List<object>();
             if (!string.IsNullOrEmpty(league.PosterUrl))
-                images.Add(new { coverType = "poster", url = league.PosterUrl });
+                images.Add(new { coverType = "poster", url = league.PosterUrl, remoteUrl = league.PosterUrl });
             if (!string.IsNullOrEmpty(league.BannerUrl))
-                images.Add(new { coverType = "banner", url = league.BannerUrl });
+                images.Add(new { coverType = "banner", url = league.BannerUrl, remoteUrl = league.BannerUrl });
             if (!string.IsNullOrEmpty(league.LogoUrl))
-                images.Add(new { coverType = "clearlogo", url = league.LogoUrl });
+                images.Add(new { coverType = "clearlogo", url = league.LogoUrl, remoteUrl = league.LogoUrl });
 
             var series = new
             {
@@ -274,6 +275,7 @@ public static class SonarrSeriesEndpoints
                 tvdbId = externalId,
                 tvRageId = 0,
                 tvMazeId = 0,
+                ended = false,
                 seriesType = "standard",
                 cleanTitle = league.Name.ToLowerInvariant().Replace(" ", ""),
                 titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
@@ -526,7 +528,7 @@ public static class SonarrSeriesEndpoints
                             Helpers.NumericIdAlias.FromExternalId(local.ExternalId),
                             local.QualityProfileId ?? 1, local.Tags.ToArray(), local.Added.Year,
                             local.Description, local.LogoUrl, local.PosterUrl,
-                            localSeasons.Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray()) });
+                            localSeasons.Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray(), local.Added) });
                     }
 
                     var catalogLeague = await sportarrApi.LookupLeagueAsync(candidate);
@@ -564,7 +566,7 @@ public static class SonarrSeriesEndpoints
                 Helpers.NumericIdAlias.FromExternalId(league.ExternalId),
                 league.QualityProfileId ?? 1, league.Tags.ToArray(), league.Added.Year,
                 league.Description, league.LogoUrl, league.PosterUrl,
-                librarySeasons.GetValueOrDefault(league.Id))).ToList();
+                librarySeasons.GetValueOrDefault(league.Id), league.Added)).ToList();
 
             // Text terms also consult the metadata catalog so a league that
             // isn't in the library yet can be discovered and then added via
@@ -681,6 +683,14 @@ public static class SonarrSeriesEndpoints
             }
 
             var added = addResult.League;
+            var images = new List<object>();
+            if (!string.IsNullOrEmpty(added.PosterUrl))
+                images.Add(new { coverType = "poster", url = added.PosterUrl, remoteUrl = added.PosterUrl });
+            if (!string.IsNullOrEmpty(added.BannerUrl))
+                images.Add(new { coverType = "banner", url = added.BannerUrl, remoteUrl = added.BannerUrl });
+            if (!string.IsNullOrEmpty(added.LogoUrl))
+                images.Add(new { coverType = "clearlogo", url = added.LogoUrl, remoteUrl = added.LogoUrl });
+
             return Results.Created($"/api/v3/series/{added.Id}", new
             {
                 id = added.Id,
@@ -690,11 +700,16 @@ public static class SonarrSeriesEndpoints
                 monitored = added.Monitored,
                 tvdbId = Helpers.NumericIdAlias.FromExternalId(added.ExternalId),
                 qualityProfileId = added.QualityProfileId ?? qualityProfileId ?? 1,
+                ended = false,
                 seriesType = "standard",
                 titleSlug = added.Name.ToLowerInvariant().Replace(" ", "-"),
                 genres = new[] { "Sports" },
                 tags = Array.Empty<int>(),
                 seasons = Array.Empty<object>(),
+                images = images.ToArray(),
+                runtime = 0,
+                seasonFolder = true,
+                useSceneNumbering = false,
                 year = DateTime.UtcNow.Year,
                 added = DateTime.UtcNow.ToString("o"),
             });
@@ -735,7 +750,17 @@ public static class SonarrSeriesEndpoints
                 }
                 await db.SaveChangesAsync();
 
-                return Results.Ok(leagues.Select(l => new { id = l.Id, tags = l.Tags.ToArray() }));
+                var seasonRows = await db.Events
+                    .Where(e => e.LeagueId.HasValue && seriesIds.Contains(e.LeagueId.Value) && e.SeasonNumber.HasValue)
+                    .GroupBy(e => new { e.LeagueId, e.SeasonNumber })
+                    .Select(g => new { LeagueId = g.Key.LeagueId!.Value, SeasonNumber = g.Key.SeasonNumber!.Value, Monitored = g.Any(e => e.Monitored) })
+                    .ToListAsync();
+                return Results.Ok(leagues.Select(l => LookupResult(l.Id, l.Name, l.Monitored,
+                    Helpers.NumericIdAlias.FromExternalId(l.ExternalId),
+                    l.QualityProfileId ?? 1, l.Tags.ToArray(), l.Added.Year,
+                    l.Description, l.LogoUrl, l.PosterUrl,
+                    seasonRows.Where(s => s.LeagueId == l.Id).OrderBy(s => s.SeasonNumber)
+                        .Select(s => (object)new { seasonNumber = s.SeasonNumber, monitored = s.Monitored }).ToArray(), l.Added)));
             }
             catch (Exception ex)
             {
@@ -1058,6 +1083,14 @@ public static class SonarrSeriesEndpoints
                 .OrderBy(s => s.SeasonNumber)
                 .ToListAsync();
 
+            var images = new List<object>();
+            if (!string.IsNullOrEmpty(league.PosterUrl))
+                images.Add(new { coverType = "poster", url = league.PosterUrl, remoteUrl = league.PosterUrl });
+            if (!string.IsNullOrEmpty(league.BannerUrl))
+                images.Add(new { coverType = "banner", url = league.BannerUrl, remoteUrl = league.BannerUrl });
+            if (!string.IsNullOrEmpty(league.LogoUrl))
+                images.Add(new { coverType = "clearlogo", url = league.LogoUrl, remoteUrl = league.LogoUrl });
+
             return Results.Ok(new
             {
                 id = league.Id,
@@ -1070,6 +1103,14 @@ public static class SonarrSeriesEndpoints
                 path = leaguePath,
                 rootFolderPath = rootFolder?.Path ?? "/data",
                 qualityProfileId = league.QualityProfileId ?? 1,
+                ended = false,
+                seriesType = "standard",
+                year = league.Added.Year,
+                runtime = 0,
+                seasonFolder = true,
+                useSceneNumbering = false,
+                images = images.ToArray(),
+                tags = league.Tags.ToArray(),
                 genres = new[] { "Sports" },
                 added = league.Added.ToString("o")
             });
@@ -1097,7 +1138,8 @@ public static class SonarrSeriesEndpoints
         string? overview,
         string? logoUrl,
         string? posterUrl = null,
-        object[]? seasons = null)
+        object[]? seasons = null,
+        DateTime? added = null)
     {
         var seasonEntries = seasons ?? Array.Empty<object>();
         var images = new List<object>();
@@ -1121,6 +1163,7 @@ public static class SonarrSeriesEndpoints
             network = string.Empty,
             certification = string.Empty,
             qualityProfileId,
+            ended = false,
             seriesType = "standard",
             titleSlug = name.ToLowerInvariant().Replace(" ", "-"),
             cleanTitle = name.ToLowerInvariant().Replace(" ", string.Empty),
@@ -1133,9 +1176,13 @@ public static class SonarrSeriesEndpoints
             // Lookup consumers read seasonCount from statistics. In-library
             // leagues carry their real seasons; catalog-only results report 0
             // like Sonarr does for series not yet added.
-            statistics = new { seasonCount = seasonEntries.Length, episodeCount = 0, totalEpisodeCount = 0, sizeOnDisk = 0L, percentOfEpisodes = 0.0 },
+            statistics = new { seasonCount = seasonEntries.Length, episodeCount = 0, episodeFileCount = 0, totalEpisodeCount = 0, sizeOnDisk = 0L, percentOfEpisodes = 0.0 },
             tags,
             year,
+            runtime = 0,
+            seasonFolder = true,
+            useSceneNumbering = false,
+            added = (added ?? DateTime.UnixEpoch).ToString("o"),
         };
     }
 }
