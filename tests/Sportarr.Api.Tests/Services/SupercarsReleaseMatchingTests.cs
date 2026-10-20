@@ -242,4 +242,106 @@ public class SupercarsReleaseMatchingTests
                 sourceTitle: release)
             .Should().Be(0);
     }
+    // Issue #368. Round 12 holds races 31 and 32. The metadata names each
+    // qualifying and shootout event after its race.
+    private static readonly int[] Round12Races = { 31, 32 };
+
+    private static Event GoldCoast(string title, int race) =>
+        Race(title, "12", race, 2026, 10, race == 31 ? 24 : 25);
+
+    [Theory]
+    [InlineData("Supercars 2026 Round12 Gold Coast Qualifying", "Boost Mobile Gold Coast 500 Qualifying - Race 31")]
+    [InlineData("Supercars 2026 Round12 Gold Coast Top 10 Shootout", "Boost Mobile Gold Coast 500 Top 10 Shootout - Race 31")]
+    [InlineData("Supercars 2026 Round12 Gold Coast Practice 1", "Boost Mobile Gold Coast 500 - Practice 1")]
+    public void ARoundNamedSessionReleaseMatchesItsSessionEvent(string release, string eventTitle)
+    {
+        var evt = GoldCoast(eventTitle, 31);
+
+        var result = _matchingSvc.ValidateRelease(Rel(release), evt, roundRaceNumbers: Round12Races);
+
+        result.IsHardRejection.Should().BeFalse(string.Join("; ", result.Rejections));
+        result.Confidence.Should().BeGreaterThanOrEqualTo(ReleaseMatchingService.MinimumMatchConfidence);
+        _scorer.CalculateMatchScore(release, evt, roundRaceNumbers: Round12Races)
+            .Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.MinimumMatchScore);
+    }
+
+    [Theory]
+    [InlineData("Supercars 2026 Round12 Gold Coast Qualifying Race 2", "Boost Mobile Gold Coast 500 Qualifying - Race 31")]
+    [InlineData("Supercars 2026 Round12 Gold Coast Top 10 Shootout Race 2", "Boost Mobile Gold Coast 500 Top 10 Shootout - Race 31")]
+    public void ARoundNamedSessionReleaseWithAnotherRaceNumberDoesNotMatch(string release, string eventTitle)
+    {
+        var evt = GoldCoast(eventTitle, 31);
+
+        _matchingSvc.ValidateRelease(Rel(release), evt, roundRaceNumbers: Round12Races)
+            .IsHardRejection.Should().BeTrue("the release names race 2 of the round, which is race 32");
+        _scorer.CalculateMatchScore(release, evt, roundRaceNumbers: Round12Races)
+            .Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("Supercars 2026 Round12 Gold Coast Qualifying Race 1", "Boost Mobile Gold Coast 500 Qualifying - Race 31")]
+    [InlineData("Supercars 2026 Round12 Gold Coast Top 10 Shootout Race 2", "Boost Mobile Gold Coast 500 Top 10 Shootout - Race 32")]
+    public void ARoundNamedSessionReleaseWithItsRaceNumberMatches(string release, string eventTitle)
+    {
+        var evt = GoldCoast(eventTitle, eventTitle.EndsWith("31") ? 31 : 32);
+
+        _matchingSvc.ValidateRelease(Rel(release), evt, roundRaceNumbers: Round12Races)
+            .IsHardRejection.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("Supercars 2026 Round12 Gold Coast Qualifying", "Boost Mobile Gold Coast 500 Qualifying - Race 32")]
+    [InlineData("Supercars 2026 Round12 Gold Coast Top 10 Shootout", "Boost Mobile Gold Coast 500 Top 10 Shootout - Race 32")]
+    public void ARoundNamedSessionReleaseDoesNotFillTheLaterRaceOfTheRound(string release, string eventTitle)
+    {
+        var evt = GoldCoast(eventTitle, 32);
+
+        _matchingSvc.ValidateRelease(Rel(release), evt, roundRaceNumbers: Round12Races)
+            .IsHardRejection.Should().BeTrue("a round name alone stands for the first race, so it must not also fill race 32");
+        _scorer.CalculateMatchScore(release, evt, roundRaceNumbers: Round12Races)
+            .Should().Be(0);
+    }
+
+    [Fact]
+    public void ARoundNamedSessionReleaseKeepsItsBonusInASingleRaceRound()
+    {
+        var evt = Race("Repco Bathurst 1000 Qualifying - Race 20", "10", 20, 2026, 10, 10);
+
+        _matchingSvc.ValidateRelease(Rel("Supercars 2026 Round10 Bathurst Qualifying"), evt, roundRaceNumbers: new[] { 20 })
+            .IsHardRejection.Should().BeFalse();
+        Sportarr.Api.Helpers.LeagueReleaseNamePolicy.EvaluateSupercarsRoundRaceIdentity(
+            "Supercars 2026 Round10 Bathurst Qualifying", evt, new[] { 20 }).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ARoundNamedRaceReleaseWithoutANumberStaysAmbiguousInATwoRaceRound()
+    {
+        var evt = GoldCoast("Boost Mobile Gold Coast 500 - Race 31", 31);
+
+        _matchingSvc.ValidateRelease(Rel("Supercars 2026 Round12 Gold Coast Race"), evt, roundRaceNumbers: Round12Races)
+            .IsHardRejection.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ARoundNamedQualifyingReleaseDoesNotMatchTheRaceEvent()
+    {
+        var evt = GoldCoast("Boost Mobile Gold Coast 500 - Race 31", 31);
+
+        _matchingSvc.ValidateRelease(Rel("Supercars 2026 Round12 Gold Coast Qualifying"), evt, roundRaceNumbers: Round12Races)
+            .IsHardRejection.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Supercars 2026 Round12 Gold Coast Qualifying 2160p FoxSports WEB DL H265 English", "Boost Mobile Gold Coast 500 Qualifying - Race 31")]
+    [InlineData("Supercars 2026 Round12 Gold Coast Top 10 Shootout 2160p FoxSports WEB DL H265 English", "Boost Mobile Gold Coast 500 Top 10 Shootout - Race 31")]
+    public void ARoundNamedSessionFileIsImportableToItsSessionEvent(string release, string eventTitle)
+    {
+        var parser = new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>());
+        var parsed = parser.Parse(release);
+        var evt = GoldCoast(eventTitle, 31);
+
+        ImportMatchingTestHarness.Service()
+            .ScoreMatch(parsed.EventTitle ?? release, evt.Title, null, evt, parsed, Round12Races).Core
+            .Should().BeGreaterThanOrEqualTo(50);
+    }
 }

@@ -617,8 +617,20 @@ public static class LeagueReleaseNamePolicy
                 int.Parse(releaseRound.Groups["round"].Value) == eventRound)
             {
                 var singleRoundRaces = roundRaceNumbers.Distinct().OrderBy(number => number).ToArray();
-                return singleRoundRaces.Length == 1 &&
-                    singleRoundRaces[0] == int.Parse(singleRoundEventRace.Groups["race"].Value);
+                var eventRaceNumber = int.Parse(singleRoundEventRace.Groups["race"].Value);
+
+                // A qualifying or shootout title carries the race it leads
+                // into. The session check already tells it from the race. A
+                // round name with no race number stands for the first race of
+                // the round, as "Race 1" does. The later races need their own
+                // number, or one file would fill two events.
+                if (IsSupercarsNonRaceSession(evt))
+                {
+                    if (singleRoundRaces.Length == 1) return singleRoundRaces[0] == eventRaceNumber;
+                    return singleRoundRaces[0] == eventRaceNumber ? null : false;
+                }
+
+                return singleRoundRaces.Length == 1 && singleRoundRaces[0] == eventRaceNumber;
             }
         }
 
@@ -634,6 +646,13 @@ public static class LeagueReleaseNamePolicy
 
         return mappedRaces.Length > 0 &&
             mappedRaces.Contains(int.Parse(eventRace.Groups["race"].Value));
+    }
+
+    private static bool IsSupercarsNonRaceSession(Event evt)
+    {
+        var session = EventPartDetector.DetectMotorsportSessionIdentity(
+            evt.Title ?? string.Empty, evt.League?.Name, releaseTitle: false);
+        return session != null && !string.Equals(session, "Race", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string? LeagueKey(string? leagueName)
