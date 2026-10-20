@@ -25,6 +25,9 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class RssSyncService : BackgroundService
 {
+    // How long a paused or warning grab keeps blocking an equal release.
+    private static readonly TimeSpan HeldDownloadMaxAge = TimeSpan.FromHours(24);
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<RssSyncService> _logger;
     private readonly SemaphoreSlim _syncGate = new(1, 1);
@@ -923,10 +926,19 @@ public class RssSyncService : BackgroundService
         var replacedFormatScore = 0;
         var replacementFormatScore = 0;
 
+        // A grab that waits in the client still holds the event. A torrent
+        // with no peers yet reports Warning, and a paused one reports Paused.
+        // Both block an equal release, or the same content downloads twice.
+        // Only a recent grab counts. A dead torrent can sit in Warning for
+        // good, and it must not block every other release for the event.
+        var heldSince = DateTime.UtcNow - HeldDownloadMaxAge;
         var existingQueueItem = await db.DownloadQueue.AsNoTracking()
             .Where(d => d.EventId == evt.Id &&
                        (d.Status == DownloadStatus.Queued ||
-                        d.Status == DownloadStatus.Downloading))
+                        d.Status == DownloadStatus.Downloading ||
+                        ((d.Status == DownloadStatus.Paused ||
+                          d.Status == DownloadStatus.Warning) &&
+                         d.Added > heldSince)))
             .Where(d => releasePart == null ? d.Part == null : d.Part == releasePart)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -960,7 +972,8 @@ public class RssSyncService : BackgroundService
         var importingItem = await db.DownloadQueue
             .Where(d => d.EventId == evt.Id &&
                        (d.Status == DownloadStatus.Completed ||
-                        d.Status == DownloadStatus.Importing))
+                        d.Status == DownloadStatus.Importing ||
+                        d.Status == DownloadStatus.ImportPending))
             .Where(d => releasePart == null ? d.Part == null : d.Part == releasePart)
             .FirstOrDefaultAsync(cancellationToken);
 

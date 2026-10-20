@@ -297,7 +297,7 @@ public class NotificationService : INotificationService
             try
             {
                 var testConfig = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(notification.ConfigJson) ?? new();
-                url = GetConfigString(testConfig, "webhook");
+                url = GetWebhookAddress(testConfig);
             }
             catch { /* ignore */ }
 
@@ -670,6 +670,28 @@ public class NotificationService : INotificationService
         return value.ValueKind == JsonValueKind.Number ? value.GetInt32() : defaultValue;
     }
 
+    /// <summary>
+    /// Reads the address of a generic webhook connection. The settings page
+    /// saves it as "webhook". A connection created through the compatible API
+    /// can carry it under another field name, so those names count too.
+    /// </summary>
+    internal static string GetWebhookAddress(Dictionary<string, JsonElement> config)
+    {
+        foreach (var name in new[] { "webhook", "url", "webhookUrl" })
+        {
+            foreach (var (key, value) in config)
+            {
+                if (string.Equals(key, name, StringComparison.OrdinalIgnoreCase) &&
+                    value.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(value.GetString()))
+                {
+                    return value.GetString()!;
+                }
+            }
+        }
+        return string.Empty;
+    }
+
     #region Discord
 
     private async Task<bool> SendDiscordAsync(Dictionary<string, JsonElement> config, string title, string message)
@@ -859,7 +881,7 @@ public class NotificationService : INotificationService
 
     private async Task<bool> SendWebhookAsync(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, NotificationEventData? data, string instanceName)
     {
-        var webhook = GetConfigString(config, "webhook");
+        var webhook = GetWebhookAddress(config);
 
         if (string.IsNullOrEmpty(webhook))
         {
