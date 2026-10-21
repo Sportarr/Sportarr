@@ -43,6 +43,60 @@ public class SecretRedactorJsonTests
     }
 
     [Fact]
+    public void A_prowlarr_field_with_properties_between_name_and_value_is_masked()
+    {
+        // Prowlarr's indexer test sends each field with its label and help
+        // text between "name" and "value", so the two are never side by side.
+        var json = "{\"fields\":[{\"order\":2,\"name\":\"apiKey\",\"label\":\"API Key\",\"helpText\":null," +
+                   $"\"helpLink\":null,\"value\":\"{Secret}\",\"type\":\"textbox\",\"privacy\":\"apiKey\"," +
+                   "\"advanced\":false,\"hidden\":\"false\"}]}";
+        SecretRedactor.Json(json).Should().NotContain(Secret);
+    }
+
+    [Fact]
+    public void A_field_with_value_first_and_properties_between_is_masked()
+    {
+        var json = $"{{\"value\":\"{Secret}\",\"type\":\"textbox\",\"order\":2,\"name\":\"apiKey\"}}";
+        SecretRedactor.Json(json).Should().NotContain(Secret);
+    }
+
+    [Fact]
+    public void A_pretty_printed_field_is_masked()
+    {
+        var json = "{\n  \"name\": \"apiKey\",\n  \"label\": \"API Key\",\n  \"helpText\": null,\n" +
+                   $"  \"value\": \"{Secret}\"\n}}";
+        SecretRedactor.Json(json).Should().NotContain(Secret);
+    }
+
+    [Fact]
+    public void A_field_with_an_array_between_name_and_value_is_masked()
+    {
+        var json = $"{{\"name\":\"passkey\",\"selectOptions\":[\"a\",\"b]\"],\"order\":[1,2],\"value\":\"{Secret}\"}}";
+        SecretRedactor.Json(json).Should().NotContain(Secret);
+    }
+
+    [Fact]
+    public void Other_fields_keep_their_values()
+    {
+        var json = "{\"fields\":[{\"name\":\"baseUrl\",\"label\":\"URL\",\"value\":\"http://prowlarr:9696/1/\"}," +
+                   $"{{\"name\":\"apiKey\",\"label\":\"API Key\",\"value\":\"{Secret}\"}}]}}";
+        var masked = SecretRedactor.Json(json);
+        masked.Should().NotContain(Secret);
+        masked.Should().Contain("http://prowlarr:9696/1/");
+    }
+
+    [Fact]
+    public void A_mask_does_not_reach_into_the_next_field()
+    {
+        // A credential field with no value of its own leaves its neighbours
+        // alone, whichever side of it they sit.
+        var after = "[{\"name\":\"apiKey\",\"label\":\"API Key\"},{\"name\":\"baseUrl\",\"value\":\"http://keep.test/\"}]";
+        var before = "[{\"value\":\"http://keep.test/\",\"label\":\"URL\"},{\"label\":\"API Key\",\"name\":\"apiKey\"}]";
+        SecretRedactor.Json(after).Should().Contain("http://keep.test/");
+        SecretRedactor.Json(before).Should().Contain("http://keep.test/");
+    }
+
+    [Fact]
     public void Ordinary_values_are_left_alone()
     {
         var json = "{\"name\":\"My Indexer\",\"url\":\"https://example.test/feed\"}";
