@@ -62,10 +62,10 @@ public class SeasonSpanMatchingTests
     [Fact]
     public void DotSeparatedSeasonSpan_MatchesEventInTheFirstSeasonYear()
     {
-        // Same release, event played in the season's starting year instead -
+        // Same naming, game played in the season's starting year instead -
         // both ends of a 2025-2026 season span must be accepted.
         var result = _svc.ValidateRelease(
-            Rel("NBA.2025.2026.San.Antonio.Spurs.Vs.Philadelphia.76ers.03.03.2026.VFF.1080p.WEBRip.AAC.2.0.AVC-Macolive"),
+            Rel("NBA.2025.2026.San.Antonio.Spurs.Vs.Philadelphia.76ers.03.03.2025.VFF.1080p.WEBRip.AAC.2.0.AVC-Macolive"),
             SpursAt76ers(2025));
 
         result.IsHardRejection.Should().BeFalse();
@@ -80,7 +80,7 @@ public class SeasonSpanMatchingTests
             Rel("NBA.2025.2026.San.Antonio.Spurs.Vs.Philadelphia.76ers.03.03.2026.VFF.1080p.WEBRip.AAC.2.0.AVC-Macolive"),
             SpursAt76ers(2027));
 
+        // The release's own 03.03.2026 date now carries the rejection.
         result.IsHardRejection.Should().BeTrue();
-        result.Rejections.Should().Contain(r => r.Contains("Year mismatch"));
     }
 }

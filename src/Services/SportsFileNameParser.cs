@@ -656,6 +656,37 @@ public class SportsFileNameParser
     private static bool IsPlausibleReleaseYear(int year) =>
         year >= 1950 && year <= DateTime.UtcNow.Year + 2;
 
+    private static bool IsDateApartFromSeasonSpan(Match seasonSpan, Match dayFirstDate)
+    {
+        var overlaps = dayFirstDate.Index < seasonSpan.Index + seasonSpan.Length &&
+            seasonSpan.Index < dayFirstDate.Index + dayFirstDate.Length;
+        if (overlaps ||
+            !int.TryParse(seasonSpan.Groups["startYear"].Value, out var startYear) ||
+            !int.TryParse(seasonSpan.Groups["endYear"].Value, out var endYear) ||
+            !int.TryParse(dayFirstDate.Groups["year"].Value, out var dateYear))
+        {
+            return false;
+        }
+
+        if (endYear < 100)
+        {
+            endYear = (startYear / 100) * 100 + endYear;
+        }
+        return dateYear >= startYear && dateYear <= endYear;
+    }
+
+    private static void ApplySeasonSpan(SportsParseResult result, Match seasonSpan)
+    {
+        var startYear = int.Parse(seasonSpan.Groups["startYear"].Value);
+        var endYear = int.Parse(seasonSpan.Groups["endYear"].Value);
+        if (endYear < 100)
+        {
+            endYear = (startYear / 100) * 100 + endYear;
+        }
+        result.EventYear = startYear;
+        result.SeasonYearEnd = endYear;
+    }
+
     private static readonly Regex DatePattern = new(
         @"(?<!\d)(?<year>\d{4})(?<sep>[\.\-/\s]+)(?<month>\d{1,2})\k<sep>(?<day>\d{1,2})(?!\d)",
         RegexOptions.Compiled);
@@ -985,7 +1016,14 @@ public class SportsFileNameParser
             var seasonSpanMatch = SeasonSpanPattern.Match(cleanName);
             var dayFirstMatch = DayFirstDatePattern.Match(cleanName);
             var hasExplicitSlashDate = dayFirstMatch.Success && dayFirstMatch.Value.Contains('/');
-            if ((!seasonSpanMatch.Success || hasExplicitSlashDate) &&
+            // A full day-first date that sits apart from the season span and
+            // falls inside it is the game date, not a misread of the span:
+            // "NBA 2026-2027 / RS / 20.10.2026 / 76ers @ Knicks". Dropping it
+            // left year-only validation, which passes every meeting of the
+            // same two teams that season.
+            var hasSeasonDate = seasonSpanMatch.Success && dayFirstMatch.Success &&
+                IsDateApartFromSeasonSpan(seasonSpanMatch, dayFirstMatch);
+            if ((!seasonSpanMatch.Success || hasExplicitSlashDate || hasSeasonDate) &&
                 dayFirstMatch.Success &&
                 int.TryParse(dayFirstMatch.Groups["day"].Value, out var dfDay) &&
                 int.TryParse(dayFirstMatch.Groups["month"].Value, out var dfMonth) &&
@@ -1004,6 +1042,10 @@ public class SportsFileNameParser
                     result.EventDate = new DateTime(dfYear, dfMonth, dfDay);
                     _logger.LogDebug("[SportsFileNameParser] Extracted day-first date {Date} from '{Filename}'",
                         result.EventDate.Value.ToString("yyyy-MM-dd"), filename);
+                    if (hasSeasonDate)
+                    {
+                        ApplySeasonSpan(result, seasonSpanMatch);
+                    }
                 }
                 catch (ArgumentOutOfRangeException)
                 {
