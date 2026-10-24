@@ -297,6 +297,12 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
         private int _pauseHistory;
         private int _adds;
         public string SourcePath { get; set; } = "";
+        public string TorrentId { get; set; } = JobId;
+        public string InfohashV1 { get; set; } = "";
+        public string InfohashV2 { get; set; } = "";
+        public string? DefaultSavePath { get; set; }
+        public string? CategorySavePath { get; set; }
+        public string? TorrentSavePath { get; set; }
         public bool PauseAddResponse { get; set; }
         public bool PauseIndividualAdds { get; set; }
         public bool RejectAdds { get; set; }
@@ -330,10 +336,15 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
                 UnexpectedRequests.Enqueue(uri.GetLeftPart(UriPartial.Path));
                 throw new InvalidOperationException("Unexpected ownership fixture HTTP request.");
             }
+            if (uri.AbsolutePath == "/api/v2/app/preferences")
+                return Json(new { save_path = DefaultSavePath ?? Path.GetDirectoryName(SourcePath) });
+            if (uri.AbsolutePath == "/api/v2/torrents/categories")
+                return Json(new { sportarr = new { name = "sportarr", savePath = CategorySavePath ?? Path.GetDirectoryName(SourcePath) } });
             if (uri.AbsolutePath == "/api/v2/torrents/info")
-                return Json(new[] { new { hash = JobId, name = Title, category = "sportarr",
+                return Json(new[] { new { hash = TorrentId, infohash_v1 = InfohashV1, infohash_v2 = InfohashV2,
+                    name = Title, category = "sportarr",
                     state = "uploading", progress = 1.0, size = 4096L, downloaded = 4096L,
-                    content_path = SourcePath, save_path = Path.GetDirectoryName(SourcePath), completion_on = 1599004800L } });
+                    content_path = SourcePath, save_path = TorrentSavePath ?? Path.GetDirectoryName(SourcePath), completion_on = 1599004800L } });
             var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
             var mode = query["mode"];
             if (mode == null && request.Method == HttpMethod.Post && request.Content is MultipartFormDataContent multipart)

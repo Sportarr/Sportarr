@@ -848,6 +848,12 @@ public class ExternalDownloadInfo
     /// </summary>
     public string? TorrentInfoHash { get; set; }
 
+    /// <summary>Equivalent IDs supplied by qBittorrent for ownership reconciliation.</summary>
+    public string[] TorrentHashAliases { get; set; } = Array.Empty<string>();
+
+    /// <summary>Shared client/category roots that must never be scanned as torrent content.</summary>
+    public string[] SharedSavePaths { get; set; } = Array.Empty<string>();
+
     /// <summary>
     /// When download was completed
     /// </summary>
