@@ -909,7 +909,8 @@ public class ReleaseMatchingService
                     evt.League,
                     knownLeagues,
                     titleHomeName,
-                    titleAwayName);
+                    titleAwayName,
+                    parseResult.EventDate.HasValue);
             if (teamMatch >= 2)
             {
                 result.Confidence += 35;
@@ -2021,22 +2022,43 @@ public class ReleaseMatchingService
         League? league = null,
         IReadOnlyCollection<League>? knownLeagues = null,
         string? titleHomeName = null,
-        string? titleAwayName = null)
+        string? titleAwayName = null,
+        bool releaseHasDate = false)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
-        var homeMatches = ContainsTeamName(normalizedRelease, homeTeamName, homeTeam, releaseTitle) ||
-            (!string.IsNullOrWhiteSpace(titleHomeName) && ContainsTeamName(normalizedRelease, titleHomeName, homeTeam, releaseTitle));
-        var awayMatches = ContainsTeamName(normalizedRelease, awayTeamName, awayTeam, releaseTitle) ||
-            (!string.IsNullOrWhiteSpace(titleAwayName) && ContainsTeamName(normalizedRelease, titleAwayName, awayTeam, releaseTitle));
+
+        // A short code such as "TOR" or "BOS" belongs to a team in several
+        // leagues. When the title names another league and not this one, the
+        // code says nothing about this event.
+        var trustShortCodes = !TitleNamesOtherLeague(releaseTitle, league, knownLeagues);
+        var homeMatches = ContainsTeamName(normalizedRelease, homeTeamName, homeTeam, releaseTitle, trustShortCodes) ||
+            (!string.IsNullOrWhiteSpace(titleHomeName) && ContainsTeamName(normalizedRelease, titleHomeName, homeTeam, releaseTitle, trustShortCodes));
+        var awayMatches = ContainsTeamName(normalizedRelease, awayTeamName, awayTeam, releaseTitle, trustShortCodes) ||
+            (!string.IsNullOrWhiteSpace(titleAwayName) && ContainsTeamName(normalizedRelease, titleAwayName, awayTeam, releaseTitle, trustShortCodes));
 
         if (league != null && TitleNamesLeague(releaseTitle, league))
         {
             var baseHome = FootballReleaseNamePolicy.BaseParticipantName(titleHomeName ?? homeTeamName, league.Name);
             var baseAway = FootballReleaseNamePolicy.BaseParticipantName(titleAwayName ?? awayTeamName, league.Name);
             if (!homeMatches && !baseHome.Equals(titleHomeName ?? homeTeamName, StringComparison.OrdinalIgnoreCase))
-                homeMatches = ContainsTeamName(normalizedRelease, baseHome, homeTeam, releaseTitle);
+                homeMatches = ContainsTeamName(normalizedRelease, baseHome, homeTeam, releaseTitle, trustShortCodes);
             if (!awayMatches && !baseAway.Equals(titleAwayName ?? awayTeamName, StringComparison.OrdinalIgnoreCase))
-                awayMatches = ContainsTeamName(normalizedRelease, baseAway, awayTeam, releaseTitle);
+                awayMatches = ContainsTeamName(normalizedRelease, baseAway, awayTeam, releaseTitle, trustShortCodes);
+        }
+
+        // Official codes of the major US leagues name the opponents of
+        // followed teams, which the app holds no code for. The code is only
+        // taken with three proofs: the title names this league, the title
+        // carries a date (the date check then compares it with the event),
+        // and the code stands as an upper-case token. Both teams still have
+        // to be found, which the caller checks.
+        if (trustShortCodes && releaseHasDate && (!homeMatches || !awayMatches)
+            && league != null && TitleNamesLeagueOrItsMajorLeague(releaseTitle, league))
+        {
+            homeMatches = homeMatches || ContainsOfficialTeamCode(releaseTitle, titleHomeName ?? homeTeamName)
+                || ContainsOfficialTeamCode(releaseTitle, homeTeamName);
+            awayMatches = awayMatches || ContainsOfficialTeamCode(releaseTitle, titleAwayName ?? awayTeamName)
+                || ContainsOfficialTeamCode(releaseTitle, awayTeamName);
         }
 
         var normalizedHomeTeam = NormalizeTitle(homeTeamName);
@@ -2133,7 +2155,8 @@ public class ReleaseMatchingService
         string normalizedRelease,
         string teamName,
         Team? team,
-        string rawRelease)
+        string rawRelease,
+        bool trustShortCodes = true)
     {
         var normalizedName = NormalizeTitle(teamName);
 
@@ -2145,6 +2168,7 @@ public class ReleaseMatchingService
 
         // Check short name from database if Team navigation property is loaded (e.g., "LAC")
         if (team != null && !string.IsNullOrEmpty(team.ShortName) &&
+            (trustShortCodes || !IsShortCode(team.ShortName)) &&
             ContainsTeamAlias(normalizedRelease, rawRelease, team.ShortName))
             return true;
 
@@ -2158,6 +2182,7 @@ public class ReleaseMatchingService
             foreach (var alt in SplitAliases(team.AlternateName))
             {
                 if (alt.Length < 2) continue;
+                if (!trustShortCodes && IsShortCode(alt)) continue;
                 if (ContainsTeamAlias(normalizedRelease, rawRelease, alt))
                     return true;
             }
@@ -2233,10 +2258,94 @@ public class ReleaseMatchingService
                 // This team matches - check if any variation appears in release
                 foreach (var variation in variations)
                 {
+                    if (!trustShortCodes && IsShortCode(variation)) continue;
                     if (ContainsTeamAlias(normalizedRelease, rawRelease, variation))
                         return true;
                 }
             }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// A short code is one upper-case word of two to four letters, such as "OKC" or "PHI".
+    /// Nicknames like "Heat" are not codes, so the check never removes them.
+    /// </summary>
+    private static bool IsShortCode(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length is >= 2 and <= 4 && trimmed.All(char.IsLetter) && trimmed.All(char.IsUpper);
+    }
+
+    private static readonly string[] MajorLeagueTokens = { "NBA", "NFL", "NHL", "MLB", "WNBA" };
+
+    /// <summary>
+    /// True when the title names a league other than the event league and does
+    /// not name the event league. The known leagues come from the caller. The
+    /// major US league names are always checked, because those leagues share
+    /// many team codes. A league whose name holds the other name as whole words
+    /// is not another league ("NBA" and "NBA Cup", "MLB" and "MLB Spring Training").
+    /// </summary>
+    private static bool TitleNamesOtherLeague(
+        string releaseTitle,
+        League? eventLeague,
+        IReadOnlyCollection<League>? knownLeagues)
+    {
+        if (eventLeague == null) return false;
+        if (TitleNamesLeague(releaseTitle, eventLeague)) return false;
+
+        var eventLeagueName = NormalizeTitle(eventLeague.Name ?? string.Empty);
+
+        if (knownLeagues != null &&
+            knownLeagues.Any(other => !IsSameLeague(other, eventLeague)
+                && !LeagueNamesOverlap(eventLeagueName, NormalizeTitle(other.Name ?? string.Empty))
+                && TitleNamesLeague(releaseTitle, other)))
+            return true;
+
+        var normalizedTitle = NormalizeTitle(releaseTitle);
+        return MajorLeagueTokens.Any(token =>
+            !ContainsWholeWord(eventLeagueName, token) && ContainsWholeWord(normalizedTitle, token));
+    }
+
+    /// <summary>
+    /// True when the title names the league, or names the major league whose
+    /// name the league carries ("NBA" for "NBA Summer League").
+    /// </summary>
+    private static bool TitleNamesLeagueOrItsMajorLeague(string releaseTitle, League league)
+    {
+        if (TitleNamesLeague(releaseTitle, league)) return true;
+
+        var leagueName = NormalizeTitle(league.Name ?? string.Empty);
+        var normalizedTitle = NormalizeTitle(releaseTitle);
+        return MajorLeagueTokens.Any(token =>
+            ContainsWholeWord(leagueName, token) && ContainsWholeWord(normalizedTitle, token));
+    }
+
+    // One league name that starts with the other, such as "NBA Cup" and "NBA".
+    // A name that only holds the other inside it ("Russian Premier League")
+    // is a different league.
+    private static bool LeagueNamesOverlap(string normalizedLeft, string normalizedRight)
+    {
+        if (normalizedLeft.Length == 0 || normalizedRight.Length == 0) return false;
+        return StartsWithWholeWord(normalizedLeft, normalizedRight) || StartsWithWholeWord(normalizedRight, normalizedLeft);
+    }
+
+    private static bool StartsWithWholeWord(string text, string prefix) =>
+        text.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
+        text.StartsWith(prefix + " ", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether the title carries an official code of the team as an upper-case
+    /// token. Upper case keeps plain words such as "was", "car" or "min" from
+    /// counting as a team.
+    /// </summary>
+    private static bool ContainsOfficialTeamCode(string rawRelease, string teamName)
+    {
+        foreach (var code in TeamShortCodeData.CodesFor(teamName))
+        {
+            if (Regex.IsMatch(rawRelease, $@"(?<![A-Za-z0-9]){Regex.Escape(code)}(?![A-Za-z0-9])", RegexOptions.CultureInvariant))
+                return true;
         }
 
         return false;
