@@ -779,7 +779,7 @@ public class EventResponse
 
         foreach (var part in allParts)
         {
-            var isMonitored = defaultMonitorAll || monitoredPartNames.Contains(part.Name);
+            var isMonitored = defaultMonitorAll || EventPartDetector.IsMonitored(monitoredPartNames, part.Name);
             var file = evt.Files.FirstOrDefault(f => f.PartNumber == part.Number && f.Exists);
 
             partStatuses.Add(new PartStatus

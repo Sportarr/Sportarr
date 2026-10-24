@@ -147,6 +147,11 @@ public class AutomaticSearchService : IAutomaticSearchService
             {
                 part = null;
             }
+            else
+            {
+                // Main Card and Main Show are one segment. Use the name this event defines.
+                part = EventPartDetector.CanonicalPartName(part, evt.Sport, evt.Title, evt.League?.Name);
+            }
 
             // MONITORED CHECK: Only applies to automatic background searches
             // Manual searches (user clicking search button) should always work
@@ -539,7 +544,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                                 releasePart = _partDetector.DetectPart(
                                     r.Title, evt.Sport ?? string.Empty, evt.Title, evt.League?.Name)?.SegmentName;
                             return releasePart == null || EventPartDetector.IsFullEvent(releasePart) ||
-                                   monitoredSet.Contains(releasePart);
+                                   EventPartDetector.IsMonitored(monitoredSet, releasePart);
                         }).ToList();
 
                         var dropped = beforeCount - allReleases.Count;
@@ -2019,7 +2024,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 parts = parts
                     .OrderBy(p => p.Name switch
                     {
-                        "Main Card" => 1,    // Most important - download first
+                        "Main Card" or "Main Show" => 1,    // Most important - download first
                         "Prelims" => 2,      // Second priority
                         "Early Prelims" => 3, // Third priority
                         "Post Show" => 4,     // Least important - download last
@@ -2047,7 +2052,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 {
                     // Check if this part is monitored
                     bool isMonitored = monitoredPartNames == null || // null = all monitored
-                                      monitoredPartNames.Contains(part.Name);
+                                      EventPartDetector.IsMonitored(monitoredPartNames, part.Name);
 
                     if (!isMonitored)
                     {

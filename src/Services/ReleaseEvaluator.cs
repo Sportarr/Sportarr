@@ -150,12 +150,7 @@ public class ReleaseEvaluator
                     // always explicitly labeled. Accept unlabeled releases when the user
                     // requested any "main" part name (Main Card for fighting, Main Show for
                     // wrestling, Main Event for boxing/PPVs).
-                    var requestedLower = requestedPart.ToLowerInvariant();
-                    var isMainPartRequest = requestedLower == "main card"
-                        || requestedLower == "main show"
-                        || requestedLower == "main event"
-                        || requestedLower == "main";
-                    if (isMainPartRequest)
+                    if (EventPartDetector.IsMainPartRequest(requestedPart))
                     {
                         _logger.LogDebug("[Release Evaluator] {Title} - Unmarked release accepted as {Part} candidate",
                             release.Title, requestedPart);
@@ -169,7 +164,7 @@ public class ReleaseEvaluator
                         return evaluation;
                     }
                 }
-                else if (!detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
+                else if (!EventPartDetector.PartNamesMatch(detectedPart.SegmentName, requestedPart))
                 {
                     evaluation.Rejections.Add($"Wrong part: requested '{requestedPart}' but release contains '{detectedPart.SegmentName}'");
                     evaluation.Approved = false;

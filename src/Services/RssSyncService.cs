@@ -907,7 +907,7 @@ public class RssSyncService : BackgroundService
                 if (!string.IsNullOrEmpty(monitoredParts))
                 {
                     var partsArray = monitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (!partsArray.Contains(releasePart, StringComparer.OrdinalIgnoreCase))
+                    if (!EventPartDetector.IsMonitored(partsArray, releasePart))
                         return (false, $"Part '{releasePart}' not monitored", null);
                 }
             }

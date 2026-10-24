@@ -91,6 +91,11 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     {
         part = null;
     }
+    else
+    {
+        // Main Card and Main Show are one segment. Use the name this event defines.
+        part = EventPartDetector.CanonicalPartName(part, evt.Sport, evt.Title, evt.League?.Name);
+    }
 
     logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}{Refresh}{Custom}",
         eventId,

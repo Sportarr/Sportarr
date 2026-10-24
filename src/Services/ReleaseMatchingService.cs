@@ -373,8 +373,8 @@ public class ReleaseMatchingService
                 remainingNonEventContent == null &&
                 EventPartDetector.DetectWrestlingPromotion(evt.League?.Name) !=
                     EventPartDetector.WrestlingPromotion.Other &&
-                detectedRequestedPart?.SegmentName.Equals(
-                    requestedPart, StringComparison.OrdinalIgnoreCase) == true &&
+                detectedRequestedPart != null &&
+                EventPartDetector.PartNamesMatch(detectedRequestedPart.SegmentName, requestedPart) &&
                 SearchNormalizationService.EvaluateCombatIdentity(
                     release.Title,
                     evt.Title ?? string.Empty,
@@ -1286,7 +1286,7 @@ public class ReleaseMatchingService
                 // Multi-part ENABLED and specific part requested
                 if (detectedPart != null)
                 {
-                    if (detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
+                    if (EventPartDetector.PartNamesMatch(detectedPart.SegmentName, requestedPart))
                     {
                         result.Confidence += 20;
                         result.MatchReasons.Add($"Part matches: {requestedPart}");
@@ -1306,12 +1306,7 @@ public class ReleaseMatchingService
                     // always the main show. Accept unlabeled releases when the user requested
                     // any "main" part name (Main Card for fighting, Main Show for wrestling,
                     // Main Event for boxing/PPVs), reject otherwise.
-                    var requestedLower = requestedPart.ToLowerInvariant();
-                    var isMainPartRequest = requestedLower == "main card"
-                        || requestedLower == "main show"
-                        || requestedLower == "main event"
-                        || requestedLower == "main";
-                    if (isMainPartRequest)
+                    if (EventPartDetector.IsMainPartRequest(requestedPart))
                     {
                         result.Confidence += 10;
                         result.MatchReasons.Add($"Unmarked release (likely {requestedPart})");

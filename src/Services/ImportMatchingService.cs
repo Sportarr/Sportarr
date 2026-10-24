@@ -1045,7 +1045,9 @@ public class ImportMatchingService
                 // Event monitors all parts
                 confidence += 15;
             }
-            else if (evt.MonitoredParts.Contains(detectedPart, StringComparison.OrdinalIgnoreCase))
+            else if (EventPartDetector.IsMonitored(
+                evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                detectedPart))
             {
                 // Event specifically monitors this part
                 confidence += 20;

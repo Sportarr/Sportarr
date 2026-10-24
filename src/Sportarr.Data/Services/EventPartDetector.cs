@@ -916,10 +916,69 @@ public class EventPartDetector
         if (string.IsNullOrWhiteSpace(partName) || IsFullEvent(partName))
             return null;
 
-        var match = GetSegmentDefinitions(sport, eventTitle, leagueName)
-            .FirstOrDefault(s => s.Name.Equals(partName, StringComparison.OrdinalIgnoreCase));
+        var definitions = GetSegmentDefinitions(sport, eventTitle, leagueName);
+        var canonical = CanonicalPartName(partName, definitions);
+        var match = definitions
+            .FirstOrDefault(s => s.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
 
         return match?.PartNumber;
+    }
+
+    /// <summary>
+    /// True when two part names mean the same segment. Main Card and Main Show
+    /// are the same segment, named for fighting and for wrestling. Main Event
+    /// is a different part name and does not match either.
+    /// </summary>
+    public static bool PartNamesMatch(string? left, string? right)
+    {
+        if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase)) return true;
+        return IsMainSegmentName(left) && IsMainSegmentName(right);
+    }
+
+    private static bool IsMainSegmentName(string? name) =>
+        string.Equals(name, "Main Card", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "Main Show", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True when a requested part name asks for the main segment of an event.
+    /// An unlabelled release counts as the main segment, so it may satisfy
+    /// such a request.
+    /// </summary>
+    public static bool IsMainPartRequest(string? partName) =>
+        partName != null && partName.Trim().ToLowerInvariant()
+            is "main card" or "main show" or "main event" or "main";
+
+    /// <summary>
+    /// True when the monitored part names include the part. A Main Card entry
+    /// also covers Main Show, because the part selector lists the fighting
+    /// names for every combat league.
+    /// </summary>
+    public static bool IsMonitored(IEnumerable<string> monitoredPartNames, string partName) =>
+        monitoredPartNames.Any(name => PartNamesMatch(name, partName));
+
+    /// <summary>
+    /// Map a requested part name to the name this event defines. A request for
+    /// Main Card on a wrestling show becomes Main Show, and the other way round.
+    /// Any other name is returned unchanged.
+    /// </summary>
+    public static string? CanonicalPartName(string? requested, IEnumerable<SegmentDefinition> definitions)
+    {
+        if (string.IsNullOrWhiteSpace(requested) || !IsMainSegmentName(requested.Trim()))
+            return requested;
+
+        var defined = definitions.Where(d => d.PartNumber > 0).Select(d => d.Name).ToList();
+        if (defined.Any(n => n.Equals(requested.Trim(), StringComparison.OrdinalIgnoreCase)))
+            return defined.First(n => n.Equals(requested.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        return defined.FirstOrDefault(IsMainSegmentName) ?? requested;
+    }
+
+    public static string? CanonicalPartName(string? requested, string? sport, string? eventTitle,
+        string? leagueName)
+    {
+        if (string.IsNullOrWhiteSpace(requested) || string.IsNullOrWhiteSpace(sport))
+            return requested;
+        return CanonicalPartName(requested, GetSegmentDefinitions(sport, eventTitle, leagueName));
     }
 
     /// <summary>
@@ -980,7 +1039,7 @@ public class EventPartDetector
 
         // Required = monitored parts, minus the optional Post Show (see PostShowSegmentName).
         var required = parts
-            .Where(p => monitoredPartNames == null || monitoredPartNames.Contains(p.Name))
+            .Where(p => monitoredPartNames == null || IsMonitored(monitoredPartNames, p.Name))
             .Where(p => !p.Name.Equals(PostShowSegmentName, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
