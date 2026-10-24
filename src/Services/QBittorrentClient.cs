@@ -919,9 +919,27 @@ public class QBittorrentClient
         }
     }
 
+    // The shared roots change rarely, and the external download scan runs
+    // often. Keep them for a short time instead of asking qBittorrent twice
+    // on every pass.
+    private static readonly TimeSpan SharedSavePathsCacheTime = TimeSpan.FromMinutes(5);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime At, string[] Paths)>
+        SharedSavePathsCache = new();
+
+    /// <summary>Forget the cached save paths. Tests use it between runs.</summary>
+    internal static void ResetSharedSavePathsCache() => SharedSavePathsCache.Clear();
+
     private async Task<string[]> GetSharedSavePathsAsync(DownloadClient config, string category)
     {
+        var cacheKey = $"{config.Id}|{GetBaseUrl(config)}|{category}";
+        if (SharedSavePathsCache.TryGetValue(cacheKey, out var cached) &&
+            DateTime.UtcNow - cached.At < SharedSavePathsCacheTime)
+        {
+            return cached.Paths;
+        }
+
         var paths = new List<string>();
+        var failed = false;
         var baseUrl = GetBaseUrl(config);
         // Both roots are unsafe even when content_path incorrectly points at one of them.
         foreach (var endpoint in new[] { "app/preferences", "torrents/categories" })
@@ -940,10 +958,18 @@ public class QBittorrentClient
             }
             catch (Exception ex)
             {
+                failed = true;
                 _logger.LogWarning(ex, "[qBittorrent] Could not read shared save paths from {Endpoint}", endpoint);
             }
         }
-        return paths.ToArray();
+
+        var result = paths.ToArray();
+        // A failed read is not kept, so the next pass asks again.
+        if (!failed)
+        {
+            SharedSavePathsCache[cacheKey] = (DateTime.UtcNow, result);
+        }
+        return result;
     }
 
     /// <summary>Get a torrent by any of its qBittorrent IDs.</summary>
@@ -1016,7 +1042,9 @@ public class QBittorrentClient
                     ? t.InfohashV1 : t.Hash,
                 TorrentHashAliases = config.Type == DownloadClientType.QBittorrent
                     ? QBittorrentHashHelper.GetHashes(t) : Array.Empty<string>(),
-                SharedSavePaths = sharedSavePaths.Append(t.SavePath).Where(p => !string.IsNullOrWhiteSpace(p)).ToArray(),
+                SharedSavePaths = config.Type == DownloadClientType.QBittorrent
+                    ? sharedSavePaths.Append(t.SavePath).Where(p => !string.IsNullOrWhiteSpace(p)).ToArray()
+                    : Array.Empty<string>(),
                 CompletedDate = t.CompletedOn > 0
                     ? DateTimeOffset.FromUnixTimeSeconds(t.CompletedOn).UtcDateTime
                     : (DateTime?)null

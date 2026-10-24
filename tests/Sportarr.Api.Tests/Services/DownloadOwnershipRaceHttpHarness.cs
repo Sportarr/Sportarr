@@ -50,6 +50,9 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
 
     public static async Task<DownloadOwnershipRaceHttpHarness> CreateAsync()
     {
+        // Each rig has its own fake qBittorrent, so cached save paths from an
+        // earlier rig must not leak in.
+        Sportarr.Api.Services.QBittorrentClient.ResetSharedSavePathsCache();
         var directory = Path.Combine(Path.GetTempPath(), "sportarr-download-ownership-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
