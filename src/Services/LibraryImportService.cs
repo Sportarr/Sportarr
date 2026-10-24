@@ -69,11 +69,23 @@ public class LibraryImportService
     /// <summary>
     /// Scan a folder for video files
     /// </summary>
-    public async Task<LibraryScanResult> ScanFolderAsync(
+    public Task<LibraryScanResult> ScanFolderAsync(
         string folderPath,
         bool includeSubfolders = true,
         Func<int, int, Task>? onProgress = null,
-        bool includeIgnoredFiles = false)
+        bool includeIgnoredFiles = false) =>
+        ScanPathAsync(folderPath, includeSubfolders, onProgress, includeIgnoredFiles);
+
+    /// <summary>Analyse only this file using the same filters and event matching as a folder scan.</summary>
+    public Task<LibraryScanResult> ScanFileAsync(string filePath) =>
+        ScanPathAsync(Path.GetDirectoryName(Path.GetFullPath(filePath))!, singleFilePath: filePath);
+
+    private async Task<LibraryScanResult> ScanPathAsync(
+        string folderPath,
+        bool includeSubfolders = true,
+        Func<int, int, Task>? onProgress = null,
+        bool includeIgnoredFiles = false,
+        string? singleFilePath = null)
     {
         var result = new LibraryScanResult
         {
@@ -98,7 +110,9 @@ public class LibraryImportService
             var searchOption = includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
             var files = SampleFileFilter.FilterSamples(
                     LibraryPathFilter.FilterExcluded(
-                        Directory.GetFiles(folderPath, "*.*", searchOption)
+                        (singleFilePath == null
+                            ? Directory.GetFiles(folderPath, "*.*", searchOption)
+                            : File.Exists(singleFilePath) ? new[] { singleFilePath } : Array.Empty<string>())
                             .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower())),
                         recycleBin),
                     folderPath)

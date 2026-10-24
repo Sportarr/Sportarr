@@ -414,11 +414,16 @@ public class QBittorrentClient
                 var responseContent = await response.Content.ReadAsStringAsync();
                 _logger.LogInformation("[qBittorrent] Add response body: '{Response}'", responseContent);
 
-                // qBittorrent returns "Fails." if the torrent URL returned invalid data (e.g., HTML error page)
+                // "Fails." can also mean a duplicate; reconcile IDs before reporting rejection.
                 if (responseContent.Contains("Fails", StringComparison.OrdinalIgnoreCase))
                 {
                     var alreadyHeld = string.IsNullOrEmpty(knownHash) ? null : torrentsBefore?.FirstOrDefault(t =>
-                        string.Equals(t.Hash, knownHash, StringComparison.OrdinalIgnoreCase));
+                        QBittorrentHashHelper.MatchesHash(t, knownHash));
+                    if (alreadyHeld == null && config.Type == DownloadClientType.QBittorrent)
+                    {
+                        var current = await GetTorrentsAsync(config);
+                        alreadyHeld = current?.FirstOrDefault(t => QBittorrentHashHelper.MatchesHash(t, knownHash));
+                    }
                     if (alreadyHeld != null && IsOwnedCategory(alreadyHeld.Category, category))
                     {
                         _logger.LogInformation("[qBittorrent] Torrent {Hash} is already in category '{Category}'; tracking it as the existing download",
@@ -433,19 +438,14 @@ public class QBittorrentClient
                     }
 
                     _logger.LogError("[qBittorrent] ========== TORRENT ADD FAILED ==========");
-                    _logger.LogError("[qBittorrent] qBittorrent reported 'Fails' - the torrent URL returned invalid data");
-                    _logger.LogError("[qBittorrent] Possible causes:");
-                    _logger.LogError("[qBittorrent]   1. The torrent link has expired or is invalid");
-                    _logger.LogError("[qBittorrent]   2. The indexer returned an HTML error page instead of a .torrent file");
-                    _logger.LogError("[qBittorrent]   3. Authentication required to access the torrent");
-                    _logger.LogError("[qBittorrent]   4. The indexer API key in Prowlarr may need to be refreshed");
-                    return AddDownloadResult.Failed("Indexer returned invalid torrent data (possibly HTML error page). The torrent link may have expired or the indexer API key needs to be refreshed.", AddDownloadErrorType.InvalidTorrent);
+                    _logger.LogWarning("[qBittorrent] Add rejected (Fails.); no matching torrent could be verified in the requested category");
+                    return AddDownloadResult.Failed("qBittorrent rejected the add (Fails.). It may be a duplicate or invalid torrent; no matching torrent could be verified. Check qBittorrent logs.", AddDownloadErrorType.TorrentRejected);
                 }
 
                 if (config.Type == DownloadClientType.QBittorrent && !string.IsNullOrEmpty(knownHash))
                 {
                     var heldBeforeAdd = torrentsBefore?.FirstOrDefault(t =>
-                        string.Equals(t.Hash, knownHash, StringComparison.OrdinalIgnoreCase));
+                        QBittorrentHashHelper.MatchesHash(t, knownHash));
                     if (heldBeforeAdd != null && !IsOwnedCategory(heldBeforeAdd.Category, category))
                     {
                         return AddDownloadResult.Failed(
@@ -492,7 +492,7 @@ public class QBittorrentClient
                 if (config.Type == DownloadClientType.QBittorrent && !string.IsNullOrEmpty(knownHash))
                 {
                     var matchedByHash = torrents.FirstOrDefault(t =>
-                        string.Equals(t.Hash, knownHash, StringComparison.OrdinalIgnoreCase));
+                        QBittorrentHashHelper.MatchesHash(t, knownHash));
 
                     // The torrent may take a moment to register; poll a little before giving up.
                     for (var attempt = 0; matchedByHash == null && attempt < 3; attempt++)
@@ -500,7 +500,7 @@ public class QBittorrentClient
                         await Task.Delay(1000);
                         var refreshed = await GetTorrentsAsync(config);
                         matchedByHash = refreshed?.FirstOrDefault(t =>
-                            string.Equals(t.Hash, knownHash, StringComparison.OrdinalIgnoreCase));
+                            QBittorrentHashHelper.MatchesHash(t, knownHash));
                     }
 
                     if (matchedByHash != null)
@@ -712,12 +712,12 @@ public class QBittorrentClient
                     !string.IsNullOrEmpty(knownHash))
                 {
                     var conflicting = torrentsBefore?.FirstOrDefault(t =>
-                        string.Equals(t.Hash, knownHash, StringComparison.OrdinalIgnoreCase));
+                        QBittorrentHashHelper.MatchesHash(t, knownHash));
                     if (conflicting == null)
                     {
                         var current = await GetTorrentsAsync(config);
                         conflicting = current?.FirstOrDefault(t =>
-                            string.Equals(t.Hash, knownHash, StringComparison.OrdinalIgnoreCase));
+                            QBittorrentHashHelper.MatchesHash(t, knownHash));
                     }
                     if (conflicting != null && IsOwnedCategory(conflicting.Category, category))
                         return AddDownloadResult.Succeeded(conflicting.Hash);
@@ -758,7 +758,7 @@ public class QBittorrentClient
                 }
                 else if (error.Contains("Fails", StringComparison.OrdinalIgnoreCase))
                 {
-                    errorMessage = "Download client rejected the torrent. The torrent file may be corrupted or the link has expired.";
+                    errorMessage = "Download client rejected the add. It may be a duplicate or invalid torrent; check the download client logs.";
                     errorType = AddDownloadErrorType.TorrentRejected;
                 }
                 else if (!string.IsNullOrEmpty(error))
@@ -845,7 +845,7 @@ public class QBittorrentClient
                     ? !string.IsNullOrEmpty(t.Name) &&
                       (t.Name.Contains(expectedName!, StringComparison.OrdinalIgnoreCase) ||
                        expectedName!.Contains(t.Name, StringComparison.OrdinalIgnoreCase))
-                    : string.Equals(t.Hash, knownHash, StringComparison.OrdinalIgnoreCase)) &&
+                    : QBittorrentHashHelper.MatchesHash(t, knownHash)) &&
                 (IsOwnedCategory(t.Category, category) ||
                  string.IsNullOrWhiteSpace(category) && !string.IsNullOrWhiteSpace(knownHash) &&
                  string.IsNullOrWhiteSpace(t.Category)));
@@ -919,13 +919,40 @@ public class QBittorrentClient
         }
     }
 
-    /// <summary>
-    /// Get torrent by hash
-    /// </summary>
+    private async Task<string[]> GetSharedSavePathsAsync(DownloadClient config, string category)
+    {
+        var paths = new List<string>();
+        var baseUrl = GetBaseUrl(config);
+        // Both roots are unsafe even when content_path incorrectly points at one of them.
+        foreach (var endpoint in new[] { "app/preferences", "torrents/categories" })
+        {
+            try
+            {
+                using var response = await SendWithSessionRecoveryAsync(config, baseUrl,
+                    HttpMethod.Get, $"{baseUrl}/api/v2/{endpoint}");
+                response.EnsureSuccessStatusCode();
+                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                if (endpoint == "app/preferences" && json.RootElement.TryGetProperty("save_path", out var defaultPath))
+                    paths.Add(defaultPath.GetString() ?? "");
+                if (endpoint == "torrents/categories" && json.RootElement.TryGetProperty(category, out var entry) &&
+                    entry.TryGetProperty("savePath", out var categoryPath))
+                    paths.Add(categoryPath.GetString() ?? "");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[qBittorrent] Could not read shared save paths from {Endpoint}", endpoint);
+            }
+        }
+        return paths.ToArray();
+    }
+
+    /// <summary>Get a torrent by any of its qBittorrent IDs.</summary>
     public async Task<QBittorrentTorrent?> GetTorrentAsync(DownloadClient config, string hash)
     {
         var torrents = await GetTorrentsAsync(config);
-        return torrents?.FirstOrDefault(t => t.Hash.Equals(hash, StringComparison.OrdinalIgnoreCase));
+        return torrents?.FirstOrDefault(t => config.Type == DownloadClientType.QBittorrent
+            ? QBittorrentHashHelper.MatchesHash(t, hash)
+            : string.Equals(t.Hash, hash, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -947,6 +974,9 @@ public class QBittorrentClient
         var categoryTorrents = torrents.Where(t =>
             t.Category.Equals(category, StringComparison.OrdinalIgnoreCase));
 
+        var sharedSavePaths = config.Type == DownloadClientType.QBittorrent
+            ? await GetSharedSavePathsAsync(config, category)
+            : Array.Empty<string>();
         return categoryTorrents.Select(t =>
         {
             var state = t.State.ToLowerInvariant();
@@ -982,7 +1012,11 @@ public class QBittorrentClient
                 Size = t.Size,
                 IsCompleted = isCompleted,
                 Protocol = "Torrent",
-                TorrentInfoHash = t.Hash,
+                TorrentInfoHash = config.Type == DownloadClientType.QBittorrent && !string.IsNullOrEmpty(t.InfohashV1)
+                    ? t.InfohashV1 : t.Hash,
+                TorrentHashAliases = config.Type == DownloadClientType.QBittorrent
+                    ? QBittorrentHashHelper.GetHashes(t) : Array.Empty<string>(),
+                SharedSavePaths = sharedSavePaths.Append(t.SavePath).Where(p => !string.IsNullOrWhiteSpace(p)).ToArray(),
                 CompletedDate = t.CompletedOn > 0
                     ? DateTimeOffset.FromUnixTimeSeconds(t.CompletedOn).UtcDateTime
                     : (DateTime?)null
@@ -1355,6 +1389,9 @@ public class QBittorrentClient
             {
                 return false;
             }
+
+            if (config.Type == DownloadClientType.QBittorrent)
+                hash = (await GetTorrentAsync(config, hash))?.Hash ?? hash;
 
             var content = new FormUrlEncodedContent(new[]
             {
@@ -1867,6 +1904,12 @@ public class QBittorrentClient
 public class QBittorrentTorrent
 {
     public string Hash { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonPropertyName("infohash_v1")]
+    public string InfohashV1 { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonPropertyName("infohash_v2")]
+    public string InfohashV2 { get; set; } = "";
     public string Name { get; set; } = "";
     public long Size { get; set; }
     public double Progress { get; set; } // 0-1
