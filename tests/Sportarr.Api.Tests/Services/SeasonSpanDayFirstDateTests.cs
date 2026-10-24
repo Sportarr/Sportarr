@@ -83,4 +83,17 @@ public class SeasonSpanDayFirstDateTests
         _svc.ValidateRelease(Rel(Oct05Release), KnicksSixers(10, 5, "Philadelphia 76ers", "New York Knicks"))
             .IsHardRejection.Should().BeFalse();
     }
+
+    [Fact]
+    public void AnImpossibleDateKeepsTheSeasonSpan()
+    {
+        var parser = new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>());
+
+        var result = parser.Parse("NBA 2026-2027 / RS / 31.02.2026 / Philadelphia 76ers @ New York Knicks [Basketball, WEB-DL HD/1080p/60fps, MKV/H.264, EN/NBC]");
+
+        result.EventDate.Should().BeNull();
+        result.EventYear.Should().Be(2026);
+        result.SeasonYearEnd.Should().Be(2027);
+    }
 }
+

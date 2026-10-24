@@ -83,4 +83,16 @@ public class SeasonSpanMatchingTests
         // The release's own 03.03.2026 date now carries the rejection.
         result.IsHardRejection.Should().BeTrue();
     }
+
+    [Fact]
+    public void DotSeparatedSeasonSpanWithoutADate_StillRejectsAYearOutsideTheSpan()
+    {
+        var result = _svc.ValidateRelease(
+            Rel("NBA.2025.2026.San.Antonio.Spurs.Vs.Philadelphia.76ers.VFF.1080p.WEBRip.AAC.2.0.AVC-Macolive"),
+            SpursAt76ers(2027));
+
+        result.IsHardRejection.Should().BeTrue();
+        result.Rejections.Should().Contain(r => r.Contains("Year mismatch"));
+    }
 }
+

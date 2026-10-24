@@ -1049,7 +1049,15 @@ public class SportsFileNameParser
                 }
                 catch (ArgumentOutOfRangeException)
                 {
-                    result.EventYear = dfYear;
+                    // An impossible date such as 31.02.2026 keeps the span.
+                    if (hasSeasonDate)
+                    {
+                        ApplySeasonSpan(result, seasonSpanMatch);
+                    }
+                    else
+                    {
+                        result.EventYear = dfYear;
+                    }
                 }
             }
             else if (seasonSpanMatch.Success && int.TryParse(seasonSpanMatch.Groups["startYear"].Value, out var startYear))
