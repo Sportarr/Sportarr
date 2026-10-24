@@ -1030,45 +1030,67 @@ public class DvrRecordingService
     /// </summary>
     /// <summary>
     /// Turn a finished .ts capture into the container the user configured.
-    /// Captures stream-copied toward an mp4 target always land as .ts (see
-    /// GenerateOutputPathAsync); this remuxes them and swaps OutputPath on
-    /// success. When both remux passes fail the .ts stays as the final
-    /// file - a playable recording in the wrong container beats a dead
-    /// recorder and no recording at all.
+    /// A stream copy toward an mp4 or mkv target always lands as .ts (see
+    /// GenerateOutputPathAsync). This remuxes the file and swaps OutputPath on
+    /// success. When both remux passes fail, the .ts stays as the final file.
+    /// A playable recording in the wrong container beats no recording.
     /// </summary>
     private async Task FinalizeCaptureContainerAsync(DvrRecording recording)
+    {
+        recording.OutputPath = await FinalizeCapturePathAsync(recording.OutputPath);
+    }
+
+    /// <summary>
+    /// Reveal a finished capture and remux it to the configured container.
+    /// Live recordings and catch-up downloads both end here. Returns the path
+    /// the file has afterwards.
+    /// </summary>
+    public async Task<string> FinalizeCapturePathAsync(string? path)
     {
         // Nothing writes to the capture past this point, so let a media server
         // see it. This runs before the container check below, because a
         // recording that keeps its transport stream still has to be revealed,
         // and before the remux, so the remux writes a visible name.
-        recording.OutputPath = await RevealFinishedCaptureAsync(recording.OutputPath);
+        var revealed = await RevealFinishedCaptureAsync(path);
 
-        if (string.IsNullOrEmpty(recording.OutputPath) ||
-            !recording.OutputPath.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ||
-            !File.Exists(recording.OutputPath))
-            return;
+        if (string.IsNullOrEmpty(revealed) ||
+            !revealed.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(revealed))
+            return revealed;
 
-        var config = await _configService.GetConfigAsync();
-        var desired = (config.DvrContainer ?? "mp4").TrimStart('.').ToLowerInvariant();
-        if (desired != "mp4")
-            return;
-
-        var target = Path.ChangeExtension(recording.OutputPath, ".mp4");
-        SelfMoveTracker.Register(recording.OutputPath, target);
-        if (await _ffmpegRecorder.RemuxAsync(recording.OutputPath, target))
+        try
         {
-            try { File.Delete(recording.OutputPath); }
-            catch (IOException ex)
+            var config = await _configService.GetConfigAsync();
+            var desired = (config.DvrContainer ?? "mp4").TrimStart('.').ToLowerInvariant();
+            if (!ContainersCapturedAsTransportStream.Contains(desired))
+                return revealed;
+
+            // Never write over a file that already has this name.
+            var target = Path.ChangeExtension(revealed, "." + desired);
+            if (File.Exists(target))
+                target = BuildUnusedCapturePath(target);
+
+            SelfMoveTracker.Register(revealed, target);
+            if (await _ffmpegRecorder.RemuxAsync(revealed, target))
             {
-                _logger.LogWarning(ex, "[DVR] Could not delete capture file {Path} after remux", recording.OutputPath);
+                try { File.Delete(revealed); }
+                catch (IOException ex)
+                {
+                    _logger.LogWarning(ex, "[DVR] Could not delete capture file {Path} after remux", revealed);
+                }
+                return target;
             }
-            recording.OutputPath = target;
+
+            _logger.LogWarning("[DVR] Keeping transport-stream capture {Path}; remux to {Container} failed",
+                revealed, desired);
         }
-        else
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning("[DVR] Keeping transport-stream capture {Path}; remux to mp4 failed", recording.OutputPath);
+            // The capture is already revealed. Keep its new path so the
+            // import still finds it.
+            _logger.LogWarning(ex, "[DVR] Could not convert capture {Path} to the configured container", revealed);
         }
+        return revealed;
     }
 
     public async Task<RecordingResult> StopRecordingAsync(int recordingId)
@@ -1836,19 +1858,7 @@ public class DvrRecordingService
         var container = config.DvrContainer ?? "mp4";
         container = container.TrimStart('.').ToLowerInvariant();
 
-        // CAPTURE always goes to a transport stream when the mp4 container
-        // is paired with stream copy. Muxing a live IPTV feed's ADTS AAC
-        // straight into mp4 runs it through ffmpeg's aac_adtstoasc filter,
-        // and a single corrupt frame (routine on IPTV) aborts the whole
-        // recording mid-event with "Error parsing ADTS frame header". A .ts
-        // capture survives corruption AND a crashed recorder still leaves a
-        // playable file. Finalization remuxes to the configured mp4 and
-        // keeps the .ts when even that fails.
-        var videoCodecForCapture = (config.DvrVideoCodec ?? "copy").ToLowerInvariant();
-        if (container == "mp4" && videoCodecForCapture == "copy")
-        {
-            container = "ts";
-        }
+        container = CaptureContainer(container, config.DvrVideoCodec ?? "copy");
 
         // Build destination path using same logic as FileImportService
         var destinationPath = basePath;
@@ -1992,8 +2002,8 @@ public class DvrRecordingService
 
     /// <summary>
     /// True when no other recording holds this name and nothing sits there.
-    /// Both containers are checked, since a capture is written as .ts and may
-    /// then be remuxed to .mp4 under the same stem.
+    /// Every container is checked, since a capture is written as .ts and may
+    /// then be remuxed to .mp4 or .mkv under the same stem.
     /// </summary>
     private async Task<bool> IsOutputPathFreeAsync(string path, DvrRecording recording)
     {
@@ -2004,7 +2014,7 @@ public class DvrRecordingService
             return true;
         }
 
-        foreach (var container in new[] { path, Path.ChangeExtension(path, ".ts"), Path.ChangeExtension(path, ".mp4") })
+        foreach (var container in new[] { path, Path.ChangeExtension(path, ".ts"), Path.ChangeExtension(path, ".mp4"), Path.ChangeExtension(path, ".mkv") })
         {
             if (File.Exists(container) || File.Exists(HideWhileWriting(container)))
             {
@@ -2042,6 +2052,27 @@ public class DvrRecordingService
             : StringComparison.Ordinal;
 
         return string.Equals(a.TrimEnd(Path.DirectorySeparatorChar), b.TrimEnd(Path.DirectorySeparatorChar), comparison);
+    }
+
+    /// <summary>
+    /// Containers whose stream-copy capture goes to a transport stream first.
+    /// A live IPTV feed can carry a corrupt audio frame. Muxing it straight into
+    /// mp4 or mkv stops the whole recording. A .ts capture keeps going, and a
+    /// crashed recorder still leaves a playable file. Finalize remuxes the file
+    /// to the configured container. It keeps the .ts when the remux fails.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> ContainersCapturedAsTransportStream =
+        new HashSet<string> { "mp4", "mkv" };
+
+    /// <summary>
+    /// The container a recording is captured in, for the configured output
+    /// container and video codec. Re-encoding writes the output container
+    /// directly; see <see cref="ContainersCapturedAsTransportStream"/>.
+    /// </summary>
+    internal static string CaptureContainer(string container, string videoCodec)
+    {
+        var copiesVideo = string.Equals(videoCodec, "copy", StringComparison.OrdinalIgnoreCase);
+        return copiesVideo && ContainersCapturedAsTransportStream.Contains(container) ? "ts" : container;
     }
 
     /// <summary>

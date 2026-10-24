@@ -686,8 +686,9 @@ public class FFmpegRecorderService
     /// Remux a finished transport-stream capture into its final container.
     /// Two passes: full stream copy first, then an audio re-encode retry,
     /// because the usual failure is a corrupt ADTS AAC frame that the mp4
-    /// muxer's aac_adtstoasc filter refuses to copy but an encoder cleans
-    /// up. Returns false when both passes fail; the caller keeps the .ts.
+    /// and matroska muxers' aac_adtstoasc filter refuses to copy but an
+    /// encoder cleans up. Returns false when both passes fail; the caller
+    /// keeps the .ts.
     /// </summary>
     public async Task<bool> RemuxAsync(string inputPath, string outputPath)
     {
@@ -716,8 +717,8 @@ public class FFmpegRecorderService
             })
                 psi.ArgumentList.Add(a);
             foreach (var a in audioArgs) psi.ArgumentList.Add(a);
-            foreach (var a in new[] { "-movflags", "+faststart", outputPath })
-                psi.ArgumentList.Add(a);
+            foreach (var a in OutputContainerArguments(outputPath)) psi.ArgumentList.Add(a);
+            psi.ArgumentList.Add(outputPath);
 
             try
             {
@@ -758,6 +759,16 @@ public class FFmpegRecorderService
 
         return false;
     }
+
+    /// <summary>
+    /// Muxer options for a remux target. faststart moves the mp4 index to
+    /// the front so playback can begin before the whole file is read;
+    /// matroska has no such option.
+    /// </summary>
+    internal static string[] OutputContainerArguments(string outputPath) =>
+        outputPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+            ? new[] { "-movflags", "+faststart" }
+            : Array.Empty<string>();
 
     public string? GetFFmpegPath()
     {

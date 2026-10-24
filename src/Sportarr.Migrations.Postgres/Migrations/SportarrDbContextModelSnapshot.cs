@@ -56,6 +56,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<long>("HubChangesCursor")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("HubChangesPendingRefresh")
+                        .HasColumnType("text");
+
                     b.Property<int>("IndexerMinimumAgeMinutes")
                         .HasColumnType("integer");
 
@@ -3742,6 +3745,67 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.ToTable("RootFolders");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.SearchHistoryEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IndexersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsManual")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Part")
+                        .HasColumnType("text");
+
+                    b.Property<string>("QualityProfile")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReasonsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ReleasesFound")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReleasesJson")
+                        .HasColumnType("text");
+
+                    b.Property<int>("ReleasesPassed")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("SearchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SelectedRelease")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SearchedAt");
+
+                    b.HasIndex("EventId", "SearchedAt");
+
+                    b.ToTable("SearchHistory", (string)null);
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.SeasonPoster", b =>
                 {
                     b.Property<int>("Id")
@@ -4318,6 +4382,17 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .IsRequired();
 
                     b.Navigation("Format");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.SearchHistoryEntry", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.SeasonPoster", b =>

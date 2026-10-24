@@ -432,6 +432,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SearchQueueService>();
         services.AddSingleton<SearchResultCache>();
         services.AddSingleton<CustomFormatMatchCache>();
+        services.AddSingleton<SearchHistoryService>();
         services.AddScoped<AutomaticSearchService>();
         services.AddScoped<DelayProfileService>();
         services.AddScoped<QualityDetectionService>();

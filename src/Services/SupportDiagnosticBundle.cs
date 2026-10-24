@@ -11,8 +11,11 @@ public sealed record SupportDiagnosticFile(string Filename, string Content);
 public static class SupportDiagnosticBundle
 {
     private const int MaxReadBytes = 18 * 1024 * 1024;
-    private const int MaxContentBytes = 20 * 1024 * 1024;
-    private const int MaxPartBytes = 7 * 1024 * 1024;
+    private const int MaxTailBytes = 2 * 1024 * 1024;
+    private const int MaxSectionChars = 30000;
+    private const int MaxSearchChars = 60000;
+    private static readonly Regex LinePrefix = new(@"^\[[^\]]*\]\s*\[WRN\]\s*", RegexOptions.Compiled);
+    private static readonly Regex Digits = new(@"\d+", RegexOptions.Compiled);
     private static readonly Regex HomePath = new(@"(?<prefix>/(?:home|Users)/)[^/\s]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex WindowsHomePath = new(@"(?<prefix>\b[A-Za-z]:[\\/]Users[\\/])[^\\/\s]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex UrlCredentials = new(@"\b(?<scheme>[A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@", RegexOptions.Compiled);
@@ -30,7 +33,8 @@ public static class SupportDiagnosticBundle
     private static readonly Regex UserName = new(@"(?<prefix>\b(?:for user|user(?:name)?\s*[:=])\s*)[\w.-]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PlainVersion = new(@"^[vV]?\d{1,4}(?:\.\d{1,4}){1,3}(?:[-+][A-Za-z0-9.-]{1,32})?$", RegexOptions.Compiled);
 
-    public static IReadOnlyList<SupportDiagnosticFile> Read(string logsPath, string filename, string version, string platform)
+    public static IReadOnlyList<SupportDiagnosticFile> Read(string logsPath, string filename, string version, string platform,
+        string? recentSearches = null)
     {
         if (string.IsNullOrWhiteSpace(filename) || filename != Path.GetFileName(filename)
             || !filename.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
@@ -46,58 +50,86 @@ public static class SupportDiagnosticBundle
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         if (offset > 0)
             reader.ReadLine();
-        return Build(reader.ReadToEnd(), filename, version, platform, offset > 0);
+        return Build(reader.ReadToEnd(), filename, version, platform, offset > 0, recentSearches);
     }
 
+    /// <summary>
+    /// Builds one plain-text bundle. The errors and warnings come from the
+    /// whole text that was read. Only the newest part of the log follows them.
+    /// </summary>
     public static IReadOnlyList<SupportDiagnosticFile> Build(string logText, string filename, string version,
-        string platform, bool truncated)
+        string platform, bool truncated, string? recentSearches = null)
     {
         var preRedacted = Assignment.Replace(logText, "${prefix}[REDACTED]");
-        var safe = string.Join('\n', preRedacted.Split('\n').Select(Sanitize));
-        var bytes = Encoding.UTF8.GetBytes(safe);
-        if (bytes.Length > MaxContentBytes)
+        var lines = preRedacted.Split('\n').Select(Sanitize).ToList();
+
+        var recentErrors = string.Join('\n', lines.Where(line =>
+            line.Contains("[ERR]", StringComparison.Ordinal) || line.Contains("[FTL]", StringComparison.Ordinal)).TakeLast(50));
+        if (recentErrors.Length > MaxSectionChars)
+            recentErrors = recentErrors[^MaxSectionChars..];
+        var recentWarnings = SummarizeWarnings(lines);
+        if (recentWarnings.Length > MaxSectionChars)
+            recentWarnings = recentWarnings[^MaxSectionChars..];
+        var searches = string.IsNullOrWhiteSpace(recentSearches)
+            ? "No search records are available."
+            : string.Join('\n', recentSearches.Split('\n').Select(Sanitize));
+        if (searches.Length > MaxSearchChars)
+            searches = searches[..MaxSearchChars];
+
+        var tail = Encoding.UTF8.GetBytes(string.Join('\n', lines));
+        if (tail.Length > MaxTailBytes)
         {
-            bytes = bytes[^MaxContentBytes..];
-            while (bytes.Length > 0 && (bytes[0] & 0xC0) == 0x80)
-                bytes = bytes[1..];
-            safe = Encoding.UTF8.GetString(bytes);
+            tail = tail[^MaxTailBytes..];
+            var start = 0;
+            while (start < tail.Length && (tail[start] & 0xC0) == 0x80)
+                start++;
+            // Start at a full line when one begins near the cut.
+            var newline = Array.IndexOf(tail, (byte)'\n', start, Math.Min(64 * 1024, tail.Length - start));
+            if (newline >= 0 && newline + 1 < tail.Length)
+                start = newline + 1;
+            tail = tail[start..];
             truncated = true;
         }
 
-        var recentErrors = string.Join('\n', safe.Split('\n').Where(line =>
-            line.Contains("[ERR]", StringComparison.Ordinal) || line.Contains("[FTL]", StringComparison.Ordinal)).TakeLast(50));
-        if (recentErrors.Length > 30000)
-            recentErrors = recentErrors[^30000..];
-        var header = $"SPORTARR SUPPORT BUNDLE v1\n" +
+        var content = "SPORTARR SUPPORT BUNDLE v1\n" +
             "===== SECTION: SYSTEM INFORMATION =====\n" +
             $"Version: {SanitizeVersion(version)}\nPlatform: {Sanitize(platform)}\nSelected log: {Sanitize(filename)}\n" +
             "===== SECTION: REDACTED CONFIGURATION =====\n" +
             "Configuration values are not included.\n" +
             "===== SECTION: RECENT ERRORS =====\n" +
             $"{recentErrors}\n" +
+            "===== SECTION: RECENT WARNINGS =====\n" +
+            $"{recentWarnings}\n" +
+            "===== SECTION: RECENT SEARCHES =====\n" +
+            $"{searches}\n" +
             "===== SECTION: LOG PART =====\n" +
-            (truncated ? "Older log content was omitted because the file exceeded the sharing limit.\n" : "");
+            (truncated ? "Older log content was omitted. Only the newest part of the log is included. The errors and warnings above cover a longer span.\n" : "") +
+            Encoding.UTF8.GetString(tail);
+        return new[] { new SupportDiagnosticFile("sportarr-support-01.txt", content) };
+    }
 
-        var parts = new List<SupportDiagnosticFile>();
-        var position = 0;
-        while (position < bytes.Length || parts.Count == 0)
+    /// <summary>
+    /// Groups repeated warnings so one noisy warning cannot push out the rest.
+    /// Each group shows how often it occurred and its newest line.
+    /// </summary>
+    private static string SummarizeWarnings(IEnumerable<string> lines)
+    {
+        var groups = new Dictionary<string, (int Count, string Newest, long Order)>(StringComparer.Ordinal);
+        long order = 0;
+        foreach (var line in lines)
         {
-            var prefix = parts.Count == 0 ? header : "SPORTARR SUPPORT BUNDLE v1\n===== SECTION: LOG PART =====\n";
-            var budget = MaxPartBytes - Encoding.UTF8.GetByteCount(prefix) - 1;
-            var end = Math.Min(bytes.Length, position + budget);
-            if (end < bytes.Length)
-            {
-                var lineEnd = Array.LastIndexOf(bytes, (byte)'\n', end - 1, Math.Min(1024, end - position));
-                if (lineEnd > position)
-                    end = lineEnd + 1;
-                while (end > position && (bytes[end] & 0xC0) == 0x80)
-                    end--;
-            }
-            var segment = Encoding.UTF8.GetString(bytes, position, end - position);
-            parts.Add(new SupportDiagnosticFile($"sportarr-support-{parts.Count + 1:00}.txt", prefix + segment));
-            position = end;
+            if (!line.Contains("[WRN]", StringComparison.Ordinal))
+                continue;
+            var shape = Digits.Replace(LinePrefix.Replace(line, ""), "#");
+            if (shape.Length > 200)
+                shape = shape[..200];
+            order++;
+            groups[shape] = groups.TryGetValue(shape, out var group) ? (group.Count + 1, line, order) : (1, line, order);
         }
-        return parts;
+        return string.Join('\n', groups.Values
+            .OrderBy(group => group.Order)
+            .TakeLast(40)
+            .Select(group => group.Count > 1 ? $"{group.Count}x {group.Newest}" : group.Newest));
     }
 
     private static string Sanitize(string value)

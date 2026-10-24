@@ -340,7 +340,7 @@ export default function LeaguesPage() {
     // Apply column filters + sort via shared utility. Downloaded counts
     // every event with a file (monitored or not - unmonitoring a downloaded
     // event must not hide its file from the stats); Missing is the API's
-    // monitored-without-file count.
+    // count of monitored events that have started and have no file.
     const tableLeagues = applyTableSortFilter(
       filteredLeagues,
       colFilters,
@@ -686,6 +686,13 @@ export default function LeaguesPage() {
                       <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
                       <span className="text-gray-400">Missing:</span>
                       <span className="text-red-400 font-semibold">{league.missingCount}</span>
+                    </div>
+                  )}
+                  {(league.upcomingCount || 0) > 0 && (
+                    <div className="flex items-center gap-1 whitespace-nowrap">
+                      <span className="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
+                      <span className="text-gray-400">Upcoming:</span>
+                      <span className="text-gray-300 font-semibold">{league.upcomingCount}</span>
                     </div>
                   )}
                 </div>

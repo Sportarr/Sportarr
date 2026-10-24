@@ -156,7 +156,7 @@ public class EventQueryServiceTeamSportTests
     }
 
     [Fact]
-    public void BuildEventQueries_MlsGame_KeepsSharedSeasonQueries()
+    public void BuildEventQueries_MlsGame_KeepsSharedSeasonQueriesAndAddsTheTeamPair()
     {
         var service = CreateService();
         var evt = new Event
@@ -172,7 +172,7 @@ public class EventQueryServiceTeamSportTests
             AwayTeamName = "Atlanta United"
         };
 
-        service.BuildEventQueries(evt).Should().Equal("MLS 2026 09", "MLS 2026");
+        service.BuildEventQueries(evt).Should().Equal("MLS 2026 09", "MLS 2026", "MLS Miami United");
     }
 
     [Theory]

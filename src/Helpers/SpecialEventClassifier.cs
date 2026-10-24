@@ -1,4 +1,5 @@
 using Sportarr.Api.Models;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Helpers;
 
@@ -270,6 +271,26 @@ public static class SpecialEventClassifier
         }
 
         return SpecialTier.None;
+    }
+
+    /// <summary>
+    /// True when the league sync must leave this event out because its
+    /// category (preseason, playoff or final) is switched off for the league.
+    ///
+    /// Sports without teams never leave an event out for its category. Their
+    /// round numbers are show or card numbers, so a wrestling episode numbered
+    /// 2, 4, 8, 16 or 125 looks like a knockout stage to the classifier. For
+    /// them the categories only decide what is monitored.
+    /// </summary>
+    public static bool IsDisabledSpecial(League league, Event source, IReadOnlySet<int>? cupStageSizes)
+    {
+        if (LeagueSportRules.IsTeamlessSport(league.Sport, league.Name, league.SportFormat))
+        {
+            return false;
+        }
+
+        var tier = Classify(source.Round, source.Title, cupStageSizes, source.HasLaterSeasonFinal);
+        return tier != SpecialTier.None && TeamMode(league, tier) == SpecialEventTeamMode.Off;
     }
 
     public static SpecialEventTeamMode TeamMode(League league, SpecialTier tier) => tier switch

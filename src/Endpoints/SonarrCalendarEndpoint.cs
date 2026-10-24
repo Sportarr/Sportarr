@@ -92,11 +92,14 @@ public static class SonarrCalendarEndpoint
                         tvdbId = leagueExternalId,
                         tvRageId = 0,
                         tvMazeId = 0,
+                        ended = false,
                         seriesType = "standard",
                         cleanTitle = e.League.Name.ToLowerInvariant().Replace(" ", string.Empty),
                         titleSlug = e.League.Name.ToLowerInvariant().Replace(" ", "-"),
                         genres = new[] { "Sports" },
                         tags = Array.Empty<int>(),
+                        // Embed the event's season without querying the full league history.
+                        seasons = new[] { new { seasonNumber = episodeSeason, monitored = e.League.Monitored } },
                         added = e.League.Added.ToString("o"),
                         ratings = new { votes = 0, value = 0.0 }
                     };

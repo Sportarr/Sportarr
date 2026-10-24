@@ -539,16 +539,31 @@ Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
     .MinimumLevel.Override("System", LogEventLevel.Warning)
     .Enrich.FromLogContext()
-    .WriteTo.Console(formatter: sanitizingFormatter)
-    .WriteTo.File(
-        formatter: sanitizingFormatter,
-        path: Path.Combine(logsPath, "sportarr.txt"),
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 10,           // ~10 days of logs; oldest auto-pruned
-        fileSizeLimitBytes: 52428800,         // 50MB safety cap before a same-day roll
-        rollOnFileSizeLimit: true,
-        buffered: true,                       // batch writes; flushed on the interval below
-        flushToDiskInterval: TimeSpan.FromSeconds(5))
+    .WriteTo.Logger(main => main
+        .Filter.ByIncludingOnly(SearchDetailLog.BelongsInMainLog)
+        .WriteTo.Console(formatter: sanitizingFormatter)
+        .WriteTo.File(
+            formatter: sanitizingFormatter,
+            path: Path.Combine(logsPath, "sportarr.txt"),
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 10,           // ~10 days of logs; oldest auto-pruned
+            fileSizeLimitBytes: 52428800,         // 50MB safety cap before a same-day roll
+            rollOnFileSizeLimit: true,
+            buffered: true,                       // batch writes; flushed on the interval below
+            flushToDiskInterval: TimeSpan.FromSeconds(5)))
+    // Per-release search decisions go to a small separate file. Only the
+    // newest files are kept. Each search also leaves a record in the app.
+    .WriteTo.Logger(search => search
+        .Filter.ByIncludingOnly(SearchDetailLog.IsSearchDetail)
+        .WriteTo.File(
+            formatter: sanitizingFormatter,
+            path: Path.Combine(logsPath, SearchDetailLog.FileName),
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: SearchDetailLog.RetainedFileCount,
+            fileSizeLimitBytes: SearchDetailLog.FileSizeLimitBytes,
+            rollOnFileSizeLimit: true,
+            buffered: true,
+            flushToDiskInterval: TimeSpan.FromSeconds(5)))
     .CreateLogger();
 
 // Resolve the app's own folders from the binary, not from the folder the
@@ -1160,6 +1175,7 @@ app.MapLeagueEndpoints();
 app.MapFollowedTeamsAndTeamsEndpoints();
 app.MapFollowedAthletesEndpoints();
 app.MapEventSearchAndGrabEndpoints();
+app.MapSearchHistoryEndpoints();
 app.MapSearchAndCalendarEndpoints();
 
 // Sonarr-compatibility shims (see docs/API_VERSIONING.md) ----------------

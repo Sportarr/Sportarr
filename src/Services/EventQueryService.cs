@@ -1227,7 +1227,38 @@ public class EventQueryService
         queries.Add($"{leaguePrefix} {year} {month:D2}");
         // Fallback: "NFL 2025" (year only)
         queries.Add($"{leaguePrefix} {year}");
+        // The month and year queries are broad. An indexer that lists newest
+        // releases first can fill its page with other games, so the game
+        // we want never appears. A query with both team names finds it.
+        if (hasStablePair)
+            queries.Add(BuildTeamPairQuery(leaguePrefix, homeName!, awayName!));
         AddTeamAliasQueries(evt, leaguePrefix, year, queries);
+    }
+
+    /// <summary>
+    /// League prefix plus the last word of each team name, such as
+    /// "NHL Leafs Bruins". Release titles spell team names in many ways,
+    /// and the last word is the part they share. When both teams end in
+    /// the same word, the full names keep the two teams apart.
+    /// </summary>
+    internal static string BuildTeamPairQuery(string leaguePrefix, string homeName, string awayName)
+    {
+        // A one or two character ending, such as the 2 in "Columbus Crew 2",
+        // is too short to search alone. It keeps the word before it.
+        static string LastWord(string name)
+        {
+            var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0) return name;
+            return words[^1].Length <= 2 && words.Length > 1
+                ? $"{words[^2]} {words[^1]}"
+                : words[^1];
+        }
+
+        var homeWord = LastWord(homeName);
+        var awayWord = LastWord(awayName);
+        return string.Equals(homeWord, awayWord, StringComparison.OrdinalIgnoreCase)
+            ? $"{leaguePrefix} {homeName.Trim()} {awayName.Trim()}"
+            : $"{leaguePrefix} {homeWord} {awayWord}";
     }
 
     private static bool IsVerifiedCompactPairLeague(string? leagueName)

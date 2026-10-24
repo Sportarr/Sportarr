@@ -48,6 +48,10 @@ public class AppSettings
     // across restarts. 0 = never polled (feed answers with resync + head).
     public long HubChangesCursor { get; set; } = 0;
 
+    // Leagues whose refresh failed after the cursor moved past their change
+    // records, as JSON. The poller retries them each cycle. Null when none.
+    public string? HubChangesPendingRefresh { get; set; }
+
     // Indexer Options (advanced settings)
     public int IndexerRetention { get; set; } = 0; // days - releases older than this won't be grabbed (0 = disabled)
     public int RssSyncInterval { get; set; } = 60; // minutes between RSS sync cycles

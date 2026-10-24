@@ -27,6 +27,9 @@ Day-to-day discovery does not depend on the scan. The filesystem watcher picks u
 
 ## Search
 
+**Why did Sportarr not grab an event?**
+Every event search leaves a record. When the newest search for an event did not grab anything, a short line under the event says what happened, for example "Searched 2h ago: every release was rejected. The most common reason was quality not allowed (14 of 15)". The line shows on the league page, in the **Missing** and **Cutoff Unmet** tabs under **Activity**, and in the manual search window. Click it to see the search history. Each search says in plain words how it ended and what you can change, how many releases were found and passed, which quality profile judged them, how each indexer answered, and why releases were rejected. The newest search also lists the releases it saw with their reasons. Sportarr keeps the last 5 searches per event for 30 days.
+
 **A release exists on my indexer but Sportarr rejects it?**
 Open the interactive search and read the rejection column. The usual suspects are the quality profile (the release's quality isn't enabled in the profile assigned to that league) and custom format scores (a format with a large negative score, like a no-release-group rule imported from movie-oriented guides, can push sports TV captures below the minimum). Sports releases often have no release group, so aggressive No-RlsGroup penalties will reject most of them.
 
@@ -38,6 +41,12 @@ Interactive event searches omit category filters so a release filed outside the 
 
 **Repeated searches return the same releases?**
 Sportarr reuses recent search results and preserves their indexer, release group and quality information. Matching requests to the same indexer account can also share a response within one search or RSS operation. Each configured indexer's filtering still applies. An empty or short response does not always mean the indexer has returned every matching release.
+
+## Logs
+
+Logs live under **System > Logs**. The main log files start with `sportarr` and hold what Sportarr did, with one summary line per event search. The decisions for each release go to separate search log files that start with `search`. Sportarr keeps up to four search log files of 5 MB each, so the main log stays small and easy to read.
+
+When you select a log and choose **Create issue**, Sportarr builds one file for the report. It holds the recent errors, the recent warnings grouped with a count, the recent searches that did not grab, and the newest part of the log. Passwords, API keys, tokens, email addresses and public IP addresses are removed first.
 
 ## Indexers
 

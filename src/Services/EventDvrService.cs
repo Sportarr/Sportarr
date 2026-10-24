@@ -830,7 +830,7 @@ public class EventDvrService
                     // Calculate custom format score
                     // For DVR recordings, we can create a synthetic "title" with detected info for custom format matching
                     var syntheticTitle = BuildSyntheticTitle(recording, probeResult);
-                    var customFormats = await _db.CustomFormats.Include(cf => cf.Specifications).ToListAsync();
+                    var customFormats = await _db.CustomFormats.ToListAsync();
                     var formatScore = _releaseEvaluator.CalculateCustomFormatScore(syntheticTitle, qualityProfile, customFormats);
                     recording.CustomFormatScore = formatScore;
                 }

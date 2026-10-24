@@ -9,6 +9,8 @@ import ManualSearchModal from '../components/ManualSearchModal';
 import SeasonSearchModal from '../components/SeasonSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
 import EventFileDetailModal from '../components/EventFileDetailModal';
+import LastSearchLine from '../components/LastSearchLine';
+import { needsAttention, newestCompletion, useLatestSearches } from '../api/searchHistory';
 import LeagueFilesModal from '../components/LeagueFilesModal';
 import TeamAliasesModal from '../components/TeamAliasesModal';
 import EventStatusBadge from '../components/EventStatusBadge';
@@ -20,6 +22,7 @@ import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
 import { formatDateInTimezone, formatEventDate } from '../utils/timezone';
 import { getRefetchIntervalWithBackoff } from '../utils/queryBackoff';
+import { describeEmptyLeague, findLastLeagueSync, isLeagueSyncActive } from '../utils/leagueEmptyState';
 import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_INFO, BUTTON_DESTRUCTIVE } from '../utils/designTokens';
 
 // The three league header buttons share one grid cell each, so they stay the
@@ -418,7 +421,7 @@ export default function LeagueDetailPage() {
   // Season summaries, not every event. The page shows collapsed seasons
   // until one is opened, and a league with thousands of events answered
   // megabytes for a list that only needs counts.
-  const { data: seasonSummary, isLoading: eventsLoading } = useQuery({
+  const { data: seasonSummary, isLoading: eventsLoading, isError: seasonsFailed } = useQuery({
     queryKey: ['league-seasons', id],
     queryFn: async () => {
       const response = await apiClient.get<LeagueSeasonSummary>(
@@ -445,6 +448,16 @@ export default function LeagueDetailPage() {
         : false;
     },
   });
+
+  // A new league gets about a minute for its first sync task to appear. After
+  // that an empty list is an answer, not a wait. The timer restarts when the
+  // user moves to another league.
+  const [firstSyncGraceOver, setFirstSyncGraceOver] = useState(false);
+  useEffect(() => {
+    setFirstSyncGraceOver(false);
+    const timer = setTimeout(() => setFirstSyncGraceOver(true), EMPTY_LEAGUE_POLLS * 3000);
+    return () => clearTimeout(timer);
+  }, [id]);
 
   // Deep link from the calendar: /leagues/:id?event=<id> expands that
   // event's season, scrolls its row into view, and pulses a highlight so
@@ -601,6 +614,13 @@ export default function LeagueDetailPage() {
 
   // Fetch search queue and download queue status for real-time progress display
   const { data: searchQueue } = useSearchQueueStatus();
+
+  // The last search result for each loaded event that still has no file.
+  const missingEventIds = useMemo(
+    () => Object.values(eventsBySeason).flat().filter((event) => !event.hasFile).map((event) => event.id),
+    [eventsBySeason]);
+  const { data: latestSearches } = useLatestSearches(missingEventIds, true, newestCompletion(searchQueue));
+
   const { data: downloadQueue } = useDownloadQueue();
 
   // Track locally pending searches for immediate UI feedback on rapid clicks
@@ -2012,11 +2032,65 @@ export default function LeagueDetailPage() {
               <p className="text-gray-400">Loading events...</p>
             </div>
           ) : sortedSeasons.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
-              <p className="text-gray-400 mb-2">Syncing events from Sportarr...</p>
-              <p className="text-gray-500 text-sm">This may take a moment for leagues with many seasons</p>
-            </div>
+            (() => {
+              const view = describeEmptyLeague({
+                seasonsFailed,
+                syncActive: isLeagueSyncActive(backgroundTasks, league.id),
+                // Only a league added in the last two minutes can still be
+                // waiting for its first sync to start.
+                stillWaitingForFirstSync: !firstSyncGraceOver && Date.now() - Date.parse(league.added) < 120_000,
+                waitingForTasks: backgroundTasks === undefined && !firstSyncGraceOver,
+                storedEventCount: league.eventCount,
+                followsTeams: (league.monitoredTeams?.length ?? 0) > 0,
+                lastSync: findLastLeagueSync(backgroundTasks, league.id),
+              });
+              if (view.kind === 'syncing') {
+                return (
+                  <div className="p-12 text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+                    <p className="text-gray-400 mb-2">Syncing events from Sportarr...</p>
+                    <p className="text-gray-500 text-sm">This may take a moment for leagues with many seasons</p>
+                  </div>
+                );
+              }
+              return (
+                <div className="p-12 text-center">
+                  {view.kind === 'loadFailed' && (
+                    <>
+                      <p className="text-gray-300 mb-2">Sportarr could not load the list of seasons.</p>
+                      <p className="text-gray-500 text-sm">Reload the page to try again. If it keeps happening, check the logs.</p>
+                    </>
+                  )}
+                  {view.kind === 'hiddenByFilters' && (
+                    <>
+                      <p className="text-gray-300 mb-2">
+                        This league has {view.storedCount.toLocaleString()} stored event{view.storedCount !== 1 ? 's' : ''}, but none match what you follow.
+                      </p>
+                      <p className="text-gray-500 text-sm">Change the teams you follow, or turn on Show all events in the league settings.</p>
+                    </>
+                  )}
+                  {view.kind === 'syncFailed' && (
+                    <>
+                      <p className="text-gray-300 mb-2">The last sync did not finish, so there are no events yet.</p>
+                      {view.detail && <p className="text-gray-500 text-sm mb-1">Reason: {view.detail}</p>}
+                      <p className="text-gray-500 text-sm">Choose Sync from the league menu to try again.</p>
+                    </>
+                  )}
+                  {view.kind === 'noEvents' && (
+                    <>
+                      <p className="text-gray-300 mb-2">There are no events for this league yet.</p>
+                      <p className="text-gray-500 text-sm mb-1">
+                        {view.followsTeams
+                          ? 'Sportarr has none from the hub, or none that involve the teams you follow.'
+                          : 'Sportarr has none from the hub for this league yet.'}
+                        {' '}Choose Sync from the league menu to check again later.
+                      </p>
+                      {view.detail && <p className="text-gray-500 text-sm">Last sync: {view.detail}</p>}
+                    </>
+                  )}
+                </div>
+              );
+            })()
           ) : (
             <div>
               {/* Old seasons nobody has touched are hidden, and this says so
@@ -2338,6 +2412,7 @@ export default function LeagueDetailPage() {
                             const isCompleted = lifecycle === 'completed';
                             const isLive = lifecycle === 'live';
                             const hasParts = config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event);
+                            const lastSearch = hasFile ? undefined : latestSearches?.[event.id];
 
                             return (
                               <div
@@ -2512,6 +2587,12 @@ export default function LeagueDetailPage() {
                                   {hasParts && <div className="hidden sm:block sm:w-20 sm:flex-shrink-0" />}
                                 </div>
 
+                                {!isCancelled && !isPostponed && needsAttention(lastSearch) && (
+                                  <div className="px-4 pb-1.5 pl-10 sm:pl-44">
+                                    <LastSearchLine record={lastSearch} eventTitle={event.title} />
+                                  </div>
+                                )}
+
                                 {/* Compact Multi-Part - Single horizontal row with all parts inline */}
                                 {hasParts && (
                                   <div className="flex flex-wrap items-center gap-3 px-4 py-1 pl-12 bg-gray-900/30 border-t border-red-900/10 text-xs">
@@ -2612,6 +2693,9 @@ export default function LeagueDetailPage() {
                 const hasFile = event.hasFile;
                 const eventDate = new Date(event.eventDate);
                 const isPast = eventDate < new Date();
+                const cardLifecycle = getEventLifecycle({ status: event.status, eventDate: event.eventDate, hasFile });
+                const lastSearch = hasFile || cardLifecycle === 'cancelled' || cardLifecycle === 'postponed'
+                  ? undefined : latestSearches?.[event.id];
 
                 return (
                   <div
@@ -2754,6 +2838,10 @@ export default function LeagueDetailPage() {
                             return null;
                           })()}
                         </div>
+
+                        {needsAttention(lastSearch) && (
+                          <LastSearchLine record={lastSearch} eventTitle={event.title} />
+                        )}
 
                         {/* Team Names */}
                         {event.homeTeamName && event.awayTeamName && (

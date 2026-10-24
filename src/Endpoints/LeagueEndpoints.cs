@@ -94,23 +94,7 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, FileNamingService naming
     var now = DateTime.UtcNow;
     var leagueIds = leagues.Select(l => (int?)l.Id).ToList();
 
-    // Single aggregate query replaces the old per-league loop (previously
-    // 4x CountAsync + 1x AnyAsync per league - 200-250 round trips for a
-    // 40-50 league library on every load of the main library view).
-    var statsByLeague = await db.Events
-        .AsNoTracking()
-        .Where(e => e.LeagueId != null && leagueIds.Contains(e.LeagueId.Value))
-        .GroupBy(e => e.LeagueId!.Value)
-        .Select(g => new
-        {
-            LeagueId = g.Key,
-            EventCount = g.Count(),
-            MonitoredEventCount = g.Count(e => e.Monitored),
-            FileCount = g.Count(e => e.HasFile),
-            DownloadedMonitoredCount = g.Count(e => e.Monitored && e.HasFile),
-            HasFutureEvents = g.Any(e => e.Monitored && e.EventDate > now)
-        })
-        .ToDictionaryAsync(s => s.LeagueId);
+    var statsByLeague = await GetLibraryStatsAsync(db, leagueIds, now);
 
     var response = leagues.Select(league =>
     {
@@ -121,7 +105,8 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, FileNamingService naming
             stats?.MonitoredEventCount ?? 0,
             stats?.FileCount ?? 0,
             stats?.DownloadedMonitoredCount ?? 0,
-            stats?.HasFutureEvents ?? false);
+            stats?.HasFutureEvents ?? false,
+            stats?.UpcomingCount ?? 0);
     }).ToList();
 
     await FillLeaguePathsAsync(db, naming, response, leagues);
@@ -3049,6 +3034,49 @@ app.MapPost("/api/leagues/move/bulk", async (BulkMoveLeaguesRequest request, Lea
                     MatchesMonitoredTeams(e, monitoredTeamIds),
                     cupStageSizesBySeason[e.Season ?? ""], e.HasLaterSeasonFinal))
             .ToList();
+    }
+
+    internal sealed record LeagueLibraryStats(
+        int EventCount,
+        int MonitoredEventCount,
+        int FileCount,
+        int DownloadedMonitoredCount,
+        int UpcomingCount,
+        bool HasFutureEvents);
+
+    // One aggregate query replaces the old per-league loop (previously
+    // 4x CountAsync + 1x AnyAsync per league - 200-250 round trips for a
+    // 40-50 league library on every load of the main library view).
+    // An event is upcoming only when its start is after now. A live or just
+    // started event is not upcoming, so it stays visible as missing.
+    internal static async Task<Dictionary<int, LeagueLibraryStats>> GetLibraryStatsAsync(
+        SportarrDbContext db, List<int?> leagueIds, DateTime now)
+    {
+        var rows = await db.Events
+            .AsNoTracking()
+            .Where(e => e.LeagueId != null && leagueIds.Contains(e.LeagueId.Value))
+            .GroupBy(e => e.LeagueId!.Value)
+            .Select(g => new
+            {
+                LeagueId = g.Key,
+                EventCount = g.Count(),
+                MonitoredEventCount = g.Count(e => e.Monitored),
+                FileCount = g.Count(e => e.HasFile),
+                DownloadedMonitoredCount = g.Count(e => e.Monitored && e.HasFile),
+                UpcomingCount = g.Count(e => e.Monitored && !e.HasFile && e.EventDate > now),
+                HasFutureEvents = g.Any(e => e.Monitored && e.EventDate > now)
+            })
+            .ToListAsync();
+
+        return rows.ToDictionary(
+            r => r.LeagueId,
+            r => new LeagueLibraryStats(
+                r.EventCount,
+                r.MonitoredEventCount,
+                r.FileCount,
+                r.DownloadedMonitoredCount,
+                r.UpcomingCount,
+                r.HasFutureEvents));
     }
 
     internal static (int CurrentPage, int Size) NormalizeLeagueEventsPaging(int? page, int? pageSize)

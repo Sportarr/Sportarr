@@ -585,11 +585,21 @@ public class SportarrApiClient
                 request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true };
             }
             using var response = await _httpClient.SendAsync(request);
+            // Re-throw 429 errors so calling code can handle rate limiting
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                throw new HttpRequestException($"Rate limited by Sportarr API (429)", null, System.Net.HttpStatusCode.TooManyRequests);
+            }
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<SportarrApiSeasonsResponse>(json, _jsonOptions);
             return result?.Seasons;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            _logger.LogWarning("[SportarrAPI] Rate limited (429) fetching seasons for league: {LeagueId}", leagueId);
+            throw;
         }
         catch (Exception ex)
         {

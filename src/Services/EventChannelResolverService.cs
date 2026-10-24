@@ -328,13 +328,13 @@ public class EventChannelResolverService
             foreach (var p in parts) AddTerm(p);
         }
         // For non-team events, throw in title-derived tokens too so
-        // "UFC 310" matches "UFC 310: Pereira vs Ankalaev" in EPG.
+        // "UFC 310" matches "UFC 310: Pereira vs Ankalaev" in EPG. Two-letter
+        // filler words ("in", "of", "de") are left out: they occur in nearly
+        // every description, so with them any two-hit programme anywhere
+        // matched - "Bahrain in Malaysia Grand Prix - Race" matched "Race Café".
         if (!hasTeamNames && !string.IsNullOrEmpty(evt.Title))
         {
-            foreach (var word in NormalizeForSearch(evt.Title).Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (word.Length >= 2) searchTerms.Add(word);
-            }
+            foreach (var word in TitleSearchTokens(evt.Title)) searchTerms.Add(word);
         }
 
         var matches = new Dictionary<int, EpgProgram>();
@@ -364,8 +364,7 @@ public class EventChannelResolverService
             int bestScore = 0;
             foreach (var p in group)
             {
-                var hay = $"{p.Title} {p.Description} {p.Category}".ToLowerInvariant();
-                int hits = searchTerms.Count(t => hay.Contains(t));
+                int hits = CountTermHits(searchTerms, $"{p.Title} {p.Description} {p.Category}");
                 if (hasTeamNames && hits < 1) continue;  // require ≥1 team name
                 if (!hasTeamNames && hits < 2) continue; // require ≥2 keyword hits for non-team events
                 // Time proximity bonus (closer to scheduled_start = better)
@@ -385,6 +384,34 @@ public class EventChannelResolverService
         }
         return matches;
     }
+
+    // Two-letter words that carry no meaning in a title. Short words that name
+    // a series or a place ("f1", "gp", "us") are not in this list on purpose.
+    private static readonly HashSet<string> TitleFillerWords = new(StringComparer.Ordinal)
+    {
+        "in", "of", "de", "la", "le", "el", "du", "da", "di", "at", "on", "to",
+        "by", "an", "as", "or", "en", "et", "vs"
+    };
+
+    internal static IEnumerable<string> TitleSearchTokens(string title) =>
+        NormalizeForSearch(title)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(word => word.Length >= 3 || (word.Length == 2 && !TitleFillerWords.Contains(word)));
+
+    /// <summary>
+    /// How many search terms occur in a programme's text as whole words.
+    /// A plain substring test counted "in" inside "racing" and "race" inside
+    /// "embraced", so short, generic terms lifted unrelated programmes over
+    /// the hit threshold.
+    /// </summary>
+    internal static int CountTermHits(IEnumerable<string> searchTerms, string programText)
+    {
+        var words = " " + CollapseSpaces(NormalizeForSearch(programText)) + " ";
+        return searchTerms.Count(t => words.Contains(" " + CollapseSpaces(t) + " ", StringComparison.Ordinal));
+    }
+
+    private static string CollapseSpaces(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
 
     private static string NormalizeForSearch(string text)
     {

@@ -38,12 +38,12 @@ public class CatalogFamily70SearchTests
     }
 
     [Fact]
-    public void NflKeepsItsTwoQueriesAndTemplateToken()
+    public void NflKeepsItsBroadQueriesAndTemplateToken()
     {
         var evt = TeamEvent("NFL", "lg-000032", "Football",
             "Kansas City Chiefs", "Buffalo Bills", "2026-09-06");
 
-        QueryService.BuildEventQueries(evt).Should().Equal("NFL 2026 09", "NFL 2026");
+        QueryService.BuildEventQueries(evt).Should().Equal("NFL 2026 09", "NFL 2026", "NFL Chiefs Bills");
         QueryService.BuildQueryFromTemplate("{League} {Year}", evt).Should().Be("NFL 2026");
         QueryService.BuildPackQueries(evt).Should().NotBeEmpty();
     }

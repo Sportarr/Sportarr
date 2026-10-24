@@ -231,7 +231,12 @@ public class TaskService : ITaskService
             task.Ended = DateTime.UtcNow;
             task.Duration = task.Ended - task.Started;
             task.Progress = 100;
-            task.Message = "Task completed successfully";
+            // A league refresh writes its own closing sentence. It says why a
+            // sync found nothing, so the generic text must not replace it.
+            if (task.CommandName != "RefreshLeague" || string.IsNullOrWhiteSpace(task.Message))
+            {
+                task.Message = "Task completed successfully";
+            }
 
             _logger.LogInformation("[TASK] Completed task: {Name} (ID: {TaskId}) in {Duration}",
                 task.Name, task.Id, task.Duration);
@@ -1158,6 +1163,9 @@ public class TaskService : ITaskService
         // flushed mid-loop just because a status row was nudged.
         Func<int, string, Task> onProgress = async (pct, msg) =>
         {
+            // The closing sentence also goes onto the tracked task. The task
+            // runner saves that row last and would otherwise overwrite it.
+            if (pct >= 100) task.Message = msg;
             try
             {
                 using var s = _scopeFactory.CreateScope();
@@ -1277,7 +1285,9 @@ public class TaskService : ITaskService
             throw new Exception(result.Message ?? "League refresh failed");
         }
 
-        await onProgress(100,
+        // An empty result needs a reason in the task row. The league page
+        // shows this text when it has no events to list.
+        await onProgress(100, result.DescribeNothingSynced() ??
             $"Refresh complete: {result.NewCount} new, {result.UpdatedCount} updated, " +
             $"{result.RemovedCount} removed, {result.FailedCount} failed");
     }

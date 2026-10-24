@@ -195,4 +195,70 @@ public class SpecialEventClassifierTests
         BypassesTeamFilter("2", null, monitorFinals: false, monitorPlayoffs: true,
             monitorPreseason: false, cupStageSizes: bracketCup).Should().BeFalse();
     }
+
+    // Issue #373. AEW episodes numbered 2, 4, 8, 16 and 64, and 2021 shows
+    // numbered 125, 150, 160 and 180, were dropped as knockout rounds.
+    [Theory]
+    [InlineData("2")]
+    [InlineData("4")]
+    [InlineData("8")]
+    [InlineData("16")]
+    [InlineData("64")]
+    [InlineData("125")]
+    [InlineData("150")]
+    [InlineData("160")]
+    [InlineData("180")]
+    [InlineData("200")]
+    [InlineData("500")]
+    public void A_league_without_teams_never_drops_an_event_for_its_round(string round)
+    {
+        var league = new League { Name = "AEW", Sport = "Combat" };
+        var cupStageSizes = new HashSet<int> { 2, 4, 8, 16, 64 };
+        var evt = new Event { Title = "Collision #75", Round = round, LeagueId = 1, Sport = "Combat" };
+
+        IsDisabledSpecial(league, evt, cupStageSizes).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("Motorsport", "Formula 1", "500")]
+    [InlineData("Tennis", "ATP Tour", "150")]
+    [InlineData("Fighting", "UFC", "125")]
+    public void Other_teamless_sports_keep_their_events_too(string sport, string name, string round)
+    {
+        var league = new League { Name = name, Sport = sport };
+
+        IsDisabledSpecial(league, new Event { Title = "Event", Round = round, Sport = sport }, null).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("500", SpecialEventTeamMode.Off, true)]
+    [InlineData("150", SpecialEventTeamMode.Off, true)]
+    [InlineData("200", SpecialEventTeamMode.Off, true)]
+    [InlineData("500", SpecialEventTeamMode.SelectedTeams, false)]
+    [InlineData("150", SpecialEventTeamMode.AllTeams, false)]
+    [InlineData("7", SpecialEventTeamMode.Off, false)]
+    public void A_team_sport_still_drops_a_category_that_is_switched_off(string round,
+        SpecialEventTeamMode mode, bool expected)
+    {
+        var league = new League
+        {
+            Name = "NBA", Sport = "Basketball",
+            PreseasonTeamMode = mode, PlayoffTeamMode = mode, FinalTeamMode = mode
+        };
+
+        IsDisabledSpecial(league, new Event { Title = "A vs B", Round = round, Sport = "Basketball" }, null)
+            .Should().Be(expected);
+    }
+
+    [Fact]
+    public void The_rounds_in_issue_373_do_classify_as_special_which_is_why_the_guard_matters()
+    {
+        var league = new League { Name = "AEW", Sport = "Combat" };
+        var cupStageSizes = new HashSet<int> { 2, 4, 8, 16, 64 };
+
+        Classify("125", "Dynamite #104", cupStageSizes).Should().Be(SpecialTier.Playoff);
+        Classify("2", "Collision #75", cupStageSizes).Should().Be(SpecialTier.Final);
+        TeamMode(league, SpecialTier.Playoff).Should().Be(SpecialEventTeamMode.Off);
+        TeamMode(league, SpecialTier.Final).Should().Be(SpecialEventTeamMode.Off);
+    }
 }

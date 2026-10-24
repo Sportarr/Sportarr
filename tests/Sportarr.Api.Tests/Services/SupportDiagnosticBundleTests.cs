@@ -52,15 +52,53 @@ public class SupportDiagnosticBundleTests
     }
 
     [Fact]
-    public void Build_SplitsLargeLogsIntoPlainTextParts()
+    public void Build_KeepsOnlyTheNewestLogPartInOneSmallFile()
     {
-        var files = SupportDiagnosticBundle.Build(
-            new string('A', 8 * 1024 * 1024), "sportarr.txt", "4.1.7", "Linux", true);
+        var log = "OLDEST LINE MARKER\n" + string.Concat(Enumerable.Repeat("[2026-10-18 10:00:00.000 +00:00] [INF] filler line\n", 120_000))
+            + "[2026-10-18 10:00:00.000 +00:00] [ERR] Early failure\n"
+            + string.Concat(Enumerable.Repeat("[2026-10-18 11:00:00.000 +00:00] [INF] filler line\n", 120_000))
+            + "NEWEST LINE MARKER";
 
-        files.Should().HaveCountGreaterThan(1);
-        files.Should().OnlyContain(file => file.Filename.EndsWith(".txt")
-            && System.Text.Encoding.UTF8.GetByteCount(file.Content) < 10 * 1024 * 1024);
+        var files = SupportDiagnosticBundle.Build(log, "sportarr.txt", "4.1.7", "Linux", false);
+
+        files.Should().ContainSingle();
+        files[0].Filename.Should().Be("sportarr-support-01.txt");
+        System.Text.Encoding.UTF8.GetByteCount(files[0].Content).Should().BeLessThan(3 * 1024 * 1024);
         files[0].Content.Should().StartWith("SPORTARR SUPPORT BUNDLE v1");
+        files[0].Content.Should().Contain("NEWEST LINE MARKER");
+        files[0].Content.Should().NotContain("OLDEST LINE MARKER");
+        files[0].Content.Should().Contain("Only the newest part of the log is included");
+        // The error section still covers the part of the log that was cut.
+        files[0].Content.Should().Contain("[ERR] Early failure");
+    }
+
+    [Fact]
+    public void Build_GroupsRepeatedWarningsWithACount()
+    {
+        var log = string.Join('\n',
+            "[2026-10-18 10:00:01.000 +00:00] [WRN] Indexer 4 timed out after 30 seconds",
+            "[2026-10-18 10:00:02.000 +00:00] [WRN] Indexer 4 timed out after 31 seconds",
+            "[2026-10-18 10:00:03.000 +00:00] [WRN] Indexer 4 timed out after 32 seconds",
+            "[2026-10-18 10:00:04.000 +00:00] [WRN] Disk space is low");
+
+        var content = SupportDiagnosticBundle.Build(log, "sportarr.txt", "4.1.8", "Linux", false)[0].Content;
+        var warnings = content.Split("===== SECTION: RECENT WARNINGS =====\n")[1].Split("===== SECTION:")[0];
+
+        warnings.Should().Contain("3x [2026-10-18 10:00:03.000 +00:00] [WRN] Indexer 4 timed out after 32 seconds");
+        warnings.Should().Contain("[WRN] Disk space is low");
+        warnings.Should().NotContain("after 30 seconds");
+    }
+
+    [Fact]
+    public void Build_AddsRedactedRecentSearches()
+    {
+        var searches = "2026-10-18 10:00 UTC  Monza Grand Prix  automatic\n"
+            + "    - https://tracker.example/announce?passkey=abc123 | WEBDL-720p | 3.20 GB | rejected";
+
+        var content = SupportDiagnosticBundle.Build("", "sportarr.txt", "4.1.8", "Linux", false, searches)[0].Content;
+
+        content.Should().Contain("===== SECTION: RECENT SEARCHES =====\n2026-10-18 10:00 UTC  Monza Grand Prix");
+        content.Should().NotContain("abc123");
     }
 
     [Theory]
@@ -185,13 +223,15 @@ public class SupportDiagnosticBundleTests
     }
 
     [Fact]
-    public void Build_DoesNotSplitMultibyteTextAcrossParts()
+    public void Build_DoesNotCutAMultibyteCharacterAtTheTailStart()
     {
-        var source = string.Concat(Enumerable.Repeat("é", 4 * 1024 * 1024));
+        // Two bytes per character and one trailing byte, so the cut lands mid-character.
+        var source = string.Concat(Enumerable.Repeat("\u00e9", 2 * 1024 * 1024)) + "x";
 
         var files = SupportDiagnosticBundle.Build(source, "sportarr.txt", "4.1.8", "Linux", false);
 
-        files.Should().HaveCountGreaterThan(1);
-        files.Should().OnlyContain(file => !file.Content.Contains('\uFFFD'));
+        files.Should().ContainSingle();
+        files[0].Content.Should().NotContain("\uFFFD");
+        files[0].Content.Should().Contain("\u00e9\u00e9");
     }
 }

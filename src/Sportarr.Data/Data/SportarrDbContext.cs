@@ -111,6 +111,9 @@ public class SportarrDbContext : DbContext
     // what survived the reconciliation pass and what was remapped.
     public DbSet<RestoreReport> RestoreReports => Set<RestoreReport>();
 
+    // What each event search found and why it did or did not grab.
+    public DbSet<SearchHistoryEntry> SearchHistory => Set<SearchHistoryEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -1096,6 +1099,23 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(g => g.WasImported);
             entity.HasIndex(g => g.FileExists);
             entity.HasIndex(g => g.Guid); // For deduplication
+        });
+
+        // One row per event search. The rows go with the event.
+        modelBuilder.Entity<SearchHistoryEntry>(entity =>
+        {
+            entity.ToTable("SearchHistory");
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Outcome).IsRequired().HasMaxLength(32);
+            entity.Property(s => s.Message).IsRequired();
+            entity.Property(s => s.ReasonsJson).IsRequired();
+            entity.Property(s => s.IndexersJson).IsRequired();
+            entity.HasOne(s => s.Event)
+                  .WithMany()
+                  .HasForeignKey(s => s.EventId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(s => new { s.EventId, s.SearchedAt });
+            entity.HasIndex(s => s.SearchedAt);
         });
 
         // ============================================================================

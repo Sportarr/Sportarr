@@ -686,9 +686,16 @@ public class LeagueResponse
     public int DownloadedMonitoredCount { get; set; }
 
     /// <summary>
-    /// Number of monitored events that are missing files (calculated field)
+    /// Number of monitored events that should have a file by now but do not
+    /// (calculated field). Events that start in the future are not counted.
     /// </summary>
     public int MissingCount { get; set; }
+
+    /// <summary>
+    /// Number of monitored events without a file that start after now
+    /// (calculated field). They cannot have aired yet, so they are not missing.
+    /// </summary>
+    public int UpcomingCount { get; set; }
 
     public List<int> Tags { get; set; } = new();
 
@@ -715,17 +722,22 @@ public class LeagueResponse
         int monitoredEventCount = 0,
         int fileCount = 0,
         int downloadedMonitoredCount = 0,
-        bool hasFutureEvents = false)
+        bool hasFutureEvents = false,
+        int upcomingCount = 0)
     {
         // Progress accounting: an unmonitored event that has a file still
         // counts as downloaded. A common workflow is unmonitoring an event
         // once it has reached the desired quality (to stop upgrade searches);
         // those files must not vanish from the stats. The "wanted" set is
-        // monitored events plus unmonitored events that already have files,
-        // and missing is monitored events without a file.
-        var missingCount = monitoredEventCount - downloadedMonitoredCount;
+        // monitored events plus unmonitored events that already have files.
+        // Upcoming events have not started, so they are neither missing nor
+        // wanted yet. Missing is monitored events without a file that have
+        // started. This matches the Wanted page.
+        var withoutFileCount = monitoredEventCount - downloadedMonitoredCount;
+        upcomingCount = Math.Clamp(upcomingCount, 0, Math.Max(0, withoutFileCount));
+        var missingCount = withoutFileCount - upcomingCount;
         var unmonitoredDownloadedCount = Math.Max(0, fileCount - downloadedMonitoredCount);
-        var wantedCount = monitoredEventCount + unmonitoredDownloadedCount;
+        var wantedCount = monitoredEventCount - upcomingCount + unmonitoredDownloadedCount;
         var progressPercent = wantedCount > 0
             ? (double)fileCount / wantedCount * 100
             : 0;
@@ -734,7 +746,8 @@ public class LeagueResponse
         string progressStatus;
         if (wantedCount == 0)
         {
-            progressStatus = "unmonitored";
+            // Only upcoming events are monitored, so nothing is due yet.
+            progressStatus = upcomingCount > 0 ? "continuing" : "unmonitored";
         }
         else if (fileCount >= wantedCount)
         {
@@ -794,6 +807,7 @@ public class LeagueResponse
             FileCount = fileCount,
             DownloadedMonitoredCount = downloadedMonitoredCount,
             MissingCount = missingCount,
+            UpcomingCount = upcomingCount,
             ProgressPercent = Math.Round(progressPercent, 1),
             ProgressStatus = progressStatus,
             Tags = league.Tags
