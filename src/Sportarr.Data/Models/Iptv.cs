@@ -1168,6 +1168,19 @@ public class MapChannelToLeaguesRequest
     public int ChannelId { get; set; }
     public List<int> LeagueIds { get; set; } = new();
     public int? PreferredLeagueId { get; set; }
+
+    /// <summary>
+    /// Confidence (0-100) stored on each mapping. Mappings made here are
+    /// always admin locks, so the auto-mapper leaves them alone, but the
+    /// resolver ranks a lock by its confidence too. A low value makes a
+    /// mapping that only lets the league's events be auto-scheduled: a
+    /// channel whose guide lists an event outranks it by enough for
+    /// re-resolve to move the recording there. Left out, a league that
+    /// already had a hand-made mapping keeps its confidence, so a save that
+    /// doesn't send one (the channels settings page) never resets it, and a
+    /// new mapping gets 100.
+    /// </summary>
+    public int? Confidence { get; set; }
 }
 
 /// <summary>

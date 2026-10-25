@@ -17,5 +17,9 @@ public class MapChannelToLeaguesRequestValidator : AbstractValidator<MapChannelT
         RuleFor(x => x.PreferredLeagueId)
             .GreaterThan(0)
             .When(x => x.PreferredLeagueId.HasValue);
+
+        RuleFor(x => x.Confidence)
+            .InclusiveBetween(0, 100)
+            .When(x => x.Confidence.HasValue);
     }
 }
