@@ -1225,6 +1225,21 @@ public class EventPartDetector
         @"\b(?:(?:free[\s._-]*)?practice|fp)[\s._-]*(?<number>\d{1,2})\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    // Some uploaders put the race of the round after the session, as in "Quali2"
+    // or "Quali.2". The number is one digit from 1 to 3 and must stand alone, so "1080p" and "2026" do not count.
+    // The pattern lives here, not in the session table, so no other series reads it.
+    public static readonly Regex SupercarsGluedSessionPattern = new(
+        @"\b(?:(?<qualifying>qualif(?:ying|ier)?|qual[iy])|(?<shootout>shootout))[\s._-]*(?<race>[1-3])\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex SupercarsShootoutWord = new(
+        @"\bshootout\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // Without a round the number cannot be mapped to a race, so it is not read.
+    private static readonly Regex SupercarsRoundPattern = new(
+        @"\b(?:Round|R)[\s._-]*0*[1-9][0-9]?\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     public static string? DetectMotorsportSessionIdentity(
         string title,
         string? leagueName,
@@ -1247,6 +1262,14 @@ public class EventPartDetector
             IndyCarFinalPracticePattern.IsMatch(normalizedTitle))
         {
             return "Final Practice";
+        }
+
+        if (leagueName?.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var glued = SupercarsGluedSessionPattern.Match(normalizedTitle);
+            // A title that names both sessions is the shootout, as "Quali 2 Top 10 Shootout".
+            if (glued.Success && SupercarsRoundPattern.IsMatch(normalizedTitle))
+                return glued.Groups["shootout"].Success || SupercarsShootoutWord.IsMatch(normalizedTitle) ? "Shootout" : "Qualifying";
         }
 
         var session = releaseTitle
