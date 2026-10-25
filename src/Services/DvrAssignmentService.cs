@@ -82,6 +82,7 @@ public sealed class DvrAssignmentService(
                 !XtreamCodesClient.TryParseStreamId(channel.StreamUrl, out _)))
             throw new ArgumentException("Catchup assignments require Xtream channels with credentials and valid stream IDs.");
 
+        var channelChanged = channelId != recording.ChannelId;
         var fallbackJson = fallbackIds.Count == 0 ? null : JsonSerializer.Serialize(fallbackIds);
         var updatedAt = DateTime.UtcNow;
         var changed = await db.DvrRecordings
@@ -94,6 +95,7 @@ public sealed class DvrAssignmentService(
                 && r.Quality == recording.Quality)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(r => r.ChannelId, channelId)
+                .SetProperty(r => r.ChannelPinned, r => r.ChannelPinned || channelChanged)
                 .SetProperty(r => r.FallbackChannelIds, fallbackJson)
                 .SetProperty(r => r.ScheduledStart, start)
                 .SetProperty(r => r.ScheduledEnd, end)

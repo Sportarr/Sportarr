@@ -932,6 +932,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("ChannelId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ChannelPinned")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("Created")
                         .HasColumnType("TEXT");
 

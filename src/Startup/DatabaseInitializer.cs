@@ -2729,6 +2729,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "IptvChannels", "HasArchive", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "IptvChannels", "ArchiveDays", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DvrRecordings", "Method", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "DvrRecordings", "ChannelPinned", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "IptvSources", "DetectedCatchupMode", "TEXT");
         EnsureColumn(db, "IptvSources", "FfmpegInputArgs", "TEXT");
         EnsureColumn(db, "EpgSources", "Priority", "INTEGER NOT NULL DEFAULT 25");

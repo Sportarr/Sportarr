@@ -161,12 +161,13 @@ app.MapGet("/api/dvr/recordings/{id:int}", async (int id, DvrRecordingService dv
 });
 
 // Schedule a new recording
-app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, DvrRecordingService dvrService, ILogger<Program> logger) =>
+app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, DvrRecordingService dvrService, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
         logger.LogInformation("[DVR] Scheduling recording for channel {ChannelId}", request.ChannelId);
         var recording = await dvrService.ScheduleRecordingAsync(request);
+        await PinUserChosenChannelAsync(db, recording);
         return Results.Created($"/api/dvr/recordings/{recording.Id}", DvrRecordingResponse.FromEntity(recording));
     }
     catch (ArgumentException ex)
@@ -826,5 +827,13 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
 });
 
         return app;
+    }
+
+    // Only this endpoint takes a channel the user picked. Automatic and
+    // event-based scheduling call the service directly and stay unpinned.
+    internal static async Task PinUserChosenChannelAsync(SportarrDbContext db, DvrRecording recording)
+    {
+        recording.ChannelPinned = true;
+        await db.SaveChangesAsync();
     }
 }

@@ -113,6 +113,7 @@ public class DvrChannelReresolveService : BackgroundService
             .Where(r => r.Status == DvrRecordingStatus.Scheduled
                         && r.Method == DvrRecordingMethod.Live
                         && r.EventId != null
+                        && !r.ChannelPinned
                         && r.ScheduledStart > earliestStart
                         && r.ScheduledStart <= latestStart)
             .OrderBy(r => r.ScheduledStart)
@@ -198,6 +199,12 @@ public class DvrChannelReresolveService : BackgroundService
             _logger.LogDebug(
                 "[DVR Re-resolve] Recording {Id} is {Status} now, leaving its channel alone",
                 recording.Id, recording.Status);
+            return false;
+        }
+
+        // The user may have set the channel while the candidates were ranked.
+        if (recording.ChannelPinned)
+        {
             return false;
         }
 

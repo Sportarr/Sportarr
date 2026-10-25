@@ -960,6 +960,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<int>("ChannelId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("ChannelPinned")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("Created")
                         .HasColumnType("timestamp with time zone");
 

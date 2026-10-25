@@ -842,6 +842,12 @@ public class DvrRecording
     /// them (their wall-clock rules assume a live window).
     /// </summary>
     public DvrRecordingMethod Method { get; set; } = DvrRecordingMethod.Live;
+
+    /// <summary>
+    /// True once the user changed the channel by hand. The background channel
+    /// re-resolve then leaves the recording alone. Failover rotation ignores it.
+    /// </summary>
+    public bool ChannelPinned { get; set; }
 }
 
 /// <summary>

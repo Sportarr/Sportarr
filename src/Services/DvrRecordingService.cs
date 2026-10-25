@@ -440,6 +440,7 @@ public class DvrRecordingService
             throw new InvalidOperationException($"Cannot update recording in status {recording.Status}");
         }
 
+        if (request.ChannelId != recording.ChannelId) recording.ChannelPinned = true;
         recording.ChannelId = request.ChannelId;
         recording.ScheduledStart = request.ScheduledStart;
         recording.ScheduledEnd = request.ScheduledEnd;
@@ -810,6 +811,7 @@ public class DvrRecordingService
             Status = DvrRecordingStatus.Scheduled,
             FallbackChannelIds = remainingBackups.Count > 0 ? JsonSerializer.Serialize(remainingBackups) : null,
             AutoRetryCount = failed.AutoRetryCount + 1,
+            ChannelPinned = failed.ChannelPinned,
             Created = DateTime.UtcNow,
         };
         _db.DvrRecordings.Add(rotated);
