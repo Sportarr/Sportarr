@@ -739,13 +739,23 @@ public class IptvSourceService
         // and a hand-picked channel usually has nothing in its name for the
         // scorer to justify - without the flag, the next auto-map run
         // silently deleted exactly the mappings the user just made.
+        //
+        // At confidence 100 the lock also ranks the channel above a guide
+        // match on another channel, which is wrong for a mapping made only so
+        // the auto-scheduler picks up a league. The caller can lower the
+        // confidence for that. A request that doesn't name one keeps what a
+        // hand-made mapping already had, so the settings page, which never
+        // sends it, doesn't reset it on every save.
+        var keptConfidence = existingMappings
+            .Where(m => m.IsManual && !m.IsExcluded)
+            .ToDictionary(m => m.LeagueId, m => m.Confidence);
         var newMappings = request.LeagueIds.Select(leagueId => new ChannelLeagueMapping
         {
             ChannelId = request.ChannelId,
             LeagueId = leagueId,
             IsPreferred = leagueId == request.PreferredLeagueId,
             IsManual = true,
-            Confidence = 100,
+            Confidence = request.Confidence ?? keptConfidence.GetValueOrDefault(leagueId, 100),
             Created = DateTime.UtcNow
         }).ToList();
 
