@@ -35,6 +35,11 @@ public class RssSyncService : BackgroundService
     // Track when we last did a sync for catch-up logic
     private DateTime _lastSyncTime = DateTime.MinValue;
 
+    // A release can stay in the feed for days. This set makes sure the
+    // process reports it once. A failed send removes its keys again.
+    private const int MaxReportedObservations = 5000;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _reportedObservations = new(StringComparer.Ordinal);
+
     public RssSyncService(
         IServiceProvider serviceProvider,
         ILogger<RssSyncService> logger)
@@ -221,6 +226,15 @@ public class RssSyncService : BackgroundService
         _logger.LogDebug("[RSS Sync] Loaded {ProfileCount} quality profiles, {FormatCount} custom formats, {ReleaseProfileCount} release profiles for evaluation",
             qualityProfiles.Count, customFormats.Count, releaseProfiles.Count);
 
+        var monitoredLeagues = config.SendAnonymousUsageData
+            ? await db.Leagues
+                .AsNoTracking()
+                .Where(league => league.Monitored && league.ExternalId != null && league.ExternalId != "")
+                .ToListAsync(cancellationToken)
+            : new List<League>();
+        var knownEventDays = await LoadKnownEventDaysAsync(db, monitoredLeagues, nowUtc, cancellationToken);
+        var observations = new List<EventObservation>();
+
         // STEP 3: For each release, check if it matches any monitored event
         // This is the inverse of the old approach (per-event search)
         foreach (var release in recentReleases)
@@ -244,7 +258,14 @@ public class RssSyncService : BackgroundService
                     nascarVenues);
 
                 if (matchedEvent == null)
+                {
+                    if (config.SendAnonymousUsageData)
+                    {
+                        CollectObservation(release.Title, () => releaseMatchingService.ParseRelease(release.Title),
+                            monitoredLeagues, knownEventDays, nowUtc, observations);
+                    }
                     continue;
+                }
 
                 matchedReleases++;
 
@@ -334,8 +355,118 @@ public class RssSyncService : BackgroundService
                 recentReleases.Count);
         }
 
+        await SubmitObservationsAsync(scope, configService, observations);
+
         _logger.LogInformation("[RSS Sync] Completed - {New} new downloads, {Upgrades} quality upgrades",
             newDownloadsAdded, upgradesFound);
+    }
+
+    private void CollectObservation(
+        string releaseTitle,
+        Func<SportsParseResult> parsed,
+        IReadOnlyCollection<League> monitoredLeagues,
+        IReadOnlySet<(int LeagueId, DateTime Day)> knownEventDays,
+        DateTime nowUtc,
+        List<EventObservation> observations)
+    {
+        if (observations.Count >= EventObservationCollector.MaxPerBatch)
+            return;
+        EventObservation? observation;
+        try
+        {
+            observation = EventObservationCollector.FromUnmatchedRelease(
+                releaseTitle, parsed(), monitoredLeagues, nowUtc, knownEventDays);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[RSS Sync] Usage-data check skipped for {Title}", releaseTitle);
+            return;
+        }
+        if (observation == null)
+            return;
+        // A full set is cleared, not trimmed. Old keys are sent again, and
+        // the metadata service merges repeats.
+        if (_reportedObservations.Count >= MaxReportedObservations)
+            _reportedObservations.Clear();
+        if (!_reportedObservations.TryAdd(observation.DedupeKey, 0))
+            return;
+        observations.Add(observation);
+    }
+
+    /// <summary>
+    /// Opt-out via Settings > General > Analytics. The sync never waits on
+    /// this call.
+    /// </summary>
+    private async Task SubmitObservationsAsync(
+        IServiceScope scope,
+        ConfigService configService,
+        List<EventObservation> observations)
+    {
+        if (observations.Count == 0)
+            return;
+        try
+        {
+            // Read the live config again. A user who opts out during a long
+            // sync then sends nothing.
+            var config = await configService.GetConfigAsync();
+            if (!config.SendAnonymousUsageData)
+            {
+                ForgetObservations(observations);
+                return;
+            }
+            var installId = await configService.GetOrCreateAnalyticsInstanceIdAsync();
+            if (installId == null)
+            {
+                ForgetObservations(observations);
+                return;
+            }
+            var client = scope.ServiceProvider.GetRequiredService<SportarrApiClient>();
+            _logger.LogDebug("[RSS Sync] Reporting {Count} unmatched releases as usage data", observations.Count);
+            _ = client.SubmitEventObservationsAsync(installId, observations)
+                .ContinueWith(task =>
+                {
+                    // A failed send must not block the next sync from trying again.
+                    if (!task.IsCompletedSuccessfully || !task.Result)
+                        ForgetObservations(observations);
+                }, TaskScheduler.Default);
+        }
+        catch (Exception ex)
+        {
+            ForgetObservations(observations);
+            _logger.LogDebug(ex, "[RSS Sync] Usage-data report skipped");
+        }
+    }
+
+    /// <summary>
+    /// Days in the report window on which each monitored league already has
+    /// an event, monitored or not. A release on such a day is not a missing
+    /// event. It can be an event that the user does not monitor.
+    /// </summary>
+    private static async Task<IReadOnlySet<(int LeagueId, DateTime Day)>> LoadKnownEventDaysAsync(
+        SportarrDbContext db,
+        IReadOnlyCollection<League> monitoredLeagues,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        if (monitoredLeagues.Count == 0)
+            return new HashSet<(int, DateTime)>();
+
+        var leagueIds = monitoredLeagues.Select(league => league.Id).ToList();
+        var from = nowUtc.Date - EventObservationCollector.LookBack - TimeSpan.FromDays(1);
+        var to = nowUtc.Date + EventObservationCollector.LookAhead + TimeSpan.FromDays(2);
+        var rows = await db.Events
+            .AsNoTracking()
+            .Where(evt => evt.LeagueId != null && leagueIds.Contains(evt.LeagueId.Value)
+                && evt.EventDate >= from && evt.EventDate < to)
+            .Select(evt => new { LeagueId = evt.LeagueId!.Value, evt.EventDate })
+            .ToListAsync(cancellationToken);
+        return rows.Select(row => (row.LeagueId, row.EventDate.Date)).ToHashSet();
+    }
+
+    private void ForgetObservations(IEnumerable<EventObservation> observations)
+    {
+        foreach (var observation in observations)
+            _reportedObservations.TryRemove(observation.DedupeKey, out _);
     }
 
     /// <summary>

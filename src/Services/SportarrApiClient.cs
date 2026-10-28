@@ -115,6 +115,45 @@ public class SportarrApiClient
     }
 
     /// <summary>
+    /// Report releases that matched a monitored league and a date but no
+    /// event, as anonymous usage data. The server tallies distinct installs
+    /// per (league, release) so missing fixtures become visible. The caller
+    /// checks SendAnonymousUsageData. Returns false when the send fails, and
+    /// never throws.
+    /// </summary>
+    public async Task<bool> SubmitEventObservationsAsync(string installId, IReadOnlyList<EventObservation> observations)
+    {
+        if (observations.Count == 0)
+            return true;
+        try
+        {
+            var root = _apiBaseUrl.Replace("/api/v2/json", string.Empty).TrimEnd('/');
+            var url = $"{root}/api/metadata/suggestions/event-observations";
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                installId,
+                observations = observations.Select(o => new
+                {
+                    leagueId = o.LeagueId,
+                    releaseTitle = o.ReleaseTitle,
+                    observedDate = o.ObservedDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                }),
+            });
+
+            using var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+            using var response = await _httpClient.PostAsync(url, content);
+            _logger.LogDebug("[SportarrAPI] Event observations ({Count}) -> {Status}", observations.Count, (int)response.StatusCode);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[SportarrAPI] Event observation submission failed (ignored)");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Submit a user's team alias list as an anonymous usage-data suggestion.
     /// The server tallies distinct installs per (team, alias) so popular
     /// aliases can be promoted into the shared alternates by hand. Best

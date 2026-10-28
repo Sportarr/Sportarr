@@ -920,8 +920,10 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             <p className="text-sm text-gray-400 mt-1">
               Help improve Sportarr by sending anonymous usage data. This currently includes team
               aliases you add, so popular aliases can be promoted into the shared metadata and
-              benefit everyone automatically. Submissions carry only the team, the alias text, and
-              a random install identifier. No personal information is collected.
+              benefit everyone automatically. It also includes the titles of releases that match a
+              monitored league but no event, with the league and the date, so missing events can
+              be added. Submissions carry only that data and a random install identifier. No
+              personal information, indexer name or address is collected.
             </p>
           </div>
         </label>

@@ -2680,6 +2680,23 @@ public class ReleaseMatchingService
         return false;
     }
 
+    /// <summary>
+    /// Strict form of <see cref="SeriesLabelMatchesLeague"/>. The label must
+    /// equal one alias of the league after normalisation. Containment and
+    /// word-subset matches do not count.
+    /// </summary>
+    public static bool SeriesLabelEqualsLeagueAlias(string seriesLabel, League league)
+    {
+        if (string.IsNullOrWhiteSpace(seriesLabel) || league == null) return false;
+
+        var compactLabel = RemoveSeparators(NormalizeTitle(seriesLabel));
+        if (string.IsNullOrEmpty(compactLabel)) return false;
+
+        return LeagueAliases(league)
+            .Select(alias => RemoveSeparators(NormalizeTitle(alias)))
+            .Any(alias => compactLabel.Equals(alias, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static IEnumerable<string> LeagueAliases(League league)
     {
         yield return league.Name;

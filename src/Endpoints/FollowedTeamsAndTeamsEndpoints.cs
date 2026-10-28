@@ -582,14 +582,11 @@ app.MapPut("/api/teams/{id:int}/aliases", async (int id, System.Text.Json.JsonEl
     // via Settings > General > Analytics; fire-and-forget so the save never
     // waits on (or fails with) the metadata service.
     var config = await configService.GetConfigAsync();
-    if (config.SendAnonymousUsageData && cleaned.Count > 0 && !string.IsNullOrEmpty(team.ExternalId))
+    var installId = config.SendAnonymousUsageData && cleaned.Count > 0 && !string.IsNullOrEmpty(team.ExternalId)
+        ? await configService.GetOrCreateAnalyticsInstanceIdAsync()
+        : null;
+    if (installId != null)
     {
-        if (string.IsNullOrEmpty(config.AnalyticsInstanceId))
-        {
-            config.AnalyticsInstanceId = Guid.NewGuid().ToString("N");
-            await configService.SaveConfigAsync(config);
-        }
-        var installId = config.AnalyticsInstanceId;
         var teamExternalId = team.ExternalId!;
         var teamName = team.Name;
         var leagueExternalId = team.LeagueId.HasValue
