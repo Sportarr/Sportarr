@@ -334,8 +334,7 @@ public class TaskService : ITaskService
     /// </summary>
     private async Task ExecuteCommandAsync(AppTask task, CancellationToken cancellationToken)
     {
-        // This is where you would implement actual task logic
-        // For now, we'll just simulate some work
+        // An unknown name fails. A task that did nothing must not show as done.
         switch (task.CommandName)
         {
             case "TestTask":
@@ -376,8 +375,7 @@ public class TaskService : ITaskService
 
             default:
                 _logger.LogWarning("[TASK] Unknown command: {CommandName}", task.CommandName);
-                await SimulateWorkAsync(task, cancellationToken);
-                break;
+                throw new NotSupportedException($"Unknown command: {task.CommandName}");
         }
     }
 
