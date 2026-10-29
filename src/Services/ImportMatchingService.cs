@@ -356,7 +356,8 @@ public class ImportMatchingService
 
         var driftLeagueIds = candidates
             .Where(candidate => candidate.LeagueId.HasValue &&
-                LeagueReleaseNamePolicy.AllowsObservedDateDrift(releaseTitle, candidate, releaseDate.Value))
+                (LeagueReleaseNamePolicy.AllowsObservedDateDrift(releaseTitle, candidate, releaseDate.Value) ||
+                 ImportDateMatchPolicy.CanUseNearbyDate(candidate, releaseDate.Value, releaseTitle)))
             .Select(candidate => candidate.LeagueId!.Value)
             .Distinct()
             .ToArray();
@@ -738,6 +739,11 @@ public class ImportMatchingService
             int.TryParse(evt.Round, out var nascarEventRound) &&
             nascarReleaseRound == nascarEventRound;
 
+        var namesMls = LibraryImportService.IsMlsDatedName(originalTitle) ||
+            sportsResult?.Organization?.Equals("American Major League Soccer", StringComparison.OrdinalIgnoreCase) == true;
+        if (namesMls && !LibraryImportService.MlsNameFitsEvent(originalTitle, searchTitle, evt))
+            return new ImportMatchScore(-100, 0);
+
         if (CricketRugbyReleaseNamePolicy.HasIdentityConflict(originalTitle, evt))
         {
             return new ImportMatchScore(-100, 0);
@@ -998,7 +1004,7 @@ public class ImportMatchingService
         // The grab side already compares this way.
         if (sportsResult?.EventDate != null)
         {
-            var dateMatch = ImportDateMatchPolicy.Evaluate(evt, sportsResult.EventDate.Value);
+            var dateMatch = ImportDateMatchPolicy.Evaluate(evt, sportsResult.EventDate.Value, originalTitle, datePeers);
             if (dateMatch.DaysDifference > 0 && ReleaseMatchingService.DateMatchesAnotherTeamEvent(
                     evt, sportsResult.EventDate.Value.Date, datePeers))
             {

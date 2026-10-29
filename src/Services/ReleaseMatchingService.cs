@@ -1748,7 +1748,7 @@ public class ReleaseMatchingService
             && IsPlausibleEventDate(peer, releaseDate));
     }
 
-    private static bool IsSameEvent(Event left, Event right)
+    internal static bool IsSameEvent(Event left, Event right)
     {
         if (ReferenceEquals(left, right))
             return true;
@@ -1759,7 +1759,7 @@ public class ReleaseMatchingService
             && left.ExternalId.Equals(right.ExternalId, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsSameEventLeague(Event left, Event right)
+    internal static bool IsSameEventLeague(Event left, Event right)
     {
         if (left.LeagueId.HasValue && right.LeagueId.HasValue)
             return left.LeagueId == right.LeagueId;
@@ -1768,7 +1768,7 @@ public class ReleaseMatchingService
         return LeagueSportRules.AreEquivalentSports(left.Sport, right.Sport);
     }
 
-    private static bool IsSameTeamPair(Event left, Event right)
+    internal static bool IsSameTeamPair(Event left, Event right)
     {
         if (left.HomeTeamId.HasValue && left.AwayTeamId.HasValue
             && right.HomeTeamId.HasValue && right.AwayTeamId.HasValue)

@@ -3712,6 +3712,29 @@ public static class LeagueReleaseNamePolicy
         return years.All(year => !allowed.Contains(year));
     }
 
+    /// <summary>
+    /// True when the release name carries both team names of the event, or
+    /// the whole event title. A word such as "United" is not enough.
+    /// </summary>
+    internal static bool NamesBothEventTeams(string releaseTitle, Event evt)
+    {
+        if (string.IsNullOrWhiteSpace(releaseTitle) ||
+            string.IsNullOrWhiteSpace(evt.HomeTeamName) ||
+            string.IsNullOrWhiteSpace(evt.AwayTeamName))
+        {
+            return false;
+        }
+
+        var title = SearchNormalizationService.RemoveDiacritics(releaseTitle);
+        var home = SearchNormalizationService.RemoveDiacritics(evt.HomeTeamName);
+        var away = SearchNormalizationService.RemoveDiacritics(evt.AwayTeamName);
+        if (HasTeam(title, home, evt.HomeTeam) && HasTeam(title, away, evt.AwayTeam))
+            return true;
+
+        return !string.IsNullOrWhiteSpace(evt.Title) &&
+            ContainsPhrase(Normalize(title), Normalize(SearchNormalizationService.RemoveDiacritics(evt.Title)));
+    }
+
     private static bool HasTeam(string title, string? canonical)
     {
         if (string.IsNullOrWhiteSpace(canonical)) return false;

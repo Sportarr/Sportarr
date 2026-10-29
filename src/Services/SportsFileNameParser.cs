@@ -273,6 +273,17 @@ public class SportsFileNameParser
         },
 
         // Soccer/Football patterns
+        new SportsPattern
+        {
+            Sport = "Soccer",
+            Organization = "American Major League Soccer",
+            Pattern = new Regex(
+                @"^(?:MLS|(?:American[\.\-\s]+)?Major[\.\-\s]+League[\.\-\s]+Soccer)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<team1>.+?)[\.\s]+vs\.?[\.\s]+(?<team2>.+?)(?=[\.\-\s]+(?:(?:2160|1080|720|480)p(?:\d{2,3}(?:fps)?)?|4K|UHD|XviD|WEB(?:Rip|-DL)?|HDTV|BluRay|FS1|PROPER|REPACK|iNTERNAL|[hx]\.?26[45])\b|$)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled,
+                PatternTimeout),
+            TitleBuilder = match =>
+                $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
         // Premier League: EPL.2024.Matchday.20.Arsenal.vs.Liverpool
         new SportsPattern
         {
