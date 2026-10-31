@@ -1521,7 +1521,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           {selectedTemplate.name === 'qBittorrent' && 'URL path prefix for qBittorrent Web UI. Default is root (leave empty). Set only if configured in qBittorrent settings.'}
                           {selectedTemplate.name === 'Transmission' && 'RPC URL path for Transmission. Default is /transmission. Leave empty only if you changed it in Transmission settings.'}
                           {selectedTemplate.name === 'Deluge' && 'Base URL for Deluge web interface. Default is root (leave empty). Use /deluge only if configured in Deluge settings.'}
-                          {selectedTemplate.name === 'rTorrent' && 'Enter the path only, not the full URL. Paths ending in /RPC2 are used as entered. Other paths get /RPC2 added. Leave empty to use /rutorrent/RPC2.'}
+                          {selectedTemplate.name === 'rTorrent' && 'Enter the path only, not the full URL. Paths ending in /RPC2 or /xmlrpc are used as entered. Other paths get /RPC2 added. Leave empty to use /rutorrent/RPC2.'}
                           {selectedTemplate.name === 'Vuze' && 'URL base for Vuze web interface. Default is root (leave empty).'}
                           {selectedTemplate.name === 'Decypharr' && 'URL base for Decypharr. Default is root (leave empty unless behind a reverse proxy).'}
                           {selectedTemplate.name === 'DecypharrUsenet' && 'URL base for Decypharr usenet mode. Typically /sabnzbd since Decypharr emulates the SABnzbd API.'}
