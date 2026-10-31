@@ -463,7 +463,7 @@ public class EventPartDetector
     /// Detect UFC event type from event title
     /// - ContenderSeries: "Dana White's Contender Series", "DWCS" - single episode, no parts
     /// - PPV: "UFC 310", "UFC 309", etc. (numbered PPV events)
-    /// - Fight Night: "UFC Fight Night 262", "UFC Fight Night: Name vs Name", etc.
+    /// - Fight Night: "UFC Fight Night 262", "UFC Fight Night: Name vs Name", a TUF finale, etc.
     /// - Other: Any other UFC-related event
     /// </summary>
     public static UfcEventType DetectUfcEventType(string? eventTitle)
@@ -483,6 +483,11 @@ public class EventPartDetector
         if (Regex.IsMatch(title, @"\bUFC\s*FIGHT\s*NIGHT\b", RegexOptions.IgnoreCase))
             return UfcEventType.FightNight;
 
+        // An Ultimate Fighter finale is a fight card, so the monitor filter
+        // groups it with Fight Night. A weekly episode of the show is not.
+        if (IsTufFinale(title))
+            return UfcEventType.FightNight;
+
         // Check for numbered PPV events (UFC 310, UFC 309, etc.)
         if (Regex.IsMatch(title, @"\bUFC\s*\d{1,3}\b", RegexOptions.IgnoreCase))
             return UfcEventType.PPV;
@@ -492,6 +497,17 @@ public class EventPartDetector
             return UfcEventType.FightNight;
 
         return UfcEventType.Other;
+    }
+
+    // A TUF finale, such as "The Ultimate Fighter 28 Finale". An episode
+    // tag such as S28E14 marks a weekly show, even a season finale.
+    private static bool IsTufFinale(string? eventTitle)
+    {
+        if (string.IsNullOrEmpty(eventTitle))
+            return false;
+        var title = eventTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+        return Regex.IsMatch(title, @"\b(ULTIMATE\s*FIGHTER|TUF)\b.*\bFINALE\b", RegexOptions.IgnoreCase) &&
+               !Regex.IsMatch(title, @"\bS\d+\s*E\d+\b", RegexOptions.IgnoreCase);
     }
 
     /// <summary>
@@ -557,8 +573,9 @@ public class EventPartDetector
     /// </summary>
     public static bool IsFightNightStyleEvent(string? eventTitle, string? leagueName)
     {
-        // UFC Fight Night
-        if (DetectUfcEventType(eventTitle) == UfcEventType.FightNight)
+        // UFC Fight Night. A TUF finale counts as Fight Night for monitoring,
+        // but its card had early prelims, so it keeps the full card parts.
+        if (DetectUfcEventType(eventTitle) == UfcEventType.FightNight && !IsTufFinale(eventTitle))
             return true;
 
         // ONE Championship numbered and Fight Night events (2-part: Lead Card + Main Card)
@@ -826,6 +843,8 @@ public class EventPartDetector
 
         // UFC segments (default for other fighting sports)
         var ufcType = DetectUfcEventType(eventTitle);
+        if (IsTufFinale(eventTitle))
+            return FightingSegments;
         return ufcType switch
         {
             UfcEventType.ContenderSeries => new List<CardSegment>(),
@@ -1658,7 +1677,7 @@ public class EventPartDetector
     public static readonly List<FightingEventTypeDefinition> UfcEventTypes = new()
     {
         new() { Id = "PPV", DisplayName = "UFC Numbered Event (PPV)", Examples = new[] { "UFC 310", "UFC 311" } },
-        new() { Id = "FightNight", DisplayName = "UFC Fight Night", Examples = new[] { "UFC Fight Night", "UFC on ESPN" } },
+        new() { Id = "FightNight", DisplayName = "UFC Fight Night", Examples = new[] { "UFC Fight Night", "UFC on ESPN", "TUF Finale" } },
         new() { Id = "ContenderSeries", DisplayName = "Dana White's Contender Series", Examples = new[] { "DWCS", "Contender Series" } },
     };
 
