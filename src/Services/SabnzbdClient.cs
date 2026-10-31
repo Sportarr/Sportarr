@@ -1131,10 +1131,11 @@ public class SabnzbdClient
                     }
                 }
 
-                // CRITICAL: Even if status is "Completed", verify storage path is actually available
-                // SABnzbd may report "Completed" before the storage path is fully populated
-                // This prevents race conditions where we try to import before files are in final location
-                if (string.IsNullOrEmpty(historyItem.storage))
+                // A completed download waits until SABnzbd writes the storage path.
+                // SABnzbd can report completion before it writes that path.
+                // A failed download does not wait. It needs no path, and the wait
+                // would hide the failure from failed-download handling.
+                if (status == "completed" && string.IsNullOrEmpty(historyItem.storage))
                 {
                     _logger.LogDebug("[SABnzbd] Download {NzoId} completed but storage path not yet available, waiting...", nzoId);
                     return new DownloadClientStatus
