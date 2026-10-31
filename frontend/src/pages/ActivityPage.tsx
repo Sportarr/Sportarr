@@ -3001,7 +3001,12 @@ export default function ActivityPage() {
                 <p className="text-sm text-gray-400 mt-2">
                   {blocklistAction === 'none' && (onlyClientPendings
                     ? 'Pending downloads are blocklisted so the scanner does not add them again.'
-                    : `The release${removeDialogTotal > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`)}
+                    // A kept file is not tracked, so the next disk scan lists it again.
+                    : onlyDiskRows && !deleteDiskFile
+                      ? `The file${removeDialogTotal > 1 ? 's' : ''} stay${removeDialogTotal > 1 ? '' : 's'} on disk and will be listed again on the next disk scan. Choose a blocklist option to stop listing ${removeDialogTotal > 1 ? 'them' : 'it'}.`
+                      : onlyDiskRows
+                        ? `The file${removeDialogTotal > 1 ? 's are' : ' is'} removed from disk, or moved to the recycle bin if one is set.`
+                      : `The release${removeDialogTotal > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`)}
                   {blocklistAction === 'blocklistAndSearch' && `Blocklist release${removeDialogTotal > 1 ? 's' : ''} and search for replacement${removeDialogTotal > 1 ? 's' : ''}`}
                   {blocklistAction === 'blocklistOnly' && `Blocklist release${removeDialogTotal > 1 ? 's' : ''} without searching for replacement${removeDialogTotal > 1 ? 's' : ''}`}
                 </p>
