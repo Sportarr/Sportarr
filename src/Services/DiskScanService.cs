@@ -318,7 +318,9 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             // A path inside the recycle bin (or any excluded folder) is treated as missing,
             // not "present". This self-heals records the watcher previously re-pointed into
             // the recycle bin, which would otherwise pass File.Exists and never be flagged.
-            if (LibraryPathFilter.IsExcluded(evt.FilePath, config.RecycleBin) || !File.Exists(evt.FilePath))
+            // A parked file sits in a dot folder on purpose. It is present.
+            if ((LibraryPathFilter.IsExcluded(evt.FilePath, config.RecycleBin) && !FileParking.IsParkedPath(evt.FilePath))
+                || !File.Exists(evt.FilePath))
             {
                 _logger.LogWarning("[Disk Scan] Missing file for event '{Title}': {FilePath}", evt.Title, evt.FilePath);
                 missingEventIds.Add(evt.Id);
@@ -353,6 +355,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 
         var filesToMarkMissing = new List<int>();
         var filesToMarkFound = new List<int>();
+        var filesToHeal = new List<int>();
         var now = DateTime.UtcNow;
 
         foreach (var file in eventFilesToCheck)
@@ -364,8 +367,19 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             }
 
             // Treat recycle-bin / excluded paths as not present (see the Events loop above).
-            var exists = !LibraryPathFilter.IsExcluded(file.FilePath, config.RecycleBin) && File.Exists(file.FilePath);
+            // A parked file sits in a dot folder on purpose. It is present.
+            var exists = (!LibraryPathFilter.IsExcluded(file.FilePath, config.RecycleBin) || FileParking.IsParkedPath(file.FilePath))
+                && File.Exists(file.FilePath);
             var previousExists = file.Exists;
+
+            // A park or unpark can move a file and then fail to save its new
+            // path. Such a row is repaired below instead of marked missing.
+            if (!exists && previousExists && !string.IsNullOrEmpty(file.FilePath)
+                && File.Exists(FileParking.AlternatePathFor(file.FilePath)))
+            {
+                filesToHeal.Add(file.Id);
+                continue;
+            }
 
             if (exists != previousExists)
             {
@@ -388,6 +402,17 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             {
                 if (exists) totalVerified++;
             }
+        }
+
+        // Repair moved rows. A row whose other path another row owns stays
+        // missing, so two rows never share one file.
+        if (filesToHeal.Count > 0)
+        {
+            var rows = await db.EventFiles.Where(ef => filesToHeal.Contains(ef.Id)).ToListAsync(cancellationToken);
+            await FileParking.HealAsync(db, rows, _logger, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            filesToMarkMissing.AddRange(rows.Where(r => !File.Exists(r.FilePath)).Select(r => r.Id));
+            totalVerified += rows.Count(r => File.Exists(r.FilePath));
         }
 
         // Batch update files that are now missing.
@@ -502,6 +527,19 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             .ToHashSet();
         await UpdateEventFileStatusAsync(db, config, eventsLosingFiles, cancellationToken);
 
+        // Files that went missing can change which files stay hidden. A "Full
+        // Event" event that lost its whole file shows its part files again.
+        try
+        {
+            db.ChangeTracker.Clear();
+            await FileParking.ReconcileLibraryAsync(db, config.EnableMultiPartEpisodes,
+                scope.ServiceProvider.GetService<NotificationService>(), _logger, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Disk Scan] Parked file reconcile failed");
+        }
+
         _logger.LogInformation("[Disk Scan] Complete. Verified: {Verified}, Missing: {Missing}, Found: {Found}",
             totalVerified, totalMissing, totalFound);
 
@@ -584,7 +622,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 
         var existingFiles = await db.EventFiles
             .AsNoTracking()
-            .Where(f => f.Exists)
+            .Where(f => f.Exists && !f.IsParked)
             .Select(f => new { f.EventId, f.PartNumber, f.FilePath, f.Size, f.Quality })
             .ToListAsync(cancellationToken);
         var filesByEvent = existingFiles.GroupBy(f => f.EventId)
@@ -790,6 +828,11 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 
             try
             {
+                // A parked file without a row would stay hidden for good. Put it
+                // back in view first, so this scan offers it for import.
+                await FileParking.ReturnUntrackedParkedFilesAsync(db, rootFolder.Path, trackedPaths, videoExtensions,
+                    _logger, cancellationToken);
+
                 var files = Directory.EnumerateFiles(rootFolder.Path, "*.*", SearchOption.AllDirectories)
                     .Where(f => videoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
                 // Skip recycle bin, dot folders, and system folders so recycled/system copies

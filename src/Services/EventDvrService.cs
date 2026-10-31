@@ -541,7 +541,7 @@ public class EventDvrService
             pathOwner.Size = new FileInfo(recording.OutputPath).Length;
             var configForLinkedFile = await _configService.GetConfigAsync();
             var linkedParts = await _db.EventFiles
-                .Where(file => file.EventId == recording.EventId && file.Exists)
+                .Where(file => file.EventId == recording.EventId && file.Exists && !file.IsParked)
                 .Select(file => file.PartNumber)
                 .ToListAsync();
             linkedParts.Add(pathOwner.PartNumber);
@@ -714,7 +714,7 @@ public class EventDvrService
 
         // Update event status
         var presentParts = await _db.EventFiles
-            .Where(file => file.EventId == recording.EventId && file.Exists)
+            .Where(file => file.EventId == recording.EventId && file.Exists && !file.IsParked)
             .Select(file => file.PartNumber)
             .ToListAsync();
         presentParts.Add(eventFile.PartNumber);

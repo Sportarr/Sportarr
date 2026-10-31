@@ -68,6 +68,7 @@ public class HealthCheckService
             results.AddRange(await CheckAuthenticationAsync());
             results.AddRange(await CheckOrphanedEventsAsync());
             results.AddRange(await CheckRenamedLeagueFoldersAsync());
+            results.AddRange(CheckHiddenUntrackedFiles());
             results.AddRange(await CheckUpdateAvailableAsync());
             results.AddRange(await CheckDatabaseMigrationNeededAsync());
             results.AddRange(await CheckMetadataApiAsync());
@@ -115,6 +116,29 @@ public class HealthCheckService
         }
 
         return results.OrderByDescending(r => r.Level).ToList();
+    }
+
+    /// <summary>
+    /// Files hidden from the media server that no record tracks, because a
+    /// file already holds their visible place. The disk scan finds them.
+    /// </summary>
+    private static List<HealthCheckResult> CheckHiddenUntrackedFiles()
+    {
+        var blocked = FileParking.BlockedUntrackedFiles;
+        if (blocked.Count == 0)
+            return new List<HealthCheckResult>();
+        return new List<HealthCheckResult>
+        {
+            new()
+            {
+                Type = HealthCheckType.HiddenFileNotTracked,
+                Level = HealthCheckLevel.Warning,
+                Message = "A hidden file could not be put back in view",
+                Details = "These files are hidden from your media server, and no event lists them. " +
+                          "Another file already has the same name in the folder above. " +
+                          "Move or rename one of them: " + string.Join(", ", blocked)
+            }
+        };
     }
 
     /// <summary>

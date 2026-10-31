@@ -158,11 +158,13 @@ public static class SonarrEpisodeFileEndpoints
             }
 
             await metadataWriterService.DeleteEventMetadataAsync(eventFile);
+            // A parked folder goes once its last file is gone.
+            FileParking.RemoveParkedFolderIfEmpty(eventFile.FilePath, logger);
 
             if (eventFile.Event != null)
             {
                 var remainingFiles = await db.EventFiles
-                    .Where(ef => ef.EventId == eventFile.EventId && ef.Id != id && ef.Exists)
+                    .Where(ef => ef.EventId == eventFile.EventId && ef.Id != id && ef.Exists && !ef.IsParked)
                     .OrderByDescending(ef => ef.Size)
                     .ToListAsync();
                 var remaining = remainingFiles.FirstOrDefault();
@@ -244,6 +246,8 @@ public static class SonarrEpisodeFileEndpoints
                             logger.LogDebug("[V3-COMPAT] Deleted file: {Path}", eventFile.FilePath);
                         }
                         await metadataWriterService.DeleteEventMetadataAsync(eventFile);
+                        // A parked folder goes once its last file is gone.
+                        FileParking.RemoveParkedFolderIfEmpty(eventFile.FilePath, logger);
                     }
                     catch (Exception ex)
                     {
@@ -264,7 +268,7 @@ public static class SonarrEpisodeFileEndpoints
                     if (evt != null)
                     {
                         var remainingFiles = await db.EventFiles
-                            .Where(ef => ef.EventId == eventId && ef.Exists)
+                            .Where(ef => ef.EventId == eventId && ef.Exists && !ef.IsParked)
                             .OrderByDescending(ef => ef.Size)
                             .ToListAsync();
                         var remaining = remainingFiles.FirstOrDefault();

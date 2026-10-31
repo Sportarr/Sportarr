@@ -613,9 +613,11 @@ public class FileImportService : IFileImportService
                 : _parser.BuildQualityString(parsed);
 
             var config = await _configService.GetConfigAsync();
+            // A "Full Event" event keeps one whole file, so its import ignores parts.
+            var usesParts = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, eventInfo);
             var partIdentity = PartIdentityResolver.Resolve(
                 download.Part, null, Path.GetFileName(sourceFile), eventInfo.Sport,
-                eventInfo.Title, eventInfo.League?.Name, config.EnableMultiPartEpisodes, download.IsPack);
+                eventInfo.Title, eventInfo.League?.Name, usesParts, download.IsPack);
 
             var partInfo = partIdentity.Part;
             if (string.IsNullOrWhiteSpace(download.Part) &&
@@ -628,7 +630,7 @@ public class FileImportService : IFileImportService
                 {
                     var canonicalLegacy = PartIdentityResolver.Resolve(
                         null, legacyPart.SegmentName, null, eventInfo.Sport, eventInfo.Title,
-                        eventInfo.League?.Name, config.EnableMultiPartEpisodes).Part;
+                        eventInfo.League?.Name, usesParts).Part;
                     if (canonicalLegacy != null)
                     {
                         partInfo = canonicalLegacy;
@@ -649,40 +651,53 @@ public class FileImportService : IFileImportService
             // UPGRADE CHECK: Must happen BEFORE file transfer so we can reject without
             // leaving orphan files on disk, and delete old files before the new one
             // overwrites them (old and new often resolve to the same destination path).
+            // A new file replaces the file of its own kind, visible or parked.
+            // Reconcile then hides whichever kind the event's mode hides.
             var existingFiles = await _db.EventFiles
                 .Where(f => f.EventId == eventInfo.Id && f.Exists)
                 .ToListAsync();
 
-            var fullEventFiles = existingFiles.Where(f => f.PartNumber is null or 0).ToList();
+            var fullEventFiles = existingFiles.Where(EventPartDetector.IsWholeEventFile).ToList();
             var fullEventFile = fullEventFiles.FirstOrDefault(f =>
                 string.Equals(f.FilePath, eventInfo.FilePath, StringComparison.OrdinalIgnoreCase)) ?? fullEventFiles.FirstOrDefault();
             var freeSpaceChecked = false;
             EventFile? upgradedFile = null;
             var manuallyReplaced = false;
 
-            if (partInfo != null)
-            {
-                // Multi-part: Find existing file for this specific part
-                upgradedFile = existingFiles.FirstOrDefault(f => f.PartNumber == partInfo.PartNumber);
-            }
-            else
-            {
-                // Single file: Find any existing file (prefer full event file)
-                upgradedFile = existingFiles.FirstOrDefault(f => f.PartName == null) ??
-                               existingFiles.FirstOrDefault();
-            }
+            // One rule for every import path (ImportUpgradeRule): a part replaces its
+            // part, and a whole file replaces only a whole file. With parts on, a
+            // parked file counts like a visible one of its kind. With parts off, the
+            // event holds one file of any kind, and parked rows never count.
+            upgradedFile = ImportUpgradeRule.ExistingFileForPart(
+                existingFiles, partInfo?.PartNumber, null, config.EnableMultiPartEpisodes);
+            // A replaced parked file means the new file must be hidden the same way.
+            var replacesParkedFile = upgradedFile?.IsParked == true;
+            // A file the event's mode hides goes straight into the parked folder,
+            // so a media server that watches folders never sees it.
+            var parkOnImport = FileParking.ImportWillBeParked(
+                existingFiles, upgradedFile, partInfo == null, eventInfo, config.EnableMultiPartEpisodes);
+            if (parkOnImport)
+                destinationPath = FileParking.ParkedPathFor(destinationPath);
+            using var parkedImport = parkOnImport ? FileParking.BeginParkedImport() : null;
 
-            if (partInfo != null && existingFiles.Any(f =>
+            var conflictingFile = existingFiles.FirstOrDefault(f =>
                 (upgradedFile == null || f.Id != upgradedFile.Id) &&
-                string.Equals(f.FilePath, destinationPath, StringComparison.OrdinalIgnoreCase)))
+                string.Equals(f.FilePath, destinationPath, StringComparison.OrdinalIgnoreCase));
+            if (conflictingFile != null)
             {
-                // A name without a part token can target a sibling file.
+                // A name without a part token can target a sibling file, and a
+                // parked file can hold the parked path of a new whole file.
+                // A tracked file is never overwritten.
                 download.Status = DownloadStatus.ImportWarning;
-                download.ErrorMessage = "The part destination matches another existing file. Change the file naming format before importing this part.";
+                download.ErrorMessage = partInfo != null
+                    ? "The part destination matches another existing file. Change the file naming format before importing this part."
+                    : conflictingFile.IsParked
+                        ? "A file with this name is already hidden from your media server for this event. Remove or rename it in the event's files, then import again."
+                        : "A file with this name is already in this event's files. Remove or rename it there, then import again.";
                 download.LastUpdate = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
-                _logger.LogInformation("[Import] Refused part {Part} at another existing file's destination: {Path}",
-                    partInfo.SegmentName, destinationPath);
+                _logger.LogInformation("[Import] Refused {Part} at another existing file's destination: {Path}",
+                    partInfo?.SegmentName ?? "the whole event", destinationPath);
                 return null!;
             }
 
@@ -794,6 +809,8 @@ public class FileImportService : IFileImportService
                         }
 
                         await _metadataWriterService.DeleteEventMetadataAsync(upgradedFile, recycledVideoPath);
+                        // A parked folder goes once its last file is gone.
+                        FileParking.RemoveParkedFolderIfEmpty(upgradedFile.FilePath, _logger);
 
                         // Try to clean up empty parent folder
                         var oldFileParentDir = Path.GetDirectoryName(upgradedFile.FilePath);
@@ -847,11 +864,13 @@ public class FileImportService : IFileImportService
                 Directory.CreateDirectory(destDir!);
                 _logger.LogDebug("Created directory: {Directory}", destDir);
             }
+            if (parkOnImport)
+                FileParking.EnsureParkedFolder(destDir!);
 
             // The upgrade check above has now either passed or found no existing
             // file at all, so it's safe to clear anything stale still sitting at
             // the destination path before the transfer runs.
-            ClearExistingDestinationFile(destinationPath);
+            await ClearExistingDestinationFileAsync(destinationPath, eventInfo.Id, upgradedFile?.Id);
 
             // Move or copy file (old file already deleted above if this is an upgrade)
             // Read-only blackhole clients import by copy so the external downloader
@@ -962,6 +981,7 @@ public class FileImportService : IFileImportService
             {
                 EventId = eventInfo.Id,
                 FilePath = destinationPath,
+                IsParked = parkOnImport,
                 Size = actualFileSize,
                 Quality = qualityString,
                 QualityScore = download.QualityScore,
@@ -1073,7 +1093,17 @@ public class FileImportService : IFileImportService
                 replaced.FileExists = false;
             }
 
-            await _db.SaveChangesAsync();
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch when (parkOnImport)
+            {
+                // Without its row a parked file is lost to the library. Put it
+                // where a scan finds it, then report the failure.
+                FileParking.ReturnUntrackedParkedFile(destinationPath, _logger);
+                throw;
+            }
 
             // Recompute whether the event is fully satisfied now that the new file is
             // persisted. For a multi-part fighting event this is only true once every
@@ -1082,7 +1112,7 @@ public class FileImportService : IFileImportService
             // other case (multi-part disabled, non-fighting sport, no defined segments)
             // this collapses to "has a file" - identical to the old behaviour.
             var presentPartNumbers = await _db.EventFiles
-                .Where(f => f.EventId == eventInfo.Id && f.Exists)
+                .Where(f => f.EventId == eventInfo.Id && f.Exists && !f.IsParked)
                 .Select(f => f.PartNumber)
                 .ToListAsync();
             var fullySatisfied = EventPartDetector.AreAllMonitoredPartsPresent(
@@ -1097,6 +1127,15 @@ public class FileImportService : IFileImportService
             {
                 eventInfo.HasFile = fullySatisfied;
                 await _db.SaveChangesAsync();
+            }
+
+            // The import is saved. Now the files follow the event's mode, so a whole
+            // file for a "Full Event" event hides the part files from the media server.
+            if (config.EnableMultiPartEpisodes)
+            {
+                await _db.Entry(eventInfo).Collection(e => e.Files).LoadAsync();
+                await FileParking.ReconcileAndSaveAsync(_db, new[] { eventInfo }, true, _notificationService, _logger,
+                    applyMode: replacesParkedFile);
             }
 
             _logger.LogInformation("Successfully imported: {Title} -> {Path}",
@@ -1614,7 +1653,7 @@ public class FileImportService : IFileImportService
         }
 
         var remaining = await _db.EventFiles
-            .Where(f => f.EventId == otherEvent.Id && f.Exists && f.Id != stale.Id)
+            .Where(f => f.EventId == otherEvent.Id && f.Exists && !f.IsParked && f.Id != stale.Id)
             .ToListAsync();
 
         if (string.Equals(otherEvent.FilePath, destinationPath, StringComparison.OrdinalIgnoreCase))
@@ -1645,10 +1684,18 @@ public class FileImportService : IFileImportService
     /// Must only be called once the import is committed (after the upgrade check passes) - see
     /// the comment in BuildDestinationPath.
     /// </summary>
-    private void ClearExistingDestinationFile(string destinationPath)
+    private async Task ClearExistingDestinationFileAsync(string destinationPath, int eventId, int? replacedFileId)
     {
         if (!File.Exists(destinationPath))
             return;
+
+        // A file this event tracks, such as a parked file, is never deleted
+        // here. Only the upgrade path may replace it, through the recycle bin
+        // when one is set. A stale row of another event keeps the old upsert.
+        var lowerPath = destinationPath.ToLowerInvariant();
+        if (await _db.EventFiles.AnyAsync(f => f.EventId == eventId && f.Exists && f.Id != replacedFileId
+                && f.FilePath.ToLower() == lowerPath))
+            throw new Exception($"Cannot import: a tracked file already holds the destination: {destinationPath}");
 
         _logger.LogWarning("[Import] Destination file already exists, deleting: {Path}", destinationPath);
         try

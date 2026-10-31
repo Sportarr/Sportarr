@@ -437,6 +437,9 @@ public class LeagueMoveService
                 if (!string.IsNullOrEmpty(newDir))
                 {
                     Directory.CreateDirectory(newDir);
+                    // A parked file lands in a parked folder that needs its marker files.
+                    if (FileParking.IsParkedPath(newPath))
+                        FileParking.EnsureParkedFolder(newDir);
                 }
 
                 try
@@ -466,6 +469,9 @@ public class LeagueMoveService
 
             league.RootFolderId = targetRootFolderId;
             await _db.SaveChangesAsync();
+            // An old parked folder goes once its last file moved out.
+            foreach (var (_, oldPath, _) in moved)
+                FileParking.RemoveParkedFolderIfEmpty(oldPath, _logger);
 
             return new LeagueMoveResult
             {

@@ -76,6 +76,43 @@ public sealed class FileRenamePathSynchronizationTests : IDisposable
     }
 
     [Fact]
+    public async Task RenameMovesAParkedFileIntoTheParkedFolderOfItsNewPlace()
+    {
+        // A parked file follows the naming and the folders, so an unpark lands
+        // in the event's current folder with the current name.
+        await using var rig = CreateRig();
+        var oldFolder = Path.Combine(_tempDir, "old");
+        var oldParkedFolder = Path.Combine(oldFolder, FileParking.FolderName);
+        FileParking.EnsureParkedFolder(oldParkedFolder);
+        var parkedPath = Path.Combine(oldParkedFolder, "NFL - S2026E85 - HOU vs BUF.mkv");
+        File.WriteAllBytes(parkedPath, new byte[1024]);
+        var league = NewLeague(1);
+        var evt = NewEvent(1, league, 57, null);
+        var file = NewFile(1, evt, parkedPath);
+        file.IsParked = true;
+        evt.Files.Add(file);
+        rig.Db.AddRange(league, evt, new RootFolder { Path = _tempDir });
+        await rig.Db.SaveChangesAsync();
+        var settings = NewSettings();
+        settings.ReorganizeFolders = true;
+
+        var renamed = await rig.Service.RenameEventFilesAsync(evt.Id, settings);
+
+        renamed.Should().Be(1);
+        rig.Db.ChangeTracker.Clear();
+        var stored = await rig.Db.EventFiles.SingleAsync();
+        stored.IsParked.Should().BeTrue();
+        Path.GetFileName(stored.FilePath).Should().Be("NFL - S2026E57 - HOU vs BUF.mkv");
+        var newParkedFolder = Path.GetDirectoryName(stored.FilePath)!;
+        Path.GetFileName(newParkedFolder).Should().Be(FileParking.FolderName);
+        Path.GetDirectoryName(newParkedFolder).Should().NotBe(oldFolder);
+        File.Exists(stored.FilePath).Should().BeTrue();
+        File.Exists(Path.Combine(newParkedFolder, ".plexignore")).Should().BeTrue();
+        File.Exists(Path.Combine(newParkedFolder, ".ignore")).Should().BeTrue();
+        Directory.Exists(oldParkedFolder).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task RenamingAnotherPartDoesNotReplaceThePrimaryEventPath()
     {
         await using var rig = CreateRig();

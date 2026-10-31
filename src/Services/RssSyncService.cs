@@ -497,7 +497,7 @@ public class RssSyncService : BackgroundService
             qualityDefinitions,
             requestedPart: null, // Passive discovery doesn't request specific parts
             sport: matchedEvent.Sport,
-            enableMultiPartEpisodes: enableMultiPartEpisodes,
+            enableMultiPartEpisodes: EventPartDetector.UsesParts(enableMultiPartEpisodes, matchedEvent),
             eventTitle: matchedEvent.Title,
             runtimeMinutes: defaultRuntimeMinutes,
             allowHighlights: matchedEvent.League?.AllowHighlights ?? false,
@@ -554,7 +554,7 @@ public class RssSyncService : BackgroundService
             return;
 
         string? part = null;
-        if (config.EnableMultiPartEpisodes
+        if (EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt)
             && EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? "", evt.League?.Name))
         {
             part = partDetector.DetectPart(release.Title, evt.Sport ?? "", evt.Title, evt.League?.Name)?.SegmentName
@@ -827,11 +827,13 @@ public class RssSyncService : BackgroundService
             // year-bounds checks, etc.), with preParsed memoized above,
             // so per-event validation is cheap enough to skip the brittle
             // keyword prefilter entirely.
-            var requestedPart = enableMultiPartEpisodes
+            // A "Full Event" event matches as if parts were off.
+            var eventUsesParts = EventPartDetector.UsesParts(enableMultiPartEpisodes, evt);
+            var requestedPart = eventUsesParts
                 ? partDetector.DetectPart(release.Title, evt.Sport ?? string.Empty, evt.Title, evt.League?.Name)?.SegmentName
                 : null;
             roundRaceNumbersByRound.TryGetValue((evt.LeagueId, evt.Season, evt.Round), out var roundRaceNumbers);
-            var matchResult = matchingService.ValidateRelease(release, evt, requestedPart, enableMultiPartEpisodes, preParsed,
+            var matchResult = matchingService.ValidateRelease(release, evt, requestedPart, eventUsesParts, preParsed,
                 earlyReleaseLimitDays: earlyLimit, roundRaceNumbers: roundRaceNumbers,
                 knownLeagues: knownLeagues, datePeers: datePeers);
             if (!matchResult.IsMatch || matchResult.IsHardRejection)
@@ -1016,7 +1018,7 @@ public class RssSyncService : BackgroundService
             var partInfo = partDetector.DetectPart(
                 release.Title, evt.Sport ?? "", evt.Title, evt.League?.Name);
 
-            if (config.EnableMultiPartEpisodes)
+            if (EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt))
             {
                 // Multi-part ENABLED. A labelled part (Prelims, Early Prelims, ...)
                 // is taken as-is. An UNLABELLED fighting release is the main card,
@@ -1044,7 +1046,8 @@ public class RssSyncService : BackgroundService
             }
             else
             {
-                // Multi-part DISABLED: Skip part files, only download full event files
+                // Multi-part is off, or the event is a "Full Event" event.
+                // Skip part files. Download only full event files.
                 if (partInfo != null)
                     return (false, $"Part file '{partInfo.SegmentName}' (multi-part disabled)", null);
             }
@@ -1647,7 +1650,7 @@ public class RssSyncService : BackgroundService
         Config config,
         CancellationToken cancellationToken)
     {
-        if (releasePart == null || !config.EnableMultiPartEpisodes || profile == null)
+        if (releasePart == null || !EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt) || profile == null)
             return new List<string>();
 
         var otherPartFiles = await db.EventFiles.AsNoTracking()

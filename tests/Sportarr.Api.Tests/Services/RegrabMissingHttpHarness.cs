@@ -109,6 +109,12 @@ internal sealed class RegrabMissingHttpHarness : IAsyncDisposable
         return await BodyAsync(response, HttpStatusCode.OK);
     }
 
+    public async Task SetMultiPartAsync(bool enabled)
+    {
+        var service = _services.Services.GetRequiredService<ConfigService>();
+        var config = await service.GetConfigAsync(); config.EnableMultiPartEpisodes = enabled; await service.SaveConfigAsync(config);
+    }
+
     public async Task SetRecycleBinAsync(string path)
     {
         var service = _services.Services.GetRequiredService<ConfigService>();

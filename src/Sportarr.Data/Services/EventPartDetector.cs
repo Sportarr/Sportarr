@@ -246,6 +246,102 @@ public class EventPartDetector
                partName.Equals(FullEventSegmentName, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// True when the monitored parts of an event are only "Full Event".
+    /// The event value overrides the league value. Such an event keeps one
+    /// whole file and never splits into parts.
+    /// </summary>
+    public static bool IsFullEventOnly(string? eventMonitoredParts, string? leagueMonitoredParts)
+    {
+        var effective = eventMonitoredParts ?? leagueMonitoredParts;
+        return effective != null
+            && effective.Trim().Equals(FullEventSegmentName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when an event splits into parts. The multi-part setting must be
+    /// on, and the event must not be set to "Full Event".
+    /// </summary>
+    public static bool UsesParts(bool enableMultiPartEpisodes, string? eventMonitoredParts, string? leagueMonitoredParts)
+        => enableMultiPartEpisodes && !IsFullEventOnly(eventMonitoredParts, leagueMonitoredParts);
+
+    /// <inheritdoc cref="UsesParts(bool, string?, string?)"/>
+    public static bool UsesParts(bool enableMultiPartEpisodes, Event evt, League? league = null)
+        => UsesParts(enableMultiPartEpisodes, evt.MonitoredParts, (league ?? evt.League)?.MonitoredParts);
+
+    /// <summary>
+    /// True when a file holds the whole event, not one part. The file editor
+    /// can store the name "Full Event", so that name counts as whole too.
+    /// </summary>
+    public static bool IsWholeEventFile(EventFile file) =>
+        (file.PartNumber is null or 0) && IsFullEvent(file.PartName);
+
+    /// <summary>
+    /// The PartsBeforeFullEvent value that stands for null (all parts).
+    /// </summary>
+    public const string AllPartsMarker = "*";
+
+    /// <summary>
+    /// A monitored-parts value and the value kept to undo "Full Event".
+    /// </summary>
+    public readonly record struct MonitoredPartsChange(string? MonitoredParts, string? PartsBeforeFullEvent);
+
+    /// <summary>
+    /// Change a monitored-parts value. Turning "Full Event" on keeps the earlier
+    /// value. A restore request while "Full Event" is on brings that value back.
+    /// Without a kept value, the requested value applies. Any other change
+    /// forgets the kept value. A monitoring toggle (keepEarlierValue) is not a
+    /// parts choice, so it keeps the kept value.
+    /// </summary>
+    public static MonitoredPartsChange ChangeMonitoredParts(
+        string? current, string? partsBeforeFullEvent, string? requested, bool restorePrevious = false,
+        bool keepEarlierValue = false)
+    {
+        var currentIsFullEvent = IsFullEventOnly(current, null);
+        if (keepEarlierValue)
+        {
+            // A monitoring toggle keeps an event's own "Full Event" choice.
+            if (currentIsFullEvent)
+                return new(FullEventSegmentName, partsBeforeFullEvent);
+            return IsFullEventOnly(requested, null) && !currentIsFullEvent && partsBeforeFullEvent == null
+                ? new(FullEventSegmentName, current ?? AllPartsMarker)
+                : new(requested, partsBeforeFullEvent);
+        }
+
+        if (restorePrevious && currentIsFullEvent && partsBeforeFullEvent != null)
+            return new(DecodePartsBeforeFullEvent(partsBeforeFullEvent), null);
+
+        if (IsFullEventOnly(requested, null))
+        {
+            // The stored value is always written as "Full Event".
+            return currentIsFullEvent
+                ? new(FullEventSegmentName, partsBeforeFullEvent)
+                : new(FullEventSegmentName, current ?? AllPartsMarker);
+        }
+
+        return new(requested, null);
+    }
+
+    /// <summary>
+    /// The monitored-parts value a kept PartsBeforeFullEvent value stands for.
+    /// </summary>
+    public static string? DecodePartsBeforeFullEvent(string partsBeforeFullEvent) =>
+        partsBeforeFullEvent == AllPartsMarker ? null : partsBeforeFullEvent;
+
+    /// <summary>
+    /// True when two monitored-parts values name the same parts in any order.
+    /// Null (all parts) only matches null.
+    /// </summary>
+    public static bool SameMonitoredParts(string? left, string? right)
+    {
+        if (left == null || right == null)
+            return left == null && right == null;
+        static HashSet<string> Names(string value) => value
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Names(left).SetEquals(Names(right));
+    }
+
     // Motorsport session types by league
     // These are used to filter which sessions a user wants to monitor
     // Each session is a separate event from Sportarr API (not multi-part episodes)
@@ -1032,8 +1128,9 @@ public class EventPartDetector
     {
         bool HasAnyFile() => presentPartNumbers.Count > 0;
 
-        // Optional feature off, or a sport that never splits into parts: one file is enough.
-        if (!enableMultiPartEpisodes || !IsFightingSport(sport ?? string.Empty))
+        // Optional feature off, a "Full Event" event, or a sport that never splits into parts: one file is enough.
+        if (!UsesParts(enableMultiPartEpisodes, eventMonitoredParts, leagueMonitoredParts)
+            || !IsFightingSport(sport ?? string.Empty))
             return HasAnyFile();
 
         var parts = GetSegmentDefinitions(sport ?? "Fighting", eventTitle, leagueName)
@@ -1072,7 +1169,7 @@ public class EventPartDetector
     public static bool AreAllMonitoredPartsPresent(Event evt, bool enableMultiPartEpisodes, League? leagueOverride = null)
     {
         var league = leagueOverride ?? evt.League;
-        var presentParts = evt.Files.Where(f => f.Exists).Select(f => f.PartNumber).ToArray();
+        var presentParts = evt.Files.Where(f => f.Exists && !f.IsParked).Select(f => f.PartNumber).ToArray();
         return AreAllMonitoredPartsPresent(evt.Sport, evt.Title, league?.Name,
             evt.MonitoredParts, league?.MonitoredParts, presentParts, enableMultiPartEpisodes);
     }

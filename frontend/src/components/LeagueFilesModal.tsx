@@ -1,9 +1,11 @@
 import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ChevronDownIcon, ChevronRightIcon, ArrowPathIcon, ArrowsRightLeftIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, EyeSlashIcon, ChevronDownIcon, ChevronRightIcon, ArrowPathIcon, ArrowsRightLeftIcon, PencilIcon } from '@heroicons/react/24/outline';
 import ReassignEventFileModal from './ReassignEventFileModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../api/client';
+import { BADGE_AMBER } from '../utils/designTokens';
+import { FULL_EVENT_PART } from '../utils/leagueSportRules';
 import { toast } from 'sonner';
 import FileMetadataEditModal from './FileMetadataEditModal';
 import type { FileMetadataEditorValues } from './FileMetadataEditor';
@@ -41,6 +43,7 @@ interface LeagueFile {
   partNumber?: number;
   added: string;
   exists: boolean;
+  isParked?: boolean; // Hidden from the media server in a .sportarr-parked folder
   fileName: string;
 }
 
@@ -159,6 +162,8 @@ export default function LeagueFilesModal({
 
   // Filter out deleted files from the display
   const displayFiles = data?.files.filter(f => !deletedFileIds.has(f.id)) || [];
+  // Events that hold part files. Their file with no part is the whole card.
+  const eventsWithParts = new Set(displayFiles.filter(f => f.partName && f.partName !== FULL_EVENT_PART).map(f => f.eventId));
   const visibleFileIds = new Set(displayFiles.map(f => f.id));
 
   // Delete single file mutation
@@ -451,6 +456,7 @@ export default function LeagueFilesModal({
                           onToggleSelect={() => toggleSelected(file.id)}
                           isDeleting={deleteFileMutation.isPending}
                           showEventInfo
+                          isWholeEvent={!file.partName && eventsWithParts.has(file.eventId)}
                         />
                       ))}
                     </div>
@@ -495,6 +501,7 @@ export default function LeagueFilesModal({
                                     onToggleSelect={() => toggleSelected(file.id)}
                                     isDeleting={deleteFileMutation.isPending}
                                     showEventInfo
+                                    isWholeEvent={!file.partName && eventsWithParts.has(file.eventId)}
                                   />
                                 ))}
                               </div>
@@ -649,6 +656,7 @@ function FileRow({
   isSelected,
   onToggleSelect,
   onEdit,
+  isWholeEvent,
 }: {
   file: LeagueFile;
   onDelete: () => void;
@@ -658,6 +666,7 @@ function FileRow({
   isSelected?: boolean;
   onToggleSelect?: () => void;
   onEdit?: () => void;
+  isWholeEvent?: boolean;
 }) {
   return (
     <div className={
@@ -684,9 +693,9 @@ function FileRow({
           )}
 
           {/* Part Name */}
-          {file.partName && (
+          {(file.partName || isWholeEvent) && (
             <div className="text-xs font-medium text-red-400 mb-1">
-              {file.partName}
+              {file.partName || FULL_EVENT_PART}
             </div>
           )}
 
@@ -695,6 +704,13 @@ function FileRow({
             <FilmIcon className="w-4 h-4 inline mr-1.5 text-gray-500" />
             {file.fileName}
           </div>
+          {/* A parked file stays on disk but the media server skips it. */}
+          {file.isParked && (
+            <span className={`${BADGE_AMBER} mt-1 inline-flex items-center gap-1`}>
+              <EyeSlashIcon className="w-3.5 h-3.5" />
+              Hidden from your media server
+            </span>
+          )}
 
           {/* File Details */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-gray-400">

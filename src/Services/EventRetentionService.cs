@@ -161,6 +161,8 @@ public class EventRetentionService : BackgroundService
                     try
                     {
                         await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
+                        // A parked folder goes once its last file is gone.
+                        FileParking.RemoveParkedFolderIfEmpty(file.FilePath, _logger);
                     }
                     catch (Exception ex)
                     {
@@ -195,6 +197,8 @@ public class EventRetentionService : BackgroundService
                 try
                 {
                     await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
+                    // A parked folder goes once its last file is gone.
+                    FileParking.RemoveParkedFolderIfEmpty(file.FilePath, _logger);
                 }
                 catch (Exception ex)
                 {
@@ -227,7 +231,7 @@ public class EventRetentionService : BackgroundService
                 evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
                     evt.Sport, evt.Title, evt.League?.Name,
                     evt.MonitoredParts, evt.League?.MonitoredParts,
-                    keptFiles.Where(f => f.Exists && File.Exists(f.FilePath))
+                    keptFiles.Where(f => f.Exists && !f.IsParked && File.Exists(f.FilePath))
                         .Select(f => f.PartNumber).ToArray(), config.EnableMultiPartEpisodes);
 
                 // Report only what actually went.

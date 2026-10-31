@@ -45,6 +45,37 @@ public static class LeagueEndpoints
         });
     }
 
+    /// <summary>
+    /// Set a league's monitored parts. Turning "Full Event" off restores the
+    /// earlier parts. The league editor shows the kept parts again, so a request
+    /// for exactly those parts is a restore too. Returns true for a restore.
+    /// </summary>
+    internal static bool ApplyLeagueMonitoredParts(League league, string? requestedParts, bool restoreRequested)
+    {
+        var restorePrevious = restoreRequested
+            || (EventPartDetector.IsFullEventOnly(league.MonitoredParts, null)
+                && league.PartsBeforeFullEvent != null
+                && EventPartDetector.SameMonitoredParts(requestedParts,
+                    EventPartDetector.DecodePartsBeforeFullEvent(league.PartsBeforeFullEvent)));
+        var change = EventPartDetector.ChangeMonitoredParts(
+            league.MonitoredParts, league.PartsBeforeFullEvent, requestedParts, restorePrevious);
+        league.MonitoredParts = change.MonitoredParts;
+        league.PartsBeforeFullEvent = change.PartsBeforeFullEvent;
+        return restorePrevious;
+    }
+
+    /// <summary>
+    /// Copy the league's monitored parts to one event. Each event keeps, or on
+    /// a restore gets back, its own earlier parts.
+    /// </summary>
+    internal static void CascadeMonitoredParts(League league, Event evt, bool restorePrevious)
+    {
+        var change = EventPartDetector.ChangeMonitoredParts(
+            evt.MonitoredParts, evt.PartsBeforeFullEvent, league.MonitoredParts, restorePrevious);
+        evt.MonitoredParts = change.MonitoredParts;
+        evt.PartsBeforeFullEvent = change.PartsBeforeFullEvent;
+    }
+
     public static IEndpointRouteBuilder MapLeagueEndpoints(this IEndpointRouteBuilder app)
     {
 // API: Get leagues (universal for all sports)
@@ -177,6 +208,8 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.SearchForMissingEvents,
         league.SearchForCutoffUnmetEvents,
         league.MonitoredParts,
+        // The edit modal restores these parts when Full Event is turned off.
+        league.PartsBeforeFullEvent,
         league.MonitoredSessionTypes,
         league.MonitoredEventTypes,
         league.SessionTypeQualityProfiles,
@@ -557,6 +590,7 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
             partNumber = f.PartNumber,
             added = f.Added,
             exists = f.Exists,
+            isParked = f.IsParked,
             fileName = Path.GetFileName(f.FilePath)
         })
         .ToListAsync();
@@ -668,6 +702,7 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
             partNumber = f.PartNumber,
             added = f.Added,
             exists = f.Exists,
+            isParked = f.IsParked,
             fileName = Path.GetFileName(f.FilePath)
         })
         .ToListAsync();
@@ -763,7 +798,7 @@ app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, S
 });
 
 // API: Update league (including monitor toggle)
-app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, TaskService taskService, ConfigService configService, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, TaskService taskService, ConfigService configService, NotificationService notificationService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
@@ -772,6 +807,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     }
 
     var keepAllEventsTurnedOn = false;
+    List<Event>? eventsToReconcile = null;
     // A setting that widens what the library should hold has to go and get it.
     // A scheduled sync walks current and future seasons only, so a season that
     // is over is never revisited, and the recalculation below only re-reads
@@ -954,7 +990,10 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     if (body.TryGetProperty("monitoredParts", out var monitoredPartsProp))
     {
-        league.MonitoredParts = monitoredPartsProp.ValueKind == JsonValueKind.Null ? null : monitoredPartsProp.GetString();
+        var requestedParts = monitoredPartsProp.ValueKind == JsonValueKind.Null ? null : monitoredPartsProp.GetString();
+        var restoreRequested = body.TryGetProperty("restorePrevious", out var restoreProp)
+            && restoreProp.ValueKind == JsonValueKind.True;
+        var restorePrevious = ApplyLeagueMonitoredParts(league, requestedParts, restoreRequested);
         logger.LogInformation("[LEAGUES] Updated monitored parts to: {MonitoredParts}", league.MonitoredParts ?? "all parts (default)");
 
         // Honor the frontend's "apply to existing events" checkbox.
@@ -986,7 +1025,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
                 foreach (var evt in eventsToUpdate)
                 {
-                    evt.MonitoredParts = league.MonitoredParts;
+                    CascadeMonitoredParts(league, evt, restorePrevious);
                     evt.LastUpdate = DateTime.UtcNow;
                 }
 
@@ -1000,6 +1039,8 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
         foreach (var evt in eventsToUpdate)
             evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt, config.EnableMultiPartEpisodes, league);
+        // Files move only after every check passed and the change is saved.
+        eventsToReconcile = eventsToUpdate;
     }
 
     // Handle monitored session types for motorsport leagues (currently only F1)
@@ -1411,6 +1452,12 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     league.LastUpdate = DateTime.UtcNow;
     await db.SaveChangesAsync();
+    // The change is saved. Now the files follow each event's mode.
+    if (eventsToReconcile != null)
+    {
+        await FileParking.ReconcileAndSaveAsync(db, eventsToReconcile,
+            (await configService.GetConfigAsync()).EnableMultiPartEpisodes, notificationService, logger);
+    }
 
     if (keepAllEventsTurnedOn || reachWidened)
     {
@@ -1914,7 +1961,11 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
             // This ensures consistency: no teams = no events = no parts should be monitored
             if (EventPartDetector.IsFightingSport(league.Sport))
             {
-                league.MonitoredParts = ""; // Empty string = no parts monitored
+                // Empty string = no parts monitored
+                var noPartsChange = EventPartDetector.ChangeMonitoredParts(
+                    league.MonitoredParts, league.PartsBeforeFullEvent, "");
+                league.MonitoredParts = noPartsChange.MonitoredParts;
+                league.PartsBeforeFullEvent = noPartsChange.PartsBeforeFullEvent;
                 logger.LogInformation("[LEAGUES] Fighting sport with no teams - setting MonitoredParts to empty (no parts monitored)");
             }
 
@@ -2064,6 +2115,8 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
                     logger.LogDebug("[LEAGUES] Deleted file: {Path}", eventFile.FilePath);
                 }
                 await metadataWriterService.DeleteEventMetadataAsync(eventFile);
+                // A parked folder goes once its last file is gone.
+                FileParking.RemoveParkedFolderIfEmpty(eventFile.FilePath, logger);
             }
             catch (Exception ex)
             {

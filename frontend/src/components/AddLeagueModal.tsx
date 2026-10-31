@@ -11,6 +11,10 @@ import {
   isTeamlessSport,
   usesFightingEventTypes,
   getPartOptions,
+  FULL_EVENT_PART,
+  isFullEventOnly,
+  monitoredPartsValue,
+  togglePartChoice,
 } from '../utils/leagueSportRules';
 import ConfirmationModal from './ConfirmationModal';
 import TagSelector from './TagSelector';
@@ -489,7 +493,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       // "Part1,Part2" = specific parts monitored
       if (isFightingSport(league.strSport)) {
         const availableParts = getPartOptions(league.strSport);
-        if (existingLeague.monitoredParts === null || existingLeague.monitoredParts === undefined) {
+        if (isFullEventOnly(existingLeague.monitoredParts)) {
+          // Full Event = one whole file, no parts
+          setMonitoredParts(new Set([FULL_EVENT_PART]));
+          setSelectAllParts(false);
+        } else if (existingLeague.monitoredParts === null || existingLeague.monitoredParts === undefined) {
           // null = all parts selected (default)
           setMonitoredParts(new Set(availableParts));
           setSelectAllParts(true);
@@ -699,17 +707,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   const handlePartToggle = (part: string) => {
     setMonitoredParts(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(part)) {
-        newSet.delete(part);
-      } else {
-        newSet.add(part);
-      }
-      if (league?.strSport) {
-        const availableParts = getPartOptions(league.strSport);
-        setSelectAllParts(newSet.size === availableParts.length);
-      }
-      return newSet;
+      // Full Event is exclusive. Unticking it brings back the earlier part
+      // choices. Saving them unchanged also restores each event's own parts.
+      const availableParts = league?.strSport ? getPartOptions(league.strSport) : [];
+      const next = togglePartChoice(prev, part, availableParts, existingLeague?.partsBeforeFullEvent);
+      setSelectAllParts(availableParts.length > 0 && !next.has(FULL_EVENT_PART) && next.size === availableParts.length);
+      return next;
     });
   };
 
@@ -783,13 +786,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     // null = all parts monitored, "" = no parts monitored, "Part1,Part2" = specific parts
     let partsString: string | null = null;
     if (config?.enableMultiPartEpisodes && isFightingSport(league.strSport)) {
-      if (monitoredParts.size === availableParts.length) {
-        partsString = null; // All selected = null (monitor all)
-      } else if (monitoredParts.size === 0) {
-        partsString = ''; // None selected = empty string (monitor none)
-      } else {
-        partsString = Array.from(monitoredParts).join(','); // Specific parts
-      }
+      partsString = monitoredPartsValue(monitoredParts, availableParts);
     }
 
     // For motorsports: session types to monitor
@@ -919,6 +916,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const logoUrl = league?.strBadge || league?.strLogo;
   const availableParts = league ? getPartOptions(league.strSport) : [];
   const selectedPartsCount = monitoredParts.size;
+  // Full Event and the parts exclude each other. Lock the side that cannot apply.
+  const fullEventChosen = monitoredParts.has(FULL_EVENT_PART);
+  const fullEventLocked = !fullEventChosen &&
+    availableParts.some(part => monitoredParts.has(part));
   const selectedSessionTypesCount = monitoredSessionTypes.size;
 
   // Per-type quality dropdowns name the profile the league default resolves
@@ -1485,16 +1486,39 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       </label>
                       <div className="space-y-2">
                         {availableParts.map((part) => (
-                          <label key={part} className="flex items-center gap-3 cursor-pointer">
+                          <label
+                            key={part}
+                            className={`flex items-center gap-3 ${fullEventChosen ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                            title={fullEventChosen ? 'Turn off Full Event to choose parts' : undefined}
+                          >
                             <input
                               type="checkbox"
                               checked={monitoredParts.has(part)}
+                              disabled={fullEventChosen}
                               onChange={() => handlePartToggle(part)}
                               className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
                             />
                             <span className="text-sm text-white">{part}</span>
                           </label>
                         ))}
+                        <label
+                          className={`flex items-start gap-3 ${fullEventLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                          title={fullEventLocked ? 'Untick every part to choose Full Event' : undefined}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={monitoredParts.has(FULL_EVENT_PART)}
+                            disabled={fullEventLocked}
+                            onChange={() => handlePartToggle(FULL_EVENT_PART)}
+                            className="shrink-0 w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                          />
+                          <span className="text-sm text-white">
+                            {FULL_EVENT_PART}
+                            <span className="ml-2 text-xs text-gray-400">
+                              Downloads the whole card as one file, not as parts. Turn it off to get your part choices back.
+                            </span>
+                          </span>
+                        </label>
                       </div>
                       <p className="text-xs text-gray-400 mt-2">
                         Select which parts of fight cards to monitor. Unselected parts will not be searched.

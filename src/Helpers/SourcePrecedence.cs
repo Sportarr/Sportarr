@@ -86,7 +86,7 @@ public static class SourcePrecedence
     /// </summary>
     public static IQueryable<EventFile> HeldFiles(this IQueryable<EventFile> files, int eventId) =>
         files
-            .Where(f => f.EventId == eventId && f.Exists)
+            .Where(f => f.EventId == eventId && f.Exists && !f.IsParked)
             .OrderBy(f => f.PartName != null)
             .ThenBy(f => f.Id);
 

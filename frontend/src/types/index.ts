@@ -92,6 +92,7 @@ export interface EventFile {
   partNumber?: number;
   added: string;
   exists: boolean;
+  isParked?: boolean; // Hidden from the media server in a .sportarr-parked folder
 }
 
 // DEPRECATED: Use PartStatus instead - kept for backwards compatibility

@@ -8,6 +8,16 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class FileNamingService
 {
+    /// <summary>
+    /// The {Part} and {Part Name} token values for a file: " - pt2" and
+    /// " - Prelims". A whole-event file, or a file without a part number, has
+    /// neither. Import and rename use this, so their names agree.
+    /// </summary>
+    public static (string Part, string PartName) PartTokens(string? partName, int? partNumber) =>
+        !string.IsNullOrEmpty(partName) && partNumber.HasValue
+            ? ($" - pt{partNumber}", $" - {partName}")
+            : (string.Empty, string.Empty);
+
     private readonly ILogger<FileNamingService> _logger;
 
     // Invalid filename characters (Windows + Unix)

@@ -179,7 +179,7 @@ app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
         var isFightingSport = new[] { "Fighting", "MMA", "UFC", "Boxing", "Kickboxing", "Wrestling" }
             .Any(s => evt.Sport?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
 
-        if (config.EnableMultiPartEpisodes && isFightingSport)
+        if (EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt, league) && isFightingSport)
         {
             // Queue searches for all parts
             logger.LogInformation("[AUTOMATIC SEARCH] Queuing multi-part searches for Fighting sport event: {EventTitle}", evt.Title);
@@ -284,7 +284,7 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
         var isFightingSport = new[] { "Fighting", "MMA", "UFC", "Boxing", "Kickboxing", "Wrestling" }
             .Any(s => evt.Sport?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
 
-        if (config.EnableMultiPartEpisodes && isFightingSport)
+        if (EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt, league) && isFightingSport)
         {
             // Get monitored parts from event (or fall back to league settings)
             var monitoredParts = evt.MonitoredParts ?? league?.MonitoredParts;

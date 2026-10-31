@@ -61,7 +61,7 @@ internal static class PackImportJobScope
             return false;
         foreach (var owner in owners)
         {
-            var records = await db.EventFiles.AsNoTracking().Where(x => x.EventId == owner.EventId && x.Exists).ToListAsync();
+            var records = await db.EventFiles.AsNoTracking().Where(x => x.EventId == owner.EventId && x.Exists && !x.IsParked).ToListAsync();
             var present = records.Where(x => x.Size > 0 && File.Exists(x.FilePath) &&
                 FileImportService.GetFileSizeResolvingSymlinks(x.FilePath) == x.Size).ToList();
             var imports = await db.ImportHistories.AsNoTracking()

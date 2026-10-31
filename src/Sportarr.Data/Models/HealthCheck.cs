@@ -55,7 +55,8 @@ public enum HealthCheckType
     HealthCheckFailed,
 
     // Added last so the stored numbers of the members above do not change.
-    WatchFolderInaccessible
+    WatchFolderInaccessible,
+    HiddenFileNotTracked
 }
 
 /// <summary>

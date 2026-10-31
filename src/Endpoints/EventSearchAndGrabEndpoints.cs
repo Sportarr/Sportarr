@@ -167,13 +167,24 @@ app.MapPost("/api/release/grab", async (
     }
 
     var grabConfig = await configService.GetConfigAsync();
+    var grabUsesParts = EventPartDetector.UsesParts(grabConfig.EnableMultiPartEpisodes, evt);
+    var requestedPart = release.Part;
+    if (grabUsesParts && !release.IsPack &&
+        requestBody.TryGetValue("wholeEvent", out var wholeEventElement) &&
+        wholeEventElement.ValueKind == JsonValueKind.True)
+    {
+        requestedPart = WholeEventPickPart(release.Title, evt);
+    }
     var acquiredIdentity = Sportarr.Api.Helpers.PartIdentityResolver.Resolve(
-        release.Part, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
-        grabConfig.EnableMultiPartEpisodes, release.IsPack);
+        requestedPart, release.Title, null, evt.Sport, evt.Title, evt.League?.Name,
+        grabUsesParts, release.IsPack);
     // Keep supplied markers so import can preserve their precedence.
     var acquiredPart = acquiredIdentity.Kind == Sportarr.Api.Helpers.PartIdentityKind.CompleteEventLabel
         ? "Full Event"
-        : acquiredIdentity.Part?.SegmentName ?? release.Part;
+        : acquiredIdentity.Part?.SegmentName ?? requestedPart;
+    // A "Full Event" event keeps one whole file. A part label on the release does not apply.
+    if (grabConfig.EnableMultiPartEpisodes && !grabUsesParts)
+        acquiredPart = null;
 
     // Get enabled download client matching the release protocol. Uses the
     // canonical DownloadClientService.GetClientTypesForProtocol map rather
@@ -627,7 +638,7 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
 
     // If multi-part is enabled, Fighting sport, and no specific part requested,
     // automatically search for monitored parts
-    if (config.EnableMultiPartEpisodes && isFightingSport && part == null)
+    if (EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt) && isFightingSport && part == null)
     {
         // Get monitored parts from event (or fall back to league settings)
         // If null or empty, default to all parts
@@ -696,5 +707,23 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
 });
 
         return app;
+    }
+
+    /// <summary>
+    /// The part for a release picked from the Full Event row. A part label in
+    /// the title wins. An unlabelled or full-card title is the whole event.
+    /// Any other title keeps no part, so import decides.
+    /// </summary>
+    internal static string? WholeEventPickPart(string? releaseTitle, Event evt)
+    {
+        var fromTitle = Sportarr.Api.Helpers.PartIdentityResolver.Resolve(
+            null, releaseTitle, null, evt.Sport, evt.Title, evt.League?.Name, true);
+        return fromTitle.Kind switch
+        {
+            Sportarr.Api.Helpers.PartIdentityKind.InferredPart => fromTitle.Part!.SegmentName,
+            Sportarr.Api.Helpers.PartIdentityKind.Unlabelled or
+                Sportarr.Api.Helpers.PartIdentityKind.CompleteEventLabel => EventPartDetector.FullEventSegmentName,
+            _ => null
+        };
     }
 }

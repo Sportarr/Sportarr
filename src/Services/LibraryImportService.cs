@@ -587,9 +587,13 @@ public class LibraryImportService
                         // NOTE: "Full Event" selection means no part - store as null
                         string? partName = request.PartName;
                         int? partNumber = request.PartNumber;
+                        // A "Full Event" event keeps one whole file, as if parts were off.
+                        var eventUsesParts = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, existingEvent);
+                        var wholeEventImport = fullEventWasSelected
+                            || (config.EnableMultiPartEpisodes && !eventUsesParts);
 
                         // If user selected "Full Event", treat as no part (null)
-                        if (fullEventWasSelected)
+                        if (wholeEventImport)
                         {
                             partName = null;
                             partNumber = null;
@@ -638,7 +642,9 @@ public class LibraryImportService
                         var occupant = existingFileRecord == null
                             ? request.ReplaceOccupiedFile
                                 ? replacementCandidates?.SingleOrDefault()
-                                : ImportUpgradeRule.ExistingFileForPart(existingEvent.Files, partNumber, request.FilePath, config.EnableMultiPartEpisodes)
+                                : ImportUpgradeRule.ExistingFileForPart(existingEvent.Files, partNumber, request.FilePath,
+                                    // A whole file never takes a part file's place while parts are on.
+                                    config.EnableMultiPartEpisodes)
                             : null;
                         var importInPlace = false;
                         if (occupant != null)
@@ -681,6 +687,13 @@ public class LibraryImportService
                             stagedPart = await StageOccupiedPartAsync(existingEvent, partName, partNumber, request.FilePath, occupant);
                         }
 
+                        // A file the event's mode hides goes straight into the parked folder,
+                        // so a media server that watches folders never sees it.
+                        var parkOnImport = !importInPlace && existingFileRecord == null
+                            && FileParking.ImportWillBeParked(existingEvent.Files, occupant ?? stagedPart?.Occupant,
+                                string.IsNullOrEmpty(partName), existingEvent, config.EnableMultiPartEpisodes);
+                        using var parkedImport = parkOnImport ? FileParking.BeginParkedImport() : null;
+
                         // Build destination path and transfer file - pass part info and import mode
                         string destinationPath;
                         try
@@ -696,7 +709,7 @@ public class LibraryImportService
                                 partNumber,
                                 importMode,
                                 modeWasExplicit,
-                                fullEventWasSelected);
+                                parkOnImport);
                         }
                         catch
                         {
@@ -770,6 +783,7 @@ public class LibraryImportService
                                     isIptvRecording, existingByDest.IsIptvRecording, request.FromDownloadClient);
                                 existingByDest.LastVerified = DateTime.UtcNow;
                                 existingByDest.Exists = true;
+                                existingByDest.IsParked = FileParking.IsParkedPath(destinationPath);
                                 linkedFile = existingByDest;
                                 await RefreshPreviousOwnerAsync(previousOwnerId, existingEvent.Id,
                                     existingByDest, config);
@@ -787,6 +801,7 @@ public class LibraryImportService
                                 {
                                     EventId = existingEvent.Id,
                                     FilePath = destinationPath,
+                                    IsParked = FileParking.IsParkedPath(destinationPath),
                                     Size = sourceFileSize,
                                     Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
                                     Codec = request.Codec ?? parsedInfo.VideoCodec,
@@ -813,7 +828,7 @@ public class LibraryImportService
                         }
 
                         var presentParts = existingEvent.Files
-                            .Where(f => f.Exists && !ReferenceEquals(f, linkedFile)
+                            .Where(f => f.Exists && !f.IsParked && !ReferenceEquals(f, linkedFile)
                                 && !ReferenceEquals(f, stagedPart?.Occupant)
                                 && (!importInPlace || !ReferenceEquals(f, occupant)))
                             .Select(f => f.PartNumber)
@@ -843,6 +858,14 @@ public class LibraryImportService
                             // file back. Where the new file took the same name
                             // this returns the part to what it was; where it
                             // did not, both are on disk and nothing is lost.
+                            // Without its row a parked file is lost to the library.
+                            // Move it out first, so the restore can use its path.
+                            // Leave it when the restore needs the place it would go to.
+                            // When the replaced file used the same parked path, its sidecars
+                            // are still there, so only the video moves.
+                            if (parkOnImport && !RestoreNeedsVisiblePath(stagedPart, destinationPath))
+                                FileParking.ReturnUntrackedParkedFile(destinationPath, _logger,
+                                    withSidecars: !string.Equals(stagedPart?.OriginalPath, destinationPath, StringComparison.OrdinalIgnoreCase));
                             RestoreStagedPart(stagedPart);
                             throw;
                         }
@@ -855,6 +878,16 @@ public class LibraryImportService
                             // so the event holds one file for this part.
                             _db.EventFiles.Remove(occupant);
                             await _db.SaveChangesAsync();
+                        }
+
+                        // The import is saved. Now the files follow the event's mode, so a whole
+                        // file for a "Full Event" event hides the part files from the media server.
+                        if (config.EnableMultiPartEpisodes)
+                        {
+                            // A replaced parked file means the new file must be hidden the same way.
+                            await FileParking.ReconcileAndSaveAsync(_db, new[] { existingEvent }, true,
+                                _notificationService, _logger,
+                                applyMode: occupant?.IsParked == true || stagedPart?.Occupant.IsParked == true);
                         }
 
                         result.Imported.Add(destinationPath);
@@ -910,9 +943,13 @@ public class LibraryImportService
                     // NOTE: "Full Event" selection means no part - store as null
                     string? partName = request.PartName;
                     int? partNumber = request.PartNumber;
+                    // A league set to "Full Event" keeps one whole file, as if parts were off.
+                    var wholeEventImport = fullEventWasSelected
+                        || (config.EnableMultiPartEpisodes && !EventPartDetector.UsesParts(
+                            config.EnableMultiPartEpisodes, newEvent.MonitoredParts, league?.MonitoredParts));
 
                     // If user selected "Full Event", treat as no part (null)
-                    if (fullEventWasSelected)
+                    if (wholeEventImport)
                     {
                         partName = null;
                         partNumber = null;
@@ -941,8 +978,7 @@ public class LibraryImportService
                         partName,
                         partNumber,
                         importMode,
-                        modeWasExplicit,
-                        fullEventWasSelected);
+                        modeWasExplicit);
 
                     // Update event with file path
                     newEvent.FilePath = destinationPath;
@@ -1153,7 +1189,7 @@ public class LibraryImportService
             return;
 
         var remaining = await _db.EventFiles
-            .Where(f => f.EventId == previousOwnerId && f.Id != movedFile.Id && f.Exists)
+            .Where(f => f.EventId == previousOwnerId && f.Id != movedFile.Id && f.Exists && !f.IsParked)
             .ToListAsync();
         if (string.Equals(previous.FilePath, movedFile.FilePath, StringComparison.OrdinalIgnoreCase))
         {
@@ -1179,7 +1215,7 @@ public class LibraryImportService
         int? partNumber,
         LibraryImportMode importMode,
         bool modeWasExplicit,
-        bool fullEventWasSelected)
+        bool park = false)
     {
         var sourceFileInfo = new FileInfo(sourcePath);
         var extension = sourceFileInfo.Extension;
@@ -1219,35 +1255,9 @@ public class LibraryImportService
         string filename;
         if (settings.RenameEvents)
         {
-            // Build part suffix from provided part info (already determined by caller)
-            // Part info can come from: 1) Manual UI selection, 2) Auto-detection from filename
-            string partSuffix = string.Empty;
-            if (!string.IsNullOrEmpty(partName))
-            {
-                // Build suffix like " - Part 1 (Early Prelims)" or " - Early Prelims"
-                if (partNumber.HasValue)
-                {
-                    partSuffix = $" - Part {partNumber} ({partName})";
-                }
-                else
-                {
-                    partSuffix = $" - {partName}";
-                }
-                _logger.LogDebug("[Import] Using part info for filename: {PartName} (Part {PartNumber})",
-                    partName, partNumber?.ToString() ?? "N/A");
-            }
-            else if (config.EnableMultiPartEpisodes && !fullEventWasSelected)
-            {
-                // Fallback: try auto-detection from original filename if no part info provided
-                var detectedPart = DetectImportPart(
-                    sourcePath, parsed, eventInfo.Sport, eventInfo.Title, eventInfo.League?.Name);
-                if (detectedPart != null)
-                {
-                    partSuffix = $" - {detectedPart.PartSuffix}";
-                    _logger.LogDebug("[Import] Auto-detected multi-part episode: {Segment} ({PartSuffix})",
-                        detectedPart.SegmentName, detectedPart.PartSuffix);
-                }
-            }
+            // The part tokens come from the part the caller stores, the same way a
+            // rename builds them. A whole-event file gets no part token.
+            var (partSuffix, partNameSuffix) = FileNamingService.PartTokens(partName, partNumber);
 
             // Filename tokens use BroadcastDate (broadcaster-branded);
             // see FileRenameService for the rationale.
@@ -1267,7 +1277,8 @@ public class LibraryImportService
                 Series = eventInfo.League?.Name ?? eventInfo.Sport,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString(),
                 Episode = episodeNumber.ToString("00"),
-                Part = partSuffix
+                Part = partSuffix,
+                PartName = partNameSuffix
             };
 
             // No grabbed release to source IndexerFlags from here - this path
@@ -1283,6 +1294,8 @@ public class LibraryImportService
         }
 
         destinationPath = Path.Combine(destinationPath, filename);
+        if (park)
+            destinationPath = FileParking.ParkedPathFor(destinationPath);
 
         // Check if source and destination are the same file (file already in correct location)
         if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
@@ -1304,6 +1317,9 @@ public class LibraryImportService
             Directory.CreateDirectory(destDir);
             _logger.LogDebug("Created directory: {Directory}", destDir);
         }
+        // A parked folder needs its marker files before the file lands.
+        if (park && !string.IsNullOrEmpty(destDir))
+            FileParking.EnsureParkedFolder(destDir);
 
         // Transfer file based on import mode
         await TransferFileAsync(sourcePath, destinationPath, settings, importMode, modeWasExplicit);
@@ -1734,6 +1750,10 @@ public class LibraryImportService
     /// </summary>
     private sealed record StagedPartReplacement(EventFile Occupant, string OriginalPath, string? StagedPath);
 
+    private static bool RestoreNeedsVisiblePath(StagedPartReplacement? staged, string parkedPath) =>
+        staged != null
+        && string.Equals(staged.OriginalPath, FileParking.OriginalPathFor(parkedPath), StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Why the file may not take the place of the file this event already
     /// holds, as Library Import shows it. Empty when the event holds no file
@@ -1778,7 +1798,8 @@ public class LibraryImportService
             .Where(f => f.EventId == evt.Id && f.Exists)
             .ToListAsync();
         int? partNumber = null;
-        if (config.EnableMultiPartEpisodes && !string.IsNullOrEmpty(evt.Sport))
+        var usesParts = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt);
+        if (usesParts && !string.IsNullOrEmpty(evt.Sport))
         {
             partNumber = DetectImportPart(filePath, parsedInfo, evt.Sport, evt.Title, evt.League?.Name)?.PartNumber;
         }
@@ -2024,6 +2045,8 @@ public class LibraryImportService
                 }
                 await _metadataWriterService.DeleteEventMetadataAsync(
                     new EventFile { FilePath = staged.OriginalPath }, recycledVideoPath);
+                // A parked folder goes once its last file is gone.
+                FileParking.RemoveParkedFolderIfEmpty(staged.OriginalPath, _logger);
             }
             catch (Exception ex)
             {

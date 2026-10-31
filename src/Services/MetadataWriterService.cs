@@ -339,6 +339,21 @@ public class MetadataWriterService : IMetadataWriterService
         if (File.Exists(path)) File.Delete(path);
     }
 
+    /// <summary>
+    /// The sidecar files of a video that exist on disk: the .nfo, the
+    /// -thumb.jpg with its source marker, and the subtitles with the same base
+    /// name. These are the files a rename moves with the video.
+    /// </summary>
+    public static List<string> ExistingSidecars(string videoPath)
+    {
+        var thumb = Path.ChangeExtension(videoPath, null) + "-thumb.jpg";
+        var sidecars = new[] { Path.ChangeExtension(videoPath, ".nfo"), thumb, thumb + SourceMarkerSuffix }
+            .Where(File.Exists)
+            .ToList();
+        sidecars.AddRange(GetSubtitleSidecars(videoPath));
+        return sidecars;
+    }
+
     private static IEnumerable<string> GetSubtitleSidecars(string videoPath)
     {
         var directory = Path.GetDirectoryName(videoPath);

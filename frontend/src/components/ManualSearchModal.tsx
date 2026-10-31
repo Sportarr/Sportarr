@@ -22,6 +22,7 @@ import {
 import LastSearchLine from './LastSearchLine';
 import { useEventSearchHistory } from '../api/searchHistory';
 import { apiPost, apiGet, apiDelete } from '../utils/api';
+import { FULL_EVENT_PART } from '../utils/leagueSportRules';
 
 interface ExistingPartFile {
   partName?: string;
@@ -40,6 +41,8 @@ interface ManualSearchModalProps {
   eventTitle: string;
   part?: string;
   existingFiles?: ExistingPartFile[];
+  // Search the whole event. An unlabelled pick is filed as the whole event.
+  wholeEvent?: boolean;
 }
 
 interface MatchedFormat {
@@ -124,6 +127,7 @@ export default function ManualSearchModal({
   eventTitle,
   part,
   existingFiles,
+  wholeEvent = false,
 }: ManualSearchModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('search');
   const [isSearching, setIsSearching] = useState(false);
@@ -439,6 +443,8 @@ export default function ManualSearchModal({
 
       const response = await apiPost('/api/release/grab', {
         ...release,
+        // The server keeps a part label in the title and files the rest as the whole event.
+        wholeEvent: wholeEvent || undefined,
         eventId: eventId,
         overrideBlocklist: release.isBlocklisted,
         replaceExisting: isOverride,
@@ -488,7 +494,8 @@ export default function ManualSearchModal({
   };
 
   const getSearchTitle = () => {
-    return part ? `${eventTitle} (${part})` : eventTitle;
+    const label = part ?? (wholeEvent ? FULL_EVENT_PART : undefined);
+    return label ? `${eventTitle} (${label})` : eventTitle;
   };
 
   const extractResolution = (quality: string | undefined | null): string | null => {

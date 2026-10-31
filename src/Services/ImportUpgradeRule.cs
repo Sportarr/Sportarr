@@ -108,13 +108,17 @@ public static class ImportUpgradeRule
     public static EventFile? ExistingFileForPart(IEnumerable<EventFile> files, int? partNumber, string? incomingPath, bool multiPartEvents)
     {
         var held = files
-            .Where(f => f.Exists && !string.Equals(f.FilePath, incomingPath, StringComparison.OrdinalIgnoreCase))
+            // With parts on, a parked file is replaced like a visible one of its kind.
+            // With parts off, nothing stays parked, and a parked row is never the target.
+            .Where(f => f.Exists && (multiPartEvents || !f.IsParked)
+                && !string.Equals(f.FilePath, incomingPath, StringComparison.OrdinalIgnoreCase))
             .ToList();
         if (partNumber.HasValue)
         {
             return held.FirstOrDefault(f => f.PartNumber == partNumber);
         }
-        var whole = held.FirstOrDefault(f => f.PartName == null && f.PartNumber == null);
+        // A visible whole file comes before a parked one.
+        var whole = held.Where(EventPartDetector.IsWholeEventFile).OrderBy(f => f.IsParked).FirstOrDefault();
         return whole ?? (multiPartEvents ? null : held.FirstOrDefault());
     }
 
