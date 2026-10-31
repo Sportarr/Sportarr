@@ -174,6 +174,19 @@ public class DvrChannelPinTests
         // onto a channel showing another sport.
         await using var rig = await Rig.CreateAsync(pinned: false);
         rig.Db.IptvChannels.Add(new IptvChannel { Id = 3, SourceId = 1, Name = "Unrelated Sport", StreamUrl = "http://test/3" });
+        // The primary has a guide listing too, so both are evidence and the
+        // improvement margin decides.
+        var primary = await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1);
+        primary.TvgId = "mapped.au";
+        rig.Db.EpgPrograms.Add(new EpgProgram
+        {
+            EpgSourceId = 1,
+            ChannelId = "mapped.au",
+            Title = "Supercars Championship Gold Coast 500 Qualifying",
+            Category = "Motorsport",
+            StartTime = rig.EventStart.AddMinutes(-25),
+            EndTime = rig.EventStart.AddHours(1),
+        });
         var recording = await rig.Db.DvrRecordings.SingleAsync();
         recording.FallbackChannelIds = "[3]";
         await rig.Db.SaveChangesAsync();
@@ -200,6 +213,23 @@ public class DvrChannelPinTests
         var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
         saved.ChannelPinned.Should().BeTrue();
         saved.FallbackChannelIds.Should().Be("[3]");
+    }
+
+    [Fact]
+    public async Task AManualMappingGivesWayToTheGuideChannel()
+    {
+        // Issue #385: a manual league mapping with no listing used to score 97
+        // and the guide channel could never clear the improvement margin.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        var mapping = await rig.Db.ChannelLeagueMappings.SingleAsync();
+        mapping.IsManual = true;
+        mapping.Confidence = 100;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync(minImprovement: 10)).Should().Be(1);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(2);
     }
 
     [Fact]

@@ -138,6 +138,7 @@ public class EventChannelResolverService
         var broadcastTokens = TokenizeBroadcast(evt.Broadcast);
 
         var candidates = new List<EventChannelCandidate>();
+        var rawScores = new Dictionary<int, int>();
         foreach (var ch in channels)
         {
             if (excludedChannelIds.Contains(ch.Id)) continue;
@@ -229,6 +230,11 @@ public class EventChannelResolverService
             }
 
             score = Math.Clamp(score, 0, 100);
+            // A mapping or a broadcaster name is a guess. A guide listing is
+            // evidence, so a guess never outranks one, however it is boosted.
+            // The full score still orders the guesses among themselves.
+            rawScores[ch.Id] = score;
+            if (source != "epg_program") score = Math.Min(score, EpgMatchConfidence - 1);
             if (score < MinAcceptableConfidence) continue;
 
             candidates.Add(new EventChannelCandidate(
@@ -249,6 +255,7 @@ public class EventChannelResolverService
         return candidates
             .OrderByDescending(c => health.GetValueOrDefault(c.ChannelId, 1))
             .ThenByDescending(c => c.Confidence)
+            .ThenByDescending(c => rawScores.GetValueOrDefault(c.ChannelId))
             .ThenByDescending(c => c.QualityScore)
             .ToList();
     }
@@ -278,9 +285,19 @@ public class EventChannelResolverService
         var windowStart = evt.EventDate - EpgWindow;
         var windowEnd = evt.EventDate + EpgWindow;
 
+        // A programme that starts in the window counts, and so does a block
+        // that started earlier and is still on air at the event start, such
+        // as a two-hour broadcast that opens an hour before the session.
+        var eventStart = evt.EventDate;
+        // A block must still have 15 minutes to run at the start. One that
+        // ends just after it is the previous programme overrunning. Blocks
+        // older than six hours are loops, not broadcasts of the event.
+        var blockStart = eventStart - TimeSpan.FromHours(6);
+        var blockEnd = eventStart + TimeSpan.FromMinutes(15);
         var programs = await _db.EpgPrograms
             .Where(p => tvgIds.Contains(p.ChannelId))
-            .Where(p => p.StartTime >= windowStart && p.StartTime <= windowEnd)
+            .Where(p => (p.StartTime >= windowStart && p.StartTime <= windowEnd)
+                || (p.StartTime >= blockStart && p.StartTime < windowStart && p.EndTime >= blockEnd))
             .ToListAsync(ct);
         if (programs.Count == 0) return new Dictionary<int, EpgProgram>();
 
@@ -337,6 +354,26 @@ public class EventChannelResolverService
             foreach (var word in TitleSearchTokens(evt.Title)) searchTerms.Add(word);
         }
 
+        // Words of the league name, such as "supercars" or "motogp". Two
+        // shared title words alone are weak: an AFL game with "Gold Coast"
+        // in it matched a Supercars session at the Gold Coast.
+        var leagueTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!hasTeamNames && !string.IsNullOrEmpty(evt.League?.Name))
+        {
+            foreach (var word in TitleSearchTokens(evt.League.Name).Where(w => !GenericLeagueWords.Contains(w)))
+                leagueTerms.Add(word);
+            // Guides write "F1" and "F2" for Formula 1 and Formula 2. The bare
+            // word "formula" also names Formula E, so only the full names count.
+            var formula = System.Text.RegularExpressions.Regex.Match(evt.League.Name, @"^Formula\s*(\d)\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (formula.Success)
+            {
+                leagueTerms.Remove("formula");
+                leagueTerms.Add("f" + formula.Groups[1].Value);
+                leagueTerms.Add("formula " + formula.Groups[1].Value);
+            }
+        }
+
         var matches = new Dictionary<int, EpgProgram>();
         // Playlists routinely carry the same tvg-id on several channel
         // entries (SD/HD/FHD variants, regional mirrors). Every one of
@@ -366,9 +403,13 @@ public class EventChannelResolverService
             {
                 int hits = CountTermHits(searchTerms, $"{p.Title} {p.Description} {p.Category}");
                 if (hasTeamNames && hits < 1) continue;  // require ≥1 team name
-                if (!hasTeamNames && hits < 2) continue; // require ≥2 keyword hits for non-team events
-                // Time proximity bonus (closer to scheduled_start = better)
-                var minutesOff = (int)Math.Abs((p.StartTime - evt.EventDate).TotalMinutes);
+                if (!hasTeamNames && !NonTeamProgramMatches(hits, leagueTerms, p)) continue;
+                // Time proximity bonus (closer to scheduled_start = better).
+                // A block that started earlier counts as on time when it is
+                // already on air at the start.
+                var minutesOff = p.StartTime < windowStart && p.EndTime >= blockEnd
+                    ? 0
+                    : (int)Math.Abs((p.StartTime - evt.EventDate).TotalMinutes);
                 int score = hits * 10 + Math.Max(0, 30 - minutesOff);
                 if (score > bestScore)
                 {
@@ -383,6 +424,26 @@ public class EventChannelResolverService
             }
         }
         return matches;
+    }
+
+    // League-name words that say nothing about the series on their own.
+    private static readonly HashSet<string> GenericLeagueWords = new(StringComparer.Ordinal)
+    {
+        "championship", "championships", "series", "league", "world", "cup", "tour", "the", "and",
+        "national", "international", "grand", "prix", "racing", "motorsport", "association"
+    };
+
+    /// <summary>
+    /// A non-team event needs two title words, plus a word of its league name.
+    /// Without a league word it needs three title words. When the league name
+    /// has no useful word, two title words still suffice, as before.
+    /// </summary>
+    private static bool NonTeamProgramMatches(int hits, HashSet<string> leagueTerms, EpgProgram p)
+    {
+        if (hits < 2) return false;
+        if (leagueTerms.Count == 0) return true;
+        if (CountTermHits(leagueTerms, $"{p.Title} {p.Description} {p.Category}") > 0) return true;
+        return hits >= 3;
     }
 
     // Two-letter words that carry no meaning in a title. Short words that name

@@ -183,7 +183,12 @@ public class DvrChannelReresolveService : BackgroundService
         var current = ranked.FirstOrDefault(c => c.ChannelId == recording.ChannelId);
         var currentConfidence = current?.Confidence ?? 0;
 
-        if (best.Confidence < currentConfidence + minImprovement)
+        // The margin stops two guesses from trading places every pass. A
+        // guide listing is evidence, so a guess gives way to it as soon as
+        // it scores higher, or the guess could never be left.
+        var guessToGuide = best.Source == "epg_program" && current?.Source != "epg_program";
+        var requiredGain = guessToGuide ? 1 : minImprovement;
+        if (best.Confidence < currentConfidence + requiredGain)
         {
             // The primary stays, so the hysteresis has done its job. The
             // backups still follow today's ranking: a channel whose guide
