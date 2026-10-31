@@ -52,7 +52,10 @@ public enum HealthCheckType
     CorruptedDatabase,
     LeagueFolderRenamed,
     BackupsFailing,
-    HealthCheckFailed
+    HealthCheckFailed,
+
+    // Added last so the stored numbers of the members above do not change.
+    WatchFolderInaccessible
 }
 
 /// <summary>

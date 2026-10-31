@@ -61,6 +61,7 @@ public class HealthCheckService
             // Run all health checks
             results.AddRange(await CheckBackupsAsync());
             results.AddRange(await CheckRootFoldersAsync());
+            results.AddRange(await CheckWatchFoldersAsync());
             results.AddRange(await CheckDownloadClientsAsync());
             results.AddRange(await CheckIndexersAsync());
             results.AddRange(await CheckDiskSpaceAsync());
@@ -276,6 +277,34 @@ public class HealthCheckService
                           $"{(stale.Count() == 1 ? "is" : "are")} in a folder named '{stale.Key}'. " +
                           $"They still play and stay linked to their events, and new files go to '{expected}'. " +
                           "Use Rename Files on the league to move them, or dismiss this notice to keep them where they are."
+            });
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Check that every drop folder exists. The settings save does not check
+    /// this, because a network mount can be offline at that moment. In Docker
+    /// a host path is the usual mistake, and the file watcher only logs it.
+    /// </summary>
+    private async Task<List<HealthCheckResult>> CheckWatchFoldersAsync()
+    {
+        var results = new List<HealthCheckResult>();
+        var watchFolders = (await _configService.GetConfigAsync()).WatchFolders ?? new List<string>();
+
+        foreach (var path in watchFolders.Select(folder => folder?.Trim()).Where(path => !string.IsNullOrEmpty(path)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (Directory.Exists(path))
+                continue;
+
+            results.Add(new HealthCheckResult
+            {
+                Type = HealthCheckType.WatchFolderInaccessible,
+                Level = HealthCheckLevel.Warning,
+                Message = $"Drop folder is not accessible: {path}",
+                Details = "Sportarr cannot see this folder, so files dropped there are not imported. " +
+                          "In Docker, use the path inside the container, for example /data/..., not the host path."
             });
         }
 
