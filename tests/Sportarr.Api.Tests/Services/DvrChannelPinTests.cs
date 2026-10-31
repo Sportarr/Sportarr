@@ -116,7 +116,7 @@ public class DvrChannelPinTests
             return rig;
         }
 
-        public async Task<int> RunReresolveAsync()
+        public async Task<int> RunReresolveAsync(int? minImprovement = null)
         {
             Interceptor.Armed = true;
             var dataPath = Path.Combine(Path.GetTempPath(), "sportarr-pin-" + Guid.NewGuid().ToString("N"));
@@ -125,9 +125,16 @@ public class DvrChannelPinTests
                 var configuration = new ConfigurationBuilder()
                     .AddInMemoryCollection(new Dictionary<string, string?> { ["Sportarr:DataPath"] = dataPath })
                     .Build();
+                var configService = new ConfigService(configuration, NullLogger<ConfigService>.Instance);
+                if (minImprovement.HasValue)
+                {
+                    var config = await configService.GetConfigAsync();
+                    config.DvrReresolveMinImprovement = minImprovement.Value;
+                    await configService.SaveConfigAsync(config);
+                }
                 var services = new ServiceCollection()
                     .AddSingleton(Db)
-                    .AddSingleton(new ConfigService(configuration, NullLogger<ConfigService>.Instance))
+                    .AddSingleton(configService)
                     .AddSingleton(new EventChannelResolverService(Db, NullLogger<EventChannelResolverService>.Instance))
                     .BuildServiceProvider();
                 var service = new DvrChannelReresolveService(services, NullLogger<DvrChannelReresolveService>.Instance);
@@ -156,6 +163,43 @@ public class DvrChannelPinTests
         var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
         saved.ChannelId.Should().Be(2);
         saved.ChannelPinned.Should().BeFalse("a resolver move is not a user choice");
+    }
+
+    [Fact]
+    public async Task KeepingThePrimaryStillRefreshesTheBackupsFromTheGuide()
+    {
+        // Issue #382: the guide channel wins, but by less than the required
+        // improvement, so the primary stays. The stale backup list from
+        // scheduling time must still be replaced, or a failed primary rotates
+        // onto a channel showing another sport.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        rig.Db.IptvChannels.Add(new IptvChannel { Id = 3, SourceId = 1, Name = "Unrelated Sport", StreamUrl = "http://test/3" });
+        var recording = await rig.Db.DvrRecordings.SingleAsync();
+        recording.FallbackChannelIds = "[3]";
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync(minImprovement: 1000)).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(1, "the improvement was too small to move the primary");
+        saved.FallbackChannelIds.Should().Be("[2]", "the guide channel is the first backup now");
+    }
+
+    [Fact]
+    public async Task APinMadeWhileRankingKeepsTheBackups()
+    {
+        // The user pins the recording while the candidates are ranked. The
+        // backup refresh must not write over the row afterwards.
+        await using var rig = await Rig.CreateAsync(pinned: false, pinWhileRanking: true);
+        var recording = await rig.Db.DvrRecordings.SingleAsync();
+        recording.FallbackChannelIds = "[3]";
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync(minImprovement: 1000)).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelPinned.Should().BeTrue();
+        saved.FallbackChannelIds.Should().Be("[3]");
     }
 
     [Fact]

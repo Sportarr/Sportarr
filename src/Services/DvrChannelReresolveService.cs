@@ -185,6 +185,10 @@ public class DvrChannelReresolveService : BackgroundService
 
         if (best.Confidence < currentConfidence + minImprovement)
         {
+            // The primary stays, so the hysteresis has done its job. The
+            // backups still follow today's ranking: a channel whose guide
+            // lists the event must be first in line if the primary fails.
+            await RefreshFallbacksAsync(db, recording, ranked, ct);
             return false;
         }
 
@@ -221,7 +225,7 @@ public class DvrChannelReresolveService : BackgroundService
 
         recording.ChannelId = best.ChannelId;
         recording.LastUpdated = DateTime.UtcNow;
-        ApplyFallbacks(recording, ranked, best.ChannelId);
+        recording.FallbackChannelIds = BuildFallbacks(ranked, best.ChannelId, await RedundantChannelIdsAsync(db, recording, ct));
 
         await db.SaveChangesAsync(ct);
 
@@ -241,28 +245,59 @@ public class DvrChannelReresolveService : BackgroundService
         CancellationToken ct)
     {
         var before = recording.FallbackChannelIds;
-        ApplyFallbacks(recording, ranked, recording.ChannelId);
+        var fresh = BuildFallbacks(ranked, recording.ChannelId, await RedundantChannelIdsAsync(db, recording, ct));
+        if (fresh == before)
+            return;
 
-        if (before != recording.FallbackChannelIds)
+        // Ranking takes time. Write only if the row is still the one that was
+        // ranked: still scheduled, not pinned, same channel, same backups. A
+        // pin, an edit, a start or a delete in the meantime wins.
+        var now = DateTime.UtcNow;
+        var written = await db.DvrRecordings
+            .Where(r => r.Id == recording.Id
+                && r.Status == DvrRecordingStatus.Scheduled
+                && !r.ChannelPinned
+                && r.ChannelId == recording.ChannelId
+                && r.FallbackChannelIds == before)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.FallbackChannelIds, fresh)
+                .SetProperty(r => r.LastUpdated, now), ct);
+        if (written == 1)
         {
-            recording.LastUpdated = DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
+            // Keep the tracked copy in step without marking it modified.
+            var entry = db.Entry(recording);
+            entry.Property(r => r.FallbackChannelIds).OriginalValue = fresh;
+            entry.Property(r => r.LastUpdated).OriginalValue = now;
+            recording.FallbackChannelIds = fresh;
+            recording.LastUpdated = now;
         }
     }
 
-    private static void ApplyFallbacks(
-        DvrRecording recording,
-        List<EventChannelCandidate> ranked,
-        int primaryChannelId)
+    // Channels another active copy of this event already records from. A
+    // failed primary must not rotate onto a channel that is mid-recording
+    // the same event, the same rule the scheduler applies.
+    private static async Task<HashSet<int>> RedundantChannelIdsAsync(
+        SportarrDbContext db, DvrRecording recording, CancellationToken ct)
+    {
+        var ids = await db.DvrRecordings
+            .Where(r => r.EventId == recording.EventId && r.Id != recording.Id
+                && (r.Status == DvrRecordingStatus.Scheduled || r.Status == DvrRecordingStatus.Recording))
+            .Select(r => r.ChannelId)
+            .ToListAsync(ct);
+        return ids.ToHashSet();
+    }
+
+    private static string? BuildFallbacks(List<EventChannelCandidate> ranked, int primaryChannelId, HashSet<int> excluded)
     {
         // Four backups matches what the auto-scheduler stores and stays
         // inside the rotation cap in DvrRecordingService.
         var backups = ranked
-            .Where(c => c.ChannelId != primaryChannelId)
+            .Where(c => c.ChannelId != primaryChannelId && !excluded.Contains(c.ChannelId))
             .Take(4)
             .Select(c => c.ChannelId)
             .ToList();
-
-        recording.FallbackChannelIds = backups.Count > 0 ? JsonSerializer.Serialize(backups) : null;
+        return backups.Count > 0 ? JsonSerializer.Serialize(backups) : null;
     }
+
+
 }
