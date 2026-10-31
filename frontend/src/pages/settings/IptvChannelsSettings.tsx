@@ -566,8 +566,11 @@ export default function IptvChannelsSettings() {
       return;
     }
     apiClient
-      .get<Array<{ id: number; name: string }>>('/teams', { params: { leagueId: teamPickerLeagueId } })
-      .then(({ data }) => setTeamPickerTeams(Array.isArray(data) ? data : []))
+      .get<Array<{ id: number; strTeam?: string; name?: string }>>('/teams', { params: { leagueId: teamPickerLeagueId } })
+      // The API names a team strTeam, the TheSportsDB field name.
+      .then(({ data }) => setTeamPickerTeams(Array.isArray(data)
+        ? data.map((t) => ({ id: t.id, name: t.strTeam || t.name || `Team #${t.id}` }))
+        : []))
       .catch(() => setTeamPickerTeams([]));
   }, [teamPickerLeagueId]);
 
