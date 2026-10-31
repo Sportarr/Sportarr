@@ -226,7 +226,36 @@ public class IptvSourceService
     /// <summary>
     /// Sync channels from an IPTV source
     /// </summary>
+    // One sync per source at a time. Two syncs that overlap both see no
+    // existing rows and both insert every channel.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> SyncGates = new();
+
     public async Task<int> SyncChannelsAsync(int sourceId)
+    {
+        var gate = SyncGates.GetOrAdd(sourceId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
+        {
+            return await SyncChannelsCoreAsync(sourceId);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Keep the first channel for each stream URL. Providers often list one
+    /// stream in two categories. The second copy then matched no existing
+    /// row and was added again on every sync, so the guide showed it twice.
+    /// </summary>
+    internal static List<IptvChannel> DistinctByStreamUrl(List<IptvChannel> channels)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return channels.Where(c => string.IsNullOrEmpty(c.StreamUrl) || seen.Add(c.StreamUrl)).ToList();
+    }
+
+    private async Task<int> SyncChannelsCoreAsync(int sourceId)
     {
         var source = await _db.IptvSources.FindAsync(sourceId);
         if (source == null)
@@ -254,6 +283,14 @@ public class IptvSourceService
             else
             {
                 throw new NotSupportedException($"Source type {source.Type} not supported");
+            }
+
+            var listed = channels.Count;
+            channels = DistinctByStreamUrl(channels);
+            if (channels.Count < listed)
+            {
+                _logger.LogInformation("[IPTV] {Source} lists {Count} stream(s) more than once; kept one copy of each",
+                    source.Name, listed - channels.Count);
             }
 
             // Upsert in place. The old delete-and-recreate approach gave
@@ -307,19 +344,40 @@ public class IptvSourceService
     /// are retired (disabled + marked) instead, because deleting them would
     /// cascade away the user's mappings and recording history.
     /// </summary>
-    private async Task<int> UpsertChannelsAsync(IptvSource source, List<IptvChannel> incoming)
+    internal async Task<int> UpsertChannelsAsync(IptvSource source, List<IptvChannel> incoming)
     {
         var existing = await _db.IptvChannels
             .Where(c => c.SourceId == source.Id)
+            .OrderBy(c => c.Id)
             .ToListAsync();
 
         var matched = new List<(IptvChannel Existing, IptvChannel Incoming)>();
         var claimedExisting = new HashSet<int>();
         var consumedIncoming = new HashSet<IptvChannel>();
 
-        // Pass 1: exact stream URL.
+        // Pass 1: exact stream URL. Older syncs could store one stream twice.
+        // Of those copies, the one the user set up keeps the stream, so its
+        // mappings and recordings stay on an enabled channel. The others
+        // then count as gone from the playlist and are retired or removed.
+        var duplicateIds = existing
+            .GroupBy(c => c.StreamUrl, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .SelectMany(g => g.Select(c => c.Id))
+            .ToList();
+        var inUse = new HashSet<int>();
+        if (duplicateIds.Count > 0)
+        {
+            inUse.UnionWith(await _db.ChannelLeagueMappings
+                .Where(m => duplicateIds.Contains(m.ChannelId)).Select(m => m.ChannelId).ToListAsync());
+            inUse.UnionWith(await _db.ChannelTeamMappings
+                .Where(m => duplicateIds.Contains(m.ChannelId)).Select(m => m.ChannelId).ToListAsync());
+            inUse.UnionWith(await _db.DvrRecordings
+                .Where(r => duplicateIds.Contains(r.ChannelId)).Select(r => r.ChannelId).ToListAsync());
+        }
+        bool SetUp(IptvChannel c) => inUse.Contains(c.Id) || c.IsFavorite || c.TvgIdIsManual || !string.IsNullOrWhiteSpace(c.TvgId);
+
         var byUrl = new Dictionary<string, IptvChannel>(StringComparer.Ordinal);
-        foreach (var c in existing)
+        foreach (var c in existing.OrderByDescending(SetUp).ThenBy(c => c.Id))
             byUrl.TryAdd(c.StreamUrl, c);
 
         foreach (var inc in incoming)

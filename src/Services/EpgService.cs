@@ -605,6 +605,8 @@ public class EpgService
         var channels = await channelsQuery
             .OrderBy(c => c.ChannelNumber ?? int.MaxValue)
             .ThenBy(c => c.Name)
+            // A unique last key keeps pages from overlapping or skipping rows.
+            .ThenBy(c => c.Id)
             .Skip(offset)
             .Take(limit ?? 100)
             .ToListAsync();

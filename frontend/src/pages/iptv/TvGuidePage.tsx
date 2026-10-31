@@ -593,6 +593,13 @@ export default function TvGuidePage() {
             </div>
           )}
 
+          {/* The guide loads one page of channels. Say so when there are more. */}
+          {guideData && guideData.totalChannels > guideData.channels.length && (
+            <p className="text-sm text-gray-400 mt-2">
+              Showing the first {guideData.channels.length} of {guideData.totalChannels} channels. Use the filters to see the rest.
+            </p>
+          )}
+
         </PageShell>
       </div>
 
