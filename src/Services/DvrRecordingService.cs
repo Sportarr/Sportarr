@@ -1870,6 +1870,15 @@ public class DvrRecordingService
             // Linked to an event - use same folder structure as regular imports
             var eventInfo = recording.Event;
 
+            // The folder and file name use the league name. Without the league
+            // they fall back to the sport, as in "Motorsport" for Formula 1.
+            // Load it only when this context tracks the event.
+            if (eventInfo.LeagueId.HasValue && eventInfo.League == null &&
+                _db.Entry(eventInfo).State != EntityState.Detached)
+            {
+                await _db.Entry(eventInfo).Reference(e => e.League).LoadAsync();
+            }
+
             // IMPORTANT: Calculate episode number BEFORE building folder path
             // This ensures the {Episode} token in EventFolderFormat has the correct value
             var episodeNumber = await _episodeNumberResolver.ResolveAsync(eventInfo);

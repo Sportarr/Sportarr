@@ -180,6 +180,20 @@ public class CatchupDownloadService : BackgroundService
         }
     }
 
+    internal static Task<List<DvrRecording>> LoadDueCatchupRecordingsAsync(SportarrDbContext db, CancellationToken ct)
+    {
+        // The output path names the league folder, so the league must be loaded.
+        return db.DvrRecordings
+            .Include(r => r.Event)
+            .ThenInclude(e => e!.League)
+            .Include(r => r.Channel)
+            .ThenInclude(c => c!.Source)
+            .Where(r => r.Status == DvrRecordingStatus.Scheduled)
+            .Where(r => r.Method == DvrRecordingMethod.Catchup)
+            .OrderBy(r => r.ScheduledEnd)
+            .ToListAsync(ct);
+    }
+
     private async Task TickAsync(CancellationToken ct)
     {
         using var scope = _services.CreateScope();
@@ -224,14 +238,7 @@ public class CatchupDownloadService : BackgroundService
         // of the archive). Existing rows are processed even if the user
         // has since turned DvrUseCatchupWhenAvailable off - that setting
         // gates NEW scheduling, not work already queued.
-        var due = await db.DvrRecordings
-            .Include(r => r.Event)
-            .Include(r => r.Channel)
-            .ThenInclude(c => c!.Source)
-            .Where(r => r.Status == DvrRecordingStatus.Scheduled)
-            .Where(r => r.Method == DvrRecordingMethod.Catchup)
-            .OrderBy(r => r.ScheduledEnd)
-            .ToListAsync(ct);
+        var due = await LoadDueCatchupRecordingsAsync(db, ct);
 
         foreach (var recording in due)
         {
