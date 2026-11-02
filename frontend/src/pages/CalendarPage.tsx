@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SyntheticEvent } from 'react';
 import { isTerminalStatus } from '../utils/eventStatus';
 import { ChevronLeftIcon, ChevronRightIcon, TvIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, EyeIcon as EyeSolidIcon } from '@heroicons/react/24/solid';
@@ -32,7 +33,18 @@ import {
 import type { FirstDayOfWeek } from '../utils/dateUtils';
 import { convertToTimezone, formatTimeInTimezone, getDateInTimezone, getNowInTimezone, getTodayInTimezone } from '../utils/timezone';
 
-type CalendarView = 'month' | 'week' | 'agenda';
+type CalendarView = 'month' | 'week' | 'day' | 'agenda';
+
+const CALENDAR_VIEWS: CalendarView[] = ['month', 'week', 'day', 'agenda'];
+
+const isCalendarView = (value: string | null): value is CalendarView =>
+  value !== null && (CALENDAR_VIEWS as string[]).includes(value);
+
+// How many channels an agenda card names before folding the rest into
+// "+N more". The broadcast string is every network, channel and streaming
+// service TheSportsDB lists for the event worldwide, so a big football match
+// can carry dozens and the card became a wall of channel names.
+const BROADCAST_PREVIEW_COUNT = 2;
 
 interface CalendarUISettings {
   firstDayOfWeek?: string;
@@ -110,6 +122,14 @@ const getSportColors = (sport: string) => {
 
 const getLeagueLogoUrl = (event: Event) => event.league?.logoUrl ?? event.leagueLogoUrl;
 
+/** Whether the event title already contains both team names, in any order. */
+const titleNamesTeams = (event: Event) => {
+  const title = event.title.toLowerCase();
+  return [event.homeTeamName, event.awayTeamName].every(
+    name => !!name && title.includes(name.trim().toLowerCase())
+  );
+};
+
 // Check if an event is currently live based on time
 // Events are considered live if current time is within 4 hours after start time
 // (most sporting events last 2-4 hours)
@@ -175,6 +195,8 @@ const isEventLive = (event: Event, timezone: string | null): boolean => {
 
 const getAdjacentDate = (date: Date, view: CalendarView, direction: -1 | 1) => {
   switch (view) {
+    case 'day':
+      return addDays(date, direction);
     case 'week':
       return addDays(date, direction * 7);
     case 'agenda':
@@ -315,25 +337,72 @@ function EventCard({
   );
 }
 
+/**
+ * The channels an event is shown on, cut to the first few with a "+N more"
+ * that expands in place. It lives inside the card's button, so it is a span
+ * with a button role rather than a nested button, and it stops the click
+ * from also opening the event.
+ */
+function BroadcastChannels({ broadcast }: { broadcast: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const channels = useMemo(
+    () => broadcast.split(' / ').map(name => name.trim()).filter(Boolean),
+    [broadcast]
+  );
+  const hiddenCount = channels.length - BROADCAST_PREVIEW_COUNT;
+  const shown = expanded || hiddenCount <= 0 ? channels : channels.slice(0, BROADCAST_PREVIEW_COUNT);
+
+  const toggle = (domEvent: SyntheticEvent) => {
+    domEvent.stopPropagation();
+    domEvent.preventDefault();
+    setExpanded(value => !value);
+  };
+
+  return (
+    <span className="flex min-w-0 items-start gap-1 text-xs text-green-300" data-testid="calendar-event-broadcast">
+      <TvIcon className="mt-px h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0 break-words">
+        {shown.join(' / ')}
+        {hiddenCount > 0 && (
+          <span
+            role="button"
+            tabIndex={0}
+            aria-expanded={expanded}
+            onClick={toggle}
+            onKeyDown={(keyEvent) => {
+              if (keyEvent.key === 'Enter' || keyEvent.key === ' ') toggle(keyEvent);
+            }}
+            className="ml-1 whitespace-nowrap rounded px-1 text-gray-300 underline decoration-dotted underline-offset-2 hover:text-white focus:outline-none focus:ring-1 focus:ring-red-500"
+          >
+            {expanded ? 'show less' : `+${hiddenCount} more`}
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
+
 function SpaciousAgendaEventCard({
   event,
   timezone,
   onClick,
   onToggleMonitor,
   toggling = false,
+  showDate = true,
 }: {
   event: Event;
   timezone: string | null;
   onClick: () => void;
   onToggleMonitor?: (event: Event) => void;
   toggling?: boolean;
+  /** Off in the day view, where the page header already names the day. */
+  showDate?: boolean;
 }) {
   const sportColors = getSportColors(event.sport || 'default');
   const isLive = isEventLive(event, timezone);
-  const timeLabel = formatTimeInTimezone(event.eventDate, timezone, {
-    weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
+  const timeLabel = formatTimeInTimezone(event.eventDate, timezone, showDate
+    ? { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+    : { hour: 'numeric', minute: '2-digit' });
   const leagueLogoUrl = getLeagueLogoUrl(event);
 
   return (
@@ -343,8 +412,11 @@ function SpaciousAgendaEventCard({
       onClick={onClick}
       className={`relative w-full overflow-hidden text-left rounded-lg p-4 border transition-all ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} ${event.monitored ? 'hover:opacity-90' : 'opacity-60 hover:opacity-75'}`}
     >
-      <div className="relative z-10 flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
+      {/* Phones stack the time above the details. Side by side, the
+          no-wrap time label took a third of a phone's width and the title
+          was truncated into whatever was left ("Chelsea v..."). */}
+      <div className="relative z-10 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0 sm:flex-1">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className={`${sportColors.accent} px-2 py-0.5 text-xs font-semibold text-white rounded`}>
               {getSportDisplayLabel(event.sport)}
@@ -370,22 +442,22 @@ function SpaciousAgendaEventCard({
             {event.hasFile && (
               <CheckCircleIcon className="w-4 h-4 text-green-500 flex-shrink-0" />
             )}
-            {event.broadcast && (
-              <span className="flex items-center gap-1 text-xs text-green-300">
-                <TvIcon className="w-3.5 h-3.5" />
-                {event.broadcast}
-              </span>
-            )}
+            {event.broadcast && <BroadcastChannels broadcast={event.broadcast} />}
           </div>
-          <h3 className="text-lg font-semibold text-white truncate">{event.title}</h3>
-          {event.homeTeamName && event.awayTeamName && (
+          {/* Wraps rather than truncates: a cut-off fixture name ("Chelsea
+              v...") hides the one thing the card is for. */}
+          <h3 className="break-words text-lg font-semibold leading-snug text-white">{event.title}</h3>
+          {/* Only when the title doesn't already name both teams. Team-sport
+              titles are usually exactly "Home vs Away", which made this line
+              a repeat of the heading. */}
+          {event.homeTeamName && event.awayTeamName && !titleNamesTeams(event) && (
             <p className="text-sm text-gray-400 mt-0.5">{event.homeTeamName} vs {event.awayTeamName}</p>
           )}
           {event.venue && (
             <p className="text-sm text-gray-500 mt-0.5">{event.venue}</p>
           )}
         </div>
-        <span className={`text-sm text-gray-400 flex-shrink-0 whitespace-nowrap ${onToggleMonitor ? 'pr-7' : ''}`}>{timeLabel}</span>
+        <span className={`order-first text-sm text-gray-400 sm:order-none sm:flex-shrink-0 sm:whitespace-nowrap ${onToggleMonitor ? 'pr-7' : ''}`}>{timeLabel}</span>
       </div>
     </button>
       {onToggleMonitor && (
@@ -509,7 +581,7 @@ export default function CalendarPage() {
     // was kept, not the choice, so a reload dropped a phone user back to the
     // month grid the flag exists to keep them out of.
     const saved = localStorage.getItem('sportarr.calendarView');
-    return saved === 'month' || saved === 'week' || saved === 'agenda' ? saved : 'month';
+    return isCalendarView(saved) ? saved : 'month';
   });
   const isPhone = useMediaQuery('(max-width: 639px)');
 
@@ -558,6 +630,13 @@ export default function CalendarPage() {
     if (currentView === 'week') {
       const s = addDays(currentDate, -14);
       const e = addDays(currentDate, 14);
+      return { calStart: s.toISOString(), calEnd: e.toISOString() };
+    }
+    if (currentView === 'day') {
+      // A day either side: events are bucketed by the configured timezone,
+      // which can sit hours away from the browser's midnight.
+      const s = addDays(currentDate, -1);
+      const e = addDays(currentDate, 2);
       return { calStart: s.toISOString(), calEnd: e.toISOString() };
     }
     // agenda
@@ -709,6 +788,9 @@ export default function CalendarPage() {
   const headerLabel = useMemo(() => {
     if (!currentDate) return '';
     if (currentView === 'week') return formatWeekLabel(weekDays);
+    if (currentView === 'day') {
+      return currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    }
     if (currentView === 'agenda') {
       const { start, end } = getAgendaRange(currentDate);
       return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
@@ -724,6 +806,10 @@ export default function CalendarPage() {
 
     if (currentView === 'week') {
       return weekDays.some(day => isToday(day));
+    }
+
+    if (currentView === 'day') {
+      return isToday(currentDate);
     }
 
     const { start, end } = getAgendaRange(currentDate);
@@ -818,7 +904,7 @@ export default function CalendarPage() {
 
                 {/* View Switcher */}
                 <div className={TOOLBAR_GROUP_CLASS}>
-                  {(['month', 'week', 'agenda'] as CalendarView[]).map(view => (
+                  {CALENDAR_VIEWS.map(view => (
                     <button
                       key={view}
                       type="button"
@@ -906,8 +992,43 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Calendar Grid - Month/week table or agenda list */}
-        {currentView === 'agenda' ? (
+        {/* Calendar Grid - Month/week table, a single day, or agenda list */}
+        {currentView === 'day' ? (
+          <div
+            className={`rounded-sm bg-gray-950/60 px-4 py-3 ${isToday(currentDate) ? 'ring-1 ring-inset ring-amber-500' : ''}`}
+            data-testid="calendar-day-view"
+          >
+            {getEventsForDay(currentDate).length > 0 ? (
+              <div className="space-y-2">
+                {getEventsForDay(currentDate).map(event => {
+                  const openEvent = () => { if (event.leagueId) navigate(`/leagues/${event.leagueId}?event=${event.id}`); };
+                  return compactView ? (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      timezone={timezone}
+                      onClick={openEvent}
+                      onToggleMonitor={handleToggleMonitor}
+                      toggling={pendingMonitorId === event.id}
+                    />
+                  ) : (
+                    <SpaciousAgendaEventCard
+                      key={event.id}
+                      event={event}
+                      timezone={timezone}
+                      onClick={openEvent}
+                      onToggleMonitor={handleToggleMonitor}
+                      toggling={pendingMonitorId === event.id}
+                      showDate={false}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-gray-500">No events on this day</div>
+            )}
+          </div>
+        ) : currentView === 'agenda' ? (
           <div className="rounded-sm bg-gray-950/60 px-4 py-2" data-testid="calendar-agenda">
             {agendaGroups.length > 0 ? (
               agendaGroups.map(group => (
@@ -986,26 +1107,25 @@ export default function CalendarPage() {
                                 agenda (Google month pattern - cells are too small
                                 for titled chips). sm+: full event chips. */}
                             {isPhone ? (
-                              dayEvents.length > 0 && (
+                              // The whole cell is the tap target, empty days
+                              // included, so any day can be opened on its own.
+                              (
                                 <button
                                   type="button"
-                                  aria-label={`${dayEvents.length} events on ${day.date.toDateString()}`}
+                                  data-testid={`calendar-day-open-${formatDateInputValue(day.date)}`}
+                                  aria-label={`${dayEvents.length} ${dayEvents.length === 1 ? 'event' : 'events'} on ${day.date.toDateString()}`}
                                   onClick={() => {
                                     localStorage.setItem('sportarr.calendarViewChosen', '1');
-
-                                    localStorage.setItem('sportarr.calendarView', 'agenda');
-                                    // Anchor the agenda on the day that was
-                                    // tapped. Switching the view alone left it
-                                    // anchored wherever it already was, so the
-                                    // agenda opened on another date and the
-                                    // events just tapped could be far down the
-                                    // list or, for a spillover cell from the
-                                    // neighbouring month, outside the range
-                                    // altogether.
+                                    localStorage.setItem('sportarr.calendarView', 'day');
+                                    // Open exactly the day that was tapped.
+                                    // This used to switch to the agenda, which
+                                    // lists a month from the day before, so the
+                                    // tapped day's events were mixed in with
+                                    // everything after them.
                                     setCurrentDate(day.date);
-                                    setCurrentView('agenda');
+                                    setCurrentView('day');
                                   }}
-                                  className="flex flex-wrap items-center gap-1 px-0.5 pt-1"
+                                  className="absolute inset-0 z-10 flex flex-wrap content-end items-center gap-1 px-1.5 pb-1.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-red-500"
                                 >
                                   {dayEvents.slice(0, 4).map(event => (
                                     <span
