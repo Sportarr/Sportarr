@@ -236,6 +236,16 @@ public class League
     public string? MonitoredEventTypes { get; set; }
 
     /// <summary>
+    /// Which events to monitor for a league with a facet schema (see
+    /// EventFacets), for example gender and discipline in alpine skiing.
+    /// JSON list of rules. Each rule maps a dimension to a list of values or
+    /// "*". An event is monitored when any rule matches it.
+    /// Example: [{"gender":["Men"],"discipline":["Downhill","Super G"]},{"gender":["Women"],"discipline":["Slalom"]}]
+    /// Null means all events are monitored. "[]" means none.
+    /// </summary>
+    public string? MonitoredFacets { get; set; }
+
+    /// <summary>
     /// Optional quality profile per session/event type, stored as a JSON map of
     /// type name to profile id (e.g. {"Race":2,"Free Practice 1":5} for
     /// motorsport sessions, {"PPV":3,"Weekly":1} for fighting/wrestling event
@@ -520,6 +530,9 @@ public class AddLeagueRequest
     /// </summary>
     public string? MonitoredEventTypes { get; set; }
 
+    /// <summary>JSON list of facet rules (see League.MonitoredFacets).</summary>
+    public string? MonitoredFacets { get; set; }
+
     /// <summary>JSON map of session/event type name to quality profile id (see League).</summary>
     public string? SessionTypeQualityProfiles { get; set; }
 
@@ -575,6 +588,7 @@ public class AddLeagueRequest
                 : MonitoredParts,
             MonitoredSessionTypes = MonitoredSessionTypes,
             MonitoredEventTypes = MonitoredEventTypes,
+            MonitoredFacets = MonitoredFacets,
             SessionTypeQualityProfiles = SessionTypeQualityProfiles,
             MonitorFinals = FinalTeamMode.HasValue ? FinalTeamMode == SpecialEventTeamMode.AllTeams : MonitorFinals,
             MonitorPlayoffs = PlayoffTeamMode.HasValue ? PlayoffTeamMode == SpecialEventTeamMode.AllTeams : MonitorPlayoffs,
@@ -632,6 +646,7 @@ public class LeagueResponse
     public string? PartsBeforeFullEvent { get; set; }
     public string? MonitoredSessionTypes { get; set; }
     public string? MonitoredEventTypes { get; set; }
+    public string? MonitoredFacets { get; set; }
     public string? SessionTypeQualityProfiles { get; set; }
     public bool MonitorFinals { get; set; }
     public bool MonitorPlayoffs { get; set; }
@@ -794,6 +809,7 @@ public class LeagueResponse
             PartsBeforeFullEvent = league.PartsBeforeFullEvent,
             MonitoredSessionTypes = league.MonitoredSessionTypes,
             MonitoredEventTypes = league.MonitoredEventTypes,
+            MonitoredFacets = league.MonitoredFacets,
             SessionTypeQualityProfiles = league.SessionTypeQualityProfiles,
             MonitorFinals = league.MonitorFinals,
             MonitorPlayoffs = league.MonitorPlayoffs,

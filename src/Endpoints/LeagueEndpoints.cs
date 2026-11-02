@@ -212,6 +212,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.PartsBeforeFullEvent,
         league.MonitoredSessionTypes,
         league.MonitoredEventTypes,
+        league.MonitoredFacets,
         league.SessionTypeQualityProfiles,
         // The edit modal initializes its checkboxes from this response, so
         // every flag it can save must round-trip here - omitting one means
@@ -757,6 +758,20 @@ app.MapGet("/api/motorsport/session-types", (string leagueName) =>
     return Results.Ok(sessionTypes);
 });
 
+// API: Get the facet schema of a league, for example gender and discipline.
+// The Add League modal shows one choice per dimension. 204 means the league
+// has no facets.
+app.MapGet("/api/leagues/facets", (string? sport, string? leagueName, string? externalId) =>
+{
+    var schema = EventFacets.GetSchema(sport, leagueName, externalId);
+    if (schema == null) return Results.NoContent();
+    return Results.Ok(new
+    {
+        schema.Id,
+        Dimensions = schema.Dimensions.Select(d => new { d.Key, d.Label, d.Values })
+    });
+});
+
 // API: Get fighting event types for a league (based on league name)
 // Used by the Add League modal to show which event types can be monitored (UFC PPV, Fight Night, DWCS)
 app.MapGet("/api/fighting/event-types", (string leagueName) =>
@@ -1078,6 +1093,36 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Facet rules, for example gender and discipline in alpine skiing. The UI
+    // sends a JSON string. A raw array is accepted too.
+    bool facetsChanged = false;
+    if (body.TryGetProperty("monitoredFacets", out var facetsProp))
+    {
+        if (facetsProp.ValueKind is not (JsonValueKind.Null or JsonValueKind.String or JsonValueKind.Array))
+        {
+            return Results.BadRequest(new { error = "monitoredFacets must be a JSON list of rules" });
+        }
+        string? requestedFacets = facetsProp.ValueKind switch
+        {
+            JsonValueKind.String => facetsProp.GetString(),
+            JsonValueKind.Array => facetsProp.GetRawText(),
+            _ => null
+        };
+        var normalizedFacets = EventFacets.NormalizeForLeague(league.Sport, league.Name, league.ExternalId,
+            requestedFacets, league.MonitoredFacets, out var facetsError);
+        if (facetsError != null)
+        {
+            return Results.BadRequest(new { error = facetsError });
+        }
+        if (league.MonitoredFacets != normalizedFacets)
+        {
+            logger.LogInformation("[LEAGUES] MonitoredFacets changing from '{Old}' to '{New}'",
+                league.MonitoredFacets ?? "(all)", normalizedFacets ?? "(all)");
+            league.MonitoredFacets = normalizedFacets;
+            facetsChanged = true;
+        }
+    }
+
     // Which end of a season the event list starts at. Display only. No
     // resync, because it changes nothing about which events the league holds.
     if (body.TryGetProperty("eventSortOrder", out var sortOrderProp) &&
@@ -1272,10 +1317,10 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     }
 
     // Determine if we need to recalculate event monitoring
-    // This happens when: monitored, monitorType, sessionTypes, or eventTypes changes
-    bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged || eventTypesChanged;
-    logger.LogInformation("[LEAGUES] Event update needed: {Needed} (monitoredChanged={MC}, monitorTypeChanged={MTC}, sessionTypesChanged={STC}, eventTypesChanged={ETC})",
-        needsEventUpdate, monitoredChanged, monitorTypeChanged, sessionTypesChanged, eventTypesChanged);
+    // This happens when: monitored, monitorType, sessionTypes, eventTypes or facets changes
+    bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged || eventTypesChanged || facetsChanged;
+    logger.LogInformation("[LEAGUES] Event update needed: {Needed} (monitoredChanged={MC}, monitorTypeChanged={MTC}, sessionTypesChanged={STC}, eventTypesChanged={ETC}, facetsChanged={FC})",
+        needsEventUpdate, monitoredChanged, monitorTypeChanged, sessionTypesChanged, eventTypesChanged, facetsChanged);
 
     if (needsEventUpdate)
     {
@@ -1360,6 +1405,21 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                     logger.LogDebug("[LEAGUES] Event '{Title}': session type filter applied, monitored = {IsMonitored} (filter: '{Filter}')",
                         evt.Title, isSessionMonitored, league.MonitoredSessionTypes);
                     shouldMonitor = isSessionMonitored;
+                }
+
+                // Apply the facet rules (gender, discipline, ...). Null = all events.
+                // A change to the rules applies them to every event. This also
+                // turns off an excluded event that the user monitored by hand.
+                // This is intentional, because the new rules are the newer
+                // choice. The next sync monitors
+                // followed-athlete events again (see LeagueEventSyncService).
+                // A save that keeps the rules never newly monitors an excluded
+                // event. It keeps the monitored state that the event has now.
+                if (shouldMonitor && !EventFacets.IsMonitored(league, evt.Title))
+                {
+                    shouldMonitor = facetsChanged ? false : evt.Monitored;
+                    logger.LogDebug("[LEAGUES] Event '{Title}': facet rules exclude it, monitored = {IsMonitored} (rules: '{Rules}')",
+                        evt.Title, shouldMonitor, league.MonitoredFacets);
                 }
 
                 // Apply UFC-style fighting event type filter (PPV, FightNight, ContenderSeries)

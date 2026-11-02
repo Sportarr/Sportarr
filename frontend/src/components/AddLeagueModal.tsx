@@ -17,6 +17,14 @@ import {
   togglePartChoice,
 } from '../utils/leagueSportRules';
 import ConfirmationModal from './ConfirmationModal';
+import EventFacetPicker from './EventFacetPicker';
+import {
+  describeFacetSelection,
+  parseFacetRules,
+  serializeFacetRules,
+  type FacetRule,
+  type FacetSchema,
+} from '../utils/eventFacets';
 import TagSelector from './TagSelector';
 import { isOlderGroupForcedOpen, partitionTeamsByRecency } from '../utils/teamRecency';
 
@@ -87,7 +95,8 @@ interface AddLeagueModalProps {
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
     enableDvr: boolean,
-    keepAllEvents: boolean
+    keepAllEvents: boolean,
+    monitoredFacets: string | null
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -135,6 +144,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   // For UFC-style fighting leagues: event types to monitor (PPV, Fight Night, DWCS)
   const [monitoredEventTypes, setMonitoredEventTypes] = useState<Set<string>>(new Set());
   const [selectAllEventTypes, setSelectAllEventTypes] = useState(false);
+  // For leagues with event facets (gender, discipline). null = all events.
+  const [monitoredFacets, setMonitoredFacets] = useState<FacetRule[] | null>(null);
   // Optional quality profile per session/event type (type name -> profile id).
   // Types without an entry use the league's quality profile. For multi-part
   // fight cards the profile applies to the whole event, so every part of a
@@ -249,6 +260,22 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   });
 
   const availableEventTypes = eventTypesResponse || [];
+
+  // Facet schema (gender, discipline, ...). 204 means the league has none.
+  const { data: facetSchema, isPending: facetSchemaPending } = useQuery({
+    queryKey: ['league-facets', league?.strSport, league?.strLeague, league?.idLeague],
+    queryFn: async () => {
+      if (!league) return null;
+      const query = new URLSearchParams({ sport: league.strSport, leagueName: league.strLeague });
+      if (league.idLeague) query.set('externalId', league.idLeague);
+      const response = await apiGet(`/api/leagues/facets?${query}`);
+      if (!response.ok) throw new Error('Failed to fetch event filters');
+      if (response.status === 204) return null;
+      return response.json() as Promise<FacetSchema>;
+    },
+    enabled: isOpen && !!league,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Fetch existing league settings if in edit mode
   // IMPORTANT: Use string for query key to match LeagueDetailPage's useParams (which returns strings)
@@ -384,7 +411,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const settingsNotReady = !!league && (
     (editMode && !existingLeague) ||
     (isMotorsport(league.strSport) && sessionTypesPending) ||
-    (usesFightingEventTypes(league.strSport, league.strLeague) && eventTypesPending)
+    (usesFightingEventTypes(league.strSport, league.strLeague) && eventTypesPending) ||
+    (isOpen && facetSchemaPending)
   );
 
   // Real-time filtering based on search query and selected team
@@ -445,6 +473,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         monitoredParts: existingLeague.monitoredParts,
         monitoredSessionTypes: existingLeague.monitoredSessionTypes,
         monitoredEventTypes: existingLeague.monitoredEventTypes,
+        monitoredFacets: existingLeague.monitoredFacets,
         searchForMissingEvents: existingLeague.searchForMissingEvents,
         searchForCutoffUnmetEvents: existingLeague.searchForCutoffUnmetEvents,
         monitorFinals: existingLeague.monitorFinals,
@@ -486,6 +515,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchQueryTemplate(existingLeague.searchQueryTemplate || '');
       setSearchTemplatePreview(null);
       setSelectedTags(existingLeague.tags || []);
+      setMonitoredFacets(parseFacetRules(existingLeague.monitoredFacets));
 
       // Load monitored parts (only for fighting sports)
       // null = all parts monitored (default)
@@ -616,6 +646,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchTemplatePreview(null);
       setSelectedTags([]);
       setSessionTypeQualityProfiles({});
+      setMonitoredFacets(null);
 
       // For fighting sports: default to all parts selected
       // Other sports (including motorsports) don't use parts
@@ -853,7 +884,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       allowHighlights,
       sessionTypeQualityString,
       enableDvr,
-      keepAllEvents
+      keepAllEvents,
+      // A league without facets keeps what it has stored.
+      facetSchema ? serializeFacetRules(monitoredFacets) : (existingLeague?.monitoredFacets ?? null)
     );
   };
 
@@ -1291,6 +1324,26 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+                {/* Event filters by facet, for example gender and discipline */}
+                {facetSchema && (
+                  <div className="p-6">
+                    <div className="mb-4">
+                      <h4 className="text-lg font-semibold text-white mb-2">
+                        Choose Events to Monitor
+                      </h4>
+                      <p className="text-sm text-gray-400">
+                        Pick the {facetSchema.dimensions.map(d => d.label.toLowerCase()).join(' and ')} you want.
+                      </p>
+                    </div>
+                    <EventFacetPicker
+                      schema={facetSchema}
+                      value={monitoredFacets}
+                      onChange={setMonitoredFacets}
+                      editMode={editMode}
+                    />
                   </div>
                 )}
 
@@ -1767,6 +1820,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         ) : (
                           <span className="text-yellow-500">No session types selected - no events will be monitored</span>
                         )
+                      ) : facetSchema ? (
+                        <span className={monitoredFacets?.length === 0 ? 'text-yellow-500' : undefined}>
+                          {describeFacetSelection(facetSchema, monitoredFacets)}
+                        </span>
                       ) : showTeamSelection ? (
                         teams.length === 0 ? (
                           <span>All events will be monitored (no team data available)</span>

@@ -2360,6 +2360,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("MonitoredEventTypes")
                         .HasColumnType("text");
 
+                    b.Property<string>("MonitoredFacets")
+                        .HasColumnType("text");
+
                     b.Property<string>("MonitoredParts")
                         .HasColumnType("text");
 

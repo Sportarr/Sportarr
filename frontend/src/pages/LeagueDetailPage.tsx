@@ -879,6 +879,7 @@ export default function LeagueDetailPage() {
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
       keepAllEvents?: boolean;
+      monitoredFacets?: string | null;
     }) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
@@ -1037,6 +1038,7 @@ export default function LeagueDetailPage() {
     sessionTypeQualityProfiles: string | null,
     _enableDvr?: boolean,
     keepAllEvents?: boolean,
+    monitoredFacets?: string | null,
   ) => {
     void _rootFolderId;
     void league;
@@ -1064,6 +1066,7 @@ export default function LeagueDetailPage() {
       allowHighlights,
       sessionTypeQualityProfiles,
       keepAllEvents,
+      monitoredFacets,
     });
   };
 

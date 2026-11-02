@@ -1001,6 +1001,13 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
             }
         }
 
+        // Apply the facet rules too. Monitor All must not monitor a gender
+        // or discipline that the league excludes.
+        if (shouldMonitor && !EventFacets.IsMonitored(league, evt.Title))
+        {
+            shouldMonitor = false;
+        }
+
         evt.Monitored = shouldMonitor;
         // A season somebody monitors or unmonitors by hand is their decision
         // either way, so a sync leaves every game in it alone. Only the games

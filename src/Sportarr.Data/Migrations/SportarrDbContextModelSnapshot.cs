@@ -2298,6 +2298,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("MonitoredEventTypes")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("MonitoredFacets")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("MonitoredParts")
                         .HasColumnType("TEXT");
 

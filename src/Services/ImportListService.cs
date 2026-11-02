@@ -112,6 +112,7 @@ public class ImportListService
                 var rangeStart = discoveredEvents.Min(e => e.EventDate.Date);
                 var rangeEndExclusive = discoveredEvents.Max(e => e.EventDate.Date).AddDays(1);
                 existingByKey = (await db.Events
+                    .Include(e => e.League)
                     .Where(e => e.EventDate >= rangeStart && e.EventDate < rangeEndExclusive)
                     .ToListAsync())
                     .GroupBy(e => (e.Title, DateOnly.FromDateTime(e.EventDate)))
@@ -155,7 +156,10 @@ public class ImportListService
                     _logger.LogInformation("[IMPORT LIST] Added event: {Title} ({Date})",
                         discovered.Title, discovered.EventDate.ToString("yyyy-MM-dd"));
                 }
-                else if (importList.MonitorEvents && !existing.Monitored)
+                else if (importList.MonitorEvents && !existing.Monitored
+                    // The league facet rules keep an excluded gender or
+                    // discipline unmonitored.
+                    && (existing.League == null || EventFacets.IsMonitored(existing.League, existing.Title)))
                 {
                     // Update monitoring status if needed
                     existing.Monitored = true;
