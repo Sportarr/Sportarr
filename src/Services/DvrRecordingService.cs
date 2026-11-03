@@ -1951,19 +1951,26 @@ public class DvrRecordingService
         string container,
         int episodeNumber)
     {
+        var brandingDate = eventInfo.BroadcastDate ?? eventInfo.EventDate.Date;
+        var season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString();
+        var episode = episodeNumber.ToString("00");
+
         if (!settings.RenameEvents)
         {
+            // Sportarr makes this file, so there is no release name to keep.
+            // The episode tag stays. Without it a media server can merge two
+            // sessions of one day into one episode (issue #409).
             var timestamp = recording.ScheduledStart.ToString("yyyy-MM-dd_HHmm");
             var unrenamedPartSuffix = !string.IsNullOrEmpty(recording.PartName)
                 ? $" - {SanitizeFileName(recording.PartName)}"
                 : "";
-            return $"{SanitizeFileName(eventInfo.Title)}{unrenamedPartSuffix} [{timestamp}].{container}";
+            var episodeTag = SanitizeFileName(FileNamingService.SeasonEpisodeTag(season, episode));
+            return $"{SanitizeFileName(eventInfo.Title)} - {episodeTag}{unrenamedPartSuffix} [{timestamp}].{container}";
         }
 
         var partSuffix = !string.IsNullOrEmpty(recording.PartName)
             ? $" - {recording.PartName}"
             : "";
-        var brandingDate = eventInfo.BroadcastDate ?? eventInfo.EventDate.Date;
         var tokens = new FileNamingTokens
         {
             EventTitle = eventInfo.Title,
@@ -1976,8 +1983,8 @@ public class DvrRecordingService
             OriginalTitle = recording.Title,
             OriginalFilename = recording.Title,
             Series = eventInfo.League?.Name ?? eventInfo.Sport,
-            Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString(),
-            Episode = episodeNumber.ToString("00"),
+            Season = season,
+            Episode = episode,
             Part = partSuffix
         };
 
