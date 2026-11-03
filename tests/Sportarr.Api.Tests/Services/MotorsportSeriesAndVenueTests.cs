@@ -93,6 +93,44 @@ public class MotorsportSeriesAndVenueTests
         result.Rejections.Should().Contain(r => r.Contains("Location mismatch"));
     }
 
+    [Theory]
+    [InlineData("Miami Grand Prix - Race", "Sky Sports _ Formula1_2026_United_States_Grand_Prix_UNCUT_1080p_AHDTV_x264-DARKSPORT")]
+    [InlineData("Miami Grand Prix - Race", "Formula1.2026.United.States.Grand.Prix.UNCUT.1080p.AHDTV.x264-DARKSPORT")]
+    [InlineData("Miami Grand Prix - Race", "Formula1.2026.Round18.USA.COTA.Race.SKY.F1TV.WEB-DL.1080p.H264.English-MWR")]
+    [InlineData("Las Vegas Grand Prix - Race", "Formula1.2026.United.States.Grand.Prix.UNCUT.1080p.AHDTV.x264-DARKSPORT")]
+    [InlineData("Emilia Romagna Grand Prix - Race", "Formula1.2026.Italian.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("Italian Grand Prix - Race", "Formula1.2026.Imola.Race.1080p.WEB.h264")]
+    public void The_country_race_is_not_taken_for_another_race_in_that_country(string eventTitle, string releaseTitle)
+    {
+        // Issue #419. The United States Grand Prix release was grabbed for the
+        // Miami race every backlog pass, because Miami implied its country.
+        var evt = MotorsportEvent("Formula 1", eventTitle);
+        var release = Rel(releaseTitle);
+
+        var result = _svc.ValidateRelease(release, evt, null, false);
+
+        result.IsHardRejection.Should().BeTrue();
+        result.Rejections.Should().Contain(r => r.Contains("Location mismatch"));
+    }
+
+    [Theory]
+    [InlineData("Miami Grand Prix - Race", "Formula1.2026.USA.Miami.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("Miami Grand Prix - Race", "Formula1.2026.Miami.Grand.Prix.UNCUT.1080p.AHDTV.x264-DARKSPORT")]
+    [InlineData("Las Vegas Grand Prix - Race", "Formula1.2026.USA.Las.Vegas.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.Round18.USA.COTA.Race.SKY.F1TV.WEB-DL.1080p.H264.English-MWR")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.United.States.Grand.Prix.UNCUT.1080p.AHDTV.x264-DARKSPORT")]
+    [InlineData("Emilia Romagna Grand Prix - Race", "Formula1.2026.Italy.Imola.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("Italian Grand Prix - Race", "Formula1.2026.Monza.Race.1080p.WEB.h264")]
+    public void A_release_that_names_the_race_still_matches(string eventTitle, string releaseTitle)
+    {
+        var evt = MotorsportEvent("Formula 1", eventTitle);
+        var release = Rel(releaseTitle);
+
+        var result = _svc.ValidateRelease(release, evt, null, false);
+
+        result.Rejections.Should().NotContain(r => r.Contains("Location mismatch"));
+    }
+
     [Fact]
     public void The_circuit_name_still_matches_its_own_country_event()
     {

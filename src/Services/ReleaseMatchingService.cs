@@ -3231,6 +3231,16 @@ public class ReleaseMatchingService
         { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Zandvoort", "Assen" } },
     };
 
+    // A child is a race of its own when it is a race name, or another
+    // race's alias such as Imola. Britain and United Kingdom share
+    // Silverstone, so an alias of another country does not count.
+    private static bool IsRaceOfItsOwn(string child, string parent) =>
+        MotorsportLocations.ContainsKey(child) ||
+        MotorsportLocations.Any(location =>
+            !location.Key.Equals(parent, StringComparison.OrdinalIgnoreCase) &&
+            !LocationHierarchy.ContainsKey(location.Key) &&
+            location.Value.Contains(child));
+
     private static bool HasSharedMotorsportLocation(string normalizedRelease, string normalizedEvent)
     {
         var selectedRace = GetPrimaryMotorsportLocation(normalizedEvent);
@@ -3303,10 +3313,14 @@ public class ReleaseMatchingService
         // A country therefore only inherits the children that are not races in
         // their own right. "Silverstone" and "Suzuka" are just names for the
         // British and Japanese races; "Miami", "Las Vegas" and "Emilia
-        // Romagna" are races of their own and are never inherited.
+        // Romagna" (Imola) are races of their own and are never inherited.
+        //
+        // The same rule applies upward. Such a race does not imply its
+        // country, because the country name is also the name of another race.
+        // "United States Grand Prix" is Austin, not Miami (issue #419).
         foreach (var (parent, children) in LocationHierarchy)
         {
-            if (children.Any(c => eventLocations.Contains(c)))
+            if (children.Any(c => eventLocations.Contains(c) && !IsRaceOfItsOwn(c, parent)))
                 eventLocations.Add(parent);
         }
 
@@ -3315,7 +3329,7 @@ public class ReleaseMatchingService
             if (!eventLocations.Contains(parent)) continue;
             foreach (var child in children)
             {
-                if (MotorsportLocations.ContainsKey(child)) continue; // a race of its own
+                if (IsRaceOfItsOwn(child, parent)) continue;
                 eventLocations.Add(child);
             }
         }
