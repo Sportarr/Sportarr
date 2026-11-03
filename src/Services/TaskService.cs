@@ -20,6 +20,16 @@ public class TaskService : ITaskService
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellationTokens = new();
     private readonly SemaphoreSlim _taskLock = new(1, 1);
 
+    // The commands of Run Now passes. They run outside the queue and never
+    // go through it. The queue ignores their rows, so a long pass does not
+    // stop it from starting its next task. The command is in the row from
+    // its first save, so the queue can never take one for a plain task.
+    internal static readonly HashSet<string> ManualPassCommands = new(StringComparer.Ordinal)
+    {
+        "BacklogSearch", "ImportListSync", "TvScheduleSync", "TrashSync", "DvrAutoSchedule",
+        "CatchupDownloads", "HealthCheck", "Housekeeping", "EventRetention",
+    };
+
     public TaskService(IServiceScopeFactory scopeFactory, ILogger<TaskService> logger)
     {
         _scopeFactory = scopeFactory;
@@ -93,8 +103,9 @@ public class TaskService : ITaskService
                     // mid-flight could leave a Running row. We don't reset it
                     // here — that's a separate recovery concern — but we do
                     // refuse to start a second concurrent task.
+                    var manualPassCommands = ManualPassCommands.ToList();
                     var runningTask = await db.Tasks
-                        .Where(t => t.Status == Models.TaskStatus.Running)
+                        .Where(t => t.Status == Models.TaskStatus.Running && !manualPassCommands.Contains(t.CommandName))
                         .FirstOrDefaultAsync();
 
                     if (runningTask != null)
@@ -405,6 +416,145 @@ public class TaskService : ITaskService
     }
 
     /// <summary>
+    /// Starts a Run Now of a background service's scheduled pass. The pass
+    /// gets a task row, so it shows as running and stays in the history. It
+    /// runs outside the queue, so a long pass never holds up searches,
+    /// imports or other tasks. Returns null and records nothing while
+    /// another pass of the same service runs.
+    /// </summary>
+    public async Task<AppTask?> StartManualPassAsync(string name, string commandName, IManualPassService service)
+    {
+        var lease = service.PassGate.TryAcquireManual();
+        if (lease == null)
+        {
+            return null;
+        }
+
+        AppTask task;
+        var cts = new CancellationTokenSource();
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+            var now = DateTime.UtcNow;
+            task = new AppTask
+            {
+                Name = name,
+                CommandName = commandName,
+                Status = Models.TaskStatus.Running,
+                Queued = now,
+                Started = now,
+                CancellationId = Guid.NewGuid().ToString()
+            };
+            db.Tasks.Add(task);
+            await db.SaveChangesAsync();
+            _cancellationTokens[task.Id] = cts;
+        }
+        catch
+        {
+            lease.Dispose();
+            cts.Dispose();
+            throw;
+        }
+
+        _logger.LogInformation("[TASK] Starting task: {Name} (ID: {TaskId}) outside the queue", name, task.Id);
+        _ = Task.Run(() => RunManualPassAsync(task.Id, lease, service, cts));
+        return task;
+    }
+
+    private async Task RunManualPassAsync(int taskId, ScheduledPassGate.ManualLease lease, IManualPassService service, CancellationTokenSource cts)
+    {
+        // The lease goes last, after the row is final, so shutdown waits for
+        // the row write too.
+        using (lease)
+        using (cts)
+        {
+            SportarrDbContext? db = null;
+            AppTask? task = null;
+            IServiceScope? scope = null;
+            try
+            {
+                scope = _scopeFactory.CreateScope();
+                db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+                task = await db.Tasks.FindAsync(taskId)
+                    ?? throw new InvalidOperationException($"Task {taskId} is gone");
+
+                await lease.RunAsync(service.PassAsync, cts.Token);
+                task.Status = Models.TaskStatus.Completed;
+                task.Progress = 100;
+                // A pass that does not take a token runs to its end after a
+                // cancel request. It did its work, so it is not shown as
+                // cancelled.
+                task.Message = cts.IsCancellationRequested
+                    ? "Task finished before the cancel request could stop it"
+                    : "Task completed successfully";
+                _logger.LogInformation("[TASK] Completed task: {Name} (ID: {TaskId})", task.Name, task.Id);
+            }
+            catch (OperationCanceledException) when (task != null)
+            {
+                task.Status = Models.TaskStatus.Cancelled;
+                task.Message = "Task was cancelled";
+                _logger.LogInformation("[TASK] Cancelled task: {Name} (ID: {TaskId})", task.Name, task.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[TASK] Failed task: {TaskId}", taskId);
+                if (task != null)
+                {
+                    task.Status = Models.TaskStatus.Failed;
+                    task.Message = ex.Message;
+                    task.Exception = ex.ToString();
+                }
+            }
+            finally
+            {
+                try
+                {
+                    if (task != null && db != null)
+                    {
+                        task.Ended = DateTime.UtcNow;
+                        task.Duration = task.Ended - task.Started;
+                        await PersistTerminalStatusAsync(db, task);
+                    }
+                    else
+                    {
+                        // The row could not be loaded. Write the failure
+                        // straight to it so it does not stay Running.
+                        await MarkManualPassFailedAsync(taskId);
+                    }
+                }
+                finally
+                {
+                    _cancellationTokens.TryRemove(taskId, out _);
+                    scope?.Dispose();
+                }
+            }
+        }
+    }
+
+    private async Task MarkManualPassFailedAsync(int taskId)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+            var task = await db.Tasks.FindAsync(taskId);
+            if (task is { Status: Models.TaskStatus.Running or Models.TaskStatus.Aborting })
+            {
+                task.Status = Models.TaskStatus.Failed;
+                task.Ended = DateTime.UtcNow;
+                task.Duration = task.Ended - task.Started;
+                task.Message = "The task could not start";
+                await db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TASK] Could not record the failure of task {TaskId}; a restart clears it", taskId);
+        }
+    }
+
+    /// <summary>
     /// Cancel a running task
     /// </summary>
     public async Task<bool> CancelTaskAsync(int taskId)
@@ -501,12 +651,36 @@ public class TaskService : ITaskService
             // start a second concurrent task), so flip it back to Queued. We
             // prefer requeue over fail so legitimate work gets retried after
             // a restart.
+            var manualPassCommands = ManualPassCommands.ToList();
             var orphans = await db.Tasks
-                .Where(t => t.Status == Models.TaskStatus.Running)
+                .Where(t => t.Status == Models.TaskStatus.Running
+                    || (t.Status == Models.TaskStatus.Aborting && manualPassCommands.Contains(t.CommandName)))
                 .ToListAsync();
 
             foreach (var orphan in orphans)
             {
+                // A Run Now pass that a user was cancelling when the app
+                // stopped ended as the user asked.
+                if (orphan.Status == Models.TaskStatus.Aborting)
+                {
+                    orphan.Status = Models.TaskStatus.Cancelled;
+                    orphan.Ended = DateTime.UtcNow;
+                    orphan.Message = "Task was cancelled";
+                    continue;
+                }
+
+                // A Run Now pass has no queue command. Its next scheduled
+                // tick does the work again.
+                if (ManualPassCommands.Contains(orphan.CommandName))
+                {
+                    orphan.Status = Models.TaskStatus.Failed;
+                    orphan.Ended = DateTime.UtcNow;
+                    orphan.Message = "Interrupted by a restart";
+                    _logger.LogWarning("[TASK] Run Now task was interrupted by a restart: {Name} (ID: {TaskId})",
+                        orphan.Name, orphan.Id);
+                    continue;
+                }
+
                 orphan.Status = Models.TaskStatus.Queued;
                 orphan.Started = null;
                 orphan.Progress = 0;

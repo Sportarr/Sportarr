@@ -13,13 +13,14 @@ namespace Sportarr.Api.Services;
 /// and a one-time pass that stores the custom format score of library files
 /// that never got one.
 /// </summary>
-public class HousekeepingService : BackgroundService
+public class HousekeepingService : BackgroundService, IManualPassService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(10);
 
     private readonly IServiceProvider _services;
     private readonly ILogger<HousekeepingService> _logger;
+    private readonly ScheduledPassGate _passGate = new();
 
     public HousekeepingService(IServiceProvider services, ILogger<HousekeepingService> logger)
     {
@@ -37,7 +38,11 @@ public class HousekeepingService : BackgroundService
         {
             try
             {
-                await RunOnceAsync(stoppingToken);
+                await _passGate.RunScheduledAsync(() => RunOnceAsync(stoppingToken), Interval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -46,6 +51,19 @@ public class HousekeepingService : BackgroundService
 
             try { await Task.Delay(Interval, stoppingToken); } catch (OperationCanceledException) { break; }
         }
+    }
+
+    /// <summary>
+    /// Runs one maintenance pass now.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken) => await RunOnceAsync(cancellationToken);
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
     }
 
     private async Task RunOnceAsync(CancellationToken ct)

@@ -12,10 +12,11 @@ namespace Sportarr.Api.Services;
 /// 3. Re-check events that may have gotten new channel mappings
 /// 4. Clean up recordings for events that are no longer monitored or in the past
 /// </summary>
-public class DvrAutoSchedulerService : BackgroundService
+public class DvrAutoSchedulerService : BackgroundService, IManualPassService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DvrAutoSchedulerService> _logger;
+    private readonly ScheduledPassGate _passGate = new();
 
     // Check every 15 minutes for new events to schedule
     private readonly TimeSpan _checkInterval = TimeSpan.FromMinutes(15);
@@ -42,17 +43,11 @@ public class DvrAutoSchedulerService : BackgroundService
         {
             try
             {
-                // First, try to schedule events using league-channel mappings
-                var leagueResult = await ScheduleUpcomingEventsAsync(stoppingToken);
-
-                // Then, try to schedule events by matching EPG programs to monitored events
-                var epgResult = await ScheduleEventsFromEpgAsync(stoppingToken);
-
-                if (epgResult.RecordingsScheduled > 0)
-                {
-                    _logger.LogInformation("[DVR Auto-Scheduler] EPG-based scheduling: Scheduled {Count} additional recordings",
-                        epgResult.RecordingsScheduled);
-                }
+                await _passGate.RunScheduledAsync(() => RunPassAsync(stoppingToken), _checkInterval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -63,6 +58,34 @@ public class DvrAutoSchedulerService : BackgroundService
         }
 
         _logger.LogInformation("[DVR Auto-Scheduler] Service stopped");
+    }
+
+    /// <summary>
+    /// Runs one scheduling pass now.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken) => await RunPassAsync(cancellationToken);
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
+    }
+
+    private async Task RunPassAsync(CancellationToken cancellationToken)
+    {
+        // First, try to schedule events using league-channel mappings
+        await ScheduleUpcomingEventsAsync(cancellationToken);
+
+        // Then, try to schedule events by matching EPG programs to monitored events
+        var epgResult = await ScheduleEventsFromEpgAsync(cancellationToken);
+
+        if (epgResult.RecordingsScheduled > 0)
+        {
+            _logger.LogInformation("[DVR Auto-Scheduler] EPG-based scheduling: Scheduled {Count} additional recordings",
+                epgResult.RecordingsScheduled);
+        }
     }
 
     /// <summary>

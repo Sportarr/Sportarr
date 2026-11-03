@@ -33,7 +33,7 @@ namespace Sportarr.Api.Services;
 /// Catchup/timeshift download method ported from timeshifter by
 /// scottrobertson (github.com/scottrobertson/timeshifter).
 /// </summary>
-public class CatchupDownloadService : BackgroundService
+public class CatchupDownloadService : BackgroundService, IManualPassService
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(5);
 
@@ -57,6 +57,10 @@ public class CatchupDownloadService : BackgroundService
     // RefreshArchiveFlagsAsync for why this exists at all.
     private static readonly TimeSpan ArchiveFlagRefreshInterval = TimeSpan.FromHours(24);
     private DateTime _lastArchiveFlagRefresh = DateTime.MinValue;
+
+    // The crash recovery in TickAsync needs this. A row in Recording state at
+    // the start of a tick must not belong to a tick that still runs.
+    private readonly ScheduledPassGate _passGate = new();
 
     public CatchupDownloadService(IServiceProvider services, ILogger<CatchupDownloadService> logger)
     {
@@ -95,7 +99,11 @@ public class CatchupDownloadService : BackgroundService
 
             try
             {
-                await TickAsync(stoppingToken);
+                await _passGate.RunScheduledAsync(() => TickAsync(stoppingToken), TickInterval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -192,6 +200,19 @@ public class CatchupDownloadService : BackgroundService
             .Where(r => r.Method == DvrRecordingMethod.Catchup)
             .OrderBy(r => r.ScheduledEnd)
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Runs one catchup tick now.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken) => await TickAsync(cancellationToken);
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
     }
 
     private async Task TickAsync(CancellationToken ct)

@@ -15,10 +15,11 @@ namespace Sportarr.Api.Services;
 /// old global retention get its value seeded onto every league once, then
 /// the global flag is retired.
 /// </summary>
-public class EventRetentionService : BackgroundService
+public class EventRetentionService : BackgroundService, IManualPassService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<EventRetentionService> _logger;
+    private readonly ScheduledPassGate _passGate = new();
 
     // Retention doesn't need to be checked often - once a day is plenty for a
     // day-granularity threshold.
@@ -43,7 +44,11 @@ public class EventRetentionService : BackgroundService
         {
             try
             {
-                await RunRetentionPassAsync(stoppingToken);
+                await _passGate.RunScheduledAsync(() => RunRetentionPassAsync(stoppingToken), _checkInterval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -57,12 +62,24 @@ public class EventRetentionService : BackgroundService
     }
 
     /// <summary>
+    /// Runs one retention pass now.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken) => await RunRetentionPassAsync(cancellationToken);
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Find old monitored events and old unmonitored events with files,
     /// delete their files (respecting the recycle bin, same as the manual
     /// "delete all files" action), and unmonitor them so they stop being
-    /// re-searched. Returns the number of events processed. Public so the
-    /// task queue / tests can trigger a pass on demand rather than waiting
-    /// for the 24-hour timer.
+    /// re-searched. Returns the number of events processed. Public so
+    /// tests can run a pass directly. Run Now goes through PassAsync.
     /// </summary>
     public async Task<int> RunRetentionPassAsync(CancellationToken cancellationToken)
     {

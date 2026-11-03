@@ -13,6 +13,7 @@ import {
 import CompactTableFrame from '../components/CompactTableFrame';
 import PageHeader from '../components/PageHeader';
 import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
+import ConfirmationModal from '../components/ConfirmationModal';
 import { useCompactView } from '../hooks/useCompactView';
 import { TABLE_ROW_HOVER } from '../utils/designTokens';
 import { parseAsUtc } from '../utils/timezone';
@@ -23,6 +24,7 @@ interface ScheduledTask {
   description: string;
   interval: string;
   triggerable: boolean;
+  confirmMessage?: string | null;
 }
 
 export default function TasksPage() {
@@ -32,6 +34,7 @@ export default function TasksPage() {
   const compactView = useCompactView();
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
   const [triggering, setTriggering] = useState<string | null>(null);
+  const [taskToConfirm, setTaskToConfirm] = useState<ScheduledTask | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -46,20 +49,37 @@ export default function TasksPage() {
     })();
   }, []);
 
-  const handleTrigger = async (task: ScheduledTask) => {
+  const runTask = async (task: ScheduledTask) => {
     setTriggering(task.id);
     try {
       const response = await apiPost(`/api/task/scheduled/${task.id}/trigger`, {});
       if (response.ok) {
         toast.success(`${task.name} triggered`);
       } else {
-        toast.error(`Failed to trigger ${task.name}`);
+        const payload = await response.json().catch(() => null);
+        toast.error(typeof payload?.error === 'string' ? payload.error : `Failed to trigger ${task.name}`);
       }
     } catch {
       toast.error(`Failed to trigger ${task.name}`);
     } finally {
       setTriggering(null);
     }
+  };
+
+  // Tasks that delete things carry a confirmation message from the server.
+  const handleTrigger = (task: ScheduledTask) => {
+    if (task.confirmMessage) {
+      setTaskToConfirm(task);
+      return;
+    }
+    void runTask(task);
+  };
+
+  const handleConfirmRun = () => {
+    if (!taskToConfirm) return;
+    const task = taskToConfirm;
+    setTaskToConfirm(null);
+    void runTask(task);
   };
 
   const formatDate = (dateString: string | null) => {
@@ -391,6 +411,15 @@ export default function TasksPage() {
       {runningTasks.length > 0 && renderTaskSection('Running', runningTasks)}
       {queuedTasks.length > 0 && renderTaskSection('Queued', queuedTasks, true)}
       {renderTaskSection('History', completedTasks)}
+
+      <ConfirmationModal
+        isOpen={taskToConfirm !== null}
+        onClose={() => setTaskToConfirm(null)}
+        onConfirm={handleConfirmRun}
+        title={taskToConfirm ? `Run ${taskToConfirm.name}?` : ''}
+        message={taskToConfirm?.confirmMessage ?? ''}
+        confirmText="Run Now"
+      />
     </PageShell>
   );
 }
