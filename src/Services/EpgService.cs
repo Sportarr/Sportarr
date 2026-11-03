@@ -538,7 +538,8 @@ public class EpgService
         string? country = null,
         bool? hasEpgOnly = null,
         int? limit = null,
-        int offset = 0)
+        int offset = 0,
+        string? search = null)
     {
         _logger.LogDebug("[EPG] Getting TV Guide: {Start} to {End}, sportsOnly={SportsOnly}, scheduledOnly={ScheduledOnly}, group={Group}, country={Country}, hasEpgOnly={HasEpgOnly}",
             startTime, endTime, sportsOnly, scheduledOnly, group, country, hasEpgOnly);
@@ -566,6 +567,18 @@ public class EpgService
         if (!string.IsNullOrEmpty(country))
         {
             channelsQuery = channelsQuery.Where(c => c.Country == country);
+        }
+
+        // The search runs before paging, so it also finds channels past the
+        // ones the guide loads.
+        var searchTerm = search?.Trim();
+        if (!string.IsNullOrEmpty(searchTerm))
+        {
+            var searchLower = searchTerm.ToLower();
+            int? searchNumber = int.TryParse(searchTerm, out var number) ? number : null;
+            channelsQuery = channelsQuery.Where(c =>
+                c.Name.ToLower().Contains(searchLower) ||
+                (searchNumber != null && c.ChannelNumber == searchNumber));
         }
 
         // If hasEpgOnly filter is set, only include channels that have EPG data
