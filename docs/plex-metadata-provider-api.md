@@ -8,6 +8,8 @@ This document specifies the API endpoints required for sportarr.net to implement
 
 **Provider Identifier:** `tv.plex.agents.custom.sportarr`
 
+**Episode summaries:** an episode `summary` is always the spoiler-free line "{Title} · {League} {Season} · Round {N} · {Venue}" (or "{Home} vs {Away}" first for a team event), with missing parts left out. It never carries the event write-up, because a write-up can name the winner. The episode examples below predate this.
+
 ## User Setup in Plex
 
 ### Step 1: Add the Metadata Provider

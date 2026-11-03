@@ -163,7 +163,7 @@ public static class MetadataAgentEndpoints
                 .OrderBy(e => e.EpisodeNumber == null)
                 .ThenBy(e => e.EpisodeNumber)
                 .ThenBy(e => e.EventDate)
-                .Select(ToEpisode)
+                .Select(e => ToEpisode(e, league))
                 .ToList();
 
             return Results.Ok(new { episodes, count = episodes.Count, leagueId, seasonNumber });
@@ -177,8 +177,9 @@ public static class MetadataAgentEndpoints
             if (evt == null)
                 return Results.Ok(new { error = "Episode not found" });
 
+            var league = await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.Id == evt.LeagueId);
             var cast = await apiClient.GetEventCastAsync(evt.ExternalId);
-            return Results.Ok(ToEpisode(evt, cast));
+            return Results.Ok(ToEpisode(evt, league, cast));
         });
 
         // Resolve a single game by series + season + episode number, mirroring
@@ -265,7 +266,7 @@ public static class MetadataAgentEndpoints
                         episode_count = events.Count(e => !IsExcluded(e.Status)),
                         year = ParseYear(seasonLabel) ?? sn
                     },
-                    episode = ToEpisode(evt, cast, partInfo),
+                    episode = ToEpisode(evt, league, cast, partInfo),
                     confidence = 1.0
                 },
                 confidence = 1.0,
@@ -469,15 +470,12 @@ public static class MetadataAgentEndpoints
         return evt == null ? null : await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.Id == evt.LeagueId);
     }
 
-    private static object ToEpisode(Event e) => ToEpisode(e, null);
-
-    private static object ToEpisode(Event e, IReadOnlyList<HubCastMember>? cast) => ToEpisode(e, cast, null);
-
-    private static object ToEpisode(Event e, IReadOnlyList<HubCastMember>? cast, EventPartInfo? part) => new
+    // The league name goes into the spoiler-free summary (see EpisodeMetadataText).
+    private static object ToEpisode(Event e, League? league, IReadOnlyList<HubCastMember>? cast = null, EventPartInfo? part = null) => new
     {
         id = e.ExternalId,
         title = e.Title,
-        summary = e.Description,
+        summary = EpisodeMetadataText.Summary(e, league),
         // The metadata API embeds the image kind in the filename
         // (thumbnail_/poster_/banner_/fanart_) - Images is comma-split into
         // a list with no guaranteed order, so picking FirstOrDefault()
