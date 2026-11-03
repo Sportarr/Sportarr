@@ -1941,36 +1941,33 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                 </div>
               </label>
 
-              {showAdvanced && (
-                <>
-                  {/* Bypass if Above Custom Format Score */}
-                  <label className="flex items-start space-x-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={delayFormData.bypassIfAboveCustomFormatScore}
-                      onChange={(e) => setDelayFormData({ ...delayFormData, bypassIfAboveCustomFormatScore: e.target.checked })}
-                      className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-                    />
-                    <div>
-                      <span className="text-sm font-medium text-gray-300">Bypass if Above Custom Format Score</span>
-                      <p className="text-xs text-gray-500 mt-1">Bypass delay when custom format score is above minimum</p>
-                    </div>
-                  </label>
+              {/* Bypass if Above Custom Format Score */}
+              <label className="flex items-start space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={delayFormData.bypassIfAboveCustomFormatScore}
+                  onChange={(e) => setDelayFormData({ ...delayFormData, bypassIfAboveCustomFormatScore: e.target.checked })}
+                  className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-300">Bypass if Above Custom Format Score</span>
+                  <p className="text-xs text-gray-500 mt-1">Skip the delay when the custom format score reaches the minimum</p>
+                </div>
+              </label>
 
-                  {delayFormData.bypassIfAboveCustomFormatScore && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Minimum Custom Format Score
-                      </label>
-                      <input
-                        type="number"
-                        value={delayFormData.minimumCustomFormatScore}
-                        onChange={(e) => setDelayFormData({ ...delayFormData, minimumCustomFormatScore: parseInt(e.target.value) || 0 })}
-                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                      />
-                    </div>
-                  )}
-                </>
+              {delayFormData.bypassIfAboveCustomFormatScore && (
+                <div>
+                  <label htmlFor="delay-minimum-custom-format-score" className="block text-sm font-medium text-gray-300 mb-2">
+                    Minimum Custom Format Score
+                  </label>
+                  <input
+                    id="delay-minimum-custom-format-score"
+                    type="number"
+                    value={delayFormData.minimumCustomFormatScore}
+                    onChange={(e) => setDelayFormData({ ...delayFormData, minimumCustomFormatScore: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  />
+                </div>
               )}
 
               {/* Tags */}
