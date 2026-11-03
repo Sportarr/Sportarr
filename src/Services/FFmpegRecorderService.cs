@@ -1017,18 +1017,7 @@ public class FFmpegRecorderService
             config.DvrEnableReconnect && await SupportsReconnectOnNetworkErrorAsync(ffmpegPath),
             config.DvrReadTimeoutSeconds);
 
-        // Source-configured extra input options (e.g. custom headers, probe sizes).
-        // Quotes are stripped so a stored value can never smuggle a quoted blob
-        // through the shell-style argument string; what remains is appended as
-        // plain space-separated ffmpeg tokens ahead of -i.
-        if (!string.IsNullOrWhiteSpace(extraInputArgs))
-        {
-            var sanitized = extraInputArgs.Replace("\"", "").Replace("'", "").Trim();
-            if (sanitized.Length > 0)
-            {
-                args.Add(sanitized);
-            }
-        }
+        AppendLiveInputArgs(args, extraInputArgs);
 
         // Input
         args.Add($"-i \"{streamUrl}\"");
@@ -1205,6 +1194,36 @@ public class FFmpegRecorderService
         };
     }
 
+    /// <summary>
+    /// Adds the input options of a live capture that come just before -i:
+    /// the error-tolerant flags, then the source's own input options.
+    /// </summary>
+    internal static void AppendLiveInputArgs(List<string> args, string? extraInputArgs)
+    {
+        // Quotes are stripped so a stored value can never smuggle a quoted blob
+        // through the shell-style argument string; what remains is appended as
+        // plain space-separated ffmpeg tokens ahead of -i.
+        var sanitized = (extraInputArgs ?? "").Replace("\"", "").Replace("'", "").Trim();
+        var sourceTokens = sanitized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+
+        // One corrupt packet from a live feed otherwise ends the capture with
+        // exit 1 (issue #408). These are the flags the remux step uses.
+        // A source that sets one of these options keeps its own value.
+        if (!sourceTokens.Contains("-fflags"))
+        {
+            args.Add("-fflags +genpts+discardcorrupt");
+        }
+        if (!sourceTokens.Contains("-err_detect"))
+        {
+            args.Add("-err_detect ignore_err");
+        }
+
+        if (sanitized.Length > 0)
+        {
+            args.Add(sanitized);
+        }
+    }
+
     private string BuildFFmpegArguments(string streamUrl, string outputPath, string? userAgent)
     {
         // Default to stream copy (no transcoding) - legacy method for backwards compatibility
@@ -1250,6 +1269,8 @@ public class FFmpegRecorderService
         args.Add("-reconnect 1");
         args.Add("-reconnect_streamed 1");
         args.Add("-reconnect_delay_max 5");
+
+        AppendLiveInputArgs(args, null);
 
         // Input
         args.Add($"-i \"{streamUrl}\"");

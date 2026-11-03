@@ -873,6 +873,14 @@ public class DvrRecordingService
         return now >= earlyEndThreshold;
     }
 
+    /// <summary>
+    /// Whether a recorder exit that finalizes as Completed can hide a failed
+    /// stream. True for an error exit inside the early-end grace window. The
+    /// event can still be live at that time, so the tail can be missing.
+    /// </summary>
+    internal static bool EarlyEndMayHideAFailure(int exitCode, DateTime now, DateTime windowEnd)
+        => exitCode != 0 && now < windowEnd.AddSeconds(-30);
+
     public async Task HandleRecorderExitAsync(int recordingId, int exitCode, string? errorSummary)
     {
         var recording = await _db.DvrRecordings
@@ -945,6 +953,12 @@ public class DvrRecordingService
 
             _logger.LogInformation("[DVR] Recording {Id}: recorder exited {When} (scheduled end {End}); finalized as completed ({Size} bytes)",
                 recordingId, now >= windowEnd.AddSeconds(-30) ? "at the end of its window" : "within the early-end grace window", recording.ScheduledEnd, fileSize);
+            if (EarlyEndMayHideAFailure(exitCode, now, windowEnd))
+            {
+                _logger.LogWarning("[DVR] Recording {Id}: recorder exited with code {Code} before the end of its window ({Error}). " +
+                    "It is kept as completed, but the end of the event can be missing",
+                    recordingId, exitCode, string.IsNullOrEmpty(errorSummary) ? "no error output" : SecretRedactor.Message(errorSummary));
+            }
             await AnnounceCompletedRecordingAsync(recording);
             return;
         }
