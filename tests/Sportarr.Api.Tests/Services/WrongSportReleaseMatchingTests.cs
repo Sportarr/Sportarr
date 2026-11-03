@@ -301,4 +301,30 @@ public class WrongSportReleaseMatchingTests
 
         result.Rejections.Should().NotContain(r => r.StartsWith("Series label"));
     }
+
+    // RSS sync never grabbed a real Contender Series release. Its name carries
+    // a season and week such as S10W04, but no card number or year.
+    [Theory]
+    [InlineData("UFC.Tuesday.Night.Contender.Series.S10W04.1080p.WEB.h264-VERUM")]
+    [InlineData("Dana.Whites.Contender.Series.S10W04.1080p.WEB.h264-VERUM")]
+    [InlineData("Dana.Whites.Contender.Series.S10E04.1080p.WEB.h264-VERUM")]
+    [InlineData("DWCS.S10W04.1080p.WEB.h264-VERUM")]
+    public void AContenderSeriesReleaseForTheWeekMatches(string release)
+    {
+        var result = _matchingSvc.ValidateRelease(Rel(release), DwcsWeek(4));
+
+        result.IsHardRejection.Should().BeFalse();
+        result.IsMatch.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("UFC.Tuesday.Night.Contender.Series.S10W05.1080p.WEB.h264-VERUM")]
+    [InlineData("Dana.Whites.Contender.Series.S09W04.1080p.WEB.h264-VERUM")]
+    public void AContenderSeriesReleaseForAnotherWeekOrSeasonIsRejected(string release)
+    {
+        var result = _matchingSvc.ValidateRelease(Rel(release), DwcsWeek(4));
+
+        result.IsMatch.Should().BeFalse();
+        result.Rejections.Should().Contain("Contender Series season or week differs from the event");
+    }
 }

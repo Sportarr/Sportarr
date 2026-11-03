@@ -805,6 +805,22 @@ public class ReleaseMatchingService
             }
         }
 
+        // VALIDATION 0: Contender Series season and week. Its releases carry no
+        // card number or year, so "S10W04" is what names the event.
+        var contenderWeek = ReleaseMatchScorer.ContenderSeriesWeekMatches(normalizedRelease, normalizedEvent);
+        if (contenderWeek == false)
+        {
+            result.Confidence = 0;
+            result.IsHardRejection = true;
+            result.Rejections.Add("Contender Series season or week differs from the event");
+            return result;
+        }
+        if (contenderWeek == true)
+        {
+            result.Confidence += 60;
+            result.MatchReasons.Add("Contender Series season and week match");
+        }
+
         // VALIDATION 1: Event number match (UFC 299, Bellator 300, etc.)
         var eventNumberMatch = ValidateEventNumber(release.Title, evt);
         if (eventNumberMatch.HasValue)
@@ -1701,6 +1717,7 @@ public class ReleaseMatchingService
                 "Combat event identity matches",
                 "Exact fighter matchup matches",
                 "League/organization matches",
+                "Contender Series season and week match",
             };
             bool hasIdentityReason = hasLeagueReleaseIdentity || result.MatchReasons.Any(r =>
                 identityReasons.Any(w => r.StartsWith(w, StringComparison.OrdinalIgnoreCase)));
