@@ -385,43 +385,7 @@ public class CatchupDownloadService : BackgroundService
 
         if (success)
         {
-            // The download is written under a hidden name so a media server
-            // scan passes over it while it grows. Give it its real name now
-            // that nothing is writing to it. A transport-stream capture also
-            // becomes the container the user configured.
-            outputPath = await dvrService.FinalizeCapturePathAsync(outputPath);
-            recording.OutputPath = outputPath;
-
-            recording.Status = DvrRecordingStatus.Completed;
-            recording.ActualEnd = DateTime.UtcNow;
-            recording.DurationSeconds = minutes * 60;
-            recording.ErrorMessage = null;
-            try
-            {
-                recording.FileSize = new FileInfo(outputPath).Length;
-            }
-            catch { /* size is cosmetic; the import probe re-reads the file */ }
-            recording.LastUpdated = DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
-
-            _logger.LogInformation("[Catchup] Downloaded recording {Id} ({Size:F2} GB)",
-                recording.Id, (recording.FileSize ?? 0) / 1e9);
-
-            // Same handoff the live scheduler does after a stop: probe the
-            // file, score quality, create the EventFile, move into the
-            // library. All quality/codec metadata comes from the probe.
-            if (recording.EventId.HasValue)
-            {
-                try
-                {
-                    var eventDvr = scoped.GetRequiredService<EventDvrService>();
-                    await eventDvr.ImportCompletedRecordingAsync(recording.Id);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Catchup] Failed to auto-import recording {Id}", recording.Id);
-                }
-            }
+            await CompleteDownloadAsync(scoped, db, recording, outputPath, minutes, ct);
             return;
         }
 
@@ -449,6 +413,66 @@ public class CatchupDownloadService : BackgroundService
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Finish a successful archive download the same way the live recorder
+    /// finishes a capture: final name, completed status, post-recording
+    /// command and notification, then the library import.
+    /// </summary>
+    internal async Task CompleteDownloadAsync(
+        IServiceProvider scoped,
+        SportarrDbContext db,
+        DvrRecording recording,
+        string outputPath,
+        int minutes,
+        CancellationToken ct)
+    {
+        var dvrService = scoped.GetRequiredService<DvrRecordingService>();
+
+        // The download is written under a hidden name so a media server
+        // scan passes over it while it grows. Give it its real name now
+        // that nothing is writing to it. A transport-stream capture also
+        // becomes the container the user configured.
+        recording.OutputPath = await dvrService.FinalizeCapturePathAsync(outputPath);
+
+        // The post-recording command must get the detected-quality name,
+        // as it does for a live capture.
+        await dvrService.ProbeCompletedOutputAsync(recording);
+        await dvrService.RenameCompletedOutputAsync(recording);
+
+        recording.Status = DvrRecordingStatus.Completed;
+        recording.ActualEnd = DateTime.UtcNow;
+        recording.DurationSeconds = minutes * 60;
+        recording.ErrorMessage = null;
+        try
+        {
+            recording.FileSize = new FileInfo(recording.OutputPath!).Length;
+        }
+        catch { /* size is cosmetic; the import probe re-reads the file */ }
+        recording.LastUpdated = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("[Catchup] Downloaded recording {Id} ({Size:F2} GB)",
+            recording.Id, (recording.FileSize ?? 0) / 1e9);
+
+        await dvrService.AnnounceCompletedRecordingAsync(recording);
+
+        // Same handoff the live scheduler does after a stop: probe the
+        // file, score quality, create the EventFile, move into the
+        // library. All quality/codec metadata comes from the probe.
+        if (recording.EventId.HasValue)
+        {
+            try
+            {
+                var eventDvr = scoped.GetRequiredService<EventDvrService>();
+                await eventDvr.ImportCompletedRecordingAsync(recording.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Catchup] Failed to auto-import recording {Id}", recording.Id);
+            }
+        }
     }
 
     /// <summary>

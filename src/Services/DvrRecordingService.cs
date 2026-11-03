@@ -945,12 +945,7 @@ public class DvrRecordingService
 
             _logger.LogInformation("[DVR] Recording {Id}: recorder exited {When} (scheduled end {End}); finalized as completed ({Size} bytes)",
                 recordingId, now >= windowEnd.AddSeconds(-30) ? "at the end of its window" : "within the early-end grace window", recording.ScheduledEnd, fileSize);
-            FirePostRecordingCommand(recording);
-
-            await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
-                $"Recording completed: {recording.Title}",
-                $"Duration: {duration / 60}m\nSize: {fileSize / 1024.0 / 1024.0:F0} MB",
-                recording);
+            await AnnounceCompletedRecordingAsync(recording);
             return;
         }
 
@@ -1188,16 +1183,26 @@ public class DvrRecordingService
         }
         else if (recording.Status == DvrRecordingStatus.Completed)
         {
-            FirePostRecordingCommand(recording);
-
-            var sizeMb = (result.FileSize ?? 0) / 1024.0 / 1024.0;
-            await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
-                $"Recording completed: {recording.Title}",
-                $"Duration: {(result.DurationSeconds ?? 0) / 60}m\nSize: {sizeMb:F0} MB",
-                recording);
+            await AnnounceCompletedRecordingAsync(recording);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Run the post-recording command and send the completed notification.
+    /// Live captures and catchup downloads both call this once, after the
+    /// final name is set and before the library import.
+    /// </summary>
+    public async Task AnnounceCompletedRecordingAsync(DvrRecording recording)
+    {
+        FirePostRecordingCommand(recording);
+
+        var sizeMb = (recording.FileSize ?? 0) / 1024.0 / 1024.0;
+        await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
+            $"Recording completed: {recording.Title}",
+            $"Duration: {(recording.DurationSeconds ?? 0) / 60}m\nSize: {sizeMb:F0} MB",
+            recording);
     }
 
     /// <summary>
