@@ -365,4 +365,102 @@ public class DvrChannelPinTests
         rotated.ChannelId.Should().Be(2);
         rotated.ChannelPinned.Should().Be(pinned);
     }
+
+    // Issue #406: the scheduler records a team's events on the channel the
+    // user mapped to that team. The re-resolve ranks with the resolver only,
+    // so it moved the recording off that channel a few hours before the game.
+    private static async Task MapTheHomeTeamToAsync(Rig rig, int channelId)
+    {
+        rig.Db.Teams.Add(new Team { Id = 7, ExternalId = "tm-erebus", Name = "Erebus Motorsport", LeagueId = 1, Sport = "Motorsport" });
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChannelTeamMappings.Add(new ChannelTeamMapping { ChannelId = channelId, TeamId = 7, IsPreferred = true });
+        var evt = await rig.Db.Events.SingleAsync();
+        evt.HomeTeamId = 7;
+        await rig.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ReresolveKeepsARecordingOnTheTeamPreferredChannel()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(1, "the user mapped this channel to the team");
+        saved.FallbackChannelIds.Should().Be("[2]", "the backups still follow the guide");
+        saved.ChannelPinned.Should().BeFalse("the backups must keep refreshing");
+    }
+
+    [Fact]
+    public async Task TheAwayTeamsChannelAlsoHoldsTheRecording()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        var evt = await rig.Db.Events.SingleAsync();
+        evt.AwayTeamId = evt.HomeTeamId;
+        rig.Db.Teams.Add(new Team { Id = 8, ExternalId = "tm-home", Name = "Home Side", LeagueId = 1, Sport = "Motorsport" });
+        await rig.Db.SaveChangesAsync();
+        evt.HomeTeamId = 8;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ADisabledTeamChannelDoesNotHoldTheRecording()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1)).IsEnabled = false;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(IptvChannelStatus.Offline)]
+    [InlineData(IptvChannelStatus.Error)]
+    public async Task ADeadTeamChannelDoesNotHoldTheRecording(IptvChannelStatus status)
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1)).Status = status;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task APinStillWinsOverADeadTeamChannel()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: true);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1)).Status = IptvChannelStatus.Offline;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ATeamMappingOnAnotherChannelDoesNotStopAMove()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        rig.Db.IptvChannels.Add(new IptvChannel { Id = 3, SourceId = 1, Name = "Team Channel", StreamUrl = "http://test/3" });
+        await rig.Db.SaveChangesAsync();
+        await MapTheHomeTeamToAsync(rig, channelId: 3);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
 }

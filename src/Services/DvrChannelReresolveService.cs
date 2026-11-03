@@ -27,6 +27,8 @@ namespace Sportarr.Api.Services;
 /// - A rival channel must beat the current one by
 ///   Config.DvrReresolveMinImprovement confidence points. This stops two
 ///   near-equal channels from swapping back and forth on every pass.
+/// - A recording on a channel the user mapped to one of its teams keeps
+///   that channel. Only its backups change.
 /// - The existing row is updated. No second recording is created.
 /// </summary>
 public class DvrChannelReresolveService : BackgroundService
@@ -177,6 +179,18 @@ public class DvrChannelReresolveService : BackgroundService
             return false;
         }
 
+        // The resolver does not read team mappings, so it can rank the team
+        // channel the scheduler chose below a rival. The user mapped that
+        // channel on purpose. The primary stays and the backups still refresh.
+        if (await IsOnATeamMappedChannelAsync(db, recording, ct))
+        {
+            _logger.LogDebug(
+                "[DVR Re-resolve] Recording {Id} is on a channel mapped to one of its teams, leaving its channel alone",
+                recording.Id);
+            await RefreshFallbacksAsync(db, recording, ranked, ct);
+            return false;
+        }
+
         // Score the assigned channel with the same fresh data as its rivals.
         // A channel that dropped out of the list scores zero, which covers a
         // channel the user disabled or deleted since scheduling.
@@ -241,6 +255,32 @@ public class DvrChannelReresolveService : BackgroundService
             currentConfidence, best.Confidence, best.Source);
 
         return true;
+    }
+
+    // Any usable channel the user mapped to the home or the away team counts.
+    // The scheduler can pick the away team's channel, or a second channel of
+    // a team when the first is unhealthy at that time.
+    private static async Task<bool> IsOnATeamMappedChannelAsync(
+        SportarrDbContext db, DvrRecording recording, CancellationToken ct)
+    {
+        var teams = await db.Events
+            .Where(e => e.Id == recording.EventId)
+            .Select(e => new { e.HomeTeamId, e.AwayTeamId })
+            .FirstOrDefaultAsync(ct);
+        if (teams == null || (teams.HomeTeamId == null && teams.AwayTeamId == null))
+        {
+            return false;
+        }
+
+        return await db.ChannelTeamMappings.AnyAsync(m =>
+            m.ChannelId == recording.ChannelId
+            && (m.TeamId == teams.HomeTeamId || m.TeamId == teams.AwayTeamId)
+            && m.Channel != null && m.Channel.IsEnabled
+            && m.Channel.Source != null && m.Channel.Source.IsActive
+            // A team channel that a health check found dead does not hold the
+            // recording, so the resolver can move it to a working channel.
+            && m.Channel.Status != IptvChannelStatus.Offline
+            && m.Channel.Status != IptvChannelStatus.Error, ct);
     }
 
     private async Task RefreshFallbacksAsync(
