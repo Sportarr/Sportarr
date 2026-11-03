@@ -167,10 +167,20 @@ public class ReleaseMatchingService
     {
         new Regex(@"WrestleMania[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new Regex(@"Super[\s\.\-]+Bowl[\s\.\-]+([LXVI]+|\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+    };
+
+    // A week, round or matchday number places an event in its season. Every
+    // series has a Round 4, so this number does not say which series it is.
+    private static readonly Regex[] _slotOrderPatterns = new[]
+    {
         new Regex(@"Week[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new Regex(@"Round[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new Regex(@"Matchday[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
     };
+
+    private static readonly Regex _seriesEpisodeTokenRegex = new(
+        @"(?<![A-Za-z0-9])S\d{1,4}[EW]\d{1,3}(?![0-9])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _labelWordRegex = new(@"[A-Za-z][A-Za-z0-9']*", RegexOptions.Compiled);
 
     private static readonly Regex[] _roundNumberPatterns = new[]
     {
@@ -802,7 +812,9 @@ public class ReleaseMatchingService
             if (eventNumberMatch.Value)
             {
                 result.Confidence += 40;
-                result.MatchReasons.Add("Event number matches");
+                result.MatchReasons.Add(IsSlotNumbered(evt.Title) || IsSlotNumbered(release.Title)
+                    ? "Week or round number matches"
+                    : "Event number matches");
             }
             else
             {
@@ -1709,6 +1721,34 @@ public class ReleaseMatchingService
             }
         }
 
+        // FINAL GATE (part 3): series label. A TV-style name puts its series
+        // before the SxxEyy or SxxWyy token. If that label names neither the
+        // league nor the event, the release is from another show. "The Great
+        // Food Truck Race 2010 S11E05 Belgian Waffles" matched the 2010 Belgian
+        // Grand Prix race. Team sports skip this gate, because broadcast shows
+        // name the teams. A one-word label can be an abbreviation that the
+        // league record does not carry, such as WEC.
+        if (!result.IsHardRejection && evt.League != null && !isTeamSport && !hasLeagueReleaseIdentity)
+        {
+            var episodeToken = _seriesEpisodeTokenRegex.Match(release.Title);
+            if (episodeToken.Success && episodeToken.Index > 0)
+            {
+                var label = release.Title[..episodeToken.Index];
+                var labelWords = _labelWordRegex.Matches(label).Count;
+                if (labelWords > 1 &&
+                    !TitleHasLeagueIdentity(label, evt.Title, evt.League) &&
+                    !LabelSharesLeagueWord(label, evt.League))
+                {
+                    result.Confidence -= 100;
+                    result.IsHardRejection = true;
+                    result.Rejections.Add(
+                        $"Series label '{label.Trim(' ', '.', '-', '_')}' names neither '{evt.League.Name}' nor the event");
+                    _logger.LogTrace("[Release Matching] Hard rejection: series label of '{Release}' names neither league '{League}' nor '{Event}'",
+                        release.Title, evt.League.Name, evt.Title);
+                }
+            }
+        }
+
         // Clamp confidence to 0-100
         result.Confidence = Math.Clamp(result.Confidence, 0, 100);
 
@@ -1903,7 +1943,7 @@ public class ReleaseMatchingService
     {
         // Try the numbered-fight patterns first (UFC 299, Bellator 300 …) then
         // the season-ordinal patterns (WrestleMania, SuperBowl, Week, Round,
-        // Matchday). Both arrays live up top as pre-compiled regex so this
+        // Matchday). The arrays live up top as pre-compiled regex so this
         // function doesn't re-parse on every release the matcher scans.
         foreach (var pattern in _eventNumberPatterns)
         {
@@ -1911,7 +1951,7 @@ public class ReleaseMatchingService
             if (match.Success && int.TryParse(match.Groups[1].Value, out var number))
                 return number;
         }
-        foreach (var pattern in _eventOrderPatterns)
+        foreach (var pattern in _eventOrderPatterns.Concat(_slotOrderPatterns))
         {
             var match = pattern.Match(title);
             if (match.Success && int.TryParse(match.Groups[1].Value, out var number))
@@ -1920,6 +1960,20 @@ public class ReleaseMatchingService
         }
         return null;
     }
+
+    // A label can give part of the league name, such as "FIA WEC" for the FIA
+    // World Endurance Championship. Words like "cup" or "series" do not count.
+    private static bool LabelSharesLeagueWord(string label, League league)
+    {
+        var labelWords = ExtractSignificantWords(NormalizeTitle(label));
+        return LeagueAliases(league)
+            .SelectMany(alias => ExtractSignificantWords(NormalizeTitle(alias)))
+            .Any(w => !w.All(char.IsDigit) && !GenericEventWords.Contains(w) && labelWords.Contains(w));
+    }
+
+    private static bool IsSlotNumbered(string title) =>
+        !_eventNumberPatterns.Concat(_eventOrderPatterns).Any(p => p.IsMatch(title)) &&
+        _slotOrderPatterns.Any(p => p.IsMatch(title));
 
     /// <summary>
     /// Extract round number from title (e.g., "Round 22", "Round22", "Rd 22")

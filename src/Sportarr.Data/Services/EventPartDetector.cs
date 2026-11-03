@@ -1234,6 +1234,11 @@ public class EventPartDetector
         if (a == null || b == null)
             return false;
 
+        // "UFC 75 Champion vs Champion" names no fighters. A second side with a
+        // given name, as in "Wanderlei Silva vs Thiago Silva", names one.
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase) && !sideB.Trim().Contains(' '))
+            return false;
+
         surnameA = a;
         surnameB = b;
         return true;
