@@ -1268,7 +1268,7 @@ public class RssSyncService : BackgroundService
             || (!string.IsNullOrWhiteSpace(release.DownloadUrl)
                 && string.Equals(p.DownloadUrl, release.DownloadUrl, StringComparison.Ordinal)));
         if (alreadyPending != null)
-            return (false, $"Held by delay profile until {alreadyPending.ReleasableAt:HH:mm}", releasePart);
+            return (false, $"Held by delay profile until {alreadyPending.ReleasableAt:yyyy-MM-dd HH:mm} UTC", releasePart);
 
         // 8. Hold new releases while a pending group exists. A new candidate
         // must join the same choice even when its own delay has elapsed.
@@ -1277,8 +1277,8 @@ public class RssSyncService : BackgroundService
             : release.Protocol.Equals("Usenet", StringComparison.OrdinalIgnoreCase)
                 ? delayProfile.UsenetDelay
                 : delayProfile.TorrentDelay;
-        var bypass = delayProfile?.BypassIfAboveCustomFormatScore == true
-            && release.CustomFormatScore >= delayProfile.MinimumCustomFormatScore;
+        var bypass = delayProfile != null
+            && delayProfileService.BypassesDelay(release, delayProfile, qualityProfile);
         var nowUtc = DateTime.UtcNow;
         var releasableAt = protocolDelay > 0 && !bypass
             ? release.PublishDate.AddMinutes(protocolDelay)
@@ -1324,7 +1324,7 @@ public class RssSyncService : BackgroundService
                 "[RSS Sync] Held release '{Title}' for event '{Event}' until {ReleasableAt} ({Delay}m delay)",
                 release.Title, evt.Title, releasableAt, protocolDelay);
 
-            return (false, $"Held by delay profile until {releasableAt:HH:mm}", releasePart);
+            return (false, $"Held by delay profile until {releasableAt:yyyy-MM-dd HH:mm} UTC", releasePart);
         }
 
         // 9. Check if release quality is allowed AND has no rejections.

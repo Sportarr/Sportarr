@@ -1937,7 +1937,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-300">Bypass if Highest Quality</span>
-                  <p className="text-xs text-gray-500 mt-1">Bypass delay when release has the highest enabled quality profile with the preferred protocol</p>
+                  <p className="text-xs text-gray-500 mt-1">Skip the delay when the release has the best quality the quality profile allows and uses the preferred protocol</p>
                 </div>
               </label>
 
