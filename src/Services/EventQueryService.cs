@@ -508,13 +508,7 @@ public class EventQueryService
     {
         if (GetTeamSportLeaguePrefix(evt.League?.Name, evt.League?.ExternalId) == "NBA")
         {
-            var (homeName, awayName) = ResolveTeamNames(evt);
-            var hasStablePair = !string.IsNullOrWhiteSpace(homeName) &&
-                !string.IsNullOrWhiteSpace(awayName) &&
-                evt.HomeTeamId.HasValue &&
-                evt.AwayTeamId.HasValue &&
-                evt.HomeTeamId.Value != evt.AwayTeamId.Value;
-            if (!hasStablePair)
+            if (!TryGetStablePair(evt, out _, out _))
                 return null;
 
             var queryDate = evt.BroadcastDate ?? evt.EventDate.Date;
@@ -1118,27 +1112,29 @@ public class EventQueryService
         var queryDate = evt.BroadcastDate ?? evt.EventDate.Date;
         var year = queryDate.Year;
         var (homeName, awayName) = ResolveTeamNames(evt);
-        var hasStablePair = !string.IsNullOrWhiteSpace(homeName) &&
+        // The league-specific shapes below were built and checked for games
+        // with both teams linked. They keep that rule.
+        var hasLinkedPair = !string.IsNullOrWhiteSpace(homeName) &&
             !string.IsNullOrWhiteSpace(awayName) &&
             evt.HomeTeamId.HasValue &&
             evt.AwayTeamId.HasValue &&
             evt.HomeTeamId.Value != evt.AwayTeamId.Value;
 
-        if (hasStablePair && string.Equals(leagueName?.Trim(), "FIBA AmeriCup", StringComparison.OrdinalIgnoreCase))
+        if (hasLinkedPair && string.Equals(leagueName?.Trim(), "FIBA AmeriCup", StringComparison.OrdinalIgnoreCase))
         {
             queries.Add($"FIBA AmeriCup {year}");
             AddTeamAliasQueries(evt, leagueName, year, queries);
             return;
         }
 
-        if (hasStablePair && FootballReleaseNamePolicy.IsEnglishChampionship(leagueName))
+        if (hasLinkedPair && FootballReleaseNamePolicy.IsEnglishChampionship(leagueName))
         {
             queries.Add($"EFL Championship {year}");
             AddTeamAliasQueries(evt, "EFL Championship", year, queries);
             return;
         }
 
-        if (hasStablePair && (leaguePrefix == "NBA" || IsVerifiedCompactPairLeague(leagueName) ||
+        if (hasLinkedPair && (leaguePrefix == "NBA" || IsVerifiedCompactPairLeague(leagueName) ||
             FootballReleaseNamePolicy.IsFaCup(leagueName) ||
             FootballReleaseNamePolicy.IsEuropaLeague(leagueName) ||
             FootballReleaseNamePolicy.IsEnglishWomensSuperLeague(leagueName) ||
@@ -1230,8 +1226,8 @@ public class EventQueryService
         // The month and year queries are broad. An indexer that lists newest
         // releases first can fill its page with other games, so the game
         // we want never appears. A query with both team names finds it.
-        if (hasStablePair)
-            queries.Add(BuildTeamPairQuery(leaguePrefix, homeName!, awayName!));
+        if (TryGetStablePair(evt, out var pairFirst, out var pairSecond))
+            queries.Add(BuildTeamPairQuery(leaguePrefix, pairFirst, pairSecond));
         AddTeamAliasQueries(evt, leaguePrefix, year, queries);
     }
 
@@ -1291,6 +1287,50 @@ public class EventQueryService
                 queries.Add(query);
             }
         }
+    }
+
+    private static bool HasLinkedPair(Event evt) =>
+        evt.HomeTeamId.HasValue && evt.AwayTeamId.HasValue;
+
+    private static readonly Regex PlaceholderTeamPattern = new(
+        @"^(tbd|tba|tbc|to be (determined|decided|announced|confirmed)|unknown)\b" +
+        @"|^(winner|loser)s?\b" +
+        @"|^(team|group|seed|qualifier)\s+[a-z0-9]$" +
+        @"|^(home|away)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Two real, different teams whose names give the same query text on
+    /// every search. Team rows exist only for monitored or followed teams,
+    /// so most games have at most one linked id. A linked pair keeps its
+    /// home and away order. Otherwise the names go in alphabetical order.
+    /// </summary>
+    internal static bool TryGetStablePair(Event evt, out string first, out string second)
+    {
+        first = second = "";
+        var (home, away) = ResolveTeamNames(evt);
+        if (string.IsNullOrWhiteSpace(home) || string.IsNullOrWhiteSpace(away))
+            return false;
+
+        if (HasLinkedPair(evt))
+        {
+            if (evt.HomeTeamId!.Value == evt.AwayTeamId!.Value)
+                return false;
+            first = home;
+            second = away;
+            return true;
+        }
+
+        home = home.Trim();
+        away = away.Trim();
+        if (string.Equals(home, away, StringComparison.OrdinalIgnoreCase) ||
+            PlaceholderTeamPattern.IsMatch(home) || PlaceholderTeamPattern.IsMatch(away))
+            return false;
+
+        var homeFirst = string.Compare(home, away, StringComparison.OrdinalIgnoreCase) <= 0;
+        first = homeFirst ? home : away;
+        second = homeFirst ? away : home;
+        return true;
     }
 
     /// <summary>

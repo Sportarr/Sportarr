@@ -188,7 +188,7 @@ public sealed class MotorsportQueryBaselineTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task BasketballDefaultQueriesRemainUnchanged()
+    public async Task BasketballDefaultQueriesGetNoMotorsportQueries()
     {
         await using var rig = await MotorsportQueryHttpHarness.CreateAsync(output);
         rig.Event.Title = "Celtics vs Lakers";
@@ -200,7 +200,8 @@ public sealed class MotorsportQueryBaselineTests(ITestOutputHelper output)
 
         using (new AssertionScope())
         {
-            rig.Transport.Searches.Select(search => search.Query).Should().Equal("NBA 2026 07", "NBA 2026");
+            rig.Transport.Searches.Select(search => search.Query).Should().Equal(
+                "NBA 2026 07", "NBA 2026", "NBA Celtics Lakers", "NBA 2026 07 03");
             await EmptyWithoutTransferAsync(rig, result);
         }
     }
