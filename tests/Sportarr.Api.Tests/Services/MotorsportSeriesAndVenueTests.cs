@@ -161,6 +161,85 @@ public class MotorsportSeriesAndVenueTests
         result.Rejections.Should().NotContain(r => r.Contains("Location mismatch"));
     }
 
+    [Theory]
+    [InlineData("Australian Grand Prix - Race")]
+    [InlineData("Austrian Grand Prix - Race")]
+    [InlineData("Russian Grand Prix - Race")]
+    public void A_country_with_us_inside_its_name_is_not_the_united_states(string eventTitle)
+    {
+        // "US" is inside "Australian", "Austrian" and "Russian". These events
+        // took a United States Grand Prix release as their own.
+        var evt = MotorsportEvent("Formula 1", eventTitle);
+        var release = Rel("Formula1.2026.United.States.Grand.Prix.Race.1080p.WEB.h264");
+
+        var result = _svc.ValidateRelease(release, evt, null, false);
+
+        result.IsHardRejection.Should().BeTrue();
+        result.Rejections.Should().Contain(r => r.Contains("Location mismatch"));
+    }
+
+    [Theory]
+    [InlineData("NASCAR Xfinity Series", "Focused Health 302", "NASCAR.Xfinity.Series.2026.Round05.Focused.Health.302.Las.Vegas.USA.720p.WEB.h264")]
+    [InlineData("NASCAR Cup Series", "Busch Light Clash", "NASCAR.Cup.Series.2026.Busch.Light.Clash.Las.Vegas.USA.720p.WEB.h264")]
+    [InlineData("IndyCar Series", "Grand Prix of Houston", "IndyCar.2026.Grand.Prix.of.Houston.Las.Vegas.USA.720p.WEB.h264")]
+    public void An_event_with_us_inside_a_word_is_not_a_united_states_event(string leagueName, string eventTitle, string releaseTitle)
+    {
+        // "US" is inside "Focused", "Busch" and "Houston". These events became
+        // United States events and rejected a release that names Las Vegas.
+        var evt = MotorsportEvent(leagueName, eventTitle);
+        var release = Rel(releaseTitle);
+
+        var result = _svc.ValidateRelease(release, evt, null, false);
+
+        result.IsHardRejection.Should().BeFalse();
+        result.Rejections.Should().NotContain(r => r.Contains("Location mismatch"));
+    }
+
+    [Theory]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.Mexico.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("US Grand Prix - Race", "Formula1.2026.Mexico.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("USA Grand Prix - Race", "Formula1.2026.Mexico.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("US Grand Prix - Race", "Formula1.2026.USA.Miami.Grand.Prix.Race.1080p.WEB.h264")]
+    public void A_real_united_states_event_still_rejects_another_race(string eventTitle, string releaseTitle)
+    {
+        var evt = MotorsportEvent("Formula 1", eventTitle);
+        var release = Rel(releaseTitle);
+
+        var result = _svc.ValidateRelease(release, evt, null, false);
+
+        result.IsHardRejection.Should().BeTrue();
+        result.Rejections.Should().Contain(r => r.Contains("Location mismatch"));
+    }
+
+    [Theory]
+    [InlineData("US Grand Prix - Race", "Formula1.2026.USA.Austin.Race.1080p.WEB.h264")]
+    [InlineData("USA Grand Prix - Race", "Formula1.2026.United.States.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2005.Indianapolis.Race.720p.WEB.h264")]
+    public void A_real_united_states_event_still_takes_its_own_release(string eventTitle, string releaseTitle)
+    {
+        // "India" is inside "Indianapolis", the old home of this race.
+        var evt = MotorsportEvent("Formula 1", eventTitle);
+        var release = Rel(releaseTitle);
+
+        var result = _svc.ValidateRelease(release, evt, null, false);
+
+        result.IsHardRejection.Should().BeFalse();
+        result.Rejections.Should().NotContain(r => r.Contains("Location mismatch"));
+    }
+
+    [Fact]
+    public void An_americas_event_is_still_a_united_states_event()
+    {
+        // Whole-word matching does not find "America" inside "Americas".
+        var evt = MotorsportEvent("IndyCar Series", "Grand Prix of the Americas");
+        var release = Rel("IndyCar.2026.Grand.Prix.of.Mexico.720p.WEB.h264");
+
+        var result = _svc.ValidateRelease(release, evt, null, false);
+
+        result.IsHardRejection.Should().BeTrue();
+        result.Rejections.Should().Contain(r => r.Contains("Location mismatch"));
+    }
+
     [Fact]
     public void The_circuit_name_still_matches_its_own_country_event()
     {

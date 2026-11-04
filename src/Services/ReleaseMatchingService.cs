@@ -3250,7 +3250,7 @@ public class ReleaseMatchingService
         { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Italian", "Monza", "Mugello", "Italie" } },
         { "Azerbaijan", new(StringComparer.OrdinalIgnoreCase) { "Azerbaijani", "Baku" } },
         { "Singapore", new(StringComparer.OrdinalIgnoreCase) { "Singaporean", "Marina Bay" } },
-        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "COTA", "Austin", "Texas", "Etats Unis" } },
+        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "Americas", "Circuit of the Americas", "COTA", "Austin", "Texas", "Etats Unis" } },
         { "Mexico", new(StringComparer.OrdinalIgnoreCase) { "Mexican", "Mexico City", "Mexique" } },
         { "Brazil", new(StringComparer.OrdinalIgnoreCase) { "Brazilian", "Sao Paulo", "Interlagos", "Bresil" } },
         { "Las Vegas", new(StringComparer.OrdinalIgnoreCase) { "Vegas" } },
@@ -3389,8 +3389,9 @@ public class ReleaseMatchingService
         var eventLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (location, aliases) in MotorsportLocations)
         {
-            if (normalizedEvent.Contains(location, StringComparison.OrdinalIgnoreCase) ||
-                aliases.Any(a => normalizedEvent.Contains(a, StringComparison.OrdinalIgnoreCase)))
+            // Match whole words only. "US" is inside "Australian" and "Houston".
+            if (GetWordBoundaryRegex(location).IsMatch(normalizedEvent) ||
+                aliases.Any(a => GetWordBoundaryRegex(a).IsMatch(normalizedEvent)))
             {
                 eventLocations.Add(location);
                 foreach (var alias in aliases)
@@ -3483,7 +3484,7 @@ public class ReleaseMatchingService
 
             // Check if release contains this different location
             bool releaseHasThisLocation =
-                normalizedRelease.Contains(location, StringComparison.OrdinalIgnoreCase) ||
+                GetWordBoundaryRegex(location).IsMatch(normalizedRelease) ||
                 aliases.Any(a => a.Length > 2 && GetWordBoundaryRegex(a).IsMatch(normalizedRelease));
 
             if (releaseHasThisLocation)
