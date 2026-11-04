@@ -3,7 +3,9 @@
 # Port 1867: Sportarr default port
 
 # Runtime stage only - no build stages needed
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+# .NET 10 images are Ubuntu 24.04 (Noble); Microsoft no longer publishes
+# Debian-based images, so the apt setup below targets Ubuntu.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 
 # Docker metadata labels
 LABEL org.opencontainers.image.title="Sportarr" \
@@ -24,15 +26,16 @@ LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/Sportarr/Sportar
 # Architecture-aware: Intel packages only installed on amd64 (x86_64)
 # ============================================================================
 
-# Enable non-free and non-free-firmware repositories for Intel drivers (amd64 only)
-# Required for intel-media-va-driver-non-free (HEVC encoding on 8th gen+)
-RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
-        sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources; \
-    fi
+# Make sure the universe and multiverse components are enabled. ffmpeg,
+# vainfo and the VAAPI drivers live in universe, and
+# intel-media-va-driver-non-free (HEVC encoding on 8th gen+) lives in
+# multiverse. The stock Ubuntu image already lists both, so this only adds
+# whichever one is missing and changes nothing otherwise.
+RUN sed -i -E '/^Components:/{/universe/!s/$/ universe/;/multiverse/!s/$/ multiverse/}' /etc/apt/sources.list.d/ubuntu.sources
 
 # Cache-bust this layer per build (CI passes a unique value) so the apt
-# security upgrade below always re-runs against the current Debian security
-# suite instead of being served from a stale cached layer. Without it, the
+# security upgrade below always re-runs against the current Ubuntu security
+# pocket instead of being served from a stale cached layer. Without it, the
 # cached layer froze OS packages (libzvbi, sed, libc6, ...) at old versions,
 # which is exactly what the Trivy image scan kept reporting.
 ARG CACHEBUST=dev
@@ -81,7 +84,7 @@ RUN echo "apt layer build: ${CACHEBUST}" && \
     # Security upgrade AFTER the installs above. Running it last means
     # packages pulled in as dependencies of ffmpeg and the GPU drivers
     # (libzvbi0, libglib2.0-0, libudev1, libc6, etc.) also receive the
-    # latest Debian security patches, not just the set the base image
+    # latest Ubuntu security patches, not just the set the base image
     # shipped with. Doing it before the installs left those transitive
     # packages at whatever version the base image pinned, which is what
     # the Trivy OS-package scan flags. -o ...DPkg::Options force-confold
