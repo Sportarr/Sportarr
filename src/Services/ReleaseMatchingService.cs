@@ -3306,11 +3306,40 @@ public class ReleaseMatchingService
     // race's alias such as Imola. Britain and United Kingdom share
     // Silverstone, so an alias of another country does not count.
     private static bool IsRaceOfItsOwn(string child, string parent) =>
-        MotorsportLocations.ContainsKey(child) ||
-        MotorsportLocations.Any(location =>
+        GetOwnRace(child, parent) != null;
+
+    private static string? GetOwnRace(string child, string parent)
+    {
+        if (MotorsportLocations.ContainsKey(child))
+            return child;
+
+        return MotorsportLocations.FirstOrDefault(location =>
             !location.Key.Equals(parent, StringComparison.OrdinalIgnoreCase) &&
             !LocationHierarchy.ContainsKey(location.Key) &&
-            location.Value.Contains(child));
+            location.Value.Contains(child)).Key;
+    }
+
+    private static string? FindOtherRaceInCountry(
+        string normalizedRelease,
+        HashSet<string> eventLocations,
+        HashSet<string> expandedLocations)
+    {
+        foreach (var (parent, children) in LocationHierarchy)
+        {
+            if (!eventLocations.Contains(parent)) continue;
+            foreach (var child in children)
+            {
+                // Imola is an alias of Emilia Romagna. Check that race and all its aliases.
+                var race = GetOwnRace(child, parent);
+                if (race == null) continue;
+
+                if (!expandedLocations.Contains(race) && HasMotorsportLocation(normalizedRelease, race))
+                    return race;
+            }
+        }
+
+        return null;
+    }
 
     private static bool HasSharedMotorsportLocation(string normalizedRelease, string normalizedEvent)
     {
@@ -3416,6 +3445,13 @@ public class ReleaseMatchingService
 
         // Find the primary event location name for error messages
         string eventLocationName = eventLocations.FirstOrDefault() ?? "Unknown";
+
+        // A release that names another race in the event's country is for
+        // that race, even when it also names the country. "USA Miami" is not
+        // the United States Grand Prix (issue #419).
+        var otherRaceInCountry = FindOtherRaceInCountry(normalizedRelease, eventLocations, expandedLocations);
+        if (otherRaceInCountry != null)
+            return (eventLocationName, otherRaceInCountry);
 
         // If the release names the event's OWN location it is for this event, so
         // do not hard-reject it just because some other location-like word also

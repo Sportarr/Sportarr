@@ -114,7 +114,37 @@ public class MotorsportSeriesAndVenueTests
     }
 
     [Theory]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.USA.Miami.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.United.States.Miami.Race.1080p.WEB.h264")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.USA.Las.Vegas.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.American.Vegas.Race.1080p.WEB.h264")]
+    [InlineData("Italian Grand Prix - Race", "Formula1.2026.Italy.Imola.Race.1080p.WEB.h264")]
+    [InlineData("Italian Grand Prix - Race", "Formula1.2026.Italian.Emilia.Romagna.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("Miami Grand Prix - Race", "Formula1.2026.USA.Las.Vegas.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("Las Vegas Grand Prix - Race", "Formula1.2026.USA.Miami.Grand.Prix.Race.1080p.WEB.h264")]
+    public void The_country_race_rejects_another_race_in_that_country_even_with_the_country_named(string eventTitle, string releaseTitle)
+    {
+        // Issue #419, reverse direction. "USA Miami" names the country, but
+        // it is the Miami race, not the Austin race.
+        var evt = MotorsportEvent("Formula 1", eventTitle);
+        var release = Rel(releaseTitle);
+
+        var result = _svc.ValidateRelease(release, evt, null, false);
+
+        result.IsHardRejection.Should().BeTrue();
+        result.Rejections.Should().Contain(r => r.Contains("Location mismatch"));
+    }
+
+    [Theory]
     [InlineData("Miami Grand Prix - Race", "Formula1.2026.USA.Miami.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("Miami Grand Prix - Race", "Formula1.2026.United.States.Miami.Race.1080p.WEB.h264")]
+    [InlineData("Las Vegas Grand Prix - Race", "Formula1.2026.United.States.Las.Vegas.Race.1080p.WEB.h264")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.USA.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.USA.Austin.Race.1080p.WEB.h264")]
+    [InlineData("United States Grand Prix - Race", "Formula1.2026.United.States.COTA.Race.1080p.WEB.h264")]
+    [InlineData("Italian Grand Prix - Race", "Formula1.2026.Italy.Monza.Race.1080p.WEB.h264")]
+    [InlineData("Italian Grand Prix - Race", "Formula1.2026.Italian.Grand.Prix.Race.1080p.WEB.h264")]
+    [InlineData("Emilia Romagna Grand Prix - Race", "Formula1.2026.Italian.Emilia.Romagna.Grand.Prix.Race.1080p.WEB.h264")]
     [InlineData("Miami Grand Prix - Race", "Formula1.2026.Miami.Grand.Prix.UNCUT.1080p.AHDTV.x264-DARKSPORT")]
     [InlineData("Las Vegas Grand Prix - Race", "Formula1.2026.USA.Las.Vegas.Grand.Prix.Race.1080p.WEB.h264")]
     [InlineData("United States Grand Prix - Race", "Formula1.2026.Round18.USA.COTA.Race.SKY.F1TV.WEB-DL.1080p.H264.English-MWR")]
