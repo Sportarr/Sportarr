@@ -365,8 +365,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // An import owns this row until it finishes. Startup recovers interrupted imports.
         if (download.Status == DownloadStatus.Importing) return;
 
-        // Preserve member warnings until the user retries with corrected files or identity.
-        if (PackImportBoundary.IsHeld(download)) return;
+        // Complete holds stay quiet; older rows may still need their final progress poll.
+        if (PackImportBoundary.IsHeld(download) && download.Progress >= 100) return;
 
         // For ImportPending downloads, skip the download client check and just retry import
         // The download already completed on the client, we're just waiting for the file to be accessible
@@ -596,6 +596,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
         {
             download.OutputPath = status.SavePath;
         }
+
+        // Refresh stale progress without clearing the hold or retrying import.
+        if (PackImportBoundary.IsHeld(download)) return;
 
         // Update status based on client response
         // Special handling for Decypharr: "paused" with 100% progress means completed
@@ -856,6 +859,10 @@ public class EnhancedDownloadMonitorService : BackgroundService
         {
             download.Status = DownloadStatus.Importing;
             download.LastUpdate = DateTime.UtcNow;
+
+            // Pack imports reload the row under their job lock. Save this poll
+            // first so that reload cannot restore the previous poll's progress.
+            if (download.IsPack && db != null) await db.SaveChangesAsync();
 
             // Import the download
             var importResult = download.IsPack
