@@ -22,7 +22,7 @@
   <!-- Restore frontend dependencies.
        Incremental on the lockfile rather than on the mere presence of
        node_modules. npm writes node_modules/.package-lock.json on every install
-       (npm 7+; this project already requires Node 20, i.e. npm 9+), so it is an
+       (npm 7+; this project already requires Node 24, i.e. npm 11+), so it is an
        accurate record of what is actually installed. MSBuild skips this target
        while that stamp is newer than package-lock.json, so warm rebuilds cost
        nothing, but a changed lockfile — dependency bump, branch switch, rebase,
@@ -68,7 +68,7 @@
     <Copy SourceFiles="@(FrontendFiles)" DestinationFolder="wwwroot/%(RecursiveDir)" Condition="'$(NpmExitCode)' == '0' AND Exists('../_output/UI')" />
 
     <Message Importance="High" Text="Frontend build complete." Condition="'$(NpmExitCode)' == '0'" />
-    <Warning Text="npm not found - skipping frontend build. Install Node.js 20+ to build the UI." Condition="'$(NpmExitCode)' != '0'" />
+    <Warning Text="npm not found - skipping frontend build. Install Node.js 24+ to build the UI." Condition="'$(NpmExitCode)' != '0'" />
   </Target>
 
   <!-- Expose internal matching helpers (LibraryImportService.CalculateMatchConfidence)
