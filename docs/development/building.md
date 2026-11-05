@@ -1,6 +1,6 @@
 # Building from Source
 
-Requires the .NET 8 SDK and Node.js 20+.
+Requires the .NET 10 SDK and Node.js 20+.
 
 ```bash
 git clone https://github.com/Sportarr/Sportarr.git

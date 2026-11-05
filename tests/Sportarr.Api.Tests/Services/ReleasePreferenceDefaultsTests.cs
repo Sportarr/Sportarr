@@ -3,6 +3,7 @@ using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sportarr.Api.Data;
@@ -51,6 +52,7 @@ public class ReleasePreferenceDefaultsTests
         if (existingInstall)
         {
             await db.Database.MigrateAsync();
+            await AddSafetyNetColumnsAsync(db, connection);
             await InsertSettingsMarkerAsync(connection);
             const string legacyScores = "[{\"Id\":0,\"FormatId\":1,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":2,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":3,\"Format\":null,\"Score\":5},{\"Id\":0,\"FormatId\":4,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":5,\"Format\":null,\"Score\":-10000},{\"Id\":0,\"FormatId\":6,\"Format\":null,\"Score\":0},{\"Id\":0,\"FormatId\":7,\"Format\":null,\"Score\":10}]";
             await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"QualityProfiles\" SET \"FormatItems\" = {legacyScores} WHERE \"Id\" IN (1, 2)");
@@ -508,6 +510,43 @@ public class ReleasePreferenceDefaultsTests
         var cache = new CustomFormatMatchCache(Mock.Of<ILogger<CustomFormatMatchCache>>());
         return new TrashGuideSyncService(db, factory,
             Mock.Of<ILogger<TrashGuideSyncService>>(), cache);
+    }
+
+    /// <summary>
+    /// Some columns come from the DatabaseInitializer safety nets rather than
+    /// a migration, so a real install always has them. Migrating down rebuilds
+    /// tables from the model and copies those columns, so add whichever ones
+    /// the model maps but the migrations didn't create.
+    /// </summary>
+    private static async Task AddSafetyNetColumnsAsync(SportarrDbContext db, SqliteConnection connection)
+    {
+        foreach (var entity in db.Model.GetEntityTypes())
+        {
+            var tableName = entity.GetTableName();
+            if (tableName is null) continue;
+
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var columns = connection.CreateCommand())
+            {
+                columns.CommandText = $"SELECT name FROM pragma_table_info('{tableName}')";
+                await using var reader = await columns.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) existing.Add(reader.GetString(0));
+            }
+
+            // A table the migrations never created isn't one this test rebuilds.
+            if (existing.Count == 0) continue;
+
+            var table = StoreObjectIdentifier.Table(tableName, entity.GetSchema());
+            foreach (var property in entity.GetProperties())
+            {
+                var name = property.GetColumnName(table);
+                if (name is null || !existing.Add(name)) continue;
+
+                var type = property.GetColumnType(table);
+                var definition = property.IsNullable ? $"{type} NULL" : $"{type} NOT NULL DEFAULT 0";
+                await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{tableName}\" ADD COLUMN \"{name}\" {definition}");
+            }
+        }
     }
 
     private static async Task InsertSettingsMarkerAsync(SqliteConnection connection)

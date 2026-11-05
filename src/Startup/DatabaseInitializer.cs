@@ -8,6 +8,8 @@ namespace Sportarr.Api.Startup;
 
 public static class DatabaseInitializer
 {
+    private const string SpecialEventTeamModesMigrationId = "20261015034322_AddSpecialEventTeamModes";
+
     public static async Task InitializeAsync(IServiceProvider services)
     {
         try
@@ -154,6 +156,13 @@ public static class DatabaseInitializer
                 }
             }
         }
+
+        // The SQLite AddSpecialEventTeamModes migration leaves its backfill to the
+        // safety net below, because the columns it reads from may not exist
+        // until then. Note whether this startup applies it so the backfill runs
+        // once, just as it would have inside the migration.
+        var specialEventTeamModesPending = !db.Database.IsNpgsql() &&
+            pendingMigrations.Contains(SpecialEventTeamModesMigrationId);
 
         db.Database.Migrate();
 
@@ -1223,6 +1232,18 @@ public static class DatabaseInitializer
             catch (Exception ex)
             {
                 Console.WriteLine($"[Sportarr] Warning: Could not verify Leagues.{specialCol} column: {ex.Message}");
+            }
+        }
+
+        if (specialEventTeamModesPending)
+        {
+            try
+            {
+                BackfillSpecialEventTeamModes(db);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Sportarr] Warning: Could not carry special event toggles over to team modes: {ex.Message}");
             }
         }
 
@@ -2790,6 +2811,19 @@ public static class DatabaseInitializer
     internal static void EnsureEventTypeFolderColumn(SportarrDbContext db)
     {
         EnsureColumn(db, "MediaManagementSettings", "CreateEventTypeFolders", "INTEGER NOT NULL DEFAULT 0");
+    }
+
+    /// <summary>
+    /// Carries the old MonitorFinals / MonitorPlayoffs / MonitorPreseason
+    /// toggles over to the team modes that replaced them (2 is AllTeams). This
+    /// belongs to the SQLite AddSpecialEventTeamModes migration, but runs here
+    /// because the toggle columns may not exist until the safety nets add them.
+    /// </summary>
+    internal static void BackfillSpecialEventTeamModes(SportarrDbContext db)
+    {
+        db.Database.ExecuteSqlRaw("UPDATE \"Leagues\" SET \"FinalTeamMode\" = 2 WHERE \"MonitorFinals\" = 1");
+        db.Database.ExecuteSqlRaw("UPDATE \"Leagues\" SET \"PlayoffTeamMode\" = 2 WHERE \"MonitorPlayoffs\" = 1");
+        db.Database.ExecuteSqlRaw("UPDATE \"Leagues\" SET \"PreseasonTeamMode\" = 2 WHERE \"MonitorPreseason\" = 1");
     }
 
     internal static void ReconcileExistingColumnMigrations(SportarrDbContext db)
