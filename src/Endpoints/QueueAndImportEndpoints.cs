@@ -198,6 +198,7 @@ app.MapDelete("/api/queue/{id:int}", async (
     {
         404 => Results.NotFound(),
         400 => Results.BadRequest(result.ErrorMessage),
+        409 => Results.Conflict(new { error = result.ErrorMessage }),
         // The row went but the client would not confirm the deletion. Say so
         // rather than returning a bare success for a download still running.
         200 => Results.Ok(new { warning = result.ErrorMessage }),
@@ -255,8 +256,12 @@ app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, D
 });
 
 // API: Queue Operations - Force Import
-app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger) =>
+app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger, [FromServices] DownloadOwnershipCoordinator coordinator) =>
 {
+    using var decision = coordinator.TryEnterExternalDecision();
+    if (decision == null)
+        return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
+
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
         .Include(dq => dq.DownloadClient)
@@ -297,7 +302,7 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, F
 app.MapManualQueueImportEndpoint();
 
 // API: Queue Operations - Retry Import (for failed imports)
-app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger, IServiceProvider services, DownloadClientService downloadClientService) =>
+app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger, IServiceProvider services, DownloadClientService downloadClientService, [FromServices] DownloadOwnershipCoordinator coordinator) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -305,6 +310,12 @@ app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Fi
         .FirstOrDefaultAsync(dq => dq.Id == id);
 
     if (item is null) return Results.NotFound(new { error = "Queue item not found" });
+
+    using var decision = coordinator.TryEnterExternalDecision();
+    if (decision == null)
+        return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
+    await db.Entry(item).ReloadAsync();
+    if (db.Entry(item).State == EntityState.Detached) return Results.NotFound();
 
     var heldPackMember = PackImportBoundary.IsHeld(item);
     if (item.Status != DownloadStatus.Failed && !heldPackMember)
@@ -362,6 +373,32 @@ app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Fi
 });
 
 // API: Pending Imports (Manual Import for External Downloads)
+app.MapGet("/api/queue/ignored", async (SportarrDbContext db) => Results.Ok(
+    await db.PendingImports.AsNoTracking()
+        .Where(p => p.Status == PendingImportStatus.Ignored)
+        .OrderByDescending(p => p.ResolvedAt)
+        .Select(p => new { p.Id, p.Title, ClientName = p.DownloadClient == null ? null : p.DownloadClient.Name, IgnoredAt = p.ResolvedAt })
+        .ToListAsync()));
+
+app.MapPost("/api/queue/ignored/clear", async (QueueRemovalService service) =>
+{
+    var result = await service.ResumeIgnoredAsync();
+    return result.StatusCode == 409
+        ? Results.Conflict(new { error = result.ErrorMessage })
+        : Results.NoContent();
+});
+
+app.MapPost("/api/queue/ignored/{id:int}/resume", async (int id, QueueRemovalService service) =>
+{
+    var result = await service.ResumeIgnoredAsync(id);
+    return result.StatusCode switch
+    {
+        404 => Results.NotFound(),
+        409 => Results.Conflict(new { error = result.ErrorMessage }),
+        _ => Results.NoContent()
+    };
+});
+
 app.MapGet("/api/pending-imports", async (SportarrDbContext db, ConfigService configService) =>
 {
     var config = await configService.GetConfigAsync();
@@ -449,8 +486,12 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     LibraryImportService libraryImportService,
     ConfigService configService,
     EventPartDetector partDetector,
-    CustomFormatService customFormatService) =>
+    CustomFormatService customFormatService,
+    [FromServices] DownloadOwnershipCoordinator coordinator) =>
 {
+    using var decision = coordinator.TryEnterExternalDecision();
+    if (decision == null)
+        return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
     // Accept a pending import and perform the actual import.
     // Body is optional: when present, may carry { metadataOverrides: { quality, source,
     // codec, releaseGroup, originalTitle, languages, indexerFlags, partName, partNumber } }
@@ -503,6 +544,8 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     if (import is null) return Results.NotFound();
     if (import.SuggestedEventId is null)
         return Results.BadRequest(new { error = "No event selected for import" });
+    if (import.Status == PendingImportStatus.Ignored)
+        return Results.Conflict(new { error = "Resume processing this ignored download before importing it." });
 
     try
     {
@@ -815,17 +858,24 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
 app.MapPost("/api/pending-imports/{id:int}/reject", async (
     int id,
     SportarrDbContext db,
+    [FromServices] DownloadOwnershipCoordinator coordinator,
     IServiceScopeFactory scopeFactory,
     ILogger<Program> logger,
     ConfigService configService,
     bool search = false,
     bool? deleteFile = null) =>
 {
+    using var decision = coordinator.TryEnterExternalDecision();
+    if (decision == null)
+        return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
+
     // Reject a pending import (user doesn't want to import it). Hard-deletes the
     // PendingImport row and writes a Blocklist entry so the disk-scan and
     // external-download detectors won't re-discover it on the next poll.
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();
+    if (import.Status == PendingImportStatus.Ignored)
+        return Results.Conflict(new { error = "Unignore this download before changing it." });
 
     var isDvrChoice = import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal);
     if (isDvrChoice
@@ -885,15 +935,22 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
 app.MapDelete("/api/pending-imports/{id:int}", async (
     int id,
     SportarrDbContext db,
+    [FromServices] DownloadOwnershipCoordinator coordinator,
     ConfigService configService,
     ILogger<Program> logger,
     bool? deleteFile = null) =>
 {
+    using var decision = coordinator.TryEnterExternalDecision();
+    if (decision == null)
+        return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
+
     // Delete a pending import record. For a row the scan made from a file
     // on disk the file goes too, the way a download client removal takes
     // the download's files, unless the caller says deleteFile=false.
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();
+    if (import.Status == PendingImportStatus.Ignored)
+        return Results.Conflict(new { error = "Unignore this download before changing it." });
 
     if (import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal))
         return Results.BadRequest(new { error = "Choose a file to keep for this recording." });
@@ -909,16 +966,23 @@ app.MapDelete("/api/pending-imports/{id:int}", async (
 app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
     int id,
     SportarrDbContext db,
+    [FromServices] DownloadOwnershipCoordinator coordinator,
     DownloadClientService downloadClientService,
     IServiceScopeFactory scopeFactory,
     ILogger<Program> logger,
     bool search = false) =>
 {
+    using var decision = coordinator.TryEnterExternalDecision();
+    if (decision == null)
+        return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
+
     var import = await db.PendingImports
         .Include(pi => pi.DownloadClient)
         .FirstOrDefaultAsync(pi => pi.Id == id);
 
     if (import is null) return Results.NotFound();
+    if (import.Status == PendingImportStatus.Ignored)
+        return Results.Conflict(new { error = "Unignore this download before changing it." });
 
     if (import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal))
         return Results.BadRequest(new { error = "Choose a file to keep for this recording." });
@@ -1045,14 +1109,20 @@ app.MapPost("/api/pending-imports/{id:int}/import-pack", async (
     int id,
     SportarrDbContext db,
     PackImportService packImportService,
-    ILogger<Program> logger) =>
+    ILogger<Program> logger,
+    [FromServices] DownloadOwnershipCoordinator coordinator) =>
 {
+    using var decision = coordinator.TryEnterExternalDecision();
+    if (decision == null)
+        return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
     // Import all matching files from a pack-type pending import
     var import = await db.PendingImports
         .Include(pi => pi.DownloadClient)
         .FirstOrDefaultAsync(pi => pi.Id == id);
 
     if (import is null) return Results.NotFound();
+    if (import.Status == PendingImportStatus.Ignored)
+        return Results.Conflict(new { error = "Resume processing this ignored download before importing it." });
     if (!import.IsPack)
         return Results.BadRequest(new { error = "This is not a pack download. Use the regular accept endpoint." });
 

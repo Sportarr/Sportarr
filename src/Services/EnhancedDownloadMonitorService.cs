@@ -1126,8 +1126,6 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
         if (clients.Count == 0) return;
 
-        var ownership = await ReadDownloadOwnershipAsync(pollDb, cancellationToken);
-
         foreach (var client in clients)
         {
             if (cancellationToken.IsCancellationRequested) break;
@@ -1135,6 +1133,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
             try
             {
                 var allDownloads = await downloadClientService.GetAllDownloadsByCategoryAsync(client, client.Category);
+                if (allDownloads.Count == 0) continue;
+                var ownership = await ReadDownloadOwnershipAsync(pollDb, client.Id, cancellationToken);
                 ReconcileTorrentAliases(ownership, allDownloads);
 
                 // Reconcile stale detections: an auto-detected external PendingImport
@@ -1182,7 +1182,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 foreach (var download in allDownloads)
                 {
                     if (ownership.KnownDownloadIds.Contains(download.DownloadId) ||
-                        ownership.PendingDownloadIds.Contains(download.DownloadId)) continue;
+                        ownership.PendingDownloadIds.Contains(download.DownloadId) ||
+                        !string.IsNullOrEmpty(download.TorrentInfoHash) && ownership.LiveHashes.Contains(download.TorrentInfoHash)) continue;
                     if (coordinator.HasAcquisitions || coordinator.IsQuarantined(client.Id, download.DownloadId)) continue;
                     if (!ownership.GrabsByDownloadId.TryGetValue(download.DownloadId, out var previousGrab) &&
                         !string.IsNullOrEmpty(download.TorrentInfoHash) && !ownership.LiveHashes.Contains(download.TorrentInfoHash))
@@ -1200,7 +1201,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     var db = decisionScope.ServiceProvider.GetRequiredService<SportarrDbContext>();
                     var libraryImport = decisionScope.ServiceProvider.GetRequiredService<LibraryImportService>();
                     // Absence before the client poll cannot authorize an import.
-                    ownership = await ReadDownloadOwnershipAsync(db, cancellationToken);
+                    ownership = await ReadDownloadOwnershipAsync(db, client.Id, cancellationToken);
                     ReconcileTorrentAliases(ownership, allDownloads);
                     var knownDownloadIds = ownership.KnownDownloadIds;
                     var pendingDownloadIds = ownership.PendingDownloadIds;
@@ -1226,6 +1227,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                             download.Title, download.DownloadId);
                         continue;
                     }
+                    if (!string.IsNullOrEmpty(download.TorrentInfoHash) && liveHashes.Contains(download.TorrentInfoHash)) continue;
                     // Match the grab by id, then by hash. The hash survives the
                     // id changing under us, and a hash still live in the queue or
                     // in pending imports is already represented, so only a grab
@@ -1517,8 +1519,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
         HashSet<string> BlocklistedTitles);
 
     private static async Task<DownloadOwnershipSnapshot> ReadDownloadOwnershipAsync(
-        SportarrDbContext db, CancellationToken cancellationToken)
+        SportarrDbContext db, int clientId, CancellationToken cancellationToken)
     {
+        // Client job IDs are not globally unique. Keep ownership within this client.
         // Get all known download IDs to filter out:
         // 1. Active downloads in queue (Sportarr-initiated, currently downloading/importing)
         // CASE-INSENSITIVE comparer: qBittorrent/SABnzbd can return the torrent hash or nzb id
@@ -1526,12 +1529,13 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // OrdinalIgnoreCase the HashSet would miss the match and Sportarr-grabbed downloads
         // would re-appear as "external" PendingImport rows.
         var knownDownloadIds = new HashSet<string>(
-            await db.DownloadQueue.Select(d => d.DownloadId).ToListAsync(cancellationToken),
+            await db.DownloadQueue.Where(d => d.DownloadClientId == clientId).Select(d => d.DownloadId).ToListAsync(cancellationToken),
             StringComparer.OrdinalIgnoreCase);
 
         // Include every pending status to prevent repeated detection.
         var pendingDownloadIds = new HashSet<string>(
             await db.PendingImports
+                .Where(pi => pi.DownloadClientId == clientId)
                 .Select(pi => pi.DownloadId)
                 .ToListAsync(cancellationToken),
             StringComparer.OrdinalIgnoreCase);
@@ -1553,11 +1557,15 @@ public class EnhancedDownloadMonitorService : BackgroundService
         var grabsByHash = new Dictionary<string, GrabHistory>(StringComparer.OrdinalIgnoreCase);
         foreach (var grab in await db.GrabHistory
                      .AsNoTracking()
-                     .Where(g => g.DownloadId != null)
+                     .Where(g => g.DownloadId != null && (g.DownloadClientId == clientId ||
+                         g.DownloadClientId == null && g.TorrentInfoHash != null))
                      .OrderBy(g => g.GrabbedAt)
                      .ToListAsync(cancellationToken))
         {
-            grabsByDownloadId[grab.DownloadId!] = grab; // later grabs win
+            // Old grabs may lack a client. Their content hash is usable, but
+            // their unscoped job ID must not claim a different client's job.
+            if (grab.DownloadClientId == clientId)
+                grabsByDownloadId[grab.DownloadId!] = grab; // later grabs win
             if (!string.IsNullOrEmpty(grab.TorrentInfoHash))
             {
                 grabsByHash[grab.TorrentInfoHash] = grab;
@@ -1570,10 +1578,10 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // misses the duplicate. The torrent info hash stays stable.
         var liveHashes = new HashSet<string>(
             (await db.DownloadQueue
-                .Where(d => d.TorrentInfoHash != null)
+                .Where(d => d.DownloadClientId == clientId && d.TorrentInfoHash != null)
                 .Select(d => d.TorrentInfoHash!)
                 .Concat(db.PendingImports
-                    .Where(pi => pi.TorrentInfoHash != null)
+                    .Where(pi => pi.DownloadClientId == clientId && pi.TorrentInfoHash != null)
                     .Select(pi => pi.TorrentInfoHash!))
                 .ToListAsync(cancellationToken))
             .Select(h => h.ToLowerInvariant()),
@@ -1581,13 +1589,13 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
         var knownHashes = new HashSet<string>(
             (await db.DownloadQueue
-                .Where(d => d.TorrentInfoHash != null)
+                .Where(d => d.DownloadClientId == clientId && d.TorrentInfoHash != null)
                 .Select(d => d.TorrentInfoHash!)
                 .Concat(db.PendingImports
-                    .Where(pi => pi.TorrentInfoHash != null)
+                    .Where(pi => pi.DownloadClientId == clientId && pi.TorrentInfoHash != null)
                     .Select(pi => pi.TorrentInfoHash!))
                 .Concat(db.GrabHistory
-                    .Where(g => g.TorrentInfoHash != null)
+                    .Where(g => (g.DownloadClientId == clientId || g.DownloadClientId == null) && g.TorrentInfoHash != null)
                     .Select(g => g.TorrentInfoHash!))
                 .ToListAsync(cancellationToken))
             .Select(h => h.ToLowerInvariant()),

@@ -636,6 +636,7 @@ public class NzbGetClient
                     Size = totalSize,
                     TimeRemaining = null,
                     SavePath = historyItem.DestDir,
+                    SavePathIsJobSpecific = !string.IsNullOrWhiteSpace(historyItem.DestDir),
                     ErrorMessage = status == "failed" ? $"Download failed: {historyItem.Status}" : null
                 };
             }

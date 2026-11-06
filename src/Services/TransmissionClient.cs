@@ -586,6 +586,7 @@ public class TransmissionClient
                 Size = torrent.TotalSize,
                 TimeRemaining = timeRemaining,
                 SavePath = computedSavePath,
+                SavePathIsJobSpecific = !string.IsNullOrWhiteSpace(torrent.Name),
                 Ratio = torrent.DownloadedEver > 0
                     ? (double)torrent.UploadedEver / torrent.DownloadedEver
                     : 0,

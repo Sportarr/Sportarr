@@ -1245,6 +1245,7 @@ public class QBittorrentClient
                 Size = torrent.Size,
                 TimeRemaining = null,
                 SavePath = outputPath,
+                SavePathIsJobSpecific = !string.IsNullOrWhiteSpace(outputPath) && !string.Equals(outputPath?.TrimEnd('/', '\\'), torrent.SavePath.TrimEnd('/', '\\'), StringComparison.OrdinalIgnoreCase),
                 ErrorMessage = "Waiting for debrid service to cache torrent (Real-Debrid / Torbox queue)",
                 Ratio = 0,
                 CompletedAt = null
@@ -1301,7 +1302,8 @@ public class QBittorrentClient
             Downloaded = torrent.Downloaded,
             Size = torrent.Size,
             TimeRemaining = timeRemaining,
-            SavePath = outputPath, // Use the determined output path instead of raw SavePath
+            SavePath = outputPath,
+            SavePathIsJobSpecific = !string.IsNullOrWhiteSpace(outputPath) && !string.Equals(outputPath?.TrimEnd('/', '\\'), torrent.SavePath.TrimEnd('/', '\\'), StringComparison.OrdinalIgnoreCase),
             ErrorMessage = warningMessage,
             Ratio = torrent.Ratio,
             TorrentIsStopped = lowerState is "pausedup" or "stoppedup",

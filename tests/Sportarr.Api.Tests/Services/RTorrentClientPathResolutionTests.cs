@@ -108,18 +108,23 @@ public class RTorrentClientPathResolutionTests
         status.Should().NotBeNull();
         status!.SavePath.Should().Be(torrent.BasePath);
         status.SavePath.Should().NotBe(System.IO.Path.Combine(torrent.Directory, torrent.Name));
+        status.SavePathIsJobSpecific.Should().BeTrue();
     }
 
-    [Fact]
-    public async Task GetTorrentStatus_UsesBasePath_ForSingleFileTorrent()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetTorrentStatus_UsesBasePath_ForSingleFileTorrent(bool hasBasePath)
     {
         var torrent = SingleFileTorrent();
+        if (!hasBasePath) torrent = torrent with { BasePath = "" };
         var client = CreateClient(_ => BuildMulticallResponse(torrent));
 
         var status = await client.GetTorrentStatusAsync(MakeConfig(), SingleFileHash);
 
         status.Should().NotBeNull();
-        status!.SavePath.Should().Be(torrent.BasePath);
-        status.SavePath.Should().EndWith(".mkv");
+        status!.SavePath.Should().Be(hasBasePath ? torrent.BasePath : torrent.Directory);
+        status.SavePathIsJobSpecific.Should().Be(hasBasePath);
+        if (hasBasePath) status.SavePath.Should().EndWith(".mkv");
     }
 }
