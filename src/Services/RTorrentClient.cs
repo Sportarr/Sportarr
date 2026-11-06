@@ -474,6 +474,7 @@ public class RTorrentClient
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
             SavePath = computedSavePath,
+            SavePathIsJobSpecific = !string.IsNullOrWhiteSpace(torrent.BasePath),
             ErrorMessage = null,
             Ratio = torrent.CompletedBytes > 0
                 ? (double)torrent.TotalUploaded / torrent.CompletedBytes

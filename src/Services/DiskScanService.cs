@@ -760,11 +760,12 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
         // Exclude paths the user is currently being asked about (open PendingImport
         // rows) so we don't re-add a duplicate row each scan while it's awaiting
         // resolution.
-        var pendingPaths = new HashSet<string>(
-            await db.PendingImports
-                .Select(pi => pi.FilePath)
-                .ToListAsync(cancellationToken),
-            StringComparer.OrdinalIgnoreCase);
+        var pendingRecords = await db.PendingImports
+            .Select(pi => new { pi.FilePath, pi.Status }).ToListAsync(cancellationToken);
+        var pendingPaths = pendingRecords.Where(p => p.Status != PendingImportStatus.Ignored)
+            .Select(p => p.FilePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ignoredPaths = pendingRecords.Where(p => p.Status == PendingImportStatus.Ignored)
+            .Select(p => DownloadPathSafety.Normalize(p.FilePath)).OfType<string>().ToHashSet(DownloadPathSafety.Comparer);
         // Keep confidence-100 choices because the source is not recorded.
         var refreshablePendingByPath = (await db.PendingImports
                 .Where(pi => pi.DownloadClientId == null && pi.Status == PendingImportStatus.Pending &&
@@ -850,6 +851,8 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                     if (trackedPaths.Contains(filePath) ||
                         blocklistedPaths.Contains(filePath) || activeRecordingPaths.Contains(filePath))
                         continue;
+
+                    if (ignoredPaths.Count > 0 && DownloadPathSafety.FileAndAncestors(filePath).Any(ignoredPaths.Contains)) continue;
 
                     if (pendingPaths.Contains(filePath))
                     {
@@ -965,7 +968,27 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
         }
 
         if (discoveredCount > 0 || refreshedCount > 0)
+        {
+            // The walk uses a snapshot. Serialize only the fresh check and save
+            // with Ignore, so an ignore completed during the walk stays effective.
+            var coordinator = _serviceProvider.GetRequiredService<DownloadOwnershipCoordinator>();
+            using var processing = await coordinator.EnterAcquisitionAsync(cancellationToken);
+            var ignored = await db.PendingImports.AsNoTracking()
+                .Where(p => p.Status == PendingImportStatus.Ignored)
+                .Select(p => new { p.Id, p.FilePath }).ToListAsync(cancellationToken);
+            var ignoredIds = ignored.Select(p => p.Id).ToHashSet();
+            ignoredPaths = ignored.Select(p => DownloadPathSafety.Normalize(p.FilePath))
+                .OfType<string>().ToHashSet(DownloadPathSafety.Comparer);
+            foreach (var entry in db.ChangeTracker.Entries<PendingImport>()
+                         .Where(e => e.State is EntityState.Added or EntityState.Modified).ToArray())
+            {
+                if (!ignoredIds.Contains(entry.Entity.Id) &&
+                    !DownloadPathSafety.FileAndAncestors(entry.Entity.FilePath).Any(ignoredPaths.Contains)) continue;
+                if (entry.State == EntityState.Added) { entry.State = EntityState.Detached; discoveredCount--; }
+                else { entry.State = EntityState.Unchanged; refreshedCount--; }
+            }
             await db.SaveChangesAsync(cancellationToken);
+        }
 
         if (refreshedCount > 0)
             _logger.LogInformation("[Disk Scan] Refreshed {Count} pending event suggestions", refreshedCount);

@@ -944,7 +944,8 @@ public class DownloadClientService : IDownloadClientService
                 Progress = 99,
                 Size = size,
                 Downloaded = size,
-                SavePath = match
+                SavePath = match,
+                SavePathIsJobSpecific = true
             };
         }
 
@@ -955,6 +956,7 @@ public class DownloadClientService : IDownloadClientService
             Size = size,
             Downloaded = size,
             SavePath = match,
+            SavePathIsJobSpecific = true,
             CompletedAt = BlackholeDownloadClient.GetCompletionTimeUtc(match)
         };
     }

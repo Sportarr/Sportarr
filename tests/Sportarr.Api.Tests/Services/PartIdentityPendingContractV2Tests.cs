@@ -1374,6 +1374,7 @@ public class PartIdentityPendingContractV2Tests
         builder.Services.AddSingleton(rig.Services.GetRequiredService<DownloadClientService>());
         builder.Services.AddSingleton(rig.Services.GetRequiredService<PackImportService>());
         builder.Services.AddSingleton(rig.Services.GetRequiredService<CustomFormatService>());
+        builder.Services.AddSingleton(rig.Services.GetRequiredService<DownloadOwnershipCoordinator>());
         // The mapped sibling routes must resolve as services and must never run here.
         builder.Services.AddSingleton<QueueRemovalService>(_ => throw new InvalidOperationException("Unexpected queue removal route"));
         builder.Services.AddSingleton<ImportMatchingService>(_ => includeLeagueScan

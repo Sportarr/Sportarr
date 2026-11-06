@@ -1,5 +1,7 @@
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
@@ -36,12 +38,14 @@ public class DiskScanSuggestionTests : IDisposable
         return new SportarrDbContext(options);
     }
 
-    private static Task InvokeDiscoverAsync(SportarrDbContext db)
+    private static async Task InvokeDiscoverAsync(SportarrDbContext db,
+        DownloadOwnershipCoordinator? coordinator = null, ILogger<DiskScanService>? logger = null)
     {
-        var svc = new DiskScanService(Mock.Of<IServiceProvider>(), Mock.Of<ILogger<DiskScanService>>());
+        using var services = new ServiceCollection().AddSingleton(coordinator ?? new DownloadOwnershipCoordinator()).BuildServiceProvider();
+        var svc = new DiskScanService(services, logger ?? Mock.Of<ILogger<DiskScanService>>());
         var method = typeof(DiskScanService).GetMethod(
             "DiscoverNewFilesAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        return (Task)method.Invoke(svc, new object?[] { db, null, CancellationToken.None })!;
+        await (Task)method.Invoke(svc, new object?[] { db, null, CancellationToken.None })!;
     }
 
     private async Task<(Event Old, Event Current)> SeedAsync(SportarrDbContext db, string fileName)
@@ -61,6 +65,107 @@ public class DiskScanSuggestionTests : IDisposable
         db.Events.AddRange(old, current);
         await db.SaveChangesAsync();
         return (old, current);
+    }
+
+    [Fact]
+    public async Task IgnoresCompletedDuringTheWalkPreventNewCandidatesAndStaleRefreshes()
+    {
+        var coordinator = new DownloadOwnershipCoordinator();
+        var guard = new DiscoverySaveGuard(coordinator);
+        var options = new DbContextOptionsBuilder<SportarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).AddInterceptors(guard).Options;
+        using var db = new SportarrDbContext(options);
+        var folder = Path.Combine(_tempDir, "download");
+        Directory.CreateDirectory(folder);
+        var newFile = Path.Combine(folder, "new.mkv");
+        var existingFile = Path.Combine(_tempDir, "race sportarr-ev-1969755.mkv");
+        var otherFile = Path.Combine(_tempDir, "other.mkv");
+        foreach (var path in new[] { newFile, existingFile, otherFile }) await File.WriteAllTextAsync(path, "fixture");
+        db.RootFolders.Add(new RootFolder { Path = _tempDir });
+        db.Events.Add(new Event { ExternalId = "ev-1969755", Title = "Race", Sport = "Motorsport", EventDate = DateTime.UtcNow });
+        db.PendingImports.Add(new PendingImport { Title = "Race", DownloadId = "existing", FilePath = existingFile });
+        await db.SaveChangesAsync();
+        var ignoredDuringWalk = false;
+        var logger = new Mock<ILogger<DiskScanService>>();
+        logger.Setup(l => l.Log(LogLevel.Debug, It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((state, _) => state.ToString()!.StartsWith("[Disk Scan] Discovered untracked file:")),
+                It.IsAny<Exception?>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()))
+            .Callback(new InvocationAction(_ =>
+            {
+                if (ignoredDuringWalk) return;
+                using var decision = coordinator.TryEnterExternalDecision();
+                Assert.NotNull(decision); // Scanning stays outside the gate.
+                using var writer = new SportarrDbContext(options);
+                var existing = writer.PendingImports.Single();
+                existing.Status = PendingImportStatus.Ignored;
+                existing.FilePath = ""; // A concurrent job-ID-only ignore must retain its metadata.
+                writer.PendingImports.Add(new PendingImport { Title = "Folder", DownloadId = "folder",
+                    FilePath = folder, Status = PendingImportStatus.Ignored });
+                writer.SaveChanges();
+                ignoredDuringWalk = true;
+            }));
+        await InvokeDiscoverAsync(db, coordinator, logger.Object);
+        Assert.True(ignoredDuringWalk && guard.SawCandidateSave);
+        var records = await db.PendingImports.AsNoTracking().ToListAsync();
+        Assert.Equal(3, records.Count);
+        Assert.Equal(otherFile, Assert.Single(records.Where(p => p.Status == PendingImportStatus.Pending)).FilePath);
+        Assert.Equal(0, records.Single(p => p.DownloadId == "existing").SuggestionConfidence);
+        Assert.True(File.Exists(newFile) && File.Exists(existingFile));
+    }
+
+    private sealed class DiscoverySaveGuard(DownloadOwnershipCoordinator coordinator) : SaveChangesInterceptor
+    {
+        public bool SawCandidateSave { get; private set; }
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData data,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (data.Context!.ChangeTracker.Entries<PendingImport>().Any(e => e.State == EntityState.Added && e.Entity.DownloadId.StartsWith("disk-", StringComparison.Ordinal)))
+            {
+                using var decision = coordinator.TryEnterExternalDecision();
+                Assert.Null(decision);
+                SawCandidateSave = true;
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    [Fact]
+    public async Task DoesNotSuppressCaseDistinctFilesBecauseAnotherPathWasIgnored()
+    {
+        using var db = CreateDb();
+        const string fileName = "Race.mkv";
+        await SeedAsync(db, fileName);
+        db.PendingImports.Add(new PendingImport { DownloadId = "ignored", Title = fileName,
+            FilePath = Path.Combine(_tempDir, fileName).ToUpperInvariant(), Status = PendingImportStatus.Ignored });
+        await db.SaveChangesAsync();
+        await InvokeDiscoverAsync(db);
+        Assert.Equal(OperatingSystem.IsWindows() ? 1 : 2, await db.PendingImports.CountAsync());
+    }
+
+    [Fact]
+    public async Task IgnoredDownloadFolderSuppressesChildrenUntilUnignoredButNotSiblingFolders()
+    {
+        using var db = CreateDb();
+        var folder = Path.Combine(_tempDir, "ignored");
+        var sibling = folder + "-other";
+        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(sibling);
+        var ignoredFile = Path.Combine(folder, "race.mkv");
+        var siblingFile = Path.Combine(sibling, "other.mkv");
+        await File.WriteAllTextAsync(ignoredFile, "video");
+        await File.WriteAllTextAsync(siblingFile, "video");
+        db.RootFolders.Add(new RootFolder { Path = _tempDir });
+        var ignored = new PendingImport { Title = "Ignored", DownloadId = "client-job",
+            FilePath = folder + Path.DirectorySeparatorChar, Status = PendingImportStatus.Ignored };
+        db.PendingImports.Add(ignored);
+        await db.SaveChangesAsync();
+        await InvokeDiscoverAsync(db);
+        (await db.PendingImports.ToListAsync()).Should().NotContain(p => p.FilePath == ignoredFile)
+            .And.Contain(p => p.FilePath == siblingFile);
+        db.PendingImports.Remove(ignored);
+        await db.SaveChangesAsync();
+        await InvokeDiscoverAsync(db);
+        (await db.PendingImports.ToListAsync()).Should().ContainSingle(p => p.FilePath == ignoredFile);
     }
 
     [Fact]

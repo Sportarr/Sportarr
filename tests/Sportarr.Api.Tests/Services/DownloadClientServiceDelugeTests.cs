@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,6 +11,37 @@ namespace Sportarr.Api.Tests.Services;
 
 public sealed class DownloadClientServiceDelugeTests
 {
+    [Theory]
+    [InlineData(DownloadClientType.Deluge, "")]
+    [InlineData(DownloadClientType.Deluge, "Race")]
+    [InlineData(DownloadClientType.Transmission, "")]
+    [InlineData(DownloadClientType.Transmission, "Race")]
+    public async Task StatusDistinguishesJobContentFromAnUnnamedSharedRoot(DownloadClientType type, string name)
+    {
+        var root = Path.GetFullPath("downloads");
+        const string job = "fixture-job";
+        using var transport = new DownloadOwnershipRaceHttpHarness.Transport
+        {
+            ClientResponse = async (request, token) =>
+            {
+                var body = await request.Content!.ReadAsStringAsync(token);
+                object payload = type == DownloadClientType.Transmission
+                    ? new { result = "success", arguments = new { torrents = new[] { new { hashString = job, name, downloadDir = root } } } }
+                    : body.Contains("core.get_torrents_status", StringComparison.Ordinal)
+                        ? new { result = new Dictionary<string, object> { [job] = new { name, save_path = root } } }
+                        : new { result = true };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(payload) };
+            }
+        };
+        using var http = new HttpClient(transport);
+        var config = new DownloadClient { Name = "Fixture", Type = type, Host = "ownership-client.invalid", Port = 8080, Category = "" };
+        var status = type == DownloadClientType.Deluge
+            ? await new DelugeClient(http, NullLogger<DelugeClient>.Instance).GetTorrentStatusAsync(config, job)
+            : await new TransmissionClient(http, NullLogger<TransmissionClient>.Instance).GetTorrentStatusAsync(config, job);
+        Assert.Equal(name.Length > 0, status!.SavePathIsJobSpecific);
+        Assert.Equal(name.Length > 0 ? Path.Combine(root, name) : root, status.SavePath);
+    }
+
     [Fact]
     public async Task ProxyFailureIsReportedInsteadOfAClientNullResult()
     {

@@ -23,6 +23,7 @@ import ManualImportModal from '../components/ManualImportModal';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import SegmentedTabs from '../components/SegmentedTabs';
+import IgnoredDownloadsPanel from '../components/IgnoredDownloadsPanel';
 import WantedPage from './WantedPage';
 import { useCompactView, useIsDesktopLayout } from '../hooks/useCompactView';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -303,6 +304,7 @@ export default function ActivityPage() {
   const resumeImport = (location.state as { resumeImport?: ResumeImportState } | null)?.resumeImport ?? null;
   const [resumeLeagueId, setResumeLeagueId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('queue');
+  const [ignoredRefreshToken, setIgnoredRefreshToken] = useState(0);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [pendingImports, setPendingImports] = useState<PendingImport[]>([]);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
@@ -694,7 +696,8 @@ export default function ActivityPage() {
       } else if (activeTab === 'grabHistory') {
         await loadGrabHistory(true);
       } else {
-        await loadBlocklist(true);
+        setIgnoredRefreshToken(value => value + 1);
+        await loadBlocklist(false);
       }
     } finally {
       setIsRefreshing(false);
@@ -2387,8 +2390,11 @@ export default function ActivityPage() {
             <WantedPage key="wanted-cutoff" embedded fixedTab="cutoff-unmet" />
           </div>
         ) : activeTab === 'blocklist' ? (
-          // Blocklist Tab
-          <div className="rounded-lg overflow-hidden">
+          // Separate ignored client jobs from blocked releases on the same screen.
+          <div className="space-y-8">
+            <section aria-labelledby="blocked-releases-heading" className="rounded-lg overflow-hidden">
+              <h2 id="blocked-releases-heading" className="mb-3 text-lg font-semibold">Blocked releases</h2>
+              <p className="mb-4 text-sm text-gray-400">Sportarr skips these releases in automatic searches and RSS grabs. Blocking a release does not stop a job already in your download client. Remove an entry to allow that release to be downloaded automatically again; ignored jobs stay ignored.</p>
             {blocklistItems.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <NoSymbolIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
@@ -2561,6 +2567,11 @@ export default function ActivityPage() {
                 )}
               </>
             )}
+            </section>
+            <section aria-labelledby="ignored-downloads-heading">
+              <h2 id="ignored-downloads-heading" className="mb-3 text-lg font-semibold">Ignored downloads</h2>
+              <IgnoredDownloadsPanel refreshToken={ignoredRefreshToken} compactView={compactView} />
+            </section>
           </div>
         ) : (
           // Grab History Tab
