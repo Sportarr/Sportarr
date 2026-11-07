@@ -785,12 +785,14 @@ public class IptvSourceService
         if (channel == null)
             throw new ArgumentException($"Channel {request.ChannelId} not found");
 
-        // Remove existing mappings
         var existingMappings = await _db.ChannelLeagueMappings
             .Where(m => m.ChannelId == request.ChannelId)
             .ToListAsync();
 
-        _db.ChannelLeagueMappings.RemoveRange(existingMappings);
+        // The form lists mapped leagues only, so an exclusion is never in the
+        // request. Keep it unless the user maps that league again.
+        _db.ChannelLeagueMappings.RemoveRange(existingMappings
+            .Where(m => !m.IsExcluded || request.LeagueIds.Contains(m.LeagueId)));
 
         // Add new mappings. IsManual makes the admin's decision durable:
         // the auto-mapper drops non-manual rows it can't justify by score,
