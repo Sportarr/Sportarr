@@ -2189,8 +2189,8 @@ public class LibraryImportService
         if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
             return false;
         if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase) ||
-            (normalizedSearch.Length >= 3 && normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)) ||
-            (normalizedEvent.Length >= 3 && normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
+            (normalizedSearch.Length >= 3 && ContainsTitlePhrase(normalizedEvent, normalizedSearch)) ||
+            (normalizedEvent.Length >= 3 && ContainsTitlePhrase(normalizedSearch, normalizedEvent)))
         {
             return true;
         }
@@ -2452,8 +2452,8 @@ public class LibraryImportService
         {
             confidence += 60;
         }
-        else if ((normalizedSearch.Length >= 3 && normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)) ||
-                 (normalizedEvent.Length >= 3 && normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
+        else if ((normalizedSearch.Length >= 3 && ContainsTitlePhrase(normalizedEvent, normalizedSearch)) ||
+                 (normalizedEvent.Length >= 3 && ContainsTitlePhrase(normalizedSearch, normalizedEvent)))
         {
             confidence += 40;
         }
@@ -2798,6 +2798,32 @@ public class LibraryImportService
     {
         "vs", "v", "versus", "at", "the", "and", "of", "@",
     };
+
+    /// <summary>
+    /// True when the phrase is in the text and starts and ends on a word edge.
+    /// </summary>
+    /// <remarks>
+    /// A plain substring test let "UFC Fight Night 4" claim "UFC Fight Night 42"
+    /// and "UFC Fight Night 86" claim "UFC Fight Night 8".
+    /// </remarks>
+    internal static bool ContainsTitlePhrase(string text, string phrase)
+    {
+        if (string.IsNullOrEmpty(phrase))
+            return false;
+
+        for (var index = text.IndexOf(phrase, StringComparison.OrdinalIgnoreCase);
+             index >= 0;
+             index = text.IndexOf(phrase, index + 1, StringComparison.OrdinalIgnoreCase))
+        {
+            var end = index + phrase.Length;
+            var startsOnEdge = index == 0 || !char.IsLetterOrDigit(text[index - 1]) || !char.IsLetterOrDigit(phrase[0]);
+            var endsOnEdge = end == text.Length || !char.IsLetterOrDigit(text[end]) || !char.IsLetterOrDigit(phrase[^1]);
+            if (startsOnEdge && endsOnEdge)
+                return true;
+        }
+
+        return false;
+    }
 
     private static string NormalizeTitle(string title)
     {

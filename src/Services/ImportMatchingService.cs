@@ -839,8 +839,8 @@ public class ImportMatchingService
             confidence += fixturePoints;
         }
         // Contains match = 40 points
-        else if ((searchFixture.Length >= 3 && normalizedEvent.Contains(searchFixture, StringComparison.OrdinalIgnoreCase)) ||
-                 (normalizedEvent.Length >= 3 && searchFixture.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
+        else if ((searchFixture.Length >= 3 && LibraryImportService.ContainsTitlePhrase(normalizedEvent, searchFixture)) ||
+                 (normalizedEvent.Length >= 3 && LibraryImportService.ContainsTitlePhrase(searchFixture, normalizedEvent)))
         {
             confidence += 40;
         }
