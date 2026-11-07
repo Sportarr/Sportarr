@@ -17,6 +17,9 @@ namespace Sportarr.Api.Services;
 ///    but the row still says Recording.
 /// 3. The source stream is alive but the file isn't growing - frozen
 ///    upstream that ffmpeg keeps "reading" but produces no output.
+/// 4. The file grows at a normal rate but holds the same few seconds
+///    over and over - a provider looping a clip in place of a channel
+///    it lost (see <see cref="StreamLoopMonitor"/>).
 ///
 /// On every tick we walk the DB rows in Recording state, compare them
 /// to FFmpegRecorderService's in-memory map and the output file's
@@ -81,6 +84,7 @@ public class DvrWatchdogService : BackgroundService
         // Shares this scope's DbContext with `db`, so rows loaded below
         // are tracked by the same context its fallback rotation saves.
         var dvrService = scope.ServiceProvider.GetRequiredService<DvrRecordingService>();
+        var loopMonitor = scope.ServiceProvider.GetRequiredService<StreamLoopMonitor>();
 
         var now = DateTime.UtcNow;
 
@@ -118,7 +122,7 @@ public class DvrWatchdogService : BackgroundService
         // process handle (CatchupDownloadService runs its own ffmpeg and
         // enforces its own timeout), a window that's always in the past
         // (overrun rule), and a .part work file (stall rule can't see
-        // growth at OutputPath). All three modes would misfire on them.
+        // growth at OutputPath). The stall and loop checks would misfire on them.
         var inFlight = await db.DvrRecordings
             .Where(r => r.Status == DvrRecordingStatus.Recording)
             .Where(r => r.Method == DvrRecordingMethod.Live)
@@ -128,6 +132,7 @@ public class DvrWatchdogService : BackgroundService
         {
             // Garbage-collect stale tracker entries.
             if (_lastSize.Count > 0) _lastSize.Clear();
+            loopMonitor.ForgetAll();
             // Persist any missed-schedule transitions before returning.
             if (missed.Count > 0) await db.SaveChangesAsync(ct);
             return;
@@ -240,27 +245,8 @@ public class DvrWatchdogService : BackgroundService
                         _logger.LogWarning(
                             "[DVR Watchdog] Recording {Id} output stalled: {Grew} bytes in {Elapsed}; killing FFmpeg and reconciling",
                             row.Id, grew, elapsed);
-                        try { await recorder.StopRecordingAsync(row.Id); } catch { /* fallthrough to reconcile */ }
-                        _lastSize.Remove(row.Id);
-
-                        // Delegate the Completed-vs-Failed call to the same
-                        // logic the recorder's own exit callback uses: a
-                        // stall this close to the recording's scheduled end
-                        // is treated as the live event ending early (the
-                        // upstream feed drops the instant the broadcast
-                        // stops) rather than a genuinely dead stream, so it
-                        // gets finalized, revealed and picked up by the
-                        // importer instead of abandoned under its hidden
-                        // dot-prefixed filename with an unqueryable status.
-                        try
-                        {
-                            await dvrService.HandleRecorderExitAsync(row.Id, 0,
-                                $"watchdog: output stalled (only {grew} bytes written in {(int)elapsed.TotalSeconds}s)");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "[DVR Watchdog] Reconciliation failed for stalled recording {Id}", row.Id);
-                        }
+                        await StopAndReconcileAsync(recorder, dvrService, loopMonitor, row.Id,
+                            $"watchdog: output stalled (only {grew} bytes written in {(int)elapsed.TotalSeconds}s)");
                         continue;
                     }
                     // Still growing - refresh the sample so the next
@@ -275,6 +261,19 @@ public class DvrWatchdogService : BackgroundService
                     _lastSize[row.Id] = (currentSize.Value, now);
                 }
             }
+
+            // Mode 4 - output grows but repeats itself. Same outcome as a
+            // stall: stop the recorder and let the exit handler decide
+            // between a completed recording and a failed one that rotates
+            // to a fallback channel.
+            if (await loopMonitor.IsLoopingAsync(row.Id, row.OutputPath, now, ct))
+            {
+                _logger.LogWarning(
+                    "[DVR Watchdog] Recording {Id} is looping: the last {Window} minutes repeat the same clip; killing FFmpeg and reconciling",
+                    row.Id, (int)StreamLoopMonitor.Window.TotalMinutes);
+                await StopAndReconcileAsync(recorder, dvrService, loopMonitor, row.Id,
+                    $"watchdog: stream is looping (the last {(int)StreamLoopMonitor.Window.TotalMinutes} minutes repeat the same clip)");
+            }
         }
 
         // Clean tracker entries for rows that are no longer in flight
@@ -282,6 +281,7 @@ public class DvrWatchdogService : BackgroundService
         // grow forever.
         var toForget = _lastSize.Keys.Where(k => !seen.Contains(k)).ToList();
         foreach (var id in toForget) _lastSize.Remove(id);
+        loopMonitor.ForgetAllExcept(seen);
 
         try
         {
@@ -339,5 +339,33 @@ public class DvrWatchdogService : BackgroundService
         // The timestamp is when the file last grew, not when it was last
         // looked at, so this measures a real quiet stretch.
         return now - prev.At < StalledNoGrowthWindow;
+    }
+
+    /// <summary>
+    /// Stops a recorder the watchdog gave up on and hands the row to the same
+    /// Completed-vs-Failed logic the recorder's own exit callback uses. A stop
+    /// this close to the scheduled end is treated as the live event ending
+    /// early (the upstream feed drops the instant the broadcast stops) rather
+    /// than a dead stream, so it gets finalized, revealed and picked up by the
+    /// importer instead of abandoned under its hidden dot-prefixed filename
+    /// with an unqueryable status. Otherwise it fails and rotates to a
+    /// fallback channel.
+    /// </summary>
+    private async Task StopAndReconcileAsync(
+        FFmpegRecorderService recorder, DvrRecordingService dvrService, StreamLoopMonitor loopMonitor,
+        int recordingId, string reason)
+    {
+        try { await recorder.StopRecordingAsync(recordingId); } catch { /* fallthrough to reconcile */ }
+        _lastSize.Remove(recordingId);
+        loopMonitor.Forget(recordingId);
+
+        try
+        {
+            await dvrService.HandleRecorderExitAsync(recordingId, 0, reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DVR Watchdog] Reconciliation failed for recording {Id} ({Reason})", recordingId, reason);
+        }
     }
 }
