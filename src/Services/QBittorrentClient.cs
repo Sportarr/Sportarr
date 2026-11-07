@@ -459,8 +459,17 @@ public class QBittorrentClient
                 // Get torrent hash from recent torrents
                 await Task.Delay(2000); // Wait for torrent to be added (increased from 1s to 2s)
                 var torrents = await GetTorrentsAsync(config);
+                var canFindByHash = config.Type == DownloadClientType.QBittorrent && !string.IsNullOrEmpty(knownHash);
 
-                if (torrents == null || torrents.Count == 0)
+                // A failed list read does not mean the add failed. With a known
+                // hash, the poll below looks again before it gives up.
+                if (torrents == null && !canFindByHash)
+                {
+                    _logger.LogWarning("[qBittorrent] Could not read the torrent list after adding");
+                    return AddDownloadResult.Failed("Sportarr could not read the torrent list from qBittorrent after adding. The torrent may still have been added - check qBittorrent.", AddDownloadErrorType.Unknown);
+                }
+
+                if (torrents?.Count == 0 && !canFindByHash)
                 {
                     _logger.LogWarning("[qBittorrent] WARNING: No torrents found in client after adding!");
                     _logger.LogWarning("[qBittorrent] Possible causes:");
@@ -471,6 +480,8 @@ public class QBittorrentClient
                     return AddDownloadResult.Failed("No torrents found in client after adding. The torrent may have been rejected - check qBittorrent logs.", AddDownloadErrorType.TorrentRejected);
                 }
 
+                var anyListRead = torrents != null;
+                torrents ??= new List<QBittorrentTorrent>();
                 _logger.LogInformation("[qBittorrent] Found {Count} total torrents in client", torrents.Count);
 
                 // Check for torrents added in the last 10 seconds to help debug
@@ -489,7 +500,7 @@ public class QBittorrentClient
                 // guessing the most-recently-added one. Guessing has caused the wrong torrent's
                 // data to be removed later. Decypharr/debrid mutate the id after caching, so they
                 // are excluded here and continue to use the heuristics below.
-                if (config.Type == DownloadClientType.QBittorrent && !string.IsNullOrEmpty(knownHash))
+                if (canFindByHash)
                 {
                     var matchedByHash = torrents.FirstOrDefault(t =>
                         QBittorrentHashHelper.MatchesHash(t, knownHash));
@@ -499,6 +510,7 @@ public class QBittorrentClient
                     {
                         await Task.Delay(1000);
                         var refreshed = await GetTorrentsAsync(config);
+                        anyListRead |= refreshed != null;
                         matchedByHash = refreshed?.FirstOrDefault(t =>
                             QBittorrentHashHelper.MatchesHash(t, knownHash));
                     }
@@ -522,6 +534,13 @@ public class QBittorrentClient
 
                         // Return qBittorrent's own hash value so later status lookups match exactly.
                         return AddDownloadResult.Succeeded(matchedByHash.Hash);
+                    }
+
+                    if (!anyListRead)
+                    {
+                        return AddDownloadResult.Failed(
+                            $"Sportarr could not read the torrent list from qBittorrent after adding torrent {knownHash}. The torrent may still have been added - check qBittorrent.",
+                            AddDownloadErrorType.Unknown);
                     }
 
                     return AddDownloadResult.Failed(
