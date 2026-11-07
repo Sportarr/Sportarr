@@ -19,8 +19,8 @@ namespace Sportarr.Api.Services;
 /// Safety rules:
 /// - Only recordings in Scheduled status change. A recording that runs, or
 ///   that already finished, is never touched.
-/// - Only live recordings change. Catchup rows belong to
-///   CatchupDownloadService.
+/// - A catchup recording moves only to a channel that can serve the catchup
+///   download. Its backups follow the same rule.
 /// - A recording stops changing channel Config.DvrReresolveLockMinutes before
 ///   it starts, so the channel is settled before the recorder opens the
 ///   stream.
@@ -113,7 +113,7 @@ public class DvrChannelReresolveService : BackgroundService
 
         var candidates = await db.DvrRecordings
             .Where(r => r.Status == DvrRecordingStatus.Scheduled
-                        && r.Method == DvrRecordingMethod.Live
+                        && (r.Method == DvrRecordingMethod.Live || r.Method == DvrRecordingMethod.Catchup)
                         && r.EventId != null
                         && !r.ChannelPinned
                         && r.ScheduledStart > earliestStart
@@ -165,6 +165,19 @@ public class DvrChannelReresolveService : BackgroundService
         CancellationToken ct)
     {
         var ranked = await resolver.ResolveAsync(recording.EventId!.Value, ct);
+        if (recording.Method == DvrRecordingMethod.Catchup)
+        {
+            // A move to a channel without an archive leaves the download
+            // with nothing to fetch.
+            ranked = await KeepCatchupChannelsAsync(db, ranked, ct);
+        }
+
+        // Another copy of this event already uses these channels. A move onto
+        // one of them gives two copies of the same stream.
+        var redundant = await RedundantChannelIdsAsync(db, recording, ct);
+        ranked = ranked
+            .Where(c => c.ChannelId == recording.ChannelId || !redundant.Contains(c.ChannelId))
+            .ToList();
         if (ranked.Count == 0)
         {
             return false;
@@ -255,6 +268,22 @@ public class DvrChannelReresolveService : BackgroundService
             currentConfidence, best.Confidence, best.Source);
 
         return true;
+    }
+
+    private static async Task<List<EventChannelCandidate>> KeepCatchupChannelsAsync(
+        SportarrDbContext db, List<EventChannelCandidate> ranked, CancellationToken ct)
+    {
+        var ids = ranked.Select(c => c.ChannelId).ToList();
+        var channels = await db.IptvChannels
+            .AsNoTracking()
+            .Include(c => c.Source)
+            .Where(c => ids.Contains(c.Id))
+            .ToListAsync(ct);
+        var usable = channels
+            .Where(DvrAssignmentService.CanServeCatchup)
+            .Select(c => c.Id)
+            .ToHashSet();
+        return ranked.Where(c => usable.Contains(c.ChannelId)).ToList();
     }
 
     // Any usable channel the user mapped to the home or the away team counts.
