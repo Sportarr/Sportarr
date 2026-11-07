@@ -605,7 +605,12 @@ export default function CalendarPage() {
   }, [isPhone]);
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterTvOnly, setFilterTvOnly] = useState(false);
-  const [showUnmonitored, setShowUnmonitored] = useState(false);
+  const [showUnmonitored, setShowUnmonitored] = useState(
+    () => localStorage.getItem('sportarr.calendarMonitoring') === 'all'
+  );
+  useEffect(() => {
+    localStorage.setItem('sportarr.calendarMonitoring', showUnmonitored ? 'all' : 'monitored');
+  }, [showUnmonitored]);
   const [showIcalModal, setShowIcalModal] = useState(false);
   const [icalCopied, setIcalCopied] = useState(false);
   const firstDayOfWeek: FirstDayOfWeek = uiSettings.firstDayOfWeek === 'monday' ? 'monday' : 'sunday';
