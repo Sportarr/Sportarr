@@ -1,0 +1,1220 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-174457",
+   "strEvent": "Bahrain Testing 1 Day 1",
+   "strSeason": "2026",
+   "intRound": "500",
+   "dateEvent": "2026-02-11",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174458",
+   "strEvent": "Bahrain Testing 1 Day 2",
+   "strSeason": "2026",
+   "intRound": "500",
+   "dateEvent": "2026-02-12",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174459",
+   "strEvent": "Bahrain Testing 1 Day 3",
+   "strSeason": "2026",
+   "intRound": "500",
+   "dateEvent": "2026-02-13",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174460",
+   "strEvent": "Bahrain Testing 2 Day 1",
+   "strSeason": "2026",
+   "intRound": "500",
+   "dateEvent": "2026-02-18",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174461",
+   "strEvent": "Bahrain Testing 2 Day 2",
+   "strSeason": "2026",
+   "intRound": "500",
+   "dateEvent": "2026-02-19",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174462",
+   "strEvent": "Bahrain Testing 2 Day 3",
+   "strSeason": "2026",
+   "intRound": "500",
+   "dateEvent": "2026-02-20",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174463",
+   "strEvent": "Australian Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "1",
+   "dateEvent": "2026-03-06",
+   "strTime": "01:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174464",
+   "strEvent": "Australian Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "1",
+   "dateEvent": "2026-03-06",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174465",
+   "strEvent": "Australian Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "1",
+   "dateEvent": "2026-03-07",
+   "strTime": "01:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174466",
+   "strEvent": "Australian Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "1",
+   "dateEvent": "2026-03-07",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174467",
+   "strEvent": "Australian Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "1",
+   "dateEvent": "2026-03-08",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1953414",
+   "strEvent": "Chinese Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "2",
+   "dateEvent": "2026-03-13",
+   "strTime": "03:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174469",
+   "strEvent": "Chinese Grand Prix - Sprint Qualifying",
+   "strSeason": "2026",
+   "intRound": "2",
+   "dateEvent": "2026-03-13",
+   "strTime": "07:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174470",
+   "strEvent": "Chinese Grand Prix - Sprint",
+   "strSeason": "2026",
+   "intRound": "2",
+   "dateEvent": "2026-03-14",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174471",
+   "strEvent": "Chinese Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "2",
+   "dateEvent": "2026-03-14",
+   "strTime": "07:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174472",
+   "strEvent": "Chinese Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "2",
+   "dateEvent": "2026-03-15",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174473",
+   "strEvent": "Japanese Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "3",
+   "dateEvent": "2026-03-27",
+   "strTime": "02:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174474",
+   "strEvent": "Japanese Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "3",
+   "dateEvent": "2026-03-27",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174475",
+   "strEvent": "Japanese Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "3",
+   "dateEvent": "2026-03-28",
+   "strTime": "02:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174476",
+   "strEvent": "Japanese Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "3",
+   "dateEvent": "2026-03-28",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174477",
+   "strEvent": "Japanese Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "3",
+   "dateEvent": "2026-03-29",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174488",
+   "strEvent": "Miami Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "4",
+   "dateEvent": "2026-05-01",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174489",
+   "strEvent": "Miami Grand Prix - Sprint Qualifying",
+   "strSeason": "2026",
+   "intRound": "4",
+   "dateEvent": "2026-05-01",
+   "strTime": "20:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174490",
+   "strEvent": "Miami Grand Prix - Sprint",
+   "strSeason": "2026",
+   "intRound": "4",
+   "dateEvent": "2026-05-02",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174491",
+   "strEvent": "Miami Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "4",
+   "dateEvent": "2026-05-02",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174492",
+   "strEvent": "Miami Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "4",
+   "dateEvent": "2026-05-03",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174493",
+   "strEvent": "Canadian Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "5",
+   "dateEvent": "2026-05-22",
+   "strTime": "16:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174494",
+   "strEvent": "Canadian Grand Prix - Sprint Qualifying",
+   "strSeason": "2026",
+   "intRound": "5",
+   "dateEvent": "2026-05-22",
+   "strTime": "20:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174495",
+   "strEvent": "Canadian Grand Prix - Sprint",
+   "strSeason": "2026",
+   "intRound": "5",
+   "dateEvent": "2026-05-23",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174496",
+   "strEvent": "Canadian Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "5",
+   "dateEvent": "2026-05-23",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174497",
+   "strEvent": "Canadian Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "5",
+   "dateEvent": "2026-05-24",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174498",
+   "strEvent": "Monaco Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "6",
+   "dateEvent": "2026-06-05",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174499",
+   "strEvent": "Monaco Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "6",
+   "dateEvent": "2026-06-05",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174500",
+   "strEvent": "Monaco Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "6",
+   "dateEvent": "2026-06-06",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174501",
+   "strEvent": "Monaco Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "6",
+   "dateEvent": "2026-06-06",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174502",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "6",
+   "dateEvent": "2026-06-07",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174503",
+   "strEvent": "Barcelona-Catalunya Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "7",
+   "dateEvent": "2026-06-12",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174504",
+   "strEvent": "Barcelona-Catalunya Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "7",
+   "dateEvent": "2026-06-12",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174505",
+   "strEvent": "Barcelona-Catalunya Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "7",
+   "dateEvent": "2026-06-13",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174506",
+   "strEvent": "Barcelona-Catalunya Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "7",
+   "dateEvent": "2026-06-13",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174507",
+   "strEvent": "Barcelona-Catalunya Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "7",
+   "dateEvent": "2026-06-14",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174508",
+   "strEvent": "Austrian Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "8",
+   "dateEvent": "2026-06-26",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174509",
+   "strEvent": "Austrian Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "8",
+   "dateEvent": "2026-06-26",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174510",
+   "strEvent": "Austrian Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "8",
+   "dateEvent": "2026-06-27",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174511",
+   "strEvent": "Austrian Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "8",
+   "dateEvent": "2026-06-27",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174512",
+   "strEvent": "Austrian Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "8",
+   "dateEvent": "2026-06-28",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174513",
+   "strEvent": "British Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "9",
+   "dateEvent": "2026-07-03",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174514",
+   "strEvent": "British Grand Prix - Sprint Qualifying",
+   "strSeason": "2026",
+   "intRound": "9",
+   "dateEvent": "2026-07-03",
+   "strTime": "15:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174515",
+   "strEvent": "British Grand Prix - Sprint",
+   "strSeason": "2026",
+   "intRound": "9",
+   "dateEvent": "2026-07-04",
+   "strTime": "11:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174516",
+   "strEvent": "British Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "9",
+   "dateEvent": "2026-07-04",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174517",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "9",
+   "dateEvent": "2026-07-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174518",
+   "strEvent": "Belgian Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "10",
+   "dateEvent": "2026-07-17",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174519",
+   "strEvent": "Belgian Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "10",
+   "dateEvent": "2026-07-17",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174520",
+   "strEvent": "Belgian Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "10",
+   "dateEvent": "2026-07-18",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174521",
+   "strEvent": "Belgian Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "10",
+   "dateEvent": "2026-07-18",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174522",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "10",
+   "dateEvent": "2026-07-19",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174523",
+   "strEvent": "Hungarian Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "11",
+   "dateEvent": "2026-07-24",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174524",
+   "strEvent": "Hungarian Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "11",
+   "dateEvent": "2026-07-24",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174525",
+   "strEvent": "Hungarian Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "11",
+   "dateEvent": "2026-07-25",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1956437",
+   "strEvent": "Hungarian Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "11",
+   "dateEvent": "2026-07-25",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174527",
+   "strEvent": "Hungarian Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "11",
+   "dateEvent": "2026-07-26",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174528",
+   "strEvent": "Dutch Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "12",
+   "dateEvent": "2026-08-21",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174529",
+   "strEvent": "Dutch Grand Prix - Sprint Qualifying",
+   "strSeason": "2026",
+   "intRound": "12",
+   "dateEvent": "2026-08-21",
+   "strTime": "14:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174530",
+   "strEvent": "Dutch Grand Prix - Sprint",
+   "strSeason": "2026",
+   "intRound": "12",
+   "dateEvent": "2026-08-22",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174531",
+   "strEvent": "Dutch Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "12",
+   "dateEvent": "2026-08-22",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174532",
+   "strEvent": "Dutch Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "12",
+   "dateEvent": "2026-08-23",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174533",
+   "strEvent": "Italian Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "13",
+   "dateEvent": "2026-09-04",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174534",
+   "strEvent": "Italian Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "13",
+   "dateEvent": "2026-09-04",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174535",
+   "strEvent": "Italian Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "13",
+   "dateEvent": "2026-09-05",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174536",
+   "strEvent": "Italian Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "13",
+   "dateEvent": "2026-09-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174537",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "13",
+   "dateEvent": "2026-09-06",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174538",
+   "strEvent": "Spanish Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "14",
+   "dateEvent": "2026-09-11",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174539",
+   "strEvent": "Spanish Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "14",
+   "dateEvent": "2026-09-11",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174540",
+   "strEvent": "Spanish Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "14",
+   "dateEvent": "2026-09-12",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174541",
+   "strEvent": "Spanish Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "14",
+   "dateEvent": "2026-09-12",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174542",
+   "strEvent": "Spanish Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "14",
+   "dateEvent": "2026-09-13",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174543",
+   "strEvent": "Azerbaijan Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "15",
+   "dateEvent": "2026-09-24",
+   "strTime": "08:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174544",
+   "strEvent": "Azerbaijan Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "15",
+   "dateEvent": "2026-09-24",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174545",
+   "strEvent": "Azerbaijan Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "15",
+   "dateEvent": "2026-09-25",
+   "strTime": "08:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174546",
+   "strEvent": "Azerbaijan Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "15",
+   "dateEvent": "2026-09-25",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174547",
+   "strEvent": "Azerbaijan Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "15",
+   "dateEvent": "2026-09-26",
+   "strTime": "11:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2581225",
+   "strEvent": "Bahrain in Malaysia Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "16",
+   "dateEvent": "2026-10-02",
+   "strTime": "04:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2581226",
+   "strEvent": "Bahrain in Malaysia Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "16",
+   "dateEvent": "2026-10-02",
+   "strTime": "08:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2581227",
+   "strEvent": "Bahrain in Malaysia Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "16",
+   "dateEvent": "2026-10-03",
+   "strTime": "04:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2581228",
+   "strEvent": "Bahrain in Malaysia Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "16",
+   "dateEvent": "2026-10-03",
+   "strTime": "08:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2581229",
+   "strEvent": "Bahrain in Malaysia Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "16",
+   "dateEvent": "2026-10-04",
+   "strTime": "08:33:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174548",
+   "strEvent": "Singapore Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "17",
+   "dateEvent": "2026-10-09",
+   "strTime": "08:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174549",
+   "strEvent": "Singapore Grand Prix - Sprint Qualifying",
+   "strSeason": "2026",
+   "intRound": "17",
+   "dateEvent": "2026-10-09",
+   "strTime": "12:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174550",
+   "strEvent": "Singapore Grand Prix - Sprint",
+   "strSeason": "2026",
+   "intRound": "17",
+   "dateEvent": "2026-10-10",
+   "strTime": "09:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174551",
+   "strEvent": "Singapore Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "17",
+   "dateEvent": "2026-10-10",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174552",
+   "strEvent": "Singapore Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "17",
+   "dateEvent": "2026-10-11",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174553",
+   "strEvent": "United States Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "18",
+   "dateEvent": "2026-10-23",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174554",
+   "strEvent": "United States Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "18",
+   "dateEvent": "2026-10-23",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174555",
+   "strEvent": "United States Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "18",
+   "dateEvent": "2026-10-24",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174556",
+   "strEvent": "United States Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "18",
+   "dateEvent": "2026-10-24",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174557",
+   "strEvent": "United States Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "18",
+   "dateEvent": "2026-10-25",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174558",
+   "strEvent": "Mexico City Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "19",
+   "dateEvent": "2026-10-30",
+   "strTime": "18:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174559",
+   "strEvent": "Mexico City Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "19",
+   "dateEvent": "2026-10-30",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174560",
+   "strEvent": "Mexico City Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "19",
+   "dateEvent": "2026-10-31",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174561",
+   "strEvent": "Mexico City Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "19",
+   "dateEvent": "2026-10-31",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174562",
+   "strEvent": "Mexico City Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "19",
+   "dateEvent": "2026-11-01",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174563",
+   "strEvent": "São Paulo Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "20",
+   "dateEvent": "2026-11-06",
+   "strTime": "15:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174564",
+   "strEvent": "São Paulo Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "20",
+   "dateEvent": "2026-11-06",
+   "strTime": "19:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174565",
+   "strEvent": "São Paulo Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "20",
+   "dateEvent": "2026-11-07",
+   "strTime": "14:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174566",
+   "strEvent": "São Paulo Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "20",
+   "dateEvent": "2026-11-07",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174567",
+   "strEvent": "São Paulo Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "20",
+   "dateEvent": "2026-11-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174568",
+   "strEvent": "Las Vegas Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "21",
+   "dateEvent": "2026-11-20",
+   "strTime": "00:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174569",
+   "strEvent": "Las Vegas Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "21",
+   "dateEvent": "2026-11-20",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174570",
+   "strEvent": "Las Vegas Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "21",
+   "dateEvent": "2026-11-21",
+   "strTime": "00:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174571",
+   "strEvent": "Las Vegas Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "21",
+   "dateEvent": "2026-11-21",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174572",
+   "strEvent": "Las Vegas Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "21",
+   "dateEvent": "2026-11-22",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174573",
+   "strEvent": "Qatar Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "22",
+   "dateEvent": "2026-11-27",
+   "strTime": "13:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174574",
+   "strEvent": "Qatar Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "22",
+   "dateEvent": "2026-11-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174575",
+   "strEvent": "Qatar Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "22",
+   "dateEvent": "2026-11-28",
+   "strTime": "14:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174576",
+   "strEvent": "Qatar Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "22",
+   "dateEvent": "2026-11-28",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174577",
+   "strEvent": "Qatar Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "22",
+   "dateEvent": "2026-11-29",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174578",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 1",
+   "strSeason": "2026",
+   "intRound": "23",
+   "dateEvent": "2026-12-04",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174579",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 2",
+   "strSeason": "2026",
+   "intRound": "23",
+   "dateEvent": "2026-12-04",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174580",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 3",
+   "strSeason": "2026",
+   "intRound": "23",
+   "dateEvent": "2026-12-05",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174581",
+   "strEvent": "Abu Dhabi Grand Prix - Qualifying",
+   "strSeason": "2026",
+   "intRound": "23",
+   "dateEvent": "2026-12-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174582",
+   "strEvent": "Abu Dhabi Grand Prix - Race",
+   "strSeason": "2026",
+   "intRound": "23",
+   "dateEvent": "2026-12-06",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

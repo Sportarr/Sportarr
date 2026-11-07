@@ -1,0 +1,440 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-487520",
+   "strEvent": "UFC Fight Night 217 Strickland vs Imavov",
+   "strSeason": "2023",
+   "intRound": "1",
+   "dateEvent": "2023-01-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487525",
+   "strEvent": "UFC 283 Teixeira vs Hill",
+   "strSeason": "2023",
+   "intRound": "2",
+   "dateEvent": "2023-01-22",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487529",
+   "strEvent": "UFC Fight Night 218 Lewis vs Spivak",
+   "strSeason": "2023",
+   "intRound": "3",
+   "dateEvent": "2023-02-05",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570456",
+   "strEvent": "UFC 284 Makhachev vs Volkanovski",
+   "strSeason": "2023",
+   "intRound": "4",
+   "dateEvent": "2023-02-12",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487526",
+   "strEvent": "UFC Fight Night 219 Andrade vs Blanchfield",
+   "strSeason": "2023",
+   "intRound": "5",
+   "dateEvent": "2023-02-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487527",
+   "strEvent": "UFC Fight Night 220 Muniz vs Allen",
+   "strSeason": "2023",
+   "intRound": "6",
+   "dateEvent": "2023-02-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487524",
+   "strEvent": "UFC 285 Jones vs Gane",
+   "strSeason": "2023",
+   "intRound": "7",
+   "dateEvent": "2023-03-05",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487523",
+   "strEvent": "UFC Fight Night 221 Yan vs Dvalishvili",
+   "strSeason": "2023",
+   "intRound": "8",
+   "dateEvent": "2023-03-11",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487518",
+   "strEvent": "UFC 286 Usman vs Edwards III",
+   "strSeason": "2023",
+   "intRound": "9",
+   "dateEvent": "2023-03-18",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487517",
+   "strEvent": "UFC on ESPN 43 Vera vs Sandhagen",
+   "strSeason": "2023",
+   "intRound": "10",
+   "dateEvent": "2023-03-25",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487522",
+   "strEvent": "UFC 287 Pereira vs Adesanya 2",
+   "strSeason": "2023",
+   "intRound": "11",
+   "dateEvent": "2023-04-09",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487519",
+   "strEvent": "UFC on ESPN 44 Holloway vs Allen",
+   "strSeason": "2023",
+   "intRound": "12",
+   "dateEvent": "2023-04-16",
+   "strTime": "00:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487514",
+   "strEvent": "UFC Fight Night 222 Pavlovich vs Blaydes",
+   "strSeason": "2023",
+   "intRound": "13",
+   "dateEvent": "2023-04-22",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487504",
+   "strEvent": "UFC on ESPN 45 Song vs Simón",
+   "strSeason": "2023",
+   "intRound": "14",
+   "dateEvent": "2023-04-29",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487515",
+   "strEvent": "UFC 288 Sterling vs Cejudo",
+   "strSeason": "2023",
+   "intRound": "15",
+   "dateEvent": "2023-05-07",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487513",
+   "strEvent": "UFC on ABC 4 Rozenstruik vs Almeida",
+   "strSeason": "2023",
+   "intRound": "16",
+   "dateEvent": "2023-05-13",
+   "strTime": "23:20:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487512",
+   "strEvent": "UFC Fight Night 223 Dern vs Hill",
+   "strSeason": "2023",
+   "intRound": "17",
+   "dateEvent": "2023-05-21",
+   "strTime": "01:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487503",
+   "strEvent": "UFC on ESPN 46 Kara France vs Albazi",
+   "strSeason": "2023",
+   "intRound": "18",
+   "dateEvent": "2023-06-04",
+   "strTime": "03:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487509",
+   "strEvent": "UFC 289 Nunes vs Aldana",
+   "strSeason": "2023",
+   "intRound": "19",
+   "dateEvent": "2023-06-11",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487516",
+   "strEvent": "UFC on ESPN 47 Vettori vs Cannonier",
+   "strSeason": "2023",
+   "intRound": "20",
+   "dateEvent": "2023-06-18",
+   "strTime": "04:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487511",
+   "strEvent": "UFC on ABC 5 Emmett vs Topuria",
+   "strSeason": "2023",
+   "intRound": "21",
+   "dateEvent": "2023-06-24",
+   "strTime": "20:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487508",
+   "strEvent": "UFC on ESPN 48 Strickland vs Magomedov",
+   "strSeason": "2023",
+   "intRound": "22",
+   "dateEvent": "2023-07-02",
+   "strTime": "03:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487501",
+   "strEvent": "UFC 290 Volkanovski vs Rodríguez",
+   "strSeason": "2023",
+   "intRound": "23",
+   "dateEvent": "2023-07-09",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487505",
+   "strEvent": "UFC on ESPN 49 Holm vs Bueno Silva",
+   "strSeason": "2023",
+   "intRound": "24",
+   "dateEvent": "2023-07-15",
+   "strTime": "22:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487510",
+   "strEvent": "UFC Fight Night 224 Aspinall vs Tybura",
+   "strSeason": "2023",
+   "intRound": "25",
+   "dateEvent": "2023-07-22",
+   "strTime": "21:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487506",
+   "strEvent": "UFC 291 Poirier vs Gaethje 2",
+   "strSeason": "2023",
+   "intRound": "26",
+   "dateEvent": "2023-07-30",
+   "strTime": "02:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487507",
+   "strEvent": "UFC on ESPN 50 Sandhagen vs Font",
+   "strSeason": "2023",
+   "intRound": "27",
+   "dateEvent": "2023-08-05",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487500",
+   "strEvent": "UFC on ESPN 51 Luque vs dos Anjos",
+   "strSeason": "2023",
+   "intRound": "28",
+   "dateEvent": "2023-08-12",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487499",
+   "strEvent": "UFC 292 Sterling vs OMalley",
+   "strSeason": "2023",
+   "intRound": "29",
+   "dateEvent": "2023-08-20",
+   "strTime": "02:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487502",
+   "strEvent": "UFC Fight Night 225 Holloway vs The Korean Zombie",
+   "strSeason": "2023",
+   "intRound": "30",
+   "dateEvent": "2023-08-26",
+   "strTime": "09:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028182",
+   "strEvent": "UFC Fight Night 226 Gane vs Spivak",
+   "strSeason": "2023",
+   "intRound": "31",
+   "dateEvent": "2023-09-02",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028184",
+   "strEvent": "UFC 293 Adesanya vs Strickland",
+   "strSeason": "2023",
+   "intRound": "32",
+   "dateEvent": "2023-09-09",
+   "strTime": "22:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028188",
+   "strEvent": "UFC Fight Night 227 Grasso vs Shevchenko 2",
+   "strSeason": "2023",
+   "intRound": "33",
+   "dateEvent": "2023-09-16",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028187",
+   "strEvent": "UFC Fight Night 228 Fiziev vs Gamrot",
+   "strSeason": "2023",
+   "intRound": "34",
+   "dateEvent": "2023-09-23",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028189",
+   "strEvent": "UFC Fight Night 229 Dawson vs Green",
+   "strSeason": "2023",
+   "intRound": "35",
+   "dateEvent": "2023-10-07",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028186",
+   "strEvent": "UFC Fight Night 230 Yusuff vs Barboza",
+   "strSeason": "2023",
+   "intRound": "36",
+   "dateEvent": "2023-10-14",
+   "strTime": "18:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028185",
+   "strEvent": "UFC 294 Makhachev vs Volkanovski 2",
+   "strSeason": "2023",
+   "intRound": "37",
+   "dateEvent": "2023-10-21",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028183",
+   "strEvent": "UFC Fight Night 231 Almeida vs Lewis",
+   "strSeason": "2023",
+   "intRound": "38",
+   "dateEvent": "2023-11-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028181",
+   "strEvent": "UFC 295 Procházka vs Pereira",
+   "strSeason": "2023",
+   "intRound": "39",
+   "dateEvent": "2023-11-11",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1665137",
+   "strEvent": "UFC Fight Night 232 Allen vs Craig",
+   "strSeason": "2023",
+   "intRound": "40",
+   "dateEvent": "2023-11-18",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028177",
+   "strEvent": "UFC on ESPN 52 Dariush vs Tsarukyan",
+   "strSeason": "2023",
+   "intRound": "41",
+   "dateEvent": "2023-12-02",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028176",
+   "strEvent": "UFC Fight Night 233 Song vs Gutiérrez",
+   "strSeason": "2023",
+   "intRound": "42",
+   "dateEvent": "2023-12-09",
+   "strTime": "23:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028180",
+   "strEvent": "UFC 296 Edwards vs Covington",
+   "strSeason": "2023",
+   "intRound": "43",
+   "dateEvent": "2023-12-16",
+   "strTime": "23:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

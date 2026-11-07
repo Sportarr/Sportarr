@@ -1,0 +1,580 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-487491",
+   "strEvent": "UFC 324 Gaethje vs Pimblett",
+   "strSeason": "2026",
+   "intRound": "1",
+   "dateEvent": "2026-01-24",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487498",
+   "strEvent": "UFC 325 Volkanovski vs Lopes 2",
+   "strSeason": "2026",
+   "intRound": "2",
+   "dateEvent": "2026-01-31",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487493",
+   "strEvent": "UFC Fight Night 266 Bautista vs Oliveira",
+   "strSeason": "2026",
+   "intRound": "3",
+   "dateEvent": "2026-02-07",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487496",
+   "strEvent": "UFC Fight Night 267 Strickland vs Hernandez",
+   "strSeason": "2026",
+   "intRound": "4",
+   "dateEvent": "2026-02-21",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487495",
+   "strEvent": "UFC Fight Night 268 Moreno vs Kavanagh",
+   "strSeason": "2026",
+   "intRound": "5",
+   "dateEvent": "2026-02-28",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487494",
+   "strEvent": "UFC 326 Holloway vs Oliveira 2",
+   "strSeason": "2026",
+   "intRound": "6",
+   "dateEvent": "2026-03-07",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487487",
+   "strEvent": "UFC Fight Night 269 Emmett vs Vallejos",
+   "strSeason": "2026",
+   "intRound": "7",
+   "dateEvent": "2026-03-14",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487492",
+   "strEvent": "UFC Fight Night 270 Evloev vs Murphy",
+   "strSeason": "2026",
+   "intRound": "8",
+   "dateEvent": "2026-03-21",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487489",
+   "strEvent": "UFC Fight Night 271 Adesanya vs Pyfer",
+   "strSeason": "2026",
+   "intRound": "9",
+   "dateEvent": "2026-03-28",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487486",
+   "strEvent": "UFC Fight Night 272 Moicano vs Duncan",
+   "strSeason": "2026",
+   "intRound": "10",
+   "dateEvent": "2026-04-04",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570611",
+   "strEvent": "UFC 327 Procházka vs Ulberg",
+   "strSeason": "2026",
+   "intRound": "11",
+   "dateEvent": "2026-04-11",
+   "strTime": "21:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570612",
+   "strEvent": "UFC Fight Night 273 Burns vs Malott",
+   "strSeason": "2026",
+   "intRound": "12",
+   "dateEvent": "2026-04-18",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487490",
+   "strEvent": "UFC Fight Night 274 Sterling vs Zalal",
+   "strSeason": "2026",
+   "intRound": "13",
+   "dateEvent": "2026-04-25",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487488",
+   "strEvent": "UFC Fight Night 275 Della Maddalena vs Prates",
+   "strSeason": "2026",
+   "intRound": "14",
+   "dateEvent": "2026-05-02",
+   "strTime": "08:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570615",
+   "strEvent": "UFC 328 Chimaev vs Strickland",
+   "strSeason": "2026",
+   "intRound": "15",
+   "dateEvent": "2026-05-09",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028095",
+   "strEvent": "UFC Fight Night 276 Allen vs Costa",
+   "strSeason": "2026",
+   "intRound": "16",
+   "dateEvent": "2026-05-17",
+   "strTime": "01:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1927590",
+   "strEvent": "Road to UFC Season 5 Episode 1",
+   "strSeason": "2026",
+   "intRound": "17",
+   "dateEvent": "2026-05-28",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1927591",
+   "strEvent": "Road to UFC Season 5 Episode 2",
+   "strSeason": "2026",
+   "intRound": "18",
+   "dateEvent": "2026-05-28",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1930653",
+   "strEvent": "Road to UFC Season 5 Episode 3",
+   "strSeason": "2026",
+   "intRound": "19",
+   "dateEvent": "2026-05-29",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1930654",
+   "strEvent": "Road to UFC Season 5 Episode 4",
+   "strSeason": "2026",
+   "intRound": "20",
+   "dateEvent": "2026-05-29",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028094",
+   "strEvent": "UFC Fight Night 277 Song vs Figueiredo",
+   "strSeason": "2026",
+   "intRound": "21",
+   "dateEvent": "2026-05-30",
+   "strTime": "08:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028098",
+   "strEvent": "UFC Fight Night 278 Muhammad vs Bonfim",
+   "strSeason": "2026",
+   "intRound": "22",
+   "dateEvent": "2026-06-06",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1901496",
+   "strEvent": "UFC Freedom 250 Topuria vs Gaethje",
+   "strSeason": "2026",
+   "intRound": "23",
+   "dateEvent": "2026-06-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1901497",
+   "strEvent": "UFC Fight Night 279 Kape vs Horiguchi",
+   "strSeason": "2026",
+   "intRound": "24",
+   "dateEvent": "2026-06-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1901499",
+   "strEvent": "UFC Fight Night 280 Fiziev vs Torres",
+   "strSeason": "2026",
+   "intRound": "25",
+   "dateEvent": "2026-06-27",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1662647",
+   "strEvent": "UFC 329 McGregor vs Holloway 2",
+   "strSeason": "2026",
+   "intRound": "26",
+   "dateEvent": "2026-07-11",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1933441",
+   "strEvent": "UFC Fight Night 281 Du Plessis vs Usman",
+   "strSeason": "2026",
+   "intRound": "27",
+   "dateEvent": "2026-07-18",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1933442",
+   "strEvent": "UFC Fight Night 282 Ankalaev vs Guskov",
+   "strSeason": "2026",
+   "intRound": "28",
+   "dateEvent": "2026-07-25",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1928154",
+   "strEvent": "UFC Fight Night 283 Medić vs Rodriguez",
+   "strSeason": "2026",
+   "intRound": "29",
+   "dateEvent": "2026-08-01",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1928155",
+   "strEvent": "UFC Fight Night 284 Gamrot vs Salkilld",
+   "strSeason": "2026",
+   "intRound": "30",
+   "dateEvent": "2026-08-08",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527257",
+   "strEvent": "Dana Whites Contender Series season 10 Week 1",
+   "strSeason": "2026",
+   "intRound": "31",
+   "dateEvent": "2026-08-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1662645",
+   "strEvent": "UFC 330 Makhachev vs Machado Garry",
+   "strSeason": "2026",
+   "intRound": "32",
+   "dateEvent": "2026-08-15",
+   "strTime": "21:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527258",
+   "strEvent": "Dana Whites Contender Series season 10 Week 2",
+   "strSeason": "2026",
+   "intRound": "33",
+   "dateEvent": "2026-08-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2291638",
+   "strEvent": "UFC Fight Night 285 Hernandez vs Rodrigues",
+   "strSeason": "2026",
+   "intRound": "34",
+   "dateEvent": "2026-08-22",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527259",
+   "strEvent": "Dana Whites Contender Series season 10 Week 3",
+   "strSeason": "2026",
+   "intRound": "35",
+   "dateEvent": "2026-08-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2581203",
+   "strEvent": "Road to UFC Season 5 Semifinals",
+   "strSeason": "2026",
+   "intRound": "36",
+   "dateEvent": "2026-08-28",
+   "strTime": "09:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1783220",
+   "strEvent": "UFC Fight Night 286 Nurmagomedov vs Song",
+   "strSeason": "2026",
+   "intRound": "37",
+   "dateEvent": "2026-08-29",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527260",
+   "strEvent": "Dana Whites Contender Series season 10 Week 4",
+   "strSeason": "2026",
+   "intRound": "38",
+   "dateEvent": "2026-09-01",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2291639",
+   "strEvent": "UFC Fight Night 287 Hooker vs Parnasse",
+   "strSeason": "2026",
+   "intRound": "39",
+   "dateEvent": "2026-09-05",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527262",
+   "strEvent": "Dana Whites Contender Series season 10 Week 5",
+   "strSeason": "2026",
+   "intRound": "40",
+   "dateEvent": "2026-09-09",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2392604",
+   "strEvent": "UFC Fight Night 288 Silva vs Delgado",
+   "strSeason": "2026",
+   "intRound": "41",
+   "dateEvent": "2026-09-12",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527261",
+   "strEvent": "Dana Whites Contender Series season 10 Week 6",
+   "strSeason": "2026",
+   "intRound": "42",
+   "dateEvent": "2026-09-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2392607",
+   "strEvent": "UFC 331 Van vs Pantoja 2",
+   "strSeason": "2026",
+   "intRound": "43",
+   "dateEvent": "2026-09-19",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527263",
+   "strEvent": "Dana Whites Contender Series season 10 Week 7",
+   "strSeason": "2026",
+   "intRound": "44",
+   "dateEvent": "2026-09-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2392605",
+   "strEvent": "UFC Fight Night 289 Rosas Jr. vs Barcelos",
+   "strSeason": "2026",
+   "intRound": "45",
+   "dateEvent": "2026-09-26",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527264",
+   "strEvent": "Dana Whites Contender Series season 10 Week 8",
+   "strSeason": "2026",
+   "intRound": "46",
+   "dateEvent": "2026-09-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527266",
+   "strEvent": "UFC 332 Silva vs Wang",
+   "strSeason": "2026",
+   "intRound": "47",
+   "dateEvent": "2026-10-03",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527265",
+   "strEvent": "Dana Whites Contender Series season 10 Week 9",
+   "strSeason": "2026",
+   "intRound": "48",
+   "dateEvent": "2026-10-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527267",
+   "strEvent": "UFC Fight Night 290 Allen vs Duncan",
+   "strSeason": "2026",
+   "intRound": "49",
+   "dateEvent": "2026-10-10",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2626988",
+   "strEvent": "Dana Whites Contender Series season 10 Week 10",
+   "strSeason": "2026",
+   "intRound": "50",
+   "dateEvent": "2026-10-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2392606",
+   "strEvent": "UFC Fight Night 291 Buckley vs Malott",
+   "strSeason": "2026",
+   "intRound": "51",
+   "dateEvent": "2026-10-17",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2527268",
+   "strEvent": "UFC 333 Volkanovski vs Evloev",
+   "strSeason": "2026",
+   "intRound": "52",
+   "dateEvent": "2026-10-24",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2609706",
+   "strEvent": "UFC Fight Night 292 Moicano vs Nolan",
+   "strSeason": "2026",
+   "intRound": "53",
+   "dateEvent": "2026-10-31",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2609703",
+   "strEvent": "UFC Fight Night 293 Cortes Acosta vs Walker",
+   "strSeason": "2026",
+   "intRound": "54",
+   "dateEvent": "2026-11-07",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2609705",
+   "strEvent": "UFC 334 Gane vs Hokit",
+   "strSeason": "2026",
+   "intRound": "55",
+   "dateEvent": "2026-11-14",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2609704",
+   "strEvent": "UFC Fight Night 294 Procházka vs Stirling",
+   "strSeason": "2026",
+   "intRound": "56",
+   "dateEvent": "2026-11-21",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2609707",
+   "strEvent": "UFC 335 Oliveira vs Lopes",
+   "strSeason": "2026",
+   "intRound": "57",
+   "dateEvent": "2026-12-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

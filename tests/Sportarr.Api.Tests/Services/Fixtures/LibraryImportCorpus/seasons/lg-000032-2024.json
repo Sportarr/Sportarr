@@ -1,0 +1,3350 @@
+{
+ "league": {
+  "idLeague": "lg-000032",
+  "strLeague": "NFL",
+  "strSport": "Football",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-312585",
+   "strEvent": "Chicago Bears vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-02",
+   "strTime": "00:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312586",
+   "strEvent": "New England Patriots vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-08",
+   "strTime": "23:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312587",
+   "strEvent": "New York Giants vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-08",
+   "strTime": "23:00:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312588",
+   "strEvent": "Miami Dolphins vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-09",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312589",
+   "strEvent": "Pittsburgh Steelers vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-09",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312590",
+   "strEvent": "Baltimore Ravens vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-09",
+   "strTime": "23:30:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312591",
+   "strEvent": "New York Jets vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-10",
+   "strTime": "16:00:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312592",
+   "strEvent": "Buffalo Bills vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-10",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312593",
+   "strEvent": "Minnesota Vikings vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-10",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312594",
+   "strEvent": "Cleveland Browns vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-10",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312595",
+   "strEvent": "Cincinnati Bengals vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-10",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312596",
+   "strEvent": "Jacksonville Jaguars vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-10",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312597",
+   "strEvent": "Tennessee Titans vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-10",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312598",
+   "strEvent": "Los Angeles Chargers vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-10",
+   "strTime": "23:05:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312599",
+   "strEvent": "Arizona Cardinals vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-11",
+   "strTime": "00:00:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312600",
+   "strEvent": "Indianapolis Colts vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-11",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312601",
+   "strEvent": "Los Angeles Rams vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-11",
+   "strTime": "20:30:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312602",
+   "strEvent": "New England Patriots vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-15",
+   "strTime": "23:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312603",
+   "strEvent": "Baltimore Ravens vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "16:00:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312604",
+   "strEvent": "Houston Texans vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312605",
+   "strEvent": "Chicago Bears vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312606",
+   "strEvent": "Kansas City Chiefs vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312607",
+   "strEvent": "Cleveland Browns vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312608",
+   "strEvent": "Indianapolis Colts vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312609",
+   "strEvent": "Miami Dolphins vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312610",
+   "strEvent": "Pittsburgh Steelers vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312611",
+   "strEvent": "Tennessee Titans vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312612",
+   "strEvent": "Carolina Panthers vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312613",
+   "strEvent": "Los Angeles Chargers vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "23:05:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312614",
+   "strEvent": "Jacksonville Jaguars vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-17",
+   "strTime": "23:30:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312615",
+   "strEvent": "Las Vegas Raiders vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-18",
+   "strTime": "02:00:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312616",
+   "strEvent": "Denver Broncos vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312617",
+   "strEvent": "San Francisco 49ers vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312618",
+   "strEvent": "Cincinnati Bengals vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312619",
+   "strEvent": "Kansas City Chiefs vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-23",
+   "strTime": "00:20:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312620",
+   "strEvent": "Atlanta Falcons vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-23",
+   "strTime": "23:00:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312621",
+   "strEvent": "Tampa Bay Buccaneers vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-23",
+   "strTime": "23:30:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312622",
+   "strEvent": "Las Vegas Raiders vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-24",
+   "strTime": "02:00:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312623",
+   "strEvent": "Buffalo Bills vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-24",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312624",
+   "strEvent": "Houston Texans vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-24",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312625",
+   "strEvent": "Green Bay Packers vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-24",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312626",
+   "strEvent": "Philadelphia Eagles vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-24",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312627",
+   "strEvent": "Detroit Lions vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-24",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312628",
+   "strEvent": "Dallas Cowboys vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-24",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312629",
+   "strEvent": "New York Jets vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-24",
+   "strTime": "23:30:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312630",
+   "strEvent": "Seattle Seahawks vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-25",
+   "strTime": "02:00:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312631",
+   "strEvent": "New Orleans Saints vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-25",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312632",
+   "strEvent": "Denver Broncos vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-25",
+   "strTime": "20:30:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312633",
+   "strEvent": "Washington Commanders vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-08-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312634",
+   "strEvent": "Kansas City Chiefs vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-06",
+   "strTime": "00:40:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312635",
+   "strEvent": "Philadelphia Eagles vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-07",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312636",
+   "strEvent": "Atlanta Falcons vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312637",
+   "strEvent": "Buffalo Bills vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312638",
+   "strEvent": "Chicago Bears vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312639",
+   "strEvent": "Cincinnati Bengals vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312640",
+   "strEvent": "Indianapolis Colts vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312641",
+   "strEvent": "Miami Dolphins vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312642",
+   "strEvent": "New Orleans Saints vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312643",
+   "strEvent": "New York Giants vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312644",
+   "strEvent": "Los Angeles Chargers vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312645",
+   "strEvent": "Seattle Seahawks vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312646",
+   "strEvent": "Cleveland Browns vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312647",
+   "strEvent": "Tampa Bay Buccaneers vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-08",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312648",
+   "strEvent": "Detroit Lions vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-09",
+   "strTime": "00:20:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312649",
+   "strEvent": "San Francisco 49ers vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-09-10",
+   "strTime": "00:15:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312650",
+   "strEvent": "Miami Dolphins vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-13",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312651",
+   "strEvent": "Dallas Cowboys vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312652",
+   "strEvent": "Detroit Lions vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312653",
+   "strEvent": "Green Bay Packers vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312654",
+   "strEvent": "Tennessee Titans vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312655",
+   "strEvent": "Minnesota Vikings vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312656",
+   "strEvent": "New England Patriots vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312657",
+   "strEvent": "Washington Commanders vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312658",
+   "strEvent": "Carolina Panthers vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312659",
+   "strEvent": "Jacksonville Jaguars vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312660",
+   "strEvent": "Baltimore Ravens vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312661",
+   "strEvent": "Arizona Cardinals vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312662",
+   "strEvent": "Denver Broncos vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312663",
+   "strEvent": "Kansas City Chiefs vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-15",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312664",
+   "strEvent": "Houston Texans vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-16",
+   "strTime": "00:20:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312665",
+   "strEvent": "Philadelphia Eagles vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-09-17",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312666",
+   "strEvent": "New York Jets vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-20",
+   "strTime": "00:15:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312667",
+   "strEvent": "Cleveland Browns vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312668",
+   "strEvent": "Tennessee Titans vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312669",
+   "strEvent": "Indianapolis Colts vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312670",
+   "strEvent": "Minnesota Vikings vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312671",
+   "strEvent": "New Orleans Saints vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312672",
+   "strEvent": "Pittsburgh Steelers vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312673",
+   "strEvent": "Tampa Bay Buccaneers vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312674",
+   "strEvent": "Las Vegas Raiders vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312675",
+   "strEvent": "Seattle Seahawks vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312676",
+   "strEvent": "Dallas Cowboys vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312677",
+   "strEvent": "Los Angeles Rams vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312678",
+   "strEvent": "Arizona Cardinals vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-22",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312679",
+   "strEvent": "Atlanta Falcons vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-23",
+   "strTime": "00:20:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312680",
+   "strEvent": "Buffalo Bills vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-23",
+   "strTime": "23:30:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312681",
+   "strEvent": "Cincinnati Bengals vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-09-24",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312682",
+   "strEvent": "New York Giants vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-27",
+   "strTime": "00:15:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312683",
+   "strEvent": "Atlanta Falcons vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312684",
+   "strEvent": "Chicago Bears vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312685",
+   "strEvent": "Green Bay Packers vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312686",
+   "strEvent": "Indianapolis Colts vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312687",
+   "strEvent": "New York Jets vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312688",
+   "strEvent": "Tampa Bay Buccaneers vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312689",
+   "strEvent": "Carolina Panthers vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312690",
+   "strEvent": "Houston Texans vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312691",
+   "strEvent": "Arizona Cardinals vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312692",
+   "strEvent": "San Francisco 49ers vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "20:05:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312693",
+   "strEvent": "Las Vegas Raiders vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312694",
+   "strEvent": "Los Angeles Chargers vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-29",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312695",
+   "strEvent": "Baltimore Ravens vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-30",
+   "strTime": "00:20:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312696",
+   "strEvent": "Miami Dolphins vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-09-30",
+   "strTime": "23:30:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312697",
+   "strEvent": "Detroit Lions vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-10-01",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312698",
+   "strEvent": "Atlanta Falcons vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-04",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312699",
+   "strEvent": "Minnesota Vikings vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "13:30:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312700",
+   "strEvent": "Chicago Bears vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312701",
+   "strEvent": "Cincinnati Bengals vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312702",
+   "strEvent": "New England Patriots vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312703",
+   "strEvent": "Washington Commanders vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312704",
+   "strEvent": "Jacksonville Jaguars vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312705",
+   "strEvent": "Houston Texans vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312706",
+   "strEvent": "Denver Broncos vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312707",
+   "strEvent": "San Francisco 49ers vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "20:05:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312708",
+   "strEvent": "Los Angeles Rams vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312709",
+   "strEvent": "Seattle Seahawks vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-06",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312710",
+   "strEvent": "Pittsburgh Steelers vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-07",
+   "strTime": "01:45:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312711",
+   "strEvent": "Kansas City Chiefs vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-10-08",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312712",
+   "strEvent": "Seattle Seahawks vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-11",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312713",
+   "strEvent": "Chicago Bears vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "13:30:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312714",
+   "strEvent": "Green Bay Packers vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312715",
+   "strEvent": "Tennessee Titans vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312716",
+   "strEvent": "New England Patriots vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312717",
+   "strEvent": "New Orleans Saints vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312718",
+   "strEvent": "Philadelphia Eagles vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312719",
+   "strEvent": "Baltimore Ravens vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312720",
+   "strEvent": "Denver Broncos vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312721",
+   "strEvent": "Las Vegas Raiders vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312722",
+   "strEvent": "Dallas Cowboys vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312723",
+   "strEvent": "Carolina Panthers vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-13",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312724",
+   "strEvent": "New York Giants vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-14",
+   "strTime": "00:20:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312725",
+   "strEvent": "New York Jets vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-10-15",
+   "strTime": "00:15:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312726",
+   "strEvent": "New Orleans Saints vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-18",
+   "strTime": "00:15:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312727",
+   "strEvent": "Jacksonville Jaguars vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "13:30:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312728",
+   "strEvent": "Atlanta Falcons vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312729",
+   "strEvent": "Buffalo Bills vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312730",
+   "strEvent": "Cleveland Browns vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312731",
+   "strEvent": "Green Bay Packers vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312732",
+   "strEvent": "Indianapolis Colts vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312733",
+   "strEvent": "Minnesota Vikings vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312734",
+   "strEvent": "New York Giants vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312735",
+   "strEvent": "Los Angeles Rams vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312736",
+   "strEvent": "Washington Commanders vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312737",
+   "strEvent": "San Francisco 49ers vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-20",
+   "strTime": "20:25:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312738",
+   "strEvent": "Pittsburgh Steelers vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-21",
+   "strTime": "00:20:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312739",
+   "strEvent": "Tampa Bay Buccaneers vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-22",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312740",
+   "strEvent": "Arizona Cardinals vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-10-22",
+   "strTime": "01:00:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312741",
+   "strEvent": "Los Angeles Rams vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-25",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312742",
+   "strEvent": "Cleveland Browns vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312743",
+   "strEvent": "Detroit Lions vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312744",
+   "strEvent": "Miami Dolphins vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312745",
+   "strEvent": "New England Patriots vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312746",
+   "strEvent": "Tampa Bay Buccaneers vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312748",
+   "strEvent": "Jacksonville Jaguars vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312749",
+   "strEvent": "Houston Texans vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312752",
+   "strEvent": "Cincinnati Bengals vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "17:00:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312750",
+   "strEvent": "Los Angeles Chargers vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312751",
+   "strEvent": "Seattle Seahawks vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "20:05:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312747",
+   "strEvent": "Washington Commanders vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312753",
+   "strEvent": "Denver Broncos vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312754",
+   "strEvent": "Las Vegas Raiders vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-27",
+   "strTime": "20:25:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312755",
+   "strEvent": "San Francisco 49ers vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-28",
+   "strTime": "00:20:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312756",
+   "strEvent": "Pittsburgh Steelers vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-10-29",
+   "strTime": "00:15:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312757",
+   "strEvent": "New York Jets vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-01",
+   "strTime": "00:15:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312758",
+   "strEvent": "Atlanta Falcons vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312759",
+   "strEvent": "Buffalo Bills vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312760",
+   "strEvent": "Cincinnati Bengals vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312761",
+   "strEvent": "Cleveland Browns vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312762",
+   "strEvent": "Tennessee Titans vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312763",
+   "strEvent": "New York Giants vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312764",
+   "strEvent": "Carolina Panthers vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312765",
+   "strEvent": "Baltimore Ravens vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312766",
+   "strEvent": "Arizona Cardinals vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312769",
+   "strEvent": "Philadelphia Eagles vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312767",
+   "strEvent": "Green Bay Packers vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312768",
+   "strEvent": "Seattle Seahawks vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-03",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312770",
+   "strEvent": "Minnesota Vikings vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-04",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312771",
+   "strEvent": "Kansas City Chiefs vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-11-05",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312772",
+   "strEvent": "Baltimore Ravens vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-08",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312773",
+   "strEvent": "Carolina Panthers vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "14:30:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312774",
+   "strEvent": "Chicago Bears vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312775",
+   "strEvent": "Indianapolis Colts vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312776",
+   "strEvent": "Kansas City Chiefs vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312777",
+   "strEvent": "New Orleans Saints vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312778",
+   "strEvent": "Tampa Bay Buccaneers vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312779",
+   "strEvent": "Washington Commanders vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312780",
+   "strEvent": "Jacksonville Jaguars vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312781",
+   "strEvent": "Los Angeles Chargers vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312782",
+   "strEvent": "Dallas Cowboys vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312783",
+   "strEvent": "Arizona Cardinals vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-10",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312784",
+   "strEvent": "Houston Texans vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-11",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312785",
+   "strEvent": "Los Angeles Rams vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-11-12",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312786",
+   "strEvent": "Philadelphia Eagles vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-15",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312787",
+   "strEvent": "Chicago Bears vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312788",
+   "strEvent": "Detroit Lions vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312789",
+   "strEvent": "Tennessee Titans vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312790",
+   "strEvent": "Miami Dolphins vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312791",
+   "strEvent": "New England Patriots vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312792",
+   "strEvent": "New Orleans Saints vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312793",
+   "strEvent": "Pittsburgh Steelers vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312797",
+   "strEvent": "New York Jets vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312794",
+   "strEvent": "Denver Broncos vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312795",
+   "strEvent": "San Francisco 49ers vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "21:05:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312796",
+   "strEvent": "Buffalo Bills vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-17",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312798",
+   "strEvent": "Los Angeles Chargers vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-18",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312799",
+   "strEvent": "Dallas Cowboys vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-11-19",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312800",
+   "strEvent": "Cleveland Browns vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-22",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312801",
+   "strEvent": "Chicago Bears vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312802",
+   "strEvent": "Indianapolis Colts vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312803",
+   "strEvent": "Miami Dolphins vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312804",
+   "strEvent": "New York Giants vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312805",
+   "strEvent": "Washington Commanders vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312806",
+   "strEvent": "Carolina Panthers vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312807",
+   "strEvent": "Houston Texans vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312808",
+   "strEvent": "Las Vegas Raiders vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312809",
+   "strEvent": "Green Bay Packers vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312810",
+   "strEvent": "Seattle Seahawks vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312811",
+   "strEvent": "Los Angeles Rams vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-25",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312812",
+   "strEvent": "Los Angeles Chargers vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-11-26",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312813",
+   "strEvent": "Detroit Lions vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-11-28",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312814",
+   "strEvent": "Dallas Cowboys vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-11-28",
+   "strTime": "21:30:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312815",
+   "strEvent": "Green Bay Packers vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-11-29",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312816",
+   "strEvent": "Kansas City Chiefs vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-11-29",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312817",
+   "strEvent": "Atlanta Falcons vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312818",
+   "strEvent": "Cincinnati Bengals vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312819",
+   "strEvent": "Minnesota Vikings vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312820",
+   "strEvent": "New England Patriots vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312821",
+   "strEvent": "New York Jets vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312822",
+   "strEvent": "Washington Commanders vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312823",
+   "strEvent": "Jacksonville Jaguars vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312824",
+   "strEvent": "New Orleans Saints vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "21:05:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312825",
+   "strEvent": "Carolina Panthers vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312826",
+   "strEvent": "Baltimore Ravens vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312827",
+   "strEvent": "Buffalo Bills vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-02",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312828",
+   "strEvent": "Denver Broncos vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-12-03",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312829",
+   "strEvent": "Detroit Lions vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-06",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312830",
+   "strEvent": "Tennessee Titans vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312831",
+   "strEvent": "Miami Dolphins vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312832",
+   "strEvent": "Minnesota Vikings vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312833",
+   "strEvent": "New York Giants vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312834",
+   "strEvent": "Philadelphia Eagles vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312835",
+   "strEvent": "Pittsburgh Steelers vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312836",
+   "strEvent": "Tampa Bay Buccaneers vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312837",
+   "strEvent": "Arizona Cardinals vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312838",
+   "strEvent": "Los Angeles Rams vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312839",
+   "strEvent": "San Francisco 49ers vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-08",
+   "strTime": "21:25:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312840",
+   "strEvent": "Kansas City Chiefs vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-09",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312841",
+   "strEvent": "Dallas Cowboys vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-12-10",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312842",
+   "strEvent": "San Francisco 49ers vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-13",
+   "strTime": "01:15:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312843",
+   "strEvent": "Cleveland Browns vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312844",
+   "strEvent": "Tennessee Titans vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312845",
+   "strEvent": "New Orleans Saints vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312846",
+   "strEvent": "New York Giants vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312847",
+   "strEvent": "Carolina Panthers vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312848",
+   "strEvent": "Jacksonville Jaguars vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312849",
+   "strEvent": "Houston Texans vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312850",
+   "strEvent": "Denver Broncos vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312851",
+   "strEvent": "Detroit Lions vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312852",
+   "strEvent": "Philadelphia Eagles vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312853",
+   "strEvent": "Arizona Cardinals vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312854",
+   "strEvent": "Los Angeles Chargers vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-15",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312855",
+   "strEvent": "Seattle Seahawks vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-16",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312856",
+   "strEvent": "Minnesota Vikings vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-17",
+   "strTime": "01:00:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312857",
+   "strEvent": "Las Vegas Raiders vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-12-17",
+   "strTime": "01:30:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312858",
+   "strEvent": "Los Angeles Chargers vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-20",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Los Angeles Chargers",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312859",
+   "strEvent": "Kansas City Chiefs vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-21",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312860",
+   "strEvent": "Baltimore Ravens vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-21",
+   "strTime": "21:30:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312861",
+   "strEvent": "Cincinnati Bengals vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312862",
+   "strEvent": "Atlanta Falcons vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312864",
+   "strEvent": "Chicago Bears vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312865",
+   "strEvent": "Indianapolis Colts vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312866",
+   "strEvent": "New York Jets vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312867",
+   "strEvent": "Washington Commanders vs Philadelphia Eagles",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "Philadelphia Eagles"
+  },
+  {
+   "idEvent": "ev-312868",
+   "strEvent": "Carolina Panthers vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Carolina Panthers",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312869",
+   "strEvent": "Seattle Seahawks vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Seattle Seahawks",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312863",
+   "strEvent": "Buffalo Bills vs New England Patriots",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "New England Patriots"
+  },
+  {
+   "idEvent": "ev-312870",
+   "strEvent": "Las Vegas Raiders vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312871",
+   "strEvent": "Miami Dolphins vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-22",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Miami Dolphins",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312872",
+   "strEvent": "Dallas Cowboys vs Tampa Bay Buccaneers",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-23",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "Tampa Bay Buccaneers"
+  },
+  {
+   "idEvent": "ev-312873",
+   "strEvent": "Green Bay Packers vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-12-24",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312874",
+   "strEvent": "Pittsburgh Steelers vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-25",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312875",
+   "strEvent": "Houston Texans vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-25",
+   "strTime": "21:30:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312876",
+   "strEvent": "Chicago Bears vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-27",
+   "strTime": "01:15:00",
+   "strHomeTeam": "Chicago Bears",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312878",
+   "strEvent": "New England Patriots vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-28",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312877",
+   "strEvent": "Cincinnati Bengals vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-28",
+   "strTime": "21:30:00",
+   "strHomeTeam": "Cincinnati Bengals",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312879",
+   "strEvent": "Los Angeles Rams vs Arizona Cardinals",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "01:00:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Arizona Cardinals"
+  },
+  {
+   "idEvent": "ev-312880",
+   "strEvent": "New York Giants vs Indianapolis Colts",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New York Giants",
+   "strAwayTeam": "Indianapolis Colts"
+  },
+  {
+   "idEvent": "ev-312881",
+   "strEvent": "Buffalo Bills vs New York Jets",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "New York Jets"
+  },
+  {
+   "idEvent": "ev-312883",
+   "strEvent": "New Orleans Saints vs Las Vegas Raiders",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New Orleans Saints",
+   "strAwayTeam": "Las Vegas Raiders"
+  },
+  {
+   "idEvent": "ev-312884",
+   "strEvent": "Tampa Bay Buccaneers vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312885",
+   "strEvent": "Jacksonville Jaguars vs Tennessee Titans",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Jacksonville Jaguars",
+   "strAwayTeam": "Tennessee Titans"
+  },
+  {
+   "idEvent": "ev-312886",
+   "strEvent": "Philadelphia Eagles vs Dallas Cowboys",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Dallas Cowboys"
+  },
+  {
+   "idEvent": "ev-312887",
+   "strEvent": "Cleveland Browns vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "21:05:00",
+   "strHomeTeam": "Cleveland Browns",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312882",
+   "strEvent": "Minnesota Vikings vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-29",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Minnesota Vikings",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312888",
+   "strEvent": "Washington Commanders vs Atlanta Falcons",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-30",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Washington Commanders",
+   "strAwayTeam": "Atlanta Falcons"
+  },
+  {
+   "idEvent": "ev-312889",
+   "strEvent": "San Francisco 49ers vs Detroit Lions",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-12-31",
+   "strTime": "01:15:00",
+   "strHomeTeam": "San Francisco 49ers",
+   "strAwayTeam": "Detroit Lions"
+  },
+  {
+   "idEvent": "ev-312890",
+   "strEvent": "Baltimore Ravens vs Cleveland Browns",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-04",
+   "strTime": "21:30:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Cleveland Browns"
+  },
+  {
+   "idEvent": "ev-312903",
+   "strEvent": "Pittsburgh Steelers vs Cincinnati Bengals",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "01:00:00",
+   "strHomeTeam": "Pittsburgh Steelers",
+   "strAwayTeam": "Cincinnati Bengals"
+  },
+  {
+   "idEvent": "ev-312891",
+   "strEvent": "Atlanta Falcons vs Carolina Panthers",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Atlanta Falcons",
+   "strAwayTeam": "Carolina Panthers"
+  },
+  {
+   "idEvent": "ev-312892",
+   "strEvent": "Dallas Cowboys vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Dallas Cowboys",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312894",
+   "strEvent": "Green Bay Packers vs Chicago Bears",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Green Bay Packers",
+   "strAwayTeam": "Chicago Bears"
+  },
+  {
+   "idEvent": "ev-312895",
+   "strEvent": "Tennessee Titans vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tennessee Titans",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312896",
+   "strEvent": "Indianapolis Colts vs Jacksonville Jaguars",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Indianapolis Colts",
+   "strAwayTeam": "Jacksonville Jaguars"
+  },
+  {
+   "idEvent": "ev-312899",
+   "strEvent": "New England Patriots vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "18:00:00",
+   "strHomeTeam": "New England Patriots",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312901",
+   "strEvent": "Philadelphia Eagles vs New York Giants",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "New York Giants"
+  },
+  {
+   "idEvent": "ev-312904",
+   "strEvent": "Tampa Bay Buccaneers vs New Orleans Saints",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "New Orleans Saints"
+  },
+  {
+   "idEvent": "ev-312893",
+   "strEvent": "Denver Broncos vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Denver Broncos",
+   "strAwayTeam": "Kansas City Chiefs"
+  },
+  {
+   "idEvent": "ev-312897",
+   "strEvent": "Las Vegas Raiders vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Las Vegas Raiders",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312898",
+   "strEvent": "Los Angeles Rams vs Seattle Seahawks",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Seattle Seahawks"
+  },
+  {
+   "idEvent": "ev-312900",
+   "strEvent": "New York Jets vs Miami Dolphins",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "21:25:00",
+   "strHomeTeam": "New York Jets",
+   "strAwayTeam": "Miami Dolphins"
+  },
+  {
+   "idEvent": "ev-312902",
+   "strEvent": "Arizona Cardinals vs San Francisco 49ers",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-05",
+   "strTime": "21:25:00",
+   "strHomeTeam": "Arizona Cardinals",
+   "strAwayTeam": "San Francisco 49ers"
+  },
+  {
+   "idEvent": "ev-312905",
+   "strEvent": "Detroit Lions vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2025-01-06",
+   "strTime": "01:20:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312906",
+   "strEvent": "Houston Texans vs Los Angeles Chargers",
+   "strSeason": "2024",
+   "intRound": "160",
+   "dateEvent": "2025-01-11",
+   "strTime": "21:30:00",
+   "strHomeTeam": "Houston Texans",
+   "strAwayTeam": "Los Angeles Chargers"
+  },
+  {
+   "idEvent": "ev-312907",
+   "strEvent": "Baltimore Ravens vs Pittsburgh Steelers",
+   "strSeason": "2024",
+   "intRound": "160",
+   "dateEvent": "2025-01-12",
+   "strTime": "01:00:00",
+   "strHomeTeam": "Baltimore Ravens",
+   "strAwayTeam": "Pittsburgh Steelers"
+  },
+  {
+   "idEvent": "ev-312908",
+   "strEvent": "Buffalo Bills vs Denver Broncos",
+   "strSeason": "2024",
+   "intRound": "160",
+   "dateEvent": "2025-01-12",
+   "strTime": "18:00:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Denver Broncos"
+  },
+  {
+   "idEvent": "ev-312909",
+   "strEvent": "Philadelphia Eagles vs Green Bay Packers",
+   "strSeason": "2024",
+   "intRound": "160",
+   "dateEvent": "2025-01-12",
+   "strTime": "21:30:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Green Bay Packers"
+  },
+  {
+   "idEvent": "ev-312910",
+   "strEvent": "Tampa Bay Buccaneers vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "160",
+   "dateEvent": "2025-01-13",
+   "strTime": "01:00:00",
+   "strHomeTeam": "Tampa Bay Buccaneers",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312911",
+   "strEvent": "Los Angeles Rams vs Minnesota Vikings",
+   "strSeason": "2024",
+   "intRound": "160",
+   "dateEvent": "2025-01-14",
+   "strTime": "01:00:00",
+   "strHomeTeam": "Los Angeles Rams",
+   "strAwayTeam": "Minnesota Vikings"
+  },
+  {
+   "idEvent": "ev-312912",
+   "strEvent": "Kansas City Chiefs vs Houston Texans",
+   "strSeason": "2024",
+   "intRound": "125",
+   "dateEvent": "2025-01-18",
+   "strTime": "21:30:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Houston Texans"
+  },
+  {
+   "idEvent": "ev-312913",
+   "strEvent": "Detroit Lions vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "125",
+   "dateEvent": "2025-01-19",
+   "strTime": "01:00:00",
+   "strHomeTeam": "Detroit Lions",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312915",
+   "strEvent": "Philadelphia Eagles vs Los Angeles Rams",
+   "strSeason": "2024",
+   "intRound": "125",
+   "dateEvent": "2025-01-19",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Los Angeles Rams"
+  },
+  {
+   "idEvent": "ev-312914",
+   "strEvent": "Buffalo Bills vs Baltimore Ravens",
+   "strSeason": "2024",
+   "intRound": "125",
+   "dateEvent": "2025-01-19",
+   "strTime": "23:30:00",
+   "strHomeTeam": "Buffalo Bills",
+   "strAwayTeam": "Baltimore Ravens"
+  },
+  {
+   "idEvent": "ev-312916",
+   "strEvent": "Philadelphia Eagles vs Washington Commanders",
+   "strSeason": "2024",
+   "intRound": "150",
+   "dateEvent": "2025-01-26",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Washington Commanders"
+  },
+  {
+   "idEvent": "ev-312917",
+   "strEvent": "Kansas City Chiefs vs Buffalo Bills",
+   "strSeason": "2024",
+   "intRound": "150",
+   "dateEvent": "2025-01-26",
+   "strTime": "23:30:00",
+   "strHomeTeam": "Kansas City Chiefs",
+   "strAwayTeam": "Buffalo Bills"
+  },
+  {
+   "idEvent": "ev-312918",
+   "strEvent": "Philadelphia Eagles vs Kansas City Chiefs",
+   "strSeason": "2024",
+   "intRound": "200",
+   "dateEvent": "2025-02-09",
+   "strTime": "23:30:00",
+   "strHomeTeam": "Philadelphia Eagles",
+   "strAwayTeam": "Kansas City Chiefs"
+  }
+ ]
+}

@@ -1,0 +1,390 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-173811",
+   "strEvent": "Australian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "1",
+   "dateEvent": "2015-03-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173812",
+   "strEvent": "Australian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "1",
+   "dateEvent": "2015-03-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173813",
+   "strEvent": "Malaysian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "2",
+   "dateEvent": "2015-03-28",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173814",
+   "strEvent": "Malaysian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "2",
+   "dateEvent": "2015-03-29",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173815",
+   "strEvent": "Chinese Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "3",
+   "dateEvent": "2015-04-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173816",
+   "strEvent": "Chinese Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "3",
+   "dateEvent": "2015-04-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173817",
+   "strEvent": "Bahrain Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "4",
+   "dateEvent": "2015-04-18",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173818",
+   "strEvent": "Bahrain Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "4",
+   "dateEvent": "2015-04-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173819",
+   "strEvent": "Spanish Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "5",
+   "dateEvent": "2015-05-09",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173820",
+   "strEvent": "Spanish Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "5",
+   "dateEvent": "2015-05-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173821",
+   "strEvent": "Monaco Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "6",
+   "dateEvent": "2015-05-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173822",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "6",
+   "dateEvent": "2015-05-24",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173823",
+   "strEvent": "Canadian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "7",
+   "dateEvent": "2015-06-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173824",
+   "strEvent": "Canadian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "7",
+   "dateEvent": "2015-06-07",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173825",
+   "strEvent": "Austrian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "8",
+   "dateEvent": "2015-06-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173826",
+   "strEvent": "Austrian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "8",
+   "dateEvent": "2015-06-21",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173827",
+   "strEvent": "British Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "9",
+   "dateEvent": "2015-07-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173828",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "9",
+   "dateEvent": "2015-07-05",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173829",
+   "strEvent": "Hungarian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "10",
+   "dateEvent": "2015-07-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173830",
+   "strEvent": "Hungarian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "10",
+   "dateEvent": "2015-07-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173831",
+   "strEvent": "Belgian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "11",
+   "dateEvent": "2015-08-22",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173832",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "11",
+   "dateEvent": "2015-08-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173833",
+   "strEvent": "Italian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "12",
+   "dateEvent": "2015-09-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173834",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "12",
+   "dateEvent": "2015-09-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173835",
+   "strEvent": "Singapore Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "13",
+   "dateEvent": "2015-09-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173836",
+   "strEvent": "Singapore Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "13",
+   "dateEvent": "2015-09-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173837",
+   "strEvent": "Japanese Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "14",
+   "dateEvent": "2015-09-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173838",
+   "strEvent": "Japanese Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "14",
+   "dateEvent": "2015-09-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173839",
+   "strEvent": "Russian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "15",
+   "dateEvent": "2015-10-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173840",
+   "strEvent": "Russian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "15",
+   "dateEvent": "2015-10-11",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173841",
+   "strEvent": "United States Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "16",
+   "dateEvent": "2015-10-24",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173842",
+   "strEvent": "United States Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "16",
+   "dateEvent": "2015-10-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173843",
+   "strEvent": "Mexican Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "17",
+   "dateEvent": "2015-10-31",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173844",
+   "strEvent": "Mexican Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "17",
+   "dateEvent": "2015-11-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173845",
+   "strEvent": "Brazilian Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "18",
+   "dateEvent": "2015-11-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173846",
+   "strEvent": "Brazilian Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "18",
+   "dateEvent": "2015-11-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173847",
+   "strEvent": "Abu Dhabi Grand Prix - Qualifying",
+   "strSeason": "2015",
+   "intRound": "19",
+   "dateEvent": "2015-11-28",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173848",
+   "strEvent": "Abu Dhabi Grand Prix - Race",
+   "strSeason": "2015",
+   "intRound": "19",
+   "dateEvent": "2015-11-29",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

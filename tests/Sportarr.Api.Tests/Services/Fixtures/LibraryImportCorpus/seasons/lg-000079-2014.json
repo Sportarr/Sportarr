@@ -1,0 +1,480 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-570078",
+   "strEvent": "UFC Fight Night Saffiedine vs Lim",
+   "strSeason": "2014",
+   "intRound": "1",
+   "dateEvent": "2014-01-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553994",
+   "strEvent": "UFC Fight Night Rockhold vs Philippou",
+   "strSeason": "2014",
+   "intRound": "2",
+   "dateEvent": "2014-01-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570080",
+   "strEvent": "UFC on Fox Henderson vs Thomson",
+   "strSeason": "2014",
+   "intRound": "3",
+   "dateEvent": "2014-01-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553984",
+   "strEvent": "UFC 169 Barao vs Faber II",
+   "strSeason": "2014",
+   "intRound": "4",
+   "dateEvent": "2014-02-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570082",
+   "strEvent": "UFC Fight Night Machida vs Mousasi",
+   "strSeason": "2014",
+   "intRound": "5",
+   "dateEvent": "2014-02-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553989",
+   "strEvent": "UFC 170 Rousey vs McMann",
+   "strSeason": "2014",
+   "intRound": "6",
+   "dateEvent": "2014-02-22",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570084",
+   "strEvent": "The Ultimate Fighter China Finale Kim vs Hathaway",
+   "strSeason": "2014",
+   "intRound": "7",
+   "dateEvent": "2014-03-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553977",
+   "strEvent": "UFC Fight Night Gustafsson vs Manuwa",
+   "strSeason": "2014",
+   "intRound": "8",
+   "dateEvent": "2014-03-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553988",
+   "strEvent": "UFC 171 Hendricks vs Lawler",
+   "strSeason": "2014",
+   "intRound": "9",
+   "dateEvent": "2014-03-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570087",
+   "strEvent": "UFC Fight Night Shogun vs Henderson 2",
+   "strSeason": "2014",
+   "intRound": "10",
+   "dateEvent": "2014-03-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553986",
+   "strEvent": "UFC Fight Night Nogueira vs Nelson",
+   "strSeason": "2014",
+   "intRound": "11",
+   "dateEvent": "2014-04-11",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570089",
+   "strEvent": "The Ultimate Fighter Nations Finale Bisping vs Kennedy",
+   "strSeason": "2014",
+   "intRound": "12",
+   "dateEvent": "2014-04-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570090",
+   "strEvent": "UFC on Fox 11 Werdum vs Browne",
+   "strSeason": "2014",
+   "intRound": "13",
+   "dateEvent": "2014-04-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553983",
+   "strEvent": "UFC 172 Jones vs Teixeira",
+   "strSeason": "2014",
+   "intRound": "14",
+   "dateEvent": "2014-04-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570092",
+   "strEvent": "UFC Fight Night Brown vs Silva",
+   "strSeason": "2014",
+   "intRound": "15",
+   "dateEvent": "2014-05-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553971",
+   "strEvent": "UFC 173 Barão vs Dillashaw",
+   "strSeason": "2014",
+   "intRound": "16",
+   "dateEvent": "2014-05-24",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570094",
+   "strEvent": "The Ultimate Fighter Brazil 3 Finale Miocic vs Maldonado",
+   "strSeason": "2014",
+   "intRound": "17",
+   "dateEvent": "2014-05-31",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570095",
+   "strEvent": "UFC Fight Night Munoz vs Mousasi",
+   "strSeason": "2014",
+   "intRound": "18",
+   "dateEvent": "2014-05-31",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570096",
+   "strEvent": "UFC Fight Night 42 Henderson vs Khabilov",
+   "strSeason": "2014",
+   "intRound": "19",
+   "dateEvent": "2014-06-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553964",
+   "strEvent": "UFC 174 Johnson vs Bagautinov",
+   "strSeason": "2014",
+   "intRound": "20",
+   "dateEvent": "2014-06-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1946040",
+   "strEvent": "UFC Fight Night Swanson vs Stephens",
+   "strSeason": "2014",
+   "intRound": "21",
+   "dateEvent": "2014-06-28",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1946041",
+   "strEvent": "UFC Fight Night Te Huna vs Marquardt",
+   "strSeason": "2014",
+   "intRound": "22",
+   "dateEvent": "2014-06-28",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553972",
+   "strEvent": "UFC 175 Weidman vs Machida",
+   "strSeason": "2014",
+   "intRound": "23",
+   "dateEvent": "2014-07-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570101",
+   "strEvent": "The Ultimate Fighter Team Edgar vs Team Penn Finale",
+   "strSeason": "2014",
+   "intRound": "24",
+   "dateEvent": "2014-07-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553976",
+   "strEvent": "UFC Fight Night Cerrone vs Miller",
+   "strSeason": "2014",
+   "intRound": "25",
+   "dateEvent": "2014-07-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570103",
+   "strEvent": "UFC Fight Night McGregor vs Brandao",
+   "strSeason": "2014",
+   "intRound": "26",
+   "dateEvent": "2014-07-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570104",
+   "strEvent": "UFC on Fox Lawler vs Brown",
+   "strSeason": "2014",
+   "intRound": "27",
+   "dateEvent": "2014-07-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570105",
+   "strEvent": "UFC 176 Aldo vs Mendes II",
+   "strSeason": "2014",
+   "intRound": "28",
+   "dateEvent": "2014-08-02",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553960",
+   "strEvent": "UFC Fight Night Bader vs Saint Preux",
+   "strSeason": "2014",
+   "intRound": "29",
+   "dateEvent": "2014-08-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1935732",
+   "strEvent": "UFC Fight Night 49 Henderson vs dos Anjos",
+   "strSeason": "2014",
+   "intRound": "31",
+   "dateEvent": "2014-08-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1935733",
+   "strEvent": "UFC Fight Night Bisping vs Le",
+   "strSeason": "2014",
+   "intRound": "30",
+   "dateEvent": "2014-08-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553966",
+   "strEvent": "UFC 177 Dillashaw vs Soto",
+   "strSeason": "2014",
+   "intRound": "32",
+   "dateEvent": "2014-08-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553954",
+   "strEvent": "UFC Fight Night Jacaré vs Mousasi",
+   "strSeason": "2014",
+   "intRound": "33",
+   "dateEvent": "2014-09-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553970",
+   "strEvent": "UFC Fight Night Bigfoot vs Arlovski",
+   "strSeason": "2014",
+   "intRound": "34",
+   "dateEvent": "2014-09-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553961",
+   "strEvent": "UFC Fight Night Hunt vs Nelson",
+   "strSeason": "2014",
+   "intRound": "35",
+   "dateEvent": "2014-09-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553950",
+   "strEvent": "UFC 178 Johnson vs Cariaso",
+   "strSeason": "2014",
+   "intRound": "36",
+   "dateEvent": "2014-09-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1927287",
+   "strEvent": "UFC Fight Night MacDonald vs Saffiedine",
+   "strSeason": "2014",
+   "intRound": "37",
+   "dateEvent": "2014-10-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1927288",
+   "strEvent": "UFC Fight Night Nelson vs Story",
+   "strSeason": "2014",
+   "intRound": "38",
+   "dateEvent": "2014-10-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553944",
+   "strEvent": "UFC 179 Aldo vs Mendes 2",
+   "strSeason": "2014",
+   "intRound": "39",
+   "dateEvent": "2014-10-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553947",
+   "strEvent": "UFC Fight Night Shogun vs Saint Preux",
+   "strSeason": "2014",
+   "intRound": "40",
+   "dateEvent": "2014-11-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553948",
+   "strEvent": "UFC Fight Night Rockhold vs Bisping",
+   "strSeason": "2014",
+   "intRound": "41",
+   "dateEvent": "2014-11-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553952",
+   "strEvent": "UFC 180 Werdum vs Hunt",
+   "strSeason": "2014",
+   "intRound": "42",
+   "dateEvent": "2014-11-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553958",
+   "strEvent": "UFC Fight Night Edgar vs Swanson",
+   "strSeason": "2014",
+   "intRound": "43",
+   "dateEvent": "2014-11-22",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553956",
+   "strEvent": "UFC 181 Hendricks vs Lawler II",
+   "strSeason": "2014",
+   "intRound": "44",
+   "dateEvent": "2014-12-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570122",
+   "strEvent": "The Ultimate Fighter A Champion Will Be Crowned Finale",
+   "strSeason": "2014",
+   "intRound": "45",
+   "dateEvent": "2014-12-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553957",
+   "strEvent": "UFC on Fox 13 dos Santos vs Miocic",
+   "strSeason": "2014",
+   "intRound": "46",
+   "dateEvent": "2014-12-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553953",
+   "strEvent": "UFC Fight Night Machida vs Dollaway",
+   "strSeason": "2014",
+   "intRound": "47",
+   "dateEvent": "2014-12-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

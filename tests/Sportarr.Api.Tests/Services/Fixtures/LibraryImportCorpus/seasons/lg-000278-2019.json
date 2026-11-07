@@ -1,0 +1,430 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-173925",
+   "strEvent": "Australian Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "1",
+   "dateEvent": "2019-03-16",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173926",
+   "strEvent": "Australian Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "1",
+   "dateEvent": "2019-03-17",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173927",
+   "strEvent": "Bahrain Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "2",
+   "dateEvent": "2019-03-30",
+   "strTime": "15:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173928",
+   "strEvent": "Bahrain Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "2",
+   "dateEvent": "2019-03-31",
+   "strTime": "15:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173929",
+   "strEvent": "Chinese Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "3",
+   "dateEvent": "2019-04-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173930",
+   "strEvent": "Chinese Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "3",
+   "dateEvent": "2019-04-14",
+   "strTime": "08:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173931",
+   "strEvent": "AzerBaijan Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "4",
+   "dateEvent": "2019-04-27",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173932",
+   "strEvent": "AzerBaijan Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "4",
+   "dateEvent": "2019-04-28",
+   "strTime": "13:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173933",
+   "strEvent": "Spanish Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "5",
+   "dateEvent": "2019-05-11",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173934",
+   "strEvent": "Spanish Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "5",
+   "dateEvent": "2019-05-12",
+   "strTime": "14:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173935",
+   "strEvent": "Monaco Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "6",
+   "dateEvent": "2019-05-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173936",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "6",
+   "dateEvent": "2019-05-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173937",
+   "strEvent": "Canadian Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "7",
+   "dateEvent": "2019-06-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173938",
+   "strEvent": "Canadian Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "7",
+   "dateEvent": "2019-06-09",
+   "strTime": "17:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173939",
+   "strEvent": "French Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "8",
+   "dateEvent": "2019-06-22",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173940",
+   "strEvent": "French Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "8",
+   "dateEvent": "2019-06-23",
+   "strTime": "14:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173941",
+   "strEvent": "Austrian Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "9",
+   "dateEvent": "2019-06-29",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173942",
+   "strEvent": "Austrian Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "9",
+   "dateEvent": "2019-06-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173943",
+   "strEvent": "British Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "10",
+   "dateEvent": "2019-07-13",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173944",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "10",
+   "dateEvent": "2019-07-14",
+   "strTime": "13:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173945",
+   "strEvent": "German Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "11",
+   "dateEvent": "2019-07-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173946",
+   "strEvent": "German Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "11",
+   "dateEvent": "2019-07-28",
+   "strTime": "14:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173947",
+   "strEvent": "Hungarian Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "12",
+   "dateEvent": "2019-08-03",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173948",
+   "strEvent": "Hungarian Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "12",
+   "dateEvent": "2019-08-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173949",
+   "strEvent": "Belgian Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "13",
+   "dateEvent": "2019-08-31",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173950",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "13",
+   "dateEvent": "2019-09-01",
+   "strTime": "14:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173951",
+   "strEvent": "Italian Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "14",
+   "dateEvent": "2019-09-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173952",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "14",
+   "dateEvent": "2019-09-08",
+   "strTime": "14:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173953",
+   "strEvent": "Singapore Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "15",
+   "dateEvent": "2019-09-21",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173954",
+   "strEvent": "Singapore Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "15",
+   "dateEvent": "2019-09-22",
+   "strTime": "12:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173955",
+   "strEvent": "Russian Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "16",
+   "dateEvent": "2019-09-28",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173956",
+   "strEvent": "Russian Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "16",
+   "dateEvent": "2019-09-29",
+   "strTime": "12:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173957",
+   "strEvent": "Japanese Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "17",
+   "dateEvent": "2019-10-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173958",
+   "strEvent": "Japanese Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "17",
+   "dateEvent": "2019-10-13",
+   "strTime": "06:10:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173959",
+   "strEvent": "Mexican Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "18",
+   "dateEvent": "2019-10-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173960",
+   "strEvent": "Mexican Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "18",
+   "dateEvent": "2019-10-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173961",
+   "strEvent": "United States Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "19",
+   "dateEvent": "2019-11-02",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173962",
+   "strEvent": "United States Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "19",
+   "dateEvent": "2019-11-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173963",
+   "strEvent": "Brazilian Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "20",
+   "dateEvent": "2019-11-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173964",
+   "strEvent": "Brazilian Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "20",
+   "dateEvent": "2019-11-17",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173965",
+   "strEvent": "Abu Dhabi Grand Prix - Qualifying",
+   "strSeason": "2019",
+   "intRound": "21",
+   "dateEvent": "2019-11-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173966",
+   "strEvent": "Abu Dhabi Grand Prix - Race",
+   "strSeason": "2019",
+   "intRound": "21",
+   "dateEvent": "2019-12-01",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

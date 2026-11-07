@@ -1,0 +1,160 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-173268",
+   "strEvent": "Brazilian Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "1",
+   "dateEvent": "1983-03-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173269",
+   "strEvent": "United States Grand Prix West",
+   "strSeason": "1983",
+   "intRound": "2",
+   "dateEvent": "1983-03-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173270",
+   "strEvent": "French Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "3",
+   "dateEvent": "1983-04-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173271",
+   "strEvent": "San Marino Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "4",
+   "dateEvent": "1983-05-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173272",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "5",
+   "dateEvent": "1983-05-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173273",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "6",
+   "dateEvent": "1983-05-22",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173274",
+   "strEvent": "Detroit Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "7",
+   "dateEvent": "1983-06-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173275",
+   "strEvent": "Canadian Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "8",
+   "dateEvent": "1983-06-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173276",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "9",
+   "dateEvent": "1983-07-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173277",
+   "strEvent": "German Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "10",
+   "dateEvent": "1983-08-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173278",
+   "strEvent": "Austrian Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "11",
+   "dateEvent": "1983-08-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173279",
+   "strEvent": "Dutch Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "12",
+   "dateEvent": "1983-08-28",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173280",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "13",
+   "dateEvent": "1983-09-11",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173281",
+   "strEvent": "European Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "14",
+   "dateEvent": "1983-09-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173282",
+   "strEvent": "South African Grand Prix - Race",
+   "strSeason": "1983",
+   "intRound": "15",
+   "dateEvent": "1983-10-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

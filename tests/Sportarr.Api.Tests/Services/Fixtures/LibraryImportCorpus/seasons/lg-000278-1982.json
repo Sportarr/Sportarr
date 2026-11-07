@@ -1,0 +1,170 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-173252",
+   "strEvent": "South African Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "1",
+   "dateEvent": "1982-01-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173253",
+   "strEvent": "Brazilian Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "2",
+   "dateEvent": "1982-03-21",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173254",
+   "strEvent": "United States Grand Prix West",
+   "strSeason": "1982",
+   "intRound": "3",
+   "dateEvent": "1982-04-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173255",
+   "strEvent": "San Marino Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "4",
+   "dateEvent": "1982-04-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173256",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "5",
+   "dateEvent": "1982-05-09",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173257",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "6",
+   "dateEvent": "1982-05-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173258",
+   "strEvent": "Detroit Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "7",
+   "dateEvent": "1982-06-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173259",
+   "strEvent": "Canadian Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "8",
+   "dateEvent": "1982-06-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173260",
+   "strEvent": "Dutch Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "9",
+   "dateEvent": "1982-07-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173261",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "10",
+   "dateEvent": "1982-07-18",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173262",
+   "strEvent": "French Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "11",
+   "dateEvent": "1982-07-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173263",
+   "strEvent": "German Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "12",
+   "dateEvent": "1982-08-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173264",
+   "strEvent": "Austrian Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "13",
+   "dateEvent": "1982-08-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173265",
+   "strEvent": "Swiss Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "14",
+   "dateEvent": "1982-08-29",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173266",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "15",
+   "dateEvent": "1982-09-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173267",
+   "strEvent": "Caesars Palace Grand Prix - Race",
+   "strSeason": "1982",
+   "intRound": "16",
+   "dateEvent": "1982-09-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

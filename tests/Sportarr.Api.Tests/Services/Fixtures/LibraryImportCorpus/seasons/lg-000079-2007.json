@@ -1,0 +1,200 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-027750",
+   "strEvent": "UFC Fight Night Evans vs Salmon",
+   "strSeason": "2007",
+   "intRound": "1",
+   "dateEvent": "2007-01-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569904",
+   "strEvent": "UFC 67 All or Nothing",
+   "strSeason": "2007",
+   "intRound": "2",
+   "dateEvent": "2007-02-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569905",
+   "strEvent": "UFC 68 The Uprising",
+   "strSeason": "2007",
+   "intRound": "3",
+   "dateEvent": "2007-03-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-027749",
+   "strEvent": "UFC Fight Night Stevenson vs Guillard",
+   "strSeason": "2007",
+   "intRound": "4",
+   "dateEvent": "2007-04-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569907",
+   "strEvent": "UFC 69 Shootout",
+   "strSeason": "2007",
+   "intRound": "5",
+   "dateEvent": "2007-04-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569908",
+   "strEvent": "UFC 70 Nations Collide",
+   "strSeason": "2007",
+   "intRound": "6",
+   "dateEvent": "2007-04-21",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554101",
+   "strEvent": "UFC 71 Liddell vs Jackson",
+   "strSeason": "2007",
+   "intRound": "7",
+   "dateEvent": "2007-05-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-027739",
+   "strEvent": "UFC Fight Night Stout vs Fisher",
+   "strSeason": "2007",
+   "intRound": "8",
+   "dateEvent": "2007-06-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569911",
+   "strEvent": "UFC 72 Victory",
+   "strSeason": "2007",
+   "intRound": "9",
+   "dateEvent": "2007-06-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569912",
+   "strEvent": "The Ultimate Fighter Team Pulver vs Team Penn Finale",
+   "strSeason": "2007",
+   "intRound": "10",
+   "dateEvent": "2007-06-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569913",
+   "strEvent": "UFC 73 Stacked",
+   "strSeason": "2007",
+   "intRound": "11",
+   "dateEvent": "2007-07-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569914",
+   "strEvent": "UFC 74 Respect",
+   "strSeason": "2007",
+   "intRound": "12",
+   "dateEvent": "2007-08-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554103",
+   "strEvent": "UFC 75 Champion vs Champion",
+   "strSeason": "2007",
+   "intRound": "13",
+   "dateEvent": "2007-09-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-027737",
+   "strEvent": "UFC Fight Night Thomas vs Florian",
+   "strSeason": "2007",
+   "intRound": "14",
+   "dateEvent": "2007-09-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569917",
+   "strEvent": "UFC 76 Knockout",
+   "strSeason": "2007",
+   "intRound": "15",
+   "dateEvent": "2007-09-22",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569918",
+   "strEvent": "UFC 77 Hostile Territory",
+   "strSeason": "2007",
+   "intRound": "16",
+   "dateEvent": "2007-10-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569919",
+   "strEvent": "UFC 78 Validation",
+   "strSeason": "2007",
+   "intRound": "17",
+   "dateEvent": "2007-11-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569920",
+   "strEvent": "The Ultimate Fighter Team Hughes vs Team Serra Finale",
+   "strSeason": "2007",
+   "intRound": "18",
+   "dateEvent": "2007-12-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569921",
+   "strEvent": "UFC 79 Nemesis",
+   "strSeason": "2007",
+   "intRound": "19",
+   "dateEvent": "2007-12-29",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

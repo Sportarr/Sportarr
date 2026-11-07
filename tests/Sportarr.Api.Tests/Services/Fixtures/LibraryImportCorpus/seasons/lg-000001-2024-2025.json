@@ -1,0 +1,3810 @@
+{
+ "league": {
+  "idLeague": "lg-000001",
+  "strLeague": "English Premier League",
+  "strSport": "Soccer",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-041863",
+   "strEvent": "Manchester United vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-16",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-041864",
+   "strEvent": "Ipswich Town vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-17",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-041865",
+   "strEvent": "Arsenal vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-17",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-041866",
+   "strEvent": "Everton vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-17",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-041867",
+   "strEvent": "Newcastle United vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-17",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-041868",
+   "strEvent": "Nottingham Forest vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-17",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-041869",
+   "strEvent": "West Ham United vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-17",
+   "strTime": "16:30:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-041870",
+   "strEvent": "Brentford vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-18",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-041871",
+   "strEvent": "Chelsea vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-18",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-041872",
+   "strEvent": "Leicester City vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "1",
+   "dateEvent": "2024-08-19",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-041873",
+   "strEvent": "Brighton and Hove Albion vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-24",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-041874",
+   "strEvent": "Tottenham Hotspur vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-24",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-041875",
+   "strEvent": "Southampton vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-24",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-041876",
+   "strEvent": "Manchester City vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-24",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-041877",
+   "strEvent": "Fulham vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-24",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-041878",
+   "strEvent": "Crystal Palace vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-24",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-041879",
+   "strEvent": "Aston Villa vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-24",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-041880",
+   "strEvent": "Wolverhampton Wanderers vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-25",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-041882",
+   "strEvent": "Bournemouth vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-25",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-041881",
+   "strEvent": "Liverpool vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "2",
+   "dateEvent": "2024-08-25",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-041887",
+   "strEvent": "Arsenal vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-08-31",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-041884",
+   "strEvent": "Nottingham Forest vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-08-31",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-041885",
+   "strEvent": "Ipswich Town vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-08-31",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-041886",
+   "strEvent": "Everton vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-08-31",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-041888",
+   "strEvent": "Brentford vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-08-31",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-041889",
+   "strEvent": "Leicester City vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-08-31",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-041883",
+   "strEvent": "West Ham United vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-08-31",
+   "strTime": "16:30:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-041890",
+   "strEvent": "Chelsea vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-09-01",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-041891",
+   "strEvent": "Newcastle United vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-09-01",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-041892",
+   "strEvent": "Manchester United vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "3",
+   "dateEvent": "2024-09-01",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-041894",
+   "strEvent": "Southampton vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-14",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-041893",
+   "strEvent": "Liverpool vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-14",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-041895",
+   "strEvent": "Manchester City vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-14",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-041896",
+   "strEvent": "Fulham vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-14",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-041897",
+   "strEvent": "Crystal Palace vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-14",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-041898",
+   "strEvent": "Brighton and Hove Albion vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-14",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-041899",
+   "strEvent": "Aston Villa vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-14",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-041900",
+   "strEvent": "Bournemouth vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-14",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-041902",
+   "strEvent": "Tottenham Hotspur vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-15",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-041901",
+   "strEvent": "Wolverhampton Wanderers vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "4",
+   "dateEvent": "2024-09-15",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-041904",
+   "strEvent": "West Ham United vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-21",
+   "strTime": "11:30:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-041903",
+   "strEvent": "Aston Villa vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-21",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-041905",
+   "strEvent": "Tottenham Hotspur vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-21",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-041906",
+   "strEvent": "Southampton vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-21",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-041907",
+   "strEvent": "Leicester City vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-21",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-041908",
+   "strEvent": "Fulham vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-21",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-041910",
+   "strEvent": "Liverpool vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-21",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-041909",
+   "strEvent": "Crystal Palace vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-21",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-041912",
+   "strEvent": "Brighton and Hove Albion vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-22",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-041911",
+   "strEvent": "Manchester City vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "5",
+   "dateEvent": "2024-09-22",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-041915",
+   "strEvent": "Newcastle United vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-28",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-041914",
+   "strEvent": "Nottingham Forest vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-28",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-041916",
+   "strEvent": "Everton vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-28",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-041917",
+   "strEvent": "Chelsea vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-28",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-041918",
+   "strEvent": "Brentford vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-28",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-041919",
+   "strEvent": "Arsenal vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-28",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-041913",
+   "strEvent": "Wolverhampton Wanderers vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-28",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-041920",
+   "strEvent": "Ipswich Town vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-29",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-041921",
+   "strEvent": "Manchester United vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-29",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-041922",
+   "strEvent": "Bournemouth vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "6",
+   "dateEvent": "2024-09-30",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-041928",
+   "strEvent": "Crystal Palace vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-05",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-041923",
+   "strEvent": "Brentford vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-041924",
+   "strEvent": "West Ham United vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-041925",
+   "strEvent": "Manchester City vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-041926",
+   "strEvent": "Leicester City vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-041929",
+   "strEvent": "Arsenal vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-041927",
+   "strEvent": "Everton vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-05",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-041930",
+   "strEvent": "Chelsea vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-06",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-041932",
+   "strEvent": "Aston Villa vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-06",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-041931",
+   "strEvent": "Brighton and Hove Albion vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "7",
+   "dateEvent": "2024-10-06",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-041939",
+   "strEvent": "Tottenham Hotspur vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-19",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-041934",
+   "strEvent": "Fulham vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-041935",
+   "strEvent": "Ipswich Town vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-041936",
+   "strEvent": "Manchester United vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-041937",
+   "strEvent": "Newcastle United vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-041938",
+   "strEvent": "Southampton vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-041933",
+   "strEvent": "Bournemouth vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-19",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-041941",
+   "strEvent": "Wolverhampton Wanderers vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-20",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-041940",
+   "strEvent": "Liverpool vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-20",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-041942",
+   "strEvent": "Nottingham Forest vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "8",
+   "dateEvent": "2024-10-21",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-041943",
+   "strEvent": "Leicester City vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-25",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-041944",
+   "strEvent": "Aston Villa vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-041945",
+   "strEvent": "Brentford vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-041946",
+   "strEvent": "Brighton and Hove Albion vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-041948",
+   "strEvent": "Manchester City vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-041947",
+   "strEvent": "Everton vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-26",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-041950",
+   "strEvent": "Chelsea vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-27",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-041951",
+   "strEvent": "Crystal Palace vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-27",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-041952",
+   "strEvent": "West Ham United vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-27",
+   "strTime": "13:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-041949",
+   "strEvent": "Arsenal vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "9",
+   "dateEvent": "2024-10-27",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-041956",
+   "strEvent": "Newcastle United vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-02",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-041953",
+   "strEvent": "Bournemouth vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-02",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-041954",
+   "strEvent": "Ipswich Town vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-02",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-041955",
+   "strEvent": "Liverpool vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-02",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-041957",
+   "strEvent": "Nottingham Forest vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-02",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-041958",
+   "strEvent": "Southampton vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-02",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-041959",
+   "strEvent": "Wolverhampton Wanderers vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-02",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-041961",
+   "strEvent": "Tottenham Hotspur vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-03",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-041960",
+   "strEvent": "Manchester United vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-03",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-041962",
+   "strEvent": "Fulham vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "10",
+   "dateEvent": "2024-11-04",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-041963",
+   "strEvent": "Brentford vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-09",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-041965",
+   "strEvent": "Crystal Palace vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-09",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-041967",
+   "strEvent": "West Ham United vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-09",
+   "strTime": "15:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-041968",
+   "strEvent": "Wolverhampton Wanderers vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-09",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-041964",
+   "strEvent": "Brighton and Hove Albion vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-09",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-041966",
+   "strEvent": "Liverpool vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-09",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-041970",
+   "strEvent": "Manchester United vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-10",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-041971",
+   "strEvent": "Nottingham Forest vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-10",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-041972",
+   "strEvent": "Tottenham Hotspur vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-10",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-041969",
+   "strEvent": "Chelsea vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "11",
+   "dateEvent": "2024-11-10",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-041978",
+   "strEvent": "Leicester City vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-23",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-041973",
+   "strEvent": "Bournemouth vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-23",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-041974",
+   "strEvent": "Arsenal vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-23",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-041975",
+   "strEvent": "Aston Villa vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-23",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-041976",
+   "strEvent": "Everton vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-23",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-041977",
+   "strEvent": "Fulham vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-23",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-041979",
+   "strEvent": "Manchester City vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-23",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-041981",
+   "strEvent": "Southampton vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-041980",
+   "strEvent": "Ipswich Town vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-24",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-041982",
+   "strEvent": "Newcastle United vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "12",
+   "dateEvent": "2024-11-25",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-041983",
+   "strEvent": "Brighton and Hove Albion vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-11-29",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-041984",
+   "strEvent": "Brentford vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-11-30",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-041985",
+   "strEvent": "Crystal Palace vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-11-30",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-041986",
+   "strEvent": "Nottingham Forest vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-11-30",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-041988",
+   "strEvent": "Wolverhampton Wanderers vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-11-30",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-041987",
+   "strEvent": "West Ham United vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-11-30",
+   "strTime": "17:30:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-041989",
+   "strEvent": "Chelsea vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "13:30:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-041991",
+   "strEvent": "Manchester United vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "13:30:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-041992",
+   "strEvent": "Tottenham Hotspur vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "13:30:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-041990",
+   "strEvent": "Liverpool vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "13",
+   "dateEvent": "2024-12-01",
+   "strTime": "16:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-041993",
+   "strEvent": "Ipswich Town vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-03",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-041994",
+   "strEvent": "Leicester City vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-03",
+   "strTime": "20:15:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-041997",
+   "strEvent": "Everton vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-04",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-041998",
+   "strEvent": "Manchester City vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-04",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-041999",
+   "strEvent": "Newcastle United vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-04",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042000",
+   "strEvent": "Southampton vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-04",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-041995",
+   "strEvent": "Arsenal vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-04",
+   "strTime": "20:15:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-041996",
+   "strEvent": "Aston Villa vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-04",
+   "strTime": "20:15:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042002",
+   "strEvent": "Fulham vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-05",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042001",
+   "strEvent": "Bournemouth vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "14",
+   "dateEvent": "2024-12-05",
+   "strTime": "20:15:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042003",
+   "strEvent": "Aston Villa vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-07",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042004",
+   "strEvent": "Brentford vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-07",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042005",
+   "strEvent": "Crystal Palace vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-07",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042006",
+   "strEvent": "Manchester United vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-07",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042007",
+   "strEvent": "Fulham vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-08",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042008",
+   "strEvent": "Ipswich Town vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-08",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042009",
+   "strEvent": "Leicester City vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-08",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042010",
+   "strEvent": "Tottenham Hotspur vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-08",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042011",
+   "strEvent": "West Ham United vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2024-12-09",
+   "strTime": "20:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042012",
+   "strEvent": "Arsenal vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-14",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042013",
+   "strEvent": "Liverpool vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-14",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042014",
+   "strEvent": "Newcastle United vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-14",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042016",
+   "strEvent": "Wolverhampton Wanderers vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-14",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042015",
+   "strEvent": "Nottingham Forest vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-14",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042017",
+   "strEvent": "Brighton and Hove Albion vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-15",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042019",
+   "strEvent": "Manchester City vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-15",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042018",
+   "strEvent": "Chelsea vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-15",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042020",
+   "strEvent": "Southampton vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-15",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042021",
+   "strEvent": "Bournemouth vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "16",
+   "dateEvent": "2024-12-16",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042022",
+   "strEvent": "Aston Villa vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-21",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042023",
+   "strEvent": "Brentford vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-21",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042025",
+   "strEvent": "Ipswich Town vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-21",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042026",
+   "strEvent": "West Ham United vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-21",
+   "strTime": "15:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042024",
+   "strEvent": "Crystal Palace vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-21",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042027",
+   "strEvent": "Everton vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-22",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042028",
+   "strEvent": "Fulham vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-22",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042029",
+   "strEvent": "Leicester City vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-22",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042030",
+   "strEvent": "Manchester United vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-22",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042031",
+   "strEvent": "Tottenham Hotspur vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "17",
+   "dateEvent": "2024-12-22",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042035",
+   "strEvent": "Manchester City vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-26",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042032",
+   "strEvent": "Bournemouth vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-26",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042033",
+   "strEvent": "Chelsea vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-26",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042036",
+   "strEvent": "Newcastle United vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-26",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042037",
+   "strEvent": "Nottingham Forest vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-26",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042038",
+   "strEvent": "Southampton vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-26",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042039",
+   "strEvent": "Wolverhampton Wanderers vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-26",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042034",
+   "strEvent": "Liverpool vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-26",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042041",
+   "strEvent": "Brighton and Hove Albion vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-27",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042040",
+   "strEvent": "Arsenal vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "18",
+   "dateEvent": "2024-12-27",
+   "strTime": "20:15:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042045",
+   "strEvent": "Leicester City vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-29",
+   "strTime": "14:30:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042042",
+   "strEvent": "Crystal Palace vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-29",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042043",
+   "strEvent": "Everton vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-29",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042044",
+   "strEvent": "Fulham vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-29",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042046",
+   "strEvent": "Tottenham Hotspur vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-29",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042047",
+   "strEvent": "West Ham United vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-29",
+   "strTime": "17:15:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042048",
+   "strEvent": "Aston Villa vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-30",
+   "strTime": "19:45:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042049",
+   "strEvent": "Ipswich Town vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-30",
+   "strTime": "19:45:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042050",
+   "strEvent": "Manchester United vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2024-12-30",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042051",
+   "strEvent": "Brentford vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "19",
+   "dateEvent": "2025-01-01",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042058",
+   "strEvent": "Tottenham Hotspur vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-04",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042052",
+   "strEvent": "Bournemouth vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-04",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042053",
+   "strEvent": "Aston Villa vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-04",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042055",
+   "strEvent": "Crystal Palace vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-04",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042056",
+   "strEvent": "Manchester City vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-04",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042057",
+   "strEvent": "Southampton vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-04",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042054",
+   "strEvent": "Brighton and Hove Albion vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-04",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042059",
+   "strEvent": "Fulham vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042060",
+   "strEvent": "Liverpool vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-05",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042061",
+   "strEvent": "Wolverhampton Wanderers vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "20",
+   "dateEvent": "2025-01-06",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042062",
+   "strEvent": "Brentford vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-14",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042064",
+   "strEvent": "West Ham United vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-14",
+   "strTime": "19:30:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042065",
+   "strEvent": "Chelsea vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-14",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042063",
+   "strEvent": "Nottingham Forest vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-14",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042067",
+   "strEvent": "Everton vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-15",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042068",
+   "strEvent": "Leicester City vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-15",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042069",
+   "strEvent": "Newcastle United vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-15",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042066",
+   "strEvent": "Arsenal vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-15",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042070",
+   "strEvent": "Ipswich Town vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-16",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042071",
+   "strEvent": "Manchester United vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "21",
+   "dateEvent": "2025-01-16",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042075",
+   "strEvent": "Newcastle United vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-18",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042073",
+   "strEvent": "Brentford vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-18",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042074",
+   "strEvent": "Leicester City vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-18",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042076",
+   "strEvent": "West Ham United vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-18",
+   "strTime": "15:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042072",
+   "strEvent": "Arsenal vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-18",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042077",
+   "strEvent": "Everton vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042079",
+   "strEvent": "Manchester United vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042080",
+   "strEvent": "Nottingham Forest vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042078",
+   "strEvent": "Ipswich Town vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-19",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042081",
+   "strEvent": "Chelsea vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "22",
+   "dateEvent": "2025-01-20",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042082",
+   "strEvent": "Bournemouth vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042083",
+   "strEvent": "Brighton and Hove Albion vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042084",
+   "strEvent": "Liverpool vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042086",
+   "strEvent": "Southampton vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042087",
+   "strEvent": "Wolverhampton Wanderers vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042085",
+   "strEvent": "Manchester City vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-25",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042089",
+   "strEvent": "Crystal Palace vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042091",
+   "strEvent": "Tottenham Hotspur vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042088",
+   "strEvent": "Aston Villa vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-26",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042090",
+   "strEvent": "Fulham vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "23",
+   "dateEvent": "2025-01-26",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042096",
+   "strEvent": "Nottingham Forest vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-01",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042092",
+   "strEvent": "Bournemouth vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-01",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042093",
+   "strEvent": "Everton vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-01",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042094",
+   "strEvent": "Ipswich Town vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-01",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042095",
+   "strEvent": "Newcastle United vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-01",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042097",
+   "strEvent": "Wolverhampton Wanderers vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-01",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042099",
+   "strEvent": "Brentford vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-02",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042100",
+   "strEvent": "Manchester United vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-02",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042098",
+   "strEvent": "Arsenal vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-02",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042101",
+   "strEvent": "Chelsea vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "24",
+   "dateEvent": "2025-02-03",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042102",
+   "strEvent": "Everton vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "15",
+   "dateEvent": "2025-02-12",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042103",
+   "strEvent": "Brighton and Hove Albion vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-14",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042107",
+   "strEvent": "Leicester City vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-15",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042104",
+   "strEvent": "Aston Villa vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042106",
+   "strEvent": "Fulham vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042108",
+   "strEvent": "Manchester City vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042109",
+   "strEvent": "Southampton vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042110",
+   "strEvent": "West Ham United vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042105",
+   "strEvent": "Crystal Palace vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-15",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042111",
+   "strEvent": "Liverpool vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-16",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042112",
+   "strEvent": "Tottenham Hotspur vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "25",
+   "dateEvent": "2025-02-16",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042113",
+   "strEvent": "Aston Villa vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-02-19",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042114",
+   "strEvent": "Leicester City vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-21",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042118",
+   "strEvent": "Everton vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-22",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042115",
+   "strEvent": "Bournemouth vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-22",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042116",
+   "strEvent": "Arsenal vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-22",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042119",
+   "strEvent": "Fulham vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-22",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042120",
+   "strEvent": "Ipswich Town vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-22",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042121",
+   "strEvent": "Southampton vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-22",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042117",
+   "strEvent": "Aston Villa vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-22",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042123",
+   "strEvent": "Newcastle United vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-23",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042122",
+   "strEvent": "Manchester City vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "26",
+   "dateEvent": "2025-02-23",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042124",
+   "strEvent": "Brighton and Hove Albion vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-25",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042125",
+   "strEvent": "Wolverhampton Wanderers vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-25",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042126",
+   "strEvent": "Crystal Palace vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-25",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042127",
+   "strEvent": "Chelsea vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-25",
+   "strTime": "20:15:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042128",
+   "strEvent": "Brentford vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-26",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042129",
+   "strEvent": "Nottingham Forest vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-26",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042130",
+   "strEvent": "Tottenham Hotspur vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-26",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042132",
+   "strEvent": "Manchester United vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-26",
+   "strTime": "19:30:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042131",
+   "strEvent": "Liverpool vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-26",
+   "strTime": "20:15:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042133",
+   "strEvent": "West Ham United vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "27",
+   "dateEvent": "2025-02-27",
+   "strTime": "20:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042138",
+   "strEvent": "Nottingham Forest vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-08",
+   "strTime": "12:30:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042135",
+   "strEvent": "Brighton and Hove Albion vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-08",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042136",
+   "strEvent": "Crystal Palace vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-08",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042137",
+   "strEvent": "Liverpool vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-08",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042134",
+   "strEvent": "Brentford vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-08",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042139",
+   "strEvent": "Wolverhampton Wanderers vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-08",
+   "strTime": "20:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042140",
+   "strEvent": "Chelsea vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-09",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042142",
+   "strEvent": "Tottenham Hotspur vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-09",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042141",
+   "strEvent": "Manchester United vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-09",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042143",
+   "strEvent": "West Ham United vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "28",
+   "dateEvent": "2025-03-10",
+   "strTime": "20:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042145",
+   "strEvent": "Everton vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-03-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042146",
+   "strEvent": "Ipswich Town vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-03-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042147",
+   "strEvent": "Manchester City vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-03-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042148",
+   "strEvent": "Southampton vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-03-15",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042144",
+   "strEvent": "Bournemouth vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-03-15",
+   "strTime": "17:30:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042149",
+   "strEvent": "Arsenal vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-03-16",
+   "strTime": "13:30:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042150",
+   "strEvent": "Fulham vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-03-16",
+   "strTime": "13:30:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042151",
+   "strEvent": "Leicester City vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-03-16",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042152",
+   "strEvent": "Arsenal vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-01",
+   "strTime": "18:45:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042154",
+   "strEvent": "Wolverhampton Wanderers vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-01",
+   "strTime": "18:45:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042153",
+   "strEvent": "Nottingham Forest vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-01",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042155",
+   "strEvent": "Bournemouth vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-02",
+   "strTime": "18:45:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042156",
+   "strEvent": "Brighton and Hove Albion vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-02",
+   "strTime": "18:45:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042157",
+   "strEvent": "Manchester City vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-02",
+   "strTime": "18:45:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042158",
+   "strEvent": "Newcastle United vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-02",
+   "strTime": "18:45:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042159",
+   "strEvent": "Southampton vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-02",
+   "strTime": "18:45:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042160",
+   "strEvent": "Liverpool vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-02",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042161",
+   "strEvent": "Chelsea vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "30",
+   "dateEvent": "2025-04-03",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042164",
+   "strEvent": "Everton vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-05",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042163",
+   "strEvent": "Crystal Palace vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042165",
+   "strEvent": "Ipswich Town vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042166",
+   "strEvent": "West Ham United vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-05",
+   "strTime": "14:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042162",
+   "strEvent": "Aston Villa vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-05",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042167",
+   "strEvent": "Brentford vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-06",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042168",
+   "strEvent": "Fulham vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-06",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042170",
+   "strEvent": "Tottenham Hotspur vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-06",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042169",
+   "strEvent": "Manchester United vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-06",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042171",
+   "strEvent": "Leicester City vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "31",
+   "dateEvent": "2025-04-07",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042174",
+   "strEvent": "Manchester City vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-12",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042173",
+   "strEvent": "Brighton and Hove Albion vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-12",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042175",
+   "strEvent": "Nottingham Forest vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-12",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042176",
+   "strEvent": "Southampton vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-12",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042172",
+   "strEvent": "Arsenal vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-12",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042177",
+   "strEvent": "Chelsea vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-13",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042178",
+   "strEvent": "Liverpool vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-13",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042180",
+   "strEvent": "Wolverhampton Wanderers vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-13",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042179",
+   "strEvent": "Newcastle United vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-13",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042181",
+   "strEvent": "Bournemouth vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "32",
+   "dateEvent": "2025-04-14",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042182",
+   "strEvent": "Newcastle United vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "29",
+   "dateEvent": "2025-04-16",
+   "strTime": "18:30:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042184",
+   "strEvent": "Brentford vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042185",
+   "strEvent": "Crystal Palace vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042186",
+   "strEvent": "Everton vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042187",
+   "strEvent": "West Ham United vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-19",
+   "strTime": "14:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042183",
+   "strEvent": "Aston Villa vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-19",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042188",
+   "strEvent": "Fulham vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-20",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042189",
+   "strEvent": "Ipswich Town vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-20",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042191",
+   "strEvent": "Manchester United vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-20",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042190",
+   "strEvent": "Leicester City vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-20",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042192",
+   "strEvent": "Tottenham Hotspur vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "33",
+   "dateEvent": "2025-04-21",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042193",
+   "strEvent": "Manchester City vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-22",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042194",
+   "strEvent": "Arsenal vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-23",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042196",
+   "strEvent": "Chelsea vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-26",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042195",
+   "strEvent": "Brighton and Hove Albion vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042197",
+   "strEvent": "Newcastle United vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042198",
+   "strEvent": "Southampton vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042199",
+   "strEvent": "Wolverhampton Wanderers vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-26",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042200",
+   "strEvent": "Bournemouth vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-27",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042201",
+   "strEvent": "Liverpool vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-04-27",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042202",
+   "strEvent": "Nottingham Forest vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "34",
+   "dateEvent": "2025-05-01",
+   "strTime": "18:30:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042203",
+   "strEvent": "Manchester City vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-02",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042205",
+   "strEvent": "Aston Villa vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-03",
+   "strTime": "11:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042206",
+   "strEvent": "Everton vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-03",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042207",
+   "strEvent": "Leicester City vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-03",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042204",
+   "strEvent": "Arsenal vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-03",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042208",
+   "strEvent": "Brentford vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-04",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042209",
+   "strEvent": "Brighton and Hove Albion vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-04",
+   "strTime": "13:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042211",
+   "strEvent": "West Ham United vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-04",
+   "strTime": "13:00:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042210",
+   "strEvent": "Chelsea vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-04",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042212",
+   "strEvent": "Crystal Palace vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "35",
+   "dateEvent": "2025-05-05",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042214",
+   "strEvent": "Fulham vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-10",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042215",
+   "strEvent": "Ipswich Town vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-10",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "Brentford"
+  },
+  {
+   "idEvent": "ev-042216",
+   "strEvent": "Southampton vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-10",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042217",
+   "strEvent": "Wolverhampton Wanderers vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-10",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042213",
+   "strEvent": "Bournemouth vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-10",
+   "strTime": "16:30:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042220",
+   "strEvent": "Newcastle United vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-11",
+   "strTime": "11:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042219",
+   "strEvent": "Manchester United vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-11",
+   "strTime": "13:15:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042221",
+   "strEvent": "Nottingham Forest vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-11",
+   "strTime": "13:15:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042222",
+   "strEvent": "Tottenham Hotspur vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-11",
+   "strTime": "13:15:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042218",
+   "strEvent": "Liverpool vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "36",
+   "dateEvent": "2025-05-11",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042223",
+   "strEvent": "Aston Villa vs Tottenham Hotspur",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-16",
+   "strTime": "18:30:00",
+   "strHomeTeam": "Aston Villa",
+   "strAwayTeam": "Tottenham Hotspur"
+  },
+  {
+   "idEvent": "ev-042224",
+   "strEvent": "Chelsea vs Manchester United",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-16",
+   "strTime": "19:15:00",
+   "strHomeTeam": "Chelsea",
+   "strAwayTeam": "Manchester United"
+  },
+  {
+   "idEvent": "ev-042227",
+   "strEvent": "Everton vs Southampton",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-18",
+   "strTime": "11:00:00",
+   "strHomeTeam": "Everton",
+   "strAwayTeam": "Southampton"
+  },
+  {
+   "idEvent": "ev-042229",
+   "strEvent": "West Ham United vs Nottingham Forest",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-18",
+   "strTime": "13:15:00",
+   "strHomeTeam": "West Ham United",
+   "strAwayTeam": "Nottingham Forest"
+  },
+  {
+   "idEvent": "ev-042226",
+   "strEvent": "Brentford vs Fulham",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-18",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Brentford",
+   "strAwayTeam": "Fulham"
+  },
+  {
+   "idEvent": "ev-042228",
+   "strEvent": "Leicester City vs Ipswich Town",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-18",
+   "strTime": "14:00:00",
+   "strHomeTeam": "Leicester City",
+   "strAwayTeam": "Ipswich Town"
+  },
+  {
+   "idEvent": "ev-042225",
+   "strEvent": "Arsenal vs Newcastle United",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-18",
+   "strTime": "15:30:00",
+   "strHomeTeam": "Arsenal",
+   "strAwayTeam": "Newcastle United"
+  },
+  {
+   "idEvent": "ev-042230",
+   "strEvent": "Brighton and Hove Albion vs Liverpool",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-19",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Brighton and Hove Albion",
+   "strAwayTeam": "Liverpool"
+  },
+  {
+   "idEvent": "ev-042231",
+   "strEvent": "Crystal Palace vs Wolverhampton Wanderers",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-20",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Crystal Palace",
+   "strAwayTeam": "Wolverhampton Wanderers"
+  },
+  {
+   "idEvent": "ev-042232",
+   "strEvent": "Manchester City vs Bournemouth",
+   "strSeason": "2024-2025",
+   "intRound": "37",
+   "dateEvent": "2025-05-20",
+   "strTime": "19:00:00",
+   "strHomeTeam": "Manchester City",
+   "strAwayTeam": "Bournemouth"
+  },
+  {
+   "idEvent": "ev-042233",
+   "strEvent": "Bournemouth vs Leicester City",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Bournemouth",
+   "strAwayTeam": "Leicester City"
+  },
+  {
+   "idEvent": "ev-042234",
+   "strEvent": "Fulham vs Manchester City",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Fulham",
+   "strAwayTeam": "Manchester City"
+  },
+  {
+   "idEvent": "ev-042235",
+   "strEvent": "Ipswich Town vs West Ham United",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Ipswich Town",
+   "strAwayTeam": "West Ham United"
+  },
+  {
+   "idEvent": "ev-042236",
+   "strEvent": "Liverpool vs Crystal Palace",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Liverpool",
+   "strAwayTeam": "Crystal Palace"
+  },
+  {
+   "idEvent": "ev-042237",
+   "strEvent": "Manchester United vs Aston Villa",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Manchester United",
+   "strAwayTeam": "Aston Villa"
+  },
+  {
+   "idEvent": "ev-042238",
+   "strEvent": "Newcastle United vs Everton",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Newcastle United",
+   "strAwayTeam": "Everton"
+  },
+  {
+   "idEvent": "ev-042239",
+   "strEvent": "Nottingham Forest vs Chelsea",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Nottingham Forest",
+   "strAwayTeam": "Chelsea"
+  },
+  {
+   "idEvent": "ev-042240",
+   "strEvent": "Southampton vs Arsenal",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Southampton",
+   "strAwayTeam": "Arsenal"
+  },
+  {
+   "idEvent": "ev-042241",
+   "strEvent": "Tottenham Hotspur vs Brighton and Hove Albion",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Tottenham Hotspur",
+   "strAwayTeam": "Brighton and Hove Albion"
+  },
+  {
+   "idEvent": "ev-042242",
+   "strEvent": "Wolverhampton Wanderers vs Brentford",
+   "strSeason": "2024-2025",
+   "intRound": "38",
+   "dateEvent": "2025-05-25",
+   "strTime": "15:00:00",
+   "strHomeTeam": "Wolverhampton Wanderers",
+   "strAwayTeam": "Brentford"
+  }
+ ]
+}

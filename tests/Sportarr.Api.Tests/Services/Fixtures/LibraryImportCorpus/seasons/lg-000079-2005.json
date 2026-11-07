@@ -1,0 +1,110 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-569875",
+   "strEvent": "UFC 51 Super Saturday",
+   "strSeason": "2005",
+   "intRound": "1",
+   "dateEvent": "2005-02-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569876",
+   "strEvent": "The Ultimate Fighter Team Couture vs Team Liddell Finale",
+   "strSeason": "2005",
+   "intRound": "2",
+   "dateEvent": "2005-04-09",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554120",
+   "strEvent": "UFC 52 Couture vs Liddell",
+   "strSeason": "2005",
+   "intRound": "3",
+   "dateEvent": "2005-04-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569878",
+   "strEvent": "UFC 53 Heavy Hitters",
+   "strSeason": "2005",
+   "intRound": "4",
+   "dateEvent": "2005-06-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569879",
+   "strEvent": "UFC Fight Night",
+   "strSeason": "2005",
+   "intRound": "5",
+   "dateEvent": "2005-08-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569880",
+   "strEvent": "UFC 54 Boiling Point",
+   "strSeason": "2005",
+   "intRound": "6",
+   "dateEvent": "2005-08-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569881",
+   "strEvent": "UFC Fight Night 2",
+   "strSeason": "2005",
+   "intRound": "7",
+   "dateEvent": "2005-10-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569882",
+   "strEvent": "UFC 55 Fury",
+   "strSeason": "2005",
+   "intRound": "8",
+   "dateEvent": "2005-10-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569883",
+   "strEvent": "The Ultimate Fighter Team Hughes vs Team Franklin Finale",
+   "strSeason": "2005",
+   "intRound": "9",
+   "dateEvent": "2005-11-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569884",
+   "strEvent": "UFC 56 Full Force",
+   "strSeason": "2005",
+   "intRound": "10",
+   "dateEvent": "2005-11-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

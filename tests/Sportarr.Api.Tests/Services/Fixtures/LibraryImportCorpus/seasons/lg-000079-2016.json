@@ -1,0 +1,410 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-487775",
+   "strEvent": "UFC 195 Lawler vs Condit",
+   "strSeason": "2016",
+   "intRound": "1",
+   "dateEvent": "2016-01-02",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487784",
+   "strEvent": "UFC Fight Night Dillashaw vs Cruz",
+   "strSeason": "2016",
+   "intRound": "2",
+   "dateEvent": "2016-01-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487782",
+   "strEvent": "UFC on Fox Johnson vs Bader",
+   "strSeason": "2016",
+   "intRound": "3",
+   "dateEvent": "2016-01-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570169",
+   "strEvent": "UFC Fight Night Hendricks vs Thompson",
+   "strSeason": "2016",
+   "intRound": "4",
+   "dateEvent": "2016-02-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487780",
+   "strEvent": "UFC Fight Night Cerrone vs Oliveira",
+   "strSeason": "2016",
+   "intRound": "5",
+   "dateEvent": "2016-02-21",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487777",
+   "strEvent": "UFC Fight Night 84 Silva vs Bisping",
+   "strSeason": "2016",
+   "intRound": "6",
+   "dateEvent": "2016-02-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487776",
+   "strEvent": "UFC 196 McGregor vs Diaz",
+   "strSeason": "2016",
+   "intRound": "7",
+   "dateEvent": "2016-03-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487781",
+   "strEvent": "UFC Fight Night Hunt vs Mir",
+   "strSeason": "2016",
+   "intRound": "8",
+   "dateEvent": "2016-03-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487772",
+   "strEvent": "UFC Fight Night Rothwell vs dos Santos",
+   "strSeason": "2016",
+   "intRound": "9",
+   "dateEvent": "2016-04-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487779",
+   "strEvent": "UFC on Fox Teixeira vs Evans",
+   "strSeason": "2016",
+   "intRound": "10",
+   "dateEvent": "2016-04-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487766",
+   "strEvent": "UFC 197 Jones vs Saint Preux",
+   "strSeason": "2016",
+   "intRound": "11",
+   "dateEvent": "2016-04-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487778",
+   "strEvent": "UFC Fight Night 87 Overeem vs Arlovski",
+   "strSeason": "2016",
+   "intRound": "12",
+   "dateEvent": "2016-05-08",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487767",
+   "strEvent": "UFC 198 Werdum vs Miocic",
+   "strSeason": "2016",
+   "intRound": "13",
+   "dateEvent": "2016-05-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553898",
+   "strEvent": "UFC Fight Night Almeida vs Garbrandt",
+   "strSeason": "2016",
+   "intRound": "14",
+   "dateEvent": "2016-05-29",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553906",
+   "strEvent": "UFC 199 Rockhold vs Bisping 2",
+   "strSeason": "2016",
+   "intRound": "15",
+   "dateEvent": "2016-06-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553897",
+   "strEvent": "UFC Fight Night 89 MacDonald vs Thompson",
+   "strSeason": "2016",
+   "intRound": "16",
+   "dateEvent": "2016-06-18",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553908",
+   "strEvent": "UFC Fight Night 90 Dos Anjos vs Alvarez",
+   "strSeason": "2016",
+   "intRound": "17",
+   "dateEvent": "2016-07-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570183",
+   "strEvent": "Ultimate Fighter 23 Finale Jedrzejczyk vs Gadelha",
+   "strSeason": "2016",
+   "intRound": "18",
+   "dateEvent": "2016-07-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553902",
+   "strEvent": "UFC 200 Tate vs Nunes",
+   "strSeason": "2016",
+   "intRound": "19",
+   "dateEvent": "2016-07-09",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553903",
+   "strEvent": "UFC Fight Night 91 McDonald vs Lineker",
+   "strSeason": "2016",
+   "intRound": "20",
+   "dateEvent": "2016-07-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553917",
+   "strEvent": "UFC on Fox Holm vs Shevchenko",
+   "strSeason": "2016",
+   "intRound": "21",
+   "dateEvent": "2016-07-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487769",
+   "strEvent": "UFC 201 Lawler vs Woodley",
+   "strSeason": "2016",
+   "intRound": "22",
+   "dateEvent": "2016-07-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487771",
+   "strEvent": "UFC Fight Night 92 Rodríguez vs Caceres",
+   "strSeason": "2016",
+   "intRound": "23",
+   "dateEvent": "2016-08-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487768",
+   "strEvent": "UFC 202 Diaz vs McGregor 2",
+   "strSeason": "2016",
+   "intRound": "24",
+   "dateEvent": "2016-08-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487765",
+   "strEvent": "UFC on Fox 21 Maia vs Condit",
+   "strSeason": "2016",
+   "intRound": "25",
+   "dateEvent": "2016-08-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487764",
+   "strEvent": "UFC Fight Night 93 Arlovski vs Barnett",
+   "strSeason": "2016",
+   "intRound": "26",
+   "dateEvent": "2016-09-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487770",
+   "strEvent": "UFC 203 Miocic vs Overeem",
+   "strSeason": "2016",
+   "intRound": "27",
+   "dateEvent": "2016-09-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487773",
+   "strEvent": "UFC Fight Night 94 Poirier vs Johnson",
+   "strSeason": "2016",
+   "intRound": "28",
+   "dateEvent": "2016-09-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487762",
+   "strEvent": "UFC Fight Night 95 Cyborg vs Lansberg",
+   "strSeason": "2016",
+   "intRound": "29",
+   "dateEvent": "2016-09-24",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553924",
+   "strEvent": "UFC Fight Night 96 Lineker vs Dodson",
+   "strSeason": "2016",
+   "intRound": "30",
+   "dateEvent": "2016-10-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553915",
+   "strEvent": "UFC 204 Bisping Vs Henderson 2",
+   "strSeason": "2016",
+   "intRound": "31",
+   "dateEvent": "2016-10-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553925",
+   "strEvent": "UFC Fight Night 98 dos Anjos vs Ferguson",
+   "strSeason": "2016",
+   "intRound": "32",
+   "dateEvent": "2016-11-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553899",
+   "strEvent": "UFC 205 Alvarez vs McGregor",
+   "strSeason": "2016",
+   "intRound": "33",
+   "dateEvent": "2016-11-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1936529",
+   "strEvent": "UFC Fight Night 99 Mousasi vs Hall 2",
+   "strSeason": "2016",
+   "intRound": "34",
+   "dateEvent": "2016-11-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1936530",
+   "strEvent": "UFC Fight Night 100 Bader vs Nogueira 2",
+   "strSeason": "2016",
+   "intRound": null,
+   "dateEvent": "2016-11-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-553907",
+   "strEvent": "UFC Fight Night Whittaker vs Brunson",
+   "strSeason": "2016",
+   "intRound": null,
+   "dateEvent": "2016-11-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570202",
+   "strEvent": "Ultimate Fighter 24 Finale Johnson vs Elliott",
+   "strSeason": "2016",
+   "intRound": "35",
+   "dateEvent": "2016-12-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487763",
+   "strEvent": "UFC 206 Holloway vs Pettis",
+   "strSeason": "2016",
+   "intRound": "36",
+   "dateEvent": "2016-12-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1662651",
+   "strEvent": "UFC on Fox 22 VanZant vs Waterson",
+   "strSeason": "2016",
+   "intRound": "37",
+   "dateEvent": "2016-12-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487753",
+   "strEvent": "UFC 207 Nunes vs Rousey",
+   "strSeason": "2016",
+   "intRound": "38",
+   "dateEvent": "2016-12-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

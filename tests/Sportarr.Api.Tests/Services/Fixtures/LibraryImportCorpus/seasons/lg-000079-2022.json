@@ -1,0 +1,430 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-487572",
+   "strEvent": "UFC on ESPN 32 Kattar vs Chikadze",
+   "strSeason": "2022",
+   "intRound": "1",
+   "dateEvent": "2022-01-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487570",
+   "strEvent": "UFC 270 Ngannou vs Gane",
+   "strSeason": "2022",
+   "intRound": "2",
+   "dateEvent": "2022-01-23",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487564",
+   "strEvent": "UFC Fight Night 200 Hermansson vs Strickland",
+   "strSeason": "2022",
+   "intRound": "3",
+   "dateEvent": "2022-02-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487567",
+   "strEvent": "UFC 271 Adesanya vs Whittaker",
+   "strSeason": "2022",
+   "intRound": "4",
+   "dateEvent": "2022-02-13",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570415",
+   "strEvent": "UFC Fight Night 201 Walker vs Hill",
+   "strSeason": "2022",
+   "intRound": "5",
+   "dateEvent": "2022-02-20",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487561",
+   "strEvent": "UFC Fight Night 202 Makhachev vs Green",
+   "strSeason": "2022",
+   "intRound": "6",
+   "dateEvent": "2022-02-27",
+   "strTime": "01:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487565",
+   "strEvent": "UFC 272 Covington vs Masvidal",
+   "strSeason": "2022",
+   "intRound": "7",
+   "dateEvent": "2022-03-06",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487551",
+   "strEvent": "UFC Fight Night 203 Santos vs Ankalaev",
+   "strSeason": "2022",
+   "intRound": "8",
+   "dateEvent": "2022-03-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487560",
+   "strEvent": "UFC Fight Night 204 Volkov vs Aspinall",
+   "strSeason": "2022",
+   "intRound": "9",
+   "dateEvent": "2022-03-19",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487559",
+   "strEvent": "UFC on ESPN 33 Blaydes vs Daukaus",
+   "strSeason": "2022",
+   "intRound": "10",
+   "dateEvent": "2022-03-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487562",
+   "strEvent": "UFC 273 Volkanovski vs The Korean Zombie",
+   "strSeason": "2022",
+   "intRound": "11",
+   "dateEvent": "2022-04-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487563",
+   "strEvent": "UFC on ESPN 34 Luque vs Muhammad 2",
+   "strSeason": "2022",
+   "intRound": "12",
+   "dateEvent": "2022-04-16",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487557",
+   "strEvent": "UFC Fight Night 205 Lemos vs Andrade",
+   "strSeason": "2022",
+   "intRound": "13",
+   "dateEvent": "2022-04-23",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1665247",
+   "strEvent": "UFC on ESPN 35 Font vs Vera",
+   "strSeason": "2022",
+   "intRound": "14",
+   "dateEvent": "2022-04-30",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487555",
+   "strEvent": "UFC 274 Oliveira vs Gaethje",
+   "strSeason": "2022",
+   "intRound": "15",
+   "dateEvent": "2022-05-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-2609396",
+   "strEvent": "UFC on ESPN Błachowicz vs Rakić",
+   "strSeason": "2022",
+   "intRound": "16",
+   "dateEvent": "2022-05-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487553",
+   "strEvent": "UFC Fight Night 206 Holm vs Vieira",
+   "strSeason": "2022",
+   "intRound": "17",
+   "dateEvent": "2022-05-21",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487558",
+   "strEvent": "UFC Fight Night 207 Volkov vs Rozenstruik",
+   "strSeason": "2022",
+   "intRound": "18",
+   "dateEvent": "2022-06-04",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487549",
+   "strEvent": "UFC 275 Teixeira vs Prochazka",
+   "strSeason": "2022",
+   "intRound": "19",
+   "dateEvent": "2022-06-11",
+   "strTime": "02:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487552",
+   "strEvent": "UFC on ESPN 37 Kattar vs Emmett",
+   "strSeason": "2022",
+   "intRound": "20",
+   "dateEvent": "2022-06-18",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487550",
+   "strEvent": "UFC on ESPN 38 Tsarukyan vs Gamrot",
+   "strSeason": "2022",
+   "intRound": "21",
+   "dateEvent": "2022-06-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487542",
+   "strEvent": "UFC 276 Adesanya vs Cannonier",
+   "strSeason": "2022",
+   "intRound": "22",
+   "dateEvent": "2022-07-03",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1665215",
+   "strEvent": "UFC on ESPN 39 dos Anjos vs Fiziev",
+   "strSeason": "2022",
+   "intRound": "23",
+   "dateEvent": "2022-07-09",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487548",
+   "strEvent": "UFC Fight Night Ortega vs Rodriguez",
+   "strSeason": "2022",
+   "intRound": "24",
+   "dateEvent": "2022-07-16",
+   "strTime": "19:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487535",
+   "strEvent": "UFC Fight Night 208 Blaydes vs Aspinall",
+   "strSeason": "2022",
+   "intRound": "25",
+   "dateEvent": "2022-07-23",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487547",
+   "strEvent": "UFC 277 Pena vs Nunes 2",
+   "strSeason": "2022",
+   "intRound": "26",
+   "dateEvent": "2022-07-31",
+   "strTime": "02:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487543",
+   "strEvent": "UFC on ESPN Santos vs Hill",
+   "strSeason": "2022",
+   "intRound": "27",
+   "dateEvent": "2022-08-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487534",
+   "strEvent": "UFC on ESPN Vera vs Cruz",
+   "strSeason": "2022",
+   "intRound": "28",
+   "dateEvent": "2022-08-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487544",
+   "strEvent": "UFC 278 Usman vs Edwards 2",
+   "strSeason": "2022",
+   "intRound": "29",
+   "dateEvent": "2022-08-21",
+   "strTime": "02:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487540",
+   "strEvent": "UFC Fight Night 209 Gane vs Tuivasa",
+   "strSeason": "2022",
+   "intRound": "30",
+   "dateEvent": "2022-09-03",
+   "strTime": "19:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487541",
+   "strEvent": "UFC 279 Diaz vs Ferguson",
+   "strSeason": "2022",
+   "intRound": "31",
+   "dateEvent": "2022-09-11",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487546",
+   "strEvent": "UFC Fight Night 210 Sandhagen vs Song",
+   "strSeason": "2022",
+   "intRound": "32",
+   "dateEvent": "2022-09-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1665213",
+   "strEvent": "UFC Fight Night 211 Dern vs Yan",
+   "strSeason": "2022",
+   "intRound": "33",
+   "dateEvent": "2022-10-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1665211",
+   "strEvent": "UFC Fight Night 212 Grasso vs Araujo",
+   "strSeason": "2022",
+   "intRound": "34",
+   "dateEvent": "2022-10-16",
+   "strTime": "02:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487536",
+   "strEvent": "UFC 280 Oliveira vs Makhachev",
+   "strSeason": "2022",
+   "intRound": "35",
+   "dateEvent": "2022-10-22",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487532",
+   "strEvent": "UFC Fight Night 213 Kattar vs Allen",
+   "strSeason": "2022",
+   "intRound": "36",
+   "dateEvent": "2022-10-29",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487530",
+   "strEvent": "UFC Fight Night 214 Rodriguez vs Lemos",
+   "strSeason": "2022",
+   "intRound": "37",
+   "dateEvent": "2022-11-05",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487533",
+   "strEvent": "UFC 281 Adesanya vs Pereira",
+   "strSeason": "2022",
+   "intRound": "38",
+   "dateEvent": "2022-11-12",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487538",
+   "strEvent": "UFC Fight Night 215 Nzechukwu vs Cuțelaba",
+   "strSeason": "2022",
+   "intRound": "39",
+   "dateEvent": "2022-11-19",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487521",
+   "strEvent": "UFC on ESPN 42 Thompson vs Holland",
+   "strSeason": "2022",
+   "intRound": "40",
+   "dateEvent": "2022-12-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487531",
+   "strEvent": "UFC 282 Błachowicz vs Ankalaev",
+   "strSeason": "2022",
+   "intRound": "41",
+   "dateEvent": "2022-12-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-487528",
+   "strEvent": "UFC Fight Night 216 Cannonier vs Strickland",
+   "strSeason": "2022",
+   "intRound": "42",
+   "dateEvent": "2022-12-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

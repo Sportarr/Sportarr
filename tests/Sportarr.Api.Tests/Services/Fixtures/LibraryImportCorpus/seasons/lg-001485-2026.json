@@ -1,0 +1,20 @@
+{
+ "league": {
+  "idLeague": "lg-001485",
+  "strLeague": "MVP MMA",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-1802381",
+   "strEvent": "MVP MMA 1 Rousey vs Carano",
+   "strSeason": "2026",
+   "intRound": "1",
+   "dateEvent": "2026-05-16",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

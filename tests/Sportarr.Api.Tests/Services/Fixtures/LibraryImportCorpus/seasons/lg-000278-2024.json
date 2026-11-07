@@ -1,0 +1,1240 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-174211",
+   "strEvent": "Pre Season Testing - Practice 1",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-02-21",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174212",
+   "strEvent": "Pre Season Testing - Practice 2",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-02-22",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174213",
+   "strEvent": "Pre Season Testing - Practice 3",
+   "strSeason": "2024",
+   "intRound": "500",
+   "dateEvent": "2024-02-23",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174214",
+   "strEvent": "Bahrain Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-02-29",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174215",
+   "strEvent": "Bahrain Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-02-29",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174216",
+   "strEvent": "Bahrain Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-03-01",
+   "strTime": "12:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174217",
+   "strEvent": "Bahrain Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-03-01",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174218",
+   "strEvent": "Bahrain Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-03-02",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174219",
+   "strEvent": "Saudi Arabian Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-03-07",
+   "strTime": "13:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174220",
+   "strEvent": "Saudi Arabian Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-03-07",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174221",
+   "strEvent": "Saudi Arabian Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-03-08",
+   "strTime": "13:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174222",
+   "strEvent": "Saudi Arabian Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-03-08",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174223",
+   "strEvent": "Saudi Arabian Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-03-09",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174224",
+   "strEvent": "Australian Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-03-22",
+   "strTime": "01:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174225",
+   "strEvent": "Australian Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-03-22",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174226",
+   "strEvent": "Australian Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-03-23",
+   "strTime": "01:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174227",
+   "strEvent": "Australian Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-03-23",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174228",
+   "strEvent": "Australian Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-03-24",
+   "strTime": "04:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174229",
+   "strEvent": "Japanese Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-04-05",
+   "strTime": "02:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174230",
+   "strEvent": "Japanese Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-04-05",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174231",
+   "strEvent": "Japanese Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-04-06",
+   "strTime": "02:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174232",
+   "strEvent": "Japanese Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-04-06",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174233",
+   "strEvent": "Japanese Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-04-07",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1953413",
+   "strEvent": "Chinese Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-04-19",
+   "strTime": "03:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174235",
+   "strEvent": "Chinese Grand Prix - Sprint Shootout",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-04-19",
+   "strTime": "07:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174236",
+   "strEvent": "Chinese Grand Prix - Sprint",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-04-20",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174237",
+   "strEvent": "Chinese Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-04-20",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174238",
+   "strEvent": "Chinese Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-04-21",
+   "strTime": "07:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174239",
+   "strEvent": "Miami Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-05-03",
+   "strTime": "16:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174240",
+   "strEvent": "Miami Grand Prix - Sprint Shootout",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-05-03",
+   "strTime": "20:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174241",
+   "strEvent": "Miami Grand Prix - Sprint",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-05-04",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174242",
+   "strEvent": "Miami Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-05-04",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174243",
+   "strEvent": "Miami Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-05-05",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174244",
+   "strEvent": "Emilia Romagna Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-05-17",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174245",
+   "strEvent": "Emilia Romagna Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-05-17",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174246",
+   "strEvent": "Emilia Romagna Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-05-18",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174247",
+   "strEvent": "Emilia Romagna Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-05-18",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174248",
+   "strEvent": "Emilia Romagna Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-05-19",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174249",
+   "strEvent": "Monaco Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-05-24",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174250",
+   "strEvent": "Monaco Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-05-24",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174251",
+   "strEvent": "Monaco Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-05-25",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174252",
+   "strEvent": "Monaco Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-05-25",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174253",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-05-26",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174254",
+   "strEvent": "Canadian Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-06-07",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174255",
+   "strEvent": "Canadian Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-06-07",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174256",
+   "strEvent": "Canadian Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-06-08",
+   "strTime": "16:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174257",
+   "strEvent": "Canadian Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-06-08",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174258",
+   "strEvent": "Canadian Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-06-09",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174259",
+   "strEvent": "Spanish Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-06-21",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174260",
+   "strEvent": "Spanish Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-06-21",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174261",
+   "strEvent": "Spanish Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-06-22",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174262",
+   "strEvent": "Spanish Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-06-22",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174263",
+   "strEvent": "Spanish Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-06-23",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174264",
+   "strEvent": "Austrian Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-06-28",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174265",
+   "strEvent": "Austrian Grand Prix - Sprint Shootout",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-06-28",
+   "strTime": "14:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174266",
+   "strEvent": "Austrian Grand Prix - Sprint",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-06-29",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174267",
+   "strEvent": "Austrian Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-06-29",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174268",
+   "strEvent": "Austrian Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-06-30",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174269",
+   "strEvent": "British Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-07-05",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174270",
+   "strEvent": "British Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-07-05",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174271",
+   "strEvent": "British Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-07-06",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174272",
+   "strEvent": "British Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-07-06",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174273",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-07-07",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174274",
+   "strEvent": "Hungarian Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-07-19",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174275",
+   "strEvent": "Hungarian Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-07-19",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174276",
+   "strEvent": "Hungarian Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-07-20",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174277",
+   "strEvent": "Hungarian Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-07-20",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174278",
+   "strEvent": "Hungarian Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-07-21",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174279",
+   "strEvent": "Belgian Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-07-26",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174280",
+   "strEvent": "Belgian Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-07-26",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174281",
+   "strEvent": "Belgian Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-07-27",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174282",
+   "strEvent": "Belgian Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-07-27",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174283",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-07-28",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174284",
+   "strEvent": "Dutch Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-08-23",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174285",
+   "strEvent": "Dutch Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-08-23",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174286",
+   "strEvent": "Dutch Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-08-24",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174287",
+   "strEvent": "Dutch Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-08-24",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174288",
+   "strEvent": "Dutch Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-08-25",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174289",
+   "strEvent": "Italian Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-08-30",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174290",
+   "strEvent": "Italian Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-08-30",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174291",
+   "strEvent": "Italian Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-08-31",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174292",
+   "strEvent": "Italian Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-08-31",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174293",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-09-01",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174294",
+   "strEvent": "Azerbaijan Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-09-13",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174295",
+   "strEvent": "Azerbaijan Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-09-13",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174296",
+   "strEvent": "Azerbaijan Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-09-14",
+   "strTime": "08:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174297",
+   "strEvent": "Azerbaijan Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-09-14",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174298",
+   "strEvent": "Azerbaijan Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-09-15",
+   "strTime": "11:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174299",
+   "strEvent": "Singapore Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2024-09-20",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174300",
+   "strEvent": "Singapore Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2024-09-20",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174301",
+   "strEvent": "Singapore Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2024-09-21",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174302",
+   "strEvent": "Singapore Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2024-09-21",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174303",
+   "strEvent": "Singapore Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2024-09-22",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174304",
+   "strEvent": "United States Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "19",
+   "dateEvent": "2024-10-18",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174305",
+   "strEvent": "United States Grand Prix - Sprint Shootout",
+   "strSeason": "2024",
+   "intRound": "19",
+   "dateEvent": "2024-10-18",
+   "strTime": "21:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174306",
+   "strEvent": "United States Grand Prix - Sprint",
+   "strSeason": "2024",
+   "intRound": "19",
+   "dateEvent": "2024-10-19",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174307",
+   "strEvent": "United States Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "19",
+   "dateEvent": "2024-10-19",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174308",
+   "strEvent": "United States Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "19",
+   "dateEvent": "2024-10-20",
+   "strTime": "19:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174309",
+   "strEvent": "Mexico City Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "20",
+   "dateEvent": "2024-10-25",
+   "strTime": "18:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174310",
+   "strEvent": "Mexico City Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "20",
+   "dateEvent": "2024-10-25",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174311",
+   "strEvent": "Mexico City Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "20",
+   "dateEvent": "2024-10-26",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174312",
+   "strEvent": "Mexico City Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "20",
+   "dateEvent": "2024-10-26",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174313",
+   "strEvent": "Mexico City Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "20",
+   "dateEvent": "2024-10-27",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174314",
+   "strEvent": "São Paulo Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "21",
+   "dateEvent": "2024-11-01",
+   "strTime": "14:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174315",
+   "strEvent": "São Paulo Grand Prix - Sprint Shootout",
+   "strSeason": "2024",
+   "intRound": "21",
+   "dateEvent": "2024-11-01",
+   "strTime": "18:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174316",
+   "strEvent": "São Paulo Grand Prix - Sprint",
+   "strSeason": "2024",
+   "intRound": "21",
+   "dateEvent": "2024-11-02",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174317",
+   "strEvent": "São Paulo Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "21",
+   "dateEvent": "2024-11-03",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174318",
+   "strEvent": "São Paulo Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "21",
+   "dateEvent": "2024-11-03",
+   "strTime": "15:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174319",
+   "strEvent": "Las Vegas Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "22",
+   "dateEvent": "2024-11-22",
+   "strTime": "02:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174320",
+   "strEvent": "Las Vegas Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "22",
+   "dateEvent": "2024-11-22",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174321",
+   "strEvent": "Las Vegas Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "22",
+   "dateEvent": "2024-11-23",
+   "strTime": "02:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174322",
+   "strEvent": "Las Vegas Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "22",
+   "dateEvent": "2024-11-23",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174323",
+   "strEvent": "Las Vegas Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "22",
+   "dateEvent": "2024-11-24",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174324",
+   "strEvent": "Qatar Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "23",
+   "dateEvent": "2024-11-29",
+   "strTime": "13:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174325",
+   "strEvent": "Qatar Grand Prix - Sprint Shootout",
+   "strSeason": "2024",
+   "intRound": "23",
+   "dateEvent": "2024-11-29",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174326",
+   "strEvent": "Qatar Grand Prix - Sprint",
+   "strSeason": "2024",
+   "intRound": "23",
+   "dateEvent": "2024-11-30",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174327",
+   "strEvent": "Qatar Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "23",
+   "dateEvent": "2024-11-30",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174328",
+   "strEvent": "Qatar Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "23",
+   "dateEvent": "2024-12-01",
+   "strTime": "16:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174329",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 1",
+   "strSeason": "2024",
+   "intRound": "24",
+   "dateEvent": "2024-12-06",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174330",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 2",
+   "strSeason": "2024",
+   "intRound": "24",
+   "dateEvent": "2024-12-06",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174331",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 3",
+   "strSeason": "2024",
+   "intRound": "24",
+   "dateEvent": "2024-12-07",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174332",
+   "strEvent": "Abu Dhabi Grand Prix - Qualifying",
+   "strSeason": "2024",
+   "intRound": "24",
+   "dateEvent": "2024-12-07",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174333",
+   "strEvent": "Abu Dhabi Grand Prix - Race",
+   "strSeason": "2024",
+   "intRound": "24",
+   "dateEvent": "2024-12-08",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

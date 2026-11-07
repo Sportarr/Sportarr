@@ -1,0 +1,190 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-569885",
+   "strEvent": "UFC Fight Night 3",
+   "strSeason": "2006",
+   "intRound": "1",
+   "dateEvent": "2006-01-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554115",
+   "strEvent": "UFC 57 Liddell vs Couture 3",
+   "strSeason": "2006",
+   "intRound": "2",
+   "dateEvent": "2006-02-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569887",
+   "strEvent": "UFC 58 USA vs Canada",
+   "strSeason": "2006",
+   "intRound": "3",
+   "dateEvent": "2006-03-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569888",
+   "strEvent": "UFC Fight Night 4",
+   "strSeason": "2006",
+   "intRound": "4",
+   "dateEvent": "2006-04-06",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569889",
+   "strEvent": "UFC 59 Reality Check",
+   "strSeason": "2006",
+   "intRound": "5",
+   "dateEvent": "2006-04-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554108",
+   "strEvent": "UFC 60 Hughes vs Gracie",
+   "strSeason": "2006",
+   "intRound": "6",
+   "dateEvent": "2006-05-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569891",
+   "strEvent": "The Ultimate Fighter Team Ortiz vs Team Shamrock Finale",
+   "strSeason": "2006",
+   "intRound": "7",
+   "dateEvent": "2006-06-24",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554111",
+   "strEvent": "UFC Fight Night 5",
+   "strSeason": "2006",
+   "intRound": "8",
+   "dateEvent": "2006-06-28",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569893",
+   "strEvent": "UFC 61 Bitter Rivals",
+   "strSeason": "2006",
+   "intRound": "9",
+   "dateEvent": "2006-07-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569894",
+   "strEvent": "UFC Fight Night 6",
+   "strSeason": "2006",
+   "intRound": "10",
+   "dateEvent": "2006-08-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554112",
+   "strEvent": "UFC 62 Liddell vs Sobral",
+   "strSeason": "2006",
+   "intRound": "11",
+   "dateEvent": "2006-08-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554110",
+   "strEvent": "UFC 63 Hughes vs Penn",
+   "strSeason": "2006",
+   "intRound": "12",
+   "dateEvent": "2006-09-23",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569897",
+   "strEvent": "UFC Fight Night 65",
+   "strSeason": "2006",
+   "intRound": "13",
+   "dateEvent": "2006-10-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569898",
+   "strEvent": "UFC 64 Unstoppable",
+   "strSeason": "2006",
+   "intRound": "14",
+   "dateEvent": "2006-10-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569899",
+   "strEvent": "The Ultimate Fighter The Comeback Finale",
+   "strSeason": "2006",
+   "intRound": "15",
+   "dateEvent": "2006-11-11",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-569900",
+   "strEvent": "UFC 65 Bad Intentions",
+   "strSeason": "2006",
+   "intRound": "16",
+   "dateEvent": "2006-11-18",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-027748",
+   "strEvent": "UFC Fight Night Sanchez vs Riggs",
+   "strSeason": "2006",
+   "intRound": "17",
+   "dateEvent": "2006-12-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-554109",
+   "strEvent": "UFC 66 Liddell vs Ortiz",
+   "strSeason": "2006",
+   "intRound": "18",
+   "dateEvent": "2006-12-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

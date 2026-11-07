@@ -1,0 +1,80 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-172895",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "1950",
+   "intRound": "1",
+   "dateEvent": "1950-05-13",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-172896",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "1950",
+   "intRound": "2",
+   "dateEvent": "1950-05-21",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-172897",
+   "strEvent": "Indianapolis 500",
+   "strSeason": "1950",
+   "intRound": "3",
+   "dateEvent": "1950-05-30",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-172898",
+   "strEvent": "Swiss Grand Prix - Race",
+   "strSeason": "1950",
+   "intRound": "4",
+   "dateEvent": "1950-06-04",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-172899",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "1950",
+   "intRound": "5",
+   "dateEvent": "1950-06-18",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-172900",
+   "strEvent": "French Grand Prix - Race",
+   "strSeason": "1950",
+   "intRound": "6",
+   "dateEvent": "1950-07-02",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-172901",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "1950",
+   "intRound": "7",
+   "dateEvent": "1950-09-03",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

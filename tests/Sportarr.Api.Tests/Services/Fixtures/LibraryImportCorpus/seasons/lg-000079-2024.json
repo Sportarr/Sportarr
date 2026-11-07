@@ -1,0 +1,530 @@
+{
+ "league": {
+  "idLeague": "lg-000079",
+  "strLeague": "UFC",
+  "strSport": "Combat",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-028178",
+   "strEvent": "UFC Fight Night 234 Ankalaev vs Walker 2",
+   "strSeason": "2024",
+   "intRound": "1",
+   "dateEvent": "2024-01-14",
+   "strTime": "19:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028175",
+   "strEvent": "UFC 297 Strickland vs Du Plessis",
+   "strSeason": "2024",
+   "intRound": "2",
+   "dateEvent": "2024-01-20",
+   "strTime": "22:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028170",
+   "strEvent": "UFC Fight Night 235 Dolidze vs Imavov",
+   "strSeason": "2024",
+   "intRound": "3",
+   "dateEvent": "2024-02-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028173",
+   "strEvent": "UFC Fight Night 236 Hermansson vs Pyfer",
+   "strSeason": "2024",
+   "intRound": "4",
+   "dateEvent": "2024-02-10",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028172",
+   "strEvent": "UFC 298 Volkanovski vs Topuria",
+   "strSeason": "2024",
+   "intRound": "5",
+   "dateEvent": "2024-02-18",
+   "strTime": "00:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028174",
+   "strEvent": "UFC Fight Night 237 Moreno vs Royval 2",
+   "strSeason": "2024",
+   "intRound": "6",
+   "dateEvent": "2024-02-25",
+   "strTime": "03:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028171",
+   "strEvent": "UFC Fight Night 238 Rozenstruik vs Gaziev",
+   "strSeason": "2024",
+   "intRound": "7",
+   "dateEvent": "2024-03-02",
+   "strTime": "19:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028168",
+   "strEvent": "UFC 299 OMalley vs Vera 2",
+   "strSeason": "2024",
+   "intRound": "8",
+   "dateEvent": "2024-03-09",
+   "strTime": "22:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028169",
+   "strEvent": "UFC Fight Night 239 Tuivasa vs Tybura",
+   "strSeason": "2024",
+   "intRound": "9",
+   "dateEvent": "2024-03-16",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028167",
+   "strEvent": "UFC on ESPN 53 Ribas vs Namajunas",
+   "strSeason": "2024",
+   "intRound": "10",
+   "dateEvent": "2024-03-23",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028165",
+   "strEvent": "UFC on ESPN 54 Blanchfield vs Fiorot",
+   "strSeason": "2024",
+   "intRound": "11",
+   "dateEvent": "2024-03-31",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028164",
+   "strEvent": "UFC Fight Night 240 Allen vs Curtis 2",
+   "strSeason": "2024",
+   "intRound": "12",
+   "dateEvent": "2024-04-06",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028161",
+   "strEvent": "UFC 300 Pereira vs Hill",
+   "strSeason": "2024",
+   "intRound": "13",
+   "dateEvent": "2024-04-14",
+   "strTime": "02:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028166",
+   "strEvent": "UFC on ESPN 55 Nicolau vs Perez",
+   "strSeason": "2024",
+   "intRound": "14",
+   "dateEvent": "2024-04-27",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028163",
+   "strEvent": "UFC 301 Pantoja vs Erceg",
+   "strSeason": "2024",
+   "intRound": "15",
+   "dateEvent": "2024-05-04",
+   "strTime": "21:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028162",
+   "strEvent": "UFC on ESPN 56 Lewis vs Nascimento",
+   "strSeason": "2024",
+   "intRound": "16",
+   "dateEvent": "2024-05-11",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028158",
+   "strEvent": "UFC Fight Night 241 Barboza vs Murphy",
+   "strSeason": "2024",
+   "intRound": "17",
+   "dateEvent": "2024-05-18",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028160",
+   "strEvent": "UFC 302 Makhachev vs Poirier",
+   "strSeason": "2024",
+   "intRound": "18",
+   "dateEvent": "2024-06-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028159",
+   "strEvent": "UFC on ESPN 57 Cannonier vs Imavov",
+   "strSeason": "2024",
+   "intRound": "19",
+   "dateEvent": "2024-06-08",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028156",
+   "strEvent": "UFC on ESPN 58 Perez vs Taira",
+   "strSeason": "2024",
+   "intRound": "20",
+   "dateEvent": "2024-06-15",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028157",
+   "strEvent": "UFC on ABC 6 Whittaker vs Aliskerov",
+   "strSeason": "2024",
+   "intRound": "21",
+   "dateEvent": "2024-06-22",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028155",
+   "strEvent": "UFC 303 Pereira vs Procházka 2",
+   "strSeason": "2024",
+   "intRound": "22",
+   "dateEvent": "2024-06-29",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028152",
+   "strEvent": "UFC on ESPN 59 Namajunas vs Cortez",
+   "strSeason": "2024",
+   "intRound": "23",
+   "dateEvent": "2024-07-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028154",
+   "strEvent": "UFC on ESPN 60 Lemos vs Jandiroba",
+   "strSeason": "2024",
+   "intRound": "24",
+   "dateEvent": "2024-07-21",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028150",
+   "strEvent": "UFC 304 Edwards vs Muhammad 2",
+   "strSeason": "2024",
+   "intRound": "25",
+   "dateEvent": "2024-07-27",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028153",
+   "strEvent": "UFC on ABC 7 Sandhagen vs Nurmagomedov",
+   "strSeason": "2024",
+   "intRound": "26",
+   "dateEvent": "2024-08-03",
+   "strTime": "19:44:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028149",
+   "strEvent": "UFC on ESPN 61 Tybura vs Spivac 2",
+   "strSeason": "2024",
+   "intRound": "27",
+   "dateEvent": "2024-08-10",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570523",
+   "strEvent": "Dana Whites Contender Series season 8 Week 1",
+   "strSeason": "2024",
+   "intRound": "28",
+   "dateEvent": "2024-08-14",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028151",
+   "strEvent": "UFC 305 du Plessis vs Adesanya",
+   "strSeason": "2024",
+   "intRound": "29",
+   "dateEvent": "2024-08-18",
+   "strTime": "02:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570525",
+   "strEvent": "Dana Whites Contender Series season 8 Week 2",
+   "strSeason": "2024",
+   "intRound": "30",
+   "dateEvent": "2024-08-21",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028148",
+   "strEvent": "UFC on ESPN 62 Cannonier vs Borralho",
+   "strSeason": "2024",
+   "intRound": "31",
+   "dateEvent": "2024-08-24",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570527",
+   "strEvent": "Dana Whites Contender Series season 8 Week 3",
+   "strSeason": "2024",
+   "intRound": "32",
+   "dateEvent": "2024-08-28",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570528",
+   "strEvent": "Dana Whites Contender Series season 8 Week 4",
+   "strSeason": "2024",
+   "intRound": "33",
+   "dateEvent": "2024-09-04",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028145",
+   "strEvent": "UFC Fight Night 242 Burns vs Brady",
+   "strSeason": "2024",
+   "intRound": "34",
+   "dateEvent": "2024-09-07",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570530",
+   "strEvent": "Dana Whites Contender Series season 8 Week 5",
+   "strSeason": "2024",
+   "intRound": "35",
+   "dateEvent": "2024-09-11",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570531",
+   "strEvent": "UFC 306 O'Malley vs Dvalishvili",
+   "strSeason": "2024",
+   "intRound": "36",
+   "dateEvent": "2024-09-14",
+   "strTime": "22:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570532",
+   "strEvent": "Dana Whites Contender Series season 8 Week 6",
+   "strSeason": "2024",
+   "intRound": "37",
+   "dateEvent": "2024-09-18",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570533",
+   "strEvent": "Dana Whites Contender Series season 8 Week 7",
+   "strSeason": "2024",
+   "intRound": "38",
+   "dateEvent": "2024-09-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028147",
+   "strEvent": "UFC Fight Night 243 Moicano vs Saint Denis",
+   "strSeason": "2024",
+   "intRound": "39",
+   "dateEvent": "2024-09-28",
+   "strTime": "19:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570535",
+   "strEvent": "Dana Whites Contender Series season 8 Week 8",
+   "strSeason": "2024",
+   "intRound": "40",
+   "dateEvent": "2024-10-02",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028144",
+   "strEvent": "UFC 307 Pereira vs Rountree Jr.",
+   "strSeason": "2024",
+   "intRound": "41",
+   "dateEvent": "2024-10-05",
+   "strTime": "22:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570537",
+   "strEvent": "Dana Whites Contender Series season 8 Week 9",
+   "strSeason": "2024",
+   "intRound": "42",
+   "dateEvent": "2024-10-09",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028146",
+   "strEvent": "UFC Fight Night 244 Royval vs Taira",
+   "strSeason": "2024",
+   "intRound": "43",
+   "dateEvent": "2024-10-12",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-570539",
+   "strEvent": "Dana Whites Contender Series season 8 Week 10",
+   "strSeason": "2024",
+   "intRound": "44",
+   "dateEvent": "2024-10-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028143",
+   "strEvent": "UFC Fight Night 245 Hernandez vs Pereira",
+   "strSeason": "2024",
+   "intRound": "45",
+   "dateEvent": "2024-10-19",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028142",
+   "strEvent": "UFC 308 Topuria vs Holloway",
+   "strSeason": "2024",
+   "intRound": "46",
+   "dateEvent": "2024-10-26",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028139",
+   "strEvent": "UFC Fight Night 246 Moreno vs Albazi",
+   "strSeason": "2024",
+   "intRound": "47",
+   "dateEvent": "2024-11-03",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028140",
+   "strEvent": "UFC Fight Night 247 Magny vs Prates",
+   "strSeason": "2024",
+   "intRound": "48",
+   "dateEvent": "2024-11-10",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028137",
+   "strEvent": "UFC 309 Jones vs Miocic",
+   "strSeason": "2024",
+   "intRound": "49",
+   "dateEvent": "2024-11-17",
+   "strTime": "23:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-1665092",
+   "strEvent": "UFC Fight Night 248 Yan vs Figueiredo",
+   "strSeason": "2024",
+   "intRound": "50",
+   "dateEvent": "2024-11-23",
+   "strTime": "11:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028135",
+   "strEvent": "UFC 310 Pantoja vs Asakura",
+   "strSeason": "2024",
+   "intRound": "51",
+   "dateEvent": "2024-12-08",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-028138",
+   "strEvent": "UFC on ESPN 63 Covington vs Buckley",
+   "strSeason": "2024",
+   "intRound": "52",
+   "dateEvent": "2024-12-15",
+   "strTime": "00:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

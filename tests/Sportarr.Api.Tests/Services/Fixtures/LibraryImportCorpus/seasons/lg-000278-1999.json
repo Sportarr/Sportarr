@@ -1,0 +1,170 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-173525",
+   "strEvent": "Australian Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "1",
+   "dateEvent": "1999-03-07",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173526",
+   "strEvent": "Brazilian Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "2",
+   "dateEvent": "1999-04-11",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173527",
+   "strEvent": "San Marino Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "3",
+   "dateEvent": "1999-05-02",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173528",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "4",
+   "dateEvent": "1999-05-16",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173529",
+   "strEvent": "Spanish Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "5",
+   "dateEvent": "1999-05-30",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173530",
+   "strEvent": "Canadian Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "6",
+   "dateEvent": "1999-06-13",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173531",
+   "strEvent": "French Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "7",
+   "dateEvent": "1999-06-27",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173532",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "8",
+   "dateEvent": "1999-07-11",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173533",
+   "strEvent": "Austria Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "9",
+   "dateEvent": "1999-07-25",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173534",
+   "strEvent": "German Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "10",
+   "dateEvent": "1999-08-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173535",
+   "strEvent": "Hungarian Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "11",
+   "dateEvent": "1999-08-15",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173536",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "12",
+   "dateEvent": "1999-08-29",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173537",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "13",
+   "dateEvent": "1999-09-12",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173538",
+   "strEvent": "European Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "14",
+   "dateEvent": "1999-09-26",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173539",
+   "strEvent": "Malaysian Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "15",
+   "dateEvent": "1999-10-17",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-173540",
+   "strEvent": "Japanese Grand Prix - Race",
+   "strSeason": "1999",
+   "intRound": "16",
+   "dateEvent": "1999-10-31",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}

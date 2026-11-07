@@ -1,0 +1,1110 @@
+{
+ "league": {
+  "idLeague": "lg-000278",
+  "strLeague": "Formula 1",
+  "strSport": "Motorsport",
+  "strLeagueAlternate": null
+ },
+ "events": [
+  {
+   "idEvent": "ev-174102",
+   "strEvent": "Bahrain Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "1",
+   "dateEvent": "2023-03-03",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174101",
+   "strEvent": "Bahrain Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "1",
+   "dateEvent": "2023-03-03",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174104",
+   "strEvent": "Bahrain Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "1",
+   "dateEvent": "2023-03-04",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174103",
+   "strEvent": "Bahrain Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "1",
+   "dateEvent": "2023-03-04",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174105",
+   "strEvent": "Bahrain Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "1",
+   "dateEvent": "2023-03-05",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174107",
+   "strEvent": "Saudi Arabian Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "2",
+   "dateEvent": "2023-03-17",
+   "strTime": "13:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174106",
+   "strEvent": "Saudi Arabian Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "2",
+   "dateEvent": "2023-03-17",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174109",
+   "strEvent": "Saudi Arabian Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "2",
+   "dateEvent": "2023-03-18",
+   "strTime": "13:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174108",
+   "strEvent": "Saudi Arabian Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "2",
+   "dateEvent": "2023-03-18",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174110",
+   "strEvent": "Saudi Arabian Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "2",
+   "dateEvent": "2023-03-19",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174112",
+   "strEvent": "Australian Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "3",
+   "dateEvent": "2023-03-31",
+   "strTime": "01:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174111",
+   "strEvent": "Australian Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "3",
+   "dateEvent": "2023-03-31",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174114",
+   "strEvent": "Australian Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "3",
+   "dateEvent": "2023-04-01",
+   "strTime": "01:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174113",
+   "strEvent": "Australian Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "3",
+   "dateEvent": "2023-04-01",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174115",
+   "strEvent": "Australian Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "3",
+   "dateEvent": "2023-04-02",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174117",
+   "strEvent": "Azerbaijan Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "4",
+   "dateEvent": "2023-04-28",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174116",
+   "strEvent": "Azerbaijan Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "4",
+   "dateEvent": "2023-04-28",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174119",
+   "strEvent": "Azerbaijan Grand Prix - Sprint Shootout",
+   "strSeason": "2023",
+   "intRound": "4",
+   "dateEvent": "2023-04-29",
+   "strTime": "08:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174118",
+   "strEvent": "Azerbaijan Grand Prix - Sprint",
+   "strSeason": "2023",
+   "intRound": "4",
+   "dateEvent": "2023-04-29",
+   "strTime": "13:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174120",
+   "strEvent": "Azerbaijan Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "4",
+   "dateEvent": "2023-04-30",
+   "strTime": "11:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174122",
+   "strEvent": "Miami Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "5",
+   "dateEvent": "2023-05-05",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174121",
+   "strEvent": "Miami Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "5",
+   "dateEvent": "2023-05-05",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174124",
+   "strEvent": "Miami Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "5",
+   "dateEvent": "2023-05-06",
+   "strTime": "16:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174123",
+   "strEvent": "Miami Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "5",
+   "dateEvent": "2023-05-06",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174125",
+   "strEvent": "Miami Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "5",
+   "dateEvent": "2023-05-07",
+   "strTime": "19:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174127",
+   "strEvent": "Monaco Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "7",
+   "dateEvent": "2023-05-26",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174126",
+   "strEvent": "Monaco Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "7",
+   "dateEvent": "2023-05-26",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174129",
+   "strEvent": "Monaco Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "7",
+   "dateEvent": "2023-05-27",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174128",
+   "strEvent": "Monaco Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "7",
+   "dateEvent": "2023-05-27",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174130",
+   "strEvent": "Monaco Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "7",
+   "dateEvent": "2023-05-28",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174132",
+   "strEvent": "Spanish Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "8",
+   "dateEvent": "2023-06-02",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174131",
+   "strEvent": "Spanish Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "8",
+   "dateEvent": "2023-06-02",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174134",
+   "strEvent": "Spanish Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "8",
+   "dateEvent": "2023-06-03",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174133",
+   "strEvent": "Spanish Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "8",
+   "dateEvent": "2023-06-03",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174135",
+   "strEvent": "Spanish Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "8",
+   "dateEvent": "2023-06-04",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174137",
+   "strEvent": "Canadian Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "9",
+   "dateEvent": "2023-06-16",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174136",
+   "strEvent": "Canadian Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "9",
+   "dateEvent": "2023-06-16",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174139",
+   "strEvent": "Canadian Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "9",
+   "dateEvent": "2023-06-17",
+   "strTime": "16:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174138",
+   "strEvent": "Canadian Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "9",
+   "dateEvent": "2023-06-17",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174140",
+   "strEvent": "Canadian Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "9",
+   "dateEvent": "2023-06-18",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174142",
+   "strEvent": "Austrian Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "10",
+   "dateEvent": "2023-06-30",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174141",
+   "strEvent": "Austrian Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "10",
+   "dateEvent": "2023-06-30",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174144",
+   "strEvent": "Austrian Grand Prix - Sprint Shootout",
+   "strSeason": "2023",
+   "intRound": "10",
+   "dateEvent": "2023-07-01",
+   "strTime": "00:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174143",
+   "strEvent": "Austrian Grand Prix - Sprint",
+   "strSeason": "2023",
+   "intRound": "10",
+   "dateEvent": "2023-07-01",
+   "strTime": "14:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174145",
+   "strEvent": "Austrian Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "10",
+   "dateEvent": "2023-07-02",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174147",
+   "strEvent": "British Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "11",
+   "dateEvent": "2023-07-07",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174146",
+   "strEvent": "British Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "11",
+   "dateEvent": "2023-07-07",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174149",
+   "strEvent": "British Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "11",
+   "dateEvent": "2023-07-08",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174148",
+   "strEvent": "British Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "11",
+   "dateEvent": "2023-07-08",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174150",
+   "strEvent": "British Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "11",
+   "dateEvent": "2023-07-09",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174152",
+   "strEvent": "Hungarian Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "12",
+   "dateEvent": "2023-07-21",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174151",
+   "strEvent": "Hungarian Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "12",
+   "dateEvent": "2023-07-21",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174154",
+   "strEvent": "Hungarian Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "12",
+   "dateEvent": "2023-07-22",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174153",
+   "strEvent": "Hungarian Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "12",
+   "dateEvent": "2023-07-22",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174155",
+   "strEvent": "Hungarian Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "12",
+   "dateEvent": "2023-07-23",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174157",
+   "strEvent": "Belgian Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "13",
+   "dateEvent": "2023-07-28",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174156",
+   "strEvent": "Belgian Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "13",
+   "dateEvent": "2023-07-28",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174159",
+   "strEvent": "Belgian Grand Prix - Sprint Shootout",
+   "strSeason": "2023",
+   "intRound": "13",
+   "dateEvent": "2023-07-29",
+   "strTime": "10:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174158",
+   "strEvent": "Belgian Grand Prix - Sprint",
+   "strSeason": "2023",
+   "intRound": "13",
+   "dateEvent": "2023-07-29",
+   "strTime": "15:05:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174160",
+   "strEvent": "Belgian Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "13",
+   "dateEvent": "2023-07-30",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174162",
+   "strEvent": "Dutch Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "14",
+   "dateEvent": "2023-08-25",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174161",
+   "strEvent": "Dutch Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "14",
+   "dateEvent": "2023-08-25",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174164",
+   "strEvent": "Dutch Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "14",
+   "dateEvent": "2023-08-26",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174163",
+   "strEvent": "Dutch Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "14",
+   "dateEvent": "2023-08-26",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174165",
+   "strEvent": "Dutch Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "14",
+   "dateEvent": "2023-08-27",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174167",
+   "strEvent": "Italian Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "15",
+   "dateEvent": "2023-09-01",
+   "strTime": "11:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174166",
+   "strEvent": "Italian Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "15",
+   "dateEvent": "2023-09-01",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174169",
+   "strEvent": "Italian Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "15",
+   "dateEvent": "2023-09-02",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174168",
+   "strEvent": "Italian Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "15",
+   "dateEvent": "2023-09-02",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174170",
+   "strEvent": "Italian Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "15",
+   "dateEvent": "2023-09-03",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174172",
+   "strEvent": "Singapore Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "16",
+   "dateEvent": "2023-09-15",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174171",
+   "strEvent": "Singapore Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "16",
+   "dateEvent": "2023-09-15",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174174",
+   "strEvent": "Singapore Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "16",
+   "dateEvent": "2023-09-16",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174173",
+   "strEvent": "Singapore Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "16",
+   "dateEvent": "2023-09-16",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174175",
+   "strEvent": "Singapore Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "16",
+   "dateEvent": "2023-09-17",
+   "strTime": "12:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174177",
+   "strEvent": "Japanese Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "17",
+   "dateEvent": "2023-09-22",
+   "strTime": "02:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174176",
+   "strEvent": "Japanese Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "17",
+   "dateEvent": "2023-09-22",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174179",
+   "strEvent": "Japanese Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "17",
+   "dateEvent": "2023-09-23",
+   "strTime": "02:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174178",
+   "strEvent": "Japanese Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "17",
+   "dateEvent": "2023-09-23",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174180",
+   "strEvent": "Japanese Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "17",
+   "dateEvent": "2023-09-24",
+   "strTime": "05:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174182",
+   "strEvent": "Qatar Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "18",
+   "dateEvent": "2023-10-06",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174181",
+   "strEvent": "Qatar Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "18",
+   "dateEvent": "2023-10-06",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174184",
+   "strEvent": "Qatar Grand Prix - Sprint Shootout",
+   "strSeason": "2023",
+   "intRound": "18",
+   "dateEvent": "2023-10-07",
+   "strTime": "13:20:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174183",
+   "strEvent": "Qatar Grand Prix - Sprint",
+   "strSeason": "2023",
+   "intRound": "18",
+   "dateEvent": "2023-10-07",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174185",
+   "strEvent": "Qatar Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "18",
+   "dateEvent": "2023-10-08",
+   "strTime": "15:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174187",
+   "strEvent": "United States Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "19",
+   "dateEvent": "2023-10-20",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174186",
+   "strEvent": "United States Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "19",
+   "dateEvent": "2023-10-20",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174189",
+   "strEvent": "United States Grand Prix - Sprint Shootout",
+   "strSeason": "2023",
+   "intRound": "19",
+   "dateEvent": "2023-10-21",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174188",
+   "strEvent": "United States Grand Prix - Sprint",
+   "strSeason": "2023",
+   "intRound": "19",
+   "dateEvent": "2023-10-21",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174190",
+   "strEvent": "United States Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "19",
+   "dateEvent": "2023-10-22",
+   "strTime": "19:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174192",
+   "strEvent": "Mexico City Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "20",
+   "dateEvent": "2023-10-27",
+   "strTime": "18:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174191",
+   "strEvent": "Mexico City Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "20",
+   "dateEvent": "2023-10-27",
+   "strTime": "22:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174194",
+   "strEvent": "Mexico City Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "20",
+   "dateEvent": "2023-10-28",
+   "strTime": "17:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174193",
+   "strEvent": "Mexico City Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "20",
+   "dateEvent": "2023-10-28",
+   "strTime": "21:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174195",
+   "strEvent": "Mexico City Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "20",
+   "dateEvent": "2023-10-29",
+   "strTime": "20:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174197",
+   "strEvent": "São Paulo Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "21",
+   "dateEvent": "2023-11-03",
+   "strTime": "14:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174196",
+   "strEvent": "São Paulo Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "21",
+   "dateEvent": "2023-11-03",
+   "strTime": "18:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174199",
+   "strEvent": "São Paulo Grand Prix - Sprint Shootout",
+   "strSeason": "2023",
+   "intRound": "21",
+   "dateEvent": "2023-11-04",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174198",
+   "strEvent": "São Paulo Grand Prix - Sprint",
+   "strSeason": "2023",
+   "intRound": "21",
+   "dateEvent": "2023-11-04",
+   "strTime": "18:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174200",
+   "strEvent": "São Paulo Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "21",
+   "dateEvent": "2023-11-05",
+   "strTime": "17:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174202",
+   "strEvent": "Las Vegas Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "22",
+   "dateEvent": "2023-11-17",
+   "strTime": "04:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174201",
+   "strEvent": "Las Vegas Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "22",
+   "dateEvent": "2023-11-17",
+   "strTime": "08:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174204",
+   "strEvent": "Las Vegas Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "22",
+   "dateEvent": "2023-11-18",
+   "strTime": "04:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174203",
+   "strEvent": "Las Vegas Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "22",
+   "dateEvent": "2023-11-18",
+   "strTime": "08:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174205",
+   "strEvent": "Las Vegas Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "22",
+   "dateEvent": "2023-11-19",
+   "strTime": "06:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174207",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 1",
+   "strSeason": "2023",
+   "intRound": "23",
+   "dateEvent": "2023-11-24",
+   "strTime": "09:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174206",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 2",
+   "strSeason": "2023",
+   "intRound": "23",
+   "dateEvent": "2023-11-24",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174209",
+   "strEvent": "Abu Dhabi Grand Prix - Practice 3",
+   "strSeason": "2023",
+   "intRound": "23",
+   "dateEvent": "2023-11-25",
+   "strTime": "10:30:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174208",
+   "strEvent": "Abu Dhabi Grand Prix - Qualifying",
+   "strSeason": "2023",
+   "intRound": "23",
+   "dateEvent": "2023-11-25",
+   "strTime": "14:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  },
+  {
+   "idEvent": "ev-174210",
+   "strEvent": "Abu Dhabi Grand Prix - Race",
+   "strSeason": "2023",
+   "intRound": "22",
+   "dateEvent": "2023-11-26",
+   "strTime": "13:00:00",
+   "strHomeTeam": null,
+   "strAwayTeam": null
+  }
+ ]
+}
