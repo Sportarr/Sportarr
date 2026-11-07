@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Import;
 using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
@@ -1260,7 +1261,8 @@ public class TaskService : ITaskService
         var importService = scope.ServiceProvider.GetRequiredService<LibraryImportService>();
 
         var result = await importService.ScanFolderAsync(
-            folderPath, includeSubfolders, onProgress, includeIgnoredFiles: true);
+            folderPath, includeSubfolders, onProgress, includeIgnoredFiles: true,
+            options: ScanOptions.Interactive);
 
         // Same rationale as LibraryImportAsync above: the result column
         // carries the same LibraryScanResult shape the old inline response

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Import;
 using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -73,20 +74,25 @@ public class LibraryImportService
         string folderPath,
         bool includeSubfolders = true,
         Func<int, int, Task>? onProgress = null,
-        bool includeIgnoredFiles = false) =>
-        ScanPathAsync(folderPath, includeSubfolders, onProgress, includeIgnoredFiles);
+        bool includeIgnoredFiles = false,
+        ScanOptions? options = null) =>
+        ScanPathAsync(folderPath, includeSubfolders, onProgress, includeIgnoredFiles, options: options);
 
     /// <summary>Analyse only this file using the same filters and event matching as a folder scan.</summary>
-    public Task<LibraryScanResult> ScanFileAsync(string filePath) =>
-        ScanPathAsync(Path.GetDirectoryName(Path.GetFullPath(filePath))!, singleFilePath: filePath);
+    public Task<LibraryScanResult> ScanFileAsync(string filePath, ScanOptions? options = null) =>
+        ScanPathAsync(Path.GetDirectoryName(Path.GetFullPath(filePath))!, singleFilePath: filePath, options: options);
 
     private async Task<LibraryScanResult> ScanPathAsync(
         string folderPath,
         bool includeSubfolders = true,
         Func<int, int, Task>? onProgress = null,
         bool includeIgnoredFiles = false,
-        string? singleFilePath = null)
+        string? singleFilePath = null,
+        ScanOptions? options = null)
     {
+        // A caller that gives no options gets the safest mode.
+        var scanOptions = options ?? ScanOptions.DownloadFolder;
+
         var result = new LibraryScanResult
         {
             FolderPath = folderPath,

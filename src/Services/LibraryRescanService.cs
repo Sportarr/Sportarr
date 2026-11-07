@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Import;
 
 namespace Sportarr.Api.Services;
 
@@ -85,7 +86,8 @@ public class LibraryRescanService
             }
 
             _logger.LogInformation("[LibraryRescan] Scanning {Path}", rootPath);
-            var scan = await _libraryImport.ScanFolderAsync(rootPath, includeSubfolders: true);
+            var scan = await _libraryImport.ScanFolderAsync(
+                rootPath, includeSubfolders: true, options: ScanOptions.LibraryBackground);
             result.RootsScanned++;
             result.TotalFilesScanned += scan.TotalFiles;
             result.MatchedFiles += scan.MatchedFiles.Count;

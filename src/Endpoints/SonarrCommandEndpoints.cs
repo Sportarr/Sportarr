@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Import;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -58,7 +59,8 @@ public static class SonarrCommandEndpoints
                     var matchedEventsById = new Dictionary<int, Event>();
                     try
                     {
-                        var scan = await libraryImport.ScanFolderAsync(folder, includeSubfolders: true);
+                        var scan = await libraryImport.ScanFolderAsync(
+                            folder, includeSubfolders: true, options: ScanOptions.DownloadFolder);
                         foreach (var f in scan.MatchedFiles)
                         {
                             analysisByPath[f.FilePath] = f;
@@ -250,7 +252,8 @@ public static class SonarrCommandEndpoints
                                 ImportableFile? analysis = null;
                                 if (!string.IsNullOrEmpty(parentFolder))
                                 {
-                                    var scan = await libraryImport.ScanFolderAsync(parentFolder, includeSubfolders: false);
+                                    var scan = await libraryImport.ScanFolderAsync(
+                                        parentFolder, includeSubfolders: false, options: ScanOptions.DownloadFolder);
                                     analysis = scan.MatchedFiles.FirstOrDefault(f => f.FilePath == path);
                                     if (scan.AlreadyInLibrary.Any(f => f.FilePath == path))
                                     {

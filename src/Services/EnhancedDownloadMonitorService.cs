@@ -1,6 +1,7 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Import;
 using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
@@ -1653,7 +1654,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
             LibraryScanResult scan;
             if (File.Exists(localPath))
             {
-                scan = await libraryImport.ScanFileAsync(localPath);
+                scan = await libraryImport.ScanFileAsync(localPath, ScanOptions.DownloadFolder);
             }
             else if (Directory.Exists(localPath))
             {
@@ -1669,7 +1670,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         return null;
                     }
                 }
-                scan = await libraryImport.ScanFolderAsync(localPath, includeSubfolders: true);
+                scan = await libraryImport.ScanFolderAsync(
+                    localPath, includeSubfolders: true, options: ScanOptions.DownloadFolder);
             }
             else return null;
             return scan.MatchedFiles.OrderByDescending(f => f.MatchConfidence ?? 0).FirstOrDefault();

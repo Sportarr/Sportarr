@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Import;
 
 namespace Sportarr.Api.Services;
 
@@ -487,7 +488,8 @@ public class FileWatcherService : BackgroundService
             ImportableFile? analysis = null;
             if (!string.IsNullOrEmpty(parentFolder))
             {
-                var scan = await libraryImport.ScanFolderAsync(parentFolder, includeSubfolders: false);
+                var scan = await libraryImport.ScanFolderAsync(
+                    parentFolder, includeSubfolders: false, options: ScanOptions.LibraryBackground);
                 analysis = scan.MatchedFiles.FirstOrDefault(f => f.FilePath == filePath)
                         ?? scan.AlreadyInLibrary.FirstOrDefault(f => f.FilePath == filePath)
                         ?? scan.UnmatchedFiles.FirstOrDefault(f => f.FilePath == filePath);
