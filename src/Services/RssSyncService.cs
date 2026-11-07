@@ -944,7 +944,7 @@ public class RssSyncService : BackgroundService
     /// remaining words as required keywords for RSS release filtering.
     /// Example: "formula1 f1tv {Year}" -> ["formula1", "f1tv"]
     /// </summary>
-    private static List<string> ExtractRequiredKeywordsFromTemplate(string template)
+    internal static List<string> ExtractRequiredKeywordsFromTemplate(string template)
     {
         var stripped = Regex.Replace(template, @"\{[^}]+\}", " ");
 
@@ -958,21 +958,36 @@ public class RssSyncService : BackgroundService
     /// SearchQueryTemplate. Dots, hyphens, and underscores are treated as word
     /// separators (matching scene naming conventions).
     /// </summary>
-    private static bool ReleaseSatisfiesTemplateKeywords(string releaseTitle, List<string> requiredKeywords)
+    internal static bool ReleaseSatisfiesTemplateKeywords(string releaseTitle, List<string> requiredKeywords)
     {
-        var normalizedTitle = releaseTitle
-            .Replace('.', ' ')
-            .Replace('-', ' ')
-            .Replace('_', ' ');
+        var normalizedTitle = NormalizeKeywordSeparators(releaseTitle);
+        var joinedTitle = normalizedTitle.Replace(" ", "");
 
         foreach (var keyword in requiredKeywords)
         {
-            if (normalizedTitle.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) < 0)
-                return false;
+            // The keyword gets the same separators as the title. A template
+            // literal such as "Formula.1" otherwise never matches.
+            var normalizedKeyword = NormalizeKeywordSeparators(keyword);
+            if (normalizedKeyword.Length == 0)
+                continue;
+            if (normalizedTitle.IndexOf(normalizedKeyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+
+            // Only a keyword that had a separator may also match with no
+            // separator, so "Formula.1" finds "Formula1". Plain keywords keep
+            // the old test, so no existing template gets looser.
+            if (normalizedKeyword.Contains(' ') &&
+                joinedTitle.IndexOf(normalizedKeyword.Replace(" ", ""), StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+
+            return false;
         }
 
         return true;
     }
+
+    private static string NormalizeKeywordSeparators(string text) =>
+        Regex.Replace(text.Replace('.', ' ').Replace('-', ' ').Replace('_', ' '), @"\s+", " ").Trim();
 
     /// <summary>
     /// Check if we should grab this release for the matched event.
