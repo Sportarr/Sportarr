@@ -189,6 +189,76 @@ public class ForeignNumberingImportTests : IDisposable
     }
 
     [Fact]
+    public async Task ForeignNumber_DoesNotChooseBetweenTheGamesOfOneDay()
+    {
+        // The name fits three games of one day equally and names none of
+        // them. E80 is another database's number, so it chooses nothing.
+        var nfl = new League { Name = "NFL", Sport = "American Football" };
+        _db.Leagues.Add(nfl);
+        _db.SaveChanges();
+        Event Game(string title, int episode, int hour) => new()
+        {
+            Title = title, Sport = "American Football", Season = "2025", SeasonNumber = 2025,
+            EpisodeNumber = episode, LeagueId = nfl.Id, Monitored = true,
+            EventDate = new DateTime(2025, 10, 5, hour, 0, 0, DateTimeKind.Utc),
+        };
+        _db.Events.AddRange(
+            Game("Kansas City Chiefs vs Jacksonville Jaguars", 70, 17),
+            Game("Denver Broncos vs Philadelphia Eagles", 71, 20),
+            Game("Seattle Seahawks vs Tampa Bay Buccaneers", 72, 23));
+        _db.SaveChanges();
+        WriteFile("NFL - S2025E80 - Week 5 Sunday Night Football 2025-10-05.mkv");
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false);
+
+        result.MatchedFiles.Should().BeEmpty();
+        result.UnmatchedFiles.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void RoundAndLocation_DoNotLetTheNumberChooseAnotherSession()
+    {
+        // The round and the location fit the whole weekend. The file names
+        // the race, so they cannot corroborate E10 on Practice 3.
+        var race = BahrainRace();
+        var practice3 = new Event
+        {
+            Title = "Bahrain Grand Prix - Practice 3", Sport = "Motorsport", Round = "1",
+            Season = "2024", SeasonNumber = 2024, EpisodeNumber = 10,
+            EventDate = new DateTime(2024, 3, 1, 12, 30, 0, DateTimeKind.Utc), League = race.League,
+        };
+
+        int Score(Event evt) => LibraryImportService.CalculateMatchConfidence(
+            searchTitle: "Round 1: Bahrain (Race)", eventTitle: evt.Title, organization: "Formula 1",
+            evt: evt, parsedDate: null, parsedYear: 2024, parsedRoundNumber: 1,
+            explicitEpisodeNumber: 10, parsedLocation: "Bahrain", parsedSport: "Motorsport",
+            seriesLabel: "Formula 1");
+
+        Score(race).Should().BeGreaterThan(Score(practice3));
+        Score(practice3).Should().BeLessThan(85);
+    }
+
+    [Fact]
+    public void RoundWithoutASessionInTheFile_StillAddsFifty()
+    {
+        // The file names the weekend only. The round must still count
+        // against an event whose title names a session.
+        var practice3 = new Event
+        {
+            Title = "Bahrain Grand Prix - Practice 3", Sport = "Motorsport", Round = "1",
+            Season = "2024", SeasonNumber = 2024,
+            EventDate = new DateTime(2024, 3, 1, 12, 30, 0, DateTimeKind.Utc), League = BahrainRace().League,
+        };
+
+        int Score(int? round) => LibraryImportService.CalculateMatchConfidence(
+            searchTitle: "Round 1: Bahrain", eventTitle: practice3.Title, organization: "Formula 1",
+            evt: practice3, parsedDate: null, parsedYear: 2024, parsedRoundNumber: round,
+            parsedSport: "Motorsport", seriesLabel: "Formula 1");
+
+        Score(1).Should().Be(Score(null) + 50);
+    }
+
+    [Fact]
     public async Task SecondCopyInOneScan_DoesNotClaimTheSameEvent()
     {
         var race = BahrainRace();

@@ -359,6 +359,7 @@ public class LibraryImportService
                         }
 
                         var candidatesAtBest = 0;
+                        var bestHasEpisodeNumberBonus = false;
                         foreach (var candidate in candidates)
                         {
                             if (hasNamedPart && !hasPartNumber &&
@@ -374,12 +375,13 @@ public class LibraryImportService
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
                                 sportsResult.Location, _logger, sport, seriesLabel,
-                                roundRaceNumbers, filename, datePeers);
+                                roundRaceNumbers, filename, datePeers, out var episodeNumberBonus);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
                                 matchedEvent = candidate;
                                 candidatesAtBest = 1;
+                                bestHasEpisodeNumberBonus = episodeNumberBonus;
                             }
                             else if (confidence > 0 && confidence == matchConfidence)
                             {
@@ -388,8 +390,9 @@ public class LibraryImportService
                         }
 
                         // A name that shares no word with the event it ties on
-                        // cannot choose between the games of one day.
-                        if (matchedEvent != null && candidatesAtBest > 1 && !explicitEpisodeNumber.HasValue &&
+                        // cannot choose between the games of one day. An S/E
+                        // number chooses only when its bonus fired on the winner.
+                        if (matchedEvent != null && candidatesAtBest > 1 && !bestHasEpisodeNumberBonus &&
                             !HasTitleEvidence(eventTitle, matchedEvent.Title, sportsResult.Location))
                         {
                             _logger.LogInformation(
@@ -2233,8 +2236,35 @@ public class LibraryImportService
         string? seriesLabel = null,
         IReadOnlyList<int>? roundRaceNumbers = null,
         string? sourceTitle = null,
-        IReadOnlyCollection<Event>? datePeers = null)
+        IReadOnlyCollection<Event>? datePeers = null) =>
+        CalculateMatchConfidence(searchTitle, eventTitle, organization, evt, parsedDate, parsedYear,
+            parsedRoundNumber, seasonYearEnd, explicitEpisodeNumber, parsedLocation, logger, parsedSport,
+            seriesLabel, roundRaceNumbers, sourceTitle, datePeers, out _);
+
+    /// <summary>
+    /// Same as the other form. It also tells if the S/E number added its
+    /// bonus, so the scan knows if the number chose this event.
+    /// </summary>
+    internal static int CalculateMatchConfidence(
+        string searchTitle,
+        string eventTitle,
+        string? organization,
+        Event evt,
+        DateTime? parsedDate,
+        int? parsedYear,
+        int? parsedRoundNumber,
+        int? seasonYearEnd,
+        int? explicitEpisodeNumber,
+        string? parsedLocation,
+        ILogger? logger,
+        string? parsedSport,
+        string? seriesLabel,
+        IReadOnlyList<int>? roundRaceNumbers,
+        string? sourceTitle,
+        IReadOnlyCollection<Event>? datePeers,
+        out bool episodeNumberBonus)
     {
+        episodeNumberBonus = false;
         int confidence = 0;
 
         // ── SERIES LABEL GATE ───────────────────────────────────────────────────
@@ -2345,6 +2375,8 @@ public class LibraryImportService
         // "Chinese GP Free Practice 1".
         var eventRoundNumber = int.TryParse(evt.Round, out var er) ? er : (int?)null;
         var roundAgrees = false;
+        var sessions = new Lazy<(string? File, string? Event)>(() =>
+            SessionsOf(originalTitle, eventTitle, evt.League?.Name));
         if (parsedRoundNumber.HasValue && eventRoundNumber.HasValue)
         {
             var hasExactPreseasonDate = eventRoundNumber.Value == 500 &&
@@ -2353,7 +2385,14 @@ public class LibraryImportService
             if (eventRoundNumber.Value == parsedRoundNumber.Value || hasExactPreseasonDate)
             {
                 roundAgrees = true;
-                confidence += 50;
+                // A round names a weekend. When the file and the event name
+                // different sessions of it, the round adds nothing.
+                var (fileSession, eventSession) = sessions.Value;
+                var sessionsConflict = !hasExactPreseasonDate &&
+                    !string.IsNullOrEmpty(fileSession) && !string.IsNullOrEmpty(eventSession) &&
+                    !string.Equals(fileSession, eventSession, StringComparison.OrdinalIgnoreCase);
+                if (!sessionsConflict)
+                    confidence += 50;
                 logger?.LogDebug("[Match] Round {Round} matches event Round for '{Event}'", parsedRoundNumber.Value, eventTitle);
             }
             else
@@ -2454,8 +2493,10 @@ public class LibraryImportService
         // Such a file carries the id token and does not reach this scorer.
         // A file named by another database carries that database's number.
         // So the number only supports other agreement. It does not decide alone.
-        // Corroboration is a strong title, an equal round, a location in the
-        // event title, or a date that passed the date gate.
+        // Corroboration is a strong title, a date that passed the date gate,
+        // an equal round, or a location in the event title.
+        // A round and a location name a weekend, not a session. When the event
+        // names a session, they corroborate only if the file names that session.
         // Same number with corroboration: add 50.
         // Same number without corroboration: add nothing. The match is chance.
         // Different number with corroboration: add nothing. The other signals decide.
@@ -2463,10 +2504,13 @@ public class LibraryImportService
         if (explicitEpisodeNumber.HasValue && evt.EpisodeNumber.HasValue)
         {
             var numberAgrees = evt.EpisodeNumber.Value == explicitEpisodeNumber.Value;
-            var corroborated = strongTitleAward > 0 || roundAgrees || locationAgrees ||
-                dateMatch is { Score: > 0 };
+            var corroborated = strongTitleAward > 0 || dateMatch is { Score: > 0 } ||
+                ((roundAgrees || locationAgrees) && FileNamesEventSession(sessions.Value));
             if (numberAgrees && corroborated)
+            {
                 confidence += 50;
+                episodeNumberBonus = true;
+            }
             else if (!numberAgrees && !corroborated)
                 confidence -= 30;
         }
@@ -2850,6 +2894,28 @@ public class LibraryImportService
 
         return false;
     }
+
+    /// <summary>
+    /// The motorsport session that the file names and the one the event
+    /// names. Each is null when it names none.
+    /// </summary>
+    private static (string? File, string? Event) SessionsOf(string fileTitle, string eventTitle, string? leagueName)
+    {
+        // The identity form reads a Supercars "Race2" as "Race", the way the
+        // league titles its races, so the two sides compare.
+        var eventSession = EventPartDetector.DetectMotorsportSessionIdentity(eventTitle, leagueName, releaseTitle: false);
+        var fileSession = string.IsNullOrEmpty(eventSession)
+            ? null
+            : EventPartDetector.DetectMotorsportSessionIdentity(fileTitle, leagueName, releaseTitle: true);
+        return (fileSession, eventSession);
+    }
+
+    /// <summary>
+    /// True when the event names no session, or the file names the same one.
+    /// </summary>
+    private static bool FileNamesEventSession((string? File, string? Event) sessions) =>
+        string.IsNullOrEmpty(sessions.Event) ||
+        string.Equals(sessions.Event, sessions.File, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The award of the two strong title tiers: 60 for the same title, 40
