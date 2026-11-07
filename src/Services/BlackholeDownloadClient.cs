@@ -18,7 +18,7 @@ public static class BlackholeDownloadClient
     /// File extensions that mark an entry as still being downloaded by the
     /// external client (partial/incomplete markers used by common clients).
     /// </summary>
-    private static readonly string[] IncompleteExtensions =
+    internal static readonly string[] IncompleteExtensions =
     {
         ".part", ".tmp", ".!qb", ".!ut", ".bts", ".crdownload", ".partial"
     };

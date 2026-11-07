@@ -487,6 +487,20 @@ public class FileImportService : IFileImportService
                     throw new Exception($"No files found in download path: {downloadPath}. The download may have been moved or deleted.");
                 }
 
+                // A sync tool can create the folder before the video arrives.
+                // It writes the video under a temporary name and renames it at
+                // the end. That is a wait, not a failure. A partial file that
+                // stopped changing is left over from a dead transfer, so it
+                // gets the normal failure below.
+                var transferringVideo = allFiles
+                    .Where(f => IsVideoStillTransferring(Path.GetFileName(f)))
+                    .FirstOrDefault(f => IsTransferStillActive(File.GetLastWriteTimeUtc(f), DateTime.UtcNow));
+                if (transferringVideo != null)
+                {
+                    throw new FileNotReadyException(
+                        $"Video file is still transferring into {downloadPath}: {Path.GetFileName(transferringVideo)}.");
+                }
+
                 // Check for packed files that weren't extracted
                 var packedFiles = allFiles.Where(f =>
                 {
@@ -1511,6 +1525,30 @@ public class FileImportService : IFileImportService
             _logger.LogWarning(ex, "[Post-Import Category] Error applying post-import category for '{Title}': {Error}",
                 download.Title, ex.Message);
         }
+    }
+
+    /// <summary>How long a partial video file can stay unchanged and still count as transferring.</summary>
+    internal static readonly TimeSpan StalledTransferWindow = TimeSpan.FromMinutes(30);
+
+    internal static bool IsTransferStillActive(DateTime lastWriteUtc, DateTime nowUtc) =>
+        nowUtc - lastWriteUtc < StalledTransferWindow;
+
+    /// <summary>
+    /// True for a partial file whose final name is a video, for example
+    /// ".syncthing.Race.mkv.tmp" or "Race.mkv.part".
+    /// </summary>
+    internal static bool IsVideoStillTransferring(string? fileName)
+    {
+        if (string.IsNullOrEmpty(fileName))
+            return false;
+
+        var marker = BlackholeDownloadClient.IncompleteExtensions
+            .FirstOrDefault(ext => fileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+        if (marker == null)
+            return false;
+
+        var finalName = fileName[..^marker.Length];
+        return VideoExtensions.Contains(Path.GetExtension(finalName).ToLowerInvariant());
     }
 
     /// <summary>
