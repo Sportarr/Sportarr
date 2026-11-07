@@ -203,12 +203,12 @@ public class LibraryImportService
                     // CRITICAL: This prevents matching files to wrong events from different years
                     var parsedYear = ExtractYearFromPath(filePath, filename, sportsResult.EventYear, eventDate);
 
-                    // Check for explicit SxxxxExx episode number in filename (e.g. "Formula E - S2025E05 - Jeddah E Prix").
-                    // This is the highest-confidence signal — explicit S/E parsing wins over fuzzier matchers.
+                    // Read the S/E token ("Formula E - S2025E05 - Jeddah E Prix", "UFC Primetime - S27E03 - ...").
+                    // The scorer adds points when the episode number agrees. A different number does not reject.
                     int? explicitEpisodeNumber = null;
                     string? seriesLabel = null;
-                    var seMatch = System.Text.RegularExpressions.Regex.Match(filename, @"S\d{4}E(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                    if (seMatch.Success && int.TryParse(seMatch.Groups[1].Value, out var seEp))
+                    var seMatch = System.Text.RegularExpressions.Regex.Match(filename, @"S(\d{2,4})E(\d{1,4})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (seMatch.Success && int.TryParse(seMatch.Groups[2].Value, out var seEp))
                     {
                         explicitEpisodeNumber = seEp;
                         // Library-format names carry the series/league ahead of the
@@ -2344,6 +2344,7 @@ public class LibraryImportService
         // far higher), which is exactly how "Round09 Spain Qualifying" matched
         // "Chinese GP Free Practice 1".
         var eventRoundNumber = int.TryParse(evt.Round, out var er) ? er : (int?)null;
+        var roundAgrees = false;
         if (parsedRoundNumber.HasValue && eventRoundNumber.HasValue)
         {
             var hasExactPreseasonDate = eventRoundNumber.Value == 500 &&
@@ -2351,6 +2352,7 @@ public class LibraryImportService
             // Authoritative when the event carries real round data.
             if (eventRoundNumber.Value == parsedRoundNumber.Value || hasExactPreseasonDate)
             {
+                roundAgrees = true;
                 confidence += 50;
                 logger?.LogDebug("[Match] Round {Round} matches event Round for '{Event}'", parsedRoundNumber.Value, eventTitle);
             }
@@ -2372,17 +2374,6 @@ public class LibraryImportService
                 confidence += 15;
                 logger?.LogDebug("[Match] Round {Round} matches EpisodeNumber (no round data) for '{Event}'", parsedRoundNumber.Value, eventTitle);
             }
-        }
-
-        // ── EXPLICIT S/E EPISODE NUMBER ─────────────────────────────────────────
-        // Files with S2025E05 in the name — this IS authoritative since it's the
-        // Sportarr season/episode format used in library filenames.
-        if (explicitEpisodeNumber.HasValue && evt.EpisodeNumber.HasValue)
-        {
-            if (evt.EpisodeNumber.Value == explicitEpisodeNumber.Value)
-                confidence += 50;
-            else
-                return 0; // S/E notation is authoritative — wrong event
         }
 
         // ── YEAR / SEASON CHECK ─────────────────────────────────────────────────
@@ -2444,28 +2435,56 @@ public class LibraryImportService
             }
         }
 
-        // ── TITLE SIMILARITY ────────────────────────────────────────────────────
+        // ── EVENT AGREEMENT ─────────────────────────────────────────────────────
+        // Find the title tier and the location agreement one time.
+        // The S/E block and the title block both use them.
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
+        var titleIsDegenerate = string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent);
+        var strongTitleAward = titleIsDegenerate ? 0 : StrongTitleAward(normalizedSearch, normalizedEvent);
+        var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !MatchConnectorWords.Contains(w)).ToArray();
+        var locationWords = string.IsNullOrEmpty(parsedLocation)
+            ? Array.Empty<string>()
+            : parsedLocation.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var locationAgrees = locationWords.Intersect(eventWords, StringComparer.OrdinalIgnoreCase).Any();
 
+        // ── EXPLICIT S/E EPISODE NUMBER ─────────────────────────────────────────
+        // The number is Sportarr's own only on a file that Sportarr named.
+        // Such a file carries the id token and does not reach this scorer.
+        // A file named by another database carries that database's number.
+        // So the number only supports other agreement. It does not decide alone.
+        // Corroboration is a strong title, an equal round, a location in the
+        // event title, or a date that passed the date gate.
+        // Same number with corroboration: add 50.
+        // Same number without corroboration: add nothing. The match is chance.
+        // Different number with corroboration: add nothing. The other signals decide.
+        // Different number without corroboration: subtract 30.
+        if (explicitEpisodeNumber.HasValue && evt.EpisodeNumber.HasValue)
+        {
+            var numberAgrees = evt.EpisodeNumber.Value == explicitEpisodeNumber.Value;
+            var corroborated = strongTitleAward > 0 || roundAgrees || locationAgrees ||
+                dateMatch is { Score: > 0 };
+            if (numberAgrees && corroborated)
+                confidence += 50;
+            else if (!numberAgrees && !corroborated)
+                confidence -= 30;
+        }
+
+        // ── TITLE SIMILARITY ────────────────────────────────────────────────────
         // A degenerate parsed title carries no signal. Without this guard the
         // contains branch below hands EVERY event a 40-point award when the
         // search string is empty (string.Contains("") is true), which put an
         // arbitrary event exactly on the acceptance floor.
-        if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
+        if (titleIsDegenerate)
         {
             return hasLeagueReleaseIdentity ? Math.Min(100, confidence + 50) : 0;
         }
 
         var hasTitleEvidence = true;
-        if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        if (strongTitleAward > 0)
         {
-            confidence += 60;
-        }
-        else if ((normalizedSearch.Length >= 3 && ContainsTitlePhrase(normalizedEvent, normalizedSearch)) ||
-                 (normalizedEvent.Length >= 3 && ContainsTitlePhrase(normalizedSearch, normalizedEvent)))
-        {
-            confidence += 40;
+            confidence += strongTitleAward;
         }
         else
         {
@@ -2475,13 +2494,10 @@ public class LibraryImportService
             // free similarity against every other two-team event.
             var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Where(w => !MatchConnectorWords.Contains(w)).ToArray();
-            var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Where(w => !MatchConnectorWords.Contains(w)).ToArray();
 
             // If we have a parsed location, include it in the word set for matching
-            if (!string.IsNullOrEmpty(parsedLocation))
+            if (locationWords.Length > 0)
             {
-                var locationWords = parsedLocation.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 searchWords = searchWords.Union(locationWords, StringComparer.OrdinalIgnoreCase).ToArray();
             }
 
@@ -2536,7 +2552,7 @@ public class LibraryImportService
         // no word with the event, names no league or team pair and carries no
         // round or episode that fits has not identified this event. Keep it
         // under the acceptance floor.
-        var hasStructuralMatch = explicitEpisodeNumber.HasValue && evt.EpisodeNumber.HasValue ||
+        var hasStructuralMatch = explicitEpisodeNumber.HasValue && evt.EpisodeNumber == explicitEpisodeNumber ||
             parsedRoundNumber.HasValue && eventRoundNumber.HasValue && eventRoundNumber == parsedRoundNumber;
         if (!hasTitleEvidence && !hasStructuralMatch && !hasLeagueReleaseIdentity &&
             !organizationEstablishesIdentity &&
@@ -2835,15 +2851,31 @@ public class LibraryImportService
         return false;
     }
 
-    private static string NormalizeTitle(string title)
+    /// <summary>
+    /// The award of the two strong title tiers: 60 for the same title, 40
+    /// when one title holds the other. Zero means a weak title. Both inputs
+    /// must be normalized and not empty.
+    /// </summary>
+    private static int StrongTitleAward(string normalizedSearch, string normalizedEvent)
     {
-        return title
+        if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+            return 60;
+        if ((normalizedSearch.Length >= 3 && ContainsTitlePhrase(normalizedEvent, normalizedSearch)) ||
+            (normalizedEvent.Length >= 3 && ContainsTitlePhrase(normalizedSearch, normalizedEvent)))
+            return 40;
+        return 0;
+    }
+
+    // " - " in a hub title becomes a run of spaces. Collapse each run to one
+    // space, or a parsed title with single spaces can never contain it.
+    internal static string NormalizeTitle(string title)
+    {
+        return string.Join(' ', title
             .Replace(":", " ")
             .Replace("-", " ")
             .Replace(".", " ")
             .Replace("_", " ")
-            .Replace("  ", " ")
-            .Trim();
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     /// <summary>

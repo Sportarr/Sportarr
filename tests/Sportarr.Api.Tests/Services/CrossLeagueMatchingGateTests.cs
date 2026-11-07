@@ -138,10 +138,10 @@ public class CrossLeagueMatchingGateTests
         League = new League { Id = 1, Name = "Formula 1", Sport = "Motorsport" },
     };
 
-    private static int ImportScore(string seriesLabel)
+    private static int ImportScore(string seriesLabel, string searchTitle = "betr Darwin Triple Crown")
     {
         return LibraryImportService.CalculateMatchConfidence(
-            searchTitle: "betr Darwin Triple Crown",
+            searchTitle: searchTitle,
             eventTitle: "Japanese Grand Prix - Practice 3",
             organization: null,
             evt: F1JapaneseGpPractice3(),
@@ -166,13 +166,14 @@ public class CrossLeagueMatchingGateTests
     [Fact]
     public void ImportScorer_AcceptsMatchingSeriesLabel()
     {
-        ImportScore("Formula 1").Should().BeGreaterThanOrEqualTo(75);
+        // A legacy file that Sportarr named carries its event's own title.
+        ImportScore("Formula 1", "Japanese Grand Prix - Practice 3").Should().BeGreaterThanOrEqualTo(75);
     }
 
     [Fact]
     public void ImportScorer_AcceptsAbbreviatedSeriesLabel()
     {
-        ImportScore("F1").Should().BeGreaterThanOrEqualTo(75);
+        ImportScore("F1", "Japanese Grand Prix - Practice 3").Should().BeGreaterThanOrEqualTo(75);
     }
 
     [Fact]
