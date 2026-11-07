@@ -116,6 +116,65 @@ public class ChannelLeagueMapSaveTests : IDisposable
         (await RowsAsync(Espn)).Select(m => m.LeagueId).Should().Equal(Nfl);
     }
 
+    // Issue #428: a second preferred channel for a league broke the filtered
+    // unique index and the save failed with a 500.
+    [Fact]
+    public async Task ANewPreferredChannelReplacesTheOldOne()
+    {
+        _db.ChannelLeagueMappings.Add(new ChannelLeagueMapping
+        {
+            ChannelId = Espn, LeagueId = Nfl, IsPreferred = true, IsManual = true, Confidence = 100,
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Svc().MapChannelToLeaguesAsync(new MapChannelToLeaguesRequest
+        {
+            ChannelId = Fox, LeagueIds = [Nfl, Ncaa], PreferredLeagueId = Nfl,
+        });
+
+        var espn = (await RowsAsync(Espn)).Single();
+        espn.IsPreferred.Should().BeFalse("the league has one preferred channel");
+        espn.IsExcluded.Should().BeFalse("the old channel stays mapped");
+        var fox = await RowsAsync(Fox);
+        fox.Single(m => m.LeagueId == Nfl).IsPreferred.Should().BeTrue();
+        fox.Single(m => m.LeagueId == Ncaa).IsPreferred.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SavingWithoutAPreferredLeagueKeepsTheOtherChannelsPreference()
+    {
+        _db.ChannelLeagueMappings.Add(new ChannelLeagueMapping
+        {
+            ChannelId = Espn, LeagueId = Nfl, IsPreferred = true, IsManual = true, Confidence = 100,
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Svc().MapChannelToLeaguesAsync(new MapChannelToLeaguesRequest { ChannelId = Fox, LeagueIds = [Nfl] });
+
+        (await RowsAsync(Espn)).Single().IsPreferred.Should().BeTrue();
+        (await RowsAsync(Fox)).Single().IsPreferred.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ResavingThePreferredChannelKeepsItPreferred()
+    {
+        _db.ChannelLeagueMappings.Add(new ChannelLeagueMapping
+        {
+            ChannelId = Espn, LeagueId = Nfl, IsPreferred = true, IsManual = true, Confidence = 100,
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Svc().MapChannelToLeaguesAsync(new MapChannelToLeaguesRequest
+        {
+            ChannelId = Espn, LeagueIds = [Nfl], PreferredLeagueId = Nfl,
+        });
+
+        (await RowsAsync(Espn)).Single().IsPreferred.Should().BeTrue();
+    }
+
     public void Dispose()
     {
         _db.Dispose();

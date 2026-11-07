@@ -809,6 +809,19 @@ public class IptvSourceService
             Created = DateTime.UtcNow
         }).ToList();
 
+        // A league has one preferred channel. The new choice replaces the old
+        // one, the same as the league's preferred-channel setting.
+        if (request.PreferredLeagueId is int preferredLeagueId && request.LeagueIds.Contains(preferredLeagueId))
+        {
+            var previous = await _db.ChannelLeagueMappings
+                .Where(m => m.LeagueId == preferredLeagueId && m.IsPreferred && m.ChannelId != request.ChannelId)
+                .ToListAsync();
+            foreach (var mapping in previous)
+            {
+                mapping.IsPreferred = false;
+            }
+        }
+
         _db.ChannelLeagueMappings.AddRange(newMappings);
         await _db.SaveChangesAsync();
 
