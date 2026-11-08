@@ -481,6 +481,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IptvSourceService>();
         services.AddScoped<ChannelAutoMappingService>();
         services.AddSingleton<FFmpegRecorderService>();
+        services.AddSingleton<IKeyframeSampler, FFmpegKeyframeSampler>();
+        services.AddSingleton<StreamLoopMonitor>();
         services.AddSingleton<FFmpegStreamService>();
         // Viewer-stream counting for per-source MaxStreams enforcement on
         // the proxy/HDHomeRun path.
