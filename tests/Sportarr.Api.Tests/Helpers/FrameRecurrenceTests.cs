@@ -306,8 +306,9 @@ public class FrameRecurrenceTests
     [InlineData(5, 1)]
     [InlineData(13, 1)]
     [InlineData(15, 2)]
-    [InlineData(60, 6)]
-    public void The_period_band_grows_with_the_period(int period, int tolerance)
+    [InlineData(60, 2)]
+    [InlineData(150, 2)]
+    public void The_period_band_grows_with_the_period_up_to_two_keyframes(int period, int tolerance)
     {
         FrameRecurrence.Tolerance(period).Should().Be(tolerance);
     }
@@ -318,6 +319,130 @@ public class FrameRecurrenceTests
         var keyframes = Pictures(new Random(2), 72);
 
         FrameRecurrence.LooksLooped(keyframes).Should().BeFalse();
+    }
+
+    // The monitor keeps ten minutes and judges the last three. At a keyframe
+    // every second that is 420 earlier and 180 judged keyframes. At one every
+    // two seconds it is 210 and 90. A longer history gives the search more
+    // chances to find a near match at some lag.
+    [Theory]
+    [InlineData(2, 1, 3)]
+    [InlineData(2, 1, 6)]
+    [InlineData(3, 1, 3)]
+    [InlineData(3, 2, 5)]
+    [InlineData(3, 1, 8)]
+    public void A_studio_with_ten_minutes_of_history_is_never_a_loop(int cameras, int minShot, int maxShot)
+    {
+        foreach (var (earlier, judged) in new[] { (420, 180), (210, 90) })
+        {
+            for (var seed = 0; seed < 200; seed++)
+            {
+                var keyframes = Studio(new Random(seed), cameras, minShot, maxShot, earlier + judged);
+
+                FrameRecurrence.LooksLooped(keyframes, earlier, null).Should().BeFalse($"seed {seed}, {earlier}+{judged}");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(6)]
+    public void A_carousel_with_ten_minutes_of_history_is_never_a_loop(int slideCount)
+    {
+        for (var seed = 0; seed < 200; seed++)
+        {
+            var random = new Random(seed);
+            var slides = Pictures(random, slideCount);
+            var keyframes = new List<ulong>();
+            for (var slide = 0; keyframes.Count < 600; slide++)
+            {
+                var hold = random.Next(2, 5);
+                for (var i = 0; i < hold && keyframes.Count < 600; i++)
+                    keyframes.Add(Reencoded(slides[slide % slideCount], random));
+            }
+
+            FrameRecurrence.LooksLooped(keyframes, 420, null).Should().BeFalse($"seed {seed}");
+        }
+    }
+
+    [Fact]
+    public void Live_footage_with_replays_and_ten_minutes_of_history_is_never_a_loop()
+    {
+        // Live footage where every fifth keyframe shows a picture from up to
+        // eight minutes back, as replays and returning camera angles do.
+        for (var seed = 0; seed < 200; seed++)
+        {
+            var random = new Random(seed);
+            var keyframes = Pictures(random, 600);
+            for (var i = 10; i < keyframes.Count; i += 5)
+                keyframes[i] = Reencoded(keyframes[i - random.Next(2, Math.Min(i, 480) + 1)], random);
+
+            FrameRecurrence.LooksLooped(keyframes, 420, null).Should().BeFalse($"seed {seed}");
+        }
+    }
+
+    [Fact]
+    public void Repeats_at_an_irregular_lag_are_not_a_loop()
+    {
+        // A 90-keyframe reel comes back after 0, 5, 10 or 15 keyframes of
+        // other footage. The lag then changes by five keyframes or more from
+        // pass to pass, so there is no steady period. The judged window holds
+        // about two passes. A band of a tenth of the lag, nine keyframes here,
+        // took both lags in. The band is now two keyframes at most.
+        var flagged = 0;
+        for (var seed = 0; seed < 200; seed++)
+        {
+            var random = new Random(seed);
+            var reel = Pictures(random, 90);
+            var keyframes = new List<ulong>();
+            for (var pass = 0; keyframes.Count < 600; pass++)
+            {
+                keyframes.AddRange(Pictures(random, 5 * ((pass + seed) % 4)));
+                keyframes.AddRange(reel.Select(p => Reencoded(p, random)));
+            }
+
+            if (FrameRecurrence.LooksLooped(keyframes.Take(600).ToList(), 420, null))
+                flagged++;
+        }
+
+        flagged.Should().Be(0);
+    }
+
+    [Fact]
+    public void A_long_reel_that_comes_back_once_in_the_window_counts_as_a_loop()
+    {
+        // This is accepted behavior. A 150-keyframe reel that comes back after
+        // other footage fills most of a 180-keyframe window with one repeat
+        // at one lag. The window cannot tell that from a loop. The watchdog
+        // needs the verdict to hold for two windows that do not overlap, so a
+        // single long replay does not stop a recording.
+        var random = new Random(11);
+        var reel = Pictures(random, 150);
+        var keyframes = Pictures(random, 290)
+            .Concat(reel.Select(p => Reencoded(p, random)))
+            .Concat(Pictures(random, 10))
+            .Concat(reel.Select(p => Reencoded(p, random)))
+            .ToList();
+
+        FrameRecurrence.LooksLooped(keyframes, 420, null).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_long_loop_with_a_period_that_changes_by_one_is_a_loop()
+    {
+        // A 150-second clip on a keyframe grid that does not divide it. The
+        // passes alternate between 150 and 151 keyframes.
+        for (var seed = 0; seed < 50; seed++)
+        {
+            var random = new Random(seed);
+            var clip = Pictures(random, 151);
+            var keyframes = new List<ulong>();
+            for (var pass = 0; keyframes.Count < 600; pass++)
+                keyframes.AddRange(clip.Take(pass % 2 == 0 ? 150 : 151).Select(p => Reencoded(p, random)));
+
+            FrameRecurrence.LooksLooped(keyframes.Take(600).ToList(), 420, null).Should().BeTrue($"seed {seed}");
+        }
     }
 
     [Fact]

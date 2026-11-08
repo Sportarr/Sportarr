@@ -72,6 +72,12 @@ public static class FrameRecurrence
     // that band by chance.
     private const int PeriodsPerToleranceStep = 10;
 
+    // The band never grows past this many keyframes. A pass of a loop
+    // changes by a keyframe or two at most, whatever its length. A wider
+    // band at a long lag accepts repeats that come back at no steady
+    // period.
+    private const int MaxTolerance = 2;
+
     // This is the share of moving keyframes that must repeat at the period.
     // In replays, re-encoded loops of race clips from 13 seconds to six
     // minutes scored 0.99 and up. They were judged over three minutes with
@@ -219,7 +225,7 @@ public static class FrameRecurrence
     }
 
     internal static int Tolerance(int period) =>
-        (period + PeriodsPerToleranceStep / 2) / PeriodsPerToleranceStep;
+        Math.Min(MaxTolerance, (period + PeriodsPerToleranceStep / 2) / PeriodsPerToleranceStep);
 
     /// <summary>
     /// True when the repeats show enough clearly different pictures. Each
