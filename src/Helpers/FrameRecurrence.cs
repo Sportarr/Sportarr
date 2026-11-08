@@ -42,10 +42,12 @@ public static class FrameRecurrence
     // period wobble by one keyframe between passes.
     private const int PeriodTolerance = 1;
 
-    // Share of moving keyframes that must repeat at the period. Synthetic loops
-    // of a 13-second race clip scored 0.93 and 0.95. Across 40 recordings of
-    // races, fight nights and studio talk shows, no three-minute window scored
-    // above 0.53, which was two cameras taking turns on a studio interview.
+    // Share of moving keyframes that must repeat at the period. Re-encoded
+    // loops of race clips from 13 seconds to six minutes scored 0.99 and up,
+    // judged over three minutes with ten minutes to find repeats in. Across 41
+    // recordings of races, fight nights and studio talk shows, no window of
+    // live footage scored above 0.52; the one that came closer, at 0.67, was a
+    // provider repeating twenty seconds right before its stream dropped.
     private const double LoopedShare = 0.8;
 
     /// <summary>
@@ -84,14 +86,19 @@ public static class FrameRecurrence
     }
 
     /// <summary>
-    /// True when the keyframes, oldest first, look like a short clip played
-    /// over and over rather than live footage.
+    /// True when the <paramref name="recent"/> keyframes look like a clip
+    /// played over and over rather than live footage. Only they are judged;
+    /// the <paramref name="earlier"/> ones, which come right before them, can
+    /// only be what a recent one repeats. That is what lets a clip longer than
+    /// the judged stretch be caught: its repeats in the recent keyframes match
+    /// its previous pass in the earlier ones. Both are oldest first.
     /// </summary>
-    public static bool LooksLooped(IReadOnlyList<ulong> keyframes)
+    public static bool LooksLooped(IReadOnlyList<ulong> earlier, IReadOnlyList<ulong> recent)
     {
+        var keyframes = earlier.Concat(recent).ToList();
         var moving = 0;
         var repeatsByLag = new Dictionary<int, int>();
-        for (var i = 1; i < keyframes.Count; i++)
+        for (var i = Math.Max(earlier.Count, 1); i < keyframes.Count; i++)
         {
             if (Distance(keyframes[i], keyframes[i - 1]) < MovedPictureMinDistance)
                 continue;

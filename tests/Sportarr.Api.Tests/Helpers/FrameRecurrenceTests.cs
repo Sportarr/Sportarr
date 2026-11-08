@@ -26,7 +26,7 @@ public class FrameRecurrenceTests
         var clip = Pictures(random, ClipKeyframes);
         var keyframes = Enumerable.Range(0, 72).Select(i => Reencoded(clip[i % ClipKeyframes], random)).ToList();
 
-        FrameRecurrence.LooksLooped(keyframes).Should().BeTrue();
+        FrameRecurrence.LooksLooped([], keyframes).Should().BeTrue();
     }
 
     [Fact]
@@ -40,7 +40,34 @@ public class FrameRecurrenceTests
         for (var pass = 0; keyframes.Count < 72; pass++)
             keyframes.AddRange(clip.Take(pass % 2 == 0 ? 6 : 7).Select(p => Reencoded(p, random)));
 
-        FrameRecurrence.LooksLooped(keyframes).Should().BeTrue();
+        FrameRecurrence.LooksLooped([], keyframes).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_clip_longer_than_the_recent_keyframes_is_a_loop_when_its_last_pass_is_earlier()
+    {
+        // A two-minute clip at a keyframe every second outlasts a judged
+        // stretch of 72 keyframes: none of them repeats another of them.
+        var random = new Random(8);
+        var clip = Pictures(random, 120);
+        var earlier = clip.Select(p => Reencoded(p, random)).ToList();
+        var recent = clip.Take(72).Select(p => Reencoded(p, random)).ToList();
+
+        FrameRecurrence.LooksLooped(earlier, recent).Should().BeTrue();
+        FrameRecurrence.LooksLooped([], recent).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Only_the_recent_keyframes_are_judged()
+    {
+        // Live footage back after a long loop: the loop still fills the
+        // earlier keyframes, but no recent one repeats it.
+        var random = new Random(9);
+        var clip = Pictures(random, ClipKeyframes);
+        var earlier = Enumerable.Range(0, 400).Select(i => Reencoded(clip[i % ClipKeyframes], random)).ToList();
+        var recent = Pictures(random, 72);
+
+        FrameRecurrence.LooksLooped(earlier, recent).Should().BeFalse();
     }
 
     [Fact]
@@ -55,7 +82,7 @@ public class FrameRecurrenceTests
         for (var shot = 0; keyframes.Count < 72; shot++)
             keyframes.AddRange(Enumerable.Range(0, 1 + random.Next(6)).Select(_ => Reencoded(cameras[shot % 2], random)));
 
-        FrameRecurrence.LooksLooped(keyframes).Should().BeFalse();
+        FrameRecurrence.LooksLooped([], keyframes).Should().BeFalse();
     }
 
     [Fact]
@@ -63,7 +90,7 @@ public class FrameRecurrenceTests
     {
         var keyframes = Pictures(new Random(2), 72);
 
-        FrameRecurrence.LooksLooped(keyframes).Should().BeFalse();
+        FrameRecurrence.LooksLooped([], keyframes).Should().BeFalse();
     }
 
     [Fact]
@@ -76,7 +103,7 @@ public class FrameRecurrenceTests
         for (var i = 10; i < keyframes.Count; i += 5)
             keyframes[i] = Reencoded(keyframes[i - 8], random);
 
-        FrameRecurrence.LooksLooped(keyframes).Should().BeFalse();
+        FrameRecurrence.LooksLooped([], keyframes).Should().BeFalse();
     }
 
     [Fact]
@@ -88,7 +115,7 @@ public class FrameRecurrenceTests
         var slide = Pictures(random, 1)[0];
         var keyframes = Enumerable.Range(0, 72).Select(_ => Reencoded(slide, random)).ToList();
 
-        FrameRecurrence.LooksLooped(keyframes).Should().BeFalse();
+        FrameRecurrence.LooksLooped([], keyframes).Should().BeFalse();
     }
 
     [Fact]
@@ -100,7 +127,7 @@ public class FrameRecurrenceTests
         var clip = Pictures(random, 3);
         var keyframes = Enumerable.Range(0, 9).Select(i => Reencoded(clip[i % 3], random)).ToList();
 
-        FrameRecurrence.LooksLooped(keyframes).Should().BeFalse();
+        FrameRecurrence.LooksLooped([], keyframes).Should().BeFalse();
     }
 
     [Fact]

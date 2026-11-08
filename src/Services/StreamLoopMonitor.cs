@@ -19,10 +19,13 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class StreamLoopMonitor
 {
-    // How much footage a verdict looks at. Most of the window has to be a
-    // repeat, which holds for clips up to about a minute long; a longer loop
-    // is not caught.
+    // How much footage a verdict judges, and how far back before it a repeat
+    // may find the picture it repeats. A loop is caught once most of the
+    // window repeats, so clips up to the difference, seven minutes, are
+    // caught; a longer one is not. Short loops are still reported a window
+    // after they start.
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(3);
+    public static readonly TimeSpan Lookback = TimeSpan.FromMinutes(10);
 
     // Reading is capped so the first look at a long-running capture (after an
     // app restart) does not decode the whole file. 64 MB is minutes of a
@@ -60,8 +63,9 @@ public class StreamLoopMonitor
             _captures[recordingId] = capture;
         }
 
-        capture.Record(await ReadNewKeyframesAsync(capture, ct), now, Window);
-        return capture.WatchedSince <= now - Window && FrameRecurrence.LooksLooped(capture.Keyframes);
+        capture.Record(await ReadNewKeyframesAsync(capture, ct), now, Lookback);
+        return capture.WatchedSince <= now - Window &&
+               FrameRecurrence.LooksLooped(capture.KeyframesBefore(now - Window), capture.KeyframesSince(now - Window));
     }
 
     /// <summary>Drops what was gathered for recordings no longer in flight.</summary>
@@ -107,7 +111,7 @@ public class StreamLoopMonitor
         }
     }
 
-    /// <summary>One capture's read position and its keyframes inside the window.</summary>
+    /// <summary>One capture's read position and its keyframes inside the lookback.</summary>
     private sealed class Capture
     {
         private readonly Queue<(DateTime At, ulong Fingerprint)> _keyframes = new();
@@ -123,13 +127,17 @@ public class StreamLoopMonitor
         public long Offset { get; set; }
         public bool SamplingHasFailed { get; set; }
 
-        public IReadOnlyList<ulong> Keyframes => _keyframes.Select(k => k.Fingerprint).ToList();
+        public IReadOnlyList<ulong> KeyframesBefore(DateTime moment) =>
+            _keyframes.Where(k => k.At < moment).Select(k => k.Fingerprint).ToList();
 
-        public void Record(IEnumerable<ulong> keyframes, DateTime at, TimeSpan window)
+        public IReadOnlyList<ulong> KeyframesSince(DateTime moment) =>
+            _keyframes.Where(k => k.At >= moment).Select(k => k.Fingerprint).ToList();
+
+        public void Record(IEnumerable<ulong> keyframes, DateTime at, TimeSpan kept)
         {
             foreach (var fingerprint in keyframes)
                 _keyframes.Enqueue((at, fingerprint));
-            while (_keyframes.Count > 0 && _keyframes.Peek().At < at - window)
+            while (_keyframes.Count > 0 && _keyframes.Peek().At < at - kept)
                 _keyframes.Dequeue();
         }
     }

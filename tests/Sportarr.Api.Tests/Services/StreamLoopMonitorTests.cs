@@ -110,7 +110,7 @@ public class StreamLoopMonitorTests : IDisposable
     }
 
     [Fact]
-    public async Task Keyframes_older_than_the_window_no_longer_count()
+    public async Task Live_footage_before_a_loop_does_not_dilute_it()
     {
         // Ten minutes of live footage, then the source drops and the provider
         // starts looping: the loop is caught within three minutes, not diluted
@@ -127,6 +127,31 @@ public class StreamLoopMonitorTests : IDisposable
         var verdicts = await WatchLoopAsync(capture, ticks: 7, startTick: 20);
 
         verdicts.Last().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_loop_longer_than_the_window_is_caught_once_it_repeats()
+    {
+        // A five-minute clip: its first pass looks like live footage, its
+        // second matches the first, which is still within the lookback.
+        var capture = Capture("event.ts");
+
+        var verdicts = await WatchLoopAsync(capture, ticks: 18, clipKeyframes: 120);
+
+        verdicts.Take(10).Should().OnlyContain(v => !v);
+        verdicts.Last().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_loop_longer_than_the_lookback_is_not_caught()
+    {
+        // An eight-minute clip: by the time it repeats, most of its last pass
+        // has left the lookback. Seen as live footage, which it may well be.
+        var capture = Capture("event.ts");
+
+        var verdicts = await WatchLoopAsync(capture, ticks: 40, clipKeyframes: 192);
+
+        verdicts.Should().OnlyContain(v => !v);
     }
 
     [Fact]
@@ -157,21 +182,21 @@ public class StreamLoopMonitorTests : IDisposable
         verdicts.Should().OnlyContain(v => !v);
     }
 
-    // Twelve keyframes per tick of a five-keyframe clip.
-    private async Task<List<bool>> WatchLoopAsync(string capture, int ticks, int startTick = 0)
+    // Twelve keyframes per tick of a clip, five keyframes long unless told.
+    private async Task<List<bool>> WatchLoopAsync(string capture, int ticks, int startTick = 0, int clipKeyframes = 5)
     {
         var verdicts = new List<bool>();
         for (var tick = startTick; tick < startTick + ticks; tick++)
-            verdicts.Add(await LookAtLoopAsync(1, capture, tick));
+            verdicts.Add(await LookAtLoopAsync(1, capture, tick, clipKeyframes));
         return verdicts;
     }
 
-    private static readonly ulong[] Clip = Enumerable.Range(0, 5).Select(i => (ulong)new Random(100 + i).NextInt64()).ToArray();
+    private static ulong ClipKeyframe(int index) => (ulong)new Random(100 + index).NextInt64();
 
-    private Task<bool> LookAtLoopAsync(int recordingId, string capture, int tick)
+    private Task<bool> LookAtLoopAsync(int recordingId, string capture, int tick, int clipKeyframes = 5)
     {
         Grow(capture);
-        _sampler.Next = Enumerable.Range(tick * 12, 12).Select(i => Clip[i % Clip.Length]).ToList();
+        _sampler.Next = Enumerable.Range(tick * 12, 12).Select(i => ClipKeyframe(i % clipKeyframes)).ToList();
         return _monitor.IsLoopingAsync(recordingId, capture, Start + tick * Tick, default);
     }
 
