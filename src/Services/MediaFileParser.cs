@@ -45,7 +45,6 @@ public class MediaFileParser
 
     // Date patterns
     private static readonly Regex DatePattern = new(@"(?<year>\d{4})[-.]?(?<month>\d{2})[-.]?(?<day>\d{2})", RegexOptions.Compiled);
-    private static readonly Regex YearPattern = new(@"\b(?<year>19\d{2}|20\d{2})\b", RegexOptions.Compiled);
 
     public MediaFileParser(ILogger<MediaFileParser> logger, MediaFileInspector? inspector = null)
     {
@@ -499,7 +498,9 @@ public class MediaFileParser
 
     private DateTime? ExtractAirDate(string cleanName)
     {
-        // Try full date first (YYYY-MM-DD or YYYY.MM.DD)
+        // Only a full date (YYYY-MM-DD or YYYY.MM.DD) is an air date.
+        // A year alone is not. A 1 January date from it made the library
+        // scan's date gate refuse every event outside January.
         var dateMatch = DatePattern.Match(cleanName);
         if (dateMatch.Success)
         {
@@ -508,13 +509,6 @@ public class MediaFileParser
             {
                 return fullDate;
             }
-        }
-
-        // Fall back to year only
-        var yearMatch = YearPattern.Match(cleanName);
-        if (yearMatch.Success && int.TryParse(yearMatch.Groups["year"].Value, out var year))
-        {
-            return new DateTime(year, 1, 1);
         }
 
         return null;

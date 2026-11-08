@@ -121,17 +121,22 @@ public class MediaFileParserTests
         result.AirDate!.Value.Day.Should().Be(day);
     }
 
+    // A year without a month and a day is not a date. A 1 January date from
+    // it made the library scan refuse every event that is not in January.
     [Theory]
-    [InlineData("UFC 300 2024 1080p BluRay", 2024)]
-    [InlineData("Fury vs Usyk 2023 720p WEB-DL", 2023)]
-    public void Parse_ShouldExtractYearOnly(string filename, int expectedYear)
+    [InlineData("UFC 300 2024 1080p BluRay")]
+    [InlineData("Fury vs Usyk 2023 720p WEB-DL")]
+    [InlineData("Formula1.2024.Round01.Bahrain.Race.1080p.WEB.h264-GRP")]
+    public void Parse_BareYear_GivesNoAirDate(string filename)
     {
-        // Act
-        var result = _parser.Parse(filename);
+        _parser.Parse(filename).AirDate.Should().BeNull();
+    }
 
-        // Assert
-        result.AirDate.Should().NotBeNull();
-        result.AirDate!.Value.Year.Should().Be(expectedYear);
+    [Fact]
+    public void Parse_NameWithAFullDate_StillGivesTheDate()
+    {
+        _parser.Parse("NFL.2025.10.05.Bills.vs.Chiefs.1080p").AirDate
+            .Should().Be(new DateTime(2025, 10, 5));
     }
 
     [Theory]

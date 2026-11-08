@@ -274,9 +274,7 @@ public class ForeignNumberingImportTests : IDisposable
         };
         _db.Events.AddRange(race, saudi);
         _db.SaveChanges();
-        // The title corroborates the race. A scene name with a round cannot
-        // serve here. Its year alone becomes a 1 January date, and the date
-        // gate then refuses the March race.
+        // The title corroborates the race.
         WriteFile("Formula 1 - S2024E10 - Round 1 - Bahrain Grand Prix - Race.mkv");
         WriteFile("Formula 1 - S2024E10 - Round 1 - Bahrain Grand Prix - Race - WEBDL-1080p.mkv");
 
@@ -285,5 +283,37 @@ public class ForeignNumberingImportTests : IDisposable
         result.MatchedFiles.Should().ContainSingle(f => f.MatchedEventId == race.Id);
         result.MatchedFiles.Where(f => f.MatchedEventId != race.Id)
             .Should().NotContain(f => f.MatchConfidence >= 60);
+    }
+
+    [Fact]
+    public async Task SceneNameWithAYearOnly_MatchesTheRaceOfItsRound()
+    {
+        // The scene name holds the year but no date. The date gate must not
+        // read the year as 1 January and refuse the March race.
+        var race = BahrainRace();
+        _db.Leagues.Add(race.League!);
+        _db.SaveChanges();
+        race.LeagueId = race.League!.Id;
+        race.Monitored = true;
+        var qualifying = new Event
+        {
+            Title = "Bahrain Grand Prix - Qualifying", Sport = "Motorsport", Round = "1",
+            Season = "2024", SeasonNumber = 2024, EpisodeNumber = 7, LeagueId = race.League.Id,
+            EventDate = new DateTime(2024, 3, 1, 16, 0, 0, DateTimeKind.Utc), Monitored = true,
+        };
+        var saudi = new Event
+        {
+            Title = "Saudi Arabian Grand Prix - Race", Sport = "Motorsport", Round = "2",
+            Season = "2024", SeasonNumber = 2024, EpisodeNumber = 16, LeagueId = race.League.Id,
+            EventDate = new DateTime(2024, 3, 9, 17, 0, 0, DateTimeKind.Utc), Monitored = true,
+        };
+        _db.Events.AddRange(race, qualifying, saudi);
+        _db.SaveChanges();
+        WriteFile("Formula1.2024.Round01.Bahrain.Race.1080p.WEB.h264-GRP.mkv");
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false);
+
+        result.MatchedFiles.Should().ContainSingle()
+            .Which.MatchedEventId.Should().Be(race.Id);
     }
 }
