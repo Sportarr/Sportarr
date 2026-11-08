@@ -73,9 +73,13 @@ public static class FrameRecurrence
     private const int PeriodsPerToleranceStep = 10;
 
     // This is the share of moving keyframes that must repeat at the period.
-    // Synthetic loops of a 13-second race clip scored 0.93 and 0.95. Across
-    // 40 recordings of races, fight nights and studio talk shows, no
-    // three-minute window scored above 0.53.
+    // In replays, re-encoded loops of race clips from 13 seconds to six
+    // minutes scored 0.99 and up. They were judged over three minutes with
+    // ten minutes to find repeats in. These replays used the verdict before
+    // the distinct-pictures and frozen rules. Across 41 recordings of races, fight
+    // nights and studio talk shows, no window of live footage scored above
+    // 0.52. One window scored 0.67. There a provider repeated twenty seconds
+    // just before its stream dropped.
     private const double LoopedShare = 0.8;
 
     /// <summary>
@@ -115,18 +119,39 @@ public static class FrameRecurrence
     }
 
     /// <summary>
-    /// True when the keyframes, oldest first, look like a short clip that
-    /// plays again and again.
+    /// True when the keyframes, oldest first, look like a clip that plays
+    /// again and again. All keyframes are judged.
     /// </summary>
-    public static bool LooksLooped(IReadOnlyList<ulong> keyframes) => LooksLooped(keyframes, null);
+    public static bool LooksLooped(IReadOnlyList<ulong> keyframes) => LooksLooped(keyframes, 0, null);
 
     /// <summary>
-    /// True when the keyframes, oldest first, look like a short clip that
-    /// plays again and again. <paramref name="gapsBefore"/> holds the indexes
-    /// of keyframes that follow footage that was not sampled. The verdict
-    /// does not compare keyframes across a gap.
+    /// The same verdict over keyframes with gaps. All keyframes are judged.
     /// </summary>
-    public static bool LooksLooped(IReadOnlyList<ulong> keyframes, IReadOnlySet<int>? gapsBefore)
+    public static bool LooksLooped(IReadOnlyList<ulong> keyframes, IReadOnlySet<int>? gapsBefore) =>
+        LooksLooped(keyframes, 0, gapsBefore);
+
+    /// <summary>
+    /// The verdict over the <paramref name="recent"/> keyframes. The
+    /// <paramref name="earlier"/> keyframes come right before them. Both are
+    /// oldest first.
+    /// </summary>
+    public static bool LooksLooped(IReadOnlyList<ulong> earlier, IReadOnlyList<ulong> recent) =>
+        LooksLooped(earlier.Concat(recent).ToList(), earlier.Count, null);
+
+    /// <summary>
+    /// True when the keyframes from <paramref name="judgedFrom"/> on look like
+    /// a clip that plays again and again.
+    ///
+    /// Only those keyframes are judged. All counts and shares come from them.
+    /// A keyframe before <paramref name="judgedFrom"/> can only be the picture
+    /// that a judged keyframe repeats. So a clip longer than the judged part
+    /// is caught when its previous pass is in the earlier keyframes.
+    ///
+    /// <paramref name="gapsBefore"/> holds the indexes of keyframes that
+    /// follow footage that was not sampled. The verdict does not compare
+    /// keyframes across a gap.
+    /// </summary>
+    public static bool LooksLooped(IReadOnlyList<ulong> keyframes, int judgedFrom, IReadOnlySet<int>? gapsBefore)
     {
         var moving = 0;
         var frozen = 0;
@@ -135,11 +160,16 @@ public static class FrameRecurrence
         var segmentStart = 0;
         for (var i = 1; i < keyframes.Count; i++)
         {
-            if (gapsBefore != null && gapsBefore.Contains(i))
+            var afterGap = gapsBefore != null && gapsBefore.Contains(i);
+            if (afterGap)
+                segmentStart = i;
+            if (i < judgedFrom)
+                continue;
+
+            if (afterGap)
             {
                 // Count this keyframe as moving with no repeat. That can only
                 // lower the score, so a gap never helps a false verdict.
-                segmentStart = i;
                 moving++;
                 continue;
             }

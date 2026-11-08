@@ -21,10 +21,15 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class StreamLoopMonitor
 {
-    // A verdict looks at this much footage. The first pass of a clip has no
-    // earlier match, and 80% of the window must repeat. So a clip of up to
-    // about 36 seconds is caught. A longer loop is not.
+    // A verdict judges this much footage.
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(3);
+
+    // The monitor keeps this much footage, the window included. A judged
+    // keyframe can repeat a picture from any of it. So a clip of up to the
+    // difference, about seven minutes, is caught. A longer loop is not.
+    // A short loop still gets its first verdict one window after the watch
+    // starts.
+    public static readonly TimeSpan Lookback = TimeSpan.FromMinutes(10);
 
     // This cap limits the work of one look. 64 MB covers 30 seconds of a
     // stream up to about 17 Mbps. A look above the cap reads only the most
@@ -100,8 +105,8 @@ public class StreamLoopMonitor
         if (capture.WatchedSince > now - Window)
             return false;
 
-        var (keyframes, gaps) = capture.Snapshot();
-        return FrameRecurrence.LooksLooped(keyframes, gaps);
+        var (keyframes, gaps, judgedFrom) = capture.Snapshot(now - Window);
+        return FrameRecurrence.LooksLooped(keyframes, judgedFrom, gaps);
     }
 
     /// <summary>Drops what was gathered for recordings that are no longer in flight.</summary>
@@ -128,7 +133,7 @@ public class StreamLoopMonitor
 
         if (end <= from)
         {
-            capture.Expire(now, Window);
+            capture.Expire(now, Lookback);
             return true;
         }
 
@@ -145,13 +150,13 @@ public class StreamLoopMonitor
         {
             var keyframes = await _sampler.SampleAsync(capture.Path, from, end - from, ct);
             capture.NoVideoLooks = 0;
-            capture.Record(keyframes, now, Window);
+            capture.Record(keyframes, now, Lookback);
             return true;
         }
         catch (NoVideoStreamException)
         {
             capture.GapPending = true;
-            capture.Expire(now, Window);
+            capture.Expire(now, Lookback);
             if (++capture.NoVideoLooks >= NoVideoLooksBeforeSkip)
             {
                 capture.Skipped = true;
@@ -172,7 +177,7 @@ public class StreamLoopMonitor
             // never run is still visible. Examples are a missing FFmpeg or
             // an FFmpeg that is too old.
             capture.GapPending = true;
-            capture.Expire(now, Window);
+            capture.Expire(now, Lookback);
             if (capture.SamplingHasFailed)
                 _logger.LogDebug(ex, "[DVR Loop] Could not sample {Path}", capture.Path);
             else
@@ -184,7 +189,7 @@ public class StreamLoopMonitor
 
     private static long AlignDown(long position) => position - position % PacketSize;
 
-    /// <summary>One capture's read position and its keyframes inside the window.</summary>
+    /// <summary>One capture's read position and its keyframes inside the lookback.</summary>
     private sealed class Capture
     {
         private readonly Queue<(DateTime At, ulong Fingerprint, bool AfterGap)> _keyframes = new();
@@ -207,17 +212,24 @@ public class StreamLoopMonitor
         // True when footage before the next keyframe was not sampled.
         public bool GapPending { get; set; }
 
-        public (List<ulong> Keyframes, HashSet<int> Gaps) Snapshot()
+        /// <summary>
+        /// All kept keyframes, the gaps between them, and the index of the
+        /// first keyframe at or after <paramref name="judgedSince"/>.
+        /// </summary>
+        public (List<ulong> Keyframes, HashSet<int> Gaps, int JudgedFrom) Snapshot(DateTime judgedSince)
         {
             var keyframes = new List<ulong>(_keyframes.Count);
             var gaps = new HashSet<int>();
-            foreach (var (_, fingerprint, afterGap) in _keyframes)
+            int? judgedFrom = null;
+            foreach (var (at, fingerprint, afterGap) in _keyframes)
             {
+                if (judgedFrom == null && at >= judgedSince)
+                    judgedFrom = keyframes.Count;
                 if (afterGap)
                     gaps.Add(keyframes.Count);
                 keyframes.Add(fingerprint);
             }
-            return (keyframes, gaps);
+            return (keyframes, gaps, judgedFrom ?? keyframes.Count);
         }
 
         public void Record(IEnumerable<ulong> keyframes, DateTime at, TimeSpan window)

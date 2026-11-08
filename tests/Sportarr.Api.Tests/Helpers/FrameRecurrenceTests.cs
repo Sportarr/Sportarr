@@ -45,6 +45,34 @@ public class FrameRecurrenceTests
     }
 
     [Fact]
+    public void A_clip_longer_than_the_recent_keyframes_is_a_loop_when_its_last_pass_is_earlier()
+    {
+        // A two-minute clip with a keyframe every second outlasts a judged
+        // part of 72 keyframes. None of those keyframes repeats another of
+        // them. They repeat the previous pass in the earlier keyframes.
+        var random = new Random(8);
+        var clip = Pictures(random, 120);
+        var earlier = clip.Select(p => Reencoded(p, random)).ToList();
+        var recent = clip.Take(72).Select(p => Reencoded(p, random)).ToList();
+
+        FrameRecurrence.LooksLooped(earlier, recent).Should().BeTrue();
+        FrameRecurrence.LooksLooped([], recent).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Only_the_recent_keyframes_are_judged()
+    {
+        // Live footage comes back after a long loop. The loop still fills the
+        // earlier keyframes, but no recent keyframe repeats it.
+        var random = new Random(9);
+        var clip = Pictures(random, ClipKeyframes);
+        var earlier = Enumerable.Range(0, 400).Select(i => Reencoded(clip[i % ClipKeyframes], random)).ToList();
+        var recent = Pictures(random, 72);
+
+        FrameRecurrence.LooksLooped(earlier, recent).Should().BeFalse();
+    }
+
+    [Fact]
     public void Two_cameras_taking_turns_in_a_studio_is_not_a_loop()
     {
         // Every cut goes back to a picture seen before, but after however long
