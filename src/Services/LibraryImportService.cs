@@ -270,8 +270,8 @@ public class LibraryImportService
                         continue;
                     }
 
-                    var (folderLeague, folderSeason) = folders == null
-                        ? (null, null)
+                    var (folderLeague, folderSeason, folderSeasonYear) = folders == null
+                        ? (null, null, null)
                         : await ResolveFileFolderAsync(folders, filePath, scanOptions, result);
 
                     // Try to find a matching event using multiple strategies
@@ -341,7 +341,11 @@ public class LibraryImportService
                             var folderLeagueId = folderLeague.Id;
                             candidateQuery = candidateQuery.Where(e => e.LeagueId == folderLeagueId);
                             if (folderSeason != null)
-                                candidateQuery = candidateQuery.Where(e => e.Season == folderSeason);
+                            {
+                                // An event added by hand can have only a season number.
+                                candidateQuery = candidateQuery.Where(e => e.Season == folderSeason ||
+                                    (e.Season == null && e.SeasonNumber == folderSeasonYear));
+                            }
 
                             // The folder is the user's own statement of the league.
                             // It wins over the label in the file name.
@@ -563,10 +567,11 @@ public class LibraryImportService
     }
 
     /// <summary>
-    /// The league and the league's season that the file's folders name.
+    /// The league and the league's season that the file's folders name,
+    /// with the first year of the season folder.
     /// A league folder that fits no league goes into the result once.
     /// </summary>
-    private async Task<(League? League, string? Season)> ResolveFileFolderAsync(
+    private async Task<(League? League, string? Season, int? SeasonYear)> ResolveFileFolderAsync(
         FolderResolution folders, string filePath, ScanOptions options, LibraryScanResult result)
     {
         // The file watcher scans only the file's own folder. The configured
@@ -580,7 +585,7 @@ public class LibraryImportService
         if ((configuredRoot != null && leagueFolderPath.Length <= configuredRoot.Length) ||
             LibraryFolderResolver.ParseSeasonFolder(leagueFolder) != null)
         {
-            return (null, null);
+            return (null, null, null);
         }
 
         if (!folders.LeagueByFolder.TryGetValue(leagueFolderPath, out var league))
@@ -590,10 +595,10 @@ public class LibraryImportService
             if (league == null)
                 result.UnresolvedFolders.Add(await DescribeUnresolvedFolderAsync(leagueFolderPath, leagueFolder, options));
         }
-        if (league == null) return (null, null);
+        if (league == null) return (null, null, null);
 
         var seasonFolder = seasonFolderName == null ? null : LibraryFolderResolver.ParseSeasonFolder(seasonFolderName);
-        if (seasonFolder == null) return (league, null);
+        if (seasonFolder == null) return (league, null, null);
 
         if (!folders.SeasonsByLeague.TryGetValue(league.Id, out var seasons))
         {
@@ -606,7 +611,7 @@ public class LibraryImportService
                 .ToListAsync();
             folders.SeasonsByLeague[league.Id] = seasons;
         }
-        return (league, LibraryFolderResolver.MapToLeagueSeason(seasonFolder, seasons));
+        return (league, LibraryFolderResolver.MapToLeagueSeason(seasonFolder, seasons), seasonFolder.StartYear);
     }
 
     private async Task<UnresolvedFolder> DescribeUnresolvedFolderAsync(string path, string name, ScanOptions options)

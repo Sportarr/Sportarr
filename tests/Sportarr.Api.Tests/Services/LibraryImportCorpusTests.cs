@@ -75,11 +75,20 @@ public class LibraryImportCorpusTests : IDisposable
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 
-    [Fact]
-    public async Task Corpus_NoWrongMatchAtSixtyOrAbove_AndRecallHolds()
+    // The download monitor and the library rescan both auto-import at 85.
+    // So each mode must make no wrong match.
+    [Theory]
+    [InlineData(nameof(ScanOptions.DownloadFolder))]
+    [InlineData(nameof(ScanOptions.LibraryBackground))]
+    public async Task Corpus_NoWrongMatchAtSixtyOrAbove_AndRecallHolds(string mode)
     {
-        // The corpus is a library root, scanned the way the rescan scans it.
-        var scan = await _service.ScanFolderAsync(_root, includeSubfolders: true, options: ScanOptions.LibraryBackground);
+        var options = mode switch
+        {
+            nameof(ScanOptions.DownloadFolder) => ScanOptions.DownloadFolder,
+            nameof(ScanOptions.LibraryBackground) => ScanOptions.LibraryBackground,
+            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null),
+        };
+        var scan = await _service.ScanFolderAsync(_root, includeSubfolders: true, options: options);
         scan.Errors.Should().BeEmpty();
         var byPath = scan.MatchedFiles.Concat(scan.UnmatchedFiles).ToDictionary(f => f.FilePath);
         byPath.Should().HaveCount(_cases.Count, "the scan reports every corpus file once");
@@ -99,7 +108,7 @@ public class LibraryImportCorpusTests : IDisposable
         }
         var recall = expected == 0 ? 100 : hit * 100 / expected;
         // Print before the asserts so a failing run still shows the figures.
-        _output.WriteLine($"corpus recall {recall}% ({hit}/{expected})");
+        _output.WriteLine($"corpus recall {mode} {recall}% ({hit}/{expected})");
         foreach (var line in wrong) _output.WriteLine($"wrong: {line}");
         wrong.Should().BeEmpty();
         recall.Should().BeGreaterThanOrEqualTo(RecordedRecallPercent);

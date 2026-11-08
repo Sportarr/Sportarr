@@ -174,6 +174,28 @@ public class FolderFirstScanTests : IDisposable
     }
 
     [Fact]
+    public async Task AnEventWithOnlyASeasonNumberStillMatchesInItsSeasonFolder()
+    {
+        // A hand-added event can carry SeasonNumber and no Season string.
+        var imola = new Event
+        {
+            Title = "Emilia Romagna Grand Prix - Race", Sport = "Motorsport", LeagueId = _bahrain.LeagueId,
+            Season = null, SeasonNumber = 2024, EpisodeNumber = 30, Round = "7",
+            EventDate = new DateTime(2024, 5, 19, 13, 0, 0, DateTimeKind.Utc),
+            ExternalId = "ev-100007", Status = "completed", Monitored = true,
+        };
+        _db.Events.Add(imola);
+        _db.SaveChanges();
+        var path = Write("Formula 1", "Season 2024", "Formula 1 - S2024E30 - Emilia Romagna Grand Prix - Race.mkv");
+
+        var scan = await _service.ScanFolderAsync(_root, options: ScanOptions.LibraryBackground);
+
+        var file = Find(scan, path);
+        file.FolderSeason.Should().Be("2024");
+        file.MatchedEventId.Should().Be(imola.Id);
+    }
+
+    [Fact]
     public async Task SpanSeasonFolderResolvesToTheSpan()
     {
         var path = Write("NBA", "Season 2024", "NBA - S2024E01 - Celtics vs Knicks.mkv");
