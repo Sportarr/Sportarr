@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Sportarr.Api.Data;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Import;
 using Sportarr.Api.Services.Interfaces;
 using Sportarr.Api.Tests.Helpers;
 using Xunit;
@@ -77,7 +78,8 @@ public class LibraryImportCorpusTests : IDisposable
     [Fact]
     public async Task Corpus_NoWrongMatchAtSixtyOrAbove_AndRecallHolds()
     {
-        var scan = await _service.ScanFolderAsync(_root, includeSubfolders: true);
+        // The corpus is a library root, scanned the way the rescan scans it.
+        var scan = await _service.ScanFolderAsync(_root, includeSubfolders: true, options: ScanOptions.LibraryBackground);
         scan.Errors.Should().BeEmpty();
         var byPath = scan.MatchedFiles.Concat(scan.UnmatchedFiles).ToDictionary(f => f.FilePath);
         byPath.Should().HaveCount(_cases.Count, "the scan reports every corpus file once");

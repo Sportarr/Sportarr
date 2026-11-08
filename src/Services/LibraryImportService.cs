@@ -36,6 +36,7 @@ public class LibraryImportService
     private readonly DiskSpaceService _diskSpaceService;
     private readonly NotificationService _notificationService;
     private readonly IMetadataWriterService _metadataWriterService;
+    private readonly SportarrApiClient? _apiClient;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
@@ -51,7 +52,8 @@ public class LibraryImportService
         DiskSpaceService diskSpaceService,
         CustomFormatService customFormatService,
         NotificationService notificationService,
-        IMetadataWriterService metadataWriterService)
+        IMetadataWriterService metadataWriterService,
+        SportarrApiClient? apiClient = null)
     {
         _db = db;
         _logger = logger;
@@ -65,6 +67,7 @@ public class LibraryImportService
         _customFormatService = customFormatService;
         _notificationService = notificationService;
         _metadataWriterService = metadataWriterService;
+        _apiClient = apiClient;
     }
 
     /// <summary>
@@ -122,6 +125,9 @@ public class LibraryImportService
                             .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower())),
                         recycleBin),
                     folderPath)
+                // A file with an id token names its event exactly. It goes
+                // first, so that no fuzzy match takes that event before it.
+                .OrderBy(f => SportarrIdToken.ExtractEventId(Path.GetFileNameWithoutExtension(f)) == null ? 1 : 0)
                 .ToList();
 
             result.TotalFiles = files.Count;
@@ -161,6 +167,7 @@ public class LibraryImportService
             // Track event IDs claimed by earlier files in this batch so two files can't match the same event
             var claimedEventIds = new HashSet<int>();
             var supercarsRoundRaceCache = new Dictionary<(int Year, int Round), List<int>>();
+            var folders = scanOptions.ResolveFolders ? await FolderResolution.LoadAsync(_db, folderPath) : null;
 
             var processedFileCount = 0;
             foreach (var filePath in files)
@@ -263,6 +270,10 @@ public class LibraryImportService
                         continue;
                     }
 
+                    var (folderLeague, folderSeason) = folders == null
+                        ? (null, null)
+                        : await ResolveFileFolderAsync(folders, filePath, scanOptions, result);
+
                     // Try to find a matching event using multiple strategies
                     Event? matchedEvent = null;
                     int matchConfidence = 0;
@@ -314,7 +325,7 @@ public class LibraryImportService
                         var partTo = hasPartYear
                             ? new DateTime(parsedYear!.Value + 2, 1, 1, 0, 0, 0, DateTimeKind.Utc)
                             : DateTime.MaxValue;
-                        var candidates = await _db.Events
+                        var candidateQuery = _db.Events
                             .Include(e => e.HomeTeam)
                             .Include(e => e.AwayTeam)
                             .Include(e => e.League)
@@ -323,8 +334,27 @@ public class LibraryImportService
                                 (hasNamedPart && fightingSports.Contains(e.Sport.ToLower()) &&
                                     (!hasPartYear ||
                                      (e.EventDate >= partFrom && e.EventDate < partTo) ||
-                                     (e.BroadcastDate >= partFrom && e.BroadcastDate < partTo))))
-                            .ToListAsync();
+                                     (e.BroadcastDate >= partFrom && e.BroadcastDate < partTo))));
+                        var scoringLabel = seriesLabel;
+                        if (folderLeague != null)
+                        {
+                            var folderLeagueId = folderLeague.Id;
+                            candidateQuery = candidateQuery.Where(e => e.LeagueId == folderLeagueId);
+                            if (folderSeason != null)
+                                candidateQuery = candidateQuery.Where(e => e.Season == folderSeason);
+
+                            // The folder is the user's own statement of the league.
+                            // It wins over the label in the file name.
+                            if (!string.IsNullOrWhiteSpace(seriesLabel) &&
+                                !ReleaseMatchingService.SeriesLabelMatchesLeague(seriesLabel, folderLeague))
+                            {
+                                _logger.LogDebug(
+                                    "[Library Import] '{File}' names series '{Label}' but sits in the '{League}' folder - using the folder",
+                                    filename, seriesLabel, folderLeague.Name);
+                            }
+                            scoringLabel = folderLeague.Name;
+                        }
+                        var candidates = await candidateQuery.ToListAsync();
 
                         IReadOnlyCollection<Event> datePeers = Array.Empty<Event>();
                         if (eventDate.HasValue)
@@ -380,7 +410,7 @@ public class LibraryImportService
                                 eventTitle, candidate.Title, organization, candidate,
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
-                                sportsResult.Location, _logger, sport, seriesLabel,
+                                sportsResult.Location, _logger, sport, scoringLabel,
                                 roundRaceNumbers, filename, datePeers, out var episodeNumberBonus);
                             if (confidence > matchConfidence)
                             {
@@ -460,7 +490,10 @@ public class LibraryImportService
                         DestinationPreview = destinationPreview,
                         MatchConfidence = matchConfidence > 0 ? Math.Min(100, matchConfidence) : null,
                         Rejections = judged.Rejections,
-                        HeldBySourcePrecedence = judged.Rejections.Contains(SourcePrecedence.IptvRecordingRejection)
+                        HeldBySourcePrecedence = judged.Rejections.Contains(SourcePrecedence.IptvRecordingRejection),
+                        FolderLeagueId = folderLeague?.Id,
+                        FolderLeagueName = folderLeague?.Name,
+                        FolderSeason = folderSeason
                     };
 
                     if (matchedEvent != null)
@@ -496,6 +529,103 @@ public class LibraryImportService
         }
 
         return result;
+    }
+
+    /// <summary>What the scan knows about the library's folders, loaded once per scan.</summary>
+    private sealed class FolderResolution
+    {
+        public required string ScannedFolder { get; init; }
+        public required List<string> RootPaths { get; init; }
+        public required List<League> Leagues { get; init; }
+        public Dictionary<string, League?> LeagueByFolder { get; } = new();
+        public Dictionary<int, List<string>> SeasonsByLeague { get; } = new();
+
+        public static async Task<FolderResolution> LoadAsync(SportarrDbContext db, string scannedFolder) => new()
+        {
+            ScannedFolder = scannedFolder,
+            RootPaths = await db.RootFolders.AsNoTracking().Select(r => r.Path).ToListAsync(),
+            Leagues = await db.Leagues.AsNoTracking().ToListAsync(),
+        };
+
+        /// <summary>
+        /// The configured root folder that holds the file, the deepest one
+        /// when they nest. Null when no configured root holds it.
+        /// </summary>
+        public string? ConfiguredRootOf(string filePath)
+        {
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            return RootPaths
+                .Select(r => r.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                .Where(r => r.Length > 0 && filePath.StartsWith(r + Path.DirectorySeparatorChar, comparison))
+                .OrderByDescending(r => r.Length)
+                .FirstOrDefault();
+        }
+    }
+
+    /// <summary>
+    /// The league and the league's season that the file's folders name.
+    /// A league folder that fits no league goes into the result once.
+    /// </summary>
+    private async Task<(League? League, string? Season)> ResolveFileFolderAsync(
+        FolderResolution folders, string filePath, ScanOptions options, LibraryScanResult result)
+    {
+        // The file watcher scans only the file's own folder. The configured
+        // root shows where the league folder is.
+        var configuredRoot = folders.ConfiguredRootOf(filePath);
+        var root = configuredRoot ?? folders.ScannedFolder;
+        var (leagueFolder, seasonFolderName) = LibraryFolderResolver.SplitPath(root, filePath);
+        var leagueFolderPath = LibraryFolderResolver.LeagueFolderPath(root, filePath);
+
+        // A configured root is never a league folder. A season folder is not one either.
+        if ((configuredRoot != null && leagueFolderPath.Length <= configuredRoot.Length) ||
+            LibraryFolderResolver.ParseSeasonFolder(leagueFolder) != null)
+        {
+            return (null, null);
+        }
+
+        if (!folders.LeagueByFolder.TryGetValue(leagueFolderPath, out var league))
+        {
+            league = LibraryFolderResolver.ResolveLeague(leagueFolder, folders.Leagues);
+            folders.LeagueByFolder[leagueFolderPath] = league;
+            if (league == null)
+                result.UnresolvedFolders.Add(await DescribeUnresolvedFolderAsync(leagueFolderPath, leagueFolder, options));
+        }
+        if (league == null) return (null, null);
+
+        var seasonFolder = seasonFolderName == null ? null : LibraryFolderResolver.ParseSeasonFolder(seasonFolderName);
+        if (seasonFolder == null) return (league, null);
+
+        if (!folders.SeasonsByLeague.TryGetValue(league.Id, out var seasons))
+        {
+            var leagueId = league.Id;
+            seasons = await _db.Events
+                .AsNoTracking()
+                .Where(e => e.LeagueId == leagueId && e.Season != null && e.Season != "")
+                .Select(e => e.Season!)
+                .Distinct()
+                .ToListAsync();
+            folders.SeasonsByLeague[league.Id] = seasons;
+        }
+        return (league, LibraryFolderResolver.MapToLeagueSeason(seasonFolder, seasons));
+    }
+
+    private async Task<UnresolvedFolder> DescribeUnresolvedFolderAsync(string path, string name, ScanOptions options)
+    {
+        if (!options.AskHubForLeagues || _apiClient == null)
+            return new UnresolvedFolder(path, name, null, null, null);
+
+        // The hub only suggests. A slow or failed call gives no suggestion.
+        League? suggestion = null;
+        try
+        {
+            var hits = await _apiClient.SearchLeagueAsync(name).WaitAsync(TimeSpan.FromSeconds(5));
+            suggestion = hits?.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Library Import] No hub suggestion for folder '{Folder}'", name);
+        }
+        return new UnresolvedFolder(path, name, suggestion?.ExternalId, suggestion?.Name, suggestion?.Sport);
     }
 
     /// <summary>
@@ -3164,7 +3294,21 @@ public class LibraryScanResult
     public List<ImportableFile> UnmatchedFiles { get; set; } = new();
     public List<ImportableFile> AlreadyInLibrary { get; set; } = new();
     public List<string> Errors { get; set; } = new();
+
+    /// <summary>
+    /// League folders whose name fits no league in the library. Each folder
+    /// shows once, with the hub's best suggestion when the scan asked the hub.
+    /// </summary>
+    public List<UnresolvedFolder> UnresolvedFolders { get; set; } = new();
 }
+
+/// <summary>A league folder that fits no league in the library.</summary>
+public sealed record UnresolvedFolder(
+    string Path,
+    string Name,
+    string? SuggestedLeagueExternalId,
+    string? SuggestedLeagueName,
+    string? SuggestedSport);
 
 /// <summary>
 /// A file that can potentially be imported
@@ -3205,6 +3349,13 @@ public class ImportableFile
     public string? DestinationPreview { get; set; }
     public int? MatchConfidence { get; set; }
     public int? ExistingEventId { get; set; }
+
+    /// <summary>The league that the file's league folder names, when one fits.</summary>
+    public int? FolderLeagueId { get; set; }
+    public string? FolderLeagueName { get; set; }
+
+    /// <summary>The league's own season string for the file's season folder.</summary>
+    public string? FolderSeason { get; set; }
 
     /// <summary>
     /// Why the file may not take the place of the file the matched event
