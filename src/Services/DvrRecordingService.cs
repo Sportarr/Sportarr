@@ -717,31 +717,47 @@ public class DvrRecordingService
         return result;
     }
 
+    // Cap auto-retries so a broken event (every channel fails) doesn't
+    // loop forever. Once we exhaust the fallback list we leave the failed
+    // recording as the final state.
+    internal const int MaxAutoRetries = 4;
+
     /// <summary>
-    /// When a recording fails, rotate to the next channel in
-    /// DvrRecording.FallbackChannelIds (Phase 3). Creates a NEW
-    /// DvrRecording row carrying the same event + scheduled times +
-    /// padding but with the next channel as primary and the remaining
-    /// fallbacks as backups. Returns the new recording id, or null
-    /// when no fallbacks remain.
+    /// True when a failure of this recording now would rotate to a fallback
+    /// channel that is not known to be dead. The check uses the same rules
+    /// as the rotation but changes nothing. The recording itself does not
+    /// count against its source's stream limit, because the stop frees that
+    /// slot.
     /// </summary>
-    public async Task<int?> TryRescheduleOnFallbackAsync(DvrRecording failed, string reason)
+    public async Task<bool> HasUsableFallbackAsync(DvrRecording recording)
     {
-        // Cap auto-retries so a broken event (every channel fails)
-        // doesn't loop forever. Once we exhaust the fallback list
-        // we leave the failed recording as the final state.
-        const int MaxAutoRetries = 4;
+        var (nextChannel, _) = await PickFallbackChannelAsync(recording, excludeRecordingId: recording.Id, log: false);
+
+        // The rotation still tries a dead channel as a last resort. A stop
+        // for that channel only trades a loop for a failure.
+        return nextChannel != null && !Sportarr.Api.Helpers.ChannelHealth.IsKnownBad(nextChannel.Status);
+    }
+
+    /// <summary>
+    /// The fallback channel a rotation would use, and the stored fallback
+    /// list. The list is null when no rotation is possible at all.
+    /// </summary>
+    private async Task<(IptvChannel? Next, List<int>? Backups)> PickFallbackChannelAsync(
+        DvrRecording failed, int? excludeRecordingId, bool log)
+    {
         if (failed.AutoRetryCount >= MaxAutoRetries)
         {
-            _logger.LogWarning("[DVR] Recording {Id} exhausted fallback retries ({Count}); not re-rotating",
-                failed.Id, failed.AutoRetryCount);
-            return null;
+            if (log)
+                _logger.LogWarning("[DVR] Recording {Id} exhausted fallback retries ({Count}); not re-rotating",
+                    failed.Id, failed.AutoRetryCount);
+            return (null, null);
         }
 
         if (string.IsNullOrWhiteSpace(failed.FallbackChannelIds))
         {
-            _logger.LogDebug("[DVR] Recording {Id} failed but no fallback channels stored", failed.Id);
-            return null;
+            if (log)
+                _logger.LogDebug("[DVR] Recording {Id} failed but no fallback channels stored", failed.Id);
+            return (null, null);
         }
 
         List<int>? backups;
@@ -751,20 +767,19 @@ public class DvrRecordingService
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "[DVR] Recording {Id}: FallbackChannelIds parse failed", failed.Id);
-            return null;
+            if (log)
+                _logger.LogWarning(ex, "[DVR] Recording {Id}: FallbackChannelIds parse failed", failed.Id);
+            return (null, null);
         }
-        if (backups == null || backups.Count == 0) return null;
+        if (backups == null || backups.Count == 0) return (null, null);
 
-        // Pick the next channel that's actually enabled + online. Skip
-        // any whose source already has a recording in progress (tuner
-        // conflict — same MaxStreams-saturated source would just fail
-        // again immediately).
-        var sourceIdsAtCapacity = await GetSourceIdsAtCapacityAsync();
-        var remainingBackups = new List<int>(backups);
+        // Pick the next channel that is enabled and online. Skip a channel
+        // whose source is already at its stream limit. It would fail again
+        // at once.
+        var sourceIdsAtCapacity = await GetSourceIdsAtCapacityAsync(excludeRecordingId);
         var viable = new List<IptvChannel>();
 
-        foreach (var candidateId in remainingBackups)
+        foreach (var candidateId in backups)
         {
             var candidate = await _db.IptvChannels
                 .Include(c => c.Source)
@@ -782,6 +797,22 @@ public class DvrRecordingService
         var nextChannel = viable
             .OrderByDescending(c => Sportarr.Api.Helpers.ChannelHealth.Rank(c.Status))
             .FirstOrDefault();
+        return (nextChannel, backups);
+    }
+
+    /// <summary>
+    /// When a recording fails, rotate to the next channel in
+    /// DvrRecording.FallbackChannelIds (Phase 3). Creates a NEW
+    /// DvrRecording row carrying the same event + scheduled times +
+    /// padding but with the next channel as primary and the remaining
+    /// fallbacks as backups. Returns the new recording id, or null
+    /// when no fallbacks remain.
+    /// </summary>
+    public async Task<int?> TryRescheduleOnFallbackAsync(DvrRecording failed, string reason)
+    {
+        var (nextChannel, backups) = await PickFallbackChannelAsync(failed, excludeRecordingId: null, log: true);
+        if (backups == null) return null;
+        var remainingBackups = new List<int>(backups);
 
         if (nextChannel == null)
         {
@@ -1019,12 +1050,13 @@ public class DvrRecordingService
     /// tuner-conflict awareness for both initial scheduling and
     /// auto-fallback rotation.
     /// </summary>
-    private async Task<HashSet<int>> GetSourceIdsAtCapacityAsync()
+    private async Task<HashSet<int>> GetSourceIdsAtCapacityAsync(int? excludeRecordingId = null)
     {
         var active = await _db.DvrRecordings
             .Include(r => r.Channel)
             .ThenInclude(c => c!.Source)
             .Where(r => r.Status == DvrRecordingStatus.Recording)
+            .Where(r => excludeRecordingId == null || r.Id != excludeRecordingId)
             .Where(r => r.Channel != null && r.Channel.Source != null)
             .Select(r => new { SourceId = r.Channel!.SourceId, MaxStreams = r.Channel.Source!.MaxStreams })
             .ToListAsync();

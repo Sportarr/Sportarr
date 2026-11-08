@@ -665,6 +665,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         // effective value the recorder uses.
         reconnectDelaySeconds = Math.Clamp(config.DvrReconnectDelaySeconds, 5, 300),
         readTimeoutSeconds = config.DvrReadTimeoutSeconds,
+        loopDetectionEnabled = config.DvrLoopDetectionEnabled,
         // Catchup settings
         useCatchupWhenAvailable = config.DvrUseCatchupWhenAvailable,
         catchupReadyGraceMinutes = config.DvrCatchupReadyGraceMinutes,
@@ -788,6 +789,8 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         // watchdog's two-minute no-growth kill, which makes any larger value
         // a dead letter.
         config.DvrReadTimeoutSeconds = Math.Clamp(readTimeout.GetInt32(), 0, 120);
+    if (settings.TryGetProperty("loopDetectionEnabled", out var loopDetection))
+        config.DvrLoopDetectionEnabled = loopDetection.GetBoolean();
 
     // Catchup settings
     if (settings.TryGetProperty("useCatchupWhenAvailable", out var useCatchup))

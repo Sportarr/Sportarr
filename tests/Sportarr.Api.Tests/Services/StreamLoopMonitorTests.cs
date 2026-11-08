@@ -12,15 +12,19 @@ using Xunit;
 namespace Sportarr.Api.Tests.Services;
 
 /// <summary>
-/// The bookkeeping around the loop verdict: which captures are watched, what
-/// part of the file each look reads, and how long the evidence is kept. The
-/// verdict itself is covered by FrameRecurrenceTests; here the keyframes come
-/// from a fake sampler instead of FFmpeg.
+/// The bookkeeping around the loop verdict. These tests cover which captures
+/// are watched, which part of the file each look reads, and how long the
+/// evidence stays. FrameRecurrenceTests covers the verdict itself. Here a
+/// fake sampler gives the keyframes instead of FFmpeg.
 /// </summary>
 public class StreamLoopMonitorTests : IDisposable
 {
     private static readonly DateTime Start = new(2026, 11, 7, 15, 55, 0, DateTimeKind.Utc);
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(30);
+
+    // One tick of growth. It is larger than the tail margin, so each look
+    // has something to read.
+    private const long TickBytes = 1024 * 1024;
 
     private readonly string _dir = Directory.CreateTempSubdirectory("loop-monitor-").FullName;
     private readonly FakeSampler _sampler = new();
@@ -69,36 +73,76 @@ public class StreamLoopMonitorTests : IDisposable
     }
 
     [Fact]
-    public async Task Each_look_reads_only_what_was_appended_since_the_last()
+    public async Task The_first_look_reads_nothing_and_later_looks_read_what_was_appended()
     {
+        // The first look only notes the position. Footage from before the
+        // watch, such as a pre-event promo, is never judged.
         var capture = Capture("event.ts");
-
-        Grow(capture, 1000);
+        Grow(capture, 2 * TickBytes);
         await _monitor.IsLoopingAsync(1, capture, Start, default);
         await _monitor.IsLoopingAsync(1, capture, Start + Tick, default);
-        Grow(capture, 500);
+        Grow(capture, TickBytes);
         await _monitor.IsLoopingAsync(1, capture, Start + 2 * Tick, default);
+        Grow(capture, TickBytes);
+        await _monitor.IsLoopingAsync(1, capture, Start + 3 * Tick, default);
 
-        _sampler.Reads.Select(r => (r.From, r.Length)).Should().Equal((0L, 1000L), (1000L, 500L));
+        var first = EndOfRead(2 * TickBytes);
+        var second = EndOfRead(3 * TickBytes);
+        var third = EndOfRead(4 * TickBytes);
+        _sampler.Reads.Select(r => (r.From, r.Length)).Should().Equal((first, second - first), (second, third - second));
     }
 
     [Fact]
-    public async Task The_first_look_at_a_long_capture_reads_only_its_tail()
+    public async Task Each_read_stops_short_of_the_end_on_a_packet_boundary()
+    {
+        // The recorder can still be writing the last keyframe. This look
+        // leaves it out. The next look starts at the same position.
+        var capture = Capture("event.ts");
+        await _monitor.IsLoopingAsync(1, capture, Start, default);
+        Grow(capture, TickBytes + 1000);
+        await _monitor.IsLoopingAsync(1, capture, Start + Tick, default);
+
+        var read = _sampler.Reads.Single();
+        read.From.Should().Be(0);
+        (read.From + read.Length).Should().BeLessOrEqualTo(TickBytes + 1000 - StreamLoopMonitor.TailMargin);
+        ((read.From + read.Length) % 188).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_capped_look_never_compares_keyframes_across_the_gap()
+    {
+        // Every append is above the cap, so each look loses its start. One
+        // look of twelve keyframes holds only a little over two passes of the
+        // clip. That is too little evidence on its own, so no verdict comes.
+        var capture = Capture("event.ts");
+        var verdicts = new List<bool>();
+        for (var tick = 0; tick < 10; tick++)
+            verdicts.Add(await LookAtLoopAsync(1, capture, tick, StreamLoopMonitor.MaxBytesPerLook + TickBytes));
+
+        verdicts.Should().OnlyContain(v => !v);
+        _sampler.Reads.Should().OnlyContain(r => r.Length <= StreamLoopMonitor.MaxBytesPerLook);
+    }
+
+    [Fact]
+    public async Task A_capture_that_gets_shorter_is_watched_from_scratch()
     {
         var capture = Capture("event.ts");
+        await WatchLoopAsync(capture, ticks: 7);
         using (var file = File.OpenWrite(capture))
-            file.SetLength(StreamLoopMonitor.MaxBytesPerLook + 4096);
+            file.SetLength(TickBytes);
 
-        await _monitor.IsLoopingAsync(1, capture, Start, default);
+        var verdicts = await WatchLoopAsync(capture, ticks: 7, startTick: 7);
 
-        _sampler.Reads.Select(r => (r.From, r.Length)).Should().Equal((4096L, StreamLoopMonitor.MaxBytesPerLook));
+        verdicts.Take(6).Should().OnlyContain(v => !v);
+        verdicts.Last().Should().BeTrue();
+        _sampler.Reads.Skip(6).First().From.Should().Be(EndOfRead(2 * TickBytes));
     }
 
     [Fact]
     public async Task A_new_capture_file_starts_the_watch_over()
     {
-        // A fallback channel records to a new file; the loop on the old one is
-        // no evidence against it.
+        // A fallback channel records to a new file. The loop on the old file
+        // is no evidence against it.
         await WatchLoopAsync(Capture("first.ts"), ticks: 6);
         var second = Capture("second.ts");
 
@@ -106,15 +150,15 @@ public class StreamLoopMonitorTests : IDisposable
 
         verdicts.Take(6).Should().OnlyContain(v => !v);
         verdicts.Last().Should().BeTrue();
-        _sampler.Reads.Where(r => r.Path == second).First().From.Should().Be(0);
+        _sampler.Reads.Where(r => r.Path == second).First().From.Should().Be(EndOfRead(TickBytes));
     }
 
     [Fact]
     public async Task Keyframes_older_than_the_window_no_longer_count()
     {
-        // Ten minutes of live footage, then the source drops and the provider
-        // starts looping: the loop is caught within three minutes, not diluted
-        // by the live footage before it.
+        // Ten minutes of live footage come first. Then the source drops and
+        // the provider starts a loop. The loop is caught within three
+        // minutes, and the live footage before it does not dilute it.
         var capture = Capture("event.ts");
         var random = new Random(2);
         for (var tick = 0; tick < 20; tick++)
@@ -157,7 +201,19 @@ public class StreamLoopMonitorTests : IDisposable
         verdicts.Should().OnlyContain(v => !v);
     }
 
-    // Twelve keyframes per tick of a five-keyframe clip.
+    [Fact]
+    public async Task A_capture_without_video_is_no_longer_sampled()
+    {
+        var capture = Capture("radio.ts");
+        _sampler.NoVideo = true;
+
+        var verdicts = await WatchLoopAsync(capture, ticks: 8);
+
+        verdicts.Should().OnlyContain(v => !v);
+        _sampler.Reads.Should().HaveCount(2);
+    }
+
+    // Twelve keyframes for each tick of a five-keyframe clip.
     private async Task<List<bool>> WatchLoopAsync(string capture, int ticks, int startTick = 0)
     {
         var verdicts = new List<bool>();
@@ -168,9 +224,9 @@ public class StreamLoopMonitorTests : IDisposable
 
     private static readonly ulong[] Clip = Enumerable.Range(0, 5).Select(i => (ulong)new Random(100 + i).NextInt64()).ToArray();
 
-    private Task<bool> LookAtLoopAsync(int recordingId, string capture, int tick)
+    private Task<bool> LookAtLoopAsync(int recordingId, string capture, int tick, long bytes = TickBytes)
     {
-        Grow(capture);
+        Grow(capture, bytes);
         _sampler.Next = Enumerable.Range(tick * 12, 12).Select(i => Clip[i % Clip.Length]).ToList();
         return _monitor.IsLoopingAsync(recordingId, capture, Start + tick * Tick, default);
     }
@@ -182,16 +238,24 @@ public class StreamLoopMonitorTests : IDisposable
         return path;
     }
 
-    private static void Grow(string capture, int bytes = 188)
+    // Sparse growth keeps the test files cheap.
+    private static void Grow(string capture, long bytes = TickBytes)
     {
-        using var file = new FileStream(capture, FileMode.Append);
-        file.Write(new byte[bytes]);
+        using var file = new FileStream(capture, FileMode.Open);
+        file.SetLength(file.Length + bytes);
+    }
+
+    private static long EndOfRead(long size)
+    {
+        var end = Math.Max(0, size - StreamLoopMonitor.TailMargin);
+        return end - end % 188;
     }
 
     private sealed class FakeSampler : IKeyframeSampler
     {
         public IReadOnlyList<ulong> Next { get; set; } = Array.Empty<ulong>();
         public bool Fails { get; set; }
+        public bool NoVideo { get; set; }
         public List<(string Path, long From, long Length)> Reads { get; } = new();
 
         public Task<IReadOnlyList<ulong>> SampleAsync(string path, long from, long length, CancellationToken ct)
@@ -199,6 +263,8 @@ public class StreamLoopMonitorTests : IDisposable
             Reads.Add((path, from, length));
             if (Fails)
                 throw new InvalidOperationException("FFmpeg was not found");
+            if (NoVideo)
+                throw new NoVideoStreamException("The capture holds no video stream");
             var keyframes = Next;
             Next = Array.Empty<ulong>();
             return Task.FromResult(keyframes);

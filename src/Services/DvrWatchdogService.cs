@@ -47,6 +47,40 @@ public class DvrWatchdogService : BackgroundService
     // the Recording state.
     private readonly Dictionary<int, (long Size, DateTime At)> _lastSize = new();
 
+    // A streak of loop verdicts ends when the ticks stop for longer than
+    // this, for example during a slow tick or a mode that skipped mode 4.
+    private static readonly TimeSpan MaxLoopTickGap = TickInterval * 3;
+
+    // A loop stop must reach the exit handler this long before the last
+    // part of the window starts.
+    internal static readonly TimeSpan LoopStopMargin = TimeSpan.FromMinutes(1);
+
+    // The current streak of loop verdicts for each recording.
+    private readonly Dictionary<int, LoopStreak> _loopStreaks = new();
+
+    // Recordings that loop and cannot rotate. The warning comes once for
+    // each recording.
+    private readonly HashSet<int> _loopWarned = new();
+
+    /// <summary>
+    /// A run of ticks that all gave a loop verdict. <see cref="Since"/> is the
+    /// first verdict. <see cref="LastAt"/> is the most recent one.
+    /// </summary>
+    internal sealed record LoopStreak(DateTime Since, DateTime LastAt);
+
+    /// <summary>What mode 4 does with one tick's loop verdict.</summary>
+    internal enum LoopResponse
+    {
+        /// <summary>No loop, or a loop that has not lasted long enough.</summary>
+        Wait,
+        /// <summary>Stop the recorder, so the exit handler rotates to a fallback.</summary>
+        Stop,
+        /// <summary>Keep recording. No fallback channel can take over.</summary>
+        KeepRecordingNoFallback,
+        /// <summary>Keep recording. The exit handler would complete the recording and not rotate.</summary>
+        KeepRecordingNearEnd,
+    }
+
     public DvrWatchdogService(IServiceProvider services, ILogger<DvrWatchdogService> logger)
     {
         _services = services;
@@ -67,6 +101,10 @@ public class DvrWatchdogService : BackgroundService
             {
                 await TickAsync(stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[DVR Watchdog] Tick failed");
@@ -85,8 +123,27 @@ public class DvrWatchdogService : BackgroundService
         // are tracked by the same context its fallback rotation saves.
         var dvrService = scope.ServiceProvider.GetRequiredService<DvrRecordingService>();
         var loopMonitor = scope.ServiceProvider.GetRequiredService<StreamLoopMonitor>();
+        var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
 
         var now = DateTime.UtcNow;
+        // A config read that fails skips the loop check for this tick. The
+        // loop state stays, and modes 0 to 3 still run. Null means the
+        // setting is unknown.
+        bool? loopDetectionEnabled;
+        try
+        {
+            loopDetectionEnabled = (await configService.GetConfigAsync()).DvrLoopDetectionEnabled;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "[DVR Watchdog] Could not read the loop-detection setting; the looping-stream check skips this tick");
+            loopDetectionEnabled = null;
+        }
+        if (loopDetectionEnabled == false)
+        {
+            // A later enable then waits a whole window again.
+            ForgetLoops(loopMonitor);
+        }
 
         // Mode 0 - missed-schedule recovery. A Scheduled row whose
         // entire window (ScheduledEnd + PostPadding) is now in the
@@ -132,7 +189,7 @@ public class DvrWatchdogService : BackgroundService
         {
             // Garbage-collect stale tracker entries.
             if (_lastSize.Count > 0) _lastSize.Clear();
-            loopMonitor.ForgetAll();
+            ForgetLoops(loopMonitor);
             // Persist any missed-schedule transitions before returning.
             if (missed.Count > 0) await db.SaveChangesAsync(ct);
             return;
@@ -262,17 +319,34 @@ public class DvrWatchdogService : BackgroundService
                 }
             }
 
-            // Mode 4 - output grows but repeats itself. Same outcome as a
-            // stall: stop the recorder and let the exit handler decide
-            // between a completed recording and a failed one that rotates
-            // to a fallback channel.
-            if (await loopMonitor.IsLoopingAsync(row.Id, row.OutputPath, now, ct))
+            // Mode 4 - output grows but repeats itself. A stop goes through
+            // the same exit handler as a stall. With the setting unknown,
+            // mode 4 does nothing and keeps its state.
+            if (loopDetectionEnabled is bool enabled)
             {
-                _logger.LogWarning(
-                    "[DVR Watchdog] Recording {Id} is looping: the last {Window} minutes repeat the same clip; killing FFmpeg and reconciling",
-                    row.Id, (int)StreamLoopMonitor.Window.TotalMinutes);
-                await StopAndReconcileAsync(recorder, dvrService, loopMonitor, row.Id,
-                    $"watchdog: stream is looping (the last {(int)StreamLoopMonitor.Window.TotalMinutes} minutes repeat the same clip)");
+                if (WatchesForLoop(enabled, now, row.ScheduledStart))
+                {
+                    // A failure here must not stop modes 0 to 3 or the save below.
+                    try
+                    {
+                        await CheckForLoopAsync(db, row, now, recorder, dvrService, loopMonitor, ct);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[DVR Watchdog] Looping-stream check failed for recording {Id}", row.Id);
+                    }
+                }
+                else
+                {
+                    // Pre-event footage is no evidence. The watch starts at the
+                    // scheduled start.
+                    loopMonitor.Forget(row.Id);
+                    _loopStreaks.Remove(row.Id);
+                }
             }
         }
 
@@ -282,6 +356,9 @@ public class DvrWatchdogService : BackgroundService
         var toForget = _lastSize.Keys.Where(k => !seen.Contains(k)).ToList();
         foreach (var id in toForget) _lastSize.Remove(id);
         loopMonitor.ForgetAllExcept(seen);
+        foreach (var id in _loopStreaks.Keys.Where(id => !seen.Contains(id)).ToList())
+            _loopStreaks.Remove(id);
+        _loopWarned.IntersectWith(seen);
 
         try
         {
@@ -291,6 +368,178 @@ public class DvrWatchdogService : BackgroundService
         {
             _logger.LogError(ex, "[DVR Watchdog] Failed to persist watchdog status updates");
         }
+    }
+
+    /// <summary>
+    /// Mode 4 for one recording. A stop needs a loop that lasts and a
+    /// fallback channel to rotate to.
+    /// </summary>
+    private async Task CheckForLoopAsync(
+        SportarrDbContext db, DvrRecording row, DateTime now, FFmpegRecorderService recorder,
+        DvrRecordingService dvrService, StreamLoopMonitor loopMonitor, CancellationToken ct)
+    {
+        var looping = await loopMonitor.IsLoopingAsync(row.Id, row.OutputPath, now, ct);
+        var streak = NextLoopStreak(_loopStreaks.GetValueOrDefault(row.Id), looping, now);
+        if (streak == null)
+        {
+            // A later loop is a new event, so it warns again.
+            _loopStreaks.Remove(row.Id);
+            _loopWarned.Remove(row.Id);
+        }
+        else
+        {
+            _loopStreaks[row.Id] = streak;
+        }
+
+        // The tick time can be old by now. The look and earlier rows take
+        // time, so the decision uses the current clock.
+        var response = await DecideOnLoopAsync(streak, now, DateTime.UtcNow, row.ScheduledStart, row.ScheduledEnd,
+            row.PostPadding, () => dvrService.HasUsableFallbackAsync(row));
+
+        var minutes = (int)(now - (streak?.Since ?? now) + StreamLoopMonitor.Window).TotalMinutes;
+        switch (response)
+        {
+            case LoopResponse.Stop:
+                _logger.LogWarning(
+                    "[DVR Watchdog] Recording {Id} has repeated the same short clip for about {Minutes} minutes. Stopping FFmpeg to rotate to a fallback channel",
+                    row.Id, minutes);
+                await StopForLoopAsync(db, row, recorder, dvrService, loopMonitor, ct,
+                    $"watchdog: stream is looping (the same short clip for about {minutes} minutes)");
+                break;
+
+            case LoopResponse.KeepRecordingNoFallback:
+            case LoopResponse.KeepRecordingNearEnd:
+                var reason = response == LoopResponse.KeepRecordingNoFallback
+                    ? "no usable fallback channel can take over"
+                    : "the recording is in the last part of its window, where a stop completes it instead of rotating";
+                if (_loopWarned.Add(row.Id))
+                    _logger.LogWarning(
+                        "[DVR Watchdog] Recording {Id} has repeated the same short clip for about {Minutes} minutes. Recording continues, because {Reason}",
+                        row.Id, minutes, reason);
+                else
+                    _logger.LogDebug("[DVR Watchdog] Recording {Id} still repeats the same clip. Recording continues, because {Reason}", row.Id, reason);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Stops a looping recorder and hands the row to the exit handler. The
+    /// look can take seconds. In that time the recorder can exit and its own
+    /// callback can rotate the row. So the method checks again first. After
+    /// the stop it calls the exit handler only when no process is left. The
+    /// handler skips a row that is no longer Recording or already being
+    /// finalized, so a second call does nothing.
+    /// </summary>
+    private async Task StopForLoopAsync(
+        SportarrDbContext db, DvrRecording row, FFmpegRecorderService recorder, DvrRecordingService dvrService,
+        StreamLoopMonitor loopMonitor, CancellationToken ct, string reason)
+    {
+        var id = row.Id;
+        _loopStreaks.Remove(id);
+        _loopWarned.Remove(id);
+        loopMonitor.Forget(id);
+
+        if (!recorder.IsRecordingActive(id) || recorder.IsFinalizing(id))
+        {
+            _logger.LogDebug("[DVR Watchdog] Recording {Id} stopped while it was checked for a loop; leaving it to its exit handler", id);
+            return;
+        }
+
+        await db.Entry(row).ReloadAsync(ct);
+        if (db.Entry(row).State == EntityState.Detached || row.Status != DvrRecordingStatus.Recording)
+        {
+            _logger.LogDebug("[DVR Watchdog] Recording {Id} left the Recording state while it was checked for a loop", id);
+            return;
+        }
+
+        RecordingResult stopped;
+        try
+        {
+            stopped = await recorder.StopRecordingAsync(id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DVR Watchdog] Could not stop looping recording {Id}", id);
+            return;
+        }
+        _lastSize.Remove(id);
+
+        // The stop can fail and leave FFmpeg running. Mode 1 or a later
+        // tick handles that recording.
+        if (recorder.IsRecordingActive(id))
+        {
+            _logger.LogWarning("[DVR Watchdog] Recording {Id} is still running after the stop ({Error})", id, stopped.Error);
+            return;
+        }
+
+        try
+        {
+            await dvrService.HandleRecorderExitAsync(id, 0, reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DVR Watchdog] Reconciliation failed for recording {Id} ({Reason})", id, reason);
+        }
+    }
+
+    /// <summary>
+    /// The streak after this tick's verdict. A tick without a loop ends the
+    /// streak. A long pause between ticks starts a new streak.
+    /// </summary>
+    internal static LoopStreak? NextLoopStreak(LoopStreak? streak, bool looping, DateTime now)
+    {
+        if (!looping)
+            return null;
+        if (streak == null || now - streak.LastAt > MaxLoopTickGap)
+            return new LoopStreak(now, now);
+        return streak with { LastAt = now };
+    }
+
+    /// <summary>
+    /// What mode 4 does with the current streak. The streak must cover one
+    /// whole window after its first verdict. The first and the last verdict
+    /// then judge two windows that do not overlap, six minutes of footage in
+    /// total. A short loop in an ad break or a promo does not last that long.
+    /// The method asks for a fallback only when a stop is otherwise due.
+    /// <paramref name="tickTime"/> is the time of this tick's verdict.
+    /// <paramref name="decidedAt"/> is the current clock.
+    /// </summary>
+    internal static async Task<LoopResponse> DecideOnLoopAsync(
+        LoopStreak? streak, DateTime tickTime, DateTime decidedAt, DateTime scheduledStart, DateTime scheduledEnd,
+        int postPaddingMinutes, Func<Task<bool>> hasUsableFallback)
+    {
+        if (streak == null || tickTime - streak.Since < StreamLoopMonitor.Window)
+            return LoopResponse.Wait;
+
+        // Near the end the exit handler completes the recording and does
+        // not rotate. A stop there only cuts off the event. The stop itself
+        // takes time, up to a 10-second graceful wait, so the margin keeps
+        // the exit handler out of that part of the window. A positive size
+        // stands for the capture on disk, so only the time rules apply.
+        if (DvrRecordingService.ExitLooksLikeANormalEnd(decidedAt + LoopStopMargin, scheduledStart, scheduledEnd, postPaddingMinutes, fileSize: 1))
+            return LoopResponse.KeepRecordingNearEnd;
+
+        // The loop can be filler, such as a rain delay. Without a fallback a
+        // stop loses the rest of the event.
+        if (!await hasUsableFallback())
+            return LoopResponse.KeepRecordingNoFallback;
+
+        return LoopResponse.Stop;
+    }
+
+    /// <summary>
+    /// Whether mode 4 looks at a recording on this tick. Footage before the
+    /// scheduled start is often a promo or a holding loop, so it does not
+    /// count.
+    /// </summary>
+    internal static bool WatchesForLoop(bool enabled, DateTime now, DateTime scheduledStart) =>
+        enabled && now >= scheduledStart;
+
+    private void ForgetLoops(StreamLoopMonitor loopMonitor)
+    {
+        loopMonitor.ForgetAll();
+        _loopStreaks.Clear();
+        _loopWarned.Clear();
     }
 
     /// <summary>
@@ -342,14 +591,15 @@ public class DvrWatchdogService : BackgroundService
     }
 
     /// <summary>
-    /// Stops a recorder the watchdog gave up on and hands the row to the same
-    /// Completed-vs-Failed logic the recorder's own exit callback uses. A stop
-    /// this close to the scheduled end is treated as the live event ending
-    /// early (the upstream feed drops the instant the broadcast stops) rather
-    /// than a dead stream, so it gets finalized, revealed and picked up by the
-    /// importer instead of abandoned under its hidden dot-prefixed filename
-    /// with an unqueryable status. Otherwise it fails and rotates to a
-    /// fallback channel.
+    /// Stops a recorder that the watchdog gave up on. The row then goes to
+    /// the exit handler that the recorder's own exit callback uses. That
+    /// handler decides between Completed and Failed.
+    ///
+    /// A stop close to the scheduled end counts as a live event that ended
+    /// early, because the feed drops when the broadcast stops. The handler
+    /// then finalizes the recording, so the importer picks it up. Without
+    /// that, the capture stays under its hidden file name. A stop earlier in
+    /// the window fails the recording and rotates it to a fallback channel.
     /// </summary>
     private async Task StopAndReconcileAsync(
         FFmpegRecorderService recorder, DvrRecordingService dvrService, StreamLoopMonitor loopMonitor,
@@ -358,6 +608,8 @@ public class DvrWatchdogService : BackgroundService
         try { await recorder.StopRecordingAsync(recordingId); } catch { /* fallthrough to reconcile */ }
         _lastSize.Remove(recordingId);
         loopMonitor.Forget(recordingId);
+        _loopStreaks.Remove(recordingId);
+        _loopWarned.Remove(recordingId);
 
         try
         {
