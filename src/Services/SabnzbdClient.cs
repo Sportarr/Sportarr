@@ -1157,6 +1157,7 @@ public class SabnzbdClient
                     Size = historyItem.bytes,
                     TimeRemaining = null,
                     SavePath = historyItem.storage,
+                    SavePathIsJobSpecific = !string.IsNullOrWhiteSpace(historyItem.storage),
                     ErrorMessage = errorMessage
                 };
             }

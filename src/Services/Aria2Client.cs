@@ -242,6 +242,22 @@ public class Aria2Client
         var savePath = !string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(dir)
             ? Path.Combine(dir, name)
             : dir;
+        var hasTorrentName = status.TryGetProperty("bittorrent", out var torrent) &&
+            torrent.TryGetProperty("info", out var info) &&
+            info.TryGetProperty("name", out var torrentName) &&
+            !string.IsNullOrWhiteSpace(torrentName.GetString());
+        var jobSpecificPath = hasTorrentName && !string.IsNullOrWhiteSpace(dir);
+        // URI downloads can use an output path below dir. Their display name
+        // loses those subdirectories, so use the reported file path directly.
+        // Without a torrent root, several files do not identify one job folder.
+        if (!hasTorrentName && status.TryGetProperty("files", out var files) &&
+            files.ValueKind == JsonValueKind.Array && files.GetArrayLength() == 1 &&
+            files[0].TryGetProperty("path", out var filePath) &&
+            !string.IsNullOrWhiteSpace(filePath.GetString()))
+        {
+            savePath = filePath.GetString();
+            jobSpecificPath = true;
+        }
 
         var errorMessage = status.TryGetProperty("errorMessage", out var em) ? em.GetString() : null;
 
@@ -259,6 +275,7 @@ public class Aria2Client
             Size = totalLength,
             TimeRemaining = timeRemaining,
             SavePath = savePath,
+            SavePathIsJobSpecific = jobSpecificPath,
             ErrorMessage = errorMessage,
             Ratio = completedLength > 0 ? (double)uploadLength / completedLength : 0,
             // Aria2 omits completion time here. Use the queue timestamp for seed limits.

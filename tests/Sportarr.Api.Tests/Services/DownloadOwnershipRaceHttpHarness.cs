@@ -33,6 +33,7 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
     public Transport ClientTransport { get; }
     public OwnershipSaveInterceptor Saves { get; }
     public AnalysisCommandInterceptor Analysis { get; }
+    public IRemotePathMappingService PathMapping => _app.Services.GetRequiredService<IRemotePathMappingService>();
     public DownloadOwnershipCoordinator Ownership => _app.Services.GetRequiredService<DownloadOwnershipCoordinator>();
     public int EventId { get; private set; }
     public string SourcePath { get; }
@@ -79,7 +80,7 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
         services.AddSingleton(Mock.Of<IMetadataWriterService>());
         services.AddSingleton(Mock.Of<IRateLimitService>());
         foreach (var type in new[] {
-            typeof(DownloadClientService), typeof(NotificationService), typeof(SportarrApiClient),
+            typeof(DownloadClientService), typeof(NotificationService), typeof(SportarrApiClient), typeof(ImportMatchingService),
             typeof(MediaFileParser), typeof(SportsFileNameParser), typeof(FileNamingService), typeof(EventPartDetector),
             typeof(DiskSpaceService), typeof(ImportFileSuppressionService), typeof(CustomFormatService),
             typeof(CustomFormatMatchCache), typeof(ReleaseEvaluator), typeof(EpisodeNumberResolver), typeof(PackImportService), typeof(FileImportService),
@@ -89,7 +90,9 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
         }) services.AddScoped(type);
         services.AddSingleton<DownloadMonitorWakeSignal>();
         services.AddSingleton<EnhancedDownloadMonitorService>();
-        var app = builder.Build(); app.MapEventSearchAndGrabEndpoints(); await app.StartAsync();
+        services.AddScoped<QueueRemovalService>();
+        services.AddSingleton<SearchQueueService>();
+        var app = builder.Build(); app.MapEventSearchAndGrabEndpoints(); app.MapQueueAndImportEndpoints(); await app.StartAsync();
         var rig = new DownloadOwnershipRaceHttpHarness(app, directory, transport, saves, analysis);
         try
         {
@@ -129,6 +132,15 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
             return rig;
         }
         catch { await rig.DisposeAsync(); throw; }
+    }
+
+    public Task WatchFileAsync()
+    {
+        var watcher = new FileWatcherService(_app.Services, _app.Services.GetRequiredService<ILogger<FileWatcherService>>());
+        var task = (Task)typeof(FileWatcherService).GetMethod("HandleNewFileAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(watcher, new object[] { SourcePath })!;
+        _started.Add(task);
+        return task;
     }
 
     public Task GrabAsync(bool expectSuccess = true, int? eventId = null)
@@ -219,7 +231,7 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        ClientTransport.ReleaseAll(); Saves.QueueSave.Release(); Saves.ExternalAuditSave.Release(); Analysis.ScanQuery.Release();
+        ClientTransport.ReleaseAll(); Saves.QueueSave.Release(); Saves.ExternalAuditSave.Release(); Saves.IgnoreSave.Release(); Analysis.ScanQuery.Release(); Analysis.WatcherRead.Release(); Saves.ResumeSave.Release();
         try { await Task.WhenAll(_started).WaitAsync(TestTimeout); }
         catch { /* The test retains the operation failure. Cleanup must still run. */ }
         Client.Dispose(); await _app.DisposeAsync();
@@ -248,12 +260,32 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
         public Barrier ExternalAuditSave { get; } = new();
         public void PauseNextExternalAuditSave() => Interlocked.Exchange(ref _pauseExternal, 1);
         public Barrier QueueSave { get; } = new();
+        public Barrier IgnoreSave { get; } = new();
+        public bool PauseIgnoreSave { get; set; }
+        public bool RejectIgnoreSave { get; set; }
+        public bool PauseResumeSave { get; set; }
+        public bool RejectResumeSave { get; set; }
+        public int ResumeSaves { get; private set; }
+        public Barrier ResumeSave { get; } = new();
         public bool RejectQueueSaves { get; set; }
         public int RejectedQueueSaves { get; private set; }
         public void PauseNextQueueSave() => Interlocked.Exchange(ref _pause, 1);
         public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
             InterceptionResult<int> result, CancellationToken cancellationToken = default)
         {
+            if (eventData.Context!.ChangeTracker.Entries<PendingImport>().Any(e =>
+                    e.State == EntityState.Deleted && e.Entity.Status == PendingImportStatus.Ignored))
+            {
+                ResumeSaves++;
+                if (PauseResumeSave) await ResumeSave.WaitAsync(cancellationToken);
+                if (RejectResumeSave) throw new InvalidOperationException("Fixture rejected resume save.");
+            }
+            if (eventData.Context!.ChangeTracker.Entries<PendingImport>().Any(e =>
+                    e.State == EntityState.Added && e.Entity.Status == PendingImportStatus.Ignored))
+            {
+                if (PauseIgnoreSave) await IgnoreSave.WaitAsync(cancellationToken);
+                if (RejectIgnoreSave) throw new InvalidOperationException("Fixture rejected ignore save.");
+            }
             if (eventData.Context!.ChangeTracker.Entries<PendingImport>().Any(e =>
                     e.State == EntityState.Added && e.Entity.Status == PendingImportStatus.Completed) &&
                 Interlocked.Exchange(ref _pauseExternal, 0) == 1)
@@ -273,6 +305,10 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
     internal sealed class AnalysisCommandInterceptor(string folder) : DbCommandInterceptor
     {
         private int _pause;
+        private int _ignoredRead;
+        public int PauseIgnoredRead { get; set; }
+        public bool PauseWatcherBeforeWait { get; set; }
+        public Barrier WatcherRead { get; } = new();
         public Barrier ScanQuery { get; } = new();
         public string? CapturedCommand { get; private set; }
         public void PauseNextScanQuery() => Interlocked.Exchange(ref _pause, 1);
@@ -280,6 +316,15 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
             DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
             CancellationToken cancellationToken = default)
         {
+            if (PauseWatcherBeforeWait && command.CommandText.Contains("FROM \"DvrRecordings\"", StringComparison.Ordinal))
+            {
+                PauseWatcherBeforeWait = false;
+                await WatcherRead.WaitAsync(cancellationToken);
+            }
+            if (command.CommandText.Contains("FROM \"PendingImports\"", StringComparison.Ordinal) &&
+                command.CommandText.Contains("\"Status\" = 4", StringComparison.Ordinal) &&
+                Interlocked.Increment(ref _ignoredRead) == PauseIgnoredRead)
+                await WatcherRead.WaitAsync(cancellationToken);
             if (command.CommandText.Contains("FROM \"Events\"", StringComparison.Ordinal) &&
                 command.CommandText.Contains("\"FilePath\"", StringComparison.Ordinal) &&
                 command.Parameters.Cast<DbParameter>().Any(p => p.Value is string value &&
@@ -300,6 +345,7 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
         private int _pauseHistory;
         private int _adds;
         public string SourcePath { get; set; } = "";
+        public Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage?>>? ClientResponse { get; set; }
         public string TorrentId { get; set; } = JobId;
         public string InfohashV1 { get; set; } = "";
         public string InfohashV2 { get; set; } = "";
@@ -309,17 +355,20 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
         public bool PauseAddResponse { get; set; }
         public bool PauseIndividualAdds { get; set; }
         public bool RejectAdds { get; set; }
+        public bool Unavailable { get; set; }
         public int AddOrdinalOffset { get; set; }
         public Func<Task>? BeforeAdd { get; set; }
         public Barrier AddResponse { get; } = new();
         public Barrier ExternalHistory { get; } = new();
+        public Barrier JobStatus { get; } = new();
+        public bool PauseJobStatus { get; set; }
         public int Adds => Volatile.Read(ref _adds);
         public ConcurrentQueue<string> UnexpectedRequests { get; } = new();
         public void PublishCompleted(int ordinal = 1) => _visible[ordinal] = true;
         public Barrier ResponseBarrier(int ordinal) => _responses.GetOrAdd(ordinal, _ => new Barrier());
         public void ReleaseAll()
         {
-            AddResponse.Release(); ExternalHistory.Release();
+            AddResponse.Release(); ExternalHistory.Release(); JobStatus.Release();
             foreach (var response in _responses.Values) response.Release();
         }
         public void PauseNextExternalHistory() => Interlocked.Exchange(ref _pauseHistory, 1);
@@ -339,6 +388,8 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
                 UnexpectedRequests.Enqueue(uri.GetLeftPart(UriPartial.Path));
                 throw new InvalidOperationException("Unexpected ownership fixture HTTP request.");
             }
+            if (Unavailable) throw new HttpRequestException("Fixture client unavailable.");
+            if (ClientResponse != null && await ClientResponse(request, cancellationToken) is { } response) return response;
             if (uri.AbsolutePath == "/api/v2/app/preferences")
                 return Json(new { save_path = DefaultSavePath ?? Path.GetDirectoryName(SourcePath) });
             if (uri.AbsolutePath == "/api/v2/torrents/categories")
@@ -385,7 +436,11 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
                 }).ToArray();
                 return Json(new { status = true, history = new { slots } });
             }
-            if (mode == "queue") return Json(new { status = true, queue = new { slots = Array.Empty<object>() } });
+            if (mode == "queue")
+            {
+                if (PauseJobStatus) await JobStatus.WaitAsync(cancellationToken);
+                return Json(new { status = true, queue = new { slots = Array.Empty<object>() } });
+            }
             UnexpectedRequests.Enqueue(uri.GetLeftPart(UriPartial.Path) + " mode=" + mode);
             throw new InvalidOperationException("Unexpected ownership fixture client mode.");
         }

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Services;
 
@@ -34,6 +36,8 @@ public class QueueRemovalResult
 /// </summary>
 public class QueueRemovalService
 {
+    private readonly DownloadOwnershipCoordinator _coordinator;
+    private readonly IRemotePathMappingService _pathMapping;
     private readonly SportarrDbContext _db;
     private readonly DownloadClientService _downloadClientService;
     private readonly SearchQueueService _searchQueueService;
@@ -43,8 +47,12 @@ public class QueueRemovalService
         SportarrDbContext db,
         DownloadClientService downloadClientService,
         SearchQueueService searchQueueService,
-        ILogger<QueueRemovalService> logger)
+        ILogger<QueueRemovalService> logger,
+        DownloadOwnershipCoordinator coordinator,
+        IRemotePathMappingService pathMapping)
     {
+        _coordinator = coordinator;
+        _pathMapping = pathMapping;
         _db = db;
         _downloadClientService = downloadClientService;
         _searchQueueService = searchQueueService;
@@ -76,6 +84,27 @@ public class QueueRemovalService
             return new QueueRemovalResult { Success = false, StatusCode = 400, ErrorMessage = $"Invalid blocklist action: {blocklistAction}" };
         }
 
+        DownloadQueueItem? candidate = null;
+        DownloadClientStatus? ignoreStatus = null;
+        if (removalMethod == "ignoreDownload")
+        {
+            // Check ownership briefly, then do client I/O without blocking unrelated jobs.
+            using (var preflight = _coordinator.TryEnterExternalDecision())
+            {
+                if (preflight == null) return Busy();
+                candidate = await _db.DownloadQueue.AsNoTracking().Include(q => q.DownloadClient)
+                    .FirstOrDefaultAsync(q => q.Id == id);
+            }
+            if (candidate == null) return new() { StatusCode = 404 };
+            if (candidate.Status is DownloadStatus.Importing or DownloadStatus.Imported) return Busy();
+            if (candidate.DownloadClient != null)
+                ignoreStatus = await _downloadClientService.GetDownloadStatusAsync(candidate.DownloadClient, candidate.DownloadId);
+        }
+
+        using var decision = removalMethod == "ignoreDownload" ? _coordinator.TryEnterExternalDecision() : null;
+        if (removalMethod == "ignoreDownload" && decision == null)
+            return Busy();
+
         var item = await _db.DownloadQueue
             .Include(dq => dq.DownloadClient)
             .Include(dq => dq.Event)
@@ -85,6 +114,11 @@ public class QueueRemovalService
         {
             return new QueueRemovalResult { Success = false, StatusCode = 404, ErrorMessage = "Queue item not found" };
         }
+
+        if (candidate != null && (item.Status is DownloadStatus.Importing or DownloadStatus.Imported ||
+            item.DownloadClientId != candidate.DownloadClientId || item.DownloadId != candidate.DownloadId ||
+            item.OutputPath != candidate.OutputPath))
+            return Busy();
 
         var clientRemovalFailed = false;
         var blocklistIndexer = string.IsNullOrWhiteSpace(item.Indexer) ||
@@ -181,6 +215,34 @@ public class QueueRemovalService
                 return new QueueRemovalResult { Success = false, StatusCode = 400, ErrorMessage = $"Invalid blocklist action: {blocklistAction}" };
         }
 
+        if (removalMethod == "ignoreDownload" && !string.IsNullOrWhiteSpace(item.DownloadId))
+        {
+            var ignored = await _db.PendingImports.FirstOrDefaultAsync(p =>
+                p.DownloadClientId == item.DownloadClientId && p.DownloadId.ToLower() == item.DownloadId.ToLower());
+            if (ignored == null)
+            {
+                ignored = new PendingImport
+                {
+                    DownloadClientId = item.DownloadClientId, DownloadId = item.DownloadId,
+                    Title = item.Title, FilePath = ""
+                };
+                _db.PendingImports.Add(ignored);
+            }
+            // Only an adapter-verified job path may suppress filesystem discovery.
+            // Never fall back to stale queue metadata after a failed status read.
+            ignored.Title = item.Title;
+            ignored.FilePath = await GetIgnorePathAsync(item, ignoreStatus);
+            ignored.Size = item.Size;
+            ignored.Protocol = item.Protocol;
+            ignored.SuggestedEventId = item.EventId;
+            ignored.Quality = item.Quality;
+            ignored.IsPack = item.IsPack;
+            ignored.TorrentInfoHash = item.TorrentInfoHash ?? ignored.TorrentInfoHash;
+            ignored.Status = PendingImportStatus.Ignored;
+            ignored.ErrorMessage = null;
+            ignored.ResolvedAt = DateTime.UtcNow;
+        }
+
         // Remove from queue
         // First, delete any import history records that reference this queue item (foreign key constraint)
         var importHistories = await _db.ImportHistories
@@ -194,6 +256,8 @@ public class QueueRemovalService
 
         _db.DownloadQueue.Remove(item);
         await _db.SaveChangesAsync();
+        if (removalMethod == "ignoreDownload")
+            _logger.LogInformation("[QUEUE] Ignored download {DownloadId} from client {ClientId}", item.DownloadId, item.DownloadClientId);
 
         if (blocklistAction == "blocklistAndSearch")
         {
@@ -213,4 +277,44 @@ public class QueueRemovalService
 
         return new QueueRemovalResult { Success = true, StatusCode = 204 };
     }
+
+    private async Task<string> GetIgnorePathAsync(DownloadQueueItem item, DownloadClientStatus? status)
+    {
+        var client = item.DownloadClient;
+        if (client == null) return "";
+        if (status is not { SavePathIsJobSpecific: true } || string.IsNullOrWhiteSpace(status.SavePath))
+            return "";
+
+        var localPath = DownloadPathSafety.Normalize(await _pathMapping.RemapRemoteToLocalAsync(client.Host, status.SavePath));
+        if (string.IsNullOrWhiteSpace(localPath)) return "";
+        // Configured roots provide a common safety net for every adapter, including
+        // job paths whose remote mappings collapse onto a shared local directory.
+        var sharedRoots = new List<string>();
+        foreach (var root in new[] { client.Directory, client.WatchFolder, client.BlackholeFolder }.Distinct())
+        {
+            if (!string.IsNullOrWhiteSpace(root))
+                sharedRoots.Add(await _pathMapping.RemapRemoteToLocalAsync(client.Host, root));
+        }
+        return DownloadPathSafety.IsSharedRoot(localPath, sharedRoots) ? "" : localPath;
+    }
+
+    public async Task<QueueRemovalResult> ResumeIgnoredAsync(int? id = null)
+    {
+        using var decision = _coordinator.TryEnterExternalDecision();
+        if (decision == null) return Busy();
+        var ignored = await _db.PendingImports.Where(p => p.Status == PendingImportStatus.Ignored &&
+            (id == null || p.Id == id)).ToListAsync();
+        if (id != null && ignored.Count == 0) return new() { StatusCode = 404 };
+        _db.PendingImports.RemoveRange(ignored);
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("[QUEUE] Resumed processing for {Count} ignored download(s)", ignored.Count);
+        return new() { Success = true };
+    }
+
+    private static QueueRemovalResult Busy() => new()
+    {
+        StatusCode = 409,
+        ErrorMessage = "A download is being processed. Wait for processing to finish and try again."
+    };
+
 }

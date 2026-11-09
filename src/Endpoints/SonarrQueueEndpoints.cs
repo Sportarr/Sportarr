@@ -157,6 +157,7 @@ public static class SonarrQueueEndpoints
             {
                 404 => Results.NotFound(),
                 400 => Results.BadRequest(result.ErrorMessage),
+                409 => Results.Conflict(new { error = result.ErrorMessage }),
                 _ => Results.NoContent(),
             };
         });
@@ -201,6 +202,8 @@ public static class SonarrQueueEndpoints
                 var result = await queueRemovalService.RemoveAsync(id, removalMethod, blocklistAction);
                 if (!result.Success && result.StatusCode != 404)
                 {
+                    if (result.StatusCode == 409)
+                        return Results.Conflict(new { error = result.ErrorMessage });
                     return Results.BadRequest(result.ErrorMessage);
                 }
             }

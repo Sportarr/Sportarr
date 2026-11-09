@@ -691,7 +691,8 @@ public enum PendingImportStatus
     Pending,        // Awaiting user action
     Importing,      // Currently being imported
     Completed,      // Successfully imported
-    Rejected        // User rejected this import
+    Rejected,       // User rejected this import
+    Ignored         // User stopped processing this client job; can be resumed
 }
 
 /// <summary>
@@ -1269,6 +1270,8 @@ public class DownloadClientStatus
     public TimeSpan? TimeRemaining { get; set; }
     public string? ErrorMessage { get; set; }
     public string? SavePath { get; set; }
+    /// <summary>True only when the adapter identified this job's file or folder, rather than a shared root.</summary>
+    public bool SavePathIsJobSpecific { get; set; }
 
     // Seed tracking fields for torrent clients
     public double? Ratio { get; set; } // Current upload/download ratio

@@ -411,26 +411,19 @@ public class FileWatcherService : BackgroundService
                            await db.EventFiles.AnyAsync(ef => ef.FilePath == filePath);
             if (isTracked) return;
 
-            // The disk scan lists a file without judging it. A row it made
-            // first is kept and filled in below, or the reason a copy was
-            // left out would never show. A row a download client owns, or
-            // one that already carries a reason, is left alone.
-            var existingPending = await db.PendingImports
-                .FirstOrDefaultAsync(pi => pi.FilePath == filePath && pi.Status == PendingImportStatus.Pending);
-            if (existingPending != null && (existingPending.DownloadClientId != null || existingPending.ErrorMessage != null))
-            {
-                return;
-            }
+            if (await db.PendingImports.AnyAsync(p => p.FilePath == filePath && p.Status == PendingImportStatus.Pending &&
+                (p.DownloadClientId != null || p.ErrorMessage != null))) return;
 
             // User-ignored files: rejecting a pending import writes a
             // Blocklist row carrying the path. Without this check the
             // watcher re-detects the file on the next filesystem event (or
             // auto-imports it), so the ignore never sticks for files that
             // stay on disk. DiskScanService applies the same rule.
-            var isIgnored = await db.Blocklist.AnyAsync(b => b.FilePath == filePath);
+            var isIgnored = await IsIgnoredDownloadFileAsync(db, filePath) ||
+                await db.Blocklist.AnyAsync(b => b.FilePath == filePath);
             if (isIgnored)
             {
-                _logger.LogDebug("[File Watcher] Skipping ignored (blocklisted) file: {Path}", filePath);
+                _logger.LogDebug("[File Watcher] Skipping ignored file: {Path}", filePath);
                 return;
             }
 
@@ -456,6 +449,24 @@ public class FileWatcherService : BackgroundService
             // still gets a pending record below, just never an auto-import.
             var stable = await WaitForStableFileAsync(filePath, TimeSpan.FromMinutes(10));
             if (!File.Exists(filePath)) return;
+
+            // Wait outside the decision gate, then hold a processing lease through
+            // the fresh ownership checks and import. Ignore cannot report success mid-import.
+            var coordinator = scope.ServiceProvider.GetRequiredService<DownloadOwnershipCoordinator>();
+            using var processing = await coordinator.EnterAcquisitionAsync();
+            if (await IsIgnoredDownloadFileAsync(db, filePath) ||
+                await db.Blocklist.AnyAsync(b => b.FilePath == filePath)) return;
+
+            // The disk scan lists a file without judging it. A row it made
+            // first is kept and filled in below, or the reason a copy was
+            // left out would never show. A row a download client owns, or
+            // one that already carries a reason, is left alone.
+            var existingPending = await db.PendingImports
+                .FirstOrDefaultAsync(pi => pi.FilePath == filePath && pi.Status == PendingImportStatus.Pending);
+            if (existingPending != null && (existingPending.DownloadClientId != null || existingPending.ErrorMessage != null))
+            {
+                return;
+            }
 
             // The recorder can claim or finish this file while the stability
             // wait is running. Check again before matching or importing it.
@@ -667,6 +678,19 @@ public class FileWatcherService : BackgroundService
         {
             _inFlightNewFiles.TryRemove(filePath, out _);
         }
+    }
+
+    internal static Task<bool> IsIgnoredDownloadFileAsync(SportarrDbContext db, string filePath)
+    {
+        // Match a file or any containing download folder, with separator boundaries.
+        // Query only ancestors rather than loading every ignored download for each file event.
+        var paths = DownloadPathSafety.FileAndAncestors(filePath).ToArray();
+        if (OperatingSystem.IsWindows())
+        {
+            paths = paths.Select(p => p.ToLowerInvariant()).ToArray();
+            return db.PendingImports.AnyAsync(p => p.Status == PendingImportStatus.Ignored && paths.Contains(p.FilePath.ToLower()));
+        }
+        return db.PendingImports.AnyAsync(p => p.Status == PendingImportStatus.Ignored && paths.Contains(p.FilePath));
     }
 
     internal static bool IsSameDvrCapture(string recordingPath, string candidatePath)
