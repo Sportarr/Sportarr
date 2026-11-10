@@ -118,7 +118,7 @@ Events are the episode analogue. Guaranteed fields per event:
 | `broadcastDate` | datetime? | Local broadcast date when a timezone is resolved |
 | `broadcastTimezone` | string? | IANA zone |
 | `monitored` | bool | |
-| `hasFile` | bool | |
+| `hasFile` | bool | True only when every monitored part has a file. Post Show never blocks it. A partly downloaded card reads false. Read `files` for what is on disk |
 | `filePath` | string? | Absolute path of the imported file |
 | `fileSize` | long? | Bytes |
 | `quality` | string? | |
@@ -278,8 +278,13 @@ events from that response while the events remain in the library. Do not read
 that as deletion.
 
 **An event with no file is not a deleted event.** Events exist before they
-air and before anything is downloaded. Use `hasFile` to decide whether media
+air and before anything is downloaded. Use `files` to decide which media
 exists, and the event's presence to decide whether the event exists.
+
+**`hasFile` is not per part.** It is true only when every monitored part of
+an event has a file. A fight card with the prelims on disk and the main card
+still missing reads false, but its prelims file is in `files`. Do not drop
+parts because `hasFile` is false.
 
 ## Event stream (SSE)
 
