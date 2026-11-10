@@ -304,7 +304,7 @@ public static class LibraryEndpoints
                     homeTeam = e.HomeTeam?.Name ?? e.HomeTeamName,
                     awayTeam = e.AwayTeam?.Name ?? e.AwayTeamName,
                     hasFile = e.HasFile,
-                    usesMultiPart = config.EnableMultiPartEpisodes &&
+                    usesMultiPart = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, e) &&
                         (EventPartDetector.IsFightingSport(e.Sport) ||
                          EventPartDetector.IsMotorsport(e.Sport)),
                     files = e.Files.Select(f => new

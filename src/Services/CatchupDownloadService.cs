@@ -33,7 +33,7 @@ namespace Sportarr.Api.Services;
 /// Catchup/timeshift download method ported from timeshifter by
 /// scottrobertson (github.com/scottrobertson/timeshifter).
 /// </summary>
-public class CatchupDownloadService : BackgroundService
+public class CatchupDownloadService : BackgroundService, IManualPassService
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(5);
 
@@ -57,6 +57,10 @@ public class CatchupDownloadService : BackgroundService
     // RefreshArchiveFlagsAsync for why this exists at all.
     private static readonly TimeSpan ArchiveFlagRefreshInterval = TimeSpan.FromHours(24);
     private DateTime _lastArchiveFlagRefresh = DateTime.MinValue;
+
+    // The crash recovery in TickAsync needs this. A row in Recording state at
+    // the start of a tick must not belong to a tick that still runs.
+    private readonly ScheduledPassGate _passGate = new();
 
     public CatchupDownloadService(IServiceProvider services, ILogger<CatchupDownloadService> logger)
     {
@@ -95,7 +99,11 @@ public class CatchupDownloadService : BackgroundService
 
             try
             {
-                await TickAsync(stoppingToken);
+                await _passGate.RunScheduledAsync(() => TickAsync(stoppingToken), TickInterval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -180,6 +188,33 @@ public class CatchupDownloadService : BackgroundService
         }
     }
 
+    internal static Task<List<DvrRecording>> LoadDueCatchupRecordingsAsync(SportarrDbContext db, CancellationToken ct)
+    {
+        // The output path names the league folder, so the league must be loaded.
+        return db.DvrRecordings
+            .Include(r => r.Event)
+            .ThenInclude(e => e!.League)
+            .Include(r => r.Channel)
+            .ThenInclude(c => c!.Source)
+            .Where(r => r.Status == DvrRecordingStatus.Scheduled)
+            .Where(r => r.Method == DvrRecordingMethod.Catchup)
+            .OrderBy(r => r.ScheduledEnd)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Runs one catchup tick now.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken) => await TickAsync(cancellationToken);
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
+    }
+
     private async Task TickAsync(CancellationToken ct)
     {
         using var scope = _services.CreateScope();
@@ -224,14 +259,7 @@ public class CatchupDownloadService : BackgroundService
         // of the archive). Existing rows are processed even if the user
         // has since turned DvrUseCatchupWhenAvailable off - that setting
         // gates NEW scheduling, not work already queued.
-        var due = await db.DvrRecordings
-            .Include(r => r.Event)
-            .Include(r => r.Channel)
-            .ThenInclude(c => c!.Source)
-            .Where(r => r.Status == DvrRecordingStatus.Scheduled)
-            .Where(r => r.Method == DvrRecordingMethod.Catchup)
-            .OrderBy(r => r.ScheduledEnd)
-            .ToListAsync(ct);
+        var due = await LoadDueCatchupRecordingsAsync(db, ct);
 
         foreach (var recording in due)
         {
@@ -378,43 +406,7 @@ public class CatchupDownloadService : BackgroundService
 
         if (success)
         {
-            // The download is written under a hidden name so a media server
-            // scan passes over it while it grows. Give it its real name now
-            // that nothing is writing to it. A transport-stream capture also
-            // becomes the container the user configured.
-            outputPath = await dvrService.FinalizeCapturePathAsync(outputPath);
-            recording.OutputPath = outputPath;
-
-            recording.Status = DvrRecordingStatus.Completed;
-            recording.ActualEnd = DateTime.UtcNow;
-            recording.DurationSeconds = minutes * 60;
-            recording.ErrorMessage = null;
-            try
-            {
-                recording.FileSize = new FileInfo(outputPath).Length;
-            }
-            catch { /* size is cosmetic; the import probe re-reads the file */ }
-            recording.LastUpdated = DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
-
-            _logger.LogInformation("[Catchup] Downloaded recording {Id} ({Size:F2} GB)",
-                recording.Id, (recording.FileSize ?? 0) / 1e9);
-
-            // Same handoff the live scheduler does after a stop: probe the
-            // file, score quality, create the EventFile, move into the
-            // library. All quality/codec metadata comes from the probe.
-            if (recording.EventId.HasValue)
-            {
-                try
-                {
-                    var eventDvr = scoped.GetRequiredService<EventDvrService>();
-                    await eventDvr.ImportCompletedRecordingAsync(recording.Id);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Catchup] Failed to auto-import recording {Id}", recording.Id);
-                }
-            }
+            await CompleteDownloadAsync(scoped, db, recording, outputPath, minutes, ct);
             return;
         }
 
@@ -442,6 +434,66 @@ public class CatchupDownloadService : BackgroundService
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Finish a successful archive download the same way the live recorder
+    /// finishes a capture: final name, completed status, post-recording
+    /// command and notification, then the library import.
+    /// </summary>
+    internal async Task CompleteDownloadAsync(
+        IServiceProvider scoped,
+        SportarrDbContext db,
+        DvrRecording recording,
+        string outputPath,
+        int minutes,
+        CancellationToken ct)
+    {
+        var dvrService = scoped.GetRequiredService<DvrRecordingService>();
+
+        // The download is written under a hidden name so a media server
+        // scan passes over it while it grows. Give it its real name now
+        // that nothing is writing to it. A transport-stream capture also
+        // becomes the container the user configured.
+        recording.OutputPath = await dvrService.FinalizeCapturePathAsync(outputPath);
+
+        // The post-recording command must get the detected-quality name,
+        // as it does for a live capture.
+        await dvrService.ProbeCompletedOutputAsync(recording);
+        await dvrService.RenameCompletedOutputAsync(recording);
+
+        recording.Status = DvrRecordingStatus.Completed;
+        recording.ActualEnd = DateTime.UtcNow;
+        recording.DurationSeconds = minutes * 60;
+        recording.ErrorMessage = null;
+        try
+        {
+            recording.FileSize = new FileInfo(recording.OutputPath!).Length;
+        }
+        catch { /* size is cosmetic; the import probe re-reads the file */ }
+        recording.LastUpdated = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("[Catchup] Downloaded recording {Id} ({Size:F2} GB)",
+            recording.Id, (recording.FileSize ?? 0) / 1e9);
+
+        await dvrService.AnnounceCompletedRecordingAsync(recording);
+
+        // Same handoff the live scheduler does after a stop: probe the
+        // file, score quality, create the EventFile, move into the
+        // library. All quality/codec metadata comes from the probe.
+        if (recording.EventId.HasValue)
+        {
+            try
+            {
+                var eventDvr = scoped.GetRequiredService<EventDvrService>();
+                await eventDvr.ImportCompletedRecordingAsync(recording.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Catchup] Failed to auto-import recording {Id}", recording.Id);
+            }
+        }
     }
 
     /// <summary>

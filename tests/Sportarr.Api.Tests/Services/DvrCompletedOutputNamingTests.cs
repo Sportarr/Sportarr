@@ -154,6 +154,63 @@ public class DvrCompletedOutputNamingTests
         return ffprobePath;
     }
 
+    // Issue #409: with Rename Events off, a DVR name had no SxxEyy. Jellyfin
+    // then grouped two sessions of one day as two versions of one episode.
+    private static string EventOutputFileName(
+        NamingFixture fixture, MediaManagementSettings settings, string title, DateTime start, int episode, string? partName = null)
+    {
+        var evt = new Event
+        {
+            Title = title, Sport = "Motorsport", EventDate = start, SeasonNumber = 2026, EpisodeNumber = episode,
+            League = new League { Name = "SBK", Sport = "Motorsport" }
+        };
+        var recording = new DvrRecording { Title = title, ScheduledStart = start, Quality = "HDTV-1080p", PartName = partName };
+        var method = typeof(DvrRecordingService).GetMethod(
+            "BuildEventOutputFileName", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        return (string)method.Invoke(fixture.Service, new object?[] { recording, evt, settings, "mkv", episode })!;
+    }
+
+    [Fact]
+    public async Task WithRenamingOffSameDaySessionsGetTheirOwnEpisodeTag()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var settings = new MediaManagementSettings { RenameEvents = false };
+
+        var superpole = EventOutputFileName(fixture, settings,
+            "Pirelli Spanish Round Superpole - Race", new DateTime(2026, 10, 18, 9, 10, 0, DateTimeKind.Utc), 2);
+        var race2 = EventOutputFileName(fixture, settings,
+            "Pirelli Spanish Round - Race 2", new DateTime(2026, 10, 18, 13, 30, 0, DateTimeKind.Utc), 3);
+
+        superpole.Should().Be("Pirelli Spanish Round Superpole - Race - S2026E02 [2026-10-18_0910].mkv");
+        race2.Should().Be("Pirelli Spanish Round - Race 2 - S2026E03 [2026-10-18_1330].mkv");
+    }
+
+    [Fact]
+    public async Task WithRenamingOffThePartFollowsTheEpisodeTag()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var settings = new MediaManagementSettings { RenameEvents = false };
+
+        EventOutputFileName(fixture, settings, "UFC 320 Ankalaev vs Pereira 2",
+                new DateTime(2026, 10, 4, 22, 0, 0, DateTimeKind.Utc), 31, partName: "Main Card")
+            .Should().Be("UFC 320 Ankalaev vs Pereira 2 - S2026E31 - Main Card [2026-10-04_2200].mkv");
+    }
+
+    [Fact]
+    public async Task WithRenamingOnTheStandardFormatStillDecides()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var settings = new MediaManagementSettings
+        {
+            RenameEvents = true,
+            StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}"
+        };
+
+        EventOutputFileName(fixture, settings,
+                "Pirelli Spanish Round - Race 2", new DateTime(2026, 10, 18, 13, 30, 0, DateTimeKind.Utc), 3)
+            .Should().Be("SBK - S2026E03 - Pirelli Spanish Round - Race 2 - HDTV-1080p.DVR.mkv");
+    }
+
     [Fact]
     public async Task RenamesDirectRecordingWithDetectedQualityAndFinalExtension()
     {

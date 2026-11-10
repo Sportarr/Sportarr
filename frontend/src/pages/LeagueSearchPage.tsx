@@ -217,6 +217,7 @@ export default function LeagueSearchPage() {
       allowHighlights,
       sessionTypeQualityProfiles,
       enableDvr,
+      monitoredFacets,
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -241,6 +242,7 @@ export default function LeagueSearchPage() {
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
       enableDvr?: boolean;
+      monitoredFacets?: string | null;
     }) => {
       // Teamless sports (motorsport, golf, darts, climbing, gambling, individual
       // tennis, badminton, table tennis, snooker) and fighting leagues that
@@ -266,6 +268,7 @@ export default function LeagueSearchPage() {
         monitoredSessionTypes: monitoredSessionTypes,
         monitoredEventTypes: monitoredEventTypes,
         sessionTypeQualityProfiles: sessionTypeQualityProfiles ?? null,
+        monitoredFacets: monitoredFacets ?? null,
         searchQueryTemplate: searchQueryTemplate,
         tags: tags,
         rootFolderId: rootFolderId,
@@ -305,6 +308,8 @@ export default function LeagueSearchPage() {
         message = sessionCount > 0
           ? `Added ${variables.league.strLeague} with ${sessionCount} monitored session type${sessionCount !== 1 ? 's' : ''}!`
           : `Added ${variables.league.strLeague} (all session types monitored)`;
+      } else if (variables.monitoredFacets != null) {
+        message = `Added ${variables.league.strLeague} with your event choice`;
       } else if (teamless) {
         message = `Added ${variables.league.strLeague} (all events monitored)`;
       } else {
@@ -366,7 +371,8 @@ export default function LeagueSearchPage() {
       allowHighlights,
       sessionTypeQualityProfiles,
       rootFolderId,
-      enableDvr
+      enableDvr,
+      monitoredFacets
     }: {
       leagueId: number;
       monitoredTeamIds: string[];
@@ -395,6 +401,7 @@ export default function LeagueSearchPage() {
       sessionTypeQualityProfiles?: string | null;
       rootFolderId?: number | null;
       enableDvr?: boolean;
+      monitoredFacets?: string | null;
     }) => {
       // Teamless sports auto-monitor; other sports require at least one selected team.
       const teamless = isTeamlessSport(sport, leagueName, sportFormat) || usesFightingEventTypes(sport, leagueName);
@@ -411,6 +418,7 @@ export default function LeagueSearchPage() {
         monitoredSessionTypes: monitoredSessionTypes,
         monitoredEventTypes: monitoredEventTypes,
         sessionTypeQualityProfiles: sessionTypeQualityProfiles ?? null,
+        monitoredFacets: monitoredFacets ?? null,
         applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
         searchQueryTemplate: searchQueryTemplate,
         tags: tags,
@@ -572,7 +580,10 @@ export default function LeagueSearchPage() {
     allowHighlights: boolean,
     sessionTypeQualityProfiles: string | null,
     enableDvr: boolean,
+    _keepAllEvents?: boolean,
+    monitoredFacets?: string | null,
   ) => {
+    void _keepAllEvents;
     const modalData = addModalDataRef.current;
     if (modalData?.editMode && modalData.leagueId) {
       updateLeagueSettingsMutation.mutate({
@@ -602,7 +613,8 @@ export default function LeagueSearchPage() {
         allowHighlights,
         sessionTypeQualityProfiles,
         rootFolderId,
-        enableDvr
+        enableDvr,
+        monitoredFacets
       });
     } else {
       addLeagueMutation.mutate({
@@ -628,7 +640,8 @@ export default function LeagueSearchPage() {
         retentionDays,
         allowHighlights,
         sessionTypeQualityProfiles,
-        enableDvr
+        enableDvr,
+        monitoredFacets
       });
     }
   };

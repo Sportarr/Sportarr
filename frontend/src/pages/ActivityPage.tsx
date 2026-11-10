@@ -331,6 +331,11 @@ export default function ActivityPage() {
   const shownVideoChoiceDialog = videoChoiceDialog ?? lastVideoChoiceDialog.current;
   const [videoChoiceBusy, setVideoChoiceBusy] = useState(false);
   const [removeHistoryDialog, setRemoveHistoryDialog] = useState<RemoveHistoryDialog | null>(null);
+  const [deleteFileDialog, setDeleteFileDialog] = useState<{ item: GrabHistoryItem; error?: string } | null>(null);
+  const lastDeleteFileDialog = React.useRef<{ item: GrabHistoryItem; error?: string } | null>(null);
+  if (deleteFileDialog) lastDeleteFileDialog.current = deleteFileDialog;
+  const shownDeleteFileDialog = deleteFileDialog ?? lastDeleteFileDialog.current;
+  const [deleteFileBusy, setDeleteFileBusy] = useState(false);
   const [removeBlocklistDialog, setRemoveBlocklistDialog] = useState<RemoveBlocklistDialog | null>(null);
   const [selectedBlocklistIds, setSelectedBlocklistIds] = useState<Set<number>>(new Set());
   const [bulkRemoveBlocklistOpen, setBulkRemoveBlocklistOpen] = useState(false);
@@ -650,16 +655,29 @@ export default function ActivityPage() {
   // event held, so deleting a 720p row removed the 4K file the user actually
   // had. eventFileId is resolved from the row's own destination path, so a
   // row that no longer owns a file offers no button at all.
-  const handleDeleteFile = async (item: GrabHistoryItem) => {
+  // The page asks in its own dialog, not window.confirm(). An app that shows
+  // the page in an embedded web view can suppress the browser dialog, and then
+  // the button does nothing.
+  const handleDeleteFile = (item: GrabHistoryItem) => {
     if (!item.eventId || item.eventFileId == null) return;
-    const fileName = item.destinationPath?.split('/').pop() || item.title;
-    if (!confirm(`Delete "${fileName}" from disk? Only this file is removed. The entry stays in History so you can re-grab it later.`)) return;
+    setDeleteFileDialog({ item });
+  };
+
+  const confirmDeleteFile = async () => {
+    if (!deleteFileDialog || deleteFileBusy) return;
+    const { item } = deleteFileDialog;
+    setDeleteFileBusy(true);
     try {
       await apiClient.delete(`/events/${item.eventId}/files/${item.eventFileId}`);
+      setDeleteFileDialog(null);
       loadGrabHistory();
     } catch (error: any) {
       console.error('Failed to delete file:', error);
-      alert(error.response?.data?.error || 'Failed to delete file');
+      setDeleteFileDialog(current => current
+        ? { ...current, error: error.response?.data?.error || 'Failed to delete file' }
+        : current);
+    } finally {
+      setDeleteFileBusy(false);
     }
   };
 
@@ -2805,6 +2823,21 @@ export default function ActivityPage() {
         )}
 
         <ConfirmationModal
+          isOpen={deleteFileDialog !== null}
+          onClose={() => { if (!deleteFileBusy) setDeleteFileDialog(null); }}
+          onConfirm={confirmDeleteFile}
+          title="Delete file"
+          message={shownDeleteFileDialog && (
+            <div className="space-y-3">
+              <p>Delete "{shownDeleteFileDialog.item.destinationPath?.split('/').pop() || shownDeleteFileDialog.item.title}" from disk? Only this file is removed. The entry stays in History so you can re-grab it later.</p>
+              {shownDeleteFileDialog.error && <p className="text-red-400">{shownDeleteFileDialog.error}</p>}
+            </div>
+          )}
+          confirmText="Delete"
+          isLoading={deleteFileBusy}
+        />
+
+        <ConfirmationModal
           isOpen={manualImportDialog !== null}
           onClose={() => { if (!manualImportBusy) setManualImportDialog(null); }}
           onConfirm={confirmManualImport}
@@ -3001,7 +3034,12 @@ export default function ActivityPage() {
                 <p className="text-sm text-gray-400 mt-2">
                   {blocklistAction === 'none' && (onlyClientPendings
                     ? 'Pending downloads are blocklisted so the scanner does not add them again.'
-                    : `The release${removeDialogTotal > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`)}
+                    // A kept file is not tracked, so the next disk scan lists it again.
+                    : onlyDiskRows && !deleteDiskFile
+                      ? `The file${removeDialogTotal > 1 ? 's' : ''} stay${removeDialogTotal > 1 ? '' : 's'} on disk and will be listed again on the next disk scan. Choose a blocklist option to stop listing ${removeDialogTotal > 1 ? 'them' : 'it'}.`
+                      : onlyDiskRows
+                        ? `The file${removeDialogTotal > 1 ? 's are' : ' is'} removed from disk, or moved to the recycle bin if one is set.`
+                      : `The release${removeDialogTotal > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`)}
                   {blocklistAction === 'blocklistAndSearch' && `Blocklist release${removeDialogTotal > 1 ? 's' : ''} and search for replacement${removeDialogTotal > 1 ? 's' : ''}`}
                   {blocklistAction === 'blocklistOnly' && `Blocklist release${removeDialogTotal > 1 ? 's' : ''} without searching for replacement${removeDialogTotal > 1 ? 's' : ''}`}
                 </p>

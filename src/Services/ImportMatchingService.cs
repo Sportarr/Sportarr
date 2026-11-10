@@ -356,7 +356,8 @@ public class ImportMatchingService
 
         var driftLeagueIds = candidates
             .Where(candidate => candidate.LeagueId.HasValue &&
-                LeagueReleaseNamePolicy.AllowsObservedDateDrift(releaseTitle, candidate, releaseDate.Value))
+                (LeagueReleaseNamePolicy.AllowsObservedDateDrift(releaseTitle, candidate, releaseDate.Value) ||
+                 ImportDateMatchPolicy.CanUseNearbyDate(candidate, releaseDate.Value, releaseTitle)))
             .Select(candidate => candidate.LeagueId!.Value)
             .Distinct()
             .ToArray();
@@ -738,6 +739,11 @@ public class ImportMatchingService
             int.TryParse(evt.Round, out var nascarEventRound) &&
             nascarReleaseRound == nascarEventRound;
 
+        var namesMls = LibraryImportService.IsMlsDatedName(originalTitle) ||
+            sportsResult?.Organization?.Equals("American Major League Soccer", StringComparison.OrdinalIgnoreCase) == true;
+        if (namesMls && !LibraryImportService.MlsNameFitsEvent(originalTitle, searchTitle, evt))
+            return new ImportMatchScore(-100, 0);
+
         if (CricketRugbyReleaseNamePolicy.HasIdentityConflict(originalTitle, evt))
         {
             return new ImportMatchScore(-100, 0);
@@ -833,8 +839,8 @@ public class ImportMatchingService
             confidence += fixturePoints;
         }
         // Contains match = 40 points
-        else if ((searchFixture.Length >= 3 && normalizedEvent.Contains(searchFixture, StringComparison.OrdinalIgnoreCase)) ||
-                 (normalizedEvent.Length >= 3 && searchFixture.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
+        else if ((searchFixture.Length >= 3 && LibraryImportService.ContainsTitlePhrase(normalizedEvent, searchFixture)) ||
+                 (normalizedEvent.Length >= 3 && LibraryImportService.ContainsTitlePhrase(searchFixture, normalizedEvent)))
         {
             confidence += 40;
         }
@@ -998,7 +1004,7 @@ public class ImportMatchingService
         // The grab side already compares this way.
         if (sportsResult?.EventDate != null)
         {
-            var dateMatch = ImportDateMatchPolicy.Evaluate(evt, sportsResult.EventDate.Value);
+            var dateMatch = ImportDateMatchPolicy.Evaluate(evt, sportsResult.EventDate.Value, originalTitle, datePeers);
             if (dateMatch.DaysDifference > 0 && ReleaseMatchingService.DateMatchesAnotherTeamEvent(
                     evt, sportsResult.EventDate.Value.Date, datePeers))
             {
@@ -1045,7 +1051,9 @@ public class ImportMatchingService
                 // Event monitors all parts
                 confidence += 15;
             }
-            else if (evt.MonitoredParts.Contains(detectedPart, StringComparison.OrdinalIgnoreCase))
+            else if (EventPartDetector.IsMonitored(
+                evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                detectedPart))
             {
                 // Event specifically monitors this part
                 confidence += 20;

@@ -246,6 +246,102 @@ public class EventPartDetector
                partName.Equals(FullEventSegmentName, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// True when the monitored parts of an event are only "Full Event".
+    /// The event value overrides the league value. Such an event keeps one
+    /// whole file and never splits into parts.
+    /// </summary>
+    public static bool IsFullEventOnly(string? eventMonitoredParts, string? leagueMonitoredParts)
+    {
+        var effective = eventMonitoredParts ?? leagueMonitoredParts;
+        return effective != null
+            && effective.Trim().Equals(FullEventSegmentName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when an event splits into parts. The multi-part setting must be
+    /// on, and the event must not be set to "Full Event".
+    /// </summary>
+    public static bool UsesParts(bool enableMultiPartEpisodes, string? eventMonitoredParts, string? leagueMonitoredParts)
+        => enableMultiPartEpisodes && !IsFullEventOnly(eventMonitoredParts, leagueMonitoredParts);
+
+    /// <inheritdoc cref="UsesParts(bool, string?, string?)"/>
+    public static bool UsesParts(bool enableMultiPartEpisodes, Event evt, League? league = null)
+        => UsesParts(enableMultiPartEpisodes, evt.MonitoredParts, (league ?? evt.League)?.MonitoredParts);
+
+    /// <summary>
+    /// True when a file holds the whole event, not one part. The file editor
+    /// can store the name "Full Event", so that name counts as whole too.
+    /// </summary>
+    public static bool IsWholeEventFile(EventFile file) =>
+        (file.PartNumber is null or 0) && IsFullEvent(file.PartName);
+
+    /// <summary>
+    /// The PartsBeforeFullEvent value that stands for null (all parts).
+    /// </summary>
+    public const string AllPartsMarker = "*";
+
+    /// <summary>
+    /// A monitored-parts value and the value kept to undo "Full Event".
+    /// </summary>
+    public readonly record struct MonitoredPartsChange(string? MonitoredParts, string? PartsBeforeFullEvent);
+
+    /// <summary>
+    /// Change a monitored-parts value. Turning "Full Event" on keeps the earlier
+    /// value. A restore request while "Full Event" is on brings that value back.
+    /// Without a kept value, the requested value applies. Any other change
+    /// forgets the kept value. A monitoring toggle (keepEarlierValue) is not a
+    /// parts choice, so it keeps the kept value.
+    /// </summary>
+    public static MonitoredPartsChange ChangeMonitoredParts(
+        string? current, string? partsBeforeFullEvent, string? requested, bool restorePrevious = false,
+        bool keepEarlierValue = false)
+    {
+        var currentIsFullEvent = IsFullEventOnly(current, null);
+        if (keepEarlierValue)
+        {
+            // A monitoring toggle keeps an event's own "Full Event" choice.
+            if (currentIsFullEvent)
+                return new(FullEventSegmentName, partsBeforeFullEvent);
+            return IsFullEventOnly(requested, null) && !currentIsFullEvent && partsBeforeFullEvent == null
+                ? new(FullEventSegmentName, current ?? AllPartsMarker)
+                : new(requested, partsBeforeFullEvent);
+        }
+
+        if (restorePrevious && currentIsFullEvent && partsBeforeFullEvent != null)
+            return new(DecodePartsBeforeFullEvent(partsBeforeFullEvent), null);
+
+        if (IsFullEventOnly(requested, null))
+        {
+            // The stored value is always written as "Full Event".
+            return currentIsFullEvent
+                ? new(FullEventSegmentName, partsBeforeFullEvent)
+                : new(FullEventSegmentName, current ?? AllPartsMarker);
+        }
+
+        return new(requested, null);
+    }
+
+    /// <summary>
+    /// The monitored-parts value a kept PartsBeforeFullEvent value stands for.
+    /// </summary>
+    public static string? DecodePartsBeforeFullEvent(string partsBeforeFullEvent) =>
+        partsBeforeFullEvent == AllPartsMarker ? null : partsBeforeFullEvent;
+
+    /// <summary>
+    /// True when two monitored-parts values name the same parts in any order.
+    /// Null (all parts) only matches null.
+    /// </summary>
+    public static bool SameMonitoredParts(string? left, string? right)
+    {
+        if (left == null || right == null)
+            return left == null && right == null;
+        static HashSet<string> Names(string value) => value
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Names(left).SetEquals(Names(right));
+    }
+
     // Motorsport session types by league
     // These are used to filter which sessions a user wants to monitor
     // Each session is a separate event from Sportarr API (not multi-part episodes)
@@ -463,7 +559,7 @@ public class EventPartDetector
     /// Detect UFC event type from event title
     /// - ContenderSeries: "Dana White's Contender Series", "DWCS" - single episode, no parts
     /// - PPV: "UFC 310", "UFC 309", etc. (numbered PPV events)
-    /// - Fight Night: "UFC Fight Night 262", "UFC Fight Night: Name vs Name", etc.
+    /// - Fight Night: "UFC Fight Night 262", "UFC Fight Night: Name vs Name", a TUF finale, etc.
     /// - Other: Any other UFC-related event
     /// </summary>
     public static UfcEventType DetectUfcEventType(string? eventTitle)
@@ -483,6 +579,11 @@ public class EventPartDetector
         if (Regex.IsMatch(title, @"\bUFC\s*FIGHT\s*NIGHT\b", RegexOptions.IgnoreCase))
             return UfcEventType.FightNight;
 
+        // An Ultimate Fighter finale is a fight card, so the monitor filter
+        // groups it with Fight Night. A weekly episode of the show is not.
+        if (IsTufFinale(title))
+            return UfcEventType.FightNight;
+
         // Check for numbered PPV events (UFC 310, UFC 309, etc.)
         if (Regex.IsMatch(title, @"\bUFC\s*\d{1,3}\b", RegexOptions.IgnoreCase))
             return UfcEventType.PPV;
@@ -492,6 +593,17 @@ public class EventPartDetector
             return UfcEventType.FightNight;
 
         return UfcEventType.Other;
+    }
+
+    // A TUF finale, such as "The Ultimate Fighter 28 Finale". An episode
+    // tag such as S28E14 marks a weekly show, even a season finale.
+    private static bool IsTufFinale(string? eventTitle)
+    {
+        if (string.IsNullOrEmpty(eventTitle))
+            return false;
+        var title = eventTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+        return Regex.IsMatch(title, @"\b(ULTIMATE\s*FIGHTER|TUF)\b.*\bFINALE\b", RegexOptions.IgnoreCase) &&
+               !Regex.IsMatch(title, @"\bS\d+\s*E\d+\b", RegexOptions.IgnoreCase);
     }
 
     /// <summary>
@@ -557,8 +669,9 @@ public class EventPartDetector
     /// </summary>
     public static bool IsFightNightStyleEvent(string? eventTitle, string? leagueName)
     {
-        // UFC Fight Night
-        if (DetectUfcEventType(eventTitle) == UfcEventType.FightNight)
+        // UFC Fight Night. A TUF finale counts as Fight Night for monitoring,
+        // but its card had early prelims, so it keeps the full card parts.
+        if (DetectUfcEventType(eventTitle) == UfcEventType.FightNight && !IsTufFinale(eventTitle))
             return true;
 
         // ONE Championship numbered and Fight Night events (2-part: Lead Card + Main Card)
@@ -826,6 +939,8 @@ public class EventPartDetector
 
         // UFC segments (default for other fighting sports)
         var ufcType = DetectUfcEventType(eventTitle);
+        if (IsTufFinale(eventTitle))
+            return FightingSegments;
         return ufcType switch
         {
             UfcEventType.ContenderSeries => new List<CardSegment>(),
@@ -916,10 +1031,69 @@ public class EventPartDetector
         if (string.IsNullOrWhiteSpace(partName) || IsFullEvent(partName))
             return null;
 
-        var match = GetSegmentDefinitions(sport, eventTitle, leagueName)
-            .FirstOrDefault(s => s.Name.Equals(partName, StringComparison.OrdinalIgnoreCase));
+        var definitions = GetSegmentDefinitions(sport, eventTitle, leagueName);
+        var canonical = CanonicalPartName(partName, definitions);
+        var match = definitions
+            .FirstOrDefault(s => s.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
 
         return match?.PartNumber;
+    }
+
+    /// <summary>
+    /// True when two part names mean the same segment. Main Card and Main Show
+    /// are the same segment, named for fighting and for wrestling. Main Event
+    /// is a different part name and does not match either.
+    /// </summary>
+    public static bool PartNamesMatch(string? left, string? right)
+    {
+        if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase)) return true;
+        return IsMainSegmentName(left) && IsMainSegmentName(right);
+    }
+
+    private static bool IsMainSegmentName(string? name) =>
+        string.Equals(name, "Main Card", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "Main Show", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True when a requested part name asks for the main segment of an event.
+    /// An unlabelled release counts as the main segment, so it may satisfy
+    /// such a request.
+    /// </summary>
+    public static bool IsMainPartRequest(string? partName) =>
+        partName != null && partName.Trim().ToLowerInvariant()
+            is "main card" or "main show" or "main event" or "main";
+
+    /// <summary>
+    /// True when the monitored part names include the part. A Main Card entry
+    /// also covers Main Show, because the part selector lists the fighting
+    /// names for every combat league.
+    /// </summary>
+    public static bool IsMonitored(IEnumerable<string> monitoredPartNames, string partName) =>
+        monitoredPartNames.Any(name => PartNamesMatch(name, partName));
+
+    /// <summary>
+    /// Map a requested part name to the name this event defines. A request for
+    /// Main Card on a wrestling show becomes Main Show, and the other way round.
+    /// Any other name is returned unchanged.
+    /// </summary>
+    public static string? CanonicalPartName(string? requested, IEnumerable<SegmentDefinition> definitions)
+    {
+        if (string.IsNullOrWhiteSpace(requested) || !IsMainSegmentName(requested.Trim()))
+            return requested;
+
+        var defined = definitions.Where(d => d.PartNumber > 0).Select(d => d.Name).ToList();
+        if (defined.Any(n => n.Equals(requested.Trim(), StringComparison.OrdinalIgnoreCase)))
+            return defined.First(n => n.Equals(requested.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        return defined.FirstOrDefault(IsMainSegmentName) ?? requested;
+    }
+
+    public static string? CanonicalPartName(string? requested, string? sport, string? eventTitle,
+        string? leagueName)
+    {
+        if (string.IsNullOrWhiteSpace(requested) || string.IsNullOrWhiteSpace(sport))
+            return requested;
+        return CanonicalPartName(requested, GetSegmentDefinitions(sport, eventTitle, leagueName));
     }
 
     /// <summary>
@@ -954,8 +1128,9 @@ public class EventPartDetector
     {
         bool HasAnyFile() => presentPartNumbers.Count > 0;
 
-        // Optional feature off, or a sport that never splits into parts: one file is enough.
-        if (!enableMultiPartEpisodes || !IsFightingSport(sport ?? string.Empty))
+        // Optional feature off, a "Full Event" event, or a sport that never splits into parts: one file is enough.
+        if (!UsesParts(enableMultiPartEpisodes, eventMonitoredParts, leagueMonitoredParts)
+            || !IsFightingSport(sport ?? string.Empty))
             return HasAnyFile();
 
         var parts = GetSegmentDefinitions(sport ?? "Fighting", eventTitle, leagueName)
@@ -980,7 +1155,7 @@ public class EventPartDetector
 
         // Required = monitored parts, minus the optional Post Show (see PostShowSegmentName).
         var required = parts
-            .Where(p => monitoredPartNames == null || monitoredPartNames.Contains(p.Name))
+            .Where(p => monitoredPartNames == null || IsMonitored(monitoredPartNames, p.Name))
             .Where(p => !p.Name.Equals(PostShowSegmentName, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
@@ -994,7 +1169,7 @@ public class EventPartDetector
     public static bool AreAllMonitoredPartsPresent(Event evt, bool enableMultiPartEpisodes, League? leagueOverride = null)
     {
         var league = leagueOverride ?? evt.League;
-        var presentParts = evt.Files.Where(f => f.Exists).Select(f => f.PartNumber).ToArray();
+        var presentParts = evt.Files.Where(f => f.Exists && !f.IsParked).Select(f => f.PartNumber).ToArray();
         return AreAllMonitoredPartsPresent(evt.Sport, evt.Title, league?.Name,
             evt.MonitoredParts, league?.MonitoredParts, presentParts, enableMultiPartEpisodes);
     }
@@ -1057,6 +1232,11 @@ public class EventPartDetector
         var a = LastNameToken(sides[0]);
         var b = LastNameToken(sideB);
         if (a == null || b == null)
+            return false;
+
+        // "UFC 75 Champion vs Champion" names no fighters. A second side with a
+        // given name, as in "Wanderlei Silva vs Thiago Silva", names one.
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase) && !sideB.Trim().Contains(' '))
             return false;
 
         surnameA = a;
@@ -1166,6 +1346,21 @@ public class EventPartDetector
         @"\b(?:(?:free[\s._-]*)?practice|fp)[\s._-]*(?<number>\d{1,2})\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    // Some uploaders put the race of the round after the session, as in "Quali2"
+    // or "Quali.2". The number is one digit from 1 to 3 and must stand alone, so "1080p" and "2026" do not count.
+    // The pattern lives here, not in the session table, so no other series reads it.
+    public static readonly Regex SupercarsGluedSessionPattern = new(
+        @"\b(?:(?<qualifying>qualif(?:ying|ier)?|qual[iy])|(?<shootout>shootout))[\s._-]*(?<race>[1-3])\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex SupercarsShootoutWord = new(
+        @"\bshootout\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // Without a round the number cannot be mapped to a race, so it is not read.
+    private static readonly Regex SupercarsRoundPattern = new(
+        @"\b(?:Round|R)[\s._-]*0*[1-9][0-9]?\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     public static string? DetectMotorsportSessionIdentity(
         string title,
         string? leagueName,
@@ -1188,6 +1383,14 @@ public class EventPartDetector
             IndyCarFinalPracticePattern.IsMatch(normalizedTitle))
         {
             return "Final Practice";
+        }
+
+        if (leagueName?.Contains("Supercars", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var glued = SupercarsGluedSessionPattern.Match(normalizedTitle);
+            // A title that names both sessions is the shootout, as "Quali 2 Top 10 Shootout".
+            if (glued.Success && SupercarsRoundPattern.IsMatch(normalizedTitle))
+                return glued.Groups["shootout"].Success || SupercarsShootoutWord.IsMatch(normalizedTitle) ? "Shootout" : "Qualifying";
         }
 
         var session = releaseTitle
@@ -1576,7 +1779,7 @@ public class EventPartDetector
     public static readonly List<FightingEventTypeDefinition> UfcEventTypes = new()
     {
         new() { Id = "PPV", DisplayName = "UFC Numbered Event (PPV)", Examples = new[] { "UFC 310", "UFC 311" } },
-        new() { Id = "FightNight", DisplayName = "UFC Fight Night", Examples = new[] { "UFC Fight Night", "UFC on ESPN" } },
+        new() { Id = "FightNight", DisplayName = "UFC Fight Night", Examples = new[] { "UFC Fight Night", "UFC on ESPN", "TUF Finale" } },
         new() { Id = "ContenderSeries", DisplayName = "Dana White's Contender Series", Examples = new[] { "DWCS", "Contender Series" } },
     };
 

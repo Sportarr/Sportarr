@@ -1386,6 +1386,7 @@ public class PartIdentityPendingContractV2Tests
         if (includeLeagueScan)
         {
             builder.Services.AddSingleton(rig.Services.GetRequiredService<FileNamingService>());
+            builder.Services.AddSingleton(rig.Services.GetRequiredService<NotificationService>());
             builder.Services.AddSingleton(rig.Services.GetRequiredService<SportarrApiClient>());
             builder.Services.AddSingleton(rig.Services.GetRequiredService<EventQueryService>());
             builder.Services.AddSingleton<TaskService>(_ => throw new InvalidOperationException("Unexpected task route"));

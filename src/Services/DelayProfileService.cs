@@ -72,7 +72,6 @@ public class DelayProfileService
     public bool ShouldDelayRelease(
         ReleaseSearchResult release,
         DelayProfile profile,
-        List<ReleaseSearchResult> allReleases,
         QualityProfile? qualityProfile = null)
     {
         // Calculate delay based on protocol
@@ -86,18 +85,8 @@ public class DelayProfileService
             return false;
         }
 
-        // Check bypass conditions
-        if (profile.BypassIfHighestQuality && IsHighestQualityRelease(release, allReleases, qualityProfile))
+        if (BypassesDelay(release, profile, qualityProfile))
         {
-            _logger.LogDebug("[Delay Profile] Bypassing delay - highest quality release");
-            return false;
-        }
-
-        if (profile.BypassIfAboveCustomFormatScore &&
-            release.CustomFormatScore >= profile.MinimumCustomFormatScore)
-        {
-            _logger.LogDebug("[Delay Profile] Bypassing delay - custom format score {Score} >= {Min}",
-                release.CustomFormatScore, profile.MinimumCustomFormatScore);
             return false;
         }
 
@@ -142,7 +131,7 @@ public class DelayProfileService
         DelayProfile profile,
         QualityProfile? qualityProfile = null)
     {
-        var filtered = releases.Where(r => !ShouldDelayRelease(r, profile, releases, qualityProfile)).ToList();
+        var filtered = releases.Where(r => !ShouldDelayRelease(r, profile, qualityProfile)).ToList();
 
         var delayedCount = releases.Count - filtered.Count;
         if (delayedCount > 0)
@@ -286,31 +275,55 @@ public class DelayProfileService
     }
 
     /// <summary>
-    private bool IsHighestQualityRelease(
+    /// Decide if a release skips the delay. Search and RSS sync both use
+    /// this rule, so the two paths cannot drift apart.
+    /// </summary>
+    public bool BypassesDelay(
         ReleaseSearchResult release,
-        List<ReleaseSearchResult> allReleases,
+        DelayProfile profile,
         QualityProfile? qualityProfile)
     {
-        var releaseRank = QualityProfileRanker.GetRank(qualityProfile, release.Quality);
+        if (profile.BypassIfHighestQuality
+            && string.Equals(release.Protocol, profile.PreferredProtocol, StringComparison.OrdinalIgnoreCase)
+            && IsHighestAllowedQuality(qualityProfile, release.Quality))
+        {
+            _logger.LogDebug("[Delay Profile] Bypassing delay - {Quality} is the highest allowed quality in the profile",
+                release.Quality);
+            return true;
+        }
 
-        // An unreadable quality ranks zero, and zero used to compare equal to
-        // the best of a field where nothing else was readable either, so a
-        // release nobody could grade bypassed the delay it was supposed to
-        // wait out. Only a release whose quality is actually known can claim
-        // to be the best one.
-        if (releaseRank == 0)
+        if (profile.BypassIfAboveCustomFormatScore &&
+            release.CustomFormatScore >= profile.MinimumCustomFormatScore)
+        {
+            _logger.LogDebug("[Delay Profile] Bypassing delay - custom format score {Score} >= {Min}",
+                release.CustomFormatScore, profile.MinimumCustomFormatScore);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// True when the quality ranks at or above the best quality the profile
+    /// allows. The profile defines the bar, not the other releases found.
+    /// No release of a better quality can arrive, so waiting gains no quality.
+    /// </summary>
+    internal static bool IsHighestAllowedQuality(QualityProfile? qualityProfile, string? quality)
+    {
+        if (qualityProfile?.Items == null || qualityProfile.Items.Count == 0)
         {
             return false;
         }
 
-        // Judge it against the releases that can be graded. An ungradeable
-        // result should neither raise nor lower the bar.
-        var maxRank = allReleases
-            .Select(r => QualityProfileRanker.GetRank(qualityProfile, r.Quality))
-            .Where(rank => rank > 0)
-            .DefaultIfEmpty(0)
-            .Max();
+        // The profile lists the best quality first.
+        var bestAllowedIndex = qualityProfile.Items.FindIndex(item => item.Allowed);
+        if (bestAllowedIndex < 0)
+        {
+            return false;
+        }
 
-        return releaseRank >= maxRank;
+        // An unreadable quality ranks zero and must never skip the delay.
+        var releaseRank = QualityProfileRanker.GetRank(qualityProfile, quality);
+        return releaseRank > 0 && releaseRank >= qualityProfile.Items.Count - bestAllowedIndex;
     }
 }

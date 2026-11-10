@@ -31,9 +31,13 @@ namespace Sportarr.Api.Migrations
                 nullable: false,
                 defaultValue: 0);
 
-            migrationBuilder.Sql("UPDATE \"Leagues\" SET \"FinalTeamMode\" = 2 WHERE \"MonitorFinals\" = 1");
-            migrationBuilder.Sql("UPDATE \"Leagues\" SET \"PlayoffTeamMode\" = 2 WHERE \"MonitorPlayoffs\" = 1");
-            migrationBuilder.Sql("UPDATE \"Leagues\" SET \"PreseasonTeamMode\" = 2 WHERE \"MonitorPreseason\" = 1");
+            // The backfill from MonitorFinals / MonitorPlayoffs / MonitorPreseason
+            // runs in DatabaseInitializer once this migration has been applied.
+            // On SQLite those columns are added by the initializer, not by a
+            // migration, so on a fresh database they don't exist yet at this
+            // point. Older SQLite builds read an unknown "MonitorFinals" as a
+            // string literal and skipped the UPDATE without complaint. The build
+            // that ships with EF Core 10 disables that, and the UPDATE fails.
         }
 
         /// <inheritdoc />

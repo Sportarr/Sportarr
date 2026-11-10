@@ -106,6 +106,44 @@ public class NotificationService : INotificationService
     }
 
     /// <summary>
+    /// Ask the media server connections (Plex, Jellyfin, Emby) to rescan a
+    /// folder. No other notification gets a message, so a user sees nothing.
+    /// A connection takes part when it refreshes on imports or renames.
+    /// </summary>
+    public async Task RefreshMediaServersAsync(string? folderPath, List<int>? leagueTags = null)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var notifications = await db.Notifications.AsNoTracking()
+            .Where(n => n.Enabled && (n.Implementation == "Plex" || n.Implementation == "Jellyfin" || n.Implementation == "Emby"))
+            .ToListAsync();
+        if (leagueTags != null)
+            notifications = notifications.Where(n => Helpers.TagHelper.TagsMatch(n.Tags, leagueTags)).ToList();
+
+        foreach (var notification in notifications)
+        {
+            try
+            {
+                var config = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(notification.ConfigJson) ?? new();
+                if (!ShouldSendForTrigger(config, NotificationTrigger.OnRename) &&
+                    !ShouldSendForTrigger(config, NotificationTrigger.OnDownload))
+                    continue;
+
+                _ = notification.Implementation switch
+                {
+                    "Plex" => await RefreshPlexLibraryAsync(config, folderPath),
+                    "Jellyfin" => await RefreshJellyfinLibraryAsync(config, folderPath),
+                    _ => await RefreshEmbyLibraryAsync(config, folderPath)
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Media server refresh failed via {Implementation}", notification.Implementation);
+            }
+        }
+    }
+
+    /// <summary>
     /// Send a notification through all enabled notification providers that match the trigger
     /// </summary>
     /// <returns>

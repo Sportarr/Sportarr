@@ -41,6 +41,64 @@ public class DelayProfileQualityOrderTests
             .Should().BeSameAs(existingScore);
     }
 
+    [Fact]
+    public void HighestQualityBypassUsesTheBestAllowedQualityInTheProfile()
+    {
+        using var db = Db();
+        var service = Service(db);
+        var profile = Profile(Item("WEBDL-1080p", 15), Item("WEBDL-720p", 5));
+        var delay = new DelayProfile { UsenetDelay = 60, PreferredProtocol = "Usenet", BypassIfHighestQuality = true };
+        var best = Release("Event.1080p.WEB-DL", "WEBDL-1080p", 0);
+
+        service.SelectBestReleaseWithDelayProfile([best], delay, profile).Should().BeSameAs(best);
+    }
+
+    [Fact]
+    public void HighestQualityBypassIgnoresTheBestReleaseFoundWhenTheProfileAllowsBetter()
+    {
+        using var db = Db();
+        var service = Service(db);
+        var profile = Profile(Item("WEBDL-1080p", 15), Item("WEBDL-720p", 5));
+        var delay = new DelayProfile { UsenetDelay = 60, PreferredProtocol = "Usenet", BypassIfHighestQuality = true };
+        var onlyRelease = Release("Event.720p.WEB-DL", "WEBDL-720p", 0);
+
+        service.SelectBestReleaseWithDelayProfile([onlyRelease], delay, profile)
+            .Should().BeNull("a 1080p release can still arrive during the delay");
+    }
+
+    [Fact]
+    public void HighestQualityBypassNeedsThePreferredProtocol()
+    {
+        using var db = Db();
+        var service = Service(db);
+        var profile = Profile(Item("WEBDL-1080p", 15), Item("WEBDL-720p", 5));
+        var delay = new DelayProfile
+        {
+            UsenetDelay = 60, TorrentDelay = 60, PreferredProtocol = "Usenet", BypassIfHighestQuality = true
+        };
+        var torrent = Release("Event.1080p.WEB-DL", "WEBDL-1080p", 0);
+        torrent.Protocol = "Torrent";
+
+        service.SelectBestReleaseWithDelayProfile([torrent], delay, profile).Should().BeNull();
+    }
+
+    [Fact]
+    public void HighestQualityBypassSkipsDisallowedQualitiesAtTheTop()
+    {
+        using var db = Db();
+        var service = Service(db);
+        var top = Item("WEBDL-2160p", 19);
+        top.Allowed = false;
+        var profile = Profile(top, Item("WEBDL-1080p", 15), Item("WEBDL-720p", 5));
+        var delay = new DelayProfile { UsenetDelay = 60, PreferredProtocol = "Usenet", BypassIfHighestQuality = true };
+
+        var hd = Release("Event.1080p.WEB-DL", "WEBDL-1080p", 0);
+        var sd = Release("Event.720p.WEB-DL", "WEBDL-720p", 0);
+
+        service.SelectBestReleaseWithDelayProfile([hd], delay, profile).Should().BeSameAs(hd);
+        service.SelectBestReleaseWithDelayProfile([sd], delay, profile).Should().BeNull();
+    }
+
     private static SportarrDbContext Db() => new(
         new DbContextOptionsBuilder<SportarrDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())

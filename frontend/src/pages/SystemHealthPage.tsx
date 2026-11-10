@@ -42,7 +42,9 @@ const healthCheckTypeNames: { [key: number]: string } = {
   13: 'Database Corruption',
   14: 'League Folder',
   15: 'Backups',
-  16: 'Health Check'
+  16: 'Health Check',
+  17: 'Drop Folder',
+  18: 'Hidden File'
 };
 
 const levelNames = ['All OK', 'Notice', 'Warning', 'Error'];

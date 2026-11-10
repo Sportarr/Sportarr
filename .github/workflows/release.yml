@@ -228,14 +228,12 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            8.0.x
-            9.0.x
+          dotnet-version: '10.0.x'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Build Frontend
         run: |
@@ -524,8 +522,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.docker_tags.outputs.tags }}
-          # Always pull the latest base image so a refreshed aspnet:8.0 (with
-          # current Debian security patches) is used instead of a stale cached
+          # Always pull the latest base image so a refreshed aspnet:10.0 (with
+          # current Ubuntu security patches) is used instead of a stale cached
           # base. Paired with the CACHEBUST build-arg below, which re-runs the
           # in-image apt security upgrade every release so OS packages don't
           # freeze at old versions across cached builds (what Trivy flagged).

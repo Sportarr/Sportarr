@@ -69,6 +69,98 @@ export function getPartOptions(sport: string): string[] {
 }
 
 /**
+ * The monitored-parts value that keeps an event as one whole file. It is
+ * exclusive: it is never combined with parts. Matches
+ * EventPartDetector.FullEventSegmentName on the backend.
+ */
+export const FULL_EVENT_PART = 'Full Event';
+
+/**
+ * The part ticks to show when Full Event is turned off. The backend keeps the
+ * earlier value: "*" stands for all parts. Without a kept value, every part is
+ * ticked.
+ */
+export function partsAfterLeavingFullEvent(
+  partsBeforeFullEvent: string | null | undefined,
+  availableParts: string[],
+): string[] {
+  if (partsBeforeFullEvent === null || partsBeforeFullEvent === undefined || partsBeforeFullEvent === '*') {
+    return availableParts;
+  }
+  return partsBeforeFullEvent.split(',').map(p => p.trim()).filter(Boolean);
+}
+
+/**
+ * The league picker's part ticks after one click. Full Event is exclusive:
+ * ticking it clears the parts, and unticking it brings back the earlier part
+ * choices the backend kept. Ticking a part clears Full Event.
+ */
+export function togglePartChoice(
+  current: ReadonlySet<string>,
+  part: string,
+  availableParts: string[],
+  partsBeforeFullEvent?: string | null,
+): Set<string> {
+  if (part === FULL_EVENT_PART) {
+    return current.has(FULL_EVENT_PART)
+      ? new Set(partsAfterLeavingFullEvent(partsBeforeFullEvent, availableParts))
+      : new Set([FULL_EVENT_PART]);
+  }
+  const next = new Set(current);
+  next.delete(FULL_EVENT_PART);
+  if (next.has(part)) {
+    next.delete(part);
+  } else {
+    next.add(part);
+  }
+  return next;
+}
+
+/**
+ * The monitored-parts value the league picker saves. Null means all parts,
+ * "" means none, otherwise the ticked parts or Full Event.
+ */
+export function monitoredPartsValue(selected: ReadonlySet<string>, availableParts: string[]): string | null {
+  if (selected.has(FULL_EVENT_PART)) return FULL_EVENT_PART;
+  if (selected.size === availableParts.length) return null;
+  if (selected.size === 0) return '';
+  return Array.from(selected).join(',');
+}
+
+/**
+ * The file badge for an event. Hidden files are parked from the media
+ * server, so the badge counts the visible files and names the hidden ones.
+ */
+export function fileCountLabel(files: { isParked?: boolean }[] | undefined): string {
+  const all = files ?? [];
+  const hidden = all.filter(f => f.isParked).length;
+  const visible = all.length - hidden;
+  if (hidden > 0) return `${visible} ${visible === 1 ? 'File' : 'Files'} · ${hidden} hidden`;
+  return visible > 1 ? `${visible} Files` : 'Downloaded';
+}
+
+/** True when a monitored-parts value is only Full Event. */
+export function isFullEventOnly(monitoredParts: string | null | undefined): boolean {
+  return (monitoredParts ?? '').trim().toLowerCase() === FULL_EVENT_PART.toLowerCase();
+}
+
+/**
+ * The event value that turns Full Event off for one event. Null inherits the
+ * league. A league set to Full Event would keep the event whole, so the event
+ * then lists the parts its own type defines. Without those names it falls back
+ * to the sport's part options.
+ */
+export function partsValueLeavingFullEvent(
+  leagueMonitoredParts: string | null | undefined,
+  sport: string,
+  eventPartNames?: string[] | null,
+): string | null {
+  if (!isFullEventOnly(leagueMonitoredParts)) return null;
+  const names = eventPartNames && eventPartNames.length > 0 ? eventPartNames : getPartOptions(sport);
+  return names.join(',');
+}
+
+/**
  * Returns true for individual-player racket/cue sports (Badminton, Table Tennis, Snooker).
  * Tournaments feature individual players, not teams - all events should sync without team filtering.
  */

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- Default target framework for non-Windows platforms -->
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Sportarr</AssemblyName>
@@ -22,7 +22,7 @@
   <!-- Restore frontend dependencies.
        Incremental on the lockfile rather than on the mere presence of
        node_modules. npm writes node_modules/.package-lock.json on every install
-       (npm 7+; this project already requires Node 20, i.e. npm 9+), so it is an
+       (npm 7+; this project already requires Node 24, i.e. npm 11+), so it is an
        accurate record of what is actually installed. MSBuild skips this target
        while that stamp is newer than package-lock.json, so warm rebuilds cost
        nothing, but a changed lockfile — dependency bump, branch switch, rebase,
@@ -68,7 +68,7 @@
     <Copy SourceFiles="@(FrontendFiles)" DestinationFolder="wwwroot/%(RecursiveDir)" Condition="'$(NpmExitCode)' == '0' AND Exists('../_output/UI')" />
 
     <Message Importance="High" Text="Frontend build complete." Condition="'$(NpmExitCode)' == '0'" />
-    <Warning Text="npm not found - skipping frontend build. Install Node.js 20+ to build the UI." Condition="'$(NpmExitCode)' != '0'" />
+    <Warning Text="npm not found - skipping frontend build. Install Node.js 24+ to build the UI." Condition="'$(NpmExitCode)' != '0'" />
   </Target>
 
   <!-- Expose internal matching helpers (LibraryImportService.CalculateMatchConfidence)
@@ -82,37 +82,33 @@
   <!-- This requires the -windows target framework modifier -->
   <!-- EnableWindowsTargeting allows building Windows targets from Linux CI runners -->
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' OR '$(RuntimeIdentifier)' == 'win-x86' OR '$(RuntimeIdentifier)' == 'win-arm64'">
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <!-- Windows Service (SCM) integration: required by builder.Host.UseWindowsService() -->
   <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' OR '$(RuntimeIdentifier)' == 'win-x86' OR '$(RuntimeIdentifier)' == 'win-arm64'">
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.19" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14" />
     <!-- Use system SQLite instead of bundled e_sqlite3 to avoid "invalid opcode" crashes on older CPUs -->
     <PackageReference Include="SQLitePCLRaw.bundle_sqlite3" Version="2.1.10" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
-    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="9.0.10" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.14" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
-    <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Ical.Net" Version="4.3.1" />
     <PackageReference Include="FluentValidation" Version="11.10.0" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.10.0" />
-    <!-- Legacy code pages (Windows-1252, ISO-8859-x) for IPTV M3U
-         playlists that ship without a charset header. -->
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
     <!-- Fuzzy string matching for channel/EPG/event name resolvers. -->
     <PackageReference Include="FuzzySharp" Version="2.0.2" />
     <!-- BitTorrent infohash computation: lets us derive a torrent's real infohash

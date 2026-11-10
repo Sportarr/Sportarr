@@ -680,50 +680,80 @@ app.MapDelete("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}", asyn
 // the league preference, so one team's events can record from a
 // regional channel while the rest of the league uses the national one.
 
-// List a channel's team mappings.
+// List a channel's team mappings with the channel's rank in each team's
+// list (0 = first choice).
 app.MapGet("/api/iptv/channels/{channelId:int}/team-mappings", async (
     int channelId, SportarrDbContext db) =>
 {
-    var mappings = await db.ChannelTeamMappings
-        .AsNoTracking()
+    var teamIds = await db.ChannelTeamMappings
         .Where(m => m.ChannelId == channelId)
-        .Include(m => m.Team)
-        .Select(m => new
-        {
-            m.Id,
-            m.TeamId,
-            teamName = m.Team != null ? m.Team.Name : null,
-            m.IsPreferred,
-            m.Priority
-        })
+        .Select(m => m.TeamId)
         .ToListAsync();
+    var rows = await db.ChannelTeamMappings
+        .AsNoTracking()
+        .Where(m => teamIds.Contains(m.TeamId))
+        .Include(m => m.Team)
+        .ToListAsync();
+    var mappings = rows
+        .GroupBy(m => m.TeamId)
+        .SelectMany(g => TeamChannelSelection.RankOrder(g).Select((m, rank) => new { m, rank }))
+        .Where(x => x.m.ChannelId == channelId)
+        .OrderBy(x => x.m.Team != null ? x.m.Team.Name : null)
+        .Select(x => new
+        {
+            x.m.Id,
+            x.m.TeamId,
+            teamName = x.m.Team?.Name,
+            isPreferred = x.rank == 0,
+            priority = x.rank
+        })
+        .ToList();
     return Results.Ok(mappings);
 });
 
-// List the preferred channel per team (team-centric view for the UI).
+// List every team-channel mapping (team-centric view), in rank order
+// within each team. Priority is the rank (0 = first choice).
 app.MapGet("/api/iptv/team-mappings", async (SportarrDbContext db) =>
 {
-    var mappings = await db.ChannelTeamMappings
+    var rows = await db.ChannelTeamMappings
         .AsNoTracking()
         .Include(m => m.Team)
         .Include(m => m.Channel)
-        .Select(m => new
+        .ToListAsync();
+    var mappings = rows
+        .GroupBy(m => m.TeamId)
+        .OrderBy(g => g.Key)
+        .SelectMany(g => TeamChannelSelection.RankOrder(g).Select((m, rank) => new
         {
             m.Id,
             m.TeamId,
-            teamName = m.Team != null ? m.Team.Name : null,
+            teamName = m.Team?.Name,
             m.ChannelId,
-            channelName = m.Channel != null ? m.Channel.Name : null,
-            m.IsPreferred,
-            m.Priority
-        })
-        .ToListAsync();
+            channelName = m.Channel?.Name,
+            isPreferred = rank == 0,
+            priority = rank
+        }))
+        .ToList();
     return Results.Ok(mappings);
 });
 
-// Map a team to this channel as its preferred DVR channel. A team has at
-// most one preferred channel (enforced by a unique index), so any
-// existing preferred mapping for the team is demoted first.
+// A team's ranked channel list. The DVR tries rank 0 first, and the rest
+// become the backups in order.
+app.MapGet("/api/iptv/teams/{teamId:int}/channel-mappings", async (int teamId, SportarrDbContext db) =>
+{
+    if (!await db.Teams.AnyAsync(t => t.Id == teamId))
+        return Results.NotFound(new { error = "Team not found" });
+    return Results.Ok(await TeamChannelRanking.GetAsync(db, teamId));
+});
+
+// Replace a team's ranked channel list with the given order.
+app.MapPut("/api/iptv/teams/{teamId:int}/channel-mappings", (
+    int teamId, TeamChannelMappingsRequest? request, SportarrDbContext db, ILogger<Program> logger) =>
+    ReplaceTeamChannelsAsync(teamId, request, db, logger));
+
+// Add a channel to the end of a team's ranked list. The first channel a
+// team gets is its preferred channel. A channel already in the list keeps
+// its rank.
 app.MapPost("/api/iptv/channels/{channelId:int}/team-mappings/{teamId:int}", async (
     int channelId, int teamId, SportarrDbContext db, ILogger<Program> logger) =>
 {
@@ -732,47 +762,21 @@ app.MapPost("/api/iptv/channels/{channelId:int}/team-mappings/{teamId:int}", asy
     var team = await db.Teams.FindAsync(teamId);
     if (team == null) return Results.NotFound(new { error = "Team not found" });
 
-    var existingForTeam = await db.ChannelTeamMappings
-        .Where(m => m.TeamId == teamId)
-        .ToListAsync();
-    foreach (var other in existingForTeam.Where(m => m.ChannelId != channelId))
-    {
-        other.IsPreferred = false;
-    }
+    var mapping = await TeamChannelRanking.AppendAsync(db, teamId, channelId);
 
-    var mapping = existingForTeam.FirstOrDefault(m => m.ChannelId == channelId);
-    if (mapping == null)
-    {
-        mapping = new ChannelTeamMapping
-        {
-            ChannelId = channelId,
-            TeamId = teamId,
-            IsPreferred = true,
-            Priority = 1
-        };
-        db.ChannelTeamMappings.Add(mapping);
-    }
-    else
-    {
-        mapping.IsPreferred = true;
-    }
-
-    await db.SaveChangesAsync();
-    logger.LogInformation("[IPTV] Team '{Team}' now prefers channel '{Channel}' for DVR recordings",
-        team.Name, channel.Name);
-    return Results.Ok(new { mapping.Id, mapping.ChannelId, mapping.TeamId, mapping.IsPreferred });
+    logger.LogInformation("[IPTV] Channel '{Channel}' is in the DVR channel list of team '{Team}'",
+        channel.Name, team.Name);
+    // Report the rank the same way as the GET endpoints.
+    var entry = (await TeamChannelRanking.GetAsync(db, teamId)).First(e => e.ChannelId == channelId);
+    return Results.Ok(new { mapping.Id, mapping.ChannelId, mapping.TeamId, entry.IsPreferred, entry.Priority });
 });
 
-// Remove a team's mapping to this channel.
+// Remove a team's mapping to this channel. The ranks below it move up.
 app.MapDelete("/api/iptv/channels/{channelId:int}/team-mappings/{teamId:int}", async (
     int channelId, int teamId, SportarrDbContext db, ILogger<Program> logger) =>
 {
-    var mapping = await db.ChannelTeamMappings
-        .FirstOrDefaultAsync(m => m.ChannelId == channelId && m.TeamId == teamId);
-    if (mapping == null) return Results.NotFound();
-    db.ChannelTeamMappings.Remove(mapping);
-    await db.SaveChangesAsync();
-    logger.LogInformation("[IPTV] Removed team-channel preference (channel={Channel}, team={Team})",
+    if (!await TeamChannelRanking.RemoveAsync(db, teamId, channelId)) return Results.NotFound();
+    logger.LogInformation("[IPTV] Removed a channel from a team's DVR channel list (channel={Channel}, team={Team})",
         channelId, teamId);
     return Results.NoContent();
 });
@@ -1983,5 +1987,28 @@ app.MapGet("/api/v1/stream/sessions", (FFmpegStreamService streamService) =>
         if (string.IsNullOrWhiteSpace(client)) client = "unknown";
 
         return $"{address}|{client}|{channelId}";
+    }
+
+    /// <summary>
+    /// Replaces a team's ranked channel list. A missing list is a bad
+    /// request, so a body with a misspelled key cannot clear the list. An
+    /// empty list clears it.
+    /// </summary>
+    public static async Task<IResult> ReplaceTeamChannelsAsync(
+        int teamId, TeamChannelMappingsRequest? request, SportarrDbContext db, ILogger logger)
+    {
+        if (request?.ChannelIds == null)
+            return Results.BadRequest(new { error = "channelIds is required. Send an empty list to clear the team's channels." });
+
+        var team = await db.Teams.FindAsync(teamId);
+        if (team == null) return Results.NotFound(new { error = "Team not found" });
+
+        var missing = await TeamChannelRanking.ReplaceAsync(db, teamId, request.ChannelIds);
+        if (missing.Count > 0)
+            return Results.BadRequest(new { error = "Channel not found", channelIds = missing });
+
+        logger.LogInformation("[IPTV] Team '{Team}' now has {Count} ranked DVR channels",
+            team.Name, request.ChannelIds.Distinct().Count());
+        return Results.Ok(await TeamChannelRanking.GetAsync(db, teamId));
     }
 }

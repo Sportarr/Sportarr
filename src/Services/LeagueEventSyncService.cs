@@ -1162,6 +1162,10 @@ public class LeagueEventSyncService
             if (!toMonitor.Any())
                 return;
 
+            // The facet rules (League.MonitoredFacets) do not apply here. This
+            // is intentional. The user follows this athlete, so each event of
+            // the athlete is monitored. This includes events that the league
+            // rules exclude, for example a discipline the user did not pick.
             foreach (var e in toMonitor)
             {
                 e.Monitored = true;
@@ -1933,7 +1937,8 @@ public class LeagueEventSyncService
                     && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
                         apiEvent.Round, apiEvent.Title, cupStageSizes, apiEvent.HasLaterSeasonFinal)
                     && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
-                    && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes))
+                    && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes)
+                    && EventFacets.IsMonitored(league, apiEvent.Title))
                 {
                     existingEvent.Monitored = true;
                     needsUpdate = true;
@@ -2045,7 +2050,8 @@ public class LeagueEventSyncService
                 && ShouldMonitorEvent(league, apiEvent.EventDate, apiEvent.Season, currentSeason, latestSeasonWithData,
                     apiEvent.Round, apiEvent.Title, cupStageSizes, apiEvent.HasLaterSeasonFinal)
                 && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
-                && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes),
+                && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes)
+                && EventFacets.IsMonitored(league, apiEvent.Title),
             // Session/event types the league maps to a specific quality profile
             // (Race vs Practice, PPV vs weekly show) get that profile; the rest
             // inherit the league's. Multi-part fight cards are one event, so

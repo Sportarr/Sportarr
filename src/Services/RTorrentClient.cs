@@ -597,10 +597,18 @@ public class RTorrentClient
             urlBase = "/" + urlBase;
         urlBase = urlBase.TrimEnd('/');
 
-        var rpcPath = urlBase.EndsWith("/RPC2", StringComparison.OrdinalIgnoreCase)
-            ? urlBase
-            : $"{urlBase}/RPC2";
+        var rpcPath = IsRpcEndpoint(urlBase) ? urlBase : $"{urlBase}/RPC2";
         return $"{protocol}://{config.Host}:{config.Port}{rpcPath}";
+    }
+
+    // Seedboxes serve XML-RPC at /RPC2 or /xmlrpc. A path that already
+    // ends in one of these is the endpoint, so it is used as entered. Any
+    // other path is a base, and /RPC2 is added to it.
+    private static bool IsRpcEndpoint(string path)
+    {
+        var last = path[(path.LastIndexOf('/') + 1)..];
+        return last.Equals("RPC2", StringComparison.OrdinalIgnoreCase) ||
+               last.Equals("xmlrpc", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed record XmlRpcRequestResult(string? Body, HttpStatusCode? StatusCode, Exception? Error = null);

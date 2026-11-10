@@ -575,7 +575,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                     Sportarr.Api.Endpoints.EventFileEditorEndpoints.ApplyEdits(pathOwner, overrides);
 
                 var linkedParts = await db.EventFiles.AsNoTracking()
-                    .Where(file => file.EventId == evt.Id && file.Exists)
+                    .Where(file => file.EventId == evt.Id && file.Exists && !file.IsParked)
                     .Select(file => file.PartNumber)
                     .ToListAsync();
                 linkedParts.Add(pathOwner.PartNumber);
@@ -716,7 +716,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
 
             // Update event status
             var presentParts = await db.EventFiles.AsNoTracking()
-                .Where(file => file.EventId == evt.Id && file.Exists)
+                .Where(file => file.EventId == evt.Id && file.Exists && !file.IsParked)
                 .Select(file => file.PartNumber)
                 .ToListAsync();
             presentParts.Add(eventFile.PartNumber);
@@ -788,7 +788,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 var evt = await db.Events.Include(e => e.League)
                     .SingleAsync(e => e.Id == import.SuggestedEventId.Value);
                 var presentParts = await db.EventFiles.AsNoTracking()
-                    .Where(file => file.EventId == evt.Id && file.Exists && file.Id != importedFile.Id)
+                    .Where(file => file.EventId == evt.Id && file.Exists && !file.IsParked && file.Id != importedFile.Id)
                     .Select(file => file.PartNumber)
                     .ToListAsync();
                 presentParts.Add(importedFile.PartNumber);

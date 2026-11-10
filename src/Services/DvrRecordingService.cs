@@ -440,6 +440,7 @@ public class DvrRecordingService
             throw new InvalidOperationException($"Cannot update recording in status {recording.Status}");
         }
 
+        if (request.ChannelId != recording.ChannelId) recording.ChannelPinned = true;
         recording.ChannelId = request.ChannelId;
         recording.ScheduledStart = request.ScheduledStart;
         recording.ScheduledEnd = request.ScheduledEnd;
@@ -716,31 +717,47 @@ public class DvrRecordingService
         return result;
     }
 
+    // Cap auto-retries so a broken event (every channel fails) doesn't
+    // loop forever. Once we exhaust the fallback list we leave the failed
+    // recording as the final state.
+    internal const int MaxAutoRetries = 4;
+
     /// <summary>
-    /// When a recording fails, rotate to the next channel in
-    /// DvrRecording.FallbackChannelIds (Phase 3). Creates a NEW
-    /// DvrRecording row carrying the same event + scheduled times +
-    /// padding but with the next channel as primary and the remaining
-    /// fallbacks as backups. Returns the new recording id, or null
-    /// when no fallbacks remain.
+    /// True when a failure of this recording now would rotate to a fallback
+    /// channel that is not known to be dead. The check uses the same rules
+    /// as the rotation but changes nothing. The recording itself does not
+    /// count against its source's stream limit, because the stop frees that
+    /// slot.
     /// </summary>
-    public async Task<int?> TryRescheduleOnFallbackAsync(DvrRecording failed, string reason)
+    public async Task<bool> HasUsableFallbackAsync(DvrRecording recording)
     {
-        // Cap auto-retries so a broken event (every channel fails)
-        // doesn't loop forever. Once we exhaust the fallback list
-        // we leave the failed recording as the final state.
-        const int MaxAutoRetries = 4;
+        var (nextChannel, _) = await PickFallbackChannelAsync(recording, excludeRecordingId: recording.Id, log: false);
+
+        // The rotation still tries a dead channel as a last resort. A stop
+        // for that channel only trades a loop for a failure.
+        return nextChannel != null && !Sportarr.Api.Helpers.ChannelHealth.IsKnownBad(nextChannel.Status);
+    }
+
+    /// <summary>
+    /// The fallback channel a rotation would use, and the stored fallback
+    /// list. The list is null when no rotation is possible at all.
+    /// </summary>
+    private async Task<(IptvChannel? Next, List<int>? Backups)> PickFallbackChannelAsync(
+        DvrRecording failed, int? excludeRecordingId, bool log)
+    {
         if (failed.AutoRetryCount >= MaxAutoRetries)
         {
-            _logger.LogWarning("[DVR] Recording {Id} exhausted fallback retries ({Count}); not re-rotating",
-                failed.Id, failed.AutoRetryCount);
-            return null;
+            if (log)
+                _logger.LogWarning("[DVR] Recording {Id} exhausted fallback retries ({Count}); not re-rotating",
+                    failed.Id, failed.AutoRetryCount);
+            return (null, null);
         }
 
         if (string.IsNullOrWhiteSpace(failed.FallbackChannelIds))
         {
-            _logger.LogDebug("[DVR] Recording {Id} failed but no fallback channels stored", failed.Id);
-            return null;
+            if (log)
+                _logger.LogDebug("[DVR] Recording {Id} failed but no fallback channels stored", failed.Id);
+            return (null, null);
         }
 
         List<int>? backups;
@@ -750,20 +767,19 @@ public class DvrRecordingService
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "[DVR] Recording {Id}: FallbackChannelIds parse failed", failed.Id);
-            return null;
+            if (log)
+                _logger.LogWarning(ex, "[DVR] Recording {Id}: FallbackChannelIds parse failed", failed.Id);
+            return (null, null);
         }
-        if (backups == null || backups.Count == 0) return null;
+        if (backups == null || backups.Count == 0) return (null, null);
 
-        // Pick the next channel that's actually enabled + online. Skip
-        // any whose source already has a recording in progress (tuner
-        // conflict — same MaxStreams-saturated source would just fail
-        // again immediately).
-        var sourceIdsAtCapacity = await GetSourceIdsAtCapacityAsync();
-        var remainingBackups = new List<int>(backups);
+        // Pick the next channel that is enabled and online. Skip a channel
+        // whose source is already at its stream limit. It would fail again
+        // at once.
+        var sourceIdsAtCapacity = await GetSourceIdsAtCapacityAsync(excludeRecordingId);
         var viable = new List<IptvChannel>();
 
-        foreach (var candidateId in remainingBackups)
+        foreach (var candidateId in backups)
         {
             var candidate = await _db.IptvChannels
                 .Include(c => c.Source)
@@ -781,6 +797,22 @@ public class DvrRecordingService
         var nextChannel = viable
             .OrderByDescending(c => Sportarr.Api.Helpers.ChannelHealth.Rank(c.Status))
             .FirstOrDefault();
+        return (nextChannel, backups);
+    }
+
+    /// <summary>
+    /// When a recording fails, rotate to the next channel in
+    /// DvrRecording.FallbackChannelIds (Phase 3). Creates a NEW
+    /// DvrRecording row carrying the same event + scheduled times +
+    /// padding but with the next channel as primary and the remaining
+    /// fallbacks as backups. Returns the new recording id, or null
+    /// when no fallbacks remain.
+    /// </summary>
+    public async Task<int?> TryRescheduleOnFallbackAsync(DvrRecording failed, string reason)
+    {
+        var (nextChannel, backups) = await PickFallbackChannelAsync(failed, excludeRecordingId: null, log: true);
+        if (backups == null) return null;
+        var remainingBackups = new List<int>(backups);
 
         if (nextChannel == null)
         {
@@ -810,6 +842,7 @@ public class DvrRecordingService
             Status = DvrRecordingStatus.Scheduled,
             FallbackChannelIds = remainingBackups.Count > 0 ? JsonSerializer.Serialize(remainingBackups) : null,
             AutoRetryCount = failed.AutoRetryCount + 1,
+            ChannelPinned = failed.ChannelPinned,
             Created = DateTime.UtcNow,
         };
         _db.DvrRecordings.Add(rotated);
@@ -870,6 +903,14 @@ public class DvrRecordingService
         var earlyEndThreshold = scheduledEnd - ((scheduledEnd - scheduledStart) * EarlyEndGraceFraction);
         return now >= earlyEndThreshold;
     }
+
+    /// <summary>
+    /// Whether a recorder exit that finalizes as Completed can hide a failed
+    /// stream. True for an error exit inside the early-end grace window. The
+    /// event can still be live at that time, so the tail can be missing.
+    /// </summary>
+    internal static bool EarlyEndMayHideAFailure(int exitCode, DateTime now, DateTime windowEnd)
+        => exitCode != 0 && now < windowEnd.AddSeconds(-30);
 
     public async Task HandleRecorderExitAsync(int recordingId, int exitCode, string? errorSummary)
     {
@@ -943,12 +984,13 @@ public class DvrRecordingService
 
             _logger.LogInformation("[DVR] Recording {Id}: recorder exited {When} (scheduled end {End}); finalized as completed ({Size} bytes)",
                 recordingId, now >= windowEnd.AddSeconds(-30) ? "at the end of its window" : "within the early-end grace window", recording.ScheduledEnd, fileSize);
-            FirePostRecordingCommand(recording);
-
-            await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
-                $"Recording completed: {recording.Title}",
-                $"Duration: {duration / 60}m\nSize: {fileSize / 1024.0 / 1024.0:F0} MB",
-                recording);
+            if (EarlyEndMayHideAFailure(exitCode, now, windowEnd))
+            {
+                _logger.LogWarning("[DVR] Recording {Id}: recorder exited with code {Code} before the end of its window ({Error}). " +
+                    "It is kept as completed, but the end of the event can be missing",
+                    recordingId, exitCode, string.IsNullOrEmpty(errorSummary) ? "no error output" : SecretRedactor.Message(errorSummary));
+            }
+            await AnnounceCompletedRecordingAsync(recording);
             return;
         }
 
@@ -1008,12 +1050,13 @@ public class DvrRecordingService
     /// tuner-conflict awareness for both initial scheduling and
     /// auto-fallback rotation.
     /// </summary>
-    private async Task<HashSet<int>> GetSourceIdsAtCapacityAsync()
+    private async Task<HashSet<int>> GetSourceIdsAtCapacityAsync(int? excludeRecordingId = null)
     {
         var active = await _db.DvrRecordings
             .Include(r => r.Channel)
             .ThenInclude(c => c!.Source)
             .Where(r => r.Status == DvrRecordingStatus.Recording)
+            .Where(r => excludeRecordingId == null || r.Id != excludeRecordingId)
             .Where(r => r.Channel != null && r.Channel.Source != null)
             .Select(r => new { SourceId = r.Channel!.SourceId, MaxStreams = r.Channel.Source!.MaxStreams })
             .ToListAsync();
@@ -1186,16 +1229,26 @@ public class DvrRecordingService
         }
         else if (recording.Status == DvrRecordingStatus.Completed)
         {
-            FirePostRecordingCommand(recording);
-
-            var sizeMb = (result.FileSize ?? 0) / 1024.0 / 1024.0;
-            await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
-                $"Recording completed: {recording.Title}",
-                $"Duration: {(result.DurationSeconds ?? 0) / 60}m\nSize: {sizeMb:F0} MB",
-                recording);
+            await AnnounceCompletedRecordingAsync(recording);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Run the post-recording command and send the completed notification.
+    /// Live captures and catchup downloads both call this once, after the
+    /// final name is set and before the library import.
+    /// </summary>
+    public async Task AnnounceCompletedRecordingAsync(DvrRecording recording)
+    {
+        FirePostRecordingCommand(recording);
+
+        var sizeMb = (recording.FileSize ?? 0) / 1024.0 / 1024.0;
+        await NotifyRecordingAsync(NotificationTrigger.OnRecordingCompleted,
+            $"Recording completed: {recording.Title}",
+            $"Duration: {(recording.DurationSeconds ?? 0) / 60}m\nSize: {sizeMb:F0} MB",
+            recording);
     }
 
     /// <summary>
@@ -1868,6 +1921,15 @@ public class DvrRecordingService
             // Linked to an event - use same folder structure as regular imports
             var eventInfo = recording.Event;
 
+            // The folder and file name use the league name. Without the league
+            // they fall back to the sport, as in "Motorsport" for Formula 1.
+            // Load it only when this context tracks the event.
+            if (eventInfo.LeagueId.HasValue && eventInfo.League == null &&
+                _db.Entry(eventInfo).State != EntityState.Detached)
+            {
+                await _db.Entry(eventInfo).Reference(e => e.League).LoadAsync();
+            }
+
             // IMPORTANT: Calculate episode number BEFORE building folder path
             // This ensures the {Episode} token in EventFolderFormat has the correct value
             var episodeNumber = await _episodeNumberResolver.ResolveAsync(eventInfo);
@@ -1921,19 +1983,26 @@ public class DvrRecordingService
         string container,
         int episodeNumber)
     {
+        var brandingDate = eventInfo.BroadcastDate ?? eventInfo.EventDate.Date;
+        var season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString();
+        var episode = episodeNumber.ToString("00");
+
         if (!settings.RenameEvents)
         {
+            // Sportarr makes this file, so there is no release name to keep.
+            // The episode tag stays. Without it a media server can merge two
+            // sessions of one day into one episode (issue #409).
             var timestamp = recording.ScheduledStart.ToString("yyyy-MM-dd_HHmm");
             var unrenamedPartSuffix = !string.IsNullOrEmpty(recording.PartName)
                 ? $" - {SanitizeFileName(recording.PartName)}"
                 : "";
-            return $"{SanitizeFileName(eventInfo.Title)}{unrenamedPartSuffix} [{timestamp}].{container}";
+            var episodeTag = SanitizeFileName(FileNamingService.SeasonEpisodeTag(season, episode));
+            return $"{SanitizeFileName(eventInfo.Title)} - {episodeTag}{unrenamedPartSuffix} [{timestamp}].{container}";
         }
 
         var partSuffix = !string.IsNullOrEmpty(recording.PartName)
             ? $" - {recording.PartName}"
             : "";
-        var brandingDate = eventInfo.BroadcastDate ?? eventInfo.EventDate.Date;
         var tokens = new FileNamingTokens
         {
             EventTitle = eventInfo.Title,
@@ -1946,8 +2015,8 @@ public class DvrRecordingService
             OriginalTitle = recording.Title,
             OriginalFilename = recording.Title,
             Series = eventInfo.League?.Name ?? eventInfo.Sport,
-            Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString(),
-            Episode = episodeNumber.ToString("00"),
+            Season = season,
+            Episode = episode,
             Part = partSuffix
         };
 

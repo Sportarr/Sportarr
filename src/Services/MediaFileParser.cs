@@ -200,11 +200,12 @@ public class MediaFileParser
             }
         }
 
+        var releaseGroup = ReleaseGroupParser.Parse(originalName);
         var parsed = new ParsedFileInfo
         {
-            EventTitle = ExtractEventTitle(cleanName),
+            EventTitle = ExtractEventTitle(cleanName, releaseGroup),
             Quality = BuildQualityFromParts(resolution, source),
-            ReleaseGroup = ReleaseGroupParser.Parse(originalName), // Use original for release group
+            ReleaseGroup = releaseGroup,
             Resolution = resolution,
             VideoCodec = ExtractVideoCodec(cleanName),
             AudioCodec = ExtractAudioCodec(cleanName),
@@ -293,10 +294,52 @@ public class MediaFileParser
         return name;
     }
 
-    private string ExtractEventTitle(string cleanName)
+    /// <summary>
+    /// The "Team vs Team" text between a date and the first quality, source
+    /// or proper marker, or null when the text after the date is not a
+    /// fixture. A trailing release group is not part of the fixture.
+    /// </summary>
+    private static string? FixtureAfterDate(string afterDate, string? releaseGroup)
+    {
+        var markers = new[]
+            {
+                QualityPattern.Match(afterDate),
+                SourcePattern.Match(afterDate),
+                ProperRepackPattern.Match(afterDate),
+            }
+            .Where(match => match.Success)
+            .ToList();
+        var fixtureEnd = markers.Select(match => match.Index).DefaultIfEmpty(afterDate.Length).Min();
+        if (releaseGroup != null)
+        {
+            var dashedGroup = $"-{releaseGroup}";
+            var bracketedGroup = $"[{releaseGroup}]";
+            // With no marker before it, "-Germain" in "Paris Saint-Germain"
+            // is part of a team name, not a release group.
+            var groupStart = afterDate.Length - dashedGroup.Length;
+            var dashJoinsWords = markers.Count == 0 && groupStart > 0 && char.IsLetter(afterDate[groupStart - 1]);
+            if (afterDate.EndsWith(dashedGroup, StringComparison.OrdinalIgnoreCase) && !dashJoinsWords)
+                fixtureEnd = Math.Min(fixtureEnd, groupStart);
+            if (afterDate.EndsWith(bracketedGroup, StringComparison.OrdinalIgnoreCase))
+                fixtureEnd = Math.Min(fixtureEnd, afterDate.Length - bracketedGroup.Length);
+        }
+        var fixture = afterDate[..fixtureEnd].Trim(' ', '.', '-', '_');
+        return HasFixtureSeparator(fixture) ? fixture : null;
+    }
+
+    private static bool HasFixtureSeparator(string text) =>
+        Regex.IsMatch(text, @"\s(?:vs?\.?|@)\s",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex EditionAfterDatePattern = new(
+        @"^(EXTENDED|UNRATED|DIRECTORS?|THEATRICAL|REMASTERED|IMAX)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private string ExtractEventTitle(string cleanName, string? releaseGroup)
     {
         // Try to extract title before metadata markers
-        // Special case: full dates (YYYY MM DD) handling
+        // Keep fixture names after full dates.
         var fullDateMatch = Regex.Match(cleanName, @"\b\d{4}\s+\d{2}\s+\d{2}\b");
         if (fullDateMatch.Success)
         {
@@ -304,7 +347,7 @@ public class MediaFileParser
             var afterDate = cleanName.Substring(fullDateMatch.Index + fullDateMatch.Length).TrimStart();
 
             // If an edition marker follows the date, the date is metadata (not part of title)
-            var editionAfterDate = Regex.Match(afterDate, @"^(EXTENDED|UNRATED|DIRECTORS?|THEATRICAL|REMASTERED|IMAX)\b", RegexOptions.IgnoreCase);
+            var editionAfterDate = EditionAfterDatePattern.Match(afterDate);
             if (editionAfterDate.Success)
             {
                 // Date is metadata, stop before the date
@@ -319,17 +362,30 @@ public class MediaFileParser
                 return cleanName.Substring(0, fullDateMatch.Index + fullDateMatch.Length).Trim();
             }
 
-            var qualityMarker = QualityPattern.Match(afterDate);
-            var sourceMarker = SourcePattern.Match(afterDate);
-            var fixtureEnd = Math.Min(
-                qualityMarker.Success ? qualityMarker.Index : afterDate.Length,
-                sourceMarker.Success ? sourceMarker.Index : afterDate.Length);
-            var fixture = afterDate[..fixtureEnd].Trim(' ', '.', '-', '_');
-            if (Regex.IsMatch(fixture, @"\s(?:vs?\.?|@)\s",
-                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
-                    TimeSpan.FromMilliseconds(100)))
+            if (FixtureAfterDate(afterDate, releaseGroup) is { } fixture)
             {
                 return fixture;
+            }
+        }
+
+        // A hyphen date ("2021-09-11") needs its own check. Read as plain text,
+        // the year marker below cuts the title at the date and drops the teams.
+        // This only applies when the text before the date holds no fixture.
+        var hyphenDateMatch = Regex.Match(cleanName, @"\b\d{4}-\d{2}-\d{2}\b");
+        if (hyphenDateMatch.Success)
+        {
+            var beforeDate = cleanName.Substring(0, hyphenDateMatch.Index);
+            var afterHyphenDate = cleanName.Substring(hyphenDateMatch.Index + hyphenDateMatch.Length).TrimStart();
+            var nextDate = Regex.Match(afterHyphenDate, @"\b\d{4}-\d{2}-\d{2}\b");
+            if (nextDate.Success)
+            {
+                afterHyphenDate = afterHyphenDate.Substring(0, nextDate.Index);
+            }
+            if (!HasFixtureSeparator(beforeDate) &&
+                !EditionAfterDatePattern.IsMatch(afterHyphenDate) &&
+                FixtureAfterDate(afterHyphenDate, releaseGroup) is { } hyphenFixture)
+            {
+                return hyphenFixture;
             }
         }
 

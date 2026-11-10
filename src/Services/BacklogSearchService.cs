@@ -17,10 +17,11 @@ namespace Sportarr.Api.Services;
 /// League.SearchForCutoffUnmetEvents flags. A league must opt in (either flag
 /// true) for its events to participate in the backlog pass.
 /// </summary>
-public class BacklogSearchService : BackgroundService
+public class BacklogSearchService : BackgroundService, IManualPassService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<BacklogSearchService> _logger;
+    private readonly ScheduledPassGate _passGate = new();
 
     public BacklogSearchService(
         IServiceProvider serviceProvider,
@@ -54,7 +55,8 @@ public class BacklogSearchService : BackgroundService
                     continue;
                 }
 
-                await PerformBacklogSearchAsync(scope, config, stoppingToken);
+                await _passGate.RunScheduledAsync(() => PerformBacklogSearchAsync(scope, config, stoppingToken),
+                    TimeSpan.FromMinutes(intervalMinutes / 2.0), stoppingToken);
 
                 await Task.Delay(TimeSpan.FromMinutes(intervalMinutes), stoppingToken);
             }
@@ -70,6 +72,25 @@ public class BacklogSearchService : BackgroundService
         }
 
         _logger.LogInformation("[Backlog Search] Service stopped");
+    }
+
+    /// <summary>
+    /// Runs one backlog pass now, also when the scheduled search is off. The
+    /// league opt-in flags still apply.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var config = await scope.ServiceProvider.GetRequiredService<ConfigService>().GetConfigAsync();
+        await PerformBacklogSearchAsync(scope, config, cancellationToken);
+    }
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
     }
 
     private async Task PerformBacklogSearchAsync(IServiceScope scope, Config config, CancellationToken cancellationToken)

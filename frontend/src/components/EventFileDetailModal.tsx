@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ArrowsRightLeftIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ArrowsRightLeftIcon, PencilIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { BADGE_AMBER } from '../utils/designTokens';
 import ReassignEventFileModal from './ReassignEventFileModal';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../api/client';
@@ -26,6 +27,7 @@ interface EventFile {
   codec?: string;
   languages?: string[];
   indexerFlags?: string;
+  isParked?: boolean;
 }
 
 interface EventFileDetailModalProps {
@@ -399,7 +401,8 @@ export default function EventFileDetailModal({
                             'rounded-lg p-4 border ' +
                             (selectedIds.has(file.id)
                               ? 'bg-blue-950/40 border-blue-600'
-                              : 'bg-gray-800 border-gray-700')
+                              : 'bg-gray-800 border-gray-700') +
+                            (file.isParked ? ' border-dashed' : '')
                           }
                         >
                           <div className="flex items-start justify-between gap-4">
@@ -411,10 +414,10 @@ export default function EventFileDetailModal({
                               title="Select for bulk edit"
                             />
                             <div className="flex-1 min-w-0">
-                              {/* Part Name (for fighting sports) */}
-                              {isFightingSport && file.partName && (
+                              {/* Part Name (for fighting sports). A whole-event file shows Full Event. */}
+                              {isFightingSport && (
                                 <div className="text-sm font-medium text-red-400 mb-1">
-                                  {file.partName}
+                                  {file.partName && file.partName !== 'Full Event' ? file.partName : 'Full Event'}
                                 </div>
                               )}
 
@@ -422,6 +425,13 @@ export default function EventFileDetailModal({
                               <div className="text-sm text-gray-200 font-mono truncate" title={file.filePath}>
                                 {file.filePath.split(/[/\\]/).pop()}
                               </div>
+                              {/* A parked file stays on disk but the media server skips it. */}
+                              {file.isParked && (
+                                <span className={`${BADGE_AMBER} mt-1 inline-flex items-center gap-1`}>
+                                  <EyeSlashIcon className="w-3.5 h-3.5" />
+                                  Hidden from your media server
+                                </span>
+                              )}
 
                               {/* File Details */}
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-400">

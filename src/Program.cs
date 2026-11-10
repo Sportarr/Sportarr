@@ -658,7 +658,7 @@ AgentInstaller.Install(dataPath, isWindowsPlatform);
 // IP - notably before authentication (Secure-cookie decisions) and before
 // the UrlBase/asset-rewriting block below.
 //
-// KnownNetworks/KnownProxies are cleared rather than left at ASP.NET Core's
+// KnownIPNetworks/KnownProxies are cleared rather than left at ASP.NET Core's
 // loopback-only default: a Dockerized deployment's proxy almost always
 // reaches the app from a different container IP on the compose network, not
 // 127.0.0.1, so the default would silently ignore every forwarded header.
@@ -671,7 +671,7 @@ var forwardedHeadersOptions = new ForwardedHeadersOptions
         | ForwardedHeaders.XForwardedProto
         | ForwardedHeaders.XForwardedHost
 };
-forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownIPNetworks.Clear();
 forwardedHeadersOptions.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedHeadersOptions);
 

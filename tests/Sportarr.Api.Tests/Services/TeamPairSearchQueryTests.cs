@@ -71,12 +71,8 @@ public class TeamPairSearchQueryTests
     }
 
     [Fact]
-    public void NoPairQuery_WhenTheTeamsAreMissingOrTheSame()
+    public void NoPairQuery_WhenTheTeamsAreTheSame()
     {
-        var noTeams = Game("NHL", "Ice Hockey", "Toronto Maple Leafs", "Boston Bruins");
-        noTeams.HomeTeamId = null;
-        QuerySvc().BuildEventQueries(noTeams).Should().Equal("NHL 2026 10", "NHL 2026");
-
         var sameTeam = Game("NHL", "Ice Hockey", "Toronto Maple Leafs", "Toronto Maple Leafs", 5, 5);
         QuerySvc().BuildEventQueries(sameTeam).Should().Equal("NHL 2026 10", "NHL 2026");
     }

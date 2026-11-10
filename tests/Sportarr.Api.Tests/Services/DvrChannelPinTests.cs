@@ -1,0 +1,929 @@
+using System.Data.Common;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using FluentAssertions;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Sportarr.Api.Data;
+using Sportarr.Api.Endpoints;
+using Sportarr.Api.Models;
+using Sportarr.Api.Services;
+using Sportarr.Api.Startup;
+
+namespace Sportarr.Api.Tests.Services;
+
+/// <summary>
+/// Field report (#376): the background channel re-resolve moved a recording
+/// back after the user moved it by hand. A channel the user changed is now
+/// pinned, and the re-resolve leaves a pinned recording alone.
+/// </summary>
+public class DvrChannelPinTests
+{
+    // Pins the recording when the resolver reads the guide. That is after the
+    // re-resolve has listed its candidates and before it reloads the row.
+    private sealed class PinWhileRankingInterceptor : DbCommandInterceptor
+    {
+        private bool _done;
+
+        // Off while the rig fills the database.
+        public bool Armed { get; set; }
+
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Armed && !_done && command.CommandText.Contains("\"EpgPrograms\""))
+            {
+                _done = true;
+                await using var update = command.Connection!.CreateCommand();
+                update.CommandText = "UPDATE DvrRecordings SET ChannelPinned = 1";
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+            return result;
+        }
+    }
+
+    private sealed class Rig : IAsyncDisposable
+    {
+        private readonly SqliteConnection _connection;
+        public SportarrDbContext Db { get; }
+        public int RecordingId { get; private set; }
+        public PinWhileRankingInterceptor Interceptor { get; private init; } = null!;
+        public DateTime EventStart { get; } = DateTime.UtcNow.AddHours(3);
+
+        private Rig(SqliteConnection connection, SportarrDbContext db)
+        {
+            _connection = connection;
+            Db = db;
+        }
+
+        public static async Task<Rig> CreateAsync(bool pinned, bool pinWhileRanking = false)
+        {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<SportarrDbContext>().UseSqlite(connection);
+            var interceptor = new PinWhileRankingInterceptor();
+            if (pinWhileRanking) options.AddInterceptors(interceptor);
+            var db = new SportarrDbContext(options.Options);
+            await db.Database.EnsureCreatedAsync();
+            var rig = new Rig(connection, db) { Interceptor = interceptor };
+
+            db.IptvSources.Add(new IptvSource { Id = 1, Name = "Source", Url = "http://test", IsActive = true });
+            db.IptvChannels.AddRange(
+                new IptvChannel { Id = 1, SourceId = 1, Name = "Mapped Guess", StreamUrl = "http://test/1" },
+                new IptvChannel { Id = 2, SourceId = 1, Name = "Guide Channel", StreamUrl = "http://test/2", TvgId = "guide.au" });
+            db.EpgSources.Add(new EpgSource { Id = 1, Name = "Guide", Url = "http://test/epg.xml" });
+            var league = new League { Id = 1, Name = "Supercars Championship", Sport = "Motorsport" };
+            db.Leagues.Add(league);
+            db.ChannelLeagueMappings.Add(new ChannelLeagueMapping { ChannelId = 1, LeagueId = 1 });
+            var evt = new Event
+            {
+                Title = "Boost Mobile Gold Coast 500 Qualifying - Race 32",
+                Sport = "Motorsport",
+                LeagueId = 1,
+                EventDate = rig.EventStart,
+            };
+            db.Events.Add(evt);
+            await db.SaveChangesAsync();
+
+            db.EpgPrograms.Add(new EpgProgram
+            {
+                EpgSourceId = 1,
+                ChannelId = "guide.au",
+                Title = "Supercars Championship Gold Coast 500 Qualifying",
+                Category = "Motorsport",
+                StartTime = rig.EventStart.AddMinutes(-2),
+                EndTime = rig.EventStart.AddHours(1),
+            });
+            var recording = new DvrRecording
+            {
+                EventId = evt.Id,
+                ChannelId = 1,
+                Title = "Qualifying",
+                ScheduledStart = rig.EventStart,
+                ScheduledEnd = rig.EventStart.AddHours(1),
+                Status = DvrRecordingStatus.Scheduled,
+                ChannelPinned = pinned,
+            };
+            db.DvrRecordings.Add(recording);
+            await db.SaveChangesAsync();
+            rig.RecordingId = recording.Id;
+            return rig;
+        }
+
+        public async Task<int> RunReresolveAsync(int? minImprovement = null, bool enabled = true)
+        {
+            Interceptor.Armed = true;
+            var dataPath = Path.Combine(Path.GetTempPath(), "sportarr-pin-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var configuration = new ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?> { ["Sportarr:DataPath"] = dataPath })
+                    .Build();
+                var configService = new ConfigService(configuration, NullLogger<ConfigService>.Instance);
+                if (minImprovement.HasValue || !enabled)
+                {
+                    var config = await configService.GetConfigAsync();
+                    if (minImprovement.HasValue) config.DvrReresolveMinImprovement = minImprovement.Value;
+                    config.DvrReresolveChannelsEnabled = enabled;
+                    await configService.SaveConfigAsync(config);
+                }
+                var services = new ServiceCollection()
+                    .AddSingleton(Db)
+                    .AddSingleton(configService)
+                    .AddSingleton(new EventChannelResolverService(Db, NullLogger<EventChannelResolverService>.Instance))
+                    .BuildServiceProvider();
+                var service = new DvrChannelReresolveService(services, NullLogger<DvrChannelReresolveService>.Instance);
+                return await service.RunPassAsync();
+            }
+            finally
+            {
+                if (Directory.Exists(dataPath)) Directory.Delete(dataPath, recursive: true);
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Db.DisposeAsync();
+            await _connection.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ReresolveMovesAnUnpinnedRecordingToTheGuideChannel()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(2);
+        saved.ChannelPinned.Should().BeFalse("a resolver move is not a user choice");
+    }
+
+    [Fact]
+    public async Task KeepingThePrimaryStillRefreshesTheBackupsFromTheGuide()
+    {
+        // Issue #382: the guide channel wins, but by less than the required
+        // improvement, so the primary stays. The stale backup list from
+        // scheduling time must still be replaced, or a failed primary rotates
+        // onto a channel showing another sport.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        rig.Db.IptvChannels.Add(new IptvChannel { Id = 3, SourceId = 1, Name = "Unrelated Sport", StreamUrl = "http://test/3" });
+        // The primary has a guide listing too, so both are evidence and the
+        // improvement margin decides.
+        var primary = await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1);
+        primary.TvgId = "mapped.au";
+        rig.Db.EpgPrograms.Add(new EpgProgram
+        {
+            EpgSourceId = 1,
+            ChannelId = "mapped.au",
+            Title = "Supercars Championship Gold Coast 500 Qualifying",
+            Category = "Motorsport",
+            StartTime = rig.EventStart.AddMinutes(-25),
+            EndTime = rig.EventStart.AddHours(1),
+        });
+        var recording = await rig.Db.DvrRecordings.SingleAsync();
+        recording.FallbackChannelIds = "[3]";
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync(minImprovement: 1000)).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(1, "the improvement was too small to move the primary");
+        saved.FallbackChannelIds.Should().Be("[2]", "the guide channel is the first backup now");
+    }
+
+    [Fact]
+    public async Task APinMadeWhileRankingKeepsTheBackups()
+    {
+        // The user pins the recording while the candidates are ranked. The
+        // backup refresh must not write over the row afterwards.
+        await using var rig = await Rig.CreateAsync(pinned: false, pinWhileRanking: true);
+        var recording = await rig.Db.DvrRecordings.SingleAsync();
+        recording.FallbackChannelIds = "[3]";
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync(minImprovement: 1000)).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelPinned.Should().BeTrue();
+        saved.FallbackChannelIds.Should().Be("[3]");
+    }
+
+    [Fact]
+    public async Task AManualMappingGivesWayToTheGuideChannel()
+    {
+        // Issue #385: a manual league mapping with no listing used to score 97
+        // and the guide channel could never clear the improvement margin.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        var mapping = await rig.Db.ChannelLeagueMappings.SingleAsync();
+        mapping.IsManual = true;
+        mapping.Confidence = 100;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync(minImprovement: 10)).Should().Be(1);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ReresolveLeavesAPinnedRecordingOnItsChannel()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: true);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ChangingTheChannelByHandPinsTheRecording()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        var service = new DvrAssignmentService(rig.Db, NullLogger<DvrAssignmentService>.Instance);
+
+        await service.UpdateAsync(rig.RecordingId, new DvrAssignmentPatchRequest { ChannelId = 2 });
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(2);
+        saved.ChannelPinned.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ChangingOnlyTheFallbacksDoesNotPinTheRecording()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        var service = new DvrAssignmentService(rig.Db, NullLogger<DvrAssignmentService>.Instance);
+
+        await service.UpdateAsync(rig.RecordingId, new DvrAssignmentPatchRequest { FallbackChannelIds = [2] });
+        await service.UpdateAsync(rig.RecordingId, new DvrAssignmentPatchRequest { ChannelId = 1 });
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelPinned.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ThePinStaysWhenTheUserPicksAChannelAgain()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        var service = new DvrAssignmentService(rig.Db, NullLogger<DvrAssignmentService>.Instance);
+
+        await service.UpdateAsync(rig.RecordingId, new DvrAssignmentPatchRequest { ChannelId = 2 });
+        await service.UpdateAsync(rig.RecordingId, new DvrAssignmentPatchRequest { ChannelId = 1 });
+        await service.UpdateAsync(rig.RecordingId, new DvrAssignmentPatchRequest { ChannelId = 1 });
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelPinned.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(2, true)]
+    [InlineData(1, false)]
+    public async Task EditingARecordingPinsItOnlyWhenTheChannelChanges(int channelId, bool pinned)
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        // The service has many collaborators and this path uses only the context.
+        var service = (DvrRecordingService)RuntimeHelpers.GetUninitializedObject(typeof(DvrRecordingService));
+        typeof(DvrRecordingService).GetField("_db", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(service, rig.Db);
+        typeof(DvrRecordingService).GetField("_logger", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(service, NullLogger<DvrRecordingService>.Instance);
+
+        await service.UpdateRecordingAsync(rig.RecordingId, new ScheduleDvrRecordingRequest
+        {
+            ChannelId = channelId,
+            ScheduledStart = rig.EventStart,
+            ScheduledEnd = rig.EventStart.AddHours(1),
+        });
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelPinned.Should().Be(pinned);
+    }
+
+    [Fact]
+    public async Task TheMigrationChainAddsThePinColumn()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new SportarrDbContext(new DbContextOptionsBuilder<SportarrDbContext>()
+            .UseSqlite(connection).Options);
+
+        await db.Database.MigrateAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('DvrRecordings') WHERE name='ChannelPinned'";
+        (await command.ExecuteScalarAsync()).Should().Be(1L);
+        (await db.Database.GetPendingMigrationsAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ReresolveLeavesARecordingThatTheUserPinnedWhileItWasRanking()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false, pinWhileRanking: true);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(1);
+        saved.ChannelPinned.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AChannelPickedInTheScheduleFormIsPinned()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        var recording = await rig.Db.DvrRecordings.SingleAsync();
+
+        await DvrEndpoints.PinUserChosenChannelAsync(rig.Db, recording);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelPinned.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AFailoverRecordingKeepsThePinOfTheFailedOne(bool pinned)
+    {
+        await using var rig = await Rig.CreateAsync(pinned);
+        var failed = await rig.Db.DvrRecordings.SingleAsync();
+        failed.FallbackChannelIds = "[2]";
+        failed.Status = DvrRecordingStatus.Failed;
+        await rig.Db.SaveChangesAsync();
+        var service = (DvrRecordingService)RuntimeHelpers.GetUninitializedObject(typeof(DvrRecordingService));
+        typeof(DvrRecordingService).GetField("_db", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(service, rig.Db);
+        typeof(DvrRecordingService).GetField("_logger", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(service, NullLogger<DvrRecordingService>.Instance);
+
+        var rotatedId = await service.TryRescheduleOnFallbackAsync(failed, "stream died");
+
+        rotatedId.Should().NotBeNull();
+        var rotated = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync(r => r.Id == rotatedId);
+        rotated.ChannelId.Should().Be(2);
+        rotated.ChannelPinned.Should().Be(pinned);
+    }
+
+    // The scheduler records a team's events on the channel the user mapped
+    // to that team (#406). The re-resolve ranks with the resolver only,
+    // so it moved the recording off that channel a few hours before the game.
+    private static async Task MapTheHomeTeamToAsync(Rig rig, int channelId)
+    {
+        rig.Db.Teams.Add(new Team { Id = 7, ExternalId = "tm-erebus", Name = "Erebus Motorsport", LeagueId = 1, Sport = "Motorsport" });
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChannelTeamMappings.Add(new ChannelTeamMapping { ChannelId = channelId, TeamId = 7, IsPreferred = true });
+        var evt = await rig.Db.Events.SingleAsync();
+        evt.HomeTeamId = 7;
+        await rig.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ReresolveKeepsARecordingOnTheTeamChannelWithoutAnyGuideListing()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        await ClearTheGuideAsync(rig);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(1, "the user mapped this channel to the team");
+        saved.ChannelPinned.Should().BeFalse("the backups must keep refreshing");
+    }
+
+    [Fact]
+    public async Task ReresolveFollowsTheGuideOffATeamChannelThatHasNoListing()
+    {
+        // The guide lists the event only on a national channel outside the
+        // team list. The scheduler picks that channel now, so the recording
+        // moves there.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(2);
+        saved.FallbackChannelIds.Should().Be("[1]", "the team channel is the first backup");
+
+        (await rig.RunReresolveAsync()).Should().Be(0, "the guide did not change");
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task TheAwayTeamsChannelAlsoHoldsTheRecording()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        var evt = await rig.Db.Events.SingleAsync();
+        evt.AwayTeamId = evt.HomeTeamId;
+        rig.Db.Teams.Add(new Team { Id = 8, ExternalId = "tm-home", Name = "Home Side", LeagueId = 1, Sport = "Motorsport" });
+        await rig.Db.SaveChangesAsync();
+        evt.HomeTeamId = 8;
+        await rig.Db.SaveChangesAsync();
+        await ClearTheGuideAsync(rig);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ADisabledTeamChannelDoesNotHoldTheRecording()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1)).IsEnabled = false;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(IptvChannelStatus.Offline)]
+    [InlineData(IptvChannelStatus.Error)]
+    public async Task ADeadTeamChannelDoesNotHoldTheRecording(IptvChannelStatus status)
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1)).Status = status;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task APinStillWinsOverADeadTeamChannel()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: true);
+        await MapTheHomeTeamToAsync(rig, channelId: 1);
+        (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1)).Status = IptvChannelStatus.Offline;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ATeamMappingOnAnotherChannelDoesNotStopAMove()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        rig.Db.IptvChannels.Add(new IptvChannel { Id = 3, SourceId = 1, Name = "Team Channel", StreamUrl = "http://test/3" });
+        await rig.Db.SaveChangesAsync();
+        await MapTheHomeTeamToAsync(rig, channelId: 3);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    // A team has a ranked channel list (#406). These channels have no
+    // league mapping, so only the team list or a guide listing finds them.
+    private static async Task RankTheHomeTeamsChannelsAsync(Rig rig, params int[] channelIds)
+    {
+        foreach (var id in channelIds.Where(id => id > 2))
+        {
+            rig.Db.IptvChannels.Add(new IptvChannel
+            {
+                Id = id, SourceId = 1, Name = $"Team Channel {id}", StreamUrl = $"http://test/{id}", TvgId = $"team{id}.au",
+            });
+        }
+        rig.Db.Teams.Add(new Team { Id = 7, ExternalId = "tm-erebus", Name = "Erebus Motorsport", LeagueId = 1, Sport = "Motorsport" });
+        await rig.Db.SaveChangesAsync();
+        await TeamChannelRanking.ReplaceAsync(rig.Db, 7, channelIds);
+        var evt = await rig.Db.Events.SingleAsync();
+        evt.HomeTeamId = 7;
+        await rig.Db.SaveChangesAsync();
+    }
+
+    private static async Task ClearTheGuideAsync(Rig rig)
+    {
+        rig.Db.EpgPrograms.RemoveRange(await rig.Db.EpgPrograms.ToListAsync());
+        await rig.Db.SaveChangesAsync();
+    }
+
+    private static async Task ListTheEventOnAsync(Rig rig, int channelId)
+    {
+        if (channelId == 1)
+        {
+            // The rig's league channel has no guide id of its own.
+            (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1)).TvgId = "team1.au";
+        }
+        rig.Db.EpgPrograms.Add(new EpgProgram
+        {
+            EpgSourceId = 1,
+            ChannelId = $"team{channelId}.au",
+            Title = "Supercars Championship Gold Coast 500 Qualifying",
+            Category = "Motorsport",
+            StartTime = rig.EventStart.AddMinutes(-2),
+            EndTime = rig.EventStart.AddHours(1),
+        });
+        await rig.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ReresolveKeepsTheTeamOrderInTheBackups()
+    {
+        // Channel 1 has a listing too, so it stays and only the backups change.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 1, 3, 4);
+        await ListTheEventOnAsync(rig, 1);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(1);
+        saved.FallbackChannelIds.Should().Be("[3,4,2]", "the team channels come first by rank, then the guide channel");
+    }
+
+    [Fact]
+    public async Task AMoveKeepsTheTeamOrderInTheBackups()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 1, 3, 4);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(2, "only channel 2 lists the event");
+        saved.FallbackChannelIds.Should().Be("[1,3,4]");
+    }
+
+    [Fact]
+    public async Task ReresolveMovesUpToAHigherRankedTeamChannelTheGuideLists()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3, 1);
+        await ListTheEventOnAsync(rig, 3);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(3);
+        saved.FallbackChannelIds.Should().Be("[1,2]");
+        saved.ChannelPinned.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AListedTeamChannelNeverMovesDownTheTeamList()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 1, 3);
+        await ListTheEventOnAsync(rig, 1);
+        await ListTheEventOnAsync(rig, 3);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(1, "channel 1 has a listing and ranks above channel 3");
+        saved.FallbackChannelIds.Should().Be("[3,2]");
+    }
+
+    [Fact]
+    public async Task AnUnlistedTeamChannelMovesDownToTheListedOne()
+    {
+        // The Rangers case. The recording was scheduled on team channel 1
+        // before the guide had data. The guide now lists the game only on
+        // team channel 3, so the recording moves there.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 1, 3, 4);
+        await ClearTheGuideAsync(rig);
+        await ListTheEventOnAsync(rig, 4);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(4);
+        saved.FallbackChannelIds.Should().Be("[1,3]");
+
+        (await rig.RunReresolveAsync()).Should().Be(0, "the guide did not change");
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(4);
+    }
+
+    [Fact]
+    public async Task APinnedRecordingDoesNotFollowTheGuide()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: true);
+        await RankTheHomeTeamsChannelsAsync(rig, 1, 3, 4);
+        await ClearTheGuideAsync(rig);
+        await ListTheEventOnAsync(rig, 4);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ARecordingInsideTheLockWindowDoesNotFollowTheGuide()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 1, 3, 4);
+        await ClearTheGuideAsync(rig);
+        await ListTheEventOnAsync(rig, 4);
+        var recording = await rig.Db.DvrRecordings.SingleAsync();
+        recording.ScheduledStart = DateTime.UtcNow.AddMinutes(1);
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ReresolveMovesAGuessToATeamChannelTheGuideLists()
+    {
+        // The recording sits on a league guess. The guide lists the event on
+        // a team channel and on another channel. The team channel wins, the
+        // same pick the scheduler makes.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3);
+        await ListTheEventOnAsync(rig, 3);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task APinnedRecordingDoesNotMoveUpTheTeamList()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: true);
+        await RankTheHomeTeamsChannelsAsync(rig, 3, 1);
+        await ListTheEventOnAsync(rig, 3);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ReresolveDoesNothingWhenTurnedOff()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3, 1);
+        await ListTheEventOnAsync(rig, 3);
+
+        (await rig.RunReresolveAsync(enabled: false)).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task TheSchedulerPicksTheHighestRankedTeamChannelTheGuideLists()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 1, 3, 4);
+        await ListTheEventOnAsync(rig, 4);
+        await ListTheEventOnAsync(rig, 3);
+        var evt = await rig.Db.Events.AsNoTracking().SingleAsync();
+        var resolver = new EventChannelResolverService(rig.Db, NullLogger<EventChannelResolverService>.Instance);
+
+        var candidates = await resolver.ResolveAsync(evt.Id);
+        var team = await TeamChannelSelection.GetOrderedTeamChannelsAsync(rig.Db, evt.HomeTeamId, evt.AwayTeamId);
+        var primary = TeamChannelSelection.PickPrimaryChannelId(team, candidates);
+        var merged = TeamChannelSelection.MergeOrder(team, candidates);
+
+        primary.Should().Be(3, "channel 1 has no listing and channel 3 outranks channel 4");
+        TeamChannelSelection.BuildFallbackIds(merged, primary!.Value).Should().Equal(1, 4, 2);
+    }
+
+    [Fact]
+    public async Task TheSchedulerPicksTheGuideChannelOverTeamChannelOneWithoutATeamListing()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3, 4);
+        var evt = await rig.Db.Events.AsNoTracking().SingleAsync();
+        var resolver = new EventChannelResolverService(rig.Db, NullLogger<EventChannelResolverService>.Instance);
+
+        var candidates = await resolver.ResolveAsync(evt.Id);
+        var team = await TeamChannelSelection.GetOrderedTeamChannelsAsync(rig.Db, evt.HomeTeamId, evt.AwayTeamId);
+
+        TeamChannelSelection.PickPrimaryChannelId(team, candidates).Should().Be(2, "only channel 2 lists the event");
+    }
+
+    // Two league guesses with no guide listing. Channel 1 is the stronger
+    // guess and the recording sits on channel 2. Without team channels the
+    // re-check moves to the stronger guess.
+    private static async Task SitOnTheWeakerGuessAsync(Rig rig)
+    {
+        await ClearTheGuideAsync(rig);
+        var strong = await rig.Db.ChannelLeagueMappings.SingleAsync();
+        strong.IsManual = true;
+        strong.Confidence = 100;
+        rig.Db.ChannelLeagueMappings.Add(new ChannelLeagueMapping { ChannelId = 2, LeagueId = 1, Confidence = 0 });
+        var recording = await rig.Db.DvrRecordings.SingleAsync();
+        recording.ChannelId = 2;
+        await rig.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task WithoutTeamChannelsAStrongerGuessStillWins()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await SitOnTheWeakerGuessAsync(rig);
+
+        (await rig.RunReresolveAsync(minImprovement: 5)).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ATeamMappingAddedLaterKeepsAGuessedChannelWithoutAListing()
+    {
+        // The recording was scheduled on a guess before the team got
+        // channels. With no guide listing anywhere, it stays.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await SitOnTheWeakerGuessAsync(rig);
+        await RankTheHomeTeamsChannelsAsync(rig, 3);
+
+        (await rig.RunReresolveAsync(minImprovement: 5)).Should().Be(0);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(2);
+        saved.FallbackChannelIds.Should().Be("[3,1]", "the backups still follow the team order");
+    }
+
+    [Fact]
+    public async Task ADroppedListingOnAChannelOutsideTheTeamListKeepsTheRecording()
+    {
+        // The recording moved to channel 2 because the guide listed it there.
+        // Channel 2 has no league mapping, so the resolver finds it only
+        // through that listing. The guide then drops the listing.
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3);
+        (await rig.RunReresolveAsync()).Should().Be(1);
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+        await ClearTheGuideAsync(rig);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task AListingThatReturnsDoesNotMoveTheRecordingAgain()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3);
+        (await rig.RunReresolveAsync()).Should().Be(1);
+        await ClearTheGuideAsync(rig);
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        rig.Db.EpgPrograms.Add(new EpgProgram
+        {
+            EpgSourceId = 1,
+            ChannelId = "guide.au",
+            Title = "Supercars Championship Gold Coast 500 Qualifying",
+            Category = "Motorsport",
+            StartTime = rig.EventStart.AddMinutes(-2),
+            EndTime = rig.EventStart.AddHours(1),
+        });
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ALeagueExclusionMovesTheRecordingToTheTeamChannelWithoutAListing()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3);
+        await ClearTheGuideAsync(rig);
+        var mapping = await rig.Db.ChannelLeagueMappings.SingleAsync();
+        mapping.Priority = ChannelLeagueMapping.ExcludedPriority;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task ADisabledChannelMovesToTheTeamChannelWithoutAListing()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await SitOnTheWeakerGuessAsync(rig);
+        await RankTheHomeTeamsChannelsAsync(rig, 3);
+        (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 2)).IsEnabled = false;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task ADeadTeamChannelMovesToTheNextTeamChannelWithoutAListing()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 1, 3);
+        await ClearTheGuideAsync(rig);
+        (await rig.Db.IptvChannels.SingleAsync(c => c.Id == 1)).Status = IptvChannelStatus.Offline;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        var saved = await rig.Db.DvrRecordings.AsNoTracking().SingleAsync();
+        saved.ChannelId.Should().Be(3);
+        saved.FallbackChannelIds.Should().Be("[1]");
+    }
+
+    private static async Task SetStatusAsync(Rig rig, IptvChannelStatus status, params int[] channelIds)
+    {
+        foreach (var channel in await rig.Db.IptvChannels.Where(c => channelIds.Contains(c.Id)).ToListAsync())
+        {
+            channel.Status = status;
+        }
+        await rig.Db.SaveChangesAsync();
+    }
+
+    private static async Task PutTheRecordingOnAsync(Rig rig, int channelId)
+    {
+        (await rig.Db.DvrRecordings.SingleAsync()).ChannelId = channelId;
+        await rig.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ADeadOnlyTeamChannelMovesToAHealthyGuess()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3);
+        await ClearTheGuideAsync(rig);
+        await SetStatusAsync(rig, IptvChannelStatus.Offline, 3);
+        await PutTheRecordingOnAsync(rig, 3);
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ADeadRecordingStaysWhenNoChannelCanRecord()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3, 4);
+        await ClearTheGuideAsync(rig);
+        rig.Db.ChannelLeagueMappings.RemoveRange(await rig.Db.ChannelLeagueMappings.ToListAsync());
+        await rig.Db.SaveChangesAsync();
+        await SetStatusAsync(rig, IptvChannelStatus.Offline, 3, 4);
+        await PutTheRecordingOnAsync(rig, 3);
+
+        (await rig.RunReresolveAsync()).Should().Be(0);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task AnExcludedChannelMovesToAHealthyGuessNotADeadTeamChannel()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3, 4);
+        await ClearTheGuideAsync(rig);
+        await SetStatusAsync(rig, IptvChannelStatus.Error, 3, 4);
+        (await rig.Db.ChannelLeagueMappings.SingleAsync()).Priority = ChannelLeagueMapping.ExcludedPriority;
+        rig.Db.ChannelLeagueMappings.Add(new ChannelLeagueMapping { ChannelId = 2, LeagueId = 1 });
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ACatchupRecordingMovesToAChannelThatCanServeTheDownload()
+    {
+        await using var rig = await Rig.CreateAsync(pinned: false);
+        await RankTheHomeTeamsChannelsAsync(rig, 3);
+        rig.Db.IptvSources.Add(new IptvSource
+        {
+            Id = 2, Name = "Xtream", Url = "http://xtream.test", IsActive = true,
+            Type = IptvSourceType.Xtream, Username = "user", Password = "pass",
+        });
+        rig.Db.IptvChannels.Add(new IptvChannel
+        {
+            Id = 6, SourceId = 2, Name = "Archive Channel", StreamUrl = "http://xtream.test/live/user/pass/106.ts",
+            HasArchive = true, ArchiveDays = 7,
+        });
+        await rig.Db.SaveChangesAsync();
+        await TeamChannelRanking.ReplaceAsync(rig.Db, 7, [3, 6]);
+        await ClearTheGuideAsync(rig);
+        var recording = await rig.Db.DvrRecordings.SingleAsync();
+        recording.Method = DvrRecordingMethod.Catchup;
+        await rig.Db.SaveChangesAsync();
+
+        (await rig.RunReresolveAsync()).Should().Be(1);
+
+        (await rig.Db.DvrRecordings.AsNoTracking().SingleAsync()).ChannelId.Should().Be(6,
+            "channel 1 and channel 3 have no archive");
+    }
+}

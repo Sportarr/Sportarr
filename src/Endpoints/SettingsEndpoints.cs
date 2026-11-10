@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
@@ -294,7 +295,7 @@ app.MapPut("/api/settings/ui", async (UISettings uiSettings, ConfigService confi
     return Results.Ok(new { success = true });
 }).WithRequestValidation<UISettings>();
 
-app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService configService, SimpleAuthService simpleAuthService, SportarrDbContext db, FileFormatManager fileFormatManager, ILogger<Program> logger) =>
+app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService configService, SimpleAuthService simpleAuthService, SportarrDbContext db, FileFormatManager fileFormatManager, HttpContext httpContext, ILogger<Program> logger) =>
 {
     logger.LogInformation("[CONFIG] Settings update requested");
     try
@@ -771,6 +772,11 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         foreach (var evt in fightingEvents)
             evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt, updatedConfig.EnableMultiPartEpisodes);
         await db.SaveChangesAsync();
+
+        // Turning the setting off shows every parked file again. Turning it on
+        // hides the other files of each "Full Event" event.
+        await FileParking.ReconcileLibraryAsync(db, updatedConfig.EnableMultiPartEpisodes,
+            httpContext.RequestServices.GetService<NotificationService>(), logger);
     }
 
     // CRITICAL: Sync SecuritySettings to database (used by DynamicAuthenticationMiddleware)

@@ -8,10 +8,11 @@ namespace Sportarr.Api.Services;
 /// TV Schedule Sync background service — fetches upcoming event TV schedules
 /// and updates Event.Broadcast so automatic searches fire at the right time.
 /// </summary>
-public class TvScheduleSyncService : BackgroundService
+public class TvScheduleSyncService : BackgroundService, IManualPassService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<TvScheduleSyncService> _logger;
+    private readonly ScheduledPassGate _passGate = new();
     private readonly TimeSpan _syncInterval = TimeSpan.FromHours(12); // Sync every 12 hours
 
     // Rate limit tracking - stop sync when rate limited
@@ -41,7 +42,7 @@ public class TvScheduleSyncService : BackgroundService
         // to take Sportarr down with it.
         try
         {
-            await PerformScheduleSyncAsync(stoppingToken);
+            await _passGate.RunScheduledAsync(() => PerformScheduleSyncAsync(stoppingToken), _syncInterval / 2, stoppingToken);
         }
         catch (OperationCanceledException)
         {
@@ -57,7 +58,11 @@ public class TvScheduleSyncService : BackgroundService
             try
             {
                 await Task.Delay(_syncInterval, stoppingToken);
-                await PerformScheduleSyncAsync(stoppingToken);
+                await _passGate.RunScheduledAsync(() => PerformScheduleSyncAsync(stoppingToken), _syncInterval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -66,6 +71,19 @@ public class TvScheduleSyncService : BackgroundService
         }
 
         _logger.LogInformation("[TV Schedule] Service stopped");
+    }
+
+    /// <summary>
+    /// Runs one schedule sync now.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken) => await PerformScheduleSyncAsync(cancellationToken);
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
     }
 
     /// <summary>

@@ -35,6 +35,11 @@ public class RssSyncService : BackgroundService
     // Track when we last did a sync for catch-up logic
     private DateTime _lastSyncTime = DateTime.MinValue;
 
+    // A release can stay in the feed for days. This set makes sure the
+    // process reports it once. A failed send removes its keys again.
+    private const int MaxReportedObservations = 5000;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _reportedObservations = new(StringComparer.Ordinal);
+
     public RssSyncService(
         IServiceProvider serviceProvider,
         ILogger<RssSyncService> logger)
@@ -221,6 +226,15 @@ public class RssSyncService : BackgroundService
         _logger.LogDebug("[RSS Sync] Loaded {ProfileCount} quality profiles, {FormatCount} custom formats, {ReleaseProfileCount} release profiles for evaluation",
             qualityProfiles.Count, customFormats.Count, releaseProfiles.Count);
 
+        var monitoredLeagues = config.SendAnonymousUsageData
+            ? await db.Leagues
+                .AsNoTracking()
+                .Where(league => league.Monitored && league.ExternalId != null && league.ExternalId != "")
+                .ToListAsync(cancellationToken)
+            : new List<League>();
+        var knownEventDays = await LoadKnownEventDaysAsync(db, monitoredLeagues, nowUtc, cancellationToken);
+        var observations = new List<EventObservation>();
+
         // STEP 3: For each release, check if it matches any monitored event
         // This is the inverse of the old approach (per-event search)
         foreach (var release in recentReleases)
@@ -244,7 +258,14 @@ public class RssSyncService : BackgroundService
                     nascarVenues);
 
                 if (matchedEvent == null)
+                {
+                    if (config.SendAnonymousUsageData)
+                    {
+                        CollectObservation(release.Title, () => releaseMatchingService.ParseRelease(release.Title),
+                            monitoredLeagues, knownEventDays, nowUtc, observations);
+                    }
                     continue;
+                }
 
                 matchedReleases++;
 
@@ -334,8 +355,118 @@ public class RssSyncService : BackgroundService
                 recentReleases.Count);
         }
 
+        await SubmitObservationsAsync(scope, configService, observations);
+
         _logger.LogInformation("[RSS Sync] Completed - {New} new downloads, {Upgrades} quality upgrades",
             newDownloadsAdded, upgradesFound);
+    }
+
+    private void CollectObservation(
+        string releaseTitle,
+        Func<SportsParseResult> parsed,
+        IReadOnlyCollection<League> monitoredLeagues,
+        IReadOnlySet<(int LeagueId, DateTime Day)> knownEventDays,
+        DateTime nowUtc,
+        List<EventObservation> observations)
+    {
+        if (observations.Count >= EventObservationCollector.MaxPerBatch)
+            return;
+        EventObservation? observation;
+        try
+        {
+            observation = EventObservationCollector.FromUnmatchedRelease(
+                releaseTitle, parsed(), monitoredLeagues, nowUtc, knownEventDays);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[RSS Sync] Usage-data check skipped for {Title}", releaseTitle);
+            return;
+        }
+        if (observation == null)
+            return;
+        // A full set is cleared, not trimmed. Old keys are sent again, and
+        // the metadata service merges repeats.
+        if (_reportedObservations.Count >= MaxReportedObservations)
+            _reportedObservations.Clear();
+        if (!_reportedObservations.TryAdd(observation.DedupeKey, 0))
+            return;
+        observations.Add(observation);
+    }
+
+    /// <summary>
+    /// Opt-out via Settings > General > Analytics. The sync never waits on
+    /// this call.
+    /// </summary>
+    private async Task SubmitObservationsAsync(
+        IServiceScope scope,
+        ConfigService configService,
+        List<EventObservation> observations)
+    {
+        if (observations.Count == 0)
+            return;
+        try
+        {
+            // Read the live config again. A user who opts out during a long
+            // sync then sends nothing.
+            var config = await configService.GetConfigAsync();
+            if (!config.SendAnonymousUsageData)
+            {
+                ForgetObservations(observations);
+                return;
+            }
+            var installId = await configService.GetOrCreateAnalyticsInstanceIdAsync();
+            if (installId == null)
+            {
+                ForgetObservations(observations);
+                return;
+            }
+            var client = scope.ServiceProvider.GetRequiredService<SportarrApiClient>();
+            _logger.LogDebug("[RSS Sync] Reporting {Count} unmatched releases as usage data", observations.Count);
+            _ = client.SubmitEventObservationsAsync(installId, observations)
+                .ContinueWith(task =>
+                {
+                    // A failed send must not block the next sync from trying again.
+                    if (!task.IsCompletedSuccessfully || !task.Result)
+                        ForgetObservations(observations);
+                }, TaskScheduler.Default);
+        }
+        catch (Exception ex)
+        {
+            ForgetObservations(observations);
+            _logger.LogDebug(ex, "[RSS Sync] Usage-data report skipped");
+        }
+    }
+
+    /// <summary>
+    /// Days in the report window on which each monitored league already has
+    /// an event, monitored or not. A release on such a day is not a missing
+    /// event. It can be an event that the user does not monitor.
+    /// </summary>
+    private static async Task<IReadOnlySet<(int LeagueId, DateTime Day)>> LoadKnownEventDaysAsync(
+        SportarrDbContext db,
+        IReadOnlyCollection<League> monitoredLeagues,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        if (monitoredLeagues.Count == 0)
+            return new HashSet<(int, DateTime)>();
+
+        var leagueIds = monitoredLeagues.Select(league => league.Id).ToList();
+        var from = nowUtc.Date - EventObservationCollector.LookBack - TimeSpan.FromDays(1);
+        var to = nowUtc.Date + EventObservationCollector.LookAhead + TimeSpan.FromDays(2);
+        var rows = await db.Events
+            .AsNoTracking()
+            .Where(evt => evt.LeagueId != null && leagueIds.Contains(evt.LeagueId.Value)
+                && evt.EventDate >= from && evt.EventDate < to)
+            .Select(evt => new { LeagueId = evt.LeagueId!.Value, evt.EventDate })
+            .ToListAsync(cancellationToken);
+        return rows.Select(row => (row.LeagueId, row.EventDate.Date)).ToHashSet();
+    }
+
+    private void ForgetObservations(IEnumerable<EventObservation> observations)
+    {
+        foreach (var observation in observations)
+            _reportedObservations.TryRemove(observation.DedupeKey, out _);
     }
 
     /// <summary>
@@ -366,7 +497,7 @@ public class RssSyncService : BackgroundService
             qualityDefinitions,
             requestedPart: null, // Passive discovery doesn't request specific parts
             sport: matchedEvent.Sport,
-            enableMultiPartEpisodes: enableMultiPartEpisodes,
+            enableMultiPartEpisodes: EventPartDetector.UsesParts(enableMultiPartEpisodes, matchedEvent),
             eventTitle: matchedEvent.Title,
             runtimeMinutes: defaultRuntimeMinutes,
             allowHighlights: matchedEvent.League?.AllowHighlights ?? false,
@@ -423,7 +554,7 @@ public class RssSyncService : BackgroundService
             return;
 
         string? part = null;
-        if (config.EnableMultiPartEpisodes
+        if (EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt)
             && EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? "", evt.League?.Name))
         {
             part = partDetector.DetectPart(release.Title, evt.Sport ?? "", evt.Title, evt.League?.Name)?.SegmentName
@@ -696,11 +827,13 @@ public class RssSyncService : BackgroundService
             // year-bounds checks, etc.), with preParsed memoized above,
             // so per-event validation is cheap enough to skip the brittle
             // keyword prefilter entirely.
-            var requestedPart = enableMultiPartEpisodes
+            // A "Full Event" event matches as if parts were off.
+            var eventUsesParts = EventPartDetector.UsesParts(enableMultiPartEpisodes, evt);
+            var requestedPart = eventUsesParts
                 ? partDetector.DetectPart(release.Title, evt.Sport ?? string.Empty, evt.Title, evt.League?.Name)?.SegmentName
                 : null;
             roundRaceNumbersByRound.TryGetValue((evt.LeagueId, evt.Season, evt.Round), out var roundRaceNumbers);
-            var matchResult = matchingService.ValidateRelease(release, evt, requestedPart, enableMultiPartEpisodes, preParsed,
+            var matchResult = matchingService.ValidateRelease(release, evt, requestedPart, eventUsesParts, preParsed,
                 earlyReleaseLimitDays: earlyLimit, roundRaceNumbers: roundRaceNumbers,
                 knownLeagues: knownLeagues, datePeers: datePeers);
             if (!matchResult.IsMatch || matchResult.IsHardRejection)
@@ -811,7 +944,7 @@ public class RssSyncService : BackgroundService
     /// remaining words as required keywords for RSS release filtering.
     /// Example: "formula1 f1tv {Year}" -> ["formula1", "f1tv"]
     /// </summary>
-    private static List<string> ExtractRequiredKeywordsFromTemplate(string template)
+    internal static List<string> ExtractRequiredKeywordsFromTemplate(string template)
     {
         var stripped = Regex.Replace(template, @"\{[^}]+\}", " ");
 
@@ -825,21 +958,36 @@ public class RssSyncService : BackgroundService
     /// SearchQueryTemplate. Dots, hyphens, and underscores are treated as word
     /// separators (matching scene naming conventions).
     /// </summary>
-    private static bool ReleaseSatisfiesTemplateKeywords(string releaseTitle, List<string> requiredKeywords)
+    internal static bool ReleaseSatisfiesTemplateKeywords(string releaseTitle, List<string> requiredKeywords)
     {
-        var normalizedTitle = releaseTitle
-            .Replace('.', ' ')
-            .Replace('-', ' ')
-            .Replace('_', ' ');
+        var normalizedTitle = NormalizeKeywordSeparators(releaseTitle);
+        var joinedTitle = normalizedTitle.Replace(" ", "");
 
         foreach (var keyword in requiredKeywords)
         {
-            if (normalizedTitle.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) < 0)
-                return false;
+            // The keyword gets the same separators as the title. A template
+            // literal such as "Formula.1" otherwise never matches.
+            var normalizedKeyword = NormalizeKeywordSeparators(keyword);
+            if (normalizedKeyword.Length == 0)
+                continue;
+            if (normalizedTitle.IndexOf(normalizedKeyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+
+            // Only a keyword that had a separator may also match with no
+            // separator, so "Formula.1" finds "Formula1". Plain keywords keep
+            // the old test, so no existing template gets looser.
+            if (normalizedKeyword.Contains(' ') &&
+                joinedTitle.IndexOf(normalizedKeyword.Replace(" ", ""), StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+
+            return false;
         }
 
         return true;
     }
+
+    private static string NormalizeKeywordSeparators(string text) =>
+        Regex.Replace(text.Replace('.', ' ').Replace('-', ' ').Replace('_', ' '), @"\s+", " ").Trim();
 
     /// <summary>
     /// Check if we should grab this release for the matched event.
@@ -885,7 +1033,7 @@ public class RssSyncService : BackgroundService
             var partInfo = partDetector.DetectPart(
                 release.Title, evt.Sport ?? "", evt.Title, evt.League?.Name);
 
-            if (config.EnableMultiPartEpisodes)
+            if (EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt))
             {
                 // Multi-part ENABLED. A labelled part (Prelims, Early Prelims, ...)
                 // is taken as-is. An UNLABELLED fighting release is the main card,
@@ -907,13 +1055,14 @@ public class RssSyncService : BackgroundService
                 if (!string.IsNullOrEmpty(monitoredParts))
                 {
                     var partsArray = monitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (!partsArray.Contains(releasePart, StringComparer.OrdinalIgnoreCase))
+                    if (!EventPartDetector.IsMonitored(partsArray, releasePart))
                         return (false, $"Part '{releasePart}' not monitored", null);
                 }
             }
             else
             {
-                // Multi-part DISABLED: Skip part files, only download full event files
+                // Multi-part is off, or the event is a "Full Event" event.
+                // Skip part files. Download only full event files.
                 if (partInfo != null)
                     return (false, $"Part file '{partInfo.SegmentName}' (multi-part disabled)", null);
             }
@@ -1134,7 +1283,7 @@ public class RssSyncService : BackgroundService
             || (!string.IsNullOrWhiteSpace(release.DownloadUrl)
                 && string.Equals(p.DownloadUrl, release.DownloadUrl, StringComparison.Ordinal)));
         if (alreadyPending != null)
-            return (false, $"Held by delay profile until {alreadyPending.ReleasableAt:HH:mm}", releasePart);
+            return (false, $"Held by delay profile until {alreadyPending.ReleasableAt:yyyy-MM-dd HH:mm} UTC", releasePart);
 
         // 8. Hold new releases while a pending group exists. A new candidate
         // must join the same choice even when its own delay has elapsed.
@@ -1143,8 +1292,8 @@ public class RssSyncService : BackgroundService
             : release.Protocol.Equals("Usenet", StringComparison.OrdinalIgnoreCase)
                 ? delayProfile.UsenetDelay
                 : delayProfile.TorrentDelay;
-        var bypass = delayProfile?.BypassIfAboveCustomFormatScore == true
-            && release.CustomFormatScore >= delayProfile.MinimumCustomFormatScore;
+        var bypass = delayProfile != null
+            && delayProfileService.BypassesDelay(release, delayProfile, qualityProfile);
         var nowUtc = DateTime.UtcNow;
         var releasableAt = protocolDelay > 0 && !bypass
             ? release.PublishDate.AddMinutes(protocolDelay)
@@ -1190,7 +1339,7 @@ public class RssSyncService : BackgroundService
                 "[RSS Sync] Held release '{Title}' for event '{Event}' until {ReleasableAt} ({Delay}m delay)",
                 release.Title, evt.Title, releasableAt, protocolDelay);
 
-            return (false, $"Held by delay profile until {releasableAt:HH:mm}", releasePart);
+            return (false, $"Held by delay profile until {releasableAt:yyyy-MM-dd HH:mm} UTC", releasePart);
         }
 
         // 9. Check if release quality is allowed AND has no rejections.
@@ -1516,7 +1665,7 @@ public class RssSyncService : BackgroundService
         Config config,
         CancellationToken cancellationToken)
     {
-        if (releasePart == null || !config.EnableMultiPartEpisodes || profile == null)
+        if (releasePart == null || !EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt) || profile == null)
             return new List<string>();
 
         var otherPartFiles = await db.EventFiles.AsNoTracking()

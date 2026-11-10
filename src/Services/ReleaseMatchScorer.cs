@@ -317,6 +317,25 @@ public class ReleaseMatchScorer
     // "week"/W beside "episode"/E.
     private static readonly Regex _dwcsEventRegex = new(@"(?:dana\s*white|dwcs|contender\s*series).*?(?:s(\d+)\s*[ew](\d+)|season\s*(\d+).*?(?:episode|week|ep)\s*(\d+))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _dwcsReleaseRegex = new(@"(?:dana\s*white|dwcs|contender\s*series).*?s(\d+)\s*[ew](\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Whether a Contender Series release names the event's season and week.
+    /// Null when either title is not a Contender Series title. Both titles
+    /// must have their separators replaced by spaces.
+    /// </summary>
+    internal static bool? ContenderSeriesWeekMatches(string normalizedRelease, string normalizedEvent)
+    {
+        var eventMatch = _dwcsEventRegex.Match(normalizedEvent);
+        var releaseMatch = _dwcsReleaseRegex.Match(normalizedRelease);
+        if (!eventMatch.Success || !releaseMatch.Success ||
+            !int.TryParse(eventMatch.Groups[1].Success ? eventMatch.Groups[1].Value : eventMatch.Groups[3].Value, out var eventSeason) ||
+            !int.TryParse(eventMatch.Groups[2].Success ? eventMatch.Groups[2].Value : eventMatch.Groups[4].Value, out var eventWeek) ||
+            !int.TryParse(releaseMatch.Groups[1].Value, out var releaseSeason) ||
+            !int.TryParse(releaseMatch.Groups[2].Value, out var releaseWeek))
+            return null;
+
+        return releaseSeason == eventSeason && releaseWeek == eventWeek;
+    }
     // Event number after the org keyword. The number can sit a few words after the
     // org ("UFC Freedom 250", "UFC on ESPN 50"), so allow a short run of non-digits
     // in between. Capped at 1-3 digits with a trailing boundary so it never latches

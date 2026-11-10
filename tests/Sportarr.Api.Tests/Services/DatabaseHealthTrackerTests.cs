@@ -134,6 +134,7 @@ public class DatabaseHealthTrackerTests
                 messageGenerator: (_, __) => "",
                 connection: null!,
                 command: new Microsoft.Data.Sqlite.SqliteCommand(),
+                logCommandText: "",
                 context: null,
                 executeMethod: Microsoft.EntityFrameworkCore.Diagnostics.DbCommandMethod.ExecuteReader,
                 commandId: Guid.NewGuid(),

@@ -12,10 +12,11 @@ namespace Sportarr.Api.Services;
 /// 3. Re-check events that may have gotten new channel mappings
 /// 4. Clean up recordings for events that are no longer monitored or in the past
 /// </summary>
-public class DvrAutoSchedulerService : BackgroundService
+public class DvrAutoSchedulerService : BackgroundService, IManualPassService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DvrAutoSchedulerService> _logger;
+    private readonly ScheduledPassGate _passGate = new();
 
     // Check every 15 minutes for new events to schedule
     private readonly TimeSpan _checkInterval = TimeSpan.FromMinutes(15);
@@ -42,17 +43,11 @@ public class DvrAutoSchedulerService : BackgroundService
         {
             try
             {
-                // First, try to schedule events using league-channel mappings
-                var leagueResult = await ScheduleUpcomingEventsAsync(stoppingToken);
-
-                // Then, try to schedule events by matching EPG programs to monitored events
-                var epgResult = await ScheduleEventsFromEpgAsync(stoppingToken);
-
-                if (epgResult.RecordingsScheduled > 0)
-                {
-                    _logger.LogInformation("[DVR Auto-Scheduler] EPG-based scheduling: Scheduled {Count} additional recordings",
-                        epgResult.RecordingsScheduled);
-                }
+                await _passGate.RunScheduledAsync(() => RunPassAsync(stoppingToken), _checkInterval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -63,6 +58,34 @@ public class DvrAutoSchedulerService : BackgroundService
         }
 
         _logger.LogInformation("[DVR Auto-Scheduler] Service stopped");
+    }
+
+    /// <summary>
+    /// Runs one scheduling pass now.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken) => await RunPassAsync(cancellationToken);
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
+    }
+
+    private async Task RunPassAsync(CancellationToken cancellationToken)
+    {
+        // First, try to schedule events using league-channel mappings
+        await ScheduleUpcomingEventsAsync(cancellationToken);
+
+        // Then, try to schedule events by matching EPG programs to monitored events
+        var epgResult = await ScheduleEventsFromEpgAsync(cancellationToken);
+
+        if (epgResult.RecordingsScheduled > 0)
+        {
+            _logger.LogInformation("[DVR Auto-Scheduler] EPG-based scheduling: Scheduled {Count} additional recordings",
+                epgResult.RecordingsScheduled);
+        }
     }
 
     /// <summary>
@@ -158,6 +181,11 @@ public class DvrAutoSchedulerService : BackgroundService
         _logger.LogDebug("[DVR Auto-Scheduler] {Count}/{Total} leagues have channel mappings",
             leaguesWithChannels.Count, leagueIds.Count);
 
+        // A team with a usable mapped channel lets its events through even
+        // when the league has no channel. The event still needs a league,
+        // because the scheduler reads padding and the DVR opt-out from it.
+        var teamsWithChannels = await TeamsWithChannelsAsync(db, eventsToSchedule, cancellationToken);
+
         // Schedule recordings for events with channel mappings
         foreach (var evt in eventsToSchedule)
         {
@@ -166,7 +194,7 @@ public class DvrAutoSchedulerService : BackgroundService
 
             result.EventsChecked++;
 
-            if (!evt.LeagueId.HasValue || !leaguesWithChannels.Contains(evt.LeagueId.Value))
+            if (!HasMappedChannel(evt, leaguesWithChannels, teamsWithChannels))
             {
                 result.SkippedNoChannel++;
                 continue;
@@ -204,6 +232,49 @@ public class DvrAutoSchedulerService : BackgroundService
             result.SkippedNoChannel, result.Errors);
 
         return result;
+    }
+
+    /// <summary>
+    /// The teams of these events that have a usable mapped channel.
+    /// </summary>
+    internal static async Task<HashSet<int>> TeamsWithChannelsAsync(
+        SportarrDbContext db, IEnumerable<Event> events, CancellationToken ct)
+    {
+        var teamIds = events
+            .SelectMany(e => new[] { e.HomeTeamId, e.AwayTeamId })
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        if (teamIds.Count == 0)
+        {
+            return new HashSet<int>();
+        }
+
+        var withChannels = await db.ChannelTeamMappings
+            .Where(m => teamIds.Contains(m.TeamId)
+                && m.Channel != null && m.Channel.IsEnabled
+                && m.Channel.Source != null && m.Channel.Source.IsActive)
+            .Select(m => m.TeamId)
+            .Distinct()
+            .ToListAsync(ct);
+        return withChannels.ToHashSet();
+    }
+
+    /// <summary>
+    /// An event can be scheduled when its league or one of its teams has a
+    /// mapped channel. The event still needs a league, because scheduling
+    /// reads the padding and the DVR opt-out from it.
+    /// </summary>
+    internal static bool HasMappedChannel(Event evt, ISet<int> leaguesWithChannels, ISet<int> teamsWithChannels)
+    {
+        if (!evt.LeagueId.HasValue)
+        {
+            return false;
+        }
+        return leaguesWithChannels.Contains(evt.LeagueId.Value)
+            || (evt.HomeTeamId.HasValue && teamsWithChannels.Contains(evt.HomeTeamId.Value))
+            || (evt.AwayTeamId.HasValue && teamsWithChannels.Contains(evt.AwayTeamId.Value));
     }
 
     /// <summary>

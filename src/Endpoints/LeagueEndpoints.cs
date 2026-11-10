@@ -45,6 +45,37 @@ public static class LeagueEndpoints
         });
     }
 
+    /// <summary>
+    /// Set a league's monitored parts. Turning "Full Event" off restores the
+    /// earlier parts. The league editor shows the kept parts again, so a request
+    /// for exactly those parts is a restore too. Returns true for a restore.
+    /// </summary>
+    internal static bool ApplyLeagueMonitoredParts(League league, string? requestedParts, bool restoreRequested)
+    {
+        var restorePrevious = restoreRequested
+            || (EventPartDetector.IsFullEventOnly(league.MonitoredParts, null)
+                && league.PartsBeforeFullEvent != null
+                && EventPartDetector.SameMonitoredParts(requestedParts,
+                    EventPartDetector.DecodePartsBeforeFullEvent(league.PartsBeforeFullEvent)));
+        var change = EventPartDetector.ChangeMonitoredParts(
+            league.MonitoredParts, league.PartsBeforeFullEvent, requestedParts, restorePrevious);
+        league.MonitoredParts = change.MonitoredParts;
+        league.PartsBeforeFullEvent = change.PartsBeforeFullEvent;
+        return restorePrevious;
+    }
+
+    /// <summary>
+    /// Copy the league's monitored parts to one event. Each event keeps, or on
+    /// a restore gets back, its own earlier parts.
+    /// </summary>
+    internal static void CascadeMonitoredParts(League league, Event evt, bool restorePrevious)
+    {
+        var change = EventPartDetector.ChangeMonitoredParts(
+            evt.MonitoredParts, evt.PartsBeforeFullEvent, league.MonitoredParts, restorePrevious);
+        evt.MonitoredParts = change.MonitoredParts;
+        evt.PartsBeforeFullEvent = change.PartsBeforeFullEvent;
+    }
+
     public static IEndpointRouteBuilder MapLeagueEndpoints(this IEndpointRouteBuilder app)
     {
 // API: Get leagues (universal for all sports)
@@ -177,8 +208,11 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db, FileNam
         league.SearchForMissingEvents,
         league.SearchForCutoffUnmetEvents,
         league.MonitoredParts,
+        // The edit modal restores these parts when Full Event is turned off.
+        league.PartsBeforeFullEvent,
         league.MonitoredSessionTypes,
         league.MonitoredEventTypes,
+        league.MonitoredFacets,
         league.SessionTypeQualityProfiles,
         // The edit modal initializes its checkboxes from this response, so
         // every flag it can save must round-trip here - omitting one means
@@ -557,6 +591,7 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
             partNumber = f.PartNumber,
             added = f.Added,
             exists = f.Exists,
+            isParked = f.IsParked,
             fileName = Path.GetFileName(f.FilePath)
         })
         .ToListAsync();
@@ -668,6 +703,7 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
             partNumber = f.PartNumber,
             added = f.Added,
             exists = f.Exists,
+            isParked = f.IsParked,
             fileName = Path.GetFileName(f.FilePath)
         })
         .ToListAsync();
@@ -722,6 +758,20 @@ app.MapGet("/api/motorsport/session-types", (string leagueName) =>
     return Results.Ok(sessionTypes);
 });
 
+// API: Get the facet schema of a league, for example gender and discipline.
+// The Add League modal shows one choice per dimension. 204 means the league
+// has no facets.
+app.MapGet("/api/leagues/facets", (string? sport, string? leagueName, string? externalId) =>
+{
+    var schema = EventFacets.GetSchema(sport, leagueName, externalId);
+    if (schema == null) return Results.NoContent();
+    return Results.Ok(new
+    {
+        schema.Id,
+        Dimensions = schema.Dimensions.Select(d => new { d.Key, d.Label, d.Values })
+    });
+});
+
 // API: Get fighting event types for a league (based on league name)
 // Used by the Add League modal to show which event types can be monitored (UFC PPV, Fight Night, DWCS)
 app.MapGet("/api/fighting/event-types", (string leagueName) =>
@@ -763,7 +813,7 @@ app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, S
 });
 
 // API: Update league (including monitor toggle)
-app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, TaskService taskService, ConfigService configService, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, TaskService taskService, ConfigService configService, NotificationService notificationService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
@@ -772,6 +822,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     }
 
     var keepAllEventsTurnedOn = false;
+    List<Event>? eventsToReconcile = null;
     // A setting that widens what the library should hold has to go and get it.
     // A scheduled sync walks current and future seasons only, so a season that
     // is over is never revisited, and the recalculation below only re-reads
@@ -954,7 +1005,10 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     if (body.TryGetProperty("monitoredParts", out var monitoredPartsProp))
     {
-        league.MonitoredParts = monitoredPartsProp.ValueKind == JsonValueKind.Null ? null : monitoredPartsProp.GetString();
+        var requestedParts = monitoredPartsProp.ValueKind == JsonValueKind.Null ? null : monitoredPartsProp.GetString();
+        var restoreRequested = body.TryGetProperty("restorePrevious", out var restoreProp)
+            && restoreProp.ValueKind == JsonValueKind.True;
+        var restorePrevious = ApplyLeagueMonitoredParts(league, requestedParts, restoreRequested);
         logger.LogInformation("[LEAGUES] Updated monitored parts to: {MonitoredParts}", league.MonitoredParts ?? "all parts (default)");
 
         // Honor the frontend's "apply to existing events" checkbox.
@@ -986,7 +1040,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
                 foreach (var evt in eventsToUpdate)
                 {
-                    evt.MonitoredParts = league.MonitoredParts;
+                    CascadeMonitoredParts(league, evt, restorePrevious);
                     evt.LastUpdate = DateTime.UtcNow;
                 }
 
@@ -1000,6 +1054,8 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
         foreach (var evt in eventsToUpdate)
             evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt, config.EnableMultiPartEpisodes, league);
+        // Files move only after every check passed and the change is saved.
+        eventsToReconcile = eventsToUpdate;
     }
 
     // Handle monitored session types for motorsport leagues (currently only F1)
@@ -1034,6 +1090,36 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         else
         {
             logger.LogDebug("[LEAGUES] MonitoredEventTypes unchanged: {Value}", league.MonitoredEventTypes ?? "(all)");
+        }
+    }
+
+    // Facet rules, for example gender and discipline in alpine skiing. The UI
+    // sends a JSON string. A raw array is accepted too.
+    bool facetsChanged = false;
+    if (body.TryGetProperty("monitoredFacets", out var facetsProp))
+    {
+        if (facetsProp.ValueKind is not (JsonValueKind.Null or JsonValueKind.String or JsonValueKind.Array))
+        {
+            return Results.BadRequest(new { error = "monitoredFacets must be a JSON list of rules" });
+        }
+        string? requestedFacets = facetsProp.ValueKind switch
+        {
+            JsonValueKind.String => facetsProp.GetString(),
+            JsonValueKind.Array => facetsProp.GetRawText(),
+            _ => null
+        };
+        var normalizedFacets = EventFacets.NormalizeForLeague(league.Sport, league.Name, league.ExternalId,
+            requestedFacets, league.MonitoredFacets, out var facetsError);
+        if (facetsError != null)
+        {
+            return Results.BadRequest(new { error = facetsError });
+        }
+        if (league.MonitoredFacets != normalizedFacets)
+        {
+            logger.LogInformation("[LEAGUES] MonitoredFacets changing from '{Old}' to '{New}'",
+                league.MonitoredFacets ?? "(all)", normalizedFacets ?? "(all)");
+            league.MonitoredFacets = normalizedFacets;
+            facetsChanged = true;
         }
     }
 
@@ -1231,10 +1317,10 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     }
 
     // Determine if we need to recalculate event monitoring
-    // This happens when: monitored, monitorType, sessionTypes, or eventTypes changes
-    bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged || eventTypesChanged;
-    logger.LogInformation("[LEAGUES] Event update needed: {Needed} (monitoredChanged={MC}, monitorTypeChanged={MTC}, sessionTypesChanged={STC}, eventTypesChanged={ETC})",
-        needsEventUpdate, monitoredChanged, monitorTypeChanged, sessionTypesChanged, eventTypesChanged);
+    // This happens when: monitored, monitorType, sessionTypes, eventTypes or facets changes
+    bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged || eventTypesChanged || facetsChanged;
+    logger.LogInformation("[LEAGUES] Event update needed: {Needed} (monitoredChanged={MC}, monitorTypeChanged={MTC}, sessionTypesChanged={STC}, eventTypesChanged={ETC}, facetsChanged={FC})",
+        needsEventUpdate, monitoredChanged, monitorTypeChanged, sessionTypesChanged, eventTypesChanged, facetsChanged);
 
     if (needsEventUpdate)
     {
@@ -1319,6 +1405,21 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                     logger.LogDebug("[LEAGUES] Event '{Title}': session type filter applied, monitored = {IsMonitored} (filter: '{Filter}')",
                         evt.Title, isSessionMonitored, league.MonitoredSessionTypes);
                     shouldMonitor = isSessionMonitored;
+                }
+
+                // Apply the facet rules (gender, discipline, ...). Null = all events.
+                // A change to the rules applies them to every event. This also
+                // turns off an excluded event that the user monitored by hand.
+                // This is intentional, because the new rules are the newer
+                // choice. The next sync monitors
+                // followed-athlete events again (see LeagueEventSyncService).
+                // A save that keeps the rules never newly monitors an excluded
+                // event. It keeps the monitored state that the event has now.
+                if (shouldMonitor && !EventFacets.IsMonitored(league, evt.Title))
+                {
+                    shouldMonitor = facetsChanged ? false : evt.Monitored;
+                    logger.LogDebug("[LEAGUES] Event '{Title}': facet rules exclude it, monitored = {IsMonitored} (rules: '{Rules}')",
+                        evt.Title, shouldMonitor, league.MonitoredFacets);
                 }
 
                 // Apply UFC-style fighting event type filter (PPV, FightNight, ContenderSeries)
@@ -1411,6 +1512,12 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     league.LastUpdate = DateTime.UtcNow;
     await db.SaveChangesAsync();
+    // The change is saved. Now the files follow each event's mode.
+    if (eventsToReconcile != null)
+    {
+        await FileParking.ReconcileAndSaveAsync(db, eventsToReconcile,
+            (await configService.GetConfigAsync()).EnableMultiPartEpisodes, notificationService, logger);
+    }
 
     if (keepAllEventsTurnedOn || reachWidened)
     {
@@ -1914,7 +2021,11 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
             // This ensures consistency: no teams = no events = no parts should be monitored
             if (EventPartDetector.IsFightingSport(league.Sport))
             {
-                league.MonitoredParts = ""; // Empty string = no parts monitored
+                // Empty string = no parts monitored
+                var noPartsChange = EventPartDetector.ChangeMonitoredParts(
+                    league.MonitoredParts, league.PartsBeforeFullEvent, "");
+                league.MonitoredParts = noPartsChange.MonitoredParts;
+                league.PartsBeforeFullEvent = noPartsChange.PartsBeforeFullEvent;
                 logger.LogInformation("[LEAGUES] Fighting sport with no teams - setting MonitoredParts to empty (no parts monitored)");
             }
 
@@ -2064,6 +2175,8 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
                     logger.LogDebug("[LEAGUES] Deleted file: {Path}", eventFile.FilePath);
                 }
                 await metadataWriterService.DeleteEventMetadataAsync(eventFile);
+                // A parked folder goes once its last file is gone.
+                FileParking.RemoveParkedFolderIfEmpty(eventFile.FilePath, logger);
             }
             catch (Exception ex)
             {

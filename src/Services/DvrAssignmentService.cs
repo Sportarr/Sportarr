@@ -74,14 +74,10 @@ public sealed class DvrAssignmentService(
             .ToListAsync(cancellationToken);
         if (channels.Count != channelIds.Count)
             throw new ArgumentException("Every assigned channel must exist, be enabled, and have an active source.");
-        if (recording.Method == DvrRecordingMethod.Catchup && channels.Any(channel =>
-                !channel.HasArchive ||
-                channel.Source!.Type != IptvSourceType.Xtream ||
-                string.IsNullOrWhiteSpace(channel.Source.Username) ||
-                string.IsNullOrWhiteSpace(channel.Source.Password) ||
-                !XtreamCodesClient.TryParseStreamId(channel.StreamUrl, out _)))
+        if (recording.Method == DvrRecordingMethod.Catchup && channels.Any(channel => !CanServeCatchup(channel)))
             throw new ArgumentException("Catchup assignments require Xtream channels with credentials and valid stream IDs.");
 
+        var channelChanged = channelId != recording.ChannelId;
         var fallbackJson = fallbackIds.Count == 0 ? null : JsonSerializer.Serialize(fallbackIds);
         var updatedAt = DateTime.UtcNow;
         var changed = await db.DvrRecordings
@@ -94,6 +90,7 @@ public sealed class DvrAssignmentService(
                 && r.Quality == recording.Quality)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(r => r.ChannelId, channelId)
+                .SetProperty(r => r.ChannelPinned, r => r.ChannelPinned || channelChanged)
                 .SetProperty(r => r.FallbackChannelIds, fallbackJson)
                 .SetProperty(r => r.ScheduledStart, start)
                 .SetProperty(r => r.ScheduledEnd, end)
@@ -106,6 +103,18 @@ public sealed class DvrAssignmentService(
         return new DvrAssignmentChangeResponse(id, previous,
             new DvrAssignmentSnapshot(channelId, fallbackIds, start, end, quality));
     }
+
+    /// <summary>
+    /// True when a catchup download can use this channel. Load the channel
+    /// with its source.
+    /// </summary>
+    public static bool CanServeCatchup(IptvChannel channel) =>
+        channel.HasArchive
+        && channel.Source != null
+        && channel.Source.Type == IptvSourceType.Xtream
+        && !string.IsNullOrWhiteSpace(channel.Source.Username)
+        && !string.IsNullOrWhiteSpace(channel.Source.Password)
+        && XtreamCodesClient.TryParseStreamId(channel.StreamUrl, out _);
 
     private static DvrAssignmentSnapshot Snapshot(DvrRecording recording, List<int> fallbackIds) =>
         new(recording.ChannelId, fallbackIds, recording.ScheduledStart,

@@ -202,10 +202,12 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
 
 // API: Update event (universal for all sports)
 app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db, EventDvrService eventDvrService,
-    EventStreamService eventStream, ConfigService configService) =>
+    EventStreamService eventStream, ConfigService configService, NotificationService notificationService,
+    ILogger<Program> logger) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
+    var reconcileFiles = false;
 
     // Track if monitoring changed to trigger DVR scheduling
     var wasMonitored = evt.Monitored;
@@ -246,9 +248,7 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
 
     if (body.TryGetProperty("monitoredParts", out var monitoredPartsValue))
     {
-        evt.MonitoredParts = monitoredPartsValue.ValueKind == JsonValueKind.Null
-            ? null
-            : monitoredPartsValue.GetString();
+        ApplyMonitoredParts(evt, monitoredPartsValue, body);
     }
 
     if (body.TryGetProperty("qualityProfileId", out var qualityProfileIdValue))
@@ -267,7 +267,8 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
             ? await db.Leagues.FindAsync(evt.LeagueId.Value)
             : null;
         var currentConfig = await configService.GetConfigAsync();
-        var presentParts = evt.Files.Where(f => f.Exists).Select(f => f.PartNumber).ToArray();
+        reconcileFiles = true;
+        var presentParts = evt.Files.Where(f => f.Exists && !f.IsParked).Select(f => f.PartNumber).ToArray();
         evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt.Sport, evt.Title,
             targetLeague?.Name, evt.MonitoredParts, targetLeague?.MonitoredParts,
             presentParts, currentConfig.EnableMultiPartEpisodes);
@@ -284,6 +285,12 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
     evt.LastUpdate = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
+    // The change is saved. Now the files follow the event's mode.
+    if (reconcileFiles)
+    {
+        await FileParking.ReconcileAndSaveAsync(db, new[] { evt },
+            (await configService.GetConfigAsync()).EnableMultiPartEpisodes, notificationService, logger);
+    }
 
     // Handle DVR scheduling when monitoring changes
     if (wasMonitored != evt.Monitored)
@@ -480,7 +487,7 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     });
 
     // Update event's HasFile status
-    var remainingFiles = evt.Files.Where(f => f.Id != fileId && f.Exists).ToList();
+    var remainingFiles = evt.Files.Where(f => f.Id != fileId && f.Exists && !f.IsParked).ToList();
     var fileConfig = deleteConfig;
     evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
         evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
@@ -507,10 +514,27 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     try
     {
         await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
+        // A parked folder goes once its last file is gone.
+        FileParking.RemoveParkedFolderIfEmpty(file.FilePath, logger);
     }
     catch (Exception ex)
     {
         logger.LogWarning(ex, "[FILES] Failed to delete local metadata sidecars for: {FilePath}", file.FilePath);
+    }
+
+    // The files left follow the event's mode. Deleting the visible whole file
+    // brings the hidden parts back into view at once.
+    if (fileConfig.EnableMultiPartEpisodes)
+    {
+        try
+        {
+            await FileParking.ReconcileAndSaveAsync(db, new[] { evt }, true, notificationService, logger);
+        }
+        catch (Exception ex)
+        {
+            // The delete is saved. The next disk scan puts the files right.
+            logger.LogWarning(ex, "[FILES] Could not update hidden files for event {EventId}", eventId);
+        }
     }
 
     // Notify media servers after removing the sidecars so a scan sees the final state.
@@ -710,6 +734,8 @@ app.MapDelete("/api/events/{id:int}/files", async (
         try
         {
             await metadataWriterService.DeleteEventMetadataAsync(file, recycledVideoPath);
+            // A parked folder goes once its last file is gone.
+            FileParking.RemoveParkedFolderIfEmpty(file.FilePath, logger);
         }
         catch (Exception ex)
         {
@@ -742,7 +768,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
     var fileConfig = await configService.GetConfigAsync();
     evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(
         evt.Sport, evt.Title, evt.League?.Name, evt.MonitoredParts,
-        evt.League?.MonitoredParts, keptFiles.Where(f => f.Exists).Select(f => f.PartNumber).ToArray(),
+        evt.League?.MonitoredParts, keptFiles.Where(f => f.Exists && !f.IsParked).Select(f => f.PartNumber).ToArray(),
         fileConfig.EnableMultiPartEpisodes);
     if (keptFiles.Count == 0)
     {
@@ -759,6 +785,18 @@ app.MapDelete("/api/events/{id:int}/files", async (
     }
 
     await db.SaveChangesAsync();
+    if (fileConfig.EnableMultiPartEpisodes)
+    {
+        try
+        {
+            await FileParking.ReconcileAndSaveAsync(db, new[] { evt }, true, notificationService, logger);
+        }
+        catch (Exception ex)
+        {
+            // The delete is saved. The next disk scan puts the files right.
+            logger.LogWarning(ex, "[FILES] Could not update hidden files for event {EventId}", id);
+        }
+    }
 
     // Report only what actually went. Naming a file that refused to delete
     // tells a media server to forget a file that is still there.
@@ -863,17 +901,18 @@ app.MapDelete("/api/events/{id:int}/files", async (
 });
 
 // API: Update event monitored parts (for fighting sports multi-part episodes)
-app.MapPut("/api/events/{id:int}/parts", async (int id, JsonElement body, SportarrDbContext db, ConfigService configService, ILogger<Program> logger) =>
+app.MapPut("/api/events/{id:int}/parts", async (int id, JsonElement body, SportarrDbContext db, ConfigService configService,
+    NotificationService notificationService, ILogger<Program> logger) =>
 {
     var evt = await db.Events.Include(e => e.League).Include(e => e.Files)
         .FirstOrDefaultAsync(e => e.Id == id);
     if (evt is null) return Results.NotFound();
+    var partsChanged = false;
 
     if (body.TryGetProperty("monitoredParts", out var partsValue))
     {
-        evt.MonitoredParts = partsValue.ValueKind == JsonValueKind.Null
-            ? null
-            : partsValue.GetString();
+        ApplyMonitoredParts(evt, partsValue, body);
+        partsChanged = true;
         var config = await configService.GetConfigAsync();
         evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt, config.EnableMultiPartEpisodes);
 
@@ -883,6 +922,12 @@ app.MapPut("/api/events/{id:int}/parts", async (int id, JsonElement body, Sporta
 
     evt.LastUpdate = DateTime.UtcNow;
     await db.SaveChangesAsync();
+    // The change is saved. Now the files follow the event's mode.
+    if (partsChanged)
+    {
+        await FileParking.ReconcileAndSaveAsync(db, new[] { evt },
+            (await configService.GetConfigAsync()).EnableMultiPartEpisodes, notificationService, logger);
+    }
 
     return Results.Ok(evt);
 });
@@ -894,6 +939,7 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
     JsonElement body,
     SportarrDbContext db,
     ConfigService configService,
+    NotificationService notificationService,
     ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(leagueId);
@@ -955,6 +1001,13 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
             }
         }
 
+        // Apply the facet rules too. Monitor All must not monitor a gender
+        // or discipline that the league excludes.
+        if (shouldMonitor && !EventFacets.IsMonitored(league, evt.Title))
+        {
+            shouldMonitor = false;
+        }
+
         evt.Monitored = shouldMonitor;
         // A season somebody monitors or unmonitors by hand is their decision
         // either way, so a sync leaves every game in it alone. Only the games
@@ -965,16 +1018,12 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
             evt.ManuallyMonitored = true;
         }
 
-        if (shouldMonitor)
-        {
-            // When toggling ON: Set to league's default parts (Option A - always use default, forget custom)
-            evt.MonitoredParts = league.MonitoredParts;
-        }
-        else
-        {
-            // When toggling OFF: Clear parts (unmonitor everything)
-            evt.MonitoredParts = null;
-        }
+        // When toggling ON: Set to league's default parts (Option A - always use default, forget custom)
+        // When toggling OFF: Clear parts (unmonitor everything)
+        var partsChange = EventPartDetector.ChangeMonitoredParts(evt.MonitoredParts, evt.PartsBeforeFullEvent,
+            shouldMonitor ? league.MonitoredParts : null, keepEarlierValue: true);
+        evt.MonitoredParts = partsChange.MonitoredParts;
+        evt.PartsBeforeFullEvent = partsChange.PartsBeforeFullEvent;
 
         evt.HasFile = EventPartDetector.AreAllMonitoredPartsPresent(evt, config.EnableMultiPartEpisodes, league);
 
@@ -982,6 +1031,8 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
     }
 
     await db.SaveChangesAsync();
+    // The change is saved. Now the files follow each event's mode.
+    await FileParking.ReconcileAndSaveAsync(db, events, config.EnableMultiPartEpisodes, notificationService, logger);
 
     logger.LogInformation("[SEASON TOGGLE] Successfully updated {EventCount} events", events.Count);
 
@@ -993,6 +1044,24 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
 });
 
         return app;
+    }
+
+    /// <summary>
+    /// Set an event's monitored parts from a request body. Turning "Full Event"
+    /// on keeps the earlier value. With "restorePrevious": true, turning it off
+    /// brings that value back. A monitoring toggle keeps the earlier value.
+    /// </summary>
+    internal static void ApplyMonitoredParts(Event evt, JsonElement partsValue, JsonElement body)
+    {
+        var requested = partsValue.ValueKind == JsonValueKind.Null ? null : partsValue.GetString();
+        var restore = body.TryGetProperty("restorePrevious", out var restoreValue)
+            && restoreValue.ValueKind == JsonValueKind.True;
+        // A request that sets "monitored" is a monitoring toggle, not a parts choice.
+        var monitoringToggle = body.TryGetProperty("monitored", out _);
+        var change = EventPartDetector.ChangeMonitoredParts(
+            evt.MonitoredParts, evt.PartsBeforeFullEvent, requested, restore, monitoringToggle);
+        evt.MonitoredParts = change.MonitoredParts;
+        evt.PartsBeforeFullEvent = change.PartsBeforeFullEvent;
     }
 
     /// <summary>

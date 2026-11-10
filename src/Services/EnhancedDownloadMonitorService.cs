@@ -365,8 +365,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // An import owns this row until it finishes. Startup recovers interrupted imports.
         if (download.Status == DownloadStatus.Importing) return;
 
-        // Preserve member warnings until the user retries with corrected files or identity.
-        if (PackImportBoundary.IsHeld(download)) return;
+        // Complete holds stay quiet; older rows may still need their final progress poll.
+        if (PackImportBoundary.IsHeld(download) && download.Progress >= 100) return;
 
         // For ImportPending downloads, skip the download client check and just retry import
         // The download already completed on the client, we're just waiting for the file to be accessible
@@ -596,6 +596,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
         {
             download.OutputPath = status.SavePath;
         }
+
+        // Refresh stale progress without clearing the hold or retrying import.
+        if (PackImportBoundary.IsHeld(download)) return;
 
         // Update status based on client response
         // Special handling for Decypharr: "paused" with 100% progress means completed
@@ -856,6 +859,10 @@ public class EnhancedDownloadMonitorService : BackgroundService
         {
             download.Status = DownloadStatus.Importing;
             download.LastUpdate = DateTime.UtcNow;
+
+            // Pack imports reload the row under their job lock. Save this poll
+            // first so that reload cannot restore the previous poll's progress.
+            if (download.IsPack && db != null) await db.SaveChangesAsync();
 
             // Import the download
             var importResult = download.IsPack
@@ -1128,6 +1135,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
             try
             {
                 var allDownloads = await downloadClientService.GetAllDownloadsByCategoryAsync(client, client.Category);
+                ReconcileTorrentAliases(ownership, allDownloads);
 
                 // Reconcile stale detections: an auto-detected external PendingImport
                 // should disappear once its download is no longer present in the
@@ -1142,11 +1150,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     using var reconcileScope = _serviceProvider.CreateScope();
                     var db = reconcileScope.ServiceProvider.GetRequiredService<SportarrDbContext>();
                     var currentIds = new HashSet<string>(
-                        allDownloads.Select(d => d.DownloadId),
+                        allDownloads.SelectMany(d => d.TorrentHashAliases.Append(d.DownloadId)),
                         StringComparer.OrdinalIgnoreCase);
                     var currentHashes = new HashSet<string>(
-                        allDownloads.Where(d => !string.IsNullOrEmpty(d.TorrentInfoHash))
-                            .Select(d => d.TorrentInfoHash!.ToLowerInvariant()),
+                        allDownloads.SelectMany(d => d.TorrentHashAliases.Append(d.TorrentInfoHash ?? ""))
+                            .Where(h => !string.IsNullOrEmpty(h)),
                         StringComparer.OrdinalIgnoreCase);
 
                     var clientPending = await db.PendingImports
@@ -1193,6 +1201,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     var libraryImport = decisionScope.ServiceProvider.GetRequiredService<LibraryImportService>();
                     // Absence before the client poll cannot authorize an import.
                     ownership = await ReadDownloadOwnershipAsync(db, cancellationToken);
+                    ReconcileTorrentAliases(ownership, allDownloads);
                     var knownDownloadIds = ownership.KnownDownloadIds;
                     var pendingDownloadIds = ownership.PendingDownloadIds;
                     var grabsByDownloadId = ownership.GrabsByDownloadId;
@@ -1609,6 +1618,29 @@ public class EnhancedDownloadMonitorService : BackgroundService
             liveHashes, knownHashes, blocklistedHashes, blocklistedTitles);
     }
 
+    private static void ReconcileTorrentAliases(DownloadOwnershipSnapshot ownership, IEnumerable<ExternalDownloadInfo> downloads)
+    {
+        foreach (var download in downloads)
+        {
+            // Aliases come from the same qBittorrent hash helper used for add/status/removal.
+            // Keep every ownership lookup equivalent, including old rows keyed by the v1 ID.
+            if (download.TorrentHashAliases.Length == 0) continue;
+            var aliases = download.TorrentHashAliases;
+            foreach (var hashes in new[] { ownership.KnownDownloadIds, ownership.PendingDownloadIds,
+                         ownership.LiveHashes, ownership.KnownHashes, ownership.BlocklistedHashes })
+            {
+                if (aliases.Any(hashes.Contains)) hashes.UnionWith(aliases);
+            }
+            foreach (var grabs in new[] { ownership.GrabsByDownloadId, ownership.GrabsByHash })
+            {
+                var latest = aliases.Where(grabs.ContainsKey).Select(h => grabs[h])
+                    .OrderByDescending(g => g.GrabbedAt).FirstOrDefault();
+                if (latest != null)
+                    foreach (var alias in aliases) grabs[alias] = latest;
+            }
+        }
+    }
+
     private async Task<ImportableFile?> PrepareExternalFileAsync(DownloadClient client, ExternalDownloadInfo download)
     {
         if (!download.IsCompleted || string.IsNullOrEmpty(download.FilePath)) return null;
@@ -1617,10 +1649,29 @@ public class EnhancedDownloadMonitorService : BackgroundService
             using var scope = _serviceProvider.CreateScope();
             var pathMapping = scope.ServiceProvider.GetRequiredService<IRemotePathMappingService>();
             var localPath = await pathMapping.RemapRemoteToLocalAsync(client.Host, download.FilePath);
-            var folder = Directory.Exists(localPath) ? localPath : File.Exists(localPath) ? Path.GetDirectoryName(localPath) : null;
-            if (folder == null) return null;
             var libraryImport = scope.ServiceProvider.GetRequiredService<LibraryImportService>();
-            var scan = await libraryImport.ScanFolderAsync(folder, includeSubfolders: true);
+            LibraryScanResult scan;
+            if (File.Exists(localPath))
+            {
+                scan = await libraryImport.ScanFileAsync(localPath);
+            }
+            else if (Directory.Exists(localPath))
+            {
+                foreach (var sharedPath in download.SharedSavePaths.Append(client.Directory))
+                {
+                    if (string.IsNullOrWhiteSpace(sharedPath)) continue;
+                    var mappedRoot = await pathMapping.RemapRemoteToLocalAsync(client.Host, sharedPath);
+                    var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                    if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(localPath)),
+                        Path.TrimEndingDirectorySeparator(Path.GetFullPath(mappedRoot)), comparison))
+                    {
+                        _logger.LogWarning("[Enhanced Download Monitor] Skipping shared save directory for {Title}: {Path}", download.Title, localPath);
+                        return null;
+                    }
+                }
+                scan = await libraryImport.ScanFolderAsync(localPath, includeSubfolders: true);
+            }
+            else return null;
             return scan.MatchedFiles.OrderByDescending(f => f.MatchConfidence ?? 0).FirstOrDefault();
         }
         catch (Exception ex)

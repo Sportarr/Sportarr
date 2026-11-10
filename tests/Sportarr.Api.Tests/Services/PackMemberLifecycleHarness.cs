@@ -181,6 +181,7 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
         public int ClientAdds { get; private set; }
         public string? JobPath { get; set; }
         public bool HideJobFromStatus { get; set; }
+        public bool ClientUnavailable { get; set; }
         public string JobState { get; set; } = "pausedUP";
         public long JobAddedOn { get; set; }
         private string _category = "sportarr";
@@ -202,6 +203,7 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
             Calls.Enqueue(uri.AbsolutePath + uri.Query); Requests.Enqueue((request.Method.Method, uri.AbsolutePath, form));
             if (uri.Host == "part-client.invalid")
             {
+                if (ClientUnavailable) throw new HttpRequestException("Fixture client unavailable");
                 var path = uri.AbsolutePath;
                 string? response = null;
                 if (request.Method == HttpMethod.Post && path == "/api/v2/auth/login") response = "Ok.";

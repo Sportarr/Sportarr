@@ -932,6 +932,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("ChannelId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ChannelPinned")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("Created")
                         .HasColumnType("TEXT");
 
@@ -1276,6 +1279,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("MonitoredParts")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PartsBeforeFullEvent")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Quality")
                         .HasColumnType("TEXT");
 
@@ -1377,6 +1383,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsIptvRecording")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsParked")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Languages")
@@ -2289,6 +2298,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("MonitoredEventTypes")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("MonitoredFacets")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("MonitoredParts")
                         .HasColumnType("TEXT");
 
@@ -2300,6 +2312,9 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strLeague");
+
+                    b.Property<string>("PartsBeforeFullEvent")
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("PlayoffTeamMode")
                         .HasColumnType("INTEGER");

@@ -148,7 +148,7 @@ public sealed class MotorsportManualQueryBaselineTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task NonMotorsportDefaultReceivesNoAdditionalProbe()
+    public async Task NonMotorsportDefaultReceivesNoMotorsportProbe()
     {
         await using var rig = await CreateMeetingAsync("Silverstone");
         rig.Event.Title = "Celtics vs Lakers";
@@ -156,7 +156,9 @@ public sealed class MotorsportManualQueryBaselineTests(ITestOutputHelper output)
         rig.Event.League!.Name = "NBA";
         rig.Event.League.Sport = "Basketball";
         await rig.Db.SaveChangesAsync();
-        await UnchangedAsync(rig, new[] { "NBA 2026 07", "NBA 2026" });
+        // An unlinked game also gets the team-name query and the NBA dated
+        // query. Neither is a motorsport probe.
+        await UnchangedAsync(rig, new[] { "NBA 2026 07", "NBA 2026", "NBA Celtics Lakers", "NBA 2026 07 03" });
     }
 
     [Fact]

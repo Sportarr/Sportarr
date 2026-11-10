@@ -132,6 +132,24 @@ public class MetadataWriterServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task WriteEventMetadataAsync_ThePlotIsTheSpoilerFreeLine()
+    {
+        // Jellyfin and Kodi read the NFO too, so it must never carry the
+        // write-up either.
+        await AddEnabledKodiProviderAsync();
+        var (evt, file) = MakeEventAndFile("spoiler-free.mkv");
+        evt.Season = "2026";
+        evt.Venue = "Intuit Dome";
+        evt.Description = "Ilia Topuria knocked out Charles Oliveira in the first round.";
+
+        await _service.WriteEventMetadataAsync(evt, file, evt.League);
+
+        var doc = XDocument.Load(Path.ChangeExtension(file.FilePath, ".nfo"));
+        doc.Root!.Element("title")!.Value.Should().Be("UFC 317 - Main Card");
+        doc.Root.Element("plot")!.Value.Should().Be("UFC 317 - Main Card · UFC 2026 · Intuit Dome");
+    }
+
+    [Fact]
     public async Task WriteLeagueMetadataAsync_WritesTheLeagueIdIntoTheShowNfo()
     {
         await AddEnabledKodiProviderAsync();

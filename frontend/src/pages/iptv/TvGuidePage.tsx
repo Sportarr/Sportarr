@@ -108,6 +108,36 @@ export default function TvGuidePage() {
   const hasEpgOnly = searchParams.get('hasEpgOnly') === 'true';
   const selectedGroup = searchParams.get('group') || '';
   const selectedCountry = searchParams.get('country') || '';
+  const channelSearch = searchParams.get('search') || '';
+
+  // The box keeps what the user types. The URL gets the trimmed value after
+  // a short pause, and that change reloads the guide.
+  const [searchInput, setSearchInput] = useState(channelSearch);
+  const writtenSearch = useRef(channelSearch);
+
+  useEffect(() => {
+    // Follow a URL change from outside, such as the back button.
+    if (channelSearch !== writtenSearch.current) {
+      writtenSearch.current = channelSearch;
+      setSearchInput(channelSearch);
+    }
+  }, [channelSearch]);
+
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === channelSearch) return;
+    const timer = setTimeout(() => {
+      const newParams = new URLSearchParams(searchParams);
+      if (trimmed) {
+        newParams.set('search', trimmed);
+      } else {
+        newParams.delete('search');
+      }
+      writtenSearch.current = trimmed;
+      setSearchParams(newParams, { replace: true });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput, channelSearch, searchParams, setSearchParams]);
 
   const [showFilters, setShowFilters] = useState(false);
   const [channelGroups, setChannelGroups] = useState<string[]>([]);
@@ -131,7 +161,7 @@ export default function TvGuidePage() {
     loadEpgSources();
     loadChannelGroups();
     loadChannelCountries();
-  }, [timeOffset, scheduledOnly, sportsOnly, enabledOnly, hasEpgOnly, selectedGroup, selectedCountry]);
+  }, [timeOffset, scheduledOnly, sportsOnly, enabledOnly, hasEpgOnly, selectedGroup, selectedCountry, channelSearch]);
 
   const loadGuideData = async () => {
     // Each load takes the next number and only writes state while its number
@@ -163,6 +193,7 @@ export default function TvGuidePage() {
       if (hasEpgOnly) params.set('hasEpgOnly', 'true');
       if (selectedGroup) params.set('group', selectedGroup);
       if (selectedCountry) params.set('country', selectedCountry);
+      if (channelSearch) params.set('search', channelSearch);
 
       const response = await apiClient.get<TvGuideResponse>(`/epg/guide?${params}`);
       if (generation !== guideGeneration.current) return;
@@ -276,6 +307,21 @@ export default function TvGuidePage() {
     }
     setSearchParams(newParams);
   };
+
+  // The search stays in the top bar, so it is visible while the filters are closed.
+  const renderChannelSearch = (widthClass: string) => (
+    <div className={`relative ${widthClass}`}>
+      <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+      <input
+        type="search"
+        value={searchInput}
+        onChange={(e) => setSearchInput(e.target.value)}
+        placeholder="Search channels"
+        aria-label="Search channels"
+        className="w-full pl-8 pr-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500"
+      />
+    </div>
+  );
 
   // Calculate time slots for the grid
   const timeSlots = useMemo(() => {
@@ -437,6 +483,7 @@ export default function TvGuidePage() {
           />
 
           {isPhone ? (
+            <>
             <TvGuideMobileControls
               dateLabel={guideDateLabel}
               syncing={syncing}
@@ -448,6 +495,8 @@ export default function TvGuidePage() {
               onNext={() => setTimeOffset(prev => prev + 6)}
               onFilters={() => setShowFilters(!showFilters)}
             />
+            <div className="mt-2">{renderChannelSearch('w-full')}</div>
+            </>
           ) : (
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -481,6 +530,7 @@ export default function TvGuidePage() {
 
             {/* Filters */}
             <div className="flex items-center gap-4">
+              {renderChannelSearch('w-56')}
               <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-colors ${
@@ -591,6 +641,13 @@ export default function TvGuidePage() {
               )}
               </div>
             </div>
+          )}
+
+          {/* The guide loads one page of channels. Say so when there are more. */}
+          {guideData && guideData.totalChannels > guideData.channels.length && (
+            <p className="text-sm text-gray-400 mt-2">
+              Showing the first {guideData.channels.length} of {guideData.totalChannels} channels. Search or use the filters to see the rest.
+            </p>
           )}
 
         </PageShell>

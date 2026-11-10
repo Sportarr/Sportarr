@@ -124,6 +124,14 @@ public class RTorrentClientEndpointTests
     [InlineData(null, "/rutorrent/RPC2")]
     [InlineData("", "/rutorrent/RPC2")]
     [InlineData("   ", "/rutorrent/RPC2")]
+    // Issue #389: seedboxes that serve XML-RPC at /xmlrpc or a PHP handler.
+    [InlineData("/xmlrpc", "/xmlrpc")]
+    [InlineData("xmlrpc", "/xmlrpc")]
+    [InlineData("/XMLRPC/", "/XMLRPC")]
+    [InlineData("/user/xmlrpc", "/user/xmlrpc")]
+    [InlineData("/xmlrpc-proxy", "/xmlrpc-proxy/RPC2")]
+    [InlineData("/xmlrpc/sub", "/xmlrpc/sub/RPC2")]
+    [InlineData("/rtorrent", "/rtorrent/RPC2")]
     public async Task UsesConfiguredRpcEndpointWithoutDuplicatingOrDroppingThePath(
         string? urlBase, string expectedPath)
     {

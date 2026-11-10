@@ -481,6 +481,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IptvSourceService>();
         services.AddScoped<ChannelAutoMappingService>();
         services.AddSingleton<FFmpegRecorderService>();
+        services.AddSingleton<IKeyframeSampler, FFmpegKeyframeSampler>();
+        services.AddSingleton<StreamLoopMonitor>();
         services.AddSingleton<FFmpegStreamService>();
         // Viewer-stream counting for per-source MaxStreams enforcement on
         // the proxy/HDHomeRun path.
@@ -511,7 +513,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<DiskScanService>();
         services.AddHostedService(sp => sp.GetRequiredService<DiskScanService>());
 
-        services.AddHostedService<TrashSyncBackgroundService>();
+        services.AddSingleton<TrashSyncBackgroundService>();
+        services.AddHostedService(sp => sp.GetRequiredService<TrashSyncBackgroundService>());
         services.AddSingleton<DownloadMonitorWakeSignal>();
         services.AddHostedService<EnhancedDownloadMonitorService>();
 
@@ -522,9 +525,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<RssSyncService>();
         services.AddHostedService(sp => sp.GetRequiredService<RssSyncService>());
 
-        services.AddHostedService<BacklogSearchService>();
+        services.AddSingleton<BacklogSearchService>();
+        services.AddHostedService(sp => sp.GetRequiredService<BacklogSearchService>());
         services.AddHostedService<PendingReleaseReaperService>();
-        services.AddHostedService<TvScheduleSyncService>();
+        services.AddSingleton<TvScheduleSyncService>();
+        services.AddHostedService(sp => sp.GetRequiredService<TvScheduleSyncService>());
         services.AddHostedService<FileWatcherService>();
         // LeagueEventAutoSyncService (24h full league walk) is deliberately
         // NOT registered on this branch: the hub changes poller below is
@@ -558,7 +563,8 @@ public static class ServiceCollectionExtensions
         // archive (Method=Catchup rows) - the post-air counterpart to the
         // live scheduler above. Method ported from timeshifter by
         // scottrobertson (github.com/scottrobertson/timeshifter).
-        services.AddHostedService<CatchupDownloadService>();
+        services.AddSingleton<CatchupDownloadService>();
+        services.AddHostedService(sp => sp.GetRequiredService<CatchupDownloadService>());
         services.AddHostedService<IptvEpgRefreshService>();
 
         // Auto-unmonitor + delete files for events past Config.EventRetentionDays.
@@ -568,14 +574,17 @@ public static class ServiceCollectionExtensions
 
         // Daily maintenance: scheduled backups (BackupInterval), recycle-bin
         // cleanup, DVR recording retention, system-event pruning.
-        services.AddHostedService<HousekeepingService>();
+        services.AddSingleton<HousekeepingService>();
+        services.AddHostedService(sp => sp.GetRequiredService<HousekeepingService>());
 
         // Periodic health evaluation + OnHealthIssue/OnHealthRestored
         // notifications; previously checks only ran when the UI asked.
-        services.AddHostedService<HealthCheckMonitorService>();
+        services.AddSingleton<HealthCheckMonitorService>();
+        services.AddHostedService(sp => sp.GetRequiredService<HealthCheckMonitorService>());
 
         // Periodic sync of enabled import lists (previously manual-only).
-        services.AddHostedService<ImportListSyncService>();
+        services.AddSingleton<ImportListSyncService>();
+        services.AddHostedService(sp => sp.GetRequiredService<ImportListSyncService>());
 
         return services;
     }

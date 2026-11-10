@@ -226,7 +226,36 @@ public class IptvSourceService
     /// <summary>
     /// Sync channels from an IPTV source
     /// </summary>
+    // One sync per source at a time. Two syncs that overlap both see no
+    // existing rows and both insert every channel.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> SyncGates = new();
+
     public async Task<int> SyncChannelsAsync(int sourceId)
+    {
+        var gate = SyncGates.GetOrAdd(sourceId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
+        {
+            return await SyncChannelsCoreAsync(sourceId);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Keep the first channel for each stream URL. Providers often list one
+    /// stream in two categories. The second copy then matched no existing
+    /// row and was added again on every sync, so the guide showed it twice.
+    /// </summary>
+    internal static List<IptvChannel> DistinctByStreamUrl(List<IptvChannel> channels)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return channels.Where(c => string.IsNullOrEmpty(c.StreamUrl) || seen.Add(c.StreamUrl)).ToList();
+    }
+
+    private async Task<int> SyncChannelsCoreAsync(int sourceId)
     {
         var source = await _db.IptvSources.FindAsync(sourceId);
         if (source == null)
@@ -254,6 +283,14 @@ public class IptvSourceService
             else
             {
                 throw new NotSupportedException($"Source type {source.Type} not supported");
+            }
+
+            var listed = channels.Count;
+            channels = DistinctByStreamUrl(channels);
+            if (channels.Count < listed)
+            {
+                _logger.LogInformation("[IPTV] {Source} lists {Count} stream(s) more than once; kept one copy of each",
+                    source.Name, listed - channels.Count);
             }
 
             // Upsert in place. The old delete-and-recreate approach gave
@@ -307,19 +344,40 @@ public class IptvSourceService
     /// are retired (disabled + marked) instead, because deleting them would
     /// cascade away the user's mappings and recording history.
     /// </summary>
-    private async Task<int> UpsertChannelsAsync(IptvSource source, List<IptvChannel> incoming)
+    internal async Task<int> UpsertChannelsAsync(IptvSource source, List<IptvChannel> incoming)
     {
         var existing = await _db.IptvChannels
             .Where(c => c.SourceId == source.Id)
+            .OrderBy(c => c.Id)
             .ToListAsync();
 
         var matched = new List<(IptvChannel Existing, IptvChannel Incoming)>();
         var claimedExisting = new HashSet<int>();
         var consumedIncoming = new HashSet<IptvChannel>();
 
-        // Pass 1: exact stream URL.
+        // Pass 1: exact stream URL. Older syncs could store one stream twice.
+        // Of those copies, the one the user set up keeps the stream, so its
+        // mappings and recordings stay on an enabled channel. The others
+        // then count as gone from the playlist and are retired or removed.
+        var duplicateIds = existing
+            .GroupBy(c => c.StreamUrl, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .SelectMany(g => g.Select(c => c.Id))
+            .ToList();
+        var inUse = new HashSet<int>();
+        if (duplicateIds.Count > 0)
+        {
+            inUse.UnionWith(await _db.ChannelLeagueMappings
+                .Where(m => duplicateIds.Contains(m.ChannelId)).Select(m => m.ChannelId).ToListAsync());
+            inUse.UnionWith(await _db.ChannelTeamMappings
+                .Where(m => duplicateIds.Contains(m.ChannelId)).Select(m => m.ChannelId).ToListAsync());
+            inUse.UnionWith(await _db.DvrRecordings
+                .Where(r => duplicateIds.Contains(r.ChannelId)).Select(r => r.ChannelId).ToListAsync());
+        }
+        bool SetUp(IptvChannel c) => inUse.Contains(c.Id) || c.IsFavorite || c.TvgIdIsManual || !string.IsNullOrWhiteSpace(c.TvgId);
+
         var byUrl = new Dictionary<string, IptvChannel>(StringComparer.Ordinal);
-        foreach (var c in existing)
+        foreach (var c in existing.OrderByDescending(SetUp).ThenBy(c => c.Id))
             byUrl.TryAdd(c.StreamUrl, c);
 
         foreach (var inc in incoming)
@@ -727,12 +785,14 @@ public class IptvSourceService
         if (channel == null)
             throw new ArgumentException($"Channel {request.ChannelId} not found");
 
-        // Remove existing mappings
         var existingMappings = await _db.ChannelLeagueMappings
             .Where(m => m.ChannelId == request.ChannelId)
             .ToListAsync();
 
-        _db.ChannelLeagueMappings.RemoveRange(existingMappings);
+        // The form lists mapped leagues only, so an exclusion is never in the
+        // request. Keep it unless the user maps that league again.
+        _db.ChannelLeagueMappings.RemoveRange(existingMappings
+            .Where(m => !m.IsExcluded || request.LeagueIds.Contains(m.LeagueId)));
 
         // Add new mappings. IsManual makes the admin's decision durable:
         // the auto-mapper drops non-manual rows it can't justify by score,
@@ -748,6 +808,19 @@ public class IptvSourceService
             Confidence = 100,
             Created = DateTime.UtcNow
         }).ToList();
+
+        // A league has one preferred channel. The new choice replaces the old
+        // one, the same as the league's preferred-channel setting.
+        if (request.PreferredLeagueId is int preferredLeagueId && request.LeagueIds.Contains(preferredLeagueId))
+        {
+            var previous = await _db.ChannelLeagueMappings
+                .Where(m => m.LeagueId == preferredLeagueId && m.IsPreferred && m.ChannelId != request.ChannelId)
+                .ToListAsync();
+            foreach (var mapping in previous)
+            {
+                mapping.IsPreferred = false;
+            }
+        }
 
         _db.ChannelLeagueMappings.AddRange(newMappings);
         await _db.SaveChangesAsync();
@@ -792,42 +865,31 @@ public class IptvSourceService
     }
 
     /// <summary>
-    /// Get the preferred channel for an event: the home team's mapped
-    /// channel wins, then the away team's, then the league preference.
-    /// Team mappings exist for lineups that carry the same league from
-    /// several regional providers ("Lakers home games on the LA regional
-    /// channel"); home-before-away because regional channels follow the
-    /// hosting market's broadcast.
+    /// Get the preferred channel for an event. This is the first channel of
+    /// the event's ranked team list, else the league preference. The team list
+    /// holds the home team's channels by rank, then the away team's, with
+    /// dead channels last. Home comes first because regional channels follow
+    /// the hosting market's broadcast.
     /// </summary>
     public async Task<IptvChannel?> GetPreferredChannelForEventAsync(int? homeTeamId, int? awayTeamId, int? leagueId)
     {
-        foreach (var teamId in new[] { homeTeamId, awayTeamId })
+        var teamChannels = await GetOrderedTeamChannelsForEventAsync(homeTeamId, awayTeamId);
+        if (teamChannels.Count > 0)
         {
-            if (!teamId.HasValue)
-            {
-                continue;
-            }
-            var teamMappings = await _db.ChannelTeamMappings
-                .Where(m => m.TeamId == teamId.Value)
-                .Include(m => m.Channel)
-                .ThenInclude(c => c!.Source)
-                .ToListAsync();
-            var teamMapping = teamMappings
-                .Where(m => m.Channel != null && m.Channel.IsEnabled && m.Channel.Source?.IsActive == true)
-                .OrderByDescending(m => ChannelHealth.Rank(m.Channel!.Status))
-                .ThenByDescending(m => m.IsPreferred)
-                .ThenBy(m => m.Priority)
-                .FirstOrDefault();
-            if (teamMapping?.Channel != null)
-            {
-                return teamMapping.Channel;
-            }
+            return teamChannels[0];
         }
 
         return leagueId.HasValue
             ? await GetPreferredChannelForLeagueAsync(leagueId.Value)
             : null;
     }
+
+    /// <summary>
+    /// The usable team channels for an event in rank order. See
+    /// TeamChannelSelection.GetOrderedTeamChannelsAsync.
+    /// </summary>
+    public Task<List<IptvChannel>> GetOrderedTeamChannelsForEventAsync(int? homeTeamId, int? awayTeamId) =>
+        TeamChannelSelection.GetOrderedTeamChannelsAsync(_db, homeTeamId, awayTeamId);
 
     /// <summary>
     /// Get a single channel by ID

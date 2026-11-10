@@ -69,6 +69,13 @@ public class LeagueAddService
             league = request.ToLeague();
             league.SportFormat = LeagueSportRules.NormalizeSportFormat(league.SportFormat);
 
+            league.MonitoredFacets = EventFacets.NormalizeForLeague(league.Sport, league.Name, league.ExternalId,
+                league.MonitoredFacets, null, out var facetsError);
+            if (facetsError != null)
+            {
+                return new LeagueAddResult { Success = false, StatusCode = 400, ErrorMessage = facetsError };
+            }
+
             // Enrich league with full details (including images) if missing
             // The /all/leagues endpoint doesn't include images, so fetch from lookup
             if ((string.IsNullOrEmpty(league.LogoUrl) || league.SportFormat == null) && !string.IsNullOrEmpty(league.ExternalId))

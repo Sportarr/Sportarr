@@ -20,6 +20,7 @@ import CompactTableFrame from '../components/CompactTableFrame';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import SortableFilterableHeader from '../components/SortableFilterableHeader';
+import TeamChannelRanking from '../components/TeamChannelRanking';
 import { useColumnVisibility } from '../hooks/useColumnVisibility';
 import { useCompactView } from '../hooks/useCompactView';
 import { applyTableSortFilter, useTableSortFilter } from '../hooks/useTableSortFilter';
@@ -126,6 +127,8 @@ export default function TeamsPage() {
   const [searchOnAdd, setSearchOnAdd] = useState(false);
   const [searchForUpgrades, setSearchForUpgrades] = useState(false);
   const [isAddingLeagues, setIsAddingLeagues] = useState(false);
+  // Adding a league can create the library row the channel list needs.
+  const [channelListRefresh, setChannelListRefresh] = useState(0);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -395,6 +398,7 @@ export default function TeamsPage() {
       }
 
       await discoverLeagues(teamExternalId);
+      setChannelListRefresh((value) => value + 1);
       void queryClient.invalidateQueries({ queryKey: ['leagues'] });
     } catch {
       toast.error('Failed to add leagues');
@@ -591,6 +595,14 @@ export default function TeamsPage() {
           </div>
         </>
       )}
+      <div className="mt-4">
+        <TeamChannelRanking
+          key={teamExternalId}
+          teamExternalId={teamExternalId}
+          teamName={teamName}
+          refreshKey={channelListRefresh}
+        />
+      </div>
     </div>
   );
 

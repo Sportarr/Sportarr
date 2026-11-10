@@ -515,7 +515,7 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
 // ====================================================================================
 
 // API: Get all teams
-app.MapGet("/api/teams", async (SportarrDbContext db, int? leagueId, string? sport) =>
+app.MapGet("/api/teams", async (SportarrDbContext db, int? leagueId, string? sport, string? externalId) =>
 {
     var query = db.Teams
         .AsNoTracking()
@@ -538,6 +538,12 @@ app.MapGet("/api/teams", async (SportarrDbContext db, int? leagueId, string? spo
     if (!string.IsNullOrEmpty(sport))
     {
         query = query.Where(t => t.Sport == sport);
+    }
+
+    // The Follow page knows a team only by its external id.
+    if (!string.IsNullOrEmpty(externalId))
+    {
+        query = query.Where(t => t.ExternalId == externalId);
     }
 
     var teams = await query
@@ -582,14 +588,11 @@ app.MapPut("/api/teams/{id:int}/aliases", async (int id, System.Text.Json.JsonEl
     // via Settings > General > Analytics; fire-and-forget so the save never
     // waits on (or fails with) the metadata service.
     var config = await configService.GetConfigAsync();
-    if (config.SendAnonymousUsageData && cleaned.Count > 0 && !string.IsNullOrEmpty(team.ExternalId))
+    var installId = config.SendAnonymousUsageData && cleaned.Count > 0 && !string.IsNullOrEmpty(team.ExternalId)
+        ? await configService.GetOrCreateAnalyticsInstanceIdAsync()
+        : null;
+    if (installId != null)
     {
-        if (string.IsNullOrEmpty(config.AnalyticsInstanceId))
-        {
-            config.AnalyticsInstanceId = Guid.NewGuid().ToString("N");
-            await configService.SaveConfigAsync(config);
-        }
-        var installId = config.AnalyticsInstanceId;
         var teamExternalId = team.ExternalId!;
         var teamName = team.Name;
         var leagueExternalId = team.LeagueId.HasValue

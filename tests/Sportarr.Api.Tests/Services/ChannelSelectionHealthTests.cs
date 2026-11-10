@@ -168,6 +168,100 @@ public class ChannelSelectionHealthTests
         channel!.Name.Should().Be("ESPN HD");
     }
 
+    private static void MapTeam(SportarrDbContext db, IptvChannel channel, int teamId, int priority, bool preferred = false)
+    {
+        db.ChannelTeamMappings.Add(new ChannelTeamMapping
+        {
+            ChannelId = channel.Id,
+            TeamId = teamId,
+            IsPreferred = preferred,
+            Priority = priority,
+        });
+        db.SaveChanges();
+    }
+
+    // A team keeps a ranked list of channels, and a lower rank comes first (#406).
+    [Fact]
+    public async Task TeamPreference_TakesTheLowestRank()
+    {
+        using var db = Db();
+        var source = AddSource(db);
+        MapTeam(db, AddChannel(db, source, "ESPN"), teamId: 42, priority: 2);
+        MapTeam(db, AddChannel(db, source, "MSG"), teamId: 42, priority: 0, preferred: true);
+        MapTeam(db, AddChannel(db, source, "MSGSN"), teamId: 42, priority: 1);
+
+        var ordered = await Svc(db).GetOrderedTeamChannelsForEventAsync(homeTeamId: 42, awayTeamId: null);
+        var channel = await Svc(db).GetPreferredChannelForEventAsync(homeTeamId: 42, awayTeamId: null, leagueId: null);
+
+        ordered.Select(c => c.Name).Should().Equal("MSG", "MSGSN", "ESPN");
+        channel!.Name.Should().Be("MSG");
+    }
+
+    [Fact]
+    public async Task TeamPreference_ListsTheHomeTeamFirstThenTheAwayTeamOnce()
+    {
+        using var db = Db();
+        var source = AddSource(db);
+        var shared = AddChannel(db, source, "ESPN");
+        MapTeam(db, AddChannel(db, source, "Away Regional"), teamId: 50, priority: 0, preferred: true);
+        MapTeam(db, shared, teamId: 50, priority: 1);
+        MapTeam(db, AddChannel(db, source, "Home Regional"), teamId: 42, priority: 0, preferred: true);
+        MapTeam(db, shared, teamId: 42, priority: 1);
+
+        var ordered = await Svc(db).GetOrderedTeamChannelsForEventAsync(homeTeamId: 42, awayTeamId: 50);
+
+        ordered.Select(c => c.Name).Should().Equal("Home Regional", "ESPN", "Away Regional");
+    }
+
+    [Fact]
+    public async Task TeamPreference_SendsADeadTeamChannelToTheEnd()
+    {
+        using var db = Db();
+        var source = AddSource(db);
+        MapTeam(db, AddChannel(db, source, "MSG", status: IptvChannelStatus.Offline), teamId: 42, priority: 0, preferred: true);
+        MapTeam(db, AddChannel(db, source, "MSGSN", status: IptvChannelStatus.Error), teamId: 42, priority: 1);
+        MapTeam(db, AddChannel(db, source, "ESPN"), teamId: 42, priority: 2);
+        MapTeam(db, AddChannel(db, source, "TNT", enabled: false), teamId: 42, priority: 3);
+
+        var ordered = await Svc(db).GetOrderedTeamChannelsForEventAsync(homeTeamId: 42, awayTeamId: null);
+
+        ordered.Select(c => c.Name).Should().Equal("ESPN", "MSG", "MSGSN");
+    }
+
+    [Fact]
+    public async Task TeamPreference_OldRowsKeepThePreferredChannelFirst()
+    {
+        // Rows from before the ranked list all have Priority 1.
+        using var db = Db();
+        var source = AddSource(db);
+        MapTeam(db, AddChannel(db, source, "ESPN"), teamId: 42, priority: 1);
+        MapTeam(db, AddChannel(db, source, "MSG"), teamId: 42, priority: 1, preferred: true);
+        MapTeam(db, AddChannel(db, source, "TNT"), teamId: 42, priority: 1);
+
+        var ordered = await Svc(db).GetOrderedTeamChannelsForEventAsync(homeTeamId: 42, awayTeamId: null);
+
+        ordered.Select(c => c.Name).Should().Equal("MSG", "ESPN", "TNT");
+    }
+
+    [Fact]
+    public async Task LeaguePreference_StillTakesTheHigherPriorityNextToATeamList()
+    {
+        // The team rank runs lower first. The league priority still runs
+        // higher first, and -1 still excludes.
+        using var db = Db();
+        var source = AddSource(db);
+        MapLeague(db, AddChannel(db, source, "ESPN SD"), leagueId: 7, preferred: false, priority: 100);
+        MapLeague(db, AddChannel(db, source, "ESPN 4K"), leagueId: 7, preferred: false, priority: 400);
+        MapLeague(db, AddChannel(db, source, "Excluded"), leagueId: 7, preferred: false, priority: ChannelLeagueMapping.ExcludedPriority);
+        MapTeam(db, AddChannel(db, source, "MSG"), teamId: 42, priority: 0, preferred: true);
+
+        var league = await Svc(db).GetPreferredChannelForLeagueAsync(7);
+        var forUnmappedTeam = await Svc(db).GetPreferredChannelForEventAsync(homeTeamId: 99, awayTeamId: null, leagueId: 7);
+
+        league!.Name.Should().Be("ESPN 4K");
+        forUnmappedTeam!.Name.Should().Be("ESPN 4K");
+    }
+
     [Fact]
     public async Task BestChannel_PrefersAnOnlineChannelOverTheDeadPreferredOne()
     {

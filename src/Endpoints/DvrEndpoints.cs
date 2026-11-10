@@ -161,12 +161,13 @@ app.MapGet("/api/dvr/recordings/{id:int}", async (int id, DvrRecordingService dv
 });
 
 // Schedule a new recording
-app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, DvrRecordingService dvrService, ILogger<Program> logger) =>
+app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, DvrRecordingService dvrService, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
         logger.LogInformation("[DVR] Scheduling recording for channel {ChannelId}", request.ChannelId);
         var recording = await dvrService.ScheduleRecordingAsync(request);
+        await PinUserChosenChannelAsync(db, recording);
         return Results.Created($"/api/dvr/recordings/{recording.Id}", DvrRecordingResponse.FromEntity(recording));
     }
     catch (ArgumentException ex)
@@ -307,7 +308,7 @@ app.MapPost("/api/events/{eventId:int}/dvr/schedule", async (int eventId, EventD
 {
     var recording = await eventDvrService.ScheduleRecordingForEventAsync(eventId);
     if (recording == null)
-        return Results.BadRequest(new { error = "Could not schedule recording. Check that the event is monitored, has a future date, and has a league with a mapped channel." });
+        return Results.BadRequest(new { error = "Could not schedule recording. Check that the event is monitored, has a future date, and has a channel mapped to its league or one of its teams." });
     return Results.Ok(DvrRecordingResponse.FromEntity(recording));
 });
 
@@ -664,6 +665,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         // effective value the recorder uses.
         reconnectDelaySeconds = Math.Clamp(config.DvrReconnectDelaySeconds, 5, 300),
         readTimeoutSeconds = config.DvrReadTimeoutSeconds,
+        loopDetectionEnabled = config.DvrLoopDetectionEnabled,
         // Catchup settings
         useCatchupWhenAvailable = config.DvrUseCatchupWhenAvailable,
         catchupReadyGraceMinutes = config.DvrCatchupReadyGraceMinutes,
@@ -787,6 +789,8 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         // watchdog's two-minute no-growth kill, which makes any larger value
         // a dead letter.
         config.DvrReadTimeoutSeconds = Math.Clamp(readTimeout.GetInt32(), 0, 120);
+    if (settings.TryGetProperty("loopDetectionEnabled", out var loopDetection))
+        config.DvrLoopDetectionEnabled = loopDetection.GetBoolean();
 
     // Catchup settings
     if (settings.TryGetProperty("useCatchupWhenAvailable", out var useCatchup))
@@ -826,5 +830,13 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
 });
 
         return app;
+    }
+
+    // Only this endpoint takes a channel the user picked. Automatic and
+    // event-based scheduling call the service directly and stay unpinned.
+    internal static async Task PinUserChosenChannelAsync(SportarrDbContext db, DvrRecording recording)
+    {
+        recording.ChannelPinned = true;
+        await db.SaveChangesAsync();
     }
 }

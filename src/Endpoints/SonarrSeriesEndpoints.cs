@@ -1025,7 +1025,9 @@ public static class SonarrSeriesEndpoints
 
                     foreach (var evt in events)
                     {
-                        evt.Monitored = newMonitored;
+                        // The league facet rules keep an excluded gender or
+                        // discipline unmonitored.
+                        evt.Monitored = newMonitored && EventFacets.IsMonitored(league, evt.Title);
                         evt.LastUpdate = DateTime.UtcNow;
                     }
 
@@ -1046,9 +1048,13 @@ public static class SonarrSeriesEndpoints
                         continue;
 
                     var seasonMonitored = seasonMonElement.GetBoolean();
-                    var changed = await db.Events
+                    var changed = (await db.Events
                         .Where(e => e.LeagueId == id && e.SeasonNumber == seasonNumber && e.Monitored != seasonMonitored)
-                        .ToListAsync();
+                        .ToListAsync())
+                        // Monitoring a season keeps the events that the
+                        // league facet rules exclude unmonitored.
+                        .Where(e => !seasonMonitored || EventFacets.IsMonitored(league, e.Title))
+                        .ToList();
 
                     if (changed.Count == 0)
                         continue;

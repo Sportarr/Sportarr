@@ -533,11 +533,10 @@ export default function IptvChannelsSettings() {
     return () => clearTimeout(handle);
   }, [epgPickerChannel, epgPickerSearch]);
 
-  // Per-team DVR channel preference, shown inside the league mapping
-  // modal: the resolver records a mapped team's events from this channel
-  // even when the league prefers a different one.
+  // The teams whose ranked DVR channel lists hold this channel. The league
+  // mapping modal shows them. A team's list wins over the league's channel.
   const [channelTeamMappings, setChannelTeamMappings] = useState<Array<{
-    id: number; teamId: number; teamName?: string;
+    id: number; teamId: number; teamName?: string; priority?: number;
   }>>([]);
   const [teamPickerLeagueId, setTeamPickerLeagueId] = useState<number | ''>('');
   const [teamPickerTeams, setTeamPickerTeams] = useState<Array<{ id: number; name: string }>>([]);
@@ -553,7 +552,7 @@ export default function IptvChannelsSettings() {
     }
     let current = true;
     apiClient
-      .get<Array<{ id: number; teamId: number; teamName?: string }>>(`/iptv/channels/${mappingChannel.id}/team-mappings`)
+      .get<Array<{ id: number; teamId: number; teamName?: string; priority?: number }>>(`/iptv/channels/${mappingChannel.id}/team-mappings`)
       .then(({ data }) => { if (current) setChannelTeamMappings(Array.isArray(data) ? data : []); })
       .catch(() => { if (current) setChannelTeamMappings([]); });
     return () => { current = false; };
@@ -566,8 +565,11 @@ export default function IptvChannelsSettings() {
       return;
     }
     apiClient
-      .get<Array<{ id: number; name: string }>>('/teams', { params: { leagueId: teamPickerLeagueId } })
-      .then(({ data }) => setTeamPickerTeams(Array.isArray(data) ? data : []))
+      .get<Array<{ id: number; strTeam?: string; name?: string }>>('/teams', { params: { leagueId: teamPickerLeagueId } })
+      // The API names a team strTeam, the TheSportsDB field name.
+      .then(({ data }) => setTeamPickerTeams(Array.isArray(data)
+        ? data.map((t) => ({ id: t.id, name: t.strTeam || t.name || `Team #${t.id}` }))
+        : []))
       .catch(() => setTeamPickerTeams([]));
   }, [teamPickerLeagueId]);
 
@@ -577,15 +579,15 @@ export default function IptvChannelsSettings() {
     }
     try {
       await apiClient.post(`/iptv/channels/${mappingChannel.id}/team-mappings/${teamPickerTeamId}`);
-      const { data } = await apiClient.get<Array<{ id: number; teamId: number; teamName?: string }>>(
+      const { data } = await apiClient.get<Array<{ id: number; teamId: number; teamName?: string; priority?: number }>>(
         `/iptv/channels/${mappingChannel.id}/team-mappings`);
       setChannelTeamMappings(Array.isArray(data) ? data : []);
       setTeamPickerTeamId('');
-      toast.success('Team preference saved', {
-        description: `This channel is now preferred for that team's recordings`,
+      toast.success('Team channel saved', {
+        description: `This channel is now in that team's channel list. Reorder it on the team's Follow page.`,
       });
     } catch (err: any) {
-      toast.error('Failed to save team preference', { description: err.message });
+      toast.error('Failed to add the channel to the team', { description: err.message });
     }
   };
 
@@ -597,7 +599,7 @@ export default function IptvChannelsSettings() {
       await apiClient.delete(`/iptv/channels/${mappingChannel.id}/team-mappings/${teamId}`);
       setChannelTeamMappings((prev) => prev.filter((m) => m.teamId !== teamId));
     } catch (err: any) {
-      toast.error('Failed to remove team preference', { description: err.message });
+      toast.error('Failed to remove the channel from the team', { description: err.message });
     }
   };
 
@@ -1833,22 +1835,26 @@ export default function IptvChannelsSettings() {
                 )}
               </div>
 
-              {/* Per-team preference */}
+              {/* Team channel lists */}
               <div className="mb-6 pt-4 border-t border-gray-800">
-                <p className="text-sm font-medium text-white mb-1">Preferred for Teams</p>
+                <p className="text-sm font-medium text-white mb-1">Team Channel Lists</p>
                 <p className="text-xs text-gray-500 mb-3">
                   A team mapped here records from this channel even when its league prefers a different one,
-                  e.g. a regional channel for one team's games. Applied immediately; each team can prefer one channel.
+                  e.g. a regional channel for one team's games. Applied immediately. A team can have several
+                  channels, tried in rank order. A new one goes to the end. Reorder them on the team's Follow page.
                 </p>
                 {channelTeamMappings.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
                     {channelTeamMappings.map((m) => (
                       <span key={m.id} className="flex items-center gap-1 px-2 py-1 rounded bg-yellow-900/30 text-yellow-300 text-xs">
                         {m.teamName || `Team #${m.teamId}`}
+                        {typeof m.priority === 'number' && (
+                          <span className="text-yellow-500/80" title="Rank in this team's channel list">#{m.priority + 1}</span>
+                        )}
                         <button
                           onClick={() => handleRemoveTeamMapping(m.teamId)}
                           className="hover:text-red-400"
-                          title="Remove team preference"
+                          title="Remove from this team's channel list"
                         >
                           <XMarkIcon className="w-3.5 h-3.5" />
                         </button>

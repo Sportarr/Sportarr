@@ -167,10 +167,20 @@ public class ReleaseMatchingService
     {
         new Regex(@"WrestleMania[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new Regex(@"Super[\s\.\-]+Bowl[\s\.\-]+([LXVI]+|\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+    };
+
+    // A week, round or matchday number places an event in its season. Every
+    // series has a Round 4, so this number does not say which series it is.
+    private static readonly Regex[] _slotOrderPatterns = new[]
+    {
         new Regex(@"Week[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new Regex(@"Round[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new Regex(@"Matchday[\s\.\-]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
     };
+
+    private static readonly Regex _seriesEpisodeTokenRegex = new(
+        @"(?<![A-Za-z0-9])S\d{1,4}[EW]\d{1,3}(?![0-9])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _labelWordRegex = new(@"[A-Za-z][A-Za-z0-9']*", RegexOptions.Compiled);
 
     private static readonly Regex[] _roundNumberPatterns = new[]
     {
@@ -373,8 +383,8 @@ public class ReleaseMatchingService
                 remainingNonEventContent == null &&
                 EventPartDetector.DetectWrestlingPromotion(evt.League?.Name) !=
                     EventPartDetector.WrestlingPromotion.Other &&
-                detectedRequestedPart?.SegmentName.Equals(
-                    requestedPart, StringComparison.OrdinalIgnoreCase) == true &&
+                detectedRequestedPart != null &&
+                EventPartDetector.PartNamesMatch(detectedRequestedPart.SegmentName, requestedPart) &&
                 SearchNormalizationService.EvaluateCombatIdentity(
                     release.Title,
                     evt.Title ?? string.Empty,
@@ -795,6 +805,22 @@ public class ReleaseMatchingService
             }
         }
 
+        // VALIDATION 0: Contender Series season and week. Its releases carry no
+        // card number or year, so "S10W04" is what names the event.
+        var contenderWeek = ReleaseMatchScorer.ContenderSeriesWeekMatches(normalizedRelease, normalizedEvent);
+        if (contenderWeek == false)
+        {
+            result.Confidence = 0;
+            result.IsHardRejection = true;
+            result.Rejections.Add("Contender Series season or week differs from the event");
+            return result;
+        }
+        if (contenderWeek == true)
+        {
+            result.Confidence += 60;
+            result.MatchReasons.Add("Contender Series season and week match");
+        }
+
         // VALIDATION 1: Event number match (UFC 299, Bellator 300, etc.)
         var eventNumberMatch = ValidateEventNumber(release.Title, evt);
         if (eventNumberMatch.HasValue)
@@ -802,7 +828,9 @@ public class ReleaseMatchingService
             if (eventNumberMatch.Value)
             {
                 result.Confidence += 40;
-                result.MatchReasons.Add("Event number matches");
+                result.MatchReasons.Add(IsSlotNumbered(evt.Title) || IsSlotNumbered(release.Title)
+                    ? "Week or round number matches"
+                    : "Event number matches");
             }
             else
             {
@@ -909,7 +937,8 @@ public class ReleaseMatchingService
                     evt.League,
                     knownLeagues,
                     titleHomeName,
-                    titleAwayName);
+                    titleAwayName,
+                    parseResult.EventDate.HasValue);
             if (teamMatch >= 2)
             {
                 result.Confidence += 35;
@@ -1285,7 +1314,7 @@ public class ReleaseMatchingService
                 // Multi-part ENABLED and specific part requested
                 if (detectedPart != null)
                 {
-                    if (detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
+                    if (EventPartDetector.PartNamesMatch(detectedPart.SegmentName, requestedPart))
                     {
                         result.Confidence += 20;
                         result.MatchReasons.Add($"Part matches: {requestedPart}");
@@ -1305,12 +1334,7 @@ public class ReleaseMatchingService
                     // always the main show. Accept unlabeled releases when the user requested
                     // any "main" part name (Main Card for fighting, Main Show for wrestling,
                     // Main Event for boxing/PPVs), reject otherwise.
-                    var requestedLower = requestedPart.ToLowerInvariant();
-                    var isMainPartRequest = requestedLower == "main card"
-                        || requestedLower == "main show"
-                        || requestedLower == "main event"
-                        || requestedLower == "main";
-                    if (isMainPartRequest)
+                    if (EventPartDetector.IsMainPartRequest(requestedPart))
                     {
                         result.Confidence += 10;
                         result.MatchReasons.Add($"Unmarked release (likely {requestedPart})");
@@ -1693,6 +1717,7 @@ public class ReleaseMatchingService
                 "Combat event identity matches",
                 "Exact fighter matchup matches",
                 "League/organization matches",
+                "Contender Series season and week match",
             };
             bool hasIdentityReason = hasLeagueReleaseIdentity || result.MatchReasons.Any(r =>
                 identityReasons.Any(w => r.StartsWith(w, StringComparison.OrdinalIgnoreCase)));
@@ -1710,6 +1735,34 @@ public class ReleaseMatchingService
                     $"No league identity: release names neither '{evt.League.Name}' nor anything from the event title");
                 _logger.LogTrace("[Release Matching] Hard rejection: no league identity for '{Release}' -> '{Event}' (league '{League}')",
                     release.Title, evt.Title, evt.League.Name);
+            }
+        }
+
+        // FINAL GATE (part 3): series label. A TV-style name puts its series
+        // before the SxxEyy or SxxWyy token. If that label names neither the
+        // league nor the event, the release is from another show. "The Great
+        // Food Truck Race 2010 S11E05 Belgian Waffles" matched the 2010 Belgian
+        // Grand Prix race. Team sports skip this gate, because broadcast shows
+        // name the teams. A one-word label can be an abbreviation that the
+        // league record does not carry, such as WEC.
+        if (!result.IsHardRejection && evt.League != null && !isTeamSport && !hasLeagueReleaseIdentity)
+        {
+            var episodeToken = _seriesEpisodeTokenRegex.Match(release.Title);
+            if (episodeToken.Success && episodeToken.Index > 0)
+            {
+                var label = release.Title[..episodeToken.Index];
+                var labelWords = _labelWordRegex.Matches(label).Count;
+                if (labelWords > 1 &&
+                    !TitleHasLeagueIdentity(label, evt.Title, evt.League) &&
+                    !LabelSharesLeagueWord(label, evt.League))
+                {
+                    result.Confidence -= 100;
+                    result.IsHardRejection = true;
+                    result.Rejections.Add(
+                        $"Series label '{label.Trim(' ', '.', '-', '_')}' names neither '{evt.League.Name}' nor the event");
+                    _logger.LogTrace("[Release Matching] Hard rejection: series label of '{Release}' names neither league '{League}' nor '{Event}'",
+                        release.Title, evt.League.Name, evt.Title);
+                }
             }
         }
 
@@ -1752,7 +1805,7 @@ public class ReleaseMatchingService
             && IsPlausibleEventDate(peer, releaseDate));
     }
 
-    private static bool IsSameEvent(Event left, Event right)
+    internal static bool IsSameEvent(Event left, Event right)
     {
         if (ReferenceEquals(left, right))
             return true;
@@ -1763,7 +1816,7 @@ public class ReleaseMatchingService
             && left.ExternalId.Equals(right.ExternalId, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsSameEventLeague(Event left, Event right)
+    internal static bool IsSameEventLeague(Event left, Event right)
     {
         if (left.LeagueId.HasValue && right.LeagueId.HasValue)
             return left.LeagueId == right.LeagueId;
@@ -1772,7 +1825,7 @@ public class ReleaseMatchingService
         return LeagueSportRules.AreEquivalentSports(left.Sport, right.Sport);
     }
 
-    private static bool IsSameTeamPair(Event left, Event right)
+    internal static bool IsSameTeamPair(Event left, Event right)
     {
         if (left.HomeTeamId.HasValue && left.AwayTeamId.HasValue
             && right.HomeTeamId.HasValue && right.AwayTeamId.HasValue)
@@ -1907,7 +1960,7 @@ public class ReleaseMatchingService
     {
         // Try the numbered-fight patterns first (UFC 299, Bellator 300 …) then
         // the season-ordinal patterns (WrestleMania, SuperBowl, Week, Round,
-        // Matchday). Both arrays live up top as pre-compiled regex so this
+        // Matchday). The arrays live up top as pre-compiled regex so this
         // function doesn't re-parse on every release the matcher scans.
         foreach (var pattern in _eventNumberPatterns)
         {
@@ -1915,7 +1968,7 @@ public class ReleaseMatchingService
             if (match.Success && int.TryParse(match.Groups[1].Value, out var number))
                 return number;
         }
-        foreach (var pattern in _eventOrderPatterns)
+        foreach (var pattern in _eventOrderPatterns.Concat(_slotOrderPatterns))
         {
             var match = pattern.Match(title);
             if (match.Success && int.TryParse(match.Groups[1].Value, out var number))
@@ -1924,6 +1977,20 @@ public class ReleaseMatchingService
         }
         return null;
     }
+
+    // A label can give part of the league name, such as "FIA WEC" for the FIA
+    // World Endurance Championship. Words like "cup" or "series" do not count.
+    private static bool LabelSharesLeagueWord(string label, League league)
+    {
+        var labelWords = ExtractSignificantWords(NormalizeTitle(label));
+        return LeagueAliases(league)
+            .SelectMany(alias => ExtractSignificantWords(NormalizeTitle(alias)))
+            .Any(w => !w.All(char.IsDigit) && !GenericEventWords.Contains(w) && labelWords.Contains(w));
+    }
+
+    private static bool IsSlotNumbered(string title) =>
+        !_eventNumberPatterns.Concat(_eventOrderPatterns).Any(p => p.IsMatch(title)) &&
+        _slotOrderPatterns.Any(p => p.IsMatch(title));
 
     /// <summary>
     /// Extract round number from title (e.g., "Round 22", "Round22", "Rd 22")
@@ -2021,22 +2088,43 @@ public class ReleaseMatchingService
         League? league = null,
         IReadOnlyCollection<League>? knownLeagues = null,
         string? titleHomeName = null,
-        string? titleAwayName = null)
+        string? titleAwayName = null,
+        bool releaseHasDate = false)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
-        var homeMatches = ContainsTeamName(normalizedRelease, homeTeamName, homeTeam, releaseTitle) ||
-            (!string.IsNullOrWhiteSpace(titleHomeName) && ContainsTeamName(normalizedRelease, titleHomeName, homeTeam, releaseTitle));
-        var awayMatches = ContainsTeamName(normalizedRelease, awayTeamName, awayTeam, releaseTitle) ||
-            (!string.IsNullOrWhiteSpace(titleAwayName) && ContainsTeamName(normalizedRelease, titleAwayName, awayTeam, releaseTitle));
+
+        // A short code such as "TOR" or "BOS" belongs to a team in several
+        // leagues. When the title names another league and not this one, the
+        // code says nothing about this event.
+        var trustShortCodes = !TitleNamesOtherLeague(releaseTitle, league, knownLeagues);
+        var homeMatches = ContainsTeamName(normalizedRelease, homeTeamName, homeTeam, releaseTitle, trustShortCodes) ||
+            (!string.IsNullOrWhiteSpace(titleHomeName) && ContainsTeamName(normalizedRelease, titleHomeName, homeTeam, releaseTitle, trustShortCodes));
+        var awayMatches = ContainsTeamName(normalizedRelease, awayTeamName, awayTeam, releaseTitle, trustShortCodes) ||
+            (!string.IsNullOrWhiteSpace(titleAwayName) && ContainsTeamName(normalizedRelease, titleAwayName, awayTeam, releaseTitle, trustShortCodes));
 
         if (league != null && TitleNamesLeague(releaseTitle, league))
         {
             var baseHome = FootballReleaseNamePolicy.BaseParticipantName(titleHomeName ?? homeTeamName, league.Name);
             var baseAway = FootballReleaseNamePolicy.BaseParticipantName(titleAwayName ?? awayTeamName, league.Name);
             if (!homeMatches && !baseHome.Equals(titleHomeName ?? homeTeamName, StringComparison.OrdinalIgnoreCase))
-                homeMatches = ContainsTeamName(normalizedRelease, baseHome, homeTeam, releaseTitle);
+                homeMatches = ContainsTeamName(normalizedRelease, baseHome, homeTeam, releaseTitle, trustShortCodes);
             if (!awayMatches && !baseAway.Equals(titleAwayName ?? awayTeamName, StringComparison.OrdinalIgnoreCase))
-                awayMatches = ContainsTeamName(normalizedRelease, baseAway, awayTeam, releaseTitle);
+                awayMatches = ContainsTeamName(normalizedRelease, baseAway, awayTeam, releaseTitle, trustShortCodes);
+        }
+
+        // Official codes of the major US leagues name the opponents of
+        // followed teams, which the app holds no code for. The code is only
+        // taken with three proofs: the title names this league, the title
+        // carries a date (the date check then compares it with the event),
+        // and the code stands as an upper-case token. Both teams still have
+        // to be found, which the caller checks.
+        if (trustShortCodes && releaseHasDate && (!homeMatches || !awayMatches)
+            && league != null && TitleNamesLeagueOrItsMajorLeague(releaseTitle, league))
+        {
+            homeMatches = homeMatches || ContainsOfficialTeamCode(releaseTitle, titleHomeName ?? homeTeamName)
+                || ContainsOfficialTeamCode(releaseTitle, homeTeamName);
+            awayMatches = awayMatches || ContainsOfficialTeamCode(releaseTitle, titleAwayName ?? awayTeamName)
+                || ContainsOfficialTeamCode(releaseTitle, awayTeamName);
         }
 
         var normalizedHomeTeam = NormalizeTitle(homeTeamName);
@@ -2133,7 +2221,8 @@ public class ReleaseMatchingService
         string normalizedRelease,
         string teamName,
         Team? team,
-        string rawRelease)
+        string rawRelease,
+        bool trustShortCodes = true)
     {
         var normalizedName = NormalizeTitle(teamName);
 
@@ -2145,6 +2234,7 @@ public class ReleaseMatchingService
 
         // Check short name from database if Team navigation property is loaded (e.g., "LAC")
         if (team != null && !string.IsNullOrEmpty(team.ShortName) &&
+            (trustShortCodes || !IsShortCode(team.ShortName)) &&
             ContainsTeamAlias(normalizedRelease, rawRelease, team.ShortName))
             return true;
 
@@ -2158,6 +2248,7 @@ public class ReleaseMatchingService
             foreach (var alt in SplitAliases(team.AlternateName))
             {
                 if (alt.Length < 2) continue;
+                if (!trustShortCodes && IsShortCode(alt)) continue;
                 if (ContainsTeamAlias(normalizedRelease, rawRelease, alt))
                     return true;
             }
@@ -2233,10 +2324,94 @@ public class ReleaseMatchingService
                 // This team matches - check if any variation appears in release
                 foreach (var variation in variations)
                 {
+                    if (!trustShortCodes && IsShortCode(variation)) continue;
                     if (ContainsTeamAlias(normalizedRelease, rawRelease, variation))
                         return true;
                 }
             }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// A short code is one upper-case word of two to four letters, such as "OKC" or "PHI".
+    /// Nicknames like "Heat" are not codes, so the check never removes them.
+    /// </summary>
+    private static bool IsShortCode(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length is >= 2 and <= 4 && trimmed.All(char.IsLetter) && trimmed.All(char.IsUpper);
+    }
+
+    private static readonly string[] MajorLeagueTokens = { "NBA", "NFL", "NHL", "MLB", "WNBA" };
+
+    /// <summary>
+    /// True when the title names a league other than the event league and does
+    /// not name the event league. The known leagues come from the caller. The
+    /// major US league names are always checked, because those leagues share
+    /// many team codes. A league whose name holds the other name as whole words
+    /// is not another league ("NBA" and "NBA Cup", "MLB" and "MLB Spring Training").
+    /// </summary>
+    private static bool TitleNamesOtherLeague(
+        string releaseTitle,
+        League? eventLeague,
+        IReadOnlyCollection<League>? knownLeagues)
+    {
+        if (eventLeague == null) return false;
+        if (TitleNamesLeague(releaseTitle, eventLeague)) return false;
+
+        var eventLeagueName = NormalizeTitle(eventLeague.Name ?? string.Empty);
+
+        if (knownLeagues != null &&
+            knownLeagues.Any(other => !IsSameLeague(other, eventLeague)
+                && !LeagueNamesOverlap(eventLeagueName, NormalizeTitle(other.Name ?? string.Empty))
+                && TitleNamesLeague(releaseTitle, other)))
+            return true;
+
+        var normalizedTitle = NormalizeTitle(releaseTitle);
+        return MajorLeagueTokens.Any(token =>
+            !ContainsWholeWord(eventLeagueName, token) && ContainsWholeWord(normalizedTitle, token));
+    }
+
+    /// <summary>
+    /// True when the title names the league, or names the major league whose
+    /// name the league carries ("NBA" for "NBA Summer League").
+    /// </summary>
+    private static bool TitleNamesLeagueOrItsMajorLeague(string releaseTitle, League league)
+    {
+        if (TitleNamesLeague(releaseTitle, league)) return true;
+
+        var leagueName = NormalizeTitle(league.Name ?? string.Empty);
+        var normalizedTitle = NormalizeTitle(releaseTitle);
+        return MajorLeagueTokens.Any(token =>
+            ContainsWholeWord(leagueName, token) && ContainsWholeWord(normalizedTitle, token));
+    }
+
+    // One league name that starts with the other, such as "NBA Cup" and "NBA".
+    // A name that only holds the other inside it ("Russian Premier League")
+    // is a different league.
+    private static bool LeagueNamesOverlap(string normalizedLeft, string normalizedRight)
+    {
+        if (normalizedLeft.Length == 0 || normalizedRight.Length == 0) return false;
+        return StartsWithWholeWord(normalizedLeft, normalizedRight) || StartsWithWholeWord(normalizedRight, normalizedLeft);
+    }
+
+    private static bool StartsWithWholeWord(string text, string prefix) =>
+        text.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
+        text.StartsWith(prefix + " ", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether the title carries an official code of the team as an upper-case
+    /// token. Upper case keeps plain words such as "was", "car" or "min" from
+    /// counting as a team.
+    /// </summary>
+    private static bool ContainsOfficialTeamCode(string rawRelease, string teamName)
+    {
+        foreach (var code in TeamShortCodeData.CodesFor(teamName))
+        {
+            if (Regex.IsMatch(rawRelease, $@"(?<![A-Za-z0-9]){Regex.Escape(code)}(?![A-Za-z0-9])", RegexOptions.CultureInvariant))
+                return true;
         }
 
         return false;
@@ -2574,6 +2749,23 @@ public class ReleaseMatchingService
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Strict form of <see cref="SeriesLabelMatchesLeague"/>. The label must
+    /// equal one alias of the league after normalisation. Containment and
+    /// word-subset matches do not count.
+    /// </summary>
+    public static bool SeriesLabelEqualsLeagueAlias(string seriesLabel, League league)
+    {
+        if (string.IsNullOrWhiteSpace(seriesLabel) || league == null) return false;
+
+        var compactLabel = RemoveSeparators(NormalizeTitle(seriesLabel));
+        if (string.IsNullOrEmpty(compactLabel)) return false;
+
+        return LeagueAliases(league)
+            .Select(alias => RemoveSeparators(NormalizeTitle(alias)))
+            .Any(alias => compactLabel.Equals(alias, StringComparison.OrdinalIgnoreCase));
     }
 
     private static IEnumerable<string> LeagueAliases(League league)
@@ -3058,7 +3250,7 @@ public class ReleaseMatchingService
         { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Italian", "Monza", "Mugello", "Italie" } },
         { "Azerbaijan", new(StringComparer.OrdinalIgnoreCase) { "Azerbaijani", "Baku" } },
         { "Singapore", new(StringComparer.OrdinalIgnoreCase) { "Singaporean", "Marina Bay" } },
-        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "COTA", "Austin", "Texas", "Etats Unis" } },
+        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "Americas", "Circuit of the Americas", "COTA", "Austin", "Texas", "Etats Unis" } },
         { "Mexico", new(StringComparer.OrdinalIgnoreCase) { "Mexican", "Mexico City", "Mexique" } },
         { "Brazil", new(StringComparer.OrdinalIgnoreCase) { "Brazilian", "Sao Paulo", "Interlagos", "Bresil" } },
         { "Las Vegas", new(StringComparer.OrdinalIgnoreCase) { "Vegas" } },
@@ -3110,6 +3302,45 @@ public class ReleaseMatchingService
         { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Zandvoort", "Assen" } },
     };
 
+    // A child is a race of its own when it is a race name, or another
+    // race's alias such as Imola. Britain and United Kingdom share
+    // Silverstone, so an alias of another country does not count.
+    private static bool IsRaceOfItsOwn(string child, string parent) =>
+        GetOwnRace(child, parent) != null;
+
+    private static string? GetOwnRace(string child, string parent)
+    {
+        if (MotorsportLocations.ContainsKey(child))
+            return child;
+
+        return MotorsportLocations.FirstOrDefault(location =>
+            !location.Key.Equals(parent, StringComparison.OrdinalIgnoreCase) &&
+            !LocationHierarchy.ContainsKey(location.Key) &&
+            location.Value.Contains(child)).Key;
+    }
+
+    private static string? FindOtherRaceInCountry(
+        string normalizedRelease,
+        HashSet<string> eventLocations,
+        HashSet<string> expandedLocations)
+    {
+        foreach (var (parent, children) in LocationHierarchy)
+        {
+            if (!eventLocations.Contains(parent)) continue;
+            foreach (var child in children)
+            {
+                // Imola is an alias of Emilia Romagna. Check that race and all its aliases.
+                var race = GetOwnRace(child, parent);
+                if (race == null) continue;
+
+                if (!expandedLocations.Contains(race) && HasMotorsportLocation(normalizedRelease, race))
+                    return race;
+            }
+        }
+
+        return null;
+    }
+
     private static bool HasSharedMotorsportLocation(string normalizedRelease, string normalizedEvent)
     {
         var selectedRace = GetPrimaryMotorsportLocation(normalizedEvent);
@@ -3158,8 +3389,9 @@ public class ReleaseMatchingService
         var eventLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (location, aliases) in MotorsportLocations)
         {
-            if (normalizedEvent.Contains(location, StringComparison.OrdinalIgnoreCase) ||
-                aliases.Any(a => normalizedEvent.Contains(a, StringComparison.OrdinalIgnoreCase)))
+            // Match whole words only. "US" is inside "Australian" and "Houston".
+            if (GetWordBoundaryRegex(location).IsMatch(normalizedEvent) ||
+                aliases.Any(a => GetWordBoundaryRegex(a).IsMatch(normalizedEvent)))
             {
                 eventLocations.Add(location);
                 foreach (var alias in aliases)
@@ -3182,10 +3414,14 @@ public class ReleaseMatchingService
         // A country therefore only inherits the children that are not races in
         // their own right. "Silverstone" and "Suzuka" are just names for the
         // British and Japanese races; "Miami", "Las Vegas" and "Emilia
-        // Romagna" are races of their own and are never inherited.
+        // Romagna" (Imola) are races of their own and are never inherited.
+        //
+        // The same rule applies upward. Such a race does not imply its
+        // country, because the country name is also the name of another race.
+        // "United States Grand Prix" is Austin, not Miami (issue #419).
         foreach (var (parent, children) in LocationHierarchy)
         {
-            if (children.Any(c => eventLocations.Contains(c)))
+            if (children.Any(c => eventLocations.Contains(c) && !IsRaceOfItsOwn(c, parent)))
                 eventLocations.Add(parent);
         }
 
@@ -3194,7 +3430,7 @@ public class ReleaseMatchingService
             if (!eventLocations.Contains(parent)) continue;
             foreach (var child in children)
             {
-                if (MotorsportLocations.ContainsKey(child)) continue; // a race of its own
+                if (IsRaceOfItsOwn(child, parent)) continue;
                 eventLocations.Add(child);
             }
         }
@@ -3210,6 +3446,13 @@ public class ReleaseMatchingService
 
         // Find the primary event location name for error messages
         string eventLocationName = eventLocations.FirstOrDefault() ?? "Unknown";
+
+        // A release that names another race in the event's country is for
+        // that race, even when it also names the country. "USA Miami" is not
+        // the United States Grand Prix (issue #419).
+        var otherRaceInCountry = FindOtherRaceInCountry(normalizedRelease, eventLocations, expandedLocations);
+        if (otherRaceInCountry != null)
+            return (eventLocationName, otherRaceInCountry);
 
         // If the release names the event's OWN location it is for this event, so
         // do not hard-reject it just because some other location-like word also
@@ -3241,7 +3484,7 @@ public class ReleaseMatchingService
 
             // Check if release contains this different location
             bool releaseHasThisLocation =
-                normalizedRelease.Contains(location, StringComparison.OrdinalIgnoreCase) ||
+                GetWordBoundaryRegex(location).IsMatch(normalizedRelease) ||
                 aliases.Any(a => a.Length > 2 && GetWordBoundaryRegex(a).IsMatch(normalizedRelease));
 
             if (releaseHasThisLocation)

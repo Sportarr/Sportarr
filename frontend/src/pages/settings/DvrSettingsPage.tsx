@@ -70,6 +70,7 @@ interface DvrSettings {
   maxReconnectAttempts: number;
   reconnectDelaySeconds: number;
   readTimeoutSeconds: number;
+  loopDetectionEnabled: boolean;
   // Catchup: download finished events from the provider's timeshift
   // archive (channels with tv_archive) instead of recording live.
   useCatchupWhenAvailable: boolean;
@@ -188,6 +189,7 @@ const defaultDvrSettings: DvrSettings = {
   maxReconnectAttempts: 5,
   reconnectDelaySeconds: 5,
   readTimeoutSeconds: 0,
+  loopDetectionEnabled: true,
   // Catchup
   useCatchupWhenAvailable: true,
   catchupReadyGraceMinutes: 15,
@@ -1456,6 +1458,24 @@ export default function DvrSettingsPage() {
                       no limit. If your sources start cold streams slowly, keep this
                       at 0 or above the slowest start you see.
                     </p>
+                  </div>
+                  <div className="md:col-span-4">
+                    <label className="flex items-start space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dvrSettings.loopDetectionEnabled}
+                        onChange={(e) => handleSettingsChange('loopDetectionEnabled', e.target.checked)}
+                        className="mt-1 w-4 h-4 text-red-600 bg-gray-800 border-gray-700 rounded focus:ring-red-500"
+                      />
+                      <div>
+                        <span className="text-sm text-gray-300">Detect looping streams</span>
+                        <p className="text-xs text-gray-500 mt-1">
+                          When a channel keeps replaying the same short clip, switch the recording to its fallback
+                          channel. With no fallback, it keeps recording. Applies to recordings that copy the stream
+                          without re-encoding.
+                        </p>
+                      </div>
+                    </label>
                   </div>
                 </div>
               </div>

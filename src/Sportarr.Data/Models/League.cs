@@ -214,6 +214,13 @@ public class League
     public string? MonitoredParts { get; set; }
 
     /// <summary>
+    /// The MonitoredParts value from before "Full Event" was chosen. Turning
+    /// Full Event off restores it. "*" stands for null (all parts). Null means
+    /// nothing is stored.
+    /// </summary>
+    public string? PartsBeforeFullEvent { get; set; }
+
+    /// <summary>
     /// Which session types to monitor for Motorsports (comma-separated: "Qualifying,Race")
     /// If null or empty, all session types are monitored (default behavior)
     /// Only applies to motorsport leagues (Formula 1, NASCAR, MotoGP, etc.)
@@ -227,6 +234,16 @@ public class League
     /// Only applies to UFC-style leagues with event type classification
     /// </summary>
     public string? MonitoredEventTypes { get; set; }
+
+    /// <summary>
+    /// Which events to monitor for a league with a facet schema (see
+    /// EventFacets), for example gender and discipline in alpine skiing.
+    /// JSON list of rules. Each rule maps a dimension to a list of values or
+    /// "*". An event is monitored when any rule matches it.
+    /// Example: [{"gender":["Men"],"discipline":["Downhill","Super G"]},{"gender":["Women"],"discipline":["Slalom"]}]
+    /// Null means all events are monitored. "[]" means none.
+    /// </summary>
+    public string? MonitoredFacets { get; set; }
 
     /// <summary>
     /// Optional quality profile per session/event type, stored as a JSON map of
@@ -513,6 +530,9 @@ public class AddLeagueRequest
     /// </summary>
     public string? MonitoredEventTypes { get; set; }
 
+    /// <summary>JSON list of facet rules (see League.MonitoredFacets).</summary>
+    public string? MonitoredFacets { get; set; }
+
     /// <summary>JSON map of session/event type name to quality profile id (see League).</summary>
     public string? SessionTypeQualityProfiles { get; set; }
 
@@ -562,9 +582,13 @@ public class AddLeagueRequest
             RootFolderId = RootFolderId,
             SearchForMissingEvents = SearchForMissingEvents,
             SearchForCutoffUnmetEvents = SearchForCutoffUnmetEvents,
-            MonitoredParts = MonitoredParts,
+            // "Full Event" is stored in one spelling, so queries can match it.
+            MonitoredParts = Sportarr.Api.Services.EventPartDetector.IsFullEventOnly(MonitoredParts, null)
+                ? Sportarr.Api.Services.EventPartDetector.FullEventSegmentName
+                : MonitoredParts,
             MonitoredSessionTypes = MonitoredSessionTypes,
             MonitoredEventTypes = MonitoredEventTypes,
+            MonitoredFacets = MonitoredFacets,
             SessionTypeQualityProfiles = SessionTypeQualityProfiles,
             MonitorFinals = FinalTeamMode.HasValue ? FinalTeamMode == SpecialEventTeamMode.AllTeams : MonitorFinals,
             MonitorPlayoffs = PlayoffTeamMode.HasValue ? PlayoffTeamMode == SpecialEventTeamMode.AllTeams : MonitorPlayoffs,
@@ -618,8 +642,11 @@ public class LeagueResponse
     public bool SearchForMissingEvents { get; set; }
     public bool SearchForCutoffUnmetEvents { get; set; }
     public string? MonitoredParts { get; set; }
+    // The parts to restore when Full Event is turned off. "*" stands for all parts.
+    public string? PartsBeforeFullEvent { get; set; }
     public string? MonitoredSessionTypes { get; set; }
     public string? MonitoredEventTypes { get; set; }
+    public string? MonitoredFacets { get; set; }
     public string? SessionTypeQualityProfiles { get; set; }
     public bool MonitorFinals { get; set; }
     public bool MonitorPlayoffs { get; set; }
@@ -779,8 +806,10 @@ public class LeagueResponse
             SearchForMissingEvents = league.SearchForMissingEvents,
             SearchForCutoffUnmetEvents = league.SearchForCutoffUnmetEvents,
             MonitoredParts = league.MonitoredParts,
+            PartsBeforeFullEvent = league.PartsBeforeFullEvent,
             MonitoredSessionTypes = league.MonitoredSessionTypes,
             MonitoredEventTypes = league.MonitoredEventTypes,
+            MonitoredFacets = league.MonitoredFacets,
             SessionTypeQualityProfiles = league.SessionTypeQualityProfiles,
             MonitorFinals = league.MonitorFinals,
             MonitorPlayoffs = league.MonitorPlayoffs,

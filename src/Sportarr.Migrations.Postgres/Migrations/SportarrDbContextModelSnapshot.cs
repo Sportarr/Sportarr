@@ -960,6 +960,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<int>("ChannelId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("ChannelPinned")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("Created")
                         .HasColumnType("timestamp with time zone");
 
@@ -1312,6 +1315,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("MonitoredParts")
                         .HasColumnType("text");
 
+                    b.Property<string>("PartsBeforeFullEvent")
+                        .HasColumnType("text");
+
                     b.Property<string>("Quality")
                         .HasColumnType("text");
 
@@ -1415,6 +1421,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasColumnType("character varying(200)");
 
                     b.Property<bool>("IsIptvRecording")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsParked")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Languages")
@@ -2351,6 +2360,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("MonitoredEventTypes")
                         .HasColumnType("text");
 
+                    b.Property<string>("MonitoredFacets")
+                        .HasColumnType("text");
+
                     b.Property<string>("MonitoredParts")
                         .HasColumnType("text");
 
@@ -2362,6 +2374,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasAnnotation("Relational:JsonPropertyName", "strLeague");
+
+                    b.Property<string>("PartsBeforeFullEvent")
+                        .HasColumnType("text");
 
                     b.Property<int>("PlayoffTeamMode")
                         .HasColumnType("integer");

@@ -56,6 +56,9 @@ public static class PartIdentityResolver
         "fullevent", "completeevent", "fullcard", "completecard"
     }.Select(WordsIn).ToArray();
 
+    public static bool PartNamesMatch(string? left, string? right) =>
+        EventPartDetector.PartNamesMatch(left, right);
+
     public static bool HasNamedPartLabel(string? sourceFileName)
     {
         var words = WordsIn(Basename(sourceFileName));
@@ -92,6 +95,10 @@ public static class PartIdentityResolver
             var normalized = string.Join(' ', WordsIn(requestedPart));
             if (normalized == "full event")
                 return new(PartIdentityKind.ExplicitFullEvent);
+
+            // Main Card and Main Show are one segment. Use the name this event defines.
+            normalized = string.Join(' ', WordsIn(
+                EventPartDetector.CanonicalPartName(requestedPart, definitions)));
 
             var requested = definitions.FirstOrDefault(d =>
                 string.Join(' ', WordsIn(d.Name)) == normalized);

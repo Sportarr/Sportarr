@@ -596,7 +596,7 @@ public static class LeagueReleaseNamePolicy
             return false;
         }
 
-        var releaseRaces = SupercarsRaceNumbers(releaseTitle);
+        var releaseRaces = SupercarsRoundRaceNumbers(releaseTitle);
         return releaseRaces.Length > 0 &&
             !releaseRaces.Contains(int.Parse(eventRace.Groups["race"].Value));
     }
@@ -608,7 +608,7 @@ public static class LeagueReleaseNamePolicy
     {
         if (LeagueKey(evt.League?.Name) == "Supercars" &&
             roundRaceNumbers is { Count: > 0 } &&
-            SupercarsRaceNumbers(releaseTitle).Length == 0)
+            SupercarsRoundRaceNumbers(releaseTitle).Length == 0)
         {
             var releaseRound = RoundPattern.Match(releaseTitle);
             var singleRoundEventRace = RacePattern.Match(evt.Title ?? string.Empty);
@@ -639,7 +639,7 @@ public static class LeagueReleaseNamePolicy
 
         var eventRace = RacePattern.Match(evt.Title ?? string.Empty);
         var ordered = roundRaceNumbers.Distinct().OrderBy(number => number).ToArray();
-        var mappedRaces = SupercarsRaceNumbers(releaseTitle)
+        var mappedRaces = SupercarsRoundRaceNumbers(releaseTitle)
             .Where(number => number <= ordered.Length)
             .Select(number => ordered[number - 1])
             .ToArray();
@@ -3566,8 +3566,10 @@ public static class LeagueReleaseNamePolicy
 
         var eventRace = RacePattern.Match(evt.Title ?? string.Empty);
         if (!eventRace.Success) return false;
-        var expected = int.Parse(eventRace.Groups["race"].Value);
         var releaseRaces = SupercarsRaceNumbers(title);
+        // A session number without a round cannot be mapped to a race.
+        if (releaseRaces.Length == 0 && EventPartDetector.SupercarsGluedSessionPattern.IsMatch(title)) return true;
+        var expected = int.Parse(eventRace.Groups["race"].Value);
         return releaseRaces.Length > 0 && !releaseRaces.Contains(expected);
     }
 
@@ -3601,6 +3603,16 @@ public static class LeagueReleaseNamePolicy
         var eventRace = RacePattern.Match(evt.Title ?? string.Empty);
         return eventRace.Success && SupercarsRaceNumbers(title)
             .Contains(int.Parse(eventRace.Groups["race"].Value));
+    }
+
+    // A race number glued to the session counts only inside a round. Outside a
+    // round it cannot be told from a season race number.
+    private static int[] SupercarsRoundRaceNumbers(string title)
+    {
+        var races = SupercarsRaceNumbers(title);
+        if (races.Length > 0) return races;
+        var glued = EventPartDetector.SupercarsGluedSessionPattern.Match(title);
+        return glued.Success ? new[] { int.Parse(glued.Groups["race"].Value) } : Array.Empty<int>();
     }
 
     private static int[] SupercarsRaceNumbers(string title)
@@ -3698,6 +3710,29 @@ public static class LeagueReleaseNamePolicy
         var splitEnd = Regex.Match(evt.Season ?? string.Empty, @"^(?<start>20[0-9]{2})-(?<end>[0-9]{2})$");
         if (splitEnd.Success) allowed.Add(int.Parse(splitEnd.Groups["start"].Value[..2] + splitEnd.Groups["end"].Value));
         return years.All(year => !allowed.Contains(year));
+    }
+
+    /// <summary>
+    /// True when the release name carries both team names of the event, or
+    /// the whole event title. A word such as "United" is not enough.
+    /// </summary>
+    internal static bool NamesBothEventTeams(string releaseTitle, Event evt)
+    {
+        if (string.IsNullOrWhiteSpace(releaseTitle) ||
+            string.IsNullOrWhiteSpace(evt.HomeTeamName) ||
+            string.IsNullOrWhiteSpace(evt.AwayTeamName))
+        {
+            return false;
+        }
+
+        var title = SearchNormalizationService.RemoveDiacritics(releaseTitle);
+        var home = SearchNormalizationService.RemoveDiacritics(evt.HomeTeamName);
+        var away = SearchNormalizationService.RemoveDiacritics(evt.AwayTeamName);
+        if (HasTeam(title, home, evt.HomeTeam) && HasTeam(title, away, evt.AwayTeam))
+            return true;
+
+        return !string.IsNullOrWhiteSpace(evt.Title) &&
+            ContainsPhrase(Normalize(title), Normalize(SearchNormalizationService.RemoveDiacritics(evt.Title)));
     }
 
     private static bool HasTeam(string title, string? canonical)

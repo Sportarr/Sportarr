@@ -132,4 +132,42 @@ public class DvrAutoSchedulerServiceTests
     {
         InvokeIsWrapperShow("nhl winter classic postgame", "nhl winter classic").Should().BeTrue();
     }
+
+    // An event whose team has a mapped channel is scheduled even when its
+    // league has no channel (#406).
+    [Fact]
+    public async Task AnEventWithOnlyATeamChannelIsLetThrough()
+    {
+        using var db = CreateDb();
+        db.IptvSources.Add(new IptvSource { Id = 1, Name = "Source", Url = "http://test", IsActive = true });
+        db.IptvChannels.AddRange(
+            new IptvChannel { Id = 1, SourceId = 1, Name = "MSG", StreamUrl = "http://test/1" },
+            new IptvChannel { Id = 2, SourceId = 1, Name = "Retired", StreamUrl = "http://test/2", IsEnabled = false });
+        db.ChannelTeamMappings.AddRange(
+            new ChannelTeamMapping { ChannelId = 1, TeamId = 20, IsPreferred = true, Priority = 0 },
+            new ChannelTeamMapping { ChannelId = 2, TeamId = 30, IsPreferred = true, Priority = 0 });
+        await db.SaveChangesAsync();
+        var awayTeamMapped = new Event { Id = 1, Title = "Devils at Rangers", Sport = "Ice Hockey", LeagueId = 5, HomeTeamId = 10, AwayTeamId = 20 };
+        var disabledOnly = new Event { Id = 2, Title = "Bruins at Flyers", Sport = "Ice Hockey", LeagueId = 5, HomeTeamId = 30, AwayTeamId = 40 };
+        var noLeague = new Event { Id = 3, Title = "Exhibition", Sport = "Ice Hockey", LeagueId = null, HomeTeamId = 20 };
+
+        var teams = await DvrAutoSchedulerService.TeamsWithChannelsAsync(
+            db, new[] { awayTeamMapped, disabledOnly, noLeague }, CancellationToken.None);
+        var noLeagueChannels = new HashSet<int>();
+
+        teams.Should().BeEquivalentTo(new[] { 20 }, "a disabled channel does not count");
+        DvrAutoSchedulerService.HasMappedChannel(awayTeamMapped, noLeagueChannels, teams).Should().BeTrue();
+        DvrAutoSchedulerService.HasMappedChannel(disabledOnly, noLeagueChannels, teams).Should().BeFalse();
+        DvrAutoSchedulerService.HasMappedChannel(noLeague, noLeagueChannels, teams).Should().BeFalse(
+            "scheduling reads padding and the DVR opt-out from the league");
+    }
+
+    [Fact]
+    public void AnEventWithALeagueChannelIsStillLetThrough()
+    {
+        var evt = new Event { Id = 1, Title = "Game", Sport = "Ice Hockey", LeagueId = 5 };
+
+        DvrAutoSchedulerService.HasMappedChannel(evt, new HashSet<int> { 5 }, new HashSet<int>()).Should().BeTrue();
+        DvrAutoSchedulerService.HasMappedChannel(evt, new HashSet<int> { 6 }, new HashSet<int>()).Should().BeFalse();
+    }
 }

@@ -54,7 +54,8 @@ public class EventDvrService
     /// <summary>
     /// Schedule DVR recording for an event when it becomes monitored.
     /// Only schedules if:
-    /// - Event has a league with a mapped channel
+    /// - Event has a league, and a channel mapped to that league or to one
+    ///   of its teams
     /// - Event date is in the future, OR the event already aired and the
     ///   resolved channel keeps a catchup archive (catchup backfill)
     /// - No existing recording for this event
@@ -102,38 +103,37 @@ public class EventDvrService
             return null;
         }
 
-        // An explicit per-team channel preference beats every scored
-        // resolver: a user who mapped "Lakers -> LA regional channel" did
-        // so precisely because the automatic pick records the wrong feed
-        // for that team. Home team first (regional channels follow the
-        // hosting market), then away, then the scored resolution below.
-        var teamPreferred = await _iptvService.GetPreferredChannelForEventAsync(
-            evt.HomeTeamId, evt.AwayTeamId, leagueId: null);
-        if (teamPreferred != null)
-        {
-            _logger.LogDebug("[EventDVR] Using team-preferred channel '{Channel}' for event {EventId}",
-                teamPreferred.Name, eventId);
-        }
+        // Get the channels mapped to the event's teams, in rank order. The
+        // home team comes first, because regional channels follow the
+        // hosting market. The away team comes next.
+        var teamChannels = await _iptvService.GetOrderedTeamChannelsForEventAsync(
+            evt.HomeTeamId, evt.AwayTeamId);
 
         // Pull the full ranked candidate list from the event-channel
-        // resolver. The head of the list is the primary channel; the
-        // rest become FallbackChannelIds on the recording so the DVR
-        // service can rotate to them automatically when a recording
-        // fails partway through (codec error, stream drop, source
-        // tuner saturated, etc.). Phase 3 added this for resilience.
+        // resolver. The rest of the merged order becomes FallbackChannelIds
+        // on the recording, so the DVR service can rotate to them when a
+        // recording fails partway through.
         var candidates = await _channelResolver.ResolveAsync(evt.Id);
 
-        IptvChannel? channel = teamPreferred;
-        var fallbackIds = new List<int>();
-        if (channel != null && candidates.Count > 0)
+        IptvChannel? channel = null;
+        if (teamChannels.Count > 0)
         {
-            // Team preference is primary; the resolver's picks become the
-            // fallback rotation (excluding the primary itself).
-            fallbackIds = candidates
-                .Where(c => c.ChannelId != channel.Id)
-                .Take(4)
-                .Select(c => c.ChannelId)
-                .ToList();
+            // A team channel wins unless the guide shows the game only on
+            // another channel. A guide listing is evidence. A team mapping
+            // is a standing preference that can be wrong for one game.
+            var knownBad = await KnownBadChannelIdsAsync(candidates
+                .Where(c => c.Source == TeamChannelSelection.GuideMatchSource)
+                .Select(c => c.ChannelId));
+            var primaryId = TeamChannelSelection.PickPrimaryChannelId(teamChannels, candidates, knownBad);
+            channel = teamChannels.FirstOrDefault(c => c.Id == primaryId)
+                ?? await _db.IptvChannels
+                    .Include(c => c.Source)
+                    .FirstOrDefaultAsync(c => c.Id == primaryId);
+            if (channel != null)
+            {
+                _logger.LogDebug("[EventDVR] Using channel '{Channel}' for event {EventId} from {Count} team channels",
+                    channel.Name, eventId, teamChannels.Count);
+            }
         }
         else if (candidates.Count > 0)
         {
@@ -141,13 +141,10 @@ public class EventDvrService
             channel = await _db.IptvChannels
                 .Include(c => c.Source)
                 .FirstOrDefaultAsync(c => c.Id == candidates[0].ChannelId);
-
-            // Up to 4 backup channels — the auto-retry loop in
-            // DvrRecordingService.RescheduleOnFallbackAsync caps at
-            // AutoRetryCount which gives us plenty of room for
-            // transient failures.
-            fallbackIds = candidates.Skip(1).Take(4).Select(c => c.ChannelId).ToList();
         }
+
+        // Team channels by rank come first, then the resolver candidates.
+        var mergedOrder = TeamChannelSelection.MergeOrder(teamChannels, candidates);
 
         // Fall back to the legacy single-channel paths when the resolver
         // didn't return anything (e.g., league has no broadcast string,
@@ -263,16 +260,18 @@ public class EventDvrService
             {
                 var usedChannelIds = new HashSet<int> { channel.Id };
                 var usedSourceIds = new HashSet<int> { channel.SourceId };
-                var extraCandidateIds = candidates
-                    .Select(c => c.ChannelId)
+                var extraCandidateIds = mergedOrder
                     .Where(id => id != channel.Id)
                     .ToList();
+                // A copy from a channel that a health check found dead
+                // records nothing and holds a stream slot, so skip it.
                 var extraChannels = await _db.IptvChannels
                     .Include(c => c.Source)
-                    .Where(c => extraCandidateIds.Contains(c.Id))
+                    .Where(c => extraCandidateIds.Contains(c.Id) && c.IsEnabled
+                        && c.Status != IptvChannelStatus.Offline && c.Status != IptvChannelStatus.Error)
                     .ToListAsync();
                 // Different-source channels first (cross-provider redundancy
-                // is the point), resolver confidence order within each group.
+                // is the point), merged order within each group.
                 var ordered = extraChannels
                     .OrderBy(c => usedSourceIds.Contains(c.SourceId) ? 1 : 0)
                     .ThenBy(c => extraCandidateIds.IndexOf(c.Id))
@@ -319,17 +318,12 @@ public class EventDvrService
             // of the list (it's already ChannelId), drop any channel a
             // redundant copy is already recording from (a failed primary
             // must not rotate onto a channel that's mid-recording the
-            // same event), and keep the rest in confidence order.
+            // same event), and keep the rest in merged order.
+            var fallbackIds = TeamChannelSelection.BuildFallbackIds(mergedOrder, channel.Id, redundantChannelIds);
             if (recording != null && fallbackIds.Count > 0)
             {
-                var backups = fallbackIds
-                    .Where(id => id != channel.Id && !redundantChannelIds.Contains(id))
-                    .ToList();
-                if (backups.Count > 0)
-                {
-                    recording.FallbackChannelIds = JsonSerializer.Serialize(backups);
-                    await _db.SaveChangesAsync();
-                }
+                recording.FallbackChannelIds = JsonSerializer.Serialize(fallbackIds);
+                await _db.SaveChangesAsync();
             }
 
             var durationInfo = timeOptimization.UsedEpgData
@@ -346,6 +340,21 @@ public class EventDvrService
             _logger.LogError(ex, "[EventDVR] Failed to schedule recording for event {EventId}", eventId);
             return null;
         }
+    }
+
+    private async Task<HashSet<int>> KnownBadChannelIdsAsync(IEnumerable<int> channelIds)
+    {
+        var ids = channelIds.ToList();
+        if (ids.Count == 0)
+        {
+            return new HashSet<int>();
+        }
+        var bad = await _db.IptvChannels
+            .Where(c => ids.Contains(c.Id)
+                && (c.Status == IptvChannelStatus.Offline || c.Status == IptvChannelStatus.Error))
+            .Select(c => c.Id)
+            .ToListAsync();
+        return bad.ToHashSet();
     }
 
     /// <summary>
@@ -541,7 +550,7 @@ public class EventDvrService
             pathOwner.Size = new FileInfo(recording.OutputPath).Length;
             var configForLinkedFile = await _configService.GetConfigAsync();
             var linkedParts = await _db.EventFiles
-                .Where(file => file.EventId == recording.EventId && file.Exists)
+                .Where(file => file.EventId == recording.EventId && file.Exists && !file.IsParked)
                 .Select(file => file.PartNumber)
                 .ToListAsync();
             linkedParts.Add(pathOwner.PartNumber);
@@ -714,7 +723,7 @@ public class EventDvrService
 
         // Update event status
         var presentParts = await _db.EventFiles
-            .Where(file => file.EventId == recording.EventId && file.Exists)
+            .Where(file => file.EventId == recording.EventId && file.Exists && !file.IsParked)
             .Select(file => file.PartNumber)
             .ToListAsync();
         presentParts.Add(eventFile.PartNumber);

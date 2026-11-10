@@ -8,6 +8,16 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class FileNamingService
 {
+    /// <summary>
+    /// The {Part} and {Part Name} token values for a file: " - pt2" and
+    /// " - Prelims". A whole-event file, or a file without a part number, has
+    /// neither. Import and rename use this, so their names agree.
+    /// </summary>
+    public static (string Part, string PartName) PartTokens(string? partName, int? partNumber) =>
+        !string.IsNullOrEmpty(partName) && partNumber.HasValue
+            ? ($" - pt{partNumber}", $" - {partName}")
+            : (string.Empty, string.Empty);
+
     private readonly ILogger<FileNamingService> _logger;
 
     // Invalid filename characters (Windows + Unix)
@@ -265,9 +275,15 @@ public class FileNamingService
     }
 
     /// <summary>
+    /// The {Season}{Episode} pair as a file name shows it, for example "S2026E12".
+    /// </summary>
+    public static string SeasonEpisodeTag(string? season, string? episode) =>
+        FormatSeasonNumber(season) + FormatEpisodeNumber(episode);
+
+    /// <summary>
     /// Format season number with S## prefix (e.g., "2025" → "S2025", "01" → "S01")
     /// </summary>
-    private string FormatSeasonNumber(string? season)
+    private static string FormatSeasonNumber(string? season)
     {
         if (string.IsNullOrEmpty(season))
             return "S01";
@@ -289,7 +305,7 @@ public class FileNamingService
     /// <summary>
     /// Format episode number with E## prefix (e.g., "1" → "E01", "10" → "E10")
     /// </summary>
-    private string FormatEpisodeNumber(string? episode)
+    private static string FormatEpisodeNumber(string? episode)
     {
         if (string.IsNullOrEmpty(episode))
             return "E01";

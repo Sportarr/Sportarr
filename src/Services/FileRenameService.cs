@@ -434,6 +434,9 @@ public class FileRenameService
             _logger.LogInformation("[File Rename] Creating directory: {Directory}", expectedDir);
             Directory.CreateDirectory(expectedDir);
         }
+        // A new parked folder needs its marker files, or the media server shows the file.
+        if (file.IsParked && !string.IsNullOrEmpty(expectedDir))
+            FileParking.EnsureParkedFolder(expectedDir);
 
         // Perform the rename/move
         _logger.LogInformation("[File Rename] Moving: {CurrentPath} -> {ExpectedPath}", currentPath, expectedPath);
@@ -461,6 +464,12 @@ public class FileRenameService
 
             // Clean up empty source directory if settings allow
             var currentDir = Path.GetDirectoryName(currentPath);
+            if (file.IsParked && !string.Equals(currentDir, expectedDir, StringComparison.OrdinalIgnoreCase))
+            {
+                // The old parked folder goes once it is empty. Its parent is the folder to tidy.
+                FileParking.RemoveParkedFolderIfEmpty(currentPath, _logger);
+                currentDir = Path.GetDirectoryName(currentDir);
+            }
             if (settings.DeleteEmptyFolders && !string.IsNullOrEmpty(currentDir) &&
                 !string.Equals(currentDir, expectedDir, StringComparison.OrdinalIgnoreCase))
             {
@@ -484,7 +493,19 @@ public class FileRenameService
     /// </summary>
     private async Task<string?> BuildExpectedPathAsync(Event evt, EventFile file, MediaManagementSettings settings, List<RootFolder> rootFolders)
     {
-        var currentPath = file.FilePath;
+        // A parked file is named for its place outside the parked folder, and
+        // then stays parked beside that place.
+        if (file.IsParked)
+        {
+            var visiblePath = await BuildVisiblePathAsync(evt, file, FileParking.OriginalPathFor(file.FilePath), settings, rootFolders);
+            return visiblePath == null ? null : FileParking.ParkedPathFor(visiblePath);
+        }
+        return await BuildVisiblePathAsync(evt, file, file.FilePath, settings, rootFolders);
+    }
+
+    private async Task<string?> BuildVisiblePathAsync(Event evt, EventFile file, string currentPath,
+        MediaManagementSettings settings, List<RootFolder> rootFolders)
+    {
         var currentDir = Path.GetDirectoryName(currentPath);
         var currentExtension = Path.GetExtension(currentPath);
 
@@ -592,13 +613,7 @@ public class FileRenameService
         // Determine part suffixes for multi-part events: the opaque pt{N}
         // form ({Part}) and the human label form ({Part Name}), both with the
         // separator embedded so single-part files render cleanly as empty.
-        var partSuffix = "";
-        var partNameSuffix = "";
-        if (!string.IsNullOrEmpty(file.PartName) && file.PartNumber.HasValue)
-        {
-            partSuffix = $" - pt{file.PartNumber}";
-            partNameSuffix = $" - {file.PartName}";
-        }
+        var (partSuffix, partNameSuffix) = FileNamingService.PartTokens(file.PartName, file.PartNumber);
 
         // BroadcastDate is the broadcaster-branding date (e.g. "Monday's
         // Raw" stays 2026-05-04 even though the UTC instant rolls into
@@ -721,6 +736,9 @@ public class FileRenameService
                 var expectedDir = Path.GetDirectoryName(move.ExpectedPath);
                 if (!string.IsNullOrEmpty(expectedDir) && !Directory.Exists(expectedDir))
                     Directory.CreateDirectory(expectedDir);
+                // A new parked folder needs its marker files, or the media server shows the file.
+                if (move.File.IsParked && !string.IsNullOrEmpty(expectedDir))
+                    FileParking.EnsureParkedFolder(expectedDir);
 
                 var tempPath = Path.Combine(expectedDir!,
                     ".sportarr-rename-" + Guid.NewGuid().ToString("N") + ".tmp");
@@ -752,6 +770,8 @@ public class FileRenameService
                 File.Move(s.TempPath, s.ExpectedPath);
                 await _metadataWriterService.RenameEventMetadataAsync(s.TempPath, s.ExpectedPath);
                 s.File.FilePath = s.ExpectedPath;
+                if (s.File.IsParked)
+                    FileParking.RemoveParkedFolderIfEmpty(s.CurrentPath, _logger);
                 var legacyPathChanged = UpdateLegacyFilePath(
                     s.Event, s.OriginalLegacyPath, s.CurrentPath, s.ExpectedPath,
                     s.RepairMissingLegacyPath, out var previousLegacyPath);
@@ -890,6 +910,15 @@ public class FileRenameService
             if (string.IsNullOrEmpty(currentDir))
                 continue;
 
+
+            // A parked file follows the naming inside the parked folder of its new place.
+
+            var parkedTarget = file.IsParked
+
+                ? await BuildExpectedPathAsync(evt, file, settings, rootFolders)
+
+                : null;
+
             var tokens = BuildFileNamingTokens(evt, file);
             tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
             var expectedFileName = _fileNamingService.BuildFileName(
@@ -925,6 +954,7 @@ public class FileRenameService
                 expectedPath = Path.Combine(currentDir, expectedFileName);
             }
 
+            expectedPath = parkedTarget ?? expectedPath;
             if (!string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
             {
                 previews.Add(new FileRenamePreview
@@ -975,6 +1005,15 @@ public class FileRenameService
                 if (string.IsNullOrEmpty(currentDir))
                     continue;
 
+
+                // A parked file follows the naming inside the parked folder of its new place.
+
+                var parkedTarget = file.IsParked
+
+                    ? await BuildExpectedPathAsync(evt, file, settings, rootFolders)
+
+                    : null;
+
                 var tokens = BuildFileNamingTokens(evt, file);
                 tokens.CustomFormats = await BuildCustomFormatsTokenAsync(file);
                 var expectedFileName = _fileNamingService.BuildFileName(
@@ -1010,6 +1049,7 @@ public class FileRenameService
                     expectedPath = Path.Combine(currentDir, expectedFileName);
                 }
 
+                expectedPath = parkedTarget ?? expectedPath;
                 if (!string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
                 {
                     previews.Add(new FileRenamePreview
@@ -1194,6 +1234,9 @@ public class FileRenameService
         var staleFileStateChanged = false;
         foreach (var file in evt.Files.Where(file => file.Exists))
         {
+            // A parked file is hidden from the media server. It does not count.
+            if (file.IsParked)
+                continue;
             if (!string.IsNullOrEmpty(file.FilePath) && File.Exists(file.FilePath))
                 existingFiles.Add(file);
             else

@@ -15,6 +15,9 @@ public class ConfigService : IConfigService
     private readonly ILogger<ConfigService> _logger;
     private Config? _cachedConfig;
     private readonly SemaphoreSlim _lock = new(1, 1);
+
+    // True when config.xml failed to load and the cache holds defaults.
+    private bool _usingLoadFailureDefaults;
     private readonly XmlSerializer _serializer;
 
     public ConfigService(IConfiguration configuration, ILogger<ConfigService> logger)
@@ -92,7 +95,49 @@ public class ConfigService : IConfigService
         {
             _logger.LogError(ex, "[CONFIG] Error loading config.xml, using defaults");
             _cachedConfig = new Config();
+            _usingLoadFailureDefaults = true;
             return _cachedConfig;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Return the random install id for anonymous usage data. The first call
+    /// creates and saves it under the config lock, so two callers get one id.
+    /// Returns null when config.xml did not load.
+    /// </summary>
+    public async Task<string?> GetOrCreateAnalyticsInstanceIdAsync()
+    {
+        var config = await GetConfigAsync();
+        if (!string.IsNullOrEmpty(config.AnalyticsInstanceId))
+            return config.AnalyticsInstanceId;
+
+        await _lock.WaitAsync();
+        try
+        {
+            // A save now would write the defaults over the real config.xml.
+            if (_usingLoadFailureDefaults)
+                return null;
+            if (string.IsNullOrEmpty(config.AnalyticsInstanceId))
+            {
+                config.AnalyticsInstanceId = Guid.NewGuid().ToString("N");
+                try
+                {
+                    await SaveConfigInternalAsync(config);
+                }
+                catch (Exception ex)
+                {
+                    // An id that is not on disk changes at restart, and the
+                    // server then counts one install twice.
+                    _logger.LogWarning(ex, "[CONFIG] Could not save the usage-data install id");
+                    config.AnalyticsInstanceId = "";
+                    return null;
+                }
+            }
+            return config.AnalyticsInstanceId;
         }
         finally
         {

@@ -551,12 +551,16 @@ public class ChannelTeamMapping
 
     /// <summary>
     /// Whether this is the preferred channel for this team
-    /// (at most one preferred mapping per team)
+    /// (at most one preferred mapping per team). The row with rank 0
+    /// is the preferred row.
     /// </summary>
     public bool IsPreferred { get; set; } = true;
 
     /// <summary>
-    /// Priority among this team's mapped channels (lower = tried first)
+    /// Rank among this team's mapped channels. The values are 0, 1, 2 and
+    /// so on, and a lower value is tried first. This is the opposite
+    /// direction from ChannelLeagueMapping.Priority. Rows from before the
+    /// ranked list all hold 1.
     /// </summary>
     public int Priority { get; set; } = 1;
 
@@ -842,6 +846,12 @@ public class DvrRecording
     /// them (their wall-clock rules assume a live window).
     /// </summary>
     public DvrRecordingMethod Method { get; set; } = DvrRecordingMethod.Live;
+
+    /// <summary>
+    /// True once the user changed the channel by hand. The background channel
+    /// re-resolve then leaves the recording alone. Failover rotation ignores it.
+    /// </summary>
+    public bool ChannelPinned { get; set; }
 }
 
 /// <summary>
@@ -1162,6 +1172,15 @@ public class MapChannelToLeaguesRequest
     public int ChannelId { get; set; }
     public List<int> LeagueIds { get; set; } = new();
     public int? PreferredLeagueId { get; set; }
+}
+
+/// <summary>
+/// Request to replace a team's ranked channel list. The first id is rank 0.
+/// The list is required. An empty list clears the team's channels.
+/// </summary>
+public class TeamChannelMappingsRequest
+{
+    public List<int>? ChannelIds { get; set; }
 }
 
 /// <summary>

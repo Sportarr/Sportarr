@@ -9,13 +9,14 @@ namespace Sportarr.Api.Services;
 /// purpose as an automation source (new UFC cards, schedule feeds, etc.
 /// never arrived on their own).
 /// </summary>
-public class ImportListSyncService : BackgroundService
+public class ImportListSyncService : BackgroundService, IManualPassService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(5);
 
     private readonly IServiceProvider _services;
     private readonly ILogger<ImportListSyncService> _logger;
+    private readonly ScheduledPassGate _passGate = new();
 
     public ImportListSyncService(IServiceProvider services, ILogger<ImportListSyncService> logger)
     {
@@ -33,7 +34,11 @@ public class ImportListSyncService : BackgroundService
         {
             try
             {
-                await SyncAllEnabledAsync(stoppingToken);
+                await _passGate.RunScheduledAsync(() => SyncAllEnabledAsync(stoppingToken), Interval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -42,6 +47,19 @@ public class ImportListSyncService : BackgroundService
 
             try { await Task.Delay(Interval, stoppingToken); } catch (OperationCanceledException) { break; }
         }
+    }
+
+    /// <summary>
+    /// Syncs every enabled import list now.
+    /// </summary>
+    public async Task PassAsync(CancellationToken cancellationToken) => await SyncAllEnabledAsync(cancellationToken);
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
     }
 
     private async Task SyncAllEnabledAsync(CancellationToken ct)

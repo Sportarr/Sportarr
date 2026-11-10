@@ -86,10 +86,18 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         return Results.NotFound();
     }
 
-    if (!config.EnableMultiPartEpisodes ||
+    // A "Full Event" event is one file, so it searches as if parts were off.
+    var usesParts = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt);
+
+    if (!usesParts ||
         !EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? string.Empty, evt.League?.Name))
     {
         part = null;
+    }
+    else
+    {
+        // Main Card and Main Show are one segment. Use the name this event defines.
+        part = EventPartDetector.CanonicalPartName(part, evt.Sport, evt.Title, evt.League?.Name);
     }
 
     logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}{Refresh}{Custom}",
@@ -261,7 +269,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                 logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
                     queriesAttempted, totalQueries, query);
 
-                var outcome = await indexerSearchService.SearchAllIndexersDetailedAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags, skippedIndexers,
+                var outcome = await indexerSearchService.SearchAllIndexersDetailedAsync(query, 10000, qualityProfileId, part, evt.Sport, usesParts, evt.Title, evt.League?.Tags, skippedIndexers,
                     allowHighlights: evt.League?.AllowHighlights ?? false,
                     sportarrId: sportarrId,
                     useCategoryFilter: false,
@@ -324,7 +332,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         if (usedCache)
         {
             await indexerSearchService.EvaluateReleasesAsync(allResults, qualityProfileId, part, evt.Sport,
-                config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags,
+                usesParts, evt.Title, evt.League?.Tags,
                 allowHighlights: evt.League?.AllowHighlights ?? false,
                 leagueName: evt.League?.Name);
         }
@@ -356,7 +364,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     foreach (var result in allResults)
     {
         var earlyLimit = ReleaseMatchingService.ResolveEarlyReleaseLimit(result, earlyReleaseLimits);
-        var matchResult = releaseMatchingService.ValidateRelease(result, evt, part, config.EnableMultiPartEpisodes,
+        var matchResult = releaseMatchingService.ValidateRelease(result, evt, part, usesParts,
             earlyReleaseLimitDays: earlyLimit, roundRaceNumbers: roundRaceNumbers,
             knownLeagues: knownLeagues, datePeers: datePeers);
 
@@ -385,7 +393,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     foreach (var result in allResults)
     {
         result.MatchScore = releaseMatchScorer.CalculateMatchScore(
-            result.Title, evt, knownLeagues, part, config.EnableMultiPartEpisodes,
+            result.Title, evt, knownLeagues, part, usesParts,
             roundRaceNumbers, venueContext, result.SportarrEventId);
 
         // Mark non-matching releases as rejected (so UI "Hide Rejected" filter works)
@@ -418,7 +426,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         if (uniqueProbeResults.Count > 0)
         {
             await indexerSearchService.EvaluateReleasesAsync(uniqueProbeResults, qualityProfileId, part, evt.Sport,
-                config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags,
+                usesParts, evt.Title, evt.League?.Tags,
                 allowHighlights: evt.League?.AllowHighlights ?? false,
                 leagueName: evt.League?.Name);
 
@@ -426,7 +434,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             {
                 var earlyLimit = ReleaseMatchingService.ResolveEarlyReleaseLimit(release, earlyReleaseLimits);
                 var matchResult = releaseMatchingService.ValidateRelease(release, evt, part,
-                    config.EnableMultiPartEpisodes, earlyReleaseLimitDays: earlyLimit,
+                    usesParts, earlyReleaseLimitDays: earlyLimit,
                     roundRaceNumbers: roundRaceNumbers, knownLeagues: knownLeagues, datePeers: datePeers);
                 if (matchResult.IsHardRejection)
                 {
@@ -441,7 +449,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
                 release.MatchScore = releaseMatchScorer.CalculateMatchScore(
                     release.Title, evt, knownLeagues, requestedPart: part,
-                    enableMultiPartEpisodes: config.EnableMultiPartEpisodes,
+                    enableMultiPartEpisodes: usesParts,
                     roundRaceNumbers: roundRaceNumbers, venueContext: venueContext,
                     sportarrEventId: release.SportarrEventId);
                 if (release.MatchScore < ReleaseMatchScorer.MinimumMatchScore)
@@ -563,6 +571,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     var releaseDeduplicator = new ManualReleaseDeduplicator();
     var skippedIndexers = new List<SkippedIndexer>();
     var packConfig = await configService.GetConfigAsync();
+    var packUsesParts = EventPartDetector.UsesParts(packConfig.EnableMultiPartEpisodes, evt);
     var sportarrId = Sportarr.Api.Helpers.SportarrIdToken.Normalize(evt.League?.ExternalId);
     var sourceFingerprint = await indexerSearchService.GetSearchSourceFingerprintAsync(true, evt.League?.Tags);
 
@@ -641,7 +650,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     foreach (var result in allResults)
     {
         var matchResult = releaseMatchingService.ValidateRelease(
-            result, evt, null, packConfig.EnableMultiPartEpisodes,
+            result, evt, null, packUsesParts,
             roundRaceNumbers: roundRaceNumbers, knownLeagues: knownLeagues,
             datePeers: datePeers);
         if (matchResult.Rejections.Any())
@@ -665,7 +674,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
 
         result.MatchScore = releaseMatchScorer.CalculateMatchScore(
             result.Title, evt, knownLeagues, requestedPart: null,
-            enableMultiPartEpisodes: packConfig.EnableMultiPartEpisodes,
+            enableMultiPartEpisodes: packUsesParts,
             roundRaceNumbers: roundRaceNumbers, venueContext: venueContext,
             sportarrEventId: result.SportarrEventId);
         if (result.IsPack &&

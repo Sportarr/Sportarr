@@ -821,7 +821,7 @@ public class FileWatcherService : BackgroundService
         SportarrDbContext db, Event evt, string deletedPath, bool enableMultiPartEpisodes)
     {
         var remaining = evt.Files
-            .Where(file => file.Exists && file.FilePath != deletedPath)
+            .Where(file => file.Exists && !file.IsParked && file.FilePath != deletedPath)
             .OrderByDescending(file => file.Size)
             .ThenBy(file => file.Id)
             .ToList();

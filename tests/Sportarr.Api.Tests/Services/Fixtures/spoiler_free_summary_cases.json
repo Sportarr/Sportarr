@@ -1,0 +1,134 @@
+[
+  {
+    "name": "team event leads with the matchup",
+    "home_team": "Arsenal",
+    "away_team": "Chelsea",
+    "event_title": "Arsenal vs Chelsea",
+    "league_name": "English Premier League",
+    "season_name": "2025-2026",
+    "round": "10",
+    "venue_name": "Emirates Stadium",
+    "expected": "Arsenal vs Chelsea · English Premier League 2025-2026 · Round 10 · Emirates Stadium"
+  },
+  {
+    "name": "event without teams leads with the title",
+    "home_team": null,
+    "away_team": null,
+    "event_title": "Pirelli Spanish Round - Race 2",
+    "league_name": "SBK",
+    "season_name": "2026",
+    "round": "12",
+    "venue_name": "Circuito de Jerez – Ángel Nieto",
+    "expected": "Pirelli Spanish Round - Race 2 · SBK 2026 · Round 12 · Circuito de Jerez – Ángel Nieto"
+  },
+  {
+    "name": "one team only falls back to the title",
+    "home_team": "Boston Celtics",
+    "away_team": null,
+    "event_title": "Boston Celtics vs TBD",
+    "league_name": "NBA",
+    "season_name": "2025-2026",
+    "round": null,
+    "venue_name": null,
+    "expected": "Boston Celtics vs TBD · NBA 2025-2026"
+  },
+  {
+    "name": "round zero is left out",
+    "home_team": null,
+    "away_team": null,
+    "event_title": "UFC 317 - Main Card",
+    "league_name": "UFC",
+    "season_name": "2026",
+    "round": "0",
+    "venue_name": "T-Mobile Arena",
+    "expected": "UFC 317 - Main Card · UFC 2026 · T-Mobile Arena"
+  },
+  {
+    "name": "round is trimmed",
+    "home_team": null,
+    "away_team": null,
+    "event_title": "Monaco Grand Prix",
+    "league_name": "Formula 1",
+    "season_name": "2026",
+    "round": " 8 ",
+    "venue_name": "Circuit de Monaco",
+    "expected": "Monaco Grand Prix · Formula 1 2026 · Round 8 · Circuit de Monaco"
+  },
+  {
+    "name": "blank round is left out",
+    "home_team": null,
+    "away_team": null,
+    "event_title": "Monaco Grand Prix",
+    "league_name": "Formula 1",
+    "season_name": "2026",
+    "round": "  ",
+    "venue_name": "Circuit de Monaco",
+    "expected": "Monaco Grand Prix · Formula 1 2026 · Circuit de Monaco"
+  },
+  {
+    "name": "empty round and venue are left out",
+    "home_team": "",
+    "away_team": "",
+    "event_title": "WWE Raw",
+    "league_name": "WWE",
+    "season_name": "2026",
+    "round": "",
+    "venue_name": "",
+    "expected": "WWE Raw · WWE 2026"
+  },
+  {
+    "name": "empty title starts with the competition",
+    "home_team": null,
+    "away_team": null,
+    "event_title": "",
+    "league_name": "Formula 1",
+    "season_name": "2026",
+    "round": "3",
+    "venue_name": "Suzuka",
+    "expected": "Formula 1 2026 · Round 3 · Suzuka"
+  },
+  {
+    "name": "missing title starts with the competition",
+    "home_team": null,
+    "away_team": null,
+    "event_title": null,
+    "league_name": "Formula 1",
+    "season_name": "2026",
+    "round": null,
+    "venue_name": null,
+    "expected": "Formula 1 2026"
+  },
+  {
+    "name": "season without a league",
+    "home_team": null,
+    "away_team": null,
+    "event_title": "Stage 16",
+    "league_name": null,
+    "season_name": "2026",
+    "round": null,
+    "venue_name": null,
+    "expected": "Stage 16 · 2026"
+  },
+  {
+    "name": "league without a season",
+    "home_team": null,
+    "away_team": null,
+    "event_title": "Stage 16",
+    "league_name": "Tour de France",
+    "season_name": "",
+    "round": null,
+    "venue_name": null,
+    "expected": "Stage 16 · Tour de France"
+  },
+  {
+    "name": "nothing to say",
+    "home_team": null,
+    "away_team": null,
+    "event_title": null,
+    "league_name": null,
+    "season_name": null,
+    "round": null,
+    "venue_name": null,
+    "expected": null
+  }
+]

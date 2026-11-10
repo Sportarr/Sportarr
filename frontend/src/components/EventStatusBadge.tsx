@@ -1,4 +1,4 @@
-import { useMemo, memo } from 'react';
+import { useMemo, memo, type ReactNode } from 'react';
 import {
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
@@ -20,6 +20,8 @@ interface EventStatusBadgeProps {
     recentlyCompleted: SearchQueueItem[];
   };
   downloadQueue?: DownloadQueueItem[];
+  // Shown when nothing is in progress for this event.
+  fallback?: ReactNode;
 }
 
 // Helper to extract only the relevant data for this event from queues
@@ -81,6 +83,7 @@ const EventStatusBadge = memo(function EventStatusBadge({
   part,
   searchQueue,
   downloadQueue,
+  fallback,
 }: EventStatusBadgeProps) {
   // Extract only the relevant queue data for this specific event
   const relevantData = useMemo(
@@ -254,7 +257,7 @@ const EventStatusBadge = memo(function EventStatusBadge({
     return null;
   }, [relevantData]);
 
-  if (!status) return null;
+  if (!status) return <>{fallback ?? null}</>;
 
   const Icon = status.icon;
 

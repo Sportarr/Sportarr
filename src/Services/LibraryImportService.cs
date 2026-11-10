@@ -69,11 +69,23 @@ public class LibraryImportService
     /// <summary>
     /// Scan a folder for video files
     /// </summary>
-    public async Task<LibraryScanResult> ScanFolderAsync(
+    public Task<LibraryScanResult> ScanFolderAsync(
         string folderPath,
         bool includeSubfolders = true,
         Func<int, int, Task>? onProgress = null,
-        bool includeIgnoredFiles = false)
+        bool includeIgnoredFiles = false) =>
+        ScanPathAsync(folderPath, includeSubfolders, onProgress, includeIgnoredFiles);
+
+    /// <summary>Analyse only this file using the same filters and event matching as a folder scan.</summary>
+    public Task<LibraryScanResult> ScanFileAsync(string filePath) =>
+        ScanPathAsync(Path.GetDirectoryName(Path.GetFullPath(filePath))!, singleFilePath: filePath);
+
+    private async Task<LibraryScanResult> ScanPathAsync(
+        string folderPath,
+        bool includeSubfolders = true,
+        Func<int, int, Task>? onProgress = null,
+        bool includeIgnoredFiles = false,
+        string? singleFilePath = null)
     {
         var result = new LibraryScanResult
         {
@@ -98,7 +110,9 @@ public class LibraryImportService
             var searchOption = includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
             var files = SampleFileFilter.FilterSamples(
                     LibraryPathFilter.FilterExcluded(
-                        Directory.GetFiles(folderPath, "*.*", searchOption)
+                        (singleFilePath == null
+                            ? Directory.GetFiles(folderPath, "*.*", searchOption)
+                            : File.Exists(singleFilePath) ? new[] { singleFilePath } : Array.Empty<string>())
                             .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower())),
                         recycleBin),
                     folderPath)
@@ -311,7 +325,8 @@ public class LibraryImportService
                         {
                             var driftLeagueIds = candidates
                                 .Where(candidate => candidate.LeagueId.HasValue &&
-                                    LeagueReleaseNamePolicy.AllowsObservedDateDrift(filename, candidate, eventDate.Value))
+                                    (LeagueReleaseNamePolicy.AllowsObservedDateDrift(filename, candidate, eventDate.Value) ||
+                                     ImportDateMatchPolicy.CanUseNearbyDate(candidate, eventDate.Value, filename)))
                                 .Select(candidate => candidate.LeagueId!.Value)
                                 .Distinct()
                                 .ToArray();
@@ -343,6 +358,7 @@ public class LibraryImportService
                             }
                         }
 
+                        var candidatesAtBest = 0;
                         foreach (var candidate in candidates)
                         {
                             if (hasNamedPart && !hasPartNumber &&
@@ -363,11 +379,28 @@ public class LibraryImportService
                             {
                                 matchConfidence = confidence;
                                 matchedEvent = candidate;
+                                candidatesAtBest = 1;
+                            }
+                            else if (confidence > 0 && confidence == matchConfidence)
+                            {
+                                candidatesAtBest++;
                             }
                         }
 
+                        // A name that shares no word with the event it ties on
+                        // cannot choose between the games of one day.
+                        if (matchedEvent != null && candidatesAtBest > 1 && !explicitEpisodeNumber.HasValue &&
+                            !HasTitleEvidence(eventTitle, matchedEvent.Title, sportsResult.Location))
+                        {
+                            _logger.LogInformation(
+                                "[Library Import] '{File}' fits {Count} games equally and names none of them - leaving it unmatched",
+                                filename, candidatesAtBest);
+                            matchedEvent = null;
+                            matchConfidence = 0;
+                        }
+
                         // Only accept matches with reasonable confidence
-                        if (matchConfidence < 40)
+                        if (matchConfidence < MatchAcceptanceFloor)
                         {
                             matchedEvent = null;
                             matchConfidence = 0;
@@ -554,9 +587,13 @@ public class LibraryImportService
                         // NOTE: "Full Event" selection means no part - store as null
                         string? partName = request.PartName;
                         int? partNumber = request.PartNumber;
+                        // A "Full Event" event keeps one whole file, as if parts were off.
+                        var eventUsesParts = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, existingEvent);
+                        var wholeEventImport = fullEventWasSelected
+                            || (config.EnableMultiPartEpisodes && !eventUsesParts);
 
                         // If user selected "Full Event", treat as no part (null)
-                        if (fullEventWasSelected)
+                        if (wholeEventImport)
                         {
                             partName = null;
                             partNumber = null;
@@ -605,7 +642,9 @@ public class LibraryImportService
                         var occupant = existingFileRecord == null
                             ? request.ReplaceOccupiedFile
                                 ? replacementCandidates?.SingleOrDefault()
-                                : ImportUpgradeRule.ExistingFileForPart(existingEvent.Files, partNumber, request.FilePath, config.EnableMultiPartEpisodes)
+                                : ImportUpgradeRule.ExistingFileForPart(existingEvent.Files, partNumber, request.FilePath,
+                                    // A whole file never takes a part file's place while parts are on.
+                                    config.EnableMultiPartEpisodes)
                             : null;
                         var importInPlace = false;
                         if (occupant != null)
@@ -648,6 +687,13 @@ public class LibraryImportService
                             stagedPart = await StageOccupiedPartAsync(existingEvent, partName, partNumber, request.FilePath, occupant);
                         }
 
+                        // A file the event's mode hides goes straight into the parked folder,
+                        // so a media server that watches folders never sees it.
+                        var parkOnImport = !importInPlace && existingFileRecord == null
+                            && FileParking.ImportWillBeParked(existingEvent.Files, occupant ?? stagedPart?.Occupant,
+                                string.IsNullOrEmpty(partName), existingEvent, config.EnableMultiPartEpisodes);
+                        using var parkedImport = parkOnImport ? FileParking.BeginParkedImport() : null;
+
                         // Build destination path and transfer file - pass part info and import mode
                         string destinationPath;
                         try
@@ -663,7 +709,7 @@ public class LibraryImportService
                                 partNumber,
                                 importMode,
                                 modeWasExplicit,
-                                fullEventWasSelected);
+                                parkOnImport);
                         }
                         catch
                         {
@@ -737,6 +783,7 @@ public class LibraryImportService
                                     isIptvRecording, existingByDest.IsIptvRecording, request.FromDownloadClient);
                                 existingByDest.LastVerified = DateTime.UtcNow;
                                 existingByDest.Exists = true;
+                                existingByDest.IsParked = FileParking.IsParkedPath(destinationPath);
                                 linkedFile = existingByDest;
                                 await RefreshPreviousOwnerAsync(previousOwnerId, existingEvent.Id,
                                     existingByDest, config);
@@ -754,6 +801,7 @@ public class LibraryImportService
                                 {
                                     EventId = existingEvent.Id,
                                     FilePath = destinationPath,
+                                    IsParked = FileParking.IsParkedPath(destinationPath),
                                     Size = sourceFileSize,
                                     Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
                                     Codec = request.Codec ?? parsedInfo.VideoCodec,
@@ -780,7 +828,7 @@ public class LibraryImportService
                         }
 
                         var presentParts = existingEvent.Files
-                            .Where(f => f.Exists && !ReferenceEquals(f, linkedFile)
+                            .Where(f => f.Exists && !f.IsParked && !ReferenceEquals(f, linkedFile)
                                 && !ReferenceEquals(f, stagedPart?.Occupant)
                                 && (!importInPlace || !ReferenceEquals(f, occupant)))
                             .Select(f => f.PartNumber)
@@ -810,6 +858,14 @@ public class LibraryImportService
                             // file back. Where the new file took the same name
                             // this returns the part to what it was; where it
                             // did not, both are on disk and nothing is lost.
+                            // Without its row a parked file is lost to the library.
+                            // Move it out first, so the restore can use its path.
+                            // Leave it when the restore needs the place it would go to.
+                            // When the replaced file used the same parked path, its sidecars
+                            // are still there, so only the video moves.
+                            if (parkOnImport && !RestoreNeedsVisiblePath(stagedPart, destinationPath))
+                                FileParking.ReturnUntrackedParkedFile(destinationPath, _logger,
+                                    withSidecars: !string.Equals(stagedPart?.OriginalPath, destinationPath, StringComparison.OrdinalIgnoreCase));
                             RestoreStagedPart(stagedPart);
                             throw;
                         }
@@ -822,6 +878,16 @@ public class LibraryImportService
                             // so the event holds one file for this part.
                             _db.EventFiles.Remove(occupant);
                             await _db.SaveChangesAsync();
+                        }
+
+                        // The import is saved. Now the files follow the event's mode, so a whole
+                        // file for a "Full Event" event hides the part files from the media server.
+                        if (config.EnableMultiPartEpisodes)
+                        {
+                            // A replaced parked file means the new file must be hidden the same way.
+                            await FileParking.ReconcileAndSaveAsync(_db, new[] { existingEvent }, true,
+                                _notificationService, _logger,
+                                applyMode: occupant?.IsParked == true || stagedPart?.Occupant.IsParked == true);
                         }
 
                         result.Imported.Add(destinationPath);
@@ -877,9 +943,13 @@ public class LibraryImportService
                     // NOTE: "Full Event" selection means no part - store as null
                     string? partName = request.PartName;
                     int? partNumber = request.PartNumber;
+                    // A league set to "Full Event" keeps one whole file, as if parts were off.
+                    var wholeEventImport = fullEventWasSelected
+                        || (config.EnableMultiPartEpisodes && !EventPartDetector.UsesParts(
+                            config.EnableMultiPartEpisodes, newEvent.MonitoredParts, league?.MonitoredParts));
 
                     // If user selected "Full Event", treat as no part (null)
-                    if (fullEventWasSelected)
+                    if (wholeEventImport)
                     {
                         partName = null;
                         partNumber = null;
@@ -908,8 +978,7 @@ public class LibraryImportService
                         partName,
                         partNumber,
                         importMode,
-                        modeWasExplicit,
-                        fullEventWasSelected);
+                        modeWasExplicit);
 
                     // Update event with file path
                     newEvent.FilePath = destinationPath;
@@ -1120,7 +1189,7 @@ public class LibraryImportService
             return;
 
         var remaining = await _db.EventFiles
-            .Where(f => f.EventId == previousOwnerId && f.Id != movedFile.Id && f.Exists)
+            .Where(f => f.EventId == previousOwnerId && f.Id != movedFile.Id && f.Exists && !f.IsParked)
             .ToListAsync();
         if (string.Equals(previous.FilePath, movedFile.FilePath, StringComparison.OrdinalIgnoreCase))
         {
@@ -1146,7 +1215,7 @@ public class LibraryImportService
         int? partNumber,
         LibraryImportMode importMode,
         bool modeWasExplicit,
-        bool fullEventWasSelected)
+        bool park = false)
     {
         var sourceFileInfo = new FileInfo(sourcePath);
         var extension = sourceFileInfo.Extension;
@@ -1186,35 +1255,9 @@ public class LibraryImportService
         string filename;
         if (settings.RenameEvents)
         {
-            // Build part suffix from provided part info (already determined by caller)
-            // Part info can come from: 1) Manual UI selection, 2) Auto-detection from filename
-            string partSuffix = string.Empty;
-            if (!string.IsNullOrEmpty(partName))
-            {
-                // Build suffix like " - Part 1 (Early Prelims)" or " - Early Prelims"
-                if (partNumber.HasValue)
-                {
-                    partSuffix = $" - Part {partNumber} ({partName})";
-                }
-                else
-                {
-                    partSuffix = $" - {partName}";
-                }
-                _logger.LogDebug("[Import] Using part info for filename: {PartName} (Part {PartNumber})",
-                    partName, partNumber?.ToString() ?? "N/A");
-            }
-            else if (config.EnableMultiPartEpisodes && !fullEventWasSelected)
-            {
-                // Fallback: try auto-detection from original filename if no part info provided
-                var detectedPart = DetectImportPart(
-                    sourcePath, parsed, eventInfo.Sport, eventInfo.Title, eventInfo.League?.Name);
-                if (detectedPart != null)
-                {
-                    partSuffix = $" - {detectedPart.PartSuffix}";
-                    _logger.LogDebug("[Import] Auto-detected multi-part episode: {Segment} ({PartSuffix})",
-                        detectedPart.SegmentName, detectedPart.PartSuffix);
-                }
-            }
+            // The part tokens come from the part the caller stores, the same way a
+            // rename builds them. A whole-event file gets no part token.
+            var (partSuffix, partNameSuffix) = FileNamingService.PartTokens(partName, partNumber);
 
             // Filename tokens use BroadcastDate (broadcaster-branded);
             // see FileRenameService for the rationale.
@@ -1234,7 +1277,8 @@ public class LibraryImportService
                 Series = eventInfo.League?.Name ?? eventInfo.Sport,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? brandingDate.Year.ToString(),
                 Episode = episodeNumber.ToString("00"),
-                Part = partSuffix
+                Part = partSuffix,
+                PartName = partNameSuffix
             };
 
             // No grabbed release to source IndexerFlags from here - this path
@@ -1250,6 +1294,8 @@ public class LibraryImportService
         }
 
         destinationPath = Path.Combine(destinationPath, filename);
+        if (park)
+            destinationPath = FileParking.ParkedPathFor(destinationPath);
 
         // Check if source and destination are the same file (file already in correct location)
         if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
@@ -1271,6 +1317,9 @@ public class LibraryImportService
             Directory.CreateDirectory(destDir);
             _logger.LogDebug("Created directory: {Directory}", destDir);
         }
+        // A parked folder needs its marker files before the file lands.
+        if (park && !string.IsNullOrEmpty(destDir))
+            FileParking.EnsureParkedFolder(destDir);
 
         // Transfer file based on import mode
         await TransferFileAsync(sourcePath, destinationPath, settings, importMode, modeWasExplicit);
@@ -1701,6 +1750,10 @@ public class LibraryImportService
     /// </summary>
     private sealed record StagedPartReplacement(EventFile Occupant, string OriginalPath, string? StagedPath);
 
+    private static bool RestoreNeedsVisiblePath(StagedPartReplacement? staged, string parkedPath) =>
+        staged != null
+        && string.Equals(staged.OriginalPath, FileParking.OriginalPathFor(parkedPath), StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Why the file may not take the place of the file this event already
     /// holds, as Library Import shows it. Empty when the event holds no file
@@ -1745,7 +1798,8 @@ public class LibraryImportService
             .Where(f => f.EventId == evt.Id && f.Exists)
             .ToListAsync();
         int? partNumber = null;
-        if (config.EnableMultiPartEpisodes && !string.IsNullOrEmpty(evt.Sport))
+        var usesParts = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt);
+        if (usesParts && !string.IsNullOrEmpty(evt.Sport))
         {
             partNumber = DetectImportPart(filePath, parsedInfo, evt.Sport, evt.Title, evt.League?.Name)?.PartNumber;
         }
@@ -1991,6 +2045,8 @@ public class LibraryImportService
                 }
                 await _metadataWriterService.DeleteEventMetadataAsync(
                     new EventFile { FilePath = staged.OriginalPath }, recycledVideoPath);
+                // A parked folder goes once its last file is gone.
+                FileParking.RemoveParkedFolderIfEmpty(staged.OriginalPath, _logger);
             }
             catch (Exception ex)
             {
@@ -2119,6 +2175,35 @@ public class LibraryImportService
         return "Fighting";
     }
 
+    /// <summary>The lowest confidence a library scan accepts as a match.</summary>
+    private const int MatchAcceptanceFloor = 40;
+
+    /// <summary>
+    /// True when the parsed title is the event title, holds it, or shares a
+    /// word with it. Connector words such as "vs" do not count.
+    /// </summary>
+    internal static bool HasTitleEvidence(string searchTitle, string eventTitle, string? parsedLocation = null)
+    {
+        var normalizedSearch = NormalizeTitle(searchTitle);
+        var normalizedEvent = NormalizeTitle(eventTitle);
+        if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
+            return false;
+        if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase) ||
+            (normalizedSearch.Length >= 3 && ContainsTitlePhrase(normalizedEvent, normalizedSearch)) ||
+            (normalizedEvent.Length >= 3 && ContainsTitlePhrase(normalizedSearch, normalizedEvent)))
+        {
+            return true;
+        }
+
+        var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !MatchConnectorWords.Contains(w));
+        if (!string.IsNullOrEmpty(parsedLocation))
+            searchWords = searchWords.Union(parsedLocation.Split(' ', StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
+        var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !MatchConnectorWords.Contains(w));
+        return searchWords.Intersect(eventWords, StringComparer.OrdinalIgnoreCase).Any();
+    }
+
     /// <summary>
     /// Calculate match confidence between a parsed filename and a database event
     /// </summary>
@@ -2158,6 +2243,9 @@ public class LibraryImportService
         }
 
         var originalTitle = sourceTitle ?? searchTitle;
+        if (IsMlsDatedName(originalTitle) && !MlsNameFitsEvent(originalTitle, searchTitle, evt))
+            return 0;
+
         var hasLeagueReleaseIdentity = LeagueReleaseNamePolicy.HasStrongEventIdentity(originalTitle, evt);
         if (CricketRugbyReleaseNamePolicy.HasIdentityConflict(originalTitle, evt) ||
             LeagueReleaseNamePolicy.HasIdentityConflict(originalTitle, evt))
@@ -2328,7 +2416,7 @@ public class LibraryImportService
         ImportDateMatchResult? dateMatch = null;
         if (parsedDate.HasValue)
         {
-            dateMatch = ImportDateMatchPolicy.Evaluate(evt, parsedDate.Value);
+            dateMatch = ImportDateMatchPolicy.Evaluate(evt, parsedDate.Value, originalTitle, datePeers);
             if (dateMatch.Value.DaysDifference > 0 && ReleaseMatchingService.DateMatchesAnotherTeamEvent(
                     evt, parsedDate.Value.Date, datePeers))
             {
@@ -2359,12 +2447,13 @@ public class LibraryImportService
             return hasLeagueReleaseIdentity ? Math.Min(100, confidence + 50) : 0;
         }
 
+        var hasTitleEvidence = true;
         if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
         {
             confidence += 60;
         }
-        else if ((normalizedSearch.Length >= 3 && normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)) ||
-                 (normalizedEvent.Length >= 3 && normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase)))
+        else if ((normalizedSearch.Length >= 3 && ContainsTitlePhrase(normalizedEvent, normalizedSearch)) ||
+                 (normalizedEvent.Length >= 3 && ContainsTitlePhrase(normalizedSearch, normalizedEvent)))
         {
             confidence += 40;
         }
@@ -2393,6 +2482,10 @@ public class LibraryImportService
             {
                 var matchPercent = (double)matchingWords / totalWords;
                 confidence += (int)(30 * matchPercent);
+            }
+            else
+            {
+                hasTitleEvidence = false;
             }
         }
 
@@ -2428,6 +2521,25 @@ public class LibraryImportService
             confidence += dateMatch.Value.Score;
         }
 
+        // ── NO IDENTITY ─────────────────────────────────────────────────────────
+        // Year and date are true for every game of the day. A name that shares
+        // no word with the event, names no league or team pair and carries no
+        // round or episode that fits has not identified this event. Keep it
+        // under the acceptance floor.
+        var hasStructuralMatch = explicitEpisodeNumber.HasValue && evt.EpisodeNumber.HasValue ||
+            parsedRoundNumber.HasValue && eventRoundNumber.HasValue && eventRoundNumber == parsedRoundNumber;
+        if (!hasTitleEvidence && !hasStructuralMatch && !hasLeagueReleaseIdentity &&
+            !organizationEstablishesIdentity &&
+            !(evt.League != null && ReleaseMatchingService.TitleNamesLeague(originalTitle, evt.League)) &&
+            !LeagueReleaseNamePolicy.NamesBothEventTeams(originalTitle, evt) &&
+            !CricketRugbyReleaseNamePolicy.HasStrongEventIdentity(originalTitle, evt) &&
+            !CricketRugbyReleaseNamePolicy.HasStrongWorldCupIdentity(originalTitle, evt, parsedDate))
+        {
+            logger?.LogDebug("[Match] No identity: '{Title}' shares nothing with event '{Event}' and names no league - keeping it below the floor",
+                searchTitle, eventTitle);
+            return Math.Min(confidence, MatchAcceptanceFloor - 1);
+        }
+
         // ── RECENCY ─────────────────────────────────────────────────────────────
         if (Math.Abs((DateTime.UtcNow - evt.EventDate).TotalDays) <= 30)
         {
@@ -2438,6 +2550,246 @@ public class LibraryImportService
         return confidence;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex MlsFixtureSides = new(
+        @"^(?<first>.+?)\s+(?:vs?\.?|@)\s+(?<second>.+)$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly System.Text.RegularExpressions.Regex MlsDatedName = new(
+        @"^(?:MLS|(?:American[._\s-]+)?Major[._\s-]+League[._\s-]+Soccer)[._\s-]+\d{4}[-._\s]+\d{2}[-._\s]+\d{2}(?:[._\s-]|$)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    /// <summary>
+    /// True for a file name that starts with the MLS league and a full date.
+    /// Library scan and manual import both use this test.
+    /// </summary>
+    internal static bool IsMlsDatedName(string title) =>
+        !string.IsNullOrWhiteSpace(title) && MlsDatedName.IsMatch(title);
+
+    /// <summary>
+    /// Decides if an MLS file name can belong to the event. The league must
+    /// be MLS, so MLS Next Pro games are refused. When the name gives two
+    /// teams, they must be the event's teams.
+    /// </summary>
+    internal static bool MlsNameFitsEvent(string originalTitle, string fixtureTitle, Event evt)
+    {
+        if (evt.League == null ||
+            !ReleaseMatchingService.SeriesLabelMatchesLeague("American Major League Soccer", evt.League))
+            return false;
+
+        // Without team names on the event, only the league can be checked.
+        if (string.IsNullOrWhiteSpace(evt.HomeTeamName) || string.IsNullOrWhiteSpace(evt.AwayTeamName))
+            return true;
+
+        var fixture = WithoutReleaseGroup(fixtureTitle, originalTitle);
+        if (!NamesMlsFixture(fixture))
+            return true;
+
+        return MlsFixtureMatchesTeams(fixture, evt);
+    }
+
+    private static string WithoutReleaseGroup(string fixtureTitle, string originalTitle)
+    {
+        var releaseGroup = ReleaseGroupParser.Parse(originalTitle);
+        if (string.IsNullOrWhiteSpace(releaseGroup))
+            return fixtureTitle;
+
+        var bracketedSuffix = $"[{releaseGroup}]";
+        if (fixtureTitle.EndsWith(bracketedSuffix, StringComparison.OrdinalIgnoreCase))
+            return fixtureTitle[..^bracketedSuffix.Length].TrimEnd();
+        foreach (var separator in new[] { " ", "-", "." })
+        {
+            var suffix = separator + releaseGroup;
+            if (fixtureTitle.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return fixtureTitle[..^suffix.Length];
+        }
+        return fixtureTitle;
+    }
+
+    private static readonly HashSet<string> MlsClubSuffixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fc", "cf", "sc", "afc"
+    };
+
+    /// <summary>
+    /// True when the title names two sides. A league and date name without
+    /// teams is matched by date elsewhere.
+    /// </summary>
+    internal static bool NamesMlsFixture(string title) => MlsFixtureSides.IsMatch(title);
+
+    internal static bool MlsFixtureMatchesTeams(string fixture, Event evt)
+    {
+        if (string.IsNullOrWhiteSpace(evt.HomeTeamName) || string.IsNullOrWhiteSpace(evt.AwayTeamName))
+            return false;
+
+        var sides = MlsFixtureSides.Match(fixture);
+        if (!sides.Success)
+            return false;
+
+        var first = sides.Groups["first"].Value;
+        var second = sides.Groups["second"].Value;
+        return MlsSideNamesTeam(first, evt.HomeTeamName, evt.HomeTeam) && MlsSideNamesTeam(second, evt.AwayTeamName, evt.AwayTeam) ||
+               MlsSideNamesTeam(first, evt.AwayTeamName, evt.AwayTeam) && MlsSideNamesTeam(second, evt.HomeTeamName, evt.HomeTeam);
+    }
+
+    /// <summary>
+    /// True when one side of the fixture names this team. Each side is
+    /// checked on its own, so a name on the other side cannot count.
+    /// Short sides such as "New York" fit more than one club. That is safe
+    /// only because both sides must fit, so keep that check.
+    /// </summary>
+    private static bool MlsSideNamesTeam(string side, string teamName, Team? team)
+    {
+        var sideRaw = MlsTeamWords(side).ToArray();
+        var sideWords = MlsClubWords(side);
+        if (sideWords.Length == 0)
+            return false;
+
+        // A club suffix ("Los Angeles FC", "NYCFC") marks the side as a full
+        // name. It cannot then be the first words of another club's name.
+        var sideIsFullName = sideRaw.Any(word => MlsClubSuffixes.Contains(word) || MlsInitialsWithSuffix(word));
+        var nameRaw = MlsTeamWords(teamName).ToArray();
+        var nameWords = MlsClubWords(teamName);
+        if (MlsMatchWords(nameWords, sideWords, out var nameUsed, out var sideUsed))
+        {
+            var coversName = nameUsed == nameWords.Length;
+            if (!coversName)
+                return !sideIsFullName && sideUsed == sideWords.Length;
+
+            // "LA Galaxy" must not read as Los Angeles FC plus a stray word.
+            // After a name whose suffix is missing, only tags such as "ESPN"
+            // may follow.
+            // In an all-caps name every word looks like a tag, so none counts.
+            var nameHadSuffix = nameRaw.Any(MlsClubSuffixes.Contains);
+            var sideHadSuffix = sideIsFullName;
+            var sideHasLowercase = side.Any(char.IsLower);
+            return !(nameHadSuffix && !sideHadSuffix) ||
+                sideUsed == sideWords.Length ||
+                sideHasLowercase && sideWords.Skip(sideUsed).All(word => word.All(char.IsUpper));
+        }
+
+        // The team's own short and alternate names. An alias must be the
+        // whole side, or a Red Bulls alias "New York" would match
+        // "New York City FC".
+        var aliases = new[] { team?.ShortName, team?.AlternateName, team?.UserAliases }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .SelectMany(value => System.Text.RegularExpressions.Regex.Split(value!, @"[,|;/]"));
+        return aliases.Any(alias =>
+        {
+            var aliasWords = MlsClubWords(alias);
+            return MlsMatchWords(aliasWords, sideWords, out var aliasUsed, out var used) &&
+                aliasUsed == aliasWords.Length && used == sideWords.Length;
+        });
+    }
+
+    private static string[] MlsClubWords(string name) =>
+        MlsTeamWords(name)
+            .Where(word => !MlsClubSuffixes.Contains(word))
+            .Select(word => MlsInitialsWithSuffix(word) ? word[..^2] : word)
+            .ToArray();
+
+    // "NYCFC" and "LAFC" are initials joined to a club suffix.
+    private static bool MlsInitialsWithSuffix(string word) =>
+        word.Length >= 4 && word.All(char.IsUpper) &&
+        MlsClubSuffixes.Contains(word[^2..]);
+
+    /// <summary>
+    /// Walks the name and the side from the start. A side word fits one
+    /// name word, or it is the initials of several, as "KC" for Kansas City.
+    /// Succeeds when the whole name or the whole side was used.
+    /// </summary>
+    private static bool MlsMatchWords(string[] nameWords, string[] sideWords, out int nameUsed, out int sideUsed)
+    {
+        nameUsed = 0;
+        sideUsed = 0;
+        while (nameUsed < nameWords.Length && sideUsed < sideWords.Length)
+        {
+            var word = sideWords[sideUsed];
+            if (word.Length >= 2 && word.All(char.IsUpper) && word.Length <= nameWords.Length - nameUsed &&
+                nameWords.Skip(nameUsed).Take(word.Length)
+                    .Select(name => char.ToUpperInvariant(name[0]))
+                    .SequenceEqual(word))
+            {
+                nameUsed += word.Length;
+                sideUsed++;
+                continue;
+            }
+
+            var name = nameWords[nameUsed];
+            if (!name.Equals(word, StringComparison.OrdinalIgnoreCase) &&
+                !MlsAbbreviation(name, word) &&
+                !MlsOneLetterTypo(name, word))
+                break;
+            nameUsed++;
+            sideUsed++;
+        }
+        return sideUsed > 0 && (nameUsed == nameWords.Length || sideUsed == sideWords.Length);
+    }
+
+    private static IEnumerable<string> MlsTeamWords(string name)
+    {
+        var normalized = System.Text.RegularExpressions.Regex.Replace(
+            SearchNormalizationService.RemoveDiacritics(name),
+            @"\b(?:[A-Za-z]\.){2,}",
+            match => match.Value.Replace(".", string.Empty));
+        normalized = System.Text.RegularExpressions.Regex.Replace(
+            normalized, @"\bD\s+C\b", "DC",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // The parser turns dots into spaces, so "L.A." arrives as "L A".
+        normalized = System.Text.RegularExpressions.Regex.Replace(
+            normalized, @"\b[A-Za-z]\b(?:\s+[A-Za-z]\b)+",
+            match => System.Text.RegularExpressions.Regex.Replace(match.Value, @"\s+", string.Empty));
+        normalized = System.Text.RegularExpressions.Regex.Replace(
+            normalized, @"\b(?:LA|NY)\b",
+            match => match.Value.Equals("LA", StringComparison.OrdinalIgnoreCase)
+                ? "Los Angeles"
+                : "New York",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return System.Text.RegularExpressions.Regex.Matches(normalized, @"\p{L}+")
+            .Select(match => match.Value)
+            .Where(word => word.Length >= 2);
+    }
+
+    // Release names shorten words, as in "Rev." for Revolution or "Utd" for
+    // United. The short form keeps the first letter and the letter order.
+    private static bool MlsAbbreviation(string expected, string actual)
+    {
+        if (actual.Length < 3 || actual.Length >= expected.Length ||
+            char.ToUpperInvariant(actual[0]) != char.ToUpperInvariant(expected[0]))
+            return false;
+        // An all-caps code such as "MIA" must be a plain prefix, or it would
+        // fit Minnesota through the letters in order.
+        if (actual.All(char.IsUpper))
+            return expected.StartsWith(actual, StringComparison.OrdinalIgnoreCase);
+        var next = 0;
+        foreach (var letter in expected)
+        {
+            if (next < actual.Length && char.ToUpperInvariant(letter) == char.ToUpperInvariant(actual[next]))
+                next++;
+        }
+        return next == actual.Length;
+    }
+
+    private static bool MlsOneLetterTypo(string expected, string actual)
+    {
+        if (expected.Length < 6 || expected.Length != actual.Length)
+            return false;
+
+        var differences = 0;
+        for (var index = 0; index < expected.Length; index++)
+        {
+            if (char.ToUpperInvariant(expected[index]) == char.ToUpperInvariant(actual[index]))
+                continue;
+            if (++differences > 1)
+                return false;
+        }
+
+        return differences == 1;
+    }
+
     /// <summary>
     /// Words that connect matchup titles rather than identify them. Present
     /// in virtually every two-team title, so they carry zero matching signal.
@@ -2446,6 +2798,32 @@ public class LibraryImportService
     {
         "vs", "v", "versus", "at", "the", "and", "of", "@",
     };
+
+    /// <summary>
+    /// True when the phrase is in the text and starts and ends on a word edge.
+    /// </summary>
+    /// <remarks>
+    /// A plain substring test let "UFC Fight Night 4" claim "UFC Fight Night 42"
+    /// and "UFC Fight Night 86" claim "UFC Fight Night 8".
+    /// </remarks>
+    internal static bool ContainsTitlePhrase(string text, string phrase)
+    {
+        if (string.IsNullOrEmpty(phrase))
+            return false;
+
+        for (var index = text.IndexOf(phrase, StringComparison.OrdinalIgnoreCase);
+             index >= 0;
+             index = text.IndexOf(phrase, index + 1, StringComparison.OrdinalIgnoreCase))
+        {
+            var end = index + phrase.Length;
+            var startsOnEdge = index == 0 || !char.IsLetterOrDigit(text[index - 1]) || !char.IsLetterOrDigit(phrase[0]);
+            var endsOnEdge = end == text.Length || !char.IsLetterOrDigit(text[end]) || !char.IsLetterOrDigit(phrase[^1]);
+            if (startsOnEdge && endsOnEdge)
+                return true;
+        }
+
+        return false;
+    }
 
     private static string NormalizeTitle(string title)
     {

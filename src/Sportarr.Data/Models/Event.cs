@@ -323,6 +323,13 @@ public class Event
     /// </summary>
     public string? MonitoredParts { get; set; }
 
+    /// <summary>
+    /// The MonitoredParts value from before "Full Event" was chosen. Turning
+    /// Full Event off restores it. "*" stands for null (all parts). Null means
+    /// nothing is stored.
+    /// </summary>
+    public string? PartsBeforeFullEvent { get; set; }
+
     public bool HasFile { get; set; }
     public string? FilePath { get; set; }
     public long? FileSize { get; set; }
@@ -504,6 +511,13 @@ public class EventFile
     public bool Exists { get; set; } = true;
 
     /// <summary>
+    /// True when the file sits in a ".sportarr-parked" folder, hidden from the
+    /// media server. FilePath holds that parked path. A "Full Event" event parks
+    /// its part files, and the switch back to parts parks the whole file.
+    /// </summary>
+    public bool IsParked { get; set; }
+
+    /// <summary>
     /// Timestamp the file first went missing (Exists transitioned true to false).
     /// Cleared when the file is found again. The disk scanner uses this with
     /// Config.EventFileMissingDeleteAfterDays as a grace period before hard-
@@ -641,6 +655,19 @@ public class EventResponse
     public List<PartStatus>? PartStatuses { get; set; }
 
     /// <summary>
+    /// True when the event type defines parts. A Full Event event has no part
+    /// rows, so the UI uses this value to offer a switch back to parts.
+    /// Null for sports without parts.
+    /// </summary>
+    public bool? EventTypeHasParts { get; set; }
+
+    /// <summary>
+    /// The part names the event type defines, in part order. Empty when the
+    /// event type has no parts. Null for sports without parts.
+    /// </summary>
+    public List<string>? EventTypePartNames { get; set; }
+
+    /// <summary>
     /// DVR recording information for this event (if any)
     /// Populated separately via EventDvrService.GetEventDvrStatusAsync
     /// </summary>
@@ -703,32 +730,32 @@ public class EventResponse
         };
 
         // Build part statuses for fighting sports
-        if (IsFightingSport(evt.Sport))
+        if (EventPartDetector.IsFightingSport(evt.Sport ?? string.Empty))
         {
-            response.PartStatuses = BuildPartStatuses(evt, league);
+            response.PartStatuses = BuildPartStatuses(evt, league, enableMultiPartEpisodes);
+            response.EventTypeHasParts = EventPartDetector.EventUsesMultiPart(
+                evt.Title, evt.Sport ?? string.Empty, league?.Name);
+            response.EventTypePartNames = response.EventTypeHasParts == true
+                ? EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, league?.Name)
+                    .Where(s => s.PartNumber > 0)
+                    .Select(s => s.Name)
+                    .ToList()
+                : new List<string>();
         }
 
         return response;
     }
 
     /// <summary>
-    /// Check if this is a fighting sport that uses multi-part episodes
-    /// </summary>
-    private static bool IsFightingSport(string sport)
-    {
-        if (string.IsNullOrEmpty(sport))
-            return false;
-
-        var fightingSports = new[] { "Fighting", "MMA", "Boxing", "Kickboxing", "Muay Thai", "Wrestling" };
-        return fightingSports.Any(s => sport.Equals(s, StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
     /// Build part status list for multi-part episodes
     /// Uses event-type-aware part detection (e.g., Fight Night events don't have Early Prelims)
     /// </summary>
-    private static List<PartStatus> BuildPartStatuses(Event evt, League? league)
+    private static List<PartStatus> BuildPartStatuses(Event evt, League? league, bool enableMultiPartEpisodes)
     {
+        // A "Full Event" event is one file. It has no part rows.
+        if (enableMultiPartEpisodes && EventPartDetector.IsFullEventOnly(evt.MonitoredParts, league?.MonitoredParts))
+            return new List<PartStatus>();
+
         // Get event-type-aware segments from EventPartDetector
         // This accounts for differences like UFC PPV (4 parts) vs Fight Night (2 parts)
         var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, league?.Name);
@@ -779,7 +806,7 @@ public class EventResponse
 
         foreach (var part in allParts)
         {
-            var isMonitored = defaultMonitorAll || monitoredPartNames.Contains(part.Name);
+            var isMonitored = defaultMonitorAll || EventPartDetector.IsMonitored(monitoredPartNames, part.Name);
             var file = evt.Files.FirstOrDefault(f => f.PartNumber == part.Number && f.Exists);
 
             partStatuses.Add(new PartStatus
@@ -823,6 +850,7 @@ public class EventFileResponse
     public DateTime Added { get; set; }
     public DateTime? LastVerified { get; set; }
     public bool Exists { get; set; }
+    public bool IsParked { get; set; }
 
     public static EventFileResponse FromEventFile(EventFile file)
     {
@@ -847,7 +875,8 @@ public class EventFileResponse
             PartNumber = file.PartNumber,
             Added = file.Added,
             LastVerified = file.LastVerified,
-            Exists = file.Exists
+            Exists = file.Exists,
+            IsParked = file.IsParked
         };
     }
 }

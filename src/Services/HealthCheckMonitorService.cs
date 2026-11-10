@@ -9,13 +9,16 @@ namespace Sportarr.Api.Services;
 /// changes. Without this, health checks only ran when the UI requested
 /// them, so degradation was invisible unless the health page was open.
 /// </summary>
-public class HealthCheckMonitorService : BackgroundService
+public class HealthCheckMonitorService : BackgroundService, IManualPassService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(3);
 
     private readonly IServiceProvider _services;
     private readonly ILogger<HealthCheckMonitorService> _logger;
+
+    // The tick state below is not thread safe, so ticks never overlap.
+    private readonly ScheduledPassGate _passGate = new();
 
     // Issue keys (type + message) seen on the previous tick, so only
     // TRANSITIONS notify - a persistent issue fires once, not every 15
@@ -46,7 +49,11 @@ public class HealthCheckMonitorService : BackgroundService
         {
             try
             {
-                await TickAsync();
+                await _passGate.RunScheduledAsync(TickAsync, Interval / 2, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -55,6 +62,21 @@ public class HealthCheckMonitorService : BackgroundService
 
             try { await Task.Delay(Interval, stoppingToken); } catch (OperationCanceledException) { break; }
         }
+    }
+
+    /// <summary>
+    /// Runs one health evaluation now and sends the same notifications as a
+    /// scheduled one. A health check cannot stop part way, so a cancel
+    /// request waits for the evaluation to end.
+    /// </summary>
+    public Task PassAsync(CancellationToken cancellationToken) => TickAsync();
+
+    public ScheduledPassGate PassGate => _passGate;
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        await _passGate.StopAsync(cancellationToken);
     }
 
     private async Task TickAsync()

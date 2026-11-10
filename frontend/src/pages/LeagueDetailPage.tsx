@@ -29,7 +29,7 @@ import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_
 // same size. A phone gets a smaller label and tighter padding rather than a
 // row that runs off the card.
 const HEADER_ACTION = 'w-full min-w-0 max-sm:gap-1 max-sm:px-1.5 max-sm:text-[11px]';
-import { isFightingSport, isTeamlessSport, usesFightingEventTypes } from '../utils/leagueSportRules';
+import { FULL_EVENT_PART, fileCountLabel, isFightingSport, isFullEventOnly, isTeamlessSport, partsValueLeavingFullEvent, usesFightingEventTypes } from '../utils/leagueSportRules';
 
 // Type for the league prop passed to AddLeagueModal
 interface ModalLeagueData {
@@ -113,6 +113,7 @@ interface EventFile {
   added: string;
   exists: boolean;
   originalTitle?: string;
+  isParked?: boolean; // Hidden from the media server in a .sportarr-parked folder
 }
 
 // Part-level status for multi-part episodes (fighting sports)
@@ -228,6 +229,8 @@ interface EventDetail {
   status?: string;
   files?: EventFile[];
   partStatuses?: PartStatus[]; // Event-specific parts (e.g., Fight Night has only Prelims + Main Card)
+  eventTypeHasParts?: boolean | null; // False for event types without parts (e.g., Contender Series)
+  eventTypePartNames?: string[] | null; // Part names this event type defines, in part order
 }
 
 
@@ -292,7 +295,7 @@ export default function LeagueDetailPage() {
   const queryClient = useQueryClient();
   const { timezone } = useUISettings();
   const compactView = useCompactView();
-  const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; part?: string; existingFiles?: EventFile[] }>({
+  const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; part?: string; existingFiles?: EventFile[]; wholeEvent?: boolean }>({
     isOpen: false,
     eventId: 0,
     eventTitle: '',
@@ -876,6 +879,7 @@ export default function LeagueDetailPage() {
       allowHighlights?: boolean;
       sessionTypeQualityProfiles?: string | null;
       keepAllEvents?: boolean;
+      monitoredFacets?: string | null;
     }) => {
       const sport = league?.sport ?? '';
       const name = league?.name ?? '';
@@ -951,8 +955,8 @@ export default function LeagueDetailPage() {
 
   // Update event monitored parts (for fighting sports multi-part episodes)
   const updateEventPartsMutation = useMutation({
-    mutationFn: async ({ eventId, monitoredParts }: { eventId: number; monitoredParts: string | null }) => {
-      const response = await apiClient.put(`/events/${eventId}/parts`, { monitoredParts });
+    mutationFn: async ({ eventId, monitoredParts, restorePrevious }: { eventId: number; monitoredParts: string | null; restorePrevious?: boolean }) => {
+      const response = await apiClient.put(`/events/${eventId}/parts`, { monitoredParts, restorePrevious });
       return response.data;
     },
     onSuccess: async () => {
@@ -1034,6 +1038,7 @@ export default function LeagueDetailPage() {
     sessionTypeQualityProfiles: string | null,
     _enableDvr?: boolean,
     keepAllEvents?: boolean,
+    monitoredFacets?: string | null,
   ) => {
     void _rootFolderId;
     void league;
@@ -1061,6 +1066,7 @@ export default function LeagueDetailPage() {
       allowHighlights,
       sessionTypeQualityProfiles,
       keepAllEvents,
+      monitoredFacets,
     });
   };
 
@@ -1212,13 +1218,14 @@ export default function LeagueDetailPage() {
   // permissive for future error wording tweaks.
   const canReorganize = !!moveError && /spread across multiple root folders/i.test(moveError);
 
-  const handleManualSearch = (eventId: number, eventTitle: string, part?: string, existingFiles?: EventFile[]) => {
+  const handleManualSearch = (eventId: number, eventTitle: string, part?: string, existingFiles?: EventFile[], wholeEvent = false) => {
     setManualSearchModal({
       isOpen: true,
       eventId,
       eventTitle,
       part,
       existingFiles,
+      wholeEvent,
     });
   };
 
@@ -1601,6 +1608,30 @@ export default function LeagueDetailPage() {
       return false;
     }
     return true;
+  };
+
+  // An event set to Full Event keeps one file. It shows like an event with no
+  // parts, plus a toggle to go back to parts.
+  const isFullEventEvent = (event: EventDetail): boolean =>
+    !!config?.enableMultiPartEpisodes && isFightingSport(event.sport) &&
+    isFullEventOnly(event.monitoredParts ?? league?.monitoredParts);
+
+  // Part rows show only for a multi-part event that is not set to Full Event.
+  const eventShowsParts = (event: EventDetail): boolean =>
+    !!config?.enableMultiPartEpisodes && isFightingSport(event.sport) &&
+    eventHasMultiPart(event) && !isFullEventEvent(event);
+
+  // The switch back to parts shows only when the event type has parts.
+  const showsFullEventToggle = (event: EventDetail): boolean =>
+    isFullEventEvent(event) && event.eventTypeHasParts !== false;
+
+  const setFullEvent = (event: EventDetail, fullEvent: boolean) => {
+    updateEventPartsMutation.mutate({
+      eventId: event.id,
+      // The server restores the earlier parts. This value applies only when none are kept.
+      monitoredParts: fullEvent ? FULL_EVENT_PART : partsValueLeavingFullEvent(league?.monitoredParts, event.sport, event.eventTypePartNames),
+      restorePrevious: !fullEvent,
+    });
   };
 
   // Helper to extract resolution from a quality string (e.g., "1080p WEB h264" -> "1080p")
@@ -2411,8 +2442,16 @@ export default function LeagueDetailPage() {
                             const isPostponed = lifecycle === 'postponed';
                             const isCompleted = lifecycle === 'completed';
                             const isLive = lifecycle === 'live';
-                            const hasParts = config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event);
+                            const hasParts = eventShowsParts(event);
+                            const showFullEventToggle = showsFullEventToggle(event);
                             const lastSearch = hasFile ? undefined : latestSearches?.[event.id];
+                            const lifecycleBadge = isLive ? (
+                              <span className="px-1.5 py-0.5 rounded bg-green-600/20 text-green-400 text-xs">Live</span>
+                            ) : isCompleted ? (
+                              <span className="px-1.5 py-0.5 rounded bg-blue-600/20 text-blue-400 text-xs">Completed</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded bg-gray-600/20 text-gray-400 text-xs">Not Started</span>
+                            );
 
                             return (
                               <div
@@ -2488,7 +2527,7 @@ export default function LeagueDetailPage() {
                                         title="Click to view files"
                                       >
                                         <FilmIcon className="w-3 h-3" />
-                                        {event.files && event.files.length > 1 ? `${event.files.length} Files` : 'Downloaded'}
+                                        {fileCountLabel(event.files)}
                                       </button>
                                     ) : isCancelled ? (
                                       <span className="px-1.5 py-0.5 rounded bg-red-600/20 text-red-400 text-xs line-through" title="This event was cancelled and will not occur.">Cancelled</span>
@@ -2499,14 +2538,10 @@ export default function LeagueDetailPage() {
                                         eventId={event.id}
                                         searchQueue={searchQueue}
                                         downloadQueue={downloadQueue}
+                                        // A Full Event event shows its stage while nothing is in progress.
+                                        fallback={isFullEventEvent(event) ? lifecycleBadge : undefined}
                                       />
-                                    ) : isLive ? (
-                                      <span className="px-1.5 py-0.5 rounded bg-green-600/20 text-green-400 text-xs">Live</span>
-                                    ) : isCompleted ? (
-                                      <span className="px-1.5 py-0.5 rounded bg-blue-600/20 text-blue-400 text-xs">Completed</span>
-                                    ) : (
-                                      <span className="px-1.5 py-0.5 rounded bg-gray-600/20 text-gray-400 text-xs">Not Started</span>
-                                    )}
+                                    ) : lifecycleBadge}
                                   </div>
 
                                   {/* Mobile wrap break — zero-height spacer
@@ -2596,6 +2631,38 @@ export default function LeagueDetailPage() {
                                 {/* Compact Multi-Part - Single horizontal row with all parts inline */}
                                 {hasParts && (
                                   <div className="flex flex-wrap items-center gap-3 px-4 py-1 pl-12 bg-gray-900/30 border-t border-red-900/10 text-xs">
+                                    {/* The Full Event row. A search without a part lists releases of the whole card. */}
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => setFullEvent(event, true)}
+                                        className="focus:outline-none flex-shrink-0 p-1 sm:p-0 -ml-1 sm:ml-0"
+                                        disabled={updateEventPartsMutation.isPending}
+                                        title="Click to download the whole card as one file. This clears the part choices."
+                                      >
+                                        <div className="w-4 h-4 sm:w-3.5 sm:h-3.5 rounded-full border-2 border-gray-600" />
+                                      </button>
+                                      <span className="text-gray-300">Full Event</span>
+                                      <button
+                                        // Compare against full-event files only. A part file is not the same release.
+                                        onClick={() => handleManualSearch(event.id, event.title, undefined, event.files?.filter(f => !f.partName), true)}
+                                        className="p-1.5 sm:p-0.5 bg-gray-700 sm:bg-transparent text-white sm:text-gray-500 hover:bg-gray-600 sm:hover:bg-transparent sm:hover:text-white rounded transition-colors"
+                                        title="Manual Search Full Event"
+                                      >
+                                        <UserIcon className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, FULL_EVENT_PART)}
+                                        disabled={getSearchStatus(event.id, FULL_EVENT_PART) !== 'idle'}
+                                        className="p-1.5 sm:p-0.5 bg-red-600 sm:bg-transparent text-white sm:text-gray-500 hover:bg-red-700 sm:hover:bg-transparent sm:hover:text-red-400 rounded transition-colors disabled:opacity-50"
+                                        title="Auto Search Full Event"
+                                      >
+                                        {getSearchStatus(event.id, FULL_EVENT_PART) !== 'idle' ? (
+                                          <ArrowPathIcon className="w-3.5 h-3.5 sm:w-3 sm:h-3 animate-spin" />
+                                        ) : (
+                                          <MagnifyingGlassIcon className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
+                                        )}
+                                      </button>
+                                    </div>
                                     {getEventParts(event).map((part) => {
                                       const monitoredParts = event.monitoredParts !== null && event.monitoredParts !== undefined
                                         ? event.monitoredParts
@@ -2679,6 +2746,25 @@ export default function LeagueDetailPage() {
                                     })}
                                   </div>
                                 )}
+
+                                {/* This event is one file. The toggle goes back to parts. */}
+                                {showFullEventToggle && (
+                                  <div className="flex flex-wrap items-center gap-3 px-4 py-1 pl-12 bg-gray-900/30 border-t border-red-900/10 text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => setFullEvent(event, false)}
+                                        className="focus:outline-none flex-shrink-0 p-1 sm:p-0 -ml-1 sm:ml-0"
+                                        disabled={updateEventPartsMutation.isPending}
+                                        title="Click to go back to parts. Your earlier part choices come back."
+                                      >
+                                        <CheckCircleIcon className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-green-500" />
+                                      </button>
+                                      <span className="text-gray-300">Full Event</span>
+                                      <span className="text-gray-600" aria-hidden="true">•</span>
+                                      <span className="text-gray-500">Whole card as one file, not as parts</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -2745,7 +2831,7 @@ export default function LeagueDetailPage() {
                         {/* Event Status Badge - Shows search/download/import progress */}
                         {/* Show for non-fighting sports, OR fighting sports without multi-part (e.g., DWCS) */}
                         {/* Shows even when hasFile=true for upgrade scenarios */}
-                        {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event)) && (
+                        {!eventShowsParts(event) && (
                           <EventStatusBadge
                             eventId={event.id}
                             searchQueue={searchQueue}
@@ -2768,7 +2854,7 @@ export default function LeagueDetailPage() {
                             title="Click to view and manage downloaded files"
                           >
                             <FilmIcon className="w-3.5 h-3.5" />
-                            {event.files && event.files.length > 1 ? `${event.files.length} Files` : 'Downloaded'}
+                            {fileCountLabel(event.files)}
                           </button>
                         )}
                       </div>
@@ -2909,7 +2995,7 @@ export default function LeagueDetailPage() {
 
                             {/* Search Buttons - Hidden for fighting sports with multi-part episodes (show per-part buttons instead) */}
                             {/* Show for non-fighting sports, OR fighting sports without multi-part (e.g., DWCS/Contender Series) */}
-                            {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event)) && (
+                            {!eventShowsParts(event) && (
                               <>
                                 <button
                                   onClick={() => handleManualSearch(event.id, event.title, undefined, event.files)}
@@ -2939,8 +3025,44 @@ export default function LeagueDetailPage() {
 
                           {/* Fight Card Parts (for fighting sports with multi-part episodes enabled) */}
                           {/* DWCS/Contender Series events don't have parts - eventHasMultiPart returns false for them */}
-                          {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event) && (
+                          {eventShowsParts(event) && (
                             <div className="mt-3 space-y-2 ml-7 md:ml-10 md:mt-4 md:basis-full md:space-y-3">
+                              {/* The Full Event row. A search without a part lists releases of the whole card. */}
+                              <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                                <button
+                                  onClick={() => setFullEvent(event, true)}
+                                  className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
+                                  disabled={updateEventPartsMutation.isPending}
+                                  title="Click to download the whole card as one file. This clears the part choices."
+                                >
+                                  <div className="w-4 h-4 md:w-5 md:h-5 rounded-full border-2 border-gray-600" />
+                                </button>
+                                <div className="flex-1 flex flex-wrap items-center gap-1 md:gap-2 min-w-0">
+                                  <span className="text-xs md:text-sm font-medium text-white">Full Event</span>
+                                </div>
+                                <button
+                                  // Compare against full-event files only. A part file is not the same release.
+                                  onClick={() => handleManualSearch(event.id, event.title, undefined, event.files?.filter(f => !f.partName), true)}
+                                  className="px-2 md:px-4 py-1 md:py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
+                                  title="Manual Search - Browse and select releases of the full event"
+                                >
+                                  <UserIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                                  <span className="hidden sm:inline">Manual</span>
+                                </button>
+                                <button
+                                  onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, FULL_EVENT_PART)}
+                                  disabled={getSearchStatus(event.id, FULL_EVENT_PART) !== 'idle'}
+                                  className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
+                                  title="Search for the whole card as one file"
+                                >
+                                  {getSearchStatus(event.id, FULL_EVENT_PART) !== 'idle' ? (
+                                    <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
+                                  ) : (
+                                    <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                                  )}
+                                  <span className="hidden sm:inline">{getSearchStatus(event.id, FULL_EVENT_PART) !== 'idle' ? '...' : 'Auto'}</span>
+                                </button>
+                              </div>
                               {getEventParts(event).map((part) => {
                                 // monitoredParts values:
                                 // - null/undefined = ALL parts monitored (default)
@@ -3114,6 +3236,27 @@ export default function LeagueDetailPage() {
                               })()}
                             </div>
                           )}
+
+                          {/* This event is one file. The toggle goes back to parts. */}
+                          {showsFullEventToggle(event) && (
+                            <div className="mt-3 ml-7 md:ml-10 md:mt-4 md:basis-full">
+                              <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                                <button
+                                  onClick={() => setFullEvent(event, false)}
+                                  className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
+                                  disabled={updateEventPartsMutation.isPending}
+                                  title="Click to go back to parts. Your earlier part choices come back."
+                                >
+                                  <CheckCircleIcon className="w-4 h-4 md:w-5 md:h-5 text-green-500" />
+                                </button>
+                                <div className="flex-1 flex flex-wrap items-center gap-1 md:gap-2 min-w-0">
+                                  <span className="text-xs md:text-sm font-medium text-white">Full Event</span>
+                                  <span className="text-xs text-gray-600" aria-hidden="true">•</span>
+                                  <span className="text-xs text-gray-400">Whole card as one file, not as parts</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                       </div>
                     </div>
                 );
@@ -3136,6 +3279,7 @@ export default function LeagueDetailPage() {
         eventTitle={manualSearchModal.eventTitle}
         part={manualSearchModal.part}
         existingFiles={manualSearchModal.existingFiles}
+        wholeEvent={manualSearchModal.wholeEvent}
       />
 
       {/* Event File Detail Modal */}

@@ -130,6 +130,8 @@ public class SearchQueueService
             {
                 // Validate the part is valid for this event type
                 var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
+                // A request for Main Card runs as Main Show on a wrestling show.
+                part = EventPartDetector.CanonicalPartName(part, validSegments);
                 var validPartNames = validSegments.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
                 if (!validPartNames.Contains(part))
