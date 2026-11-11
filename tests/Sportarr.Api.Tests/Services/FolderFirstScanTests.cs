@@ -585,6 +585,39 @@ public class FolderFirstScanTests : IDisposable
     }
 
     [Fact]
+    public async Task ABrokenSidecarDoesNotStopTheScan()
+    {
+        var broken = Write("UFC", "Season 2024", "01.mkv");
+        var good = Write("UFC", "Season 2024", "02.mkv");
+        WriteNfo(broken, title: "UFC 299 O'Malley vs Vera 2", aired: null, sportarrId: null);
+        WriteNfo(good, title: "UFC 300 Pereira vs Hill", aired: null, sportarrId: null);
+        var service = new LibraryImportService(
+            _db,
+            Mock.Of<ILogger<LibraryImportService>>(),
+            _fileParser,
+            new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>()),
+            new FileNamingService(Mock.Of<ILogger<FileNamingService>>()),
+            new EventPartDetector(Mock.Of<ILogger<EventPartDetector>>()),
+            _config,
+            EpisodeResolverFixture.Create(_db, _config),
+            new DiskSpaceService(Mock.Of<ILogger<DiskSpaceService>>()),
+            new CustomFormatService(_fileParser),
+            null!,
+            Mock.Of<IMetadataWriterService>())
+        {
+            SidecarReader = path => path == broken
+                ? throw new InvalidOperationException("broken sidecar")
+                : NfoSidecarReader.TryRead(path),
+        };
+
+        var scan = await service.ScanFolderAsync(_root, options: ScanOptions.LibraryBackground);
+
+        scan.Errors.Should().BeEmpty();
+        Find(scan, broken).MatchedEventId.Should().BeNull("the broken sidecar is treated as absent");
+        Find(scan, good).MatchedEventId.Should().Be(_ufc300.Id);
+    }
+
+    [Fact]
     public async Task Scan_DownloadFolderModeIgnoresSidecars()
     {
         var path = Write("UFC", "Season 2024", "UFC - S2024E99 - Las Vegas.mkv");

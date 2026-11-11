@@ -40,6 +40,9 @@ public class LibraryImportService
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
+    /// <summary>Reads the sidecar of a video. Tests replace it.</summary>
+    internal Func<string, NfoSidecar?>? SidecarReader { get; init; }
+
     /// <summary>The longest wait for one hub league search.</summary>
     internal TimeSpan HubCallTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
@@ -135,7 +138,7 @@ public class LibraryImportService
 
             // The sort below needs the sidecar ids, so read every sidecar now.
             var sidecars = scanOptions.ReadSidecars
-                ? foundFiles.ToDictionary(f => f, f => NfoSidecarReader.TryRead(f, _logger))
+                ? foundFiles.ToDictionary(f => f, ReadSidecarOrNone)
                 : null;
 
             // A file with an id token names its event exactly. It goes
@@ -591,6 +594,23 @@ public class LibraryImportService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// The sidecar of the video, or null. A sidecar that cannot be read is
+    /// treated as absent, because one bad file must not stop the scan.
+    /// </summary>
+    private NfoSidecar? ReadSidecarOrNone(string videoPath)
+    {
+        try
+        {
+            return SidecarReader != null ? SidecarReader(videoPath) : NfoSidecarReader.TryRead(videoPath, _logger);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Library Import] Ignoring the sidecar of {Path}", videoPath);
+            return null;
+        }
     }
 
     /// <summary>What the scan knows about the library's folders, loaded once per scan.</summary>

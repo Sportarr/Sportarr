@@ -464,23 +464,23 @@ public class ForeignNumberingImportTests : IDisposable
     }
 
     [Fact]
-    public async Task ForeignNumber_DoesNotChooseBetweenTheGamesOfOneDay()
+    public async Task ForeignNumber_DoesNotChooseBetweenTheEventsOfOneDay()
     {
-        // The name fits three games of one day equally and names none of
+        // The name fits three events of one day equally and names none of
         // them. E80 is another database's number, so it chooses nothing.
         var nfl = new League { Name = "NFL", Sport = "American Football" };
         _db.Leagues.Add(nfl);
         _db.SaveChanges();
-        Event Game(string title, int episode, int hour) => new()
+        Event SameDay(string title, int episode, int hour) => new()
         {
             Title = title, Sport = "American Football", Season = "2025", SeasonNumber = 2025,
             EpisodeNumber = episode, LeagueId = nfl.Id, Monitored = true,
             EventDate = new DateTime(2025, 10, 5, hour, 0, 0, DateTimeKind.Utc),
         };
         _db.Events.AddRange(
-            Game("Kansas City Chiefs vs Jacksonville Jaguars", 70, 17),
-            Game("Denver Broncos vs Philadelphia Eagles", 71, 20),
-            Game("Seattle Seahawks vs Tampa Bay Buccaneers", 72, 23));
+            SameDay("Kansas City Chiefs vs Jacksonville Jaguars", 70, 17),
+            SameDay("Denver Broncos vs Philadelphia Eagles", 71, 20),
+            SameDay("Seattle Seahawks vs Tampa Bay Buccaneers", 72, 23));
         _db.SaveChanges();
         WriteFile("NFL - S2025E80 - Week 5 Sunday Night Football 2025-10-05.mkv");
 
