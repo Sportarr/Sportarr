@@ -14,7 +14,8 @@ public record CorpusCase(
     string RelativePath,
     string LeagueExternalId,
     string Season,
-    string? ExpectedEventExternalId);
+    string? ExpectedEventExternalId,
+    string? Source = null);
 
 /// <summary>
 /// Loads the library import corpus fixtures. The season snapshots become
@@ -35,7 +36,8 @@ public static class CorpusLibraryBuilder
                 row.GetProperty("relativePath").GetString()!,
                 row.GetProperty("leagueExternalId").GetString()!,
                 row.GetProperty("season").GetString()!,
-                row.GetProperty("expected").GetString()));
+                row.GetProperty("expected").GetString(),
+                row.TryGetProperty("source", out var source) ? source.GetString() : null));
         }
         return cases;
     }
