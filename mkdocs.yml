@@ -107,6 +107,7 @@ nav:
       - Download Clients: features/download-clients.md
       - Notifications: features/notifications.md
       - File Naming: features/file-naming.md
+      - Library Import: features/library-import.md
       - IPTV DVR (Alpha): features/iptv-dvr.md
   - Troubleshooting: troubleshooting.md
   - API:
