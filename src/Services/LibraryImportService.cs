@@ -1071,6 +1071,12 @@ public class LibraryImportService
                         }
                     }
 
+                    // A year without a date gives no air date. The new event still
+                    // takes that year, so its folder and file name carry it.
+                    // Keep the year out of the parsed date. The scan's date gate reads it.
+                    var fileName = Path.GetFileNameWithoutExtension(request.FilePath);
+                    var nameYear = ExtractYearFromPath(request.FilePath, fileName,
+                        _sportsParser.Parse(fileName).EventYear, null);
                     var newEvent = new Event
                     {
                         Title = eventTitle,
@@ -1078,7 +1084,10 @@ public class LibraryImportService
                         LeagueId = request.LeagueId,
                         League = league,
                         Season = request.Season,
-                        EventDate = request.EventDate ?? parsedInfo.AirDate ?? DateTime.UtcNow,
+                        EventDate = request.EventDate ?? parsedInfo.AirDate ??
+                            (nameYear.HasValue
+                                ? new DateTime(nameYear.Value, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                                : DateTime.UtcNow),
                         FilePath = string.Empty, // Will be set after transfer
                         HasFile = false, // Will be set after transfer
                         FileSize = sourceFileSize,
