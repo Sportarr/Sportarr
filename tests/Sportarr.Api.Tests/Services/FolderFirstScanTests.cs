@@ -71,7 +71,11 @@ public class FolderFirstScanTests : IDisposable
     {
         _db.Dispose();
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+        if (Directory.Exists(Outside)) Directory.Delete(Outside, recursive: true);
     }
+
+    // A folder beside the library root, as a downloads folder is.
+    private string Outside => _root + "-outside";
 
     private void Seed()
     {
@@ -79,6 +83,8 @@ public class FolderFirstScanTests : IDisposable
         var ufc = new League { Name = "UFC", Sport = "Fighting", ExternalId = "lg-000079" };
         var nba = new League { Name = "NBA", Sport = "Basketball", ExternalId = "lg-000046" };
         _db.Leagues.AddRange(f1, ufc, nba);
+        // A scan reads league folders only under a configured root.
+        _db.RootFolders.Add(new RootFolder { Path = _root });
         _db.SaveChanges();
 
         _bahrain = new Event
@@ -274,9 +280,43 @@ public class FolderFirstScanTests : IDisposable
             });
     }
 
-    private LibraryImportService ServiceWithHub(string searchJson)
+    /// <summary>Counts the hub calls and answers each one with the given function.</summary>
+    private sealed class CountingHubHandler(Func<CancellationToken, Task<HttpResponseMessage>> answer) : HttpMessageHandler
     {
-        var http = new HttpClient(new HubSearchHandler(searchJson));
+        public int Calls;
+        public bool SawCancellation;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref Calls);
+            try
+            {
+                return await answer(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                SawCancellation = true;
+                throw;
+            }
+        }
+    }
+
+    private static HttpResponseMessage Json(string json) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(json, Encoding.UTF8, "application/json"),
+    };
+
+    private const string PremierLeagueHit = """
+        {"data":{"search":[{"idLeague":"lg-000001","strLeague":"English Premier League","strLeagueAlternate":"Premier League, EPL","strSport":"Soccer"}]}}
+        """;
+
+    private LibraryImportService ServiceWithHub(string searchJson) =>
+        ServiceWithHub(new HubSearchHandler(searchJson));
+
+    private LibraryImportService ServiceWithHub(HttpMessageHandler handler,
+        TimeSpan? callTimeout = null, TimeSpan? budget = null)
+    {
+        var http = new HttpClient(handler);
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["SportarrApi:BaseUrl"] = "http://hub.test/api/v2/json" })
             .Build();
@@ -295,7 +335,97 @@ public class FolderFirstScanTests : IDisposable
             new CustomFormatService(_fileParser),
             null!,
             Mock.Of<IMetadataWriterService>(),
-            api);
+            api)
+        {
+            HubCallTimeout = callTimeout ?? TimeSpan.FromSeconds(5),
+            HubScanBudget = budget ?? TimeSpan.FromSeconds(15),
+        };
+    }
+
+    [Fact]
+    public async Task AFileOutsideEveryRootGetsNoFolderAndNoRow()
+    {
+        // A downloads folder holds release folders, not league folders.
+        Directory.CreateDirectory(Path.Combine(Outside, "Some.Release.2024.1080p"));
+        var path = Path.Combine(Outside, "Some.Release.2024.1080p", "x.mkv");
+        File.WriteAllBytes(path, new byte[64 * 1024]);
+        var hub = new CountingHubHandler(_ => Task.FromResult(Json(PremierLeagueHit)));
+
+        var scan = await ServiceWithHub(hub).ScanFolderAsync(Outside, options: ScanOptions.Interactive);
+
+        scan.UnresolvedFolders.Should().BeEmpty();
+        Find(scan, path).FolderLeagueId.Should().BeNull();
+        Find(scan, path).FolderSeason.Should().BeNull();
+        hub.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task TheHubIsAskedOnceForANameThatTwoRootsHold()
+    {
+        var second = _root + Path.DirectorySeparatorChar + "nested-root";
+        _db.RootFolders.Add(new RootFolder { Path = second });
+        await _db.SaveChangesAsync();
+        Write("Premier League", "Season 2024-25", "x.mkv");
+        Write("nested-root", "Premier League", "y.mkv");
+        var hub = new CountingHubHandler(_ => Task.FromResult(Json(PremierLeagueHit)));
+
+        var scan = await ServiceWithHub(hub).ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        scan.UnresolvedFolders.Should().HaveCount(2)
+            .And.OnlyContain(f => f.SuggestedLeagueExternalId == "lg-000001");
+        hub.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AFailedHubCallStopsTheCallsOfTheScan()
+    {
+        Write("Premier League", "x.mkv");
+        Write("La Liga", "y.mkv");
+        Write("Serie A", "z.mkv");
+        var hub = new CountingHubHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+
+        var scan = await ServiceWithHub(hub).ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        scan.UnresolvedFolders.Should().HaveCount(3).And.OnlyContain(f => f.SuggestedLeagueExternalId == null);
+        hub.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ASlowHubCallIsCancelledAndStopsTheCallsOfTheScan()
+    {
+        Write("Premier League", "x.mkv");
+        Write("La Liga", "y.mkv");
+        Write("Serie A", "z.mkv");
+        var hub = new CountingHubHandler(async token =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return Json(PremierLeagueHit);
+        });
+
+        var scan = await ServiceWithHub(hub, callTimeout: TimeSpan.FromMilliseconds(200))
+            .ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        scan.UnresolvedFolders.Should().HaveCount(3).And.OnlyContain(f => f.SuggestedLeagueExternalId == null);
+        hub.Calls.Should().Be(1);
+        hub.SawCancellation.Should().BeTrue("the request itself is cancelled, not only the wait");
+    }
+
+    [Fact]
+    public async Task TheHubCallsOfOneScanShareOneBudget()
+    {
+        foreach (var name in new[] { "League A", "League B", "League C", "League D", "League E", "League F", "League G", "League H" })
+            Write(name, "x.mkv");
+        var hub = new CountingHubHandler(async token =>
+        {
+            await Task.Delay(150, token);
+            return Json("""{"data":{"search":[]}}""");
+        });
+
+        var scan = await ServiceWithHub(hub, budget: TimeSpan.FromMilliseconds(400))
+            .ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        scan.UnresolvedFolders.Should().HaveCount(8);
+        hub.Calls.Should().BeLessThan(8);
     }
 
     [Fact]
@@ -377,8 +507,6 @@ public class FolderFirstScanTests : IDisposable
     public async Task ASeasonFolderScanStillReadsTheLeagueFromTheConfiguredRoot()
     {
         // The file watcher scans only the folder that holds the file.
-        _db.RootFolders.Add(new RootFolder { Path = _root });
-        await _db.SaveChangesAsync();
         var path = Write("Formula 1", "Season 2024", "Formula 1 - S2024E10 - Round 1: Bahrain (Race).mkv");
 
         var scan = await _service.ScanFolderAsync(
@@ -394,8 +522,6 @@ public class FolderFirstScanTests : IDisposable
     [Fact]
     public async Task AFileDirectlyInAConfiguredRootHasNoLeagueFolder()
     {
-        _db.RootFolders.Add(new RootFolder { Path = _root });
-        await _db.SaveChangesAsync();
         var path = Write("UFC 300 Pereira vs Hill.mkv");
 
         var scan = await _service.ScanFolderAsync(_root, options: ScanOptions.LibraryBackground);

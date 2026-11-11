@@ -40,6 +40,12 @@ public class LibraryImportService
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
+    /// <summary>The longest wait for one hub league search.</summary>
+    internal TimeSpan HubCallTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The longest total wait for hub league searches in one scan.</summary>
+    internal TimeSpan HubScanBudget { get; init; } = TimeSpan.FromSeconds(15);
+
     public LibraryImportService(
         SportarrDbContext db,
         ILogger<LibraryImportService> logger,
@@ -182,7 +188,7 @@ public class LibraryImportService
             // Track event IDs claimed by earlier files in this batch so two files can't match the same event
             var claimedEventIds = new HashSet<int>();
             var supercarsRoundRaceCache = new Dictionary<(int Year, int Round), List<int>>();
-            var folders = scanOptions.ResolveFolders ? await FolderResolution.LoadAsync(_db, folderPath) : null;
+            var folders = scanOptions.ResolveFolders ? await FolderResolution.LoadAsync(_db) : null;
 
             var processedFileCount = 0;
             foreach (var filePath in files)
@@ -566,6 +572,14 @@ public class LibraryImportService
                 }
             }
 
+            if (folders?.HubCalls > 0)
+            {
+                _logger.LogInformation(
+                    "[Library Import] Asked the hub about {Calls} folder names in {Seconds:F1} s: {Suggested} suggested{Stopped}",
+                    folders.HubCalls, folders.HubTime.Elapsed.TotalSeconds, folders.HubSuggestions,
+                    folders.HubStopped ? ", then stopped after a slow or failed call" : "");
+            }
+
             _logger.LogInformation(
                 "Scan complete: {Total} files, {Matched} matched, {Unmatched} unmatched, {AlreadyInLibrary} already in library",
                 result.TotalFiles, result.MatchedFiles.Count, result.UnmatchedFiles.Count, result.AlreadyInLibrary.Count);
@@ -582,15 +596,21 @@ public class LibraryImportService
     /// <summary>What the scan knows about the library's folders, loaded once per scan.</summary>
     private sealed class FolderResolution
     {
-        public required string ScannedFolder { get; init; }
         public required List<string> RootPaths { get; init; }
         public required List<League> Leagues { get; init; }
         public Dictionary<string, League?> LeagueByFolder { get; } = new();
         public Dictionary<int, List<string>> SeasonsByLeague { get; } = new();
 
-        public static async Task<FolderResolution> LoadAsync(SportarrDbContext db, string scannedFolder) => new()
+        // The hub answers once for each folder name in a scan.
+        public Dictionary<string, League?> HubSuggestionByName { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public System.Diagnostics.Stopwatch HubTime { get; } = new();
+        public int HubCalls { get; set; }
+        public int HubSuggestions { get; set; }
+        // After one slow or failed call the scan asks the hub no more.
+        public bool HubStopped { get; set; }
+
+        public static async Task<FolderResolution> LoadAsync(SportarrDbContext db) => new()
         {
-            ScannedFolder = scannedFolder,
             RootPaths = await db.RootFolders.AsNoTracking().Select(r => r.Path).ToListAsync(),
             Leagues = await db.Leagues.AsNoTracking().ToListAsync(),
         };
@@ -618,15 +638,18 @@ public class LibraryImportService
     private async Task<(League? League, string? Season, int? SeasonYear)> ResolveFileFolderAsync(
         FolderResolution folders, string filePath, ScanOptions options, LibraryScanResult result)
     {
+        // Only a configured root holds league folders. A file outside every
+        // root, as in a downloads folder, gets no folder and no row.
         // The file watcher scans only the file's own folder. The configured
         // root shows where the league folder is.
-        var configuredRoot = folders.ConfiguredRootOf(filePath);
-        var root = configuredRoot ?? folders.ScannedFolder;
+        var root = folders.ConfiguredRootOf(filePath);
+        if (root == null)
+            return (null, null, null);
         var (leagueFolder, seasonFolderName) = LibraryFolderResolver.SplitPath(root, filePath);
         var leagueFolderPath = LibraryFolderResolver.LeagueFolderPath(root, filePath);
 
         // A configured root is never a league folder. A season folder is not one either.
-        if ((configuredRoot != null && leagueFolderPath.Length <= configuredRoot.Length) ||
+        if (leagueFolderPath.Length <= root.Length ||
             LibraryFolderResolver.ParseSeasonFolder(leagueFolder) != null)
         {
             return (null, null, null);
@@ -637,7 +660,7 @@ public class LibraryImportService
             league = LibraryFolderResolver.ResolveLeague(leagueFolder, folders.Leagues);
             folders.LeagueByFolder[leagueFolderPath] = league;
             if (league == null)
-                result.UnresolvedFolders.Add(await DescribeUnresolvedFolderAsync(leagueFolderPath, leagueFolder, options));
+                result.UnresolvedFolders.Add(await DescribeUnresolvedFolderAsync(folders, leagueFolderPath, leagueFolder, options));
         }
         if (league == null) return (null, null, null);
 
@@ -658,25 +681,67 @@ public class LibraryImportService
         return (league, LibraryFolderResolver.MapToLeagueSeason(seasonFolder, seasons), seasonFolder.StartYear);
     }
 
-    private async Task<UnresolvedFolder> DescribeUnresolvedFolderAsync(string path, string name, ScanOptions options)
+    private async Task<UnresolvedFolder> DescribeUnresolvedFolderAsync(
+        FolderResolution folders, string path, string name, ScanOptions options)
     {
-        if (!options.AskHubForLeagues || _apiClient == null)
-            return new UnresolvedFolder(path, name, null, null, null);
+        var suggestion = options.AskHubForLeagues && _apiClient != null
+            ? await HubSuggestionAsync(folders, name)
+            : null;
+        return new UnresolvedFolder(path, name, suggestion?.ExternalId, suggestion?.Name, suggestion?.Sport);
+    }
 
-        // The hub only suggests. A slow or failed call gives no suggestion.
-        // The search also finds leagues that only share words with the
-        // folder name. Only a league that the folder names exactly is offered.
+    /// <summary>
+    /// The league that the hub suggests for a folder name, or null.
+    /// The hub only suggests, so a slow or failed call gives no suggestion.
+    /// The search also finds leagues that only share words with the folder
+    /// name. Only a league that the folder names exactly is offered.
+    /// </summary>
+    private async Task<League?> HubSuggestionAsync(FolderResolution folders, string name)
+    {
+        if (folders.HubSuggestionByName.TryGetValue(name, out var known))
+            return known;
+
+        var remaining = HubScanBudget - folders.HubTime.Elapsed;
+        if (folders.HubStopped || remaining <= TimeSpan.Zero)
+        {
+            folders.HubStopped = true;
+            return null;
+        }
+
         League? suggestion = null;
+        folders.HubCalls++;
+        folders.HubTime.Start();
         try
         {
-            var hits = await _apiClient.SearchLeagueAsync(name).WaitAsync(TimeSpan.FromSeconds(5));
-            suggestion = hits?.FirstOrDefault(hit => ReleaseMatchingService.SeriesLabelEqualsLeagueAlias(name, hit));
+            // The token cancels the request itself when the wait ends.
+            using var timeout = new CancellationTokenSource(remaining < HubCallTimeout ? remaining : HubCallTimeout);
+            var hits = await _apiClient!.SearchLeagueAsync(name, timeout.Token);
+            if (hits == null)
+            {
+                folders.HubStopped = true;
+                _logger.LogDebug("[Library Import] The hub gave no answer for folder '{Folder}'", name);
+            }
+            else
+            {
+                suggestion = hits.FirstOrDefault(hit => ReleaseMatchingService.SeriesLabelEqualsLeagueAlias(name, hit));
+            }
         }
         catch (Exception ex)
         {
+            folders.HubStopped = true;
             _logger.LogDebug(ex, "[Library Import] No hub suggestion for folder '{Folder}'", name);
         }
-        return new UnresolvedFolder(path, name, suggestion?.ExternalId, suggestion?.Name, suggestion?.Sport);
+        finally
+        {
+            folders.HubTime.Stop();
+        }
+
+        if (suggestion != null)
+            folders.HubSuggestions++;
+        // A name that got no answer is not stored. The scan asks no more anyway.
+        if (!folders.HubStopped)
+            folders.HubSuggestionByName[name] = suggestion;
+        return suggestion;
     }
 
     /// <summary>

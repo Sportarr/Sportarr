@@ -260,25 +260,37 @@ public class SportarrApiClient
     /// <summary>
     /// Search for leagues by name
     /// </summary>
-    public async Task<List<League>?> SearchLeagueAsync(string query)
+    public Task<List<League>?> SearchLeagueAsync(string query) =>
+        SearchLeagueAsync(query, CancellationToken.None);
+
+    /// <summary>
+    /// Search for leagues by name. A cancelled token stops the request and
+    /// gives null, the same as a failure.
+    /// </summary>
+    public async Task<List<League>?> SearchLeagueAsync(string query, CancellationToken cancellationToken)
     {
         try
         {
             var url = $"{_apiBaseUrl}/search/league/{Uri.EscapeDataString(query)}";
-            _logger.LogInformation("[SportarrAPI] Calling URL: {Url}", url);
+            _logger.LogDebug("[SportarrAPI] Calling URL: {Url}", url);
 
-            using var response = await _httpClient.GetAsync(url);
+            using var response = await _httpClient.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var json = await response.Content.ReadAsStringAsync();
-            _logger.LogInformation("[SportarrAPI] Raw response (first 500 chars): {Json}",
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogDebug("[SportarrAPI] Raw response (first 500 chars): {Json}",
                 json.Length > 500 ? json.Substring(0, 500) + "..." : json);
 
             var result = JsonSerializer.Deserialize<SportarrApiSearchResponse<League>>(json, _jsonOptions);
-            _logger.LogInformation("[SportarrAPI] Deserialized - Data null: {DataNull}, Search null: {SearchNull}, Search count: {Count}",
+            _logger.LogDebug("[SportarrAPI] Deserialized - Data null: {DataNull}, Search null: {SearchNull}, Search count: {Count}",
                 result?.Data == null, result?.Data?.Search == null, result?.Data?.Search?.Count ?? 0);
 
             return result?.Data?.Search;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("[SportarrAPI] League search for {Query} was cancelled", query);
+            return null;
         }
         catch (Exception ex)
         {
