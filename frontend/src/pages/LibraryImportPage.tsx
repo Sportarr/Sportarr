@@ -20,6 +20,7 @@ import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
 import FileBrowserModal from '../components/FileBrowserModal';
 import FileDetailsModal from '../components/FileDetailsModal';
 import SeasonBatchMatchModal, { type SeasonBatchMatchResult } from '../components/SeasonBatchMatchModal';
+import UnresolvedFolders, { type UnresolvedFolder } from '../components/UnresolvedFolders';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import { apiGet, apiPost } from '../utils/api';
@@ -58,6 +59,10 @@ interface ImportableFile {
   existingEventId?: number;
   rejections?: string[];
   heldBySourcePrecedence?: boolean;
+  // The league and season that the file's folders name.
+  folderLeagueId?: number | null;
+  folderLeagueName?: string | null;
+  folderSeason?: string | null;
 }
 
 interface ScanResult {
@@ -68,6 +73,7 @@ interface ScanResult {
   unmatchedFiles: ImportableFile[];
   alreadyInLibrary: ImportableFile[];
   errors: string[];
+  unresolvedFolders?: UnresolvedFolder[];
 }
 
 interface FileMapping {
@@ -121,6 +127,14 @@ const RECENT_FOLDERS_KEY = 'sportarr-library-import-recent-folders';
 const byPath = (a: { filePath: string }, b: { filePath: string }) =>
   a.filePath.localeCompare(b.filePath, undefined, { numeric: true, sensitivity: 'base' });
 const MAX_RECENT_FOLDERS = 8;
+
+// The league and season to preselect in the match dialog. A file that has a
+// matched or linked event keeps that event. Its folder can belong to another
+// league, so the folder must not choose for it.
+function folderDefaultsFor(file: ImportableFile): { leagueId?: number; season?: string } | undefined {
+  if (file.matchedEventId || file.existingEventId || !file.folderLeagueId) return undefined;
+  return { leagueId: file.folderLeagueId, season: file.folderSeason ?? undefined };
+}
 
 const LibraryImportPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -262,11 +276,18 @@ const LibraryImportPage: React.FC = () => {
     { key: 'complete', label: 'Complete', number: 3 }
   ];
 
-  const handleScan = async () => {
-    if (!folderPath.trim()) {
+  // The folder and subfolder option of the last scan. A rescan uses them.
+  const lastScan = useRef<{ path: string; includeSubfolders: boolean } | null>(null);
+
+  const handleScan = async (
+    scanPath: string = folderPath,
+    scanSubfolders: boolean = includeSubfolders
+  ) => {
+    if (!scanPath.trim()) {
       setScanError('Please select a folder path');
       return;
     }
+    lastScan.current = { path: scanPath, includeSubfolders: scanSubfolders };
 
     setCurrentStep('scan');
     setScanning(true);
@@ -283,7 +304,7 @@ const LibraryImportPage: React.FC = () => {
       // while the scan kept running invisibly. Queue it, then poll the
       // task until it finishes (same pattern as the import step below).
       const response = await apiPost(
-        `/api/library/scan?folderPath=${encodeURIComponent(folderPath)}&includeSubfolders=${includeSubfolders}`,
+        `/api/library/scan?folderPath=${encodeURIComponent(scanPath)}&includeSubfolders=${scanSubfolders}`,
         {}
       );
 
@@ -331,7 +352,7 @@ const LibraryImportPage: React.FC = () => {
       result.alreadyInLibrary?.sort(byPath);
 
       setScanResult(result);
-      rememberFolder(folderPath);
+      rememberFolder(scanPath);
 
       // Auto-select all matched files
       const autoSelected = new Set(result.matchedFiles.filter(f => !f.heldBySourcePrecedence).map(f => f.filePath));
@@ -820,7 +841,7 @@ const LibraryImportPage: React.FC = () => {
 
           <div className="mt-6 flex justify-end">
             <button
-              onClick={handleScan}
+              onClick={() => handleScan()}
               disabled={!folderPath.trim()}
               className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
@@ -862,6 +883,15 @@ const LibraryImportPage: React.FC = () => {
               <p className="text-sm text-gray-400 mt-1">Already Imported</p>
             </div>
           </div>
+
+          {/* League folders that fit no league in the library */}
+          <UnresolvedFolders
+            folders={scanResult.unresolvedFolders ?? []}
+            onLeagueAdded={() => {
+              const scan = lastScan.current;
+              return scan ? handleScan(scan.path, scan.includeSubfolders) : handleScan();
+            }}
+          />
 
           {/* Selection Controls */}
           <div className="bg-gray-800 rounded-lg p-4 border border-red-900/30 flex items-center gap-3 flex-wrap">
@@ -1370,6 +1400,7 @@ const LibraryImportPage: React.FC = () => {
         parsedTitle={activeFile?.parsedTitle}
         parsedDate={activeFile?.parsedDate}
         currentMapping={activeFile ? fileEventMappings.get(activeFile.filePath) : undefined}
+        folderDefaults={activeFile ? folderDefaultsFor(activeFile) : undefined}
       />
 
       {/* Pre-import Metadata Editor */}

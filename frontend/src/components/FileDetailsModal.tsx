@@ -1,5 +1,5 @@
 import { formatEventDate } from '../utils/timezone';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -31,6 +31,9 @@ interface FileDetailsModalProps {
   parsedTitle?: string;
   parsedDate?: string;
   currentMapping?: FileMapping;
+  // The league and season that the file's folders name. They apply only
+  // when the file has no saved mapping.
+  folderDefaults?: { leagueId?: number; season?: string };
 }
 
 export default function FileDetailsModal({
@@ -40,11 +43,16 @@ export default function FileDetailsModal({
   fileName,
   parsedTitle,
   parsedDate,
-  currentMapping
+  currentMapping,
+  folderDefaults
 }: FileDetailsModalProps) {
+  const seedLeagueId = currentMapping ? currentMapping.leagueId ?? null : folderDefaults?.leagueId ?? null;
+  const seedSeason = currentMapping ? currentMapping.season ?? null : folderDefaults?.season ?? null;
+  const seededFromFolder = !currentMapping && folderDefaults?.leagueId != null;
+
   // Selection state
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(currentMapping?.leagueId ?? null);
-  const [selectedSeason, setSelectedSeason] = useState<string | null>(currentMapping?.season ?? null);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(seedLeagueId);
+  const [selectedSeason, setSelectedSeason] = useState<string | null>(seedSeason);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(currentMapping?.eventId ?? null);
   const [selectedPart, setSelectedPart] = useState<string | null>(currentMapping?.partName ?? null);
   const [selectedPartNumber, setSelectedPartNumber] = useState<number | null>(currentMapping?.partNumber ?? null);
@@ -76,14 +84,23 @@ export default function FileDetailsModal({
     }
   }, [isOpen]);
 
+  // Counts each opening. The league effect below runs again on each one,
+  // so a file with the same league as the last file still loads its seasons.
+  const [openCount, setOpenCount] = useState(0);
+  // The season that the league effect selects. It is the seed season until
+  // the user picks a league, because a picked league starts with no season.
+  const pendingSeason = useRef<string | null>(null);
+
   // Start from this file's own mapping every time the modal opens on a
   // different file. The selections were only initialised on the very first
   // mount, so opening the modal for a second file showed, and would have
   // saved, the event chosen for the previous one.
   useEffect(() => {
     if (!isOpen) return;
-    setSelectedLeagueId(currentMapping?.leagueId ?? null);
-    setSelectedSeason(currentMapping?.season ?? null);
+    setOpenCount(n => n + 1);
+    pendingSeason.current = seedSeason;
+    setSelectedLeagueId(seedLeagueId);
+    setSelectedSeason(seedSeason);
     setSelectedEventId(currentMapping?.eventId ?? null);
     setSelectedPart(currentMapping?.partName ?? null);
     setSelectedPartNumber(currentMapping?.partNumber ?? null);
@@ -99,14 +116,14 @@ export default function FileDetailsModal({
   useEffect(() => {
     if (selectedLeagueId) {
       loadSeasons(selectedLeagueId);
-      setSelectedSeason(null);
+      setSelectedSeason(pendingSeason.current);
       setSelectedEventId(null);
       setEvents([]);
     } else {
       clearSeasons();
       setEvents([]);
     }
-  }, [selectedLeagueId]);
+  }, [selectedLeagueId, openCount]);
 
   // Load events when league, season, or search changes (server-side search)
   useEffect(() => {
@@ -115,7 +132,7 @@ export default function FileDetailsModal({
       loadEvents(selectedLeagueId, selectedSeason, debouncedSearch, debouncedSearch ? 200 : undefined);
       // Only clear selection if league/season changed, not search
     }
-  }, [selectedLeagueId, selectedSeason, debouncedSearch]);
+  }, [selectedLeagueId, selectedSeason, debouncedSearch, openCount]);
 
   // Clear event selection when league or season changes
   useEffect(() => {
@@ -255,7 +272,10 @@ export default function FileDetailsModal({
                     </label>
                     <select
                       value={selectedLeagueId ?? ''}
-                      onChange={(e) => setSelectedLeagueId(e.target.value ? Number(e.target.value) : null)}
+                      onChange={(e) => {
+                        pendingSeason.current = null;
+                        setSelectedLeagueId(e.target.value ? Number(e.target.value) : null);
+                      }}
                       className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
                       disabled={loadingLeagues}
                     >
@@ -270,6 +290,9 @@ export default function FileDetailsModal({
                       <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
                         <ArrowPathIcon className="w-3 h-3 animate-spin" /> Loading leagues...
                       </p>
+                    )}
+                    {!loadingLeagues && seededFromFolder && selectedLeagueId === folderDefaults?.leagueId && (
+                      <p className="text-xs text-gray-500 mt-1">Chosen from the file's folder.</p>
                     )}
                   </div>
 
