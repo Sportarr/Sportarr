@@ -62,19 +62,41 @@ public class LibraryFolderResolverTests
     }
 
     [Fact]
-    public void ResolveLeague_TwoLooseMatches_IsNull()
+    public void ResolveLeague_ExactName()
     {
         var f1 = new League { Name = "Formula 1", Sport = "Motorsport" };
         var fe = new League { Name = "Formula E", Sport = "Motorsport" };
-        LibraryFolderResolver.ResolveLeague("Formula", new[] { f1, fe }).Should().BeNull();
+        LibraryFolderResolver.ResolveLeague("Formula 1", new[] { fe, f1 }).Should().BeSameAs(f1);
     }
 
     [Fact]
-    public void ResolveLeague_ExactNameWinsOverALooserMatch()
+    public void ResolveLeague_FolderNamePartOfALongerLeagueName_IsNull()
+    {
+        var antigua = new League { Name = "Antigua and Barbuda Premier League", Sport = "Soccer" };
+        LibraryFolderResolver.ResolveLeague("Premier League", new[] { antigua }).Should().BeNull();
+    }
+
+    [Fact]
+    public void ResolveLeague_WordsOfALeagueName_IsNull()
+    {
+        var f1 = new League { Name = "Formula 1", Sport = "Motorsport" };
+        LibraryFolderResolver.ResolveLeague("Formula", new[] { f1 }).Should().BeNull();
+    }
+
+    [Fact]
+    public void ResolveLeague_ExactNameIgnoresALongerLeagueName()
     {
         var nba = new League { Name = "NBA", Sport = "Basketball" };
         var gLeague = new League { Name = "NBA G League", Sport = "Basketball" };
         LibraryFolderResolver.ResolveLeague("NBA", new[] { gLeague, nba }).Should().BeSameAs(nba);
+    }
+
+    [Fact]
+    public void ResolveLeague_TwoExactMatches_IsNull()
+    {
+        var a = new League { Name = "Super League", Sport = "Rugby" };
+        var b = new League { Name = "Super League", Sport = "Soccer" };
+        LibraryFolderResolver.ResolveLeague("Super League", new[] { a, b }).Should().BeNull();
     }
 
     [Fact]

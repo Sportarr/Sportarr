@@ -1,9 +1,14 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -33,6 +38,9 @@ public class FolderFirstScanTests : IDisposable
     private Event _celtics = null!;
     private Event _lakers = null!;
 
+    private readonly ConfigService _config;
+    private readonly MediaFileParser _fileParser;
+
     public FolderFirstScanTests()
     {
         _root = Path.Combine(Path.GetTempPath(), "sportarr-folder-first-tests-" + Guid.NewGuid());
@@ -41,8 +49,8 @@ public class FolderFirstScanTests : IDisposable
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _db = new SportarrDbContext(options);
-        var fileParser = new MediaFileParser(Mock.Of<ILogger<MediaFileParser>>());
-        var config = new ConfigService(new ConfigurationBuilder().Build(), Mock.Of<ILogger<ConfigService>>());
+        var fileParser = _fileParser = new MediaFileParser(Mock.Of<ILogger<MediaFileParser>>());
+        var config = _config = new ConfigService(new ConfigurationBuilder().Build(), Mock.Of<ILogger<ConfigService>>());
         _service = new LibraryImportService(
             _db,
             Mock.Of<ILogger<LibraryImportService>>(),
@@ -254,6 +262,76 @@ public class FolderFirstScanTests : IDisposable
         var file = scan.UnmatchedFiles.Should().ContainSingle().Subject;
         file.FilePath.Should().Be(path);
         file.FolderLeagueId.Should().BeNull();
+    }
+
+    /// <summary>Answers every hub league search with the given JSON.</summary>
+    private sealed class HubSearchHandler(string json) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            });
+    }
+
+    private LibraryImportService ServiceWithHub(string searchJson)
+    {
+        var http = new HttpClient(new HubSearchHandler(searchJson));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["SportarrApi:BaseUrl"] = "http://hub.test/api/v2/json" })
+            .Build();
+        var api = new SportarrApiClient(http, Mock.Of<ILogger<SportarrApiClient>>(), configuration, _config,
+            new MemoryCache(new MemoryCacheOptions()));
+        return new LibraryImportService(
+            _db,
+            Mock.Of<ILogger<LibraryImportService>>(),
+            _fileParser,
+            new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>()),
+            new FileNamingService(Mock.Of<ILogger<FileNamingService>>()),
+            new EventPartDetector(Mock.Of<ILogger<EventPartDetector>>()),
+            _config,
+            EpisodeResolverFixture.Create(_db, _config),
+            new DiskSpaceService(Mock.Of<ILogger<DiskSpaceService>>()),
+            new CustomFormatService(_fileParser),
+            null!,
+            Mock.Of<IMetadataWriterService>(),
+            api);
+    }
+
+    [Fact]
+    public async Task AHubLeagueThatOnlySharesWordsIsNotSuggested()
+    {
+        Write("Premier League", "Season 2024-25", "x.mkv");
+        var service = ServiceWithHub("""
+            {"data":{"search":[{"idLeague":"lg-001488","strLeague":"Antigua and Barbuda Premier League","strSport":"Soccer"}]}}
+            """);
+
+        var scan = await service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var folder = scan.UnresolvedFolders.Should().ContainSingle().Subject;
+        folder.Name.Should().Be("Premier League");
+        folder.SuggestedLeagueExternalId.Should().BeNull();
+        folder.SuggestedLeagueName.Should().BeNull();
+        folder.SuggestedSport.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AHubLeagueThatTheFolderNamesThroughAnAlternateIsSuggested()
+    {
+        Write("Premier League", "Season 2024-25", "x.mkv");
+        var service = ServiceWithHub("""
+            {"data":{"search":[
+              {"idLeague":"lg-001488","strLeague":"Antigua and Barbuda Premier League","strSport":"Soccer"},
+              {"idLeague":"lg-000001","strLeague":"English Premier League","strLeagueAlternate":"Premier League, EPL","strSport":"Soccer"}
+            ]}}
+            """);
+
+        var scan = await service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var folder = scan.UnresolvedFolders.Should().ContainSingle().Subject;
+        folder.SuggestedLeagueExternalId.Should().Be("lg-000001");
+        folder.SuggestedLeagueName.Should().Be("English Premier League");
+        folder.SuggestedSport.Should().Be("Soccer");
     }
 
     [Fact]

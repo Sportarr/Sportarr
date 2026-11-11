@@ -58,23 +58,19 @@ public static partial class LibraryFolderResolver
     }
 
     /// <summary>
-    /// The one league that the folder name names, or null. Two loose matches
-    /// are ambiguous, unless exactly one of them is an exact name.
+    /// The one league that the folder name names exactly, or null. The name
+    /// must equal the league's name or one of its alternate names after
+    /// normalization. A folder that only shares words with a league does not
+    /// name it: "Premier League" is not "Antigua and Barbuda Premier League".
+    /// Two exact matches are ambiguous.
     /// </summary>
     public static League? ResolveLeague(string folderName, IReadOnlyCollection<League> leagues)
     {
         if (string.IsNullOrWhiteSpace(folderName)) return null;
         var matches = leagues
-            .Where(l => ReleaseMatchingService.SeriesLabelMatchesLeague(folderName, l))
-            .ToList();
-        if (matches.Count == 1) return matches[0];
-        if (matches.Count == 0) return null;
-
-        // "NBA" also fits "NBA G League" loosely. The exact name decides.
-        var exact = matches
             .Where(l => ReleaseMatchingService.SeriesLabelEqualsLeagueAlias(folderName, l))
             .ToList();
-        return exact.Count == 1 ? exact[0] : null;
+        return matches.Count == 1 ? matches[0] : null;
     }
 
     /// <summary>

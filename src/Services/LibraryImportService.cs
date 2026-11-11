@@ -650,11 +650,13 @@ public class LibraryImportService
             return new UnresolvedFolder(path, name, null, null, null);
 
         // The hub only suggests. A slow or failed call gives no suggestion.
+        // The search also finds leagues that only share words with the
+        // folder name. Only a league that the folder names exactly is offered.
         League? suggestion = null;
         try
         {
             var hits = await _apiClient.SearchLeagueAsync(name).WaitAsync(TimeSpan.FromSeconds(5));
-            suggestion = hits?.FirstOrDefault();
+            suggestion = hits?.FirstOrDefault(hit => ReleaseMatchingService.SeriesLabelEqualsLeagueAlias(name, hit));
         }
         catch (Exception ex)
         {

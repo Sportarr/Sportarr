@@ -59,7 +59,7 @@ describe('UnresolvedFolders', () => {
     expect(screen.getByText('Folder "Formula 1" is not one of your leagues.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add Formula 1' })).toBeInTheDocument();
     expect(screen.getByText('Folder "Home Videos" is not one of your leagues.')).toBeInTheDocument();
-    expect(screen.getByText('No matching league found on the metadata service.')).toBeInTheDocument();
+    expect(screen.getByText('No matching league found. Add the league from the Leagues page, then scan again.')).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 

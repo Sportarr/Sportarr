@@ -174,7 +174,7 @@ export default function UnresolvedFolders({ folders, onLeagueAdded }: Unresolved
                     {isAdding ? `Adding ${folder.suggestedLeagueName}` : `Add ${folder.suggestedLeagueName}`}
                   </button>
                 ) : (
-                  <p className="text-sm text-gray-400">No matching league found on the metadata service.</p>
+                  <p className="text-sm text-gray-400">No matching league found. Add the league from the Leagues page, then scan again.</p>
                 )}
               </div>
               {error && (
