@@ -14,6 +14,12 @@ public sealed record ScanOptions(
     // Looks up earlier confirmed matches for the same file.
     bool LookupMatchMemory)
 {
+    /// <summary>
+    /// Scans the files of each group in reverse path order. Tests use it to
+    /// show that the result does not depend on the order.
+    /// </summary>
+    internal bool ReversePathOrder { get; init; }
+
     /// <summary>A scan that the user starts and then reviews.</summary>
     public static readonly ScanOptions Interactive = new(true, true, true, true);
 

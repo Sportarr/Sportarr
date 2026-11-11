@@ -135,9 +135,14 @@ public class LibraryImportService
             // A file with an id token names its event exactly. It goes
             // first, so that no fuzzy match takes that event before it.
             // An id in the sidecar names its event the same way.
-            var files = foundFiles
+            // Inside each group the path order is fixed, so the result does
+            // not depend on the order that the file system lists the files in.
+            var tokenFirst = foundFiles
                 .OrderBy(f => SportarrIdToken.ExtractEventId(Path.GetFileNameWithoutExtension(f)) != null ||
-                    sidecars?[f]?.SportarrId != null ? 0 : 1)
+                    sidecars?[f]?.SportarrId != null ? 0 : 1);
+            var files = (scanOptions.ReversePathOrder
+                    ? tokenFirst.ThenByDescending(f => f, StringComparer.Ordinal)
+                    : tokenFirst.ThenBy(f => f, StringComparer.Ordinal))
                 .ToList();
 
             result.TotalFiles = files.Count;
@@ -433,8 +438,8 @@ public class LibraryImportService
                             ? candidates.Count(candidate => FallsOn(candidate, eventDate.Value))
                             : 0;
 
-                        var candidatesAtBest = 0;
-                        var bestHasEpisodeNumberBonus = false;
+                        // Every candidate at the best score, with the S/E bonus flag of each.
+                        var tied = new List<(Event Event, bool EpisodeNumberBonus)>();
                         foreach (var candidate in candidates)
                         {
                             if (hasNamedPart && !hasPartNumber &&
@@ -456,26 +461,29 @@ public class LibraryImportService
                             {
                                 matchConfidence = confidence;
                                 matchedEvent = candidate;
-                                candidatesAtBest = 1;
-                                bestHasEpisodeNumberBonus = episodeNumberBonus;
+                                tied.Clear();
+                                tied.Add((candidate, episodeNumberBonus));
                             }
                             else if (confidence > 0 && confidence == matchConfidence)
                             {
-                                candidatesAtBest++;
+                                tied.Add((candidate, episodeNumberBonus));
                             }
                         }
 
-                        // A name that shares no word with the event it ties on
-                        // cannot choose between the games of one day. An S/E
-                        // number chooses only when its bonus fired on the winner.
-                        if (matchedEvent != null && candidatesAtBest > 1 && !bestHasEpisodeNumberBonus &&
-                            !HasTitleEvidence(eventTitle, matchedEvent.Title, sportsResult.Location))
+                        // A tie is broken only by a signal that one tied event
+                        // has and the others lack, so the order of the
+                        // candidates never chooses. An S/E number chooses when
+                        // its bonus fired on one tied event only.
+                        if (tied.Count > 1)
                         {
-                            _logger.LogInformation(
-                                "[Library Import] '{File}' fits {Count} games equally and names none of them - leaving it unmatched",
-                                filename, candidatesAtBest);
-                            matchedEvent = null;
-                            matchConfidence = 0;
+                            matchedEvent = BreakTie(tied, eventTitle, sportsResult.Location);
+                            if (matchedEvent == null)
+                            {
+                                _logger.LogDebug(
+                                    "[Library Import] '{File}' fits {Count} events equally and names none of them - leaving it unmatched",
+                                    filename, tied.Count);
+                                matchConfidence = 0;
+                            }
                         }
 
                         // Only accept matches with reasonable confidence
@@ -2376,6 +2384,27 @@ public class LibraryImportService
         return "Fighting";
     }
 
+    /// <summary>
+    /// The one tied event that a signal names, or null. The S/E bonus is
+    /// tried first, then title words that the tied events do not all share.
+    /// </summary>
+    private static Event? BreakTie(List<(Event Event, bool EpisodeNumberBonus)> tied, string searchTitle, string? parsedLocation)
+    {
+        var withBonus = tied.Where(t => t.EpisodeNumberBonus).Select(t => t.Event).ToList();
+        if (withBonus.Count == 1)
+            return withBonus[0];
+
+        var pool = withBonus.Count > 1 ? withBonus : tied.Select(t => t.Event).ToList();
+        var commonWords = pool
+            .Select(e => (IEnumerable<string>)TitleWords(e.Title).ToHashSet(StringComparer.OrdinalIgnoreCase))
+            .Aggregate((left, right) => left.Intersect(right, StringComparer.OrdinalIgnoreCase).ToList())
+            .ToList();
+        var named = pool
+            .Where(e => HasTitleEvidence(searchTitle, e.Title, parsedLocation, e.League?.Name, commonWords))
+            .ToList();
+        return named.Count == 1 ? named[0] : null;
+    }
+
     /// <summary>True when the event's broadcast day or UTC day is the date.</summary>
     private static bool FallsOn(Event evt, DateTime date) =>
         (evt.BroadcastDate ?? evt.EventDate).Date == date.Date || evt.EventDate.Date == date.Date;
@@ -2385,29 +2414,36 @@ public class LibraryImportService
 
     /// <summary>
     /// True when the parsed title is the event title, holds it, or shares a
-    /// word with it. Connector words such as "vs" do not count.
+    /// word with it that tells it from the other candidates. Connector words
+    /// such as "vs" do not count. The words in commonWords, the words of the
+    /// league name and "Grand", "Prix" and "GP" do not count either, because
+    /// every event of the league can share them.
     /// </summary>
-    internal static bool HasTitleEvidence(string searchTitle, string eventTitle, string? parsedLocation = null)
+    internal static bool HasTitleEvidence(string searchTitle, string eventTitle, string? parsedLocation = null,
+        string? leagueName = null, IEnumerable<string>? commonWords = null)
     {
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
         if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
             return false;
-        if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase) ||
-            (normalizedSearch.Length >= 3 && ContainsTitlePhrase(normalizedEvent, normalizedSearch)) ||
-            (normalizedEvent.Length >= 3 && ContainsTitlePhrase(normalizedSearch, normalizedEvent)))
-        {
+        if (StrongTitleAward(normalizedSearch, normalizedEvent) > 0)
             return true;
-        }
 
-        var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => !MatchConnectorWords.Contains(w));
+        var ignored = new HashSet<string>(MatchConnectorWords, StringComparer.OrdinalIgnoreCase) { "grand", "prix", "gp" };
+        if (!string.IsNullOrWhiteSpace(leagueName))
+            ignored.UnionWith(TitleWords(leagueName));
+        if (commonWords != null)
+            ignored.UnionWith(commonWords);
+
+        var searchWords = TitleWords(searchTitle);
         if (!string.IsNullOrEmpty(parsedLocation))
             searchWords = searchWords.Union(parsedLocation.Split(' ', StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
-        var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => !MatchConnectorWords.Contains(w));
-        return searchWords.Intersect(eventWords, StringComparer.OrdinalIgnoreCase).Any();
+        return searchWords.Where(w => !ignored.Contains(w))
+            .Intersect(TitleWords(eventTitle), StringComparer.OrdinalIgnoreCase).Any();
     }
+
+    private static IEnumerable<string> TitleWords(string title) =>
+        NormalizeTitle(title).Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>
     /// Calculate match confidence between a parsed filename and a database event
@@ -3108,11 +3144,27 @@ public class LibraryImportService
         // The identity form reads a Supercars "Race2" as "Race", the way the
         // league titles its races, so the two sides compare.
         var eventSession = EventPartDetector.DetectMotorsportSessionIdentity(eventTitle, leagueName, releaseTitle: false);
-        var fileSession = string.IsNullOrEmpty(eventSession)
-            ? null
-            : EventPartDetector.DetectMotorsportSessionIdentity(fileTitle, leagueName, releaseTitle: true);
+        // A league with one event for each Grand Prix names no session for
+        // it. That event is the race, so a session file is not it.
+        if (string.IsNullOrEmpty(eventSession) && EventPartDetector.ReadsUnnamedEventAsRace(leagueName))
+            eventSession = "Race";
+        if (string.IsNullOrEmpty(eventSession))
+            return (null, null);
+
+        // A show about the weekend is never one of its sessions.
+        if (EventPartDetector.NamesNonSessionShow(fileTitle))
+            return (NonSessionShow, eventSession);
+        var fileSession = EventPartDetector.DetectMotorsportSessionIdentity(fileTitle, leagueName, releaseTitle: true);
+        if (string.IsNullOrEmpty(fileSession) && EventPartDetector.NamesTestingSession(fileTitle))
+            fileSession = TestingSession;
         return (fileSession, eventSession);
     }
+
+    // Labels for the file side only. No event session has these names, so
+    // the session gate rejects such a file against every event that names
+    // a session.
+    private const string NonSessionShow = "Show";
+    private const string TestingSession = "Testing";
 
     /// <summary>
     /// True when the event names no session, or the file names the same one.

@@ -252,6 +252,93 @@ public class ForeignNumberingImportTests : IDisposable
         result.MatchedFiles.Should().NotContain(f => f.MatchConfidence >= LibraryImportService.AutoImportConfidenceFloor);
     }
 
+    private static readonly League MotoGp = new() { Name = "MotoGP", Sport = "Motorsport" };
+
+    private static int MotoGpScore(string fileName, string eventTitle)
+    {
+        // The hub titles a MotoGP weekend by its Grand Prix and names no session.
+        var weekend = new Event
+        {
+            Title = eventTitle, Sport = "Motorsport", Round = "1", Season = "2024", SeasonNumber = 2024,
+            EpisodeNumber = 1, EventDate = new DateTime(2024, 3, 10, 15, 0, 0, DateTimeKind.Utc), League = MotoGp,
+        };
+        var parsed = new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>()).Parse(fileName);
+        return LibraryImportService.CalculateMatchConfidence(
+            searchTitle: parsed.EventTitle ?? fileName, eventTitle: eventTitle, organization: parsed.Organization,
+            evt: weekend, parsedDate: null, parsedYear: 2024, parsedLocation: parsed.Location,
+            parsedSport: "Motorsport", seriesLabel: "MotoGP", sourceTitle: fileName);
+    }
+
+    [Theory]
+    [InlineData("MotoGP - S2024E12 - Gran Premio de Aragón MotoGP Free Practice Nr. 1")]
+    [InlineData("MotoGP - S2024E20 - Gran Premio de Aragón MotoGP Qualifying Nr. 1")]
+    [InlineData("MotoGP - S2024E27 - Gran Premio de Aragón MotoGP Sprint Race")]
+    [InlineData("MotoGP - S2024E28 - Gran Premio de Aragón MotoGP Warm Up")]
+    [InlineData("MotoGP - S2024E04 - Gran Premio de Aragón Official Test MotoGP (Day 1)")]
+    public void SessionFile_IsNotTheSessionlessRace(string fileName)
+    {
+        MotoGpScore(fileName, "Gran Premio de Aragón").Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("MotoGP - S2024E13 - Qatar Airways Grand Prix of Qatar Best of MotoGP")]
+    [InlineData("MotoGP - S2024E29 - Qatar Airways Grand Prix of Qatar MotoGP Talk Show")]
+    [InlineData("MotoGP - S2024E33 - Qatar Airways Grand Prix of Qatar MotoGP After The flag")]
+    [InlineData("MotoGP - S2024E34 - Qatar Airways Grand Prix of Qatar MotoGP Race Press Conference")]
+    public void ShowFile_IsNotTheRace(string fileName)
+    {
+        MotoGpScore(fileName, "Grand Prix of Qatar").Should().Be(0);
+    }
+
+    [Fact]
+    public void RaceFile_StillMatchesTheSessionlessRace()
+    {
+        MotoGpScore("MotoGP - S2024E32 - Qatar Airways Grand Prix of Qatar MotoGP Race", "Grand Prix of Qatar")
+            .Should().BeGreaterThanOrEqualTo(75);
+    }
+
+    [Theory]
+    [InlineData("Grand Prix Weekend", "Grand Prix of Qatar", "MotoGP")]
+    [InlineData("MotoGP Season Opener", "MotoGP Grand Prix of Qatar", "MotoGP")]
+    [InlineData("UFC Event", "UFC 300 Pereira vs Hill", "UFC")]
+    public void WordsOfTheLeagueOrOfEveryGrandPrix_AreNoTitleEvidence(string fileTitle, string eventTitle, string league)
+    {
+        LibraryImportService.HasTitleEvidence(fileTitle, eventTitle, leagueName: league).Should().BeFalse();
+    }
+
+    [Fact]
+    public void AWordThatTellsTheEventApart_IsTitleEvidence()
+    {
+        LibraryImportService.HasTitleEvidence("Qatar Weekend", "Grand Prix of Qatar", leagueName: "MotoGP")
+            .Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ATieThatTheNameCannotBreak_StaysUnmatchedInEitherOrder(bool reverse)
+    {
+        // The file names the race of both leagues equally. The first
+        // candidate must not win only because the database lists it first.
+        var f1 = new League { Name = "Formula 1", Sport = "Motorsport" };
+        var f2 = new League { Name = "Formula 2", Sport = "Motorsport" };
+        _db.Leagues.AddRange(f1, f2);
+        _db.SaveChanges();
+        Event Race(League league) => new()
+        {
+            Title = "Bahrain Grand Prix - Race", Sport = "Motorsport", Round = "1", Season = "2024",
+            SeasonNumber = 2024, EpisodeNumber = 10, LeagueId = league.Id, Monitored = true,
+            EventDate = new DateTime(2024, 3, 2, 15, 0, 0, DateTimeKind.Utc),
+        };
+        _db.Events.AddRange(reverse ? new[] { Race(f2), Race(f1) } : new[] { Race(f1), Race(f2) });
+        _db.SaveChanges();
+        WriteFile("Bahrain Grand Prix - Race 2024.mkv");
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false);
+
+        result.MatchedFiles.Should().BeEmpty();
+    }
+
     [Fact]
     public void NormalizeTitle_CollapsesTheSpacesOfADash()
     {

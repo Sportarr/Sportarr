@@ -1326,6 +1326,38 @@ public class EventPartDetector
         ["NASCAR"] = "Race",
     };
 
+    /// <summary>
+    /// True when an event of the league that names no session is the race.
+    /// These leagues hold one event for each Grand Prix. MotoGP is one, and
+    /// so is each league with a default session above.
+    /// </summary>
+    public static bool ReadsUnnamedEventAsRace(string? leagueName) =>
+        !string.IsNullOrWhiteSpace(leagueName) &&
+        (leagueName.Contains("MotoGP", StringComparison.OrdinalIgnoreCase) ||
+         MotorsportDefaultSessionByLeague.Keys.Any(key => leagueName.Contains(key, StringComparison.OrdinalIgnoreCase)));
+
+    // A test day is a session of its own. The session tables read it only
+    // with a day or a number in a fixed place, so most names miss it.
+    private static readonly Regex TestingSessionPattern = new(
+        @"\b(?:test(?:s|ing)?|shakedown)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>True when a file name names a test day or a shakedown.</summary>
+    public static bool NamesTestingSession(string? title) =>
+        !string.IsNullOrWhiteSpace(title) && TestingSessionPattern.IsMatch(Regex.Replace(title, @"[._-]+", " "));
+
+    // The words of a programme about a weekend. Such a file is no session
+    // and no race, even when it also names one, as in "Race Press Conference".
+    // This is the one list of these words. Highlights are not in it, because
+    // a league can take a highlights file as its race.
+    private static readonly Regex NonSessionShowPattern = new(
+        @"\b(?:best\s+of|press\s+conference|talk\s+show|after\s+the\s+flag|preview|review|magazine|notebook|documentary|behind\s+the\s+scenes|paddock\s+pass|grid\s+walk|podium\s+ceremony)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>True when a file name names a show about a weekend, not a session of it.</summary>
+    public static bool NamesNonSessionShow(string? title) =>
+        !string.IsNullOrWhiteSpace(title) && NonSessionShowPattern.IsMatch(Regex.Replace(title, @"[._-]+", " "));
+
     private static readonly Regex WorldSuperbikeSuperpoleRacePattern = new(
         @"\bsuperpole[\s._-]+race\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
