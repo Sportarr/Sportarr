@@ -12,7 +12,6 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class EventDvrService
 {
-    private static readonly SemaphoreSlim PendingChoiceGate = new(1, 1);
     private readonly ILogger<EventDvrService> _logger;
     private readonly SportarrDbContext _db;
     private readonly DvrRecordingService _dvrService;
@@ -495,7 +494,34 @@ public class EventDvrService
     /// <summary>
     /// Import a completed DVR recording as an event file.
     /// </summary>
-    public async Task<bool> ImportCompletedRecordingAsync(int recordingId, bool bulkSweep = false)
+    public async Task<bool> ImportCompletedRecordingAsync(int recordingId, bool bulkSweep = false) =>
+        await ImportCompletedRecordingWithOutcomeAsync(recordingId, bulkSweep) == RecordingImportOutcome.Imported;
+
+    /// <summary>
+    /// Import a completed DVR recording and say why it did not import when
+    /// another caller works on it now.
+    /// </summary>
+    public async Task<RecordingImportOutcome> ImportCompletedRecordingWithOutcomeAsync(int recordingId,
+        bool bulkSweep = false)
+    {
+        // Another sweep or the retention prune can work on this recording now.
+        // The claim keeps them apart for the whole import, also while the
+        // KeepBetter import runs without the gate.
+        using var claim = DvrIndexerChoice.TryClaimRecording(recordingId);
+        if (claim == null)
+        {
+            _logger.LogDebug("[EventDVR] Recording {RecordingId} is in use. The next sweep tries again", recordingId);
+            return RecordingImportOutcome.InUse;
+        }
+        return await ImportClaimedRecordingAsync(recordingId)
+            ? RecordingImportOutcome.Imported
+            : RecordingImportOutcome.NotImported;
+    }
+
+    /// <summary>
+    /// The import itself. The caller holds the recording claim.
+    /// </summary>
+    private async Task<bool> ImportClaimedRecordingAsync(int recordingId)
     {
         var recording = await _db.DvrRecordings
             .Include(r => r.Event)
@@ -633,33 +659,59 @@ public class EventDvrService
         var config = await _configService.GetConfigAsync();
         if (indexerFile != null)
         {
-            await PendingChoiceGate.WaitAsync();
+            // An overlapping import can decide this recording first. The gate
+            // and the checks below make sure only one decision is made.
+            await DvrIndexerChoice.EnterGateAsync();
             try
             {
-                if (!await _db.PendingImports.AnyAsync(pending => pending.DownloadId == pendingDownloadId))
+                if (!await RecordingStillUndecidedAsync(recording.Id, pendingDownloadId))
+                    return false;
+
+                // Without the downloaded file on disk the recording is the only
+                // copy, so only the user decides.
+                var downloadedOnDisk = await DvrIndexerChoice.DownloadedFileOnDiskAsync(_db, recording.EventId,
+                    recording.PartName);
+                if (downloadedOnDisk && SourcePrecedence.Compare(config, incomingIsIptvRecording: true,
+                        existingIsIptvRecording: false) == SourcePrecedence.Verdict.ExistingWins)
                 {
-                    _db.PendingImports.Add(new PendingImport
-                    {
-                        DownloadId = pendingDownloadId,
-                        Title = Path.GetFileName(recording.OutputPath),
-                        FilePath = recording.OutputPath,
-                        Size = new FileInfo(recording.OutputPath).Length,
-                        Quality = recording.Quality,
-                        QualityScore = recording.QualityScore ?? 0,
-                        SuggestedEventId = recording.EventId,
-                        SuggestedPart = recording.PartName,
-                        SuggestionConfidence = 100,
-                        Protocol = "DVR",
-                        ErrorMessage = $"Downloaded file{(indexerFile.Exists ? "" : " (missing from disk)")}: {indexerFile.Quality ?? "Unknown"} (quality {indexerFile.QualityScore}, score {indexerFile.CustomFormatScore}). Recording: {recording.Quality ?? "Unknown"} (quality {recording.QualityScore ?? 0}, score {recording.CustomFormatScore ?? 0}). Choose which file to keep."
-                    });
+                    recording.Status = DvrRecordingStatus.Ignored;
+                    recording.ErrorMessage = SourcePrecedence.IptvRecordingRejection;
+                    recording.LastUpdated = DateTime.UtcNow;
                     await _db.SaveChangesAsync();
+                    _logger.LogInformation("[EventDVR] Recording {RecordingId} is ignored because a downloaded file holds its part and source precedence is on", recordingId);
+                    return false;
                 }
+                if (!downloadedOnDisk || !DvrIndexerChoice.KeepsBetterFile(config))
+                {
+                    await AddRecordingChoiceAsync(recording, indexerFile, pendingDownloadId);
+                    return false;
+                }
+                // The import can take long, so it runs without the gate.
+                // The recording claim stays in place.
             }
             finally
             {
-                PendingChoiceGate.Release();
+                DvrIndexerChoice.Gate.Release();
             }
-            _logger.LogInformation("[EventDVR] Recording {RecordingId} awaits a manual choice because an indexer file already covers its part", recordingId);
+
+            // No file to compare, or an import error, opens the choice.
+            // Only a real rejection settles the recording.
+            var kept = await ImportRecordingIntoLibraryAsync(recording,
+                string.IsNullOrWhiteSpace(recording.ImportMode) ? "move" : null,
+                settleRejection: true, rejectEqual: true, requireOccupant: true);
+            if (kept != null)
+                return kept.Value;
+
+            await DvrIndexerChoice.EnterGateAsync();
+            try
+            {
+                if (await RecordingStillUndecidedAsync(recording.Id, pendingDownloadId))
+                    await AddRecordingChoiceAsync(recording, indexerFile, pendingDownloadId);
+            }
+            finally
+            {
+                DvrIndexerChoice.Gate.Release();
+            }
             return false;
         }
 
@@ -668,14 +720,17 @@ public class EventDvrService
         // one it stays where the recorder wrote it and only the path is
         // registered, which is what every recording did before the mode
         // existed.
+        var usableIndexerFile = indexerFiles.Any(file => file.Exists);
         if (!string.IsNullOrWhiteSpace(recording.ImportMode))
         {
-            return await ImportRecordingIntoLibraryAsync(recording);
+            // A rejection against a downloaded file on disk is final. Without
+            // this the next sweep tries the same import again.
+            return await ImportRecordingIntoLibraryAsync(recording, settleRejection: usableIndexerFile,
+                rejectEqual: laterIndexerFile) == true;
         }
 
         if (laterIndexerFile)
         {
-            var usableIndexerFile = indexerFiles.Any(file => file.Exists);
             if (usableIndexerFile && SourcePrecedence.Compare(config, incomingIsIptvRecording: true,
                     existingIsIptvRecording: false) == SourcePrecedence.Verdict.ExistingWins)
             {
@@ -685,7 +740,8 @@ public class EventDvrService
                 await _db.SaveChangesAsync();
                 return false;
             }
-            return await ImportRecordingIntoLibraryAsync(recording, "move", settleRejection: usableIndexerFile);
+            return await ImportRecordingIntoLibraryAsync(recording, "move", settleRejection: usableIndexerFile,
+                rejectEqual: true) == true;
         }
 
         if (recording.Method == DvrRecordingMethod.Catchup)
@@ -754,13 +810,50 @@ public class EventDvrService
     }
 
     /// <summary>
+    /// The recording has no choice row and is still Completed. The caller
+    /// holds <see cref="DvrIndexerChoice.Gate"/>.
+    /// </summary>
+    private async Task<bool> RecordingStillUndecidedAsync(int recordingId, string pendingDownloadId) =>
+        !await _db.PendingImports.AnyAsync(pending => pending.DownloadId == pendingDownloadId) &&
+        await _db.DvrRecordings.AsNoTracking().AnyAsync(r =>
+            r.Id == recordingId && r.Status == DvrRecordingStatus.Completed);
+
+    /// <summary>
+    /// Open the choice between the recording and the downloaded file. The
+    /// caller holds <see cref="DvrIndexerChoice.Gate"/>.
+    /// </summary>
+    private async Task AddRecordingChoiceAsync(DvrRecording recording, EventFile indexerFile, string pendingDownloadId)
+    {
+        _db.PendingImports.Add(new PendingImport
+        {
+            DownloadId = pendingDownloadId,
+            Title = Path.GetFileName(recording.OutputPath),
+            FilePath = recording.OutputPath!,
+            Size = new FileInfo(recording.OutputPath!).Length,
+            Quality = recording.Quality,
+            QualityScore = recording.QualityScore ?? 0,
+            SuggestedEventId = recording.EventId,
+            SuggestedPart = recording.PartName,
+            SuggestionConfidence = 100,
+            Protocol = "DVR",
+            ErrorMessage = $"Downloaded file{(indexerFile.Exists ? "" : " (missing from disk)")}: {indexerFile.Quality ?? "Unknown"} (quality {indexerFile.QualityScore}, score {indexerFile.CustomFormatScore}). Recording: {recording.Quality ?? "Unknown"} (quality {recording.QualityScore ?? 0}, score {recording.CustomFormatScore ?? 0}). Choose which file to keep."
+        });
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("[EventDVR] Recording {RecordingId} awaits a manual choice because an indexer file already covers its part", recording.Id);
+    }
+
+    /// <summary>
     /// Place a finished recording in the library with the mode the user chose
     /// when they scheduled it. The library import owns the destination folder,
     /// the file name and the transfer, so the recording ends up organised the
     /// same way a downloaded release does.
     /// </summary>
-    private async Task<bool> ImportRecordingIntoLibraryAsync(DvrRecording recording, string? modeOverride = null,
-        bool settleRejection = false)
+    /// <returns>
+    /// True when the recording is imported. False when it is not. Null when
+    /// requireOccupant is set and the event holds no file to compare it with.
+    /// </returns>
+    private async Task<bool?> ImportRecordingIntoLibraryAsync(DvrRecording recording, string? modeOverride = null,
+        bool settleRejection = false, bool rejectEqual = false, bool requireOccupant = false)
     {
         var result = await _libraryImport.ImportFilesAsync(new List<FileImportRequest>
         {
@@ -774,9 +867,22 @@ public class EventDvrService
                 // A recording replaces what the event holds only with an upgrade;
                 // a rejected recording stays in the DVR folder with the reason logged.
                 OnlyIfUpgrade = true,
+                // A tie keeps the downloaded file the event already holds.
+                RejectEqual = rejectEqual,
+                RequireOccupant = requireOccupant,
                 IsIptvRecording = true,
             }
         });
+
+        if (requireOccupant && result.Imported.Count + result.Created.Count == 0 &&
+            (result.Rejected.Count == 0 ||
+             result.Rejected.Any(r => r.Reason == LibraryImportService.NoComparableFileRejection)))
+        {
+            if (result.Errors.Count > 0)
+                _logger.LogWarning("[EventDVR] Recording {RecordingId} was not compared: {Reason}",
+                    recording.Id, string.Join("; ", result.Errors));
+            return null;
+        }
 
         if (result.Imported.Count + result.Created.Count == 0)
         {
@@ -1056,4 +1162,15 @@ public class EventDvrRecordingInfo
     public string? OutputPath { get; set; }
     public long? FileSize { get; set; }
     public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
+/// The result of a request to import a completed recording.
+/// </summary>
+public enum RecordingImportOutcome
+{
+    Imported,
+    NotImported,
+    /// <summary>Another sweep, import or the retention prune works on the recording now.</summary>
+    InUse,
 }

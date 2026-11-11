@@ -103,6 +103,45 @@ public class DvrEarlyFinishSettingsTests
         Assert.Equal(expected, settings.GetProperty("earlyFinishBufferMinutes").GetInt32());
     }
 
+    [Fact]
+    public async Task IndexerConflictPolicyDefaultsToAskAndSavesKeepBetter()
+    {
+        await using var server = await SettingsServer.StartAsync();
+
+        var before = await server.Client.GetFromJsonAsync<JsonElement>("api/dvr/settings");
+        Assert.Equal("Ask", before.GetProperty("indexerConflictPolicy").GetString());
+
+        using var response = await server.Client.PutAsJsonAsync("api/dvr/settings", new
+        {
+            indexerConflictPolicy = "KeepBetter"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var after = await server.Client.GetFromJsonAsync<JsonElement>("api/dvr/settings");
+        Assert.Equal("KeepBetter", after.GetProperty("indexerConflictPolicy").GetString());
+        var xml = await File.ReadAllTextAsync(Path.Combine(server.DataPath, "config.xml"));
+        Assert.Contains("<DvrIndexerConflictPolicy>KeepBetter</DvrIndexerConflictPolicy>", xml);
+    }
+
+    [Theory]
+    [InlineData("\"indexerConflictPolicy\":\"keepbetter\"")]
+    [InlineData("\"indexerConflictPolicy\":\"Newest\"")]
+    [InlineData("\"indexerConflictPolicy\":\"\"")]
+    [InlineData("\"indexerConflictPolicy\":null")]
+    [InlineData("\"indexerConflictPolicy\":1")]
+    public async Task InvalidIndexerConflictPolicyDoesNotChangeEarlierSettings(string invalidField)
+    {
+        await using var server = await SettingsServer.StartAsync();
+        var before = await File.ReadAllTextAsync(Path.Combine(server.DataPath, "config.xml"));
+        var body = "{\"recordingPath\":\"/should-not-save\"," + invalidField + "}";
+
+        using var response = await server.Client.PutAsync("api/dvr/settings",
+            new StringContent(body, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(before, await File.ReadAllTextAsync(Path.Combine(server.DataPath, "config.xml")));
+    }
+
     private sealed class SettingsServer : IAsyncDisposable
     {
         private readonly WebApplication _app;

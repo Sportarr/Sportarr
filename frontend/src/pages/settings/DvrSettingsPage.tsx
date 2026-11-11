@@ -54,6 +54,10 @@ interface DvrSettings {
   // Source precedence: a usenet/torrent release replaces an IPTV recording
   // whatever its quality.
   replaceRecordingsWithIndexerReleases: boolean;
+  // A recording that finishes after a download of the same part.
+  // "Ask" opens a choice. "KeepBetter" keeps the better file, and a tie
+  // keeps the download.
+  indexerConflictPolicy: 'Ask' | 'KeepBetter';
   recordingRetentionDays: number;
   keepLastRecordingsPerLeague: number;
   hardwareAcceleration: number;
@@ -173,6 +177,7 @@ const defaultDvrSettings: DvrSettings = {
   conflictPolicy: 'Refuse',
   deleteAfterImport: false,
   replaceRecordingsWithIndexerReleases: false,
+  indexerConflictPolicy: 'Ask',
   recordingRetentionDays: 0,
   keepLastRecordingsPerLeague: 0,
   hardwareAcceleration: 99,
@@ -1355,7 +1360,9 @@ export default function DvrSettingsPage() {
                       min="0"
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
-                    <p className="text-xs text-gray-500 mt-1">0 = keep forever</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      0 = keep forever. An open recording choice past this limit keeps the downloaded file.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">Keep Last N Recordings Per League</label>
@@ -1367,7 +1374,8 @@ export default function DvrSettingsPage() {
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Prune older finished recordings beyond the newest N per league. 0 = unlimited
+                      Prune older finished recordings beyond the newest N per league. 0 = unlimited.
+                      An open recording choice past this limit keeps the downloaded file.
                     </p>
                   </div>
                   <div className="flex items-center">
@@ -1393,6 +1401,21 @@ export default function DvrSettingsPage() {
                     </label>
                     <p className="text-xs text-gray-500 mt-1">
                       Keep recorded events eligible for RSS and scheduled searches. A Usenet or torrent release that passes event, size, blocklist, and release-profile checks can replace the recording at any quality. A recording cannot replace an indexer file.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">When a Recording Matches a Download</label>
+                    <select
+                      value={dvrSettings.indexerConflictPolicy}
+                      onChange={(e) => handleSettingsChange('indexerConflictPolicy', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    >
+                      <option value="Ask">Ask which file to keep (default)</option>
+                      <option value="KeepBetter">Keep the better file (a tie keeps the download)</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      A replaced file goes to the recycle bin, or is deleted when no recycle bin is set.
+                      When Replace recordings with indexer releases is on, that setting decides first.
                     </p>
                   </div>
                 </div>

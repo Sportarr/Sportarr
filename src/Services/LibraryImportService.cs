@@ -647,6 +647,14 @@ public class LibraryImportService
                                     config.EnableMultiPartEpisodes)
                             : null;
                         var importInPlace = false;
+                        if (occupant == null && request.RequireOccupant)
+                        {
+                            _logger.LogInformation("[Library Import] {Reason} Left where it is: {Path}",
+                                NoComparableFileRejection, request.FilePath);
+                            result.Rejected.Add(new ImportRejection(request.FilePath, NoComparableFileRejection));
+                            result.Skipped.Add(request.FilePath);
+                            continue;
+                        }
                         if (occupant != null)
                         {
                             var decision = await DecideUpgradeAsync(occupant, request.FilePath,
@@ -657,7 +665,8 @@ public class LibraryImportService
                             var heldBySourcePrecedence = decision.Rejection == SourcePrecedence.IptvRecordingRejection
                                 && !request.OverrideSourcePrecedence;
                             if (heldBySourcePrecedence || (request.OnlyIfUpgrade
-                                && (!decision.IsUpgrade || (decision.Equal && (importInPlace || importMode != LibraryImportMode.Move)))))
+                                && (!decision.IsUpgrade || (decision.Equal
+                                    && (request.RejectEqual || importInPlace || importMode != LibraryImportMode.Move)))))
                             {
                                 // An equal copy is kept out of an automatic import when
                                 // taking it over would only repeat: beside the held file
@@ -1761,6 +1770,7 @@ public class LibraryImportService
     /// </summary>
     /// <summary>The reason an equal copy is left where it is.</summary>
     internal const string EqualCopyRejection = "The event already has a file as good as this one.";
+    internal const string NoComparableFileRejection = "The event holds no file for this part to compare with.";
 
     /// <summary>
     /// The mode an import uses when the caller names none. A hardlink or a
@@ -3140,6 +3150,18 @@ public class FileImportRequest
     /// keeps an indexer file from an IPTV recording.
     /// </summary>
     public bool OnlyIfUpgrade { get; set; }
+
+    /// <summary>
+    /// With OnlyIfUpgrade, a file that is only as good as the held file is
+    /// rejected and the held file stays.
+    /// </summary>
+    public bool RejectEqual { get; set; }
+
+    /// <summary>
+    /// Reject the file when the event holds no file for its part. The caller
+    /// then decides another way.
+    /// </summary>
+    public bool RequireOccupant { get; set; }
 
     /// <summary>
     /// Import anyway: the user chose to let this IPTV recording replace the

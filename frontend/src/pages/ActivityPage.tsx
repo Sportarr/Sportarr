@@ -1099,9 +1099,11 @@ export default function ActivityPage() {
       // Ignore keeps the file, as its tooltip says; removing the row is
       // what takes a disk-found file with it.
       await apiClient.post(`/pending-imports/${id}/reject?deleteFile=false`);
-      loadQueue();
     } catch (error) {
       console.error('Failed to ignore pending import:', error);
+    } finally {
+      // A row resolved elsewhere answers 410. The reload drops it from the list.
+      loadQueue();
     }
   };
 

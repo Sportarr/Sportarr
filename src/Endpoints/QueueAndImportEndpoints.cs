@@ -504,6 +504,39 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     if (import.SuggestedEventId is null)
         return Results.BadRequest(new { error = "No event selected for import" });
 
+    IDisposable? dvrClaim = null;
+    if (import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal))
+    {
+        // Recording retention can resolve the same choice. The gate makes one of them wait.
+        await DvrIndexerChoice.EnterGateAsync(req.HttpContext.RequestAborted);
+        try
+        {
+            var currentStatus = await db.PendingImports.AsNoTracking()
+                .Where(pending => pending.Id == id)
+                .Select(pending => (PendingImportStatus?)pending.Status)
+                .FirstOrDefaultAsync();
+            if (currentStatus == null)
+                return Results.NotFound();
+            // A second accept of a resolved row would reset it to Pending in the catch below.
+            if (currentStatus is PendingImportStatus.Completed or PendingImportStatus.Rejected)
+                return Results.Json(new { error = "This import is already resolved." }, statusCode: StatusCodes.Status410Gone);
+            dvrClaim = DvrIndexerChoice.TryStartImport(id);
+            if (dvrClaim == null)
+                return Results.Conflict(new { error = "This recording is being imported." });
+            import.Status = PendingImportStatus.Importing;
+            await db.SaveChangesAsync();
+        }
+        catch
+        {
+            dvrClaim?.Dispose();
+            throw;
+        }
+        finally
+        {
+            DvrIndexerChoice.Gate.Release();
+        }
+    }
+
     try
     {
         import.Status = PendingImportStatus.Importing;
@@ -810,10 +843,16 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
         await db.SaveChangesAsync();
         return Results.BadRequest(new { error = ex.Message });
     }
+    finally
+    {
+        // The claim ends with the import, also when it throws.
+        dvrClaim?.Dispose();
+    }
 });
 
 app.MapPost("/api/pending-imports/{id:int}/reject", async (
     int id,
+    HttpContext httpContext,
     SportarrDbContext db,
     IServiceScopeFactory scopeFactory,
     ILogger<Program> logger,
@@ -826,46 +865,45 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
     // external-download detectors won't re-discover it on the next poll.
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();
-
-    var isDvrChoice = import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal);
-    if (isDvrChoice
-        && int.TryParse(import.DownloadId.AsSpan(4), out var dvrRecordingId))
-    {
-        var recording = await db.DvrRecordings.FirstOrDefaultAsync(r => r.Id == dvrRecordingId
-            && r.OutputPath == import.FilePath && r.Status == DvrRecordingStatus.Completed);
-        if (recording != null)
-        {
-            var downloadedFiles = await db.EventFiles.AsNoTracking().Where(file =>
-                file.EventId == recording.EventId && file.Exists && !file.IsIptvRecording)
-                .ToListAsync();
-            if (!downloadedFiles.Any(file =>
-                    string.Equals(SourcePrecedence.NormalizePart(file.PartName),
-                        SourcePrecedence.NormalizePart(recording.PartName), StringComparison.OrdinalIgnoreCase) &&
-                    File.Exists(file.FilePath)))
-                return Results.BadRequest(new { error = "The downloaded file is missing. Import the recording or restore the downloaded file first." });
-            recording.Status = DvrRecordingStatus.Ignored;
-            recording.LastUpdated = DateTime.UtcNow;
-        }
-    }
-
-    db.Blocklist.Add(new BlocklistItem
-    {
-        EventId = import.SuggestedEventId,
-        Title = import.Title,
-        TorrentInfoHash = import.TorrentInfoHash,
-        Protocol = import.Protocol,
-        Part = import.SuggestedPart,
-        FilePath = import.FilePath,
-        Reason = BlocklistReason.ManualBlock,
-        Message = "User rejected pending import",
-        BlockedAt = DateTime.UtcNow
-    });
+    // A resolved row can point at a file the library now holds. A blocklist row would block that file.
+    if (import.Status is PendingImportStatus.Completed or PendingImportStatus.Rejected)
+        return Results.Json(new { error = "This import is already resolved." }, statusCode: StatusCodes.Status410Gone);
 
     var suggestedEventId = import.SuggestedEventId;
     var suggestedPart = import.SuggestedPart;
 
-    db.PendingImports.Remove(import);
-    await db.SaveChangesAsync();
+    var isDvrChoice = import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal);
+    if (isDvrChoice)
+    {
+        // Recording retention resolves a choice with the same helper.
+        DvrIndexerChoice.Outcome outcome;
+        await DvrIndexerChoice.EnterGateAsync(httpContext.RequestAborted);
+        try
+        {
+            outcome = await DvrIndexerChoice.KeepDownloadAsync(db, import, blocklist: true);
+        }
+        finally
+        {
+            DvrIndexerChoice.Gate.Release();
+        }
+        switch (outcome)
+        {
+            case DvrIndexerChoice.Outcome.DownloadedFileMissing:
+                return Results.BadRequest(new { error = "The downloaded file is missing. Import the recording or restore the downloaded file first." });
+            case DvrIndexerChoice.Outcome.Busy:
+                return Results.Conflict(new { error = "This recording is being imported." });
+            case DvrIndexerChoice.Outcome.Gone:
+                return Results.NotFound();
+            case DvrIndexerChoice.Outcome.Closed:
+                return Results.Json(new { error = "This import is already resolved." }, statusCode: StatusCodes.Status410Gone);
+        }
+    }
+    else
+    {
+        db.Blocklist.Add(DvrIndexerChoice.RejectedImportBlock(import));
+        db.PendingImports.Remove(import);
+        await db.SaveChangesAsync();
+    }
 
     logger.LogInformation("[Pending Import] Rejected and blocklisted {Title} (path {FilePath}, hash {Hash})",
         import.Title, import.FilePath, import.TorrentInfoHash ?? "n/a");

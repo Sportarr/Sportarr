@@ -509,6 +509,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<TaskService>();
         services.AddSingleton<ITaskService>(sp => sp.GetRequiredService<TaskService>());
         services.AddHostedService<TaskQueueRecoveryService>();
+        services.AddHostedService<DvrChoiceRecoveryService>();
 
         services.AddSingleton<DiskScanService>();
         services.AddHostedService(sp => sp.GetRequiredService<DiskScanService>());

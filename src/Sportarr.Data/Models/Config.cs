@@ -329,6 +329,14 @@ public class Config
     public bool DvrReplaceRecordingsWithIndexerReleases { get; set; } = false; // Source precedence: an indexer release replaces an IPTV recording whatever its quality
 
     /// <summary>
+    /// What happens when a recording finishes for a part that already has a
+    /// downloaded file. "Ask" (default) opens a choice. "KeepBetter" keeps
+    /// the better file under the quality profile. A tie keeps the
+    /// downloaded file.
+    /// </summary>
+    public string DvrIndexerConflictPolicy { get; set; } = "Ask";
+
+    /// <summary>
     /// What happens when scheduling a new recording would push an
     /// IPTV source past its MaxStreams cap or push the global
     /// DvrMaxConcurrentRecordings cap. One of: "Refuse", "Queue",

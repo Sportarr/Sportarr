@@ -39,7 +39,8 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
 
     public static async Task<PartIdentityIntegrationHarness> CreateAsync(bool rename = true, bool multipart = true,
         string title = "UFC 9999", string sport = "Fighting", string leagueName = "UFC", bool relational = false,
-        bool writeMetadata = false, string? mediaRoot = null)
+        bool writeMetadata = false, string? mediaRoot = null,
+        Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor[]? interceptors = null)
     {
         if (mediaRoot != null && Path.GetFullPath(mediaRoot) != "/data/e2e-lib" &&
             !Path.GetFullPath(mediaRoot).StartsWith("/data/e2e-lib/", StringComparison.Ordinal))
@@ -56,6 +57,7 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         {
             if (relational) options.UseSqlite("Data Source=" + Path.Combine(directory, "fixture.db") + ";Pooling=False");
             else options.UseInMemoryDatabase(directory);
+            if (interceptors != null) options.AddInterceptors(interceptors);
         }
         services.AddDbContextFactory<SportarrDbContext>(ConfigureDatabase);
         // One context keeps the endpoint and assertions on the same tracked rows.

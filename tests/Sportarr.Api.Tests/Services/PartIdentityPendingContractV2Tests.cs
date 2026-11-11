@@ -14,6 +14,7 @@ using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Tests.Services;
 
+[Collection(DvrChoiceStateCollection.Name)]
 public class PartIdentityPendingContractV2Tests
 {
     [Theory]
@@ -1028,7 +1029,7 @@ public class PartIdentityPendingContractV2Tests
     }
 
     [Fact]
-    public async Task DvrRetentionKeepsRecordingWhileManualChoiceIsOpen()
+    public async Task DvrRetentionKeepsRecordingWhileManualChoiceHasNoDownloadedFile()
     {
         await using var rig = await PartIdentityIntegrationHarness.CreateAsync();
         var directory = NewDirectory("/data/e2e-lib/issue348");
@@ -1053,6 +1054,16 @@ public class PartIdentityPendingContractV2Tests
                 EventDate = oldEnd
             };
             rig.Db.Events.Add(otherEvent);
+            // The expired recording lost to a file that is still on disk.
+            var settledEvent = new Event
+            {
+                LeagueId = rig.Event.LeagueId, Title = "Settled fixture",
+                Sport = rig.Event.Sport, ExternalId = "ev-998349",
+                EventDate = oldEnd
+            };
+            rig.Db.Events.Add(settledEvent);
+            var settledPath = Path.Combine(directory, "settled-download.mkv");
+            await File.WriteAllBytesAsync(settledPath, [1]);
             var held = new DvrRecording
             {
                 EventId = rig.Event.Id, Channel = channel, Title = "Awaiting choice",
@@ -1061,7 +1072,7 @@ public class PartIdentityPendingContractV2Tests
             };
             var stale = new DvrRecording
             {
-                EventId = rig.Event.Id, Channel = channel, Title = "Expired",
+                Event = settledEvent, Channel = channel, Title = "Expired",
                 Status = DvrRecordingStatus.Ignored, OutputPath = stalePath,
                 ScheduledStart = oldEnd.AddHours(-1), ScheduledEnd = oldEnd
             };
@@ -1078,6 +1089,10 @@ public class PartIdentityPendingContractV2Tests
                 EventId = otherEvent.Id,
                 FilePath = Path.Combine(directory, "missing-indexer.mkv"),
                 Exists = false, MissingSince = DateTime.UtcNow
+            });
+            rig.Db.EventFiles.Add(new EventFile
+            {
+                EventId = settledEvent.Id, FilePath = settledPath, Exists = true
             });
             rig.Db.PendingImports.Add(new PendingImport
             {
@@ -1362,7 +1377,7 @@ public class PartIdentityPendingContractV2Tests
         rig.Db.PendingImports.Add(pending); await rig.Db.SaveChangesAsync(); return pending;
     }
 
-    private static async Task<WebApplication> CreatePendingHost(PartIdentityIntegrationHarness rig, bool includeLeagueScan = false)
+    internal static async Task<WebApplication> CreatePendingHost(PartIdentityIntegrationHarness rig, bool includeLeagueScan = false)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer(); builder.Logging.ClearProviders();

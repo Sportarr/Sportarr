@@ -294,7 +294,8 @@ public class HousekeepingService : BackgroundService, IManualPassService
     /// DvrKeepLastRecordingsPerLeague is set (0 disables each independently).
     /// Files still on disk are deleted only when the recording was never
     /// imported into the library (an import moves the file; the recording row
-    /// then just points at history).
+    /// then just points at history). An open recording choice past either
+    /// limit keeps the downloaded file when that file is on disk.
     /// </summary>
     internal async Task PruneDvrRecordingsAsync(SportarrDbContext db, Config config, CancellationToken ct)
     {
@@ -312,76 +313,148 @@ public class HousekeepingService : BackgroundService, IManualPassService
                 .ToListAsync(ct);
 
             var stale = new HashSet<DvrRecording>();
-
-            if (config.DvrRecordingRetentionDays > 0)
+            var claims = new List<IDisposable>();
+            try
             {
-                var cutoff = DateTime.UtcNow.AddDays(-config.DvrRecordingRetentionDays);
-                foreach (var r in finished.Where(r => (r.ActualEnd ?? r.ScheduledEnd) < cutoff))
-                    stale.Add(r);
-            }
-
-            if (config.DvrKeepLastRecordingsPerLeague > 0)
-            {
-                // Recordings with no linked event fall into a shared null-league
-                // bucket so manual/ad-hoc recordings still respect the cap.
-                var overflow = finished
-                    .GroupBy(r => r.Event?.LeagueId)
-                    .SelectMany(g => g
-                        .OrderByDescending(r => r.ActualEnd ?? r.ScheduledEnd)
-                        .Skip(config.DvrKeepLastRecordingsPerLeague));
-                foreach (var r in overflow)
-                    stale.Add(r);
-            }
-
-            var pendingRecordingIds = (await db.PendingImports.AsNoTracking()
-                    .Where(p => p.DownloadId.StartsWith("dvr-"))
-                    .Select(p => p.DownloadId)
-                    .ToListAsync(ct))
-                .Select(id => int.TryParse(id.AsSpan(4), out var recordingId) ? recordingId : 0)
-                .ToHashSet();
-            var unresolvedEventIds = stale
-                .Where(r => r.Status == DvrRecordingStatus.Completed && r.ImportedAt == null && r.EventId.HasValue)
-                .Select(r => r.EventId!.Value)
-                .Distinct()
-                .ToList();
-            var missingFiles = await db.EventFiles.AsNoTracking()
-                .Where(f => !f.Exists && unresolvedEventIds.Contains(f.EventId))
-                .Select(f => new { f.EventId, f.PartName })
-                .ToListAsync(ct);
-            stale.RemoveWhere(r => r.Status == DvrRecordingStatus.Completed &&
-                r.ImportedAt == null &&
-                (pendingRecordingIds.Contains(r.Id) ||
-                 (r.EventId.HasValue && !string.IsNullOrEmpty(r.OutputPath) && File.Exists(r.OutputPath) &&
-                  missingFiles.Any(f => f.EventId == r.EventId.Value &&
-                      string.Equals(Helpers.SourcePrecedence.NormalizePart(f.PartName),
-                          Helpers.SourcePrecedence.NormalizePart(r.PartName), StringComparison.OrdinalIgnoreCase)))));
-
-            if (stale.Count == 0)
-                return;
-
-            foreach (var recording in stale)
-            {
-                if (recording.ImportedAt == null &&
-                    !string.IsNullOrEmpty(recording.OutputPath) &&
-                    File.Exists(recording.OutputPath))
+                if (config.DvrRecordingRetentionDays > 0)
                 {
-                    try { File.Delete(recording.OutputPath); }
-                    catch (Exception ex)
+                    var cutoff = DateTime.UtcNow.AddDays(-config.DvrRecordingRetentionDays);
+                    foreach (var r in finished.Where(r => (r.ActualEnd ?? r.ScheduledEnd) < cutoff))
+                        stale.Add(r);
+                }
+
+                if (config.DvrKeepLastRecordingsPerLeague > 0)
+                {
+                    // Recordings with no linked event fall into a shared null-league
+                    // bucket so manual/ad-hoc recordings still respect the cap.
+                    var overflow = finished
+                        .GroupBy(r => r.Event?.LeagueId)
+                        .SelectMany(g => g
+                            .OrderByDescending(r => r.ActualEnd ?? r.ScheduledEnd)
+                            .Skip(config.DvrKeepLastRecordingsPerLeague));
+                    foreach (var r in overflow)
+                        stale.Add(r);
+                }
+
+                // A KeepBetter import can move a recording now. Skip it this pass.
+                foreach (var recording in stale.ToList())
+                {
+                    var claim = DvrIndexerChoice.TryClaimRecording(recording.Id);
+                    if (claim == null)
                     {
-                        _logger.LogWarning(ex, "[Housekeeping] Could not delete expired recording file {Path}", recording.OutputPath);
+                        stale.Remove(recording);
+                        continue;
+                    }
+                    claims.Add(claim);
+                    // An import or a choice can change the row between the read
+                    // above and the claim. Read it again and skip a changed row.
+                    var loadedStatus = recording.Status;
+                    var loadedImportedAt = recording.ImportedAt;
+                    var loadedPath = recording.OutputPath;
+                    await db.Entry(recording).ReloadAsync(ct);
+                    if (db.Entry(recording).State == EntityState.Detached ||
+                        recording.Status != loadedStatus ||
+                        recording.ImportedAt != loadedImportedAt ||
+                        recording.OutputPath != loadedPath)
+                        stale.Remove(recording);
+                }
+
+                var pendingRecordingIds = (await db.PendingImports.AsNoTracking()
+                        .Where(p => p.DownloadId.StartsWith("dvr-"))
+                        .Select(p => p.DownloadId)
+                        .ToListAsync(ct))
+                    .Select(id => int.TryParse(id.AsSpan(4), out var recordingId) ? recordingId : 0)
+                    .ToHashSet();
+                await ResolveExpiredDvrChoicesAsync(db, stale, pendingRecordingIds, ct);
+                stale.RemoveWhere(r => r.Status == DvrRecordingStatus.Completed &&
+                    r.ImportedAt == null && pendingRecordingIds.Contains(r.Id));
+
+                // A recording stays while it can be the only copy of its part. A
+                // tracked file for the part is gone from disk, and no other
+                // tracked file for the part is on disk. With no row left, or a
+                // replacement on disk, the recording is pruned.
+                foreach (var recording in stale.Where(r =>
+                             (r.Status is DvrRecordingStatus.Completed or DvrRecordingStatus.Ignored) &&
+                             r.ImportedAt == null && r.EventId.HasValue &&
+                             !string.IsNullOrEmpty(r.OutputPath) && File.Exists(r.OutputPath)).ToList())
+                {
+                    if (await DvrIndexerChoice.RecordingMayBeOnlyCopyAsync(db, recording.EventId!.Value, recording.PartName,
+                            recording.OutputPath, ct))
+                        stale.Remove(recording);
+                }
+
+                if (stale.Count == 0)
+                    return;
+
+                foreach (var recording in stale)
+                {
+                    if (recording.ImportedAt == null &&
+                        !string.IsNullOrEmpty(recording.OutputPath) &&
+                        File.Exists(recording.OutputPath))
+                    {
+                        try { File.Delete(recording.OutputPath); }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Housekeeping] Could not delete expired recording file {Path}", recording.OutputPath);
+                        }
                     }
                 }
+
+                db.DvrRecordings.RemoveRange(stale);
+                await db.SaveChangesAsync(ct);
+
+                _logger.LogInformation("[Housekeeping] Pruned {Count} DVR recordings (retention: {Days} days, keep-last per league: {KeepLast})",
+                    stale.Count, config.DvrRecordingRetentionDays, config.DvrKeepLastRecordingsPerLeague);
             }
-
-            db.DvrRecordings.RemoveRange(stale);
-            await db.SaveChangesAsync(ct);
-
-            _logger.LogInformation("[Housekeeping] Pruned {Count} DVR recordings (retention: {Days} days, keep-last per league: {KeepLast})",
-                stale.Count, config.DvrRecordingRetentionDays, config.DvrKeepLastRecordingsPerLeague);
+            finally
+            {
+                foreach (var claim in claims)
+                    claim.Dispose();
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The host stops. The next pass prunes.
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Housekeeping] DVR recording retention failed");
+        }
+    }
+
+    /// <summary>
+    /// An expired recording with an open choice keeps the downloaded file,
+    /// the same as a reject from the user. The recording file is then pruned.
+    /// A choice whose downloaded file is missing stays open, because the
+    /// recording is the only copy. No blocklist row is written. The user
+    /// did not reject the file, and the prune deletes it.
+    /// </summary>
+    private async Task ResolveExpiredDvrChoicesAsync(SportarrDbContext db, HashSet<DvrRecording> stale,
+        HashSet<int> pendingRecordingIds, CancellationToken ct)
+    {
+        foreach (var recording in stale.Where(r => r.Status == DvrRecordingStatus.Completed &&
+                     r.ImportedAt == null && pendingRecordingIds.Contains(r.Id)).ToList())
+        {
+            var downloadId = $"dvr-{recording.Id}";
+            await DvrIndexerChoice.EnterGateAsync(ct);
+            try
+            {
+                var choice = await db.PendingImports.FirstOrDefaultAsync(p => p.DownloadId == downloadId, ct);
+                if (choice == null || choice.FilePath != recording.OutputPath)
+                    continue;
+                var outcome = await DvrIndexerChoice.KeepDownloadAsync(db, choice, blocklist: false, ct);
+                // The helper marks the recording Ignored. Any other state means
+                // the recording changed, so it is not pruned this pass.
+                if (outcome != DvrIndexerChoice.Outcome.Resolved || recording.Status != DvrRecordingStatus.Ignored)
+                    continue;
+                pendingRecordingIds.Remove(recording.Id);
+                _logger.LogInformation("[Housekeeping] Recording {RecordingId} passed retention with an open choice. The downloaded file stays",
+                    recording.Id);
+            }
+            finally
+            {
+                DvrIndexerChoice.Gate.Release();
+            }
         }
     }
 

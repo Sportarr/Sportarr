@@ -360,8 +360,10 @@ app.MapGet("/api/events/{eventId:int}/channels/candidates", async (
 // Import a completed DVR recording to the event library
 app.MapPost("/api/dvr/recordings/{recordingId:int}/import", async (int recordingId, EventDvrService eventDvrService) =>
 {
-    var success = await eventDvrService.ImportCompletedRecordingAsync(recordingId);
-    if (!success)
+    var outcome = await eventDvrService.ImportCompletedRecordingWithOutcomeAsync(recordingId);
+    if (outcome == RecordingImportOutcome.InUse)
+        return Results.Conflict(new { error = "This recording is being imported." });
+    if (outcome != RecordingImportOutcome.Imported)
         return Results.BadRequest(new { error = "Could not import recording. Check that the recording is completed and has an associated event." });
     return Results.Ok(new { success = true });
 });
@@ -647,6 +649,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         conflictPolicy = config.DvrConflictPolicy,
         deleteAfterImport = config.DvrDeleteAfterImport,
         replaceRecordingsWithIndexerReleases = config.DvrReplaceRecordingsWithIndexerReleases,
+        indexerConflictPolicy = DvrIndexerChoice.NormalizePolicy(config.DvrIndexerConflictPolicy),
         recordingRetentionDays = config.DvrRecordingRetentionDays,
         keepLastRecordingsPerLeague = config.DvrKeepLastRecordingsPerLeague,
         hardwareAcceleration = config.DvrHardwareAcceleration,
@@ -709,8 +712,15 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         !earlyFinishBuffer.TryGetInt32(out earlyFinishBufferMinutes)))
         return Results.BadRequest(new { error = "earlyFinishBufferMinutes must be an integer." });
 
+    var hasIndexerConflictPolicy = settings.TryGetProperty("indexerConflictPolicy", out var indexerConflictPolicy);
+    if (hasIndexerConflictPolicy && (indexerConflictPolicy.ValueKind != JsonValueKind.String ||
+        indexerConflictPolicy.GetString() is not (DvrIndexerChoice.AskPolicy or DvrIndexerChoice.KeepBetterPolicy)))
+        return Results.BadRequest(new { error = "indexerConflictPolicy must be Ask or KeepBetter." });
+
     var config = await configService.GetConfigAsync();
 
+    if (hasIndexerConflictPolicy)
+        config.DvrIndexerConflictPolicy = indexerConflictPolicy.GetString()!;
     if (settings.TryGetProperty("defaultProfileId", out var defaultProfileId))
         config.DvrDefaultProfileId = defaultProfileId.GetInt32();
     if (settings.TryGetProperty("recordingPath", out var recordingPath))

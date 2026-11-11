@@ -10,6 +10,7 @@ using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Tests.Services;
 
+[Collection(DvrChoiceStateCollection.Name)]
 public class DvrCompletedOutputNamingTests
 {
     [Fact]
