@@ -109,6 +109,27 @@ public class NfoSidecarReaderTests : IDisposable
     }
 
     [Fact]
+    public void ADeeplyNestedFileReturnsNullAndDoesNotCrash()
+    {
+        // A tree this deep overflowed the stack when its text was read.
+        // That ends the process, so this test runs with the whole suite.
+        const int depth = 50_000;
+        var nested = string.Concat(Enumerable.Repeat("<a>", depth)) + string.Concat(Enumerable.Repeat("</a>", depth));
+        var video = Video($"<episodedetails><title>{nested}</title><aired>2024-03-02</aired></episodedetails>");
+        new FileInfo(Path.ChangeExtension(video, ".nfo")).Length.Should().BeLessThan(1024 * 1024);
+
+        NfoSidecarReader.TryRead(video).Should().BeNull();
+    }
+
+    [Fact]
+    public void OnlyTheDirectTextOfAFieldIsRead()
+    {
+        var video = Video("<episodedetails><title>Bahrain <i>night</i>Grand Prix</title></episodedetails>");
+
+        NfoSidecarReader.TryRead(video)!.Title.Should().Be("Bahrain Grand Prix");
+    }
+
+    [Fact]
     public void AnotherRootElementReturnsNull()
     {
         var video = Video("<tvshow><title>Formula 1</title><premiered>1950-05-13</premiered></tvshow>");

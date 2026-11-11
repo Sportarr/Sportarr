@@ -1,6 +1,6 @@
 using System.Globalization;
+using System.Text;
 using System.Xml;
-using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Helpers;
 
@@ -17,6 +17,9 @@ public static class NfoSidecarReader
 {
     // A real sidecar is a few kilobytes. A larger file is not one.
     private const long MaxSidecarBytes = 1024 * 1024;
+
+    // A real sidecar is two or three levels deep.
+    private const int MaxDepth = 8;
 
     private static readonly string[] AcceptedRoots = { "episodedetails", "movie" };
 
@@ -61,19 +64,7 @@ public static class NfoSidecarReader
             };
             using var stream = new FileStream(nfoPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = XmlReader.Create(stream, settings);
-            var root = XDocument.Load(reader).Root;
-            if (root == null || !AcceptedRoots.Contains(root.Name.LocalName, StringComparer.OrdinalIgnoreCase))
-                return null;
-
-            var aired = ParseDate(Child(root, "aired")) ?? ParseDate(Child(root, "premiered"));
-            var title = Child(root, "title");
-            var sportarrId = root.Elements()
-                .Where(e => e.Name.LocalName.Equals("uniqueid", StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals((string?)e.Attribute("type"), "sportarr", StringComparison.OrdinalIgnoreCase))
-                .Select(e => SportarrIdToken.Normalize(e.Value))
-                .FirstOrDefault(id => id != null && id.StartsWith("ev-", StringComparison.Ordinal));
-
-            return new NfoSidecar(aired, title, sportarrId);
+            return Read(reader, nfoPath, logger);
         }
         catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
         {
@@ -82,12 +73,95 @@ public static class NfoSidecarReader
         }
     }
 
-    private static string? Child(XElement root, string name)
+    // Reads the document as a stream. A tree of a deep file overflows the
+    // stack when its text is read, and that ends the process.
+    private static NfoSidecar? Read(XmlReader reader, string nfoPath, ILogger? logger)
     {
-        var value = root.Elements()
-            .FirstOrDefault(e => e.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))
-            ?.Value.Trim();
-        return string.IsNullOrEmpty(value) ? null : value;
+        if (reader.MoveToContent() != XmlNodeType.Element ||
+            !AcceptedRoots.Contains(reader.LocalName, StringComparer.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        // The first element of each name wins.
+        string? title = null, aired = null, premiered = null, sportarrId = null;
+        bool seenTitle = false, seenAired = false, seenPremiered = false;
+
+        // The child of the root that the reader is in, and its direct text.
+        string? field = null;
+        string? uniqueIdType = null;
+        var text = new StringBuilder();
+
+        if (reader.IsEmptyElement)
+            return new NfoSidecar(null, null, null);
+
+        while (reader.Read())
+        {
+            switch (reader.NodeType)
+            {
+                case XmlNodeType.Element:
+                    if (reader.Depth > MaxDepth)
+                    {
+                        logger?.LogDebug("[Library Import] Ignoring sidecar {Path}: it is nested too deep", nfoPath);
+                        return null;
+                    }
+                    if (reader.Depth == 1)
+                    {
+                        field = reader.LocalName.ToLowerInvariant();
+                        uniqueIdType = field == "uniqueid" ? reader.GetAttribute("type") : null;
+                        text.Clear();
+                        if (reader.IsEmptyElement)
+                            Store();
+                    }
+                    break;
+
+                case XmlNodeType.Text:
+                case XmlNodeType.CDATA:
+                case XmlNodeType.SignificantWhitespace:
+                case XmlNodeType.Whitespace:
+                    // Only the direct text of a root child counts.
+                    if (field != null && reader.Depth == 2)
+                        text.Append(reader.Value);
+                    break;
+
+                case XmlNodeType.EndElement:
+                    if (reader.Depth == 1)
+                        Store();
+                    break;
+            }
+        }
+
+        return new NfoSidecar(ParseDate(aired) ?? ParseDate(premiered), title, sportarrId);
+
+        void Store()
+        {
+            var value = text.ToString().Trim();
+            var present = value.Length > 0 ? value : null;
+            switch (field)
+            {
+                case "title" when !seenTitle:
+                    seenTitle = true;
+                    title = present;
+                    break;
+                case "aired" when !seenAired:
+                    seenAired = true;
+                    aired = present;
+                    break;
+                case "premiered" when !seenPremiered:
+                    seenPremiered = true;
+                    premiered = present;
+                    break;
+                case "uniqueid" when sportarrId == null &&
+                    string.Equals(uniqueIdType, "sportarr", StringComparison.OrdinalIgnoreCase):
+                    var id = SportarrIdToken.Normalize(present);
+                    if (id != null && id.StartsWith("ev-", StringComparison.Ordinal))
+                        sportarrId = id;
+                    break;
+            }
+            field = null;
+            uniqueIdType = null;
+            text.Clear();
+        }
     }
 
     private static DateTime? ParseDate(string? value)
