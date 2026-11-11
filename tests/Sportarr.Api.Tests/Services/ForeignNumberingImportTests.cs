@@ -415,6 +415,54 @@ public class ForeignNumberingImportTests : IDisposable
         decoy.Should().BeLessThan(40, "a library scan accepts a match at 40, and 8 is not 86");
     }
 
+    [Theory]
+    [InlineData("UFC Fight Night Whittaker vs Brunson")]
+    [InlineData("UFC Fight Night 98 dos Anjos vs Ferguson")]
+    [InlineData("UFC on Fox Teixeira vs Evans")]
+    public void FightNightNumber_GetsNoTitleCreditFromAnotherCard(string otherCard)
+    {
+        // Issue 424. "Fight Night 86" is not a card with another number or none.
+        var ufc = new League { Name = "UFC", Sport = "Fighting", AlternateName = "Ultimate Fighting Championship" };
+        var card = new Event
+        {
+            Title = otherCard, Sport = "Fighting", Season = "2016", SeasonNumber = 2016, EpisodeNumber = 30,
+            EventDate = new DateTime(2016, 11, 27, 0, 0, 0, DateTimeKind.Utc), League = ufc,
+        };
+
+        int Score(string fileTitle) => LibraryImportService.CalculateMatchConfidence(
+            searchTitle: fileTitle, eventTitle: otherCard, organization: "UFC",
+            evt: card, parsedDate: null, parsedYear: 2016, parsedSport: "Fighting", sourceTitle: fileTitle);
+
+        // The shared words "UFC", "Fight", "Night" and "dos" add nothing.
+        Score("UFC Fight Night 86 Rothwell vs dos Santos").Should().Be(Score("Zzz"));
+    }
+
+    [Fact]
+    public async Task FightNight86_IsNeverSuggestedForAnotherCard()
+    {
+        var ufc = new League { Name = "UFC", Sport = "Fighting", AlternateName = "Ultimate Fighting Championship" };
+        _db.Leagues.Add(ufc);
+        _db.SaveChanges();
+        Event Card(string title, int episode, DateTime date) => new()
+        {
+            Title = title, Sport = "Fighting", Season = "2016", SeasonNumber = 2016, EpisodeNumber = episode,
+            LeagueId = ufc.Id, EventDate = date, Monitored = true,
+        };
+        var rothwell = Card("UFC Fight Night Rothwell vs dos Santos", 9, new DateTime(2016, 4, 10, 0, 0, 0, DateTimeKind.Utc));
+        _db.Events.AddRange(
+            rothwell,
+            Card("UFC Fight Night Whittaker vs Brunson", 36, new DateTime(2016, 11, 27, 0, 0, 0, DateTimeKind.Utc)),
+            Card("UFC Fight Night 98 dos Anjos vs Ferguson", 32, new DateTime(2016, 11, 5, 0, 0, 0, DateTimeKind.Utc)));
+        _db.SaveChanges();
+        var season = Path.Combine(_tempDir, "UFC", "Season 2016");
+        Directory.CreateDirectory(season);
+        File.WriteAllBytes(Path.Combine(season, "UFC Fight Night 86 Rothwell vs dos Santos.mkv"), new byte[64 * 1024]);
+
+        var result = await _service.ScanFolderAsync(_tempDir);
+
+        result.MatchedFiles.Should().NotContain(f => f.MatchedEventId != rothwell.Id);
+    }
+
     [Fact]
     public async Task ForeignNumber_DoesNotChooseBetweenTheGamesOfOneDay()
     {

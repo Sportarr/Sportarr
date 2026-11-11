@@ -2489,7 +2489,8 @@ public class LibraryImportService
     {
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
-        if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent))
+        if (string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent) ||
+            HasFightNightNumberMismatch(normalizedSearch, normalizedEvent))
             return false;
         if (StrongTitleAward(normalizedSearch, normalizedEvent) > 0)
             return true;
@@ -2505,6 +2506,25 @@ public class LibraryImportService
             searchWords = searchWords.Union(parsedLocation.Split(' ', StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
         return searchWords.Where(w => !ignored.Contains(w))
             .Intersect(TitleWords(eventTitle), StringComparer.OrdinalIgnoreCase).Any();
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex FightNightNumber = new(
+        @"\bfight\s+night\s+0*(?<number>\d+)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    /// <summary>
+    /// True when the file names a numbered Fight Night and the event title
+    /// names another number or no number. Both inputs must be normalized.
+    /// </summary>
+    private static bool HasFightNightNumberMismatch(string normalizedSearch, string normalizedEvent)
+    {
+        var file = FightNightNumber.Match(normalizedSearch);
+        if (!file.Success)
+            return false;
+        var evt = FightNightNumber.Match(normalizedEvent);
+        return !evt.Success || evt.Groups["number"].Value != file.Groups["number"].Value;
     }
 
     private static IEnumerable<string> TitleWords(string title) =>
@@ -2780,7 +2800,10 @@ public class LibraryImportService
         var normalizedSearch = NormalizeTitle(searchTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
         var titleIsDegenerate = string.IsNullOrWhiteSpace(normalizedSearch) || string.IsNullOrWhiteSpace(normalizedEvent);
-        var strongTitleAward = titleIsDegenerate ? 0 : StrongTitleAward(normalizedSearch, normalizedEvent);
+        // "Fight Night 86" is one card. An event with another number or no
+        // number gets no credit for the words the two titles share.
+        var fightNightMismatch = !titleIsDegenerate && HasFightNightNumberMismatch(normalizedSearch, normalizedEvent);
+        var strongTitleAward = titleIsDegenerate || fightNightMismatch ? 0 : StrongTitleAward(normalizedSearch, normalizedEvent);
         var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Where(w => !MatchConnectorWords.Contains(w)).ToArray();
         var locationWords = string.IsNullOrEmpty(parsedLocation)
@@ -2833,6 +2856,10 @@ public class LibraryImportService
         if (strongTitleAward > 0)
         {
             confidence += strongTitleAward;
+        }
+        else if (fightNightMismatch)
+        {
+            hasTitleEvidence = false;
         }
         else
         {

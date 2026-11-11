@@ -50,8 +50,10 @@ public class SportsFileNameParser
         {
             Sport = "Fighting",
             Organization = "UFC",
-            Pattern = new Regex(@"UFC[\.\-\s]+Fight[\.\-\s]+Night[\.\-\s]+(?<number>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
-            TitleBuilder = (match) => $"UFC Fight Night {match.Groups["number"].Value}"
+            Pattern = new Regex(@"UFC[\.\-\s]+Fight[\.\-\s]+Night[\.\-\s]+(?<number>\d+)(?<tail>.*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            // The fighters name the card. The hub titles many cards by the
+            // fighters only, so a title without them meets the wrong card.
+            TitleBuilder = (match) => $"UFC Fight Night {match.Groups["number"].Value}{FightNightFighters(match.Groups["tail"].Value)}"
         },
         // UFC with names: UFC.299.OMalley.vs.Vera.2
         new SportsPattern
@@ -1351,6 +1353,25 @@ public class SportsFileNameParser
     /// <summary>
     /// Clean team name extracted from regex - remove trailing separators and normalize
     /// </summary>
+    private static readonly Regex FightNightTailEnd = new(
+        @"\s-\s|[\[\(\{]|\b(?:\d{3,4}p|(?:19|20)\d{2}|WEB(?:[\s-]?(?:DL|Rip))?|HDTV|PPV|x26[45]|h26[45]|Prelims|Early\s+Prelims|Main\s+Card)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+
+    private static readonly Regex FightNightVersus = new(
+        @"\b(?:vs?|versus)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+
+    /// <summary>
+    /// The fighter pair after a Fight Night number, with a space before it.
+    /// Empty when the rest of the name holds no pair.
+    /// </summary>
+    private static string FightNightFighters(string tail)
+    {
+        var text = Regex.Replace(tail, @"[._]+", " ", RegexOptions.None, PatternTimeout);
+        text = FightNightTailEnd.Split(text)[0].Trim(' ', '-');
+        text = Regex.Replace(text, @"\s+", " ", RegexOptions.None, PatternTimeout);
+        return FightNightVersus.IsMatch(text) ? " " + text : "";
+    }
+
     private static string CleanTeamName(string teamName)
     {
         // Remove trailing dots, dashes, spaces

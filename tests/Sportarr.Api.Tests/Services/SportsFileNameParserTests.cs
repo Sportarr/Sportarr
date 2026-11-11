@@ -182,4 +182,16 @@ public class SportsFileNameParserTests
         result.Session.Should().BeNull();
         result.EventTitle.Should().Contain(supportClass);
     }
+
+    // The fighters name a Fight Night card, so the title keeps them.
+    [Theory]
+    [InlineData("UFC Fight Night 86 Rothwell vs dos Santos", "UFC Fight Night 86 Rothwell vs dos Santos")]
+    [InlineData("UFC.Fight.Night.86.Rothwell.vs.dos.Santos.720p.HDTV.x264-GRP", "UFC Fight Night 86 Rothwell vs dos Santos")]
+    [InlineData("UFC - S2026E16 - pt1 - UFC Fight Night 276 Allen vs Costa - WEBDL-1080p", "UFC Fight Night 276 Allen vs Costa")]
+    [InlineData("UFC.Fight.Night.230.2024.1080p.WEB.h264-GRP", "UFC Fight Night 230")]
+    [InlineData("UFC - S2016E86 - Fight Night 86", "UFC Fight Night 86")]
+    public void FightNightFile_KeepsTheFighterNames(string name, string title)
+    {
+        _parser.Parse(name).EventTitle.Should().Be(title);
+    }
 }
