@@ -13,8 +13,8 @@ The results show how many files Sportarr found, matched, left unmatched, and fou
 Sportarr reads the league and the season from the names of your folders. A library laid out like this works best.
 
 ```
-/data/sports/Formula 1/Season 2024/Formula 1 - 2024 Bahrain Grand Prix.mkv
-/data/sports/Formula 1/Season 2024/Bahrain Grand Prix/Formula 1 - 2024 Bahrain Grand Prix - Race.mkv
+/data/sports/Formula 1/Season 2024/Formula 1 - 2024 Bahrain Grand Prix - Race.mkv
+/data/sports/Formula 1/Season 2024/Bahrain Grand Prix/Formula 1 - 2024 Bahrain Grand Prix - Qualifying.mkv
 /data/sports/NBA/Season 2024-2025/NBA - 2024-10-22 - Knicks vs Celtics.mkv
 ```
 
@@ -34,7 +34,7 @@ A single year also fits a league whose seasons cross two years. When a league ha
 
 Your root folder is never read as a league. Files directly in a root folder get no league from their folders. When you scan a folder inside a root folder, Sportarr still reads the path from the root folder down. So a scan of `Formula 1/Season 2024` alone still finds the league and the season.
 
-When the folder you scan is not inside one of your root folders, Sportarr reads the folders from the one you picked. Videos directly in that folder take its name as their league folder.
+Sportarr reads folders only inside your root folders. When you scan a folder outside them, such as a downloads folder, its files get no league or season from their folders and are matched against your whole library. Their folders are not listed under **Folders Without a League**.
 
 ### How a folder names a league
 
@@ -46,7 +46,7 @@ When the folder names a league, Sportarr looks for each file's event in that lea
 
 ## Folders for a league you do not have
 
-**Folders Without a League** lists each league folder that is not one of your leagues. Each row says `Folder "Name" is not one of your leagues.` and shows the folder's full path.
+**Folders Without a League** lists each league folder inside a root folder that is not one of your leagues. Each row says `Folder "Name" is not one of your leagues.` and shows the folder's full path.
 
 Sportarr asks the metadata service for a league with that exact name. When it finds one, the row shows a button with the league's name, such as **Add Formula 1**. Click it to add the league. Sportarr binds the league to the root folder that holds the folder and gives it that root folder's default quality profile. It does not search for missing events.
 
@@ -55,7 +55,7 @@ Sportarr asks the metadata service for a league with that exact name. When it fi
 
 Sportarr then scans the same folder again. A new league's events can take a few minutes to load. Scan again if its files stay unmatched. If the league cannot be added, the row shows why.
 
-If the metadata service does not answer within a few seconds, the row has no button.
+If the metadata service does not answer within a few seconds, the row has no button. After one slow or failed answer, Sportarr stops asking for the rest of that scan, so the rows after it have no button either. Scan again to retry.
 
 When the metadata service has no league with that exact name, the row says "No matching league found. Add the league from the Leagues page, then scan again." Add the league from **Library > Add League**. If your folder uses a name of its own, rename it to the league's name so that the folder links to the league.
 
@@ -63,7 +63,7 @@ When the metadata service has no league with that exact name, the row says "No m
 
 Some libraries were named by another database such as TheTVDB, with TV-style names like `Formula 1 - S2024E05 - Chinese Grand Prix.mkv`. The season and episode numbers in those names come from that database. They often differ from Sportarr's own numbers, so Sportarr matches these files on their titles and dates.
 
-An S/E number counts only when something else about the file agrees with the event. That can be the title, the date, the round, or the location.
+An S/E number counts only when something else about the file agrees with the event. That can be the title, the round, or the location. It can also be the date, but only when it is the event's own day and no other event that could match the file falls on that day. A date a few days away does not count.
 
 | The file's episode number | Something else agrees | Effect on the score |
 |---|---|---|
@@ -73,6 +73,8 @@ An S/E number counts only when something else about the file agrees with the eve
 | Different | No | Lowers it |
 
 For an event that is one session of a race weekend, the round or the location counts only when the file also names that session, such as Qualifying.
+
+A file that names one session is never matched to another session. In a series with one event for each Grand Prix, such as MotoGP, an event that names no session is the race. So a file that names practice, qualifying, a sprint, a warm-up, or a test day is not matched to it. A test-day file is also not matched to an event that names another session. A file of a show about the weekend, such as a "Best of", a press conference, a talk show, or "After The Flag", is not matched to any session or race.
 
 When several events fit a file equally and its name points to none of them, the file stays unmatched. Choose its event yourself.
 
