@@ -117,7 +117,7 @@ public class LibraryImportService
             var recycleBin = (await _configService.GetConfigAsync()).RecycleBin;
 
             var searchOption = includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            var files = SampleFileFilter.FilterSamples(
+            var foundFiles = SampleFileFilter.FilterSamples(
                     LibraryPathFilter.FilterExcluded(
                         (singleFilePath == null
                             ? Directory.GetFiles(folderPath, "*.*", searchOption)
@@ -125,9 +125,19 @@ public class LibraryImportService
                             .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower())),
                         recycleBin),
                     folderPath)
-                // A file with an id token names its event exactly. It goes
-                // first, so that no fuzzy match takes that event before it.
-                .OrderBy(f => SportarrIdToken.ExtractEventId(Path.GetFileNameWithoutExtension(f)) == null ? 1 : 0)
+                .ToList();
+
+            // The sort below needs the sidecar ids, so read every sidecar now.
+            var sidecars = scanOptions.ReadSidecars
+                ? foundFiles.ToDictionary(f => f, f => NfoSidecarReader.TryRead(f, _logger))
+                : null;
+
+            // A file with an id token names its event exactly. It goes
+            // first, so that no fuzzy match takes that event before it.
+            // An id in the sidecar names its event the same way.
+            var files = foundFiles
+                .OrderBy(f => SportarrIdToken.ExtractEventId(Path.GetFileNameWithoutExtension(f)) != null ||
+                    sidecars?[f]?.SportarrId != null ? 0 : 1)
                 .ToList();
 
             result.TotalFiles = files.Count;
@@ -212,6 +222,21 @@ public class LibraryImportService
                     var sport = sportsResult.Sport;
                     var eventDate = sportsResult.EventDate ?? parsedInfo.AirDate;
 
+                    // The sidecar keeps the air date and the title of the database
+                    // that named the file. Each one fills only a gap in the name.
+                    NfoSidecar? sidecar = null;
+                    sidecars?.TryGetValue(filePath, out sidecar);
+                    if (sidecar != null)
+                    {
+                        eventDate ??= sidecar.Aired;
+                        if (!string.IsNullOrEmpty(sidecar.Title) && (eventTitle?.Trim().Length ?? 0) < 4)
+                        {
+                            eventTitle = string.IsNullOrWhiteSpace(eventTitle)
+                                ? sidecar.Title
+                                : $"{eventTitle.Trim()} {sidecar.Title}";
+                        }
+                    }
+
                     // Extract year from filename, path, and parsed data
                     // CRITICAL: This prevents matching files to wrong events from different years
                     var parsedYear = ExtractYearFromPath(filePath, filename, sportsResult.EventYear, eventDate);
@@ -290,10 +315,14 @@ public class LibraryImportService
                     // fuzzy match would hand it to a different game. Only an
                     // id this instance does not know falls back to fuzzy
                     // scoring.
-                    var scanTokenId = sportsResult.SportarrEventId ?? parsedInfo.SportarrEventId;
-                    if (!string.IsNullOrEmpty(scanTokenId))
+                    // The sidecar id is tried when the name and the tag give no id
+                    // that this instance knows.
+                    var scanTokenIds = new[] { sportsResult.SportarrEventId ?? parsedInfo.SportarrEventId, sidecar?.SportarrId }
+                        .OfType<string>()
+                        .Where(id => id.Length > 0)
+                        .Distinct(StringComparer.OrdinalIgnoreCase);
+                    foreach (var tokenEventId in scanTokenIds)
                     {
-                        var tokenEventId = scanTokenId;
                         var tokenEvent = await _db.Events
                             .Include(e => e.League)
                             .FirstOrDefaultAsync(e => e.ExternalId == tokenEventId);
@@ -306,6 +335,7 @@ public class LibraryImportService
                             _logger.LogInformation("[Library Import] Id token match: '{File}' is tagged {Token} = '{Event}'{Note}",
                                 filename, tokenEventId, tokenEvent.Title,
                                 tokenEvent.HasFile ? " (the event already has a file)" : "");
+                            break;
                         }
                         else
                         {

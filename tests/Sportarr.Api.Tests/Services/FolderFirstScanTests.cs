@@ -325,4 +325,71 @@ public class FolderFirstScanTests : IDisposable
         Find(scan, path).FolderLeagueId.Should().BeNull();
         scan.UnresolvedFolders.Should().BeEmpty("a root folder is never a league folder");
     }
+
+    // The shape that the metadata writer makes.
+    private static void WriteNfo(string videoPath, string? title, string? aired, string? sportarrId)
+    {
+        var body = (title == null ? "" : $"<title>{title}</title>") +
+            (aired == null ? "" : $"<aired>{aired}</aired>") +
+            (sportarrId == null ? "" : $"<uniqueid type=\"sportarr\" default=\"true\">{sportarrId}</uniqueid>");
+        File.WriteAllText(Path.ChangeExtension(videoPath, ".nfo"),
+            $"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<episodedetails>{body}</episodedetails>");
+    }
+
+    [Fact]
+    public async Task Scan_WrongLookingNameWithCorrectAiredDate_Matches()
+    {
+        // Another database names the event by its circuit and numbers it 5.
+        var path = Write("Formula 1", "Season 2024", "Formula 1 - S2024E05 - Sakhir.mkv");
+        WriteNfo(path, title: null, aired: "2024-03-02", sportarrId: null);
+
+        var scan = await _service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var file = Find(scan, path);
+        file.MatchedEventId.Should().Be(_bahrain.Id);
+        file.ParsedDate.Should().Be(new DateTime(2024, 3, 2));
+        File.Exists(Path.ChangeExtension(path, ".nfo")).Should().BeTrue("the scan never moves or deletes the sidecar");
+    }
+
+    [Fact]
+    public async Task Scan_SidecarSportarrIdResolvesLikeAToken()
+    {
+        // The scan lists files in a folder before files in its subfolders.
+        // So the foreign copy is met first and would take the event without
+        // the id pass.
+        var foreign = Write("UFC", "Season 2024", "UFC 300 Pereira vs Hill.mkv");
+        var sidecarred = Write("UFC", "Season 2024", "UFC 300", "UFC - S2024E99 - Las Vegas.mkv");
+        WriteNfo(sidecarred, title: "UFC 300: Pereira vs. Hill", aired: "2024-04-13", sportarrId: "ev-200300");
+
+        var scan = await _service.ScanFolderAsync(_root, options: ScanOptions.LibraryBackground);
+
+        var file = Find(scan, sidecarred);
+        file.MatchedEventId.Should().Be(_ufc300.Id);
+        file.MatchConfidence.Should().Be(100);
+        Find(scan, foreign).MatchedEventId.Should().NotBe(_ufc300.Id, "the sidecar id file claims its event first");
+    }
+
+    [Fact]
+    public async Task Scan_ShortFileNameUsesTheSidecarTitle()
+    {
+        var path = Write("UFC", "Season 2024", "01.mkv");
+        WriteNfo(path, title: "UFC 300 Pereira vs Hill", aired: null, sportarrId: null);
+
+        var scan = await _service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        Find(scan, path).MatchedEventId.Should().Be(_ufc300.Id);
+    }
+
+    [Fact]
+    public async Task Scan_DownloadFolderModeIgnoresSidecars()
+    {
+        var path = Write("UFC", "Season 2024", "UFC - S2024E99 - Las Vegas.mkv");
+        WriteNfo(path, title: "UFC 300 Pereira vs Hill", aired: "2024-04-13", sportarrId: "ev-200300");
+
+        var scan = await _service.ScanFolderAsync(_root, options: ScanOptions.DownloadFolder);
+
+        var file = Find(scan, path);
+        file.MatchedEventId.Should().NotBe(_ufc300.Id);
+        file.ParsedDate.Should().BeNull();
+    }
 }
