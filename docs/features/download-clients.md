@@ -48,7 +48,7 @@ Qualities placed in the same profile group have equal rank. Under **Settings > M
 
 An equal copy beside the held file stays where it is and is listed in Activity for review. A scanned copy from another folder also stays there in Copy or Hardlink mode. In Move mode, an equal copy from another folder can replace the held file. An equal download that has finished in a client can replace it too.
 
-A completed download that fails the rule stays in the queue with the reason and an **Import Anyway** button. If several videos could match one event, choose the video in the pending import before importing it. A file that appears in a league folder and fails the rule is left where it is and listed in Activity with the reason. **Library Import** also lists it. A recording held by an indexer file starts unselected and needs **Import anyway** before selection. The Remove button on an Activity row deletes the file too, to the recycle bin when one is set, unless you untick that in the remove dialog. Ignore keeps the file and only stops the scans listing it. When a copy that already sits beside the file it replaces takes over, the replaced file stays on disk untracked. A copy from anywhere else replaces it through the recycle bin.
+A completed download that fails the rule stays in the queue with the reason and an **Import Anyway** button. If several videos could match one event, choose the video in the pending import before importing it. A file that appears in a league folder and fails the rule is left where it is and listed in Activity with the reason. **Library Import** also lists it. A recording held by an indexer file starts unselected and needs **Import anyway** before selection. The Remove button on an Activity row deletes the file too, to the recycle bin when one is set, unless you untick that in the remove dialog. Ignore keeps the file and stops the file watcher and the background scans from listing it. **Library Import** still lists it, so you can import it by hand. When a copy that already sits beside the file it replaces takes over, the replaced file stays on disk untracked. A copy from anywhere else replaces it through the recycle bin.
 
 ## Activity queue
 
@@ -90,7 +90,7 @@ Nothing you download waits for the scan:
 
 - Downloads import through the download client's own queue. The default poll interval is 30 seconds, configurable with a five-second minimum. Completion notifications can wake the monitor sooner
 - Blackhole grabs are tracked per queue item on that same poll
-- Files the watcher sees become pending imports immediately
+- The watcher imports a new file once it stops growing if it matches an event at 85 or higher, and lists any other file in Activity for review
 
 **When to lower it:** root folders on network shares (NFS/SMB). Change events made by other machines never reach the watcher there, so the scan is what finds files you drop in by hand. On local storage the watcher covers that instantly and there is no reason to scan more often.
 

@@ -14,11 +14,11 @@ Sportarr reads the league and the season from the names of your folders. A libra
 
 ```
 /data/sports/Formula 1/Season 2024/Formula 1 - 2024 Bahrain Grand Prix.mkv
-/data/sports/Formula 1/Season 2024/Bahrain Grand Prix/Race.mkv
+/data/sports/Formula 1/Season 2024/Bahrain Grand Prix/Formula 1 - 2024 Bahrain Grand Prix - Race.mkv
 /data/sports/NBA/Season 2024-2025/NBA - 2024-10-22 - Knicks vs Celtics.mkv
 ```
 
-The first folder whose name is a season is the season folder. The folder above it is the league folder. Without a season folder, the first folder below the root folder is the league folder. A folder below the season folder, such as an event folder, changes neither.
+The first folder whose name is a season is the season folder. The folder above it is the league folder. Without a season folder, the first folder below the root folder is the league folder. A folder below the season folder, such as an event folder, changes neither. Sportarr does not use the event folder's name for matching, so the file's own name must name the event.
 
 Sportarr reads these season folder names. Capital letters do not matter.
 
@@ -118,7 +118,7 @@ Click **Match** on an unmatched file, or **Edit** on a matched one, to choose th
 
 **Select All** also selects the unmatched files. An unmatched file that you import without choosing an event becomes a new event, named from the file.
 
-When an event already has a file, the row says why the new file would not replace it. The rules are in [A file for an event that already has one](download-clients.md#a-file-for-an-event-that-already-has-one). An IPTV recording held by an indexer file is not selected. Tick **Import anyway** on that file if you want the recording to replace the indexer file.
+When an event already has a file, the row says why the new file would not replace it. The rules are in [A file for an event that already has one](download-clients.md#a-file-for-an-event-that-already-has-one). An IPTV recording held by an indexer file is not selected. Select **Import anyway** on that file if you want the recording to replace the indexer file.
 
 **Import Mode** decides what happens to the original files. **Auto** follows your Media Management settings. **Hardlink/Copy** and **Copy** leave the originals untouched, so seeding torrents stay intact. **Hardlink/Copy** links when the source and the library are on the same filesystem and copies otherwise. **Move** relocates the files and frees the source.
 
