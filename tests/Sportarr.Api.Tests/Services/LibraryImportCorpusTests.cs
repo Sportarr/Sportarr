@@ -22,7 +22,7 @@ namespace Sportarr.Api.Tests.Services;
 /// </summary>
 public class LibraryImportCorpusTests : IDisposable
 {
-    public const int RecordedRecallPercent = 74; // raised by each task, never lowered
+    public const int RecordedRecallPercent = 75; // raised by each task, never lowered
 
     private readonly ITestOutputHelper _output;
     private readonly string _root;
