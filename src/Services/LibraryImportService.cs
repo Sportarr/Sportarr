@@ -428,6 +428,11 @@ public class LibraryImportService
                             }
                         }
 
+                        // A date names one event only when no other candidate falls on it.
+                        var candidatesOnDate = eventDate.HasValue
+                            ? candidates.Count(candidate => FallsOn(candidate, eventDate.Value))
+                            : 0;
+
                         var candidatesAtBest = 0;
                         var bestHasEpisodeNumberBonus = false;
                         foreach (var candidate in candidates)
@@ -445,7 +450,8 @@ public class LibraryImportService
                                 eventDate, parsedYear, sportsResult.RoundNumber,
                                 sportsResult.SeasonYearEnd, explicitEpisodeNumber,
                                 sportsResult.Location, _logger, sport, scoringLabel,
-                                roundRaceNumbers, filename, datePeers, out var episodeNumberBonus);
+                                roundRaceNumbers, filename, datePeers,
+                                candidatesOnDate > 1, out var episodeNumberBonus);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
@@ -2370,6 +2376,10 @@ public class LibraryImportService
         return "Fighting";
     }
 
+    /// <summary>True when the event's broadcast day or UTC day is the date.</summary>
+    private static bool FallsOn(Event evt, DateTime date) =>
+        (evt.BroadcastDate ?? evt.EventDate).Date == date.Date || evt.EventDate.Date == date.Date;
+
     /// <summary>The lowest confidence a library scan accepts as a match.</summary>
     private const int MatchAcceptanceFloor = 40;
 
@@ -2418,14 +2428,17 @@ public class LibraryImportService
         string? seriesLabel = null,
         IReadOnlyList<int>? roundRaceNumbers = null,
         string? sourceTitle = null,
-        IReadOnlyCollection<Event>? datePeers = null) =>
+        IReadOnlyCollection<Event>? datePeers = null,
+        bool dateSharedByAnotherCandidate = false) =>
         CalculateMatchConfidence(searchTitle, eventTitle, organization, evt, parsedDate, parsedYear,
             parsedRoundNumber, seasonYearEnd, explicitEpisodeNumber, parsedLocation, logger, parsedSport,
-            seriesLabel, roundRaceNumbers, sourceTitle, datePeers, out _);
+            seriesLabel, roundRaceNumbers, sourceTitle, datePeers, dateSharedByAnotherCandidate, out _);
 
     /// <summary>
     /// Same as the other form. It also tells if the S/E number added its
     /// bonus, so the scan knows if the number chose this event.
+    /// The scan sets dateSharedByAnotherCandidate when another candidate
+    /// falls on the parsed date. Such a date names no single event.
     /// </summary>
     internal static int CalculateMatchConfidence(
         string searchTitle,
@@ -2444,6 +2457,7 @@ public class LibraryImportService
         IReadOnlyList<int>? roundRaceNumbers,
         string? sourceTitle,
         IReadOnlyCollection<Event>? datePeers,
+        bool dateSharedByAnotherCandidate,
         out bool episodeNumberBonus)
     {
         episodeNumberBonus = false;
@@ -2678,8 +2692,10 @@ public class LibraryImportService
         // Such a file carries the id token and does not reach this scorer.
         // A file named by another database carries that database's number.
         // So the number only supports other agreement. It does not decide alone.
-        // Corroboration is a strong title, a date that passed the date gate,
-        // an equal round, or a location in the event title.
+        // Corroboration is a strong title, the exact date of this event when
+        // no other candidate falls on it, an equal round, or a location in
+        // the event title. A near date does not corroborate. A week holds
+        // many events, so an equal number near it is chance.
         // A round and a location name a weekend, not a session. When the event
         // names a session, they corroborate only if the file names that session.
         // Same number with corroboration: add 50.
@@ -2689,7 +2705,9 @@ public class LibraryImportService
         if (explicitEpisodeNumber.HasValue && evt.EpisodeNumber.HasValue)
         {
             var numberAgrees = evt.EpisodeNumber.Value == explicitEpisodeNumber.Value;
-            var corroborated = strongTitleAward > 0 || dateMatch is { Score: > 0 } ||
+            var exactUniqueDate = dateMatch is { Reject: false, DaysDifference: 0 } &&
+                !dateSharedByAnotherCandidate;
+            var corroborated = strongTitleAward > 0 || exactUniqueDate ||
                 ((roundAgrees || locationAgrees) && FileNamesEventSession(sessions));
             if (numberAgrees && corroborated)
             {
@@ -2777,11 +2795,12 @@ public class LibraryImportService
         }
 
         // ── NO IDENTITY ─────────────────────────────────────────────────────────
-        // Year and date are true for every game of the day. A name that shares
+        // Year and date are true for every event of the day. A name that shares
         // no word with the event, names no league or team pair and carries no
-        // round or episode that fits has not identified this event. Keep it
-        // under the acceptance floor.
-        var hasStructuralMatch = explicitEpisodeNumber.HasValue && evt.EpisodeNumber == explicitEpisodeNumber ||
+        // round or corroborated episode that fits has not identified this
+        // event. Keep it under the acceptance floor. An equal episode number
+        // without corroboration is chance, so it is not identity.
+        var hasStructuralMatch = episodeNumberBonus ||
             parsedRoundNumber.HasValue && eventRoundNumber.HasValue && eventRoundNumber == parsedRoundNumber;
         if (!hasTitleEvidence && !hasStructuralMatch && !hasLeagueReleaseIdentity &&
             !organizationEstablishesIdentity &&

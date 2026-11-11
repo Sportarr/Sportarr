@@ -6,6 +6,7 @@ using Moq;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Import;
 using Sportarr.Api.Services.Interfaces;
 using Xunit;
 
@@ -110,6 +111,145 @@ public class ForeignNumberingImportTests : IDisposable
     public void DifferentNumberWithoutCorroboration_SubtractsThirty()
     {
         BahrainScore(Uncorroborated, 10).Should().Be(BahrainScore(Uncorroborated, null) - 30);
+    }
+
+    // Each corroboration alone. The title shares only some words, so
+    // without the signal under test the number corroborates nothing.
+    private static int BahrainScore(int? episode, DateTime? date = null, bool dateShared = false,
+        int? round = null, string? location = null) =>
+        LibraryImportService.CalculateMatchConfidence(
+            searchTitle: Uncorroborated, eventTitle: "Bahrain Grand Prix - Race",
+            organization: "Formula 1", evt: BahrainRace(), parsedDate: date, parsedYear: 2024,
+            parsedRoundNumber: round, explicitEpisodeNumber: episode, parsedLocation: location,
+            parsedSport: "Motorsport", seriesLabel: "Formula 1", dateSharedByAnotherCandidate: dateShared);
+
+    [Fact]
+    public void ExactUniqueDateAlone_CorroboratesTheNumber()
+    {
+        var raceDay = new DateTime(2024, 3, 2);
+        BahrainScore(8, raceDay).Should().Be(BahrainScore(null, raceDay) + 50);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(7)]
+    public void NearDateAlone_DoesNotCorroborateTheNumber(int daysOff)
+    {
+        var nearDay = new DateTime(2024, 3, 2).AddDays(daysOff);
+        BahrainScore(8, nearDay).Should().Be(BahrainScore(null, nearDay));
+    }
+
+    [Fact]
+    public void ExactDateSharedByAnotherCandidate_DoesNotCorroborateTheNumber()
+    {
+        var raceDay = new DateTime(2024, 3, 2);
+        BahrainScore(8, raceDay, dateShared: true).Should().Be(BahrainScore(null, raceDay, dateShared: true));
+    }
+
+    [Fact]
+    public void RoundAlone_CorroboratesTheNumber()
+    {
+        BahrainScore(8, round: 1).Should().Be(BahrainScore(null, round: 1) + 50);
+    }
+
+    [Fact]
+    public void LocationAlone_CorroboratesTheNumber()
+    {
+        BahrainScore(8, location: "Bahrain").Should().Be(BahrainScore(null, location: "Bahrain") + 50);
+    }
+
+    [Fact]
+    public void UncorroboratedEqualNumber_IsNotIdentity()
+    {
+        // The label names the league and the parser found no organization.
+        // The exact date falls on two sessions, so it names neither. The
+        // equal number is chance, so the name has not identified the event.
+        var practice3 = new Event
+        {
+            Title = "Bahrain Grand Prix - Practice 3", Sport = "Motorsport", Round = "1",
+            Season = "2023", SeasonNumber = 2023, EpisodeNumber = 3,
+            EventDate = new DateTime(2023, 3, 4, 11, 30, 0, DateTimeKind.Utc), League = BahrainRace().League,
+        };
+
+        var score = LibraryImportService.CalculateMatchConfidence(
+            searchTitle: "Testing Day Two Morning", eventTitle: practice3.Title,
+            organization: null, evt: practice3, parsedDate: new DateTime(2023, 3, 4), parsedYear: 2023,
+            explicitEpisodeNumber: 3, parsedSport: "Motorsport", seriesLabel: "Formula 1",
+            dateSharedByAnotherCandidate: true);
+
+        score.Should().BeLessThan(40);
+    }
+
+    private void WriteAired(string name, string aired)
+    {
+        WriteFile(name);
+        File.WriteAllText(Path.Combine(_tempDir, Path.ChangeExtension(name, ".nfo")),
+            $"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<episodedetails><aired>{aired}</aired></episodedetails>");
+    }
+
+    [Fact]
+    public async Task NearSidecarDate_DoesNotLetTheNumberChooseAnotherSession()
+    {
+        // Another database numbers the testing sessions. Each sidecar holds
+        // the date of the testing day, which is one day from the next one.
+        var f1 = new League { Name = "Formula 1", Sport = "Motorsport", AlternateName = "F1, Formula One" };
+        _db.Leagues.Add(f1);
+        _db.SaveChanges();
+        Event Session(string title, string round, int episode, DateTime date) => new()
+        {
+            Title = title, Sport = "Motorsport", Round = round, Season = "2024", SeasonNumber = 2024,
+            EpisodeNumber = episode, EventDate = date, LeagueId = f1.Id, Monitored = true,
+        };
+        var testing1 = Session("Pre Season Testing - Practice 1", "500", 1, new DateTime(2024, 2, 21, 7, 0, 0, DateTimeKind.Utc));
+        var testing2 = Session("Pre Season Testing - Practice 2", "500", 2, new DateTime(2024, 2, 22, 7, 0, 0, DateTimeKind.Utc));
+        var testing3 = Session("Pre Season Testing - Practice 3", "500", 3, new DateTime(2024, 2, 23, 7, 0, 0, DateTimeKind.Utc));
+        var bahrain1 = Session("Bahrain Grand Prix - Practice 1", "1", 4, new DateTime(2024, 2, 29, 11, 30, 0, DateTimeKind.Utc));
+        var bahrain2 = Session("Bahrain Grand Prix - Practice 2", "1", 5, new DateTime(2024, 2, 29, 15, 0, 0, DateTimeKind.Utc));
+        _db.Events.AddRange(testing1, testing2, testing3, bahrain1, bahrain2);
+        _db.SaveChanges();
+        var expected = new Dictionary<string, int>
+        {
+            ["Formula 1 - S2024E02 - Testing - Day 1, Session 2"] = testing1.Id,
+            ["Formula 1 - S2024E04 - Testing - Day 2, Session 2"] = testing2.Id,
+            ["Formula 1 - S2024E05 - Testing - Day 3, Session 1"] = testing3.Id,
+        };
+        WriteAired("Formula 1 - S2024E02 - Testing - Day 1, Session 2.mkv", "2024-02-21");
+        WriteAired("Formula 1 - S2024E04 - Testing - Day 2, Session 2.mkv", "2024-02-22");
+        WriteAired("Formula 1 - S2024E05 - Testing - Day 3, Session 1.mkv", "2024-02-23");
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false, options: ScanOptions.LibraryBackground);
+
+        result.MatchedFiles.Should().HaveCountLessThanOrEqualTo(3);
+        foreach (var file in result.MatchedFiles)
+            file.MatchedEventId.Should().Be(expected[Path.GetFileNameWithoutExtension(file.FileName)],
+                $"{file.FileName} must not move onto another session at {file.MatchConfidence}");
+    }
+
+    [Fact]
+    public async Task EqualNumberOnASharedDate_DoesNotReachTheAutoImportFloor()
+    {
+        // 71 is the number of the second event of the day by chance.
+        var nfl = new League { Name = "NFL", Sport = "American Football" };
+        _db.Leagues.Add(nfl);
+        _db.SaveChanges();
+        Event SameDay(string title, int episode, int hour) => new()
+        {
+            Title = title, Sport = "American Football", Season = "2025", SeasonNumber = 2025,
+            EpisodeNumber = episode, LeagueId = nfl.Id, Monitored = true,
+            EventDate = new DateTime(2025, 10, 5, hour, 0, 0, DateTimeKind.Utc),
+        };
+        _db.Events.AddRange(
+            SameDay("Kansas City Chiefs vs Jacksonville Jaguars", 70, 17),
+            SameDay("Denver Broncos vs Philadelphia Eagles", 71, 20),
+            SameDay("Seattle Seahawks vs Tampa Bay Buccaneers", 72, 23));
+        _db.SaveChanges();
+        WriteFile("NFL - S2025E71 - Week 5 Sunday Night Football 2025-10-05.mkv");
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false);
+
+        // The date falls on three events, so it does not corroborate E71.
+        result.MatchedFiles.Should().NotContain(f => f.MatchConfidence >= LibraryImportService.AutoImportConfidenceFloor);
     }
 
     [Fact]
