@@ -2545,6 +2545,18 @@ public class LibraryImportService
             return 0;
         }
 
+        // ── SESSION GATE ────────────────────────────────────────────────────────
+        // A file that names one session of a weekend is never another session
+        // of it. A second copy of a filled session otherwise moves onto a
+        // sibling session, because the filled event is not a candidate.
+        var sessions = SessionsOf(originalTitle, eventTitle, evt.League?.Name);
+        if (!string.IsNullOrEmpty(sessions.File) && !FileNamesEventSession(sessions))
+        {
+            logger?.LogDebug("[Match] Session gate: file names '{FileSession}', event '{Event}' is '{EventSession}' - rejecting",
+                sessions.File, eventTitle, sessions.Event);
+            return 0;
+        }
+
         // ── ROUND NUMBER ────────────────────────────────────────────────────────
         // A filename "Round09" is the CHAMPIONSHIP ROUND, which must be compared
         // against the event's own Round field, never its EpisodeNumber. For
@@ -2557,8 +2569,6 @@ public class LibraryImportService
         // "Chinese GP Free Practice 1".
         var eventRoundNumber = int.TryParse(evt.Round, out var er) ? er : (int?)null;
         var roundAgrees = false;
-        var sessions = new Lazy<(string? File, string? Event)>(() =>
-            SessionsOf(originalTitle, eventTitle, evt.League?.Name));
         if (parsedRoundNumber.HasValue && eventRoundNumber.HasValue)
         {
             var hasExactPreseasonDate = eventRoundNumber.Value == 500 &&
@@ -2567,14 +2577,7 @@ public class LibraryImportService
             if (eventRoundNumber.Value == parsedRoundNumber.Value || hasExactPreseasonDate)
             {
                 roundAgrees = true;
-                // A round names a weekend. When the file and the event name
-                // different sessions of it, the round adds nothing.
-                var (fileSession, eventSession) = sessions.Value;
-                var sessionsConflict = !hasExactPreseasonDate &&
-                    !string.IsNullOrEmpty(fileSession) && !string.IsNullOrEmpty(eventSession) &&
-                    !string.Equals(fileSession, eventSession, StringComparison.OrdinalIgnoreCase);
-                if (!sessionsConflict)
-                    confidence += 50;
+                confidence += 50;
                 logger?.LogDebug("[Match] Round {Round} matches event Round for '{Event}'", parsedRoundNumber.Value, eventTitle);
             }
             else
@@ -2687,7 +2690,7 @@ public class LibraryImportService
         {
             var numberAgrees = evt.EpisodeNumber.Value == explicitEpisodeNumber.Value;
             var corroborated = strongTitleAward > 0 || dateMatch is { Score: > 0 } ||
-                ((roundAgrees || locationAgrees) && FileNamesEventSession(sessions.Value));
+                ((roundAgrees || locationAgrees) && FileNamesEventSession(sessions));
             if (numberAgrees && corroborated)
             {
                 confidence += 50;

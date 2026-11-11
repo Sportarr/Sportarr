@@ -316,4 +316,72 @@ public class ForeignNumberingImportTests : IDisposable
         result.MatchedFiles.Should().ContainSingle()
             .Which.MatchedEventId.Should().Be(race.Id);
     }
+
+    private static Event BahrainSession(string session, int episode, DateTime date) => new()
+    {
+        Title = $"Bahrain Grand Prix - {session}", Sport = "Motorsport", Round = "1",
+        Season = "2024", SeasonNumber = 2024, EpisodeNumber = episode, EventDate = date,
+    };
+
+    [Fact]
+    public void SessionConflict_RejectsTheSiblingSession()
+    {
+        // The file names qualifying. Practice 2 is another session of the weekend.
+        var practice2 = BahrainSession("Practice 2", 4, new DateTime(2024, 2, 29, 15, 0, 0, DateTimeKind.Utc));
+        practice2.League = BahrainRace().League;
+
+        var score = LibraryImportService.CalculateMatchConfidence(
+            searchTitle: "Formula.1.2024.Round01.Bahrain.Qualifying", eventTitle: practice2.Title,
+            organization: "Formula 1", evt: practice2, parsedDate: null, parsedYear: 2024,
+            parsedRoundNumber: 1, parsedLocation: "Bahrain", parsedSport: "Motorsport");
+
+        score.Should().Be(0);
+    }
+
+    [Fact]
+    public void NoSessionInTheFile_StillMatches()
+    {
+        var score = LibraryImportService.CalculateMatchConfidence(
+            searchTitle: "Formula 1 - 2024 Bahrain Grand Prix", eventTitle: "Bahrain Grand Prix - Race",
+            organization: "Formula 1", evt: BahrainRace(), parsedDate: null, parsedYear: 2024,
+            parsedSport: "Motorsport");
+
+        score.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task SecondCopyOfAFilledSession_StaysUnmatched()
+    {
+        // Qualifying already has its file, so it is not a candidate.
+        // The copy must not move onto another session of the weekend.
+        var race = BahrainRace();
+        _db.Leagues.Add(race.League!);
+        _db.SaveChanges();
+        race.LeagueId = race.League!.Id;
+        race.Monitored = true;
+        var weekend = new[]
+        {
+            BahrainSession("Practice 1", 3, new DateTime(2024, 2, 29, 11, 30, 0, DateTimeKind.Utc)),
+            BahrainSession("Practice 2", 4, new DateTime(2024, 2, 29, 15, 0, 0, DateTimeKind.Utc)),
+            BahrainSession("Practice 3", 5, new DateTime(2024, 3, 1, 12, 30, 0, DateTimeKind.Utc)),
+            BahrainSession("Qualifying", 7, new DateTime(2024, 3, 1, 16, 0, 0, DateTimeKind.Utc)),
+        };
+        foreach (var session in weekend)
+        {
+            session.LeagueId = race.League.Id;
+            session.Monitored = true;
+        }
+        var qualifying = weekend[3];
+        qualifying.HasFile = true;
+        qualifying.FilePath = "/library/Formula 1/Season 2024/Bahrain Grand Prix - Qualifying.mkv";
+        _db.Events.Add(race);
+        _db.Events.AddRange(weekend);
+        _db.SaveChanges();
+        WriteFile("Formula.1.2024.Round01.Bahrain.Qualifying.mkv");
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false);
+
+        result.MatchedFiles.Should().BeEmpty();
+        result.UnmatchedFiles.Should().ContainSingle();
+    }
 }
