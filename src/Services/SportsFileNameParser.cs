@@ -333,6 +333,22 @@ public class SportsFileNameParser
             SessionExtractor = match => DetectMotorsportSession(match.Groups["name"].Value)
         },
 
+        // Library names from another database: "Formula 1 - S2024E10 - Round 1: Bahrain (Race)",
+        // "MotoGP - S2024E12 - Qatar Airways Grand Prix of Qatar MotoGP Free Practice Nr. 1".
+        // The episode number is not Sportarr's. The title must carry the match.
+        // MUST come before the release patterns below. They need a year after the series name.
+        new SportsPattern
+        {
+            Sport = "Motorsport",
+            Organization = "Formula 1",
+            Pattern = new Regex(@"^(?<org>Formula[\.\-\s]*1|F1|MotoGP)\s*-\s*S\d{2,4}E\d{1,4}\s*-\s*(?:Round\s*(?<round>\d+)\s*:\s*)?(?<name>.+?)\s*(?:\((?<session>[^)]+)\))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            OrganizationExtractor = LibraryNameOrganization,
+            TitleBuilder = LibraryNameTitle,
+            RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
+            LocationExtractor = (match) => LibraryNameLocation(match.Groups["name"].Value),
+            SessionExtractor = LibraryNameSession
+        },
+
         // F1 Academy: F1.Academy.2026.China.Grand.Prix.Practice, Formula1.Academy.2026.Round03.Miami
         // MUST come before F1 pattern to prevent F1 Academy releases matching as Formula 1
         new SportsPattern
@@ -871,7 +887,7 @@ public class SportsFileNameParser
             if (match.Success)
             {
                 result.Sport = pattern.Sport;
-                result.Organization = pattern.Organization;
+                result.Organization = pattern.OrganizationExtractor?.Invoke(match) ?? pattern.Organization;
                 result.EventTitle = pattern.TitleBuilder(match);
                 result.MatchedPattern = pattern.Pattern.ToString();
                 result.Confidence = 90; // High confidence for pattern match
@@ -1349,6 +1365,71 @@ public class SportsFileNameParser
         return Regex.Replace(location.Trim(), @"[\.\-\s]+$", "").Replace('.', ' ').Replace('-', ' ').Trim();
     }
 
+    // A MotoGP library also holds the sessions of the support classes.
+    private static readonly Regex SupportClass = new(@"\bMoto(?<class>[23])\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+    // The class name ends the Grand Prix name and starts the session.
+    private static readonly Regex MotoGpClassTail = new(@"\s*\bMoto(?:GP|2|3)\b(?<session>.*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+    private static readonly Regex TestingName = new(@"\btest(?:ing)?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+    // "Grand Prix of Qatar", "Grande Prémio Tissot de Portugal": the place follows the last joining word.
+    private static readonly Regex PlaceAfterJoiningWord = new(@"^.*\b(?:of(?:\s+the)?|de|di|del|von)\s+(?<place>\S.*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+    // "Monster Energy British Grand Prix": the place is the word before Grand Prix.
+    private static readonly Regex PlaceBeforeGrandPrix = new(@"(?<place>\S+)\s+Grand\s+Prix\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+
+    private static bool IsMotoGpLibraryName(Match match) =>
+        match.Groups["org"].Value.Equals("MotoGP", StringComparison.OrdinalIgnoreCase);
+
+    private static string? SupportClassOf(Match match)
+    {
+        if (!IsMotoGpLibraryName(match)) return null;
+        var supportClass = SupportClass.Match(match.Groups["name"].Value);
+        return supportClass.Success ? $"Moto{supportClass.Groups["class"].Value}" : null;
+    }
+
+    private static string LibraryNameOrganization(Match match) =>
+        IsMotoGpLibraryName(match) ? SupportClassOf(match) ?? "MotoGP" : "Formula 1";
+
+    private static string LibraryNameTitle(Match match)
+    {
+        var title = match.Groups["name"].Value;
+        if (match.Groups["session"].Success)
+            title += " " + match.Groups["session"].Value;
+        return Regex.Replace(title.Replace('.', ' ').Replace('-', ' '), @"\s{2,}", " ").Trim();
+    }
+
+    /// <summary>
+    /// The place a library name gives, such as "Bahrain" or "Qatar".
+    /// Null for a testing day, which names no Grand Prix.
+    /// </summary>
+    internal static string? LibraryNameLocation(string name)
+    {
+        var grandPrix = MotoGpClassTail.Replace(name, string.Empty).Trim();
+        if (grandPrix.Length == 0 || TestingName.IsMatch(grandPrix)) return null;
+
+        var afterJoiningWord = PlaceAfterJoiningWord.Match(grandPrix);
+        if (afterJoiningWord.Success) return CleanLocationName(afterJoiningWord.Groups["place"].Value);
+
+        var beforeGrandPrix = PlaceBeforeGrandPrix.Match(grandPrix);
+        if (beforeGrandPrix.Success) return CleanLocationName(beforeGrandPrix.Groups["place"].Value);
+
+        return CleanLocationName(grandPrix);
+    }
+
+    private static string? LibraryNameSession(Match match)
+    {
+        // A Moto2 or Moto3 session is not a session of the MotoGP event.
+        if (SupportClassOf(match) != null) return null;
+        if (match.Groups["session"].Success)
+            return DetectMotorsportSession(match.Groups["session"].Value);
+
+        var name = match.Groups["name"].Value;
+        if (!IsMotoGpLibraryName(match)) return DetectMotorsportSession(name);
+
+        // Read the session after the class only. "Grand Prix" in the event
+        // name would otherwise read as the race.
+        var tail = MotoGpClassTail.Match(name);
+        return tail.Success ? DetectMotorsportSession(tail.Groups["session"].Value) : null;
+    }
+
     /// <summary>
     /// Detect motorsport session type from the captured name/location string.
     /// Looks for keywords like Race, Qualifying, Sprint, Practice, FP1-3, Warm Up.
@@ -1362,6 +1443,11 @@ public class SportsFileNameParser
         var lower = cleaned.ToLowerInvariant();
 
         // Order matters: check more specific patterns first
+        // Library names number sessions as "Nr. 1". A MotoGP weekend holds both
+        // Free Practice and Practice, so the two stay apart.
+        var numbered = Regex.Match(lower, @"\b(?<free>free\s+)?practice\s+nr\.?\s*(?<number>\d)\b");
+        if (numbered.Success)
+            return (numbered.Groups["free"].Success ? "Free Practice " : "Practice ") + numbered.Groups["number"].Value;
         // Practice (most specific first — bare "practice" falls through to Practice 1)
         // Accept word ordinals too ("Practice Three") so the import-side label matches the
         // EventPartDetector match gate, which already handles (3|three). Without this a
@@ -1372,7 +1458,8 @@ public class SportsFileNameParser
         if (Regex.IsMatch(lower, @"\bpractice\b|\bfree\s+practice\b")) return "Practice 1";
         // Sprint sessions
         if (Regex.IsMatch(lower, @"\bsprint\s+qualifying\b")) return "Sprint Qualifying";
-        if (Regex.IsMatch(lower, @"\bsprint\s+shootout\b")) return "Sprint Qualifying";
+        // F1 named the 2023 session Sprint Shootout. Its events keep that name.
+        if (Regex.IsMatch(lower, @"\bsprint\s+shootout\b")) return "Sprint Shootout";
         if (Regex.IsMatch(lower, @"\bsprint\s+race\b")) return "Sprint Race";
         if (Regex.IsMatch(lower, @"\bsprint\b")) return "Sprint";
         // Bare "shootout" (without "sprint") was F1's 2023-2024 name for Sprint Qualifying
@@ -1410,6 +1497,8 @@ public class SportsPattern
     public Func<Match, string?>? LocationExtractor { get; set; }
     /// <summary>Optional: extracts the session type from the match (Race, Qualifying, Sprint, etc.).</summary>
     public Func<Match, string?>? SessionExtractor { get; set; }
+    /// <summary>Optional: reads the organization from the match. Null keeps <see cref="Organization"/>.</summary>
+    public Func<Match, string?>? OrganizationExtractor { get; set; }
 }
 
 /// <summary>

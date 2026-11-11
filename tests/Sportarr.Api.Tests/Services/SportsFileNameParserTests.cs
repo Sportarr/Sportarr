@@ -148,4 +148,38 @@ public class SportsFileNameParserTests
         result.Organization.Should().Be("ONE Championship");
         result.Sport.Should().Be("Fighting");
     }
+
+    // Another database names library files "Series - SxxxxEyy - Title".
+    // Its episode number is not Sportarr's, so the title must carry the
+    // round, the location and the session.
+    [Theory]
+    [InlineData("Formula 1 - S2024E10 - Round 1: Bahrain (Race)", "Formula 1", 1, "Bahrain", "Race", 2024)]
+    [InlineData("Formula 1 - S2023E11 - Bahrain (Race)", "Formula 1", null, "Bahrain", "Race", 2023)]
+    [InlineData("Formula 1 - S2023E24 - Azerbaijan (Sprint Shootout)", "Formula 1", null, "Azerbaijan", "Sprint Shootout", 2023)]
+    [InlineData("Formula 1 - S2024E09 - Round 1: Bahrain (Qualifying)", "Formula 1", 1, "Bahrain", "Qualifying", 2024)]
+    [InlineData("MotoGP - S2024E12 - Qatar Airways Grand Prix of Qatar MotoGP Free Practice Nr. 1", "MotoGP", null, "Qatar", "Free Practice 1", 2024)]
+    public void ForeignNamedMotorsportFile_YieldsRoundLocationSession(string name, string org, int? round, string location, string session, int year)
+    {
+        var result = _parser.Parse(name);
+
+        result.Organization.Should().Be(org);
+        result.RoundNumber.Should().Be(round);
+        result.Location.Should().Be(location);
+        result.Session.Should().Be(session);
+        result.EventYear.Should().Be(year);
+    }
+
+    // A MotoGP library also holds the Moto2 and Moto3 sessions. They are not
+    // MotoGP sessions, so the file must not read as one.
+    [Theory]
+    [InlineData("MotoGP - S2024E11 - Qatar Airways Grand Prix of Qatar Moto2 Free Practice", "Moto2")]
+    [InlineData("MotoGP - S2024E10 - Qatar Airways Grand Prix of Qatar Moto3 Free Practice", "Moto3")]
+    public void ForeignNamedSupportClassFile_DoesNotReadAsMotoGp(string name, string supportClass)
+    {
+        var result = _parser.Parse(name);
+
+        result.Organization.Should().Be(supportClass);
+        result.Session.Should().BeNull();
+        result.EventTitle.Should().Contain(supportClass);
+    }
 }
