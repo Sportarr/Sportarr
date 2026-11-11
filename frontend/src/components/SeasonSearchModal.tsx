@@ -13,7 +13,9 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   FolderIcon,
+  FilmIcon,
   InformationCircleIcon,
+  PencilSquareIcon,
   CloudArrowDownIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
@@ -82,6 +84,8 @@ interface SeasonSearchResults {
   leagueId: number;
   leagueName: string;
   season: string;
+  /** The text the server sent to the indexers. */
+  searchQuery?: string;
   eventCount: number;
   monitoredEventCount: number;
   downloadedEventCount: number;
@@ -136,6 +140,11 @@ export default function SeasonSearchModal({
   const [expandedReleases, setExpandedReleases] = useState<Set<string>>(new Set());
   const [blocklistConfirm, setBlocklistConfirm] = useState<{ index: number; result: SeasonSearchRelease } | null>(null);
 
+  // Custom search text. It starts as the query the server built.
+  const [customQuery, setCustomQuery] = useState('');
+  const [showCustomSearch, setShowCustomSearch] = useState(false);
+  const [lastSearchWasCustom, setLastSearchWasCustom] = useState(false);
+
   // History state
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -159,6 +168,9 @@ export default function SeasonSearchModal({
       setExpandedReleases(new Set());
       setActiveTab('search');
       setBlocklistConfirm(null);
+      setCustomQuery('');
+      setShowCustomSearch(false);
+      setLastSearchWasCustom(false);
       setHistory([]);
       loadHistory(requestId);
 
@@ -171,6 +183,7 @@ export default function SeasonSearchModal({
           const results = await response.json();
           if (requestId !== requestRef.current) return;
           setSearchResults(results);
+          prefillCustomQuery(results);
         } catch (error) {
           console.error('Season search failed:', error);
           if (requestId !== requestRef.current) return;
@@ -235,21 +248,32 @@ export default function SeasonSearchModal({
     });
   };
 
-  const handleSearch = async () => {
+  // Keep text the user typed. Only an empty box takes the server query.
+  const prefillCustomQuery = (results: SeasonSearchResults | null) => {
+    const built = results?.searchQuery;
+    if (built) setCustomQuery(prev => (prev.trim() ? prev : built));
+  };
+
+  const handleSearch = async (useCustomQuery: boolean = false) => {
     // A manual search supersedes the automatic one, so it takes the next
     // number and the automatic result is discarded when it arrives.
     const requestId = ++requestRef.current;
+    const custom = useCustomQuery ? customQuery.trim() : '';
 
     setIsSearching(true);
     setSearchError(null);
     setSearchResults(null);
+    setLastSearchWasCustom(custom.length > 0);
 
     try {
       const endpoint = `/api/leagues/${leagueId}/seasons/${encodeURIComponent(season)}/search`;
-      const response = await apiPost(endpoint, { qualityProfileId });
+      const payload: { qualityProfileId?: number; customQuery?: string } = { qualityProfileId };
+      if (custom) payload.customQuery = custom;
+      const response = await apiPost(endpoint, payload);
       const results = await response.json();
       if (requestId !== requestRef.current) return;
       setSearchResults(results);
+      prefillCustomQuery(results);
     } catch (error) {
       console.error('Season search failed:', error);
       if (requestId !== requestRef.current) return;
@@ -277,6 +301,9 @@ export default function SeasonSearchModal({
     try {
       // For season packs, we need to grab the release and associate it with matching events
       // The backend will handle mapping the release to specific events during import
+      // A single-event release is grabbed for its one event. Only a pack
+      // carries the list of events it covers.
+      const singleEvent = !release.isSeasonPack ? release.matchedEvents[0] : undefined;
       const response = await apiPost('/api/release/grab', {
         title: release.title,
         guid: release.guid,
@@ -297,7 +324,7 @@ export default function SeasonSearchModal({
         // Use the first matched event as the primary event
         eventId: release.matchedEvents[0]?.eventId,
         // Include all matched event IDs for season pack handling
-        matchedEventIds: release.matchedEvents.map(e => e.eventId),
+        matchedEventIds: release.isSeasonPack ? release.matchedEvents.map(e => e.eventId) : undefined,
         isSeasonPack: release.isSeasonPack,
         overrideBlocklist: release.isBlocklisted,
       });
@@ -306,7 +333,9 @@ export default function SeasonSearchModal({
         toast.success('Release grabbed', {
           description: release.isSeasonPack
             ? `Season pack queued for download (${release.matchedEventCount} events)`
-            : `Release queued for download`
+            : singleEvent
+              ? `Release queued for ${singleEvent.eventTitle}`
+              : `Release queued for download`
         });
         onClose();
       } else {
@@ -319,6 +348,21 @@ export default function SeasonSearchModal({
     } finally {
       setDownloadingIndex(null);
     }
+  };
+
+  const downloadTitle = (release: SeasonSearchRelease) =>
+    release.isSeasonPack
+      ? `Download season pack (${release.matchedEventCount} events)`
+      : release.matchedEvents[0]
+        ? `Download for ${release.matchedEvents[0].eventTitle}`
+        : 'Download';
+
+  const resultCountText = (releases: SeasonSearchRelease[]) => {
+    const packs = releases.filter(r => r.isSeasonPack).length;
+    const singles = releases.length - packs;
+    const packText = `${packs} season pack${packs !== 1 ? 's' : ''}`;
+    if (singles === 0) return `Found ${packText}`;
+    return `Found ${packText} and ${singles} single-event release${singles !== 1 ? 's' : ''}`;
   };
 
   const toggleReleaseExpanded = (guid: string) => {
@@ -424,7 +468,7 @@ export default function SeasonSearchModal({
   const sortedResults = useMemo(() => {
     if (!searchResults?.releases) return [];
 
-    // Backend already filters to season packs only, just sort here
+    // The server keeps season packs, plus single events for custom text. Only sort here.
     return [...searchResults.releases].sort((a, b) => {
       let comparison = 0;
 
@@ -500,7 +544,7 @@ export default function SeasonSearchModal({
     return 'usenet';
   };
 
-  // Get icon for history item type (matching Sonarr's conventions)
+  // Get icon for history item type
   const getHistoryIcon = (type: string) => {
     switch (type) {
       case 'grabbed':
@@ -609,28 +653,88 @@ export default function SeasonSearchModal({
                 {activeTab === 'search' && (
                   <>
                     {/* Search Controls */}
-                    <div className="px-3 md:px-6 py-2 md:py-3 border-b border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <p className="text-gray-400 text-xs md:text-sm hidden sm:block">
-                        Search for season packs containing multiple events
-                      </p>
-                      <button
-                        onClick={handleSearch}
-                        disabled={isSearching}
-                        className="px-3 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-1.5 md:gap-2 text-xs md:text-sm"
-                      >
-                        {isSearching ? (
-                          <>
-                            <div className="animate-spin rounded-full h-3.5 w-3.5 md:h-4 md:w-4 border-b-2 border-white"></div>
-                            <span className="hidden sm:inline">Searching...</span>
-                          </>
-                        ) : (
-                          <>
-                            <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                            <span className="hidden sm:inline">Search Indexers</span>
-                            <span className="sm:hidden">Search</span>
-                          </>
-                        )}
-                      </button>
+                    <div className="px-3 md:px-6 py-2 md:py-3 border-b border-gray-800 flex flex-col gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <p className="text-gray-400 text-xs md:text-sm hidden sm:block">
+                          {showCustomSearch
+                            ? 'Custom text also finds releases for single events of this season'
+                            : 'Search for season packs containing multiple events'}
+                        </p>
+                        <div className="flex items-center gap-1.5 md:gap-2">
+                          <button
+                            onClick={() => handleSearch()}
+                            disabled={isSearching}
+                            className="px-3 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-1.5 md:gap-2 text-xs md:text-sm"
+                          >
+                            {isSearching ? (
+                              <>
+                                <div className="animate-spin rounded-full h-3.5 w-3.5 md:h-4 md:w-4 border-b-2 border-white"></div>
+                                <span className="hidden sm:inline">Searching...</span>
+                              </>
+                            ) : (
+                              <>
+                                <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                                <span className="hidden sm:inline">Search Indexers</span>
+                                <span className="sm:hidden">Search</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setShowCustomSearch(!showCustomSearch)}
+                            aria-pressed={showCustomSearch}
+                            aria-label="Custom search"
+                            className={`px-2 md:px-3 py-1 md:py-1.5 ${showCustomSearch ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-gray-700 hover:bg-gray-600'} text-white rounded transition-colors flex items-center gap-1 md:gap-1.5 text-xs md:text-sm`}
+                            title="Enter a custom search query instead of using the auto-generated query"
+                          >
+                            {/* A different icon from Search, because phones show no label. */}
+                            <PencilSquareIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                            <span className="hidden sm:inline">Custom</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Custom Search Input */}
+                      {showCustomSearch && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 relative">
+                            <input
+                              type="text"
+                              value={customQuery}
+                              onChange={(e) => setCustomQuery(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && customQuery.trim() && !isSearching) {
+                                  handleSearch(true);
+                                }
+                              }}
+                              aria-label="Custom search query"
+                              placeholder="Enter custom search query (e.g., Formula.1.2026, F1.2026.Round.03, UFC.2025)"
+                              className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-yellow-600 focus:ring-1 focus:ring-yellow-600"
+                            />
+                            {customQuery && (
+                              <button
+                                onClick={() => setCustomQuery('')}
+                                aria-label="Clear custom search query"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                              >
+                                <XMarkIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleSearch(true)}
+                            disabled={isSearching || !customQuery.trim()}
+                            className="px-3 md:px-4 py-1.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors flex items-center gap-1.5 text-xs md:text-sm whitespace-nowrap"
+                            title="Search indexers using your custom query"
+                          >
+                            {isSearching ? (
+                              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                            ) : (
+                              <MagnifyingGlassIcon className="w-3.5 h-3.5" />
+                            )}
+                            <span>Search Custom</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Error Message */}
@@ -643,7 +747,7 @@ export default function SeasonSearchModal({
                     {/* Results Count */}
                     {searchResults && searchResults.releases.length > 0 && (
                       <div className="px-3 md:px-6 py-2 text-gray-400 text-sm">
-                        Found {searchResults.releases.length} season pack{searchResults.releases.length !== 1 ? 's' : ''}
+                        {resultCountText(searchResults.releases)}
                       </div>
                     )}
 
@@ -803,7 +907,9 @@ export default function SeasonSearchModal({
                                       >
                                         {result.isSeasonPack ? (
                                           <FolderIcon className="w-3.5 h-3.5 text-yellow-500" />
-                                        ) : null}
+                                        ) : (
+                                          <FilmIcon className="w-3.5 h-3.5 text-sky-400" />
+                                        )}
                                         <span className={result.isSeasonPack ? 'text-yellow-400 font-medium' : ''}>
                                           {result.matchedEventCount}
                                         </span>
@@ -848,8 +954,12 @@ export default function SeasonSearchModal({
                                               {result.title}
                                             </span>
                                           )}
-                                          {result.isSeasonPack && (
+                                          {result.isSeasonPack ? (
                                             <span className="text-yellow-500 text-[10px]">Season Pack</span>
+                                          ) : result.matchedEvents[0] && (
+                                            <span className="text-sky-400 text-[10px] block truncate" title={result.matchedEvents[0].eventTitle}>
+                                              Single event: {result.matchedEvents[0].eventTitle}
+                                            </span>
                                           )}
                                         </div>
                                         {/* The Actions column sits off-screen to the right on phone-width
@@ -860,7 +970,7 @@ export default function SeasonSearchModal({
                                           onClick={() => handleDownloadClick(result, index)}
                                           disabled={downloadingIndex !== null}
                                           className="sm:hidden flex-shrink-0 p-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
-                                          title={result.isSeasonPack ? `Download season pack (${result.matchedEventCount} events)` : 'Download'}
+                                          title={downloadTitle(result)}
                                         >
                                           {downloadingIndex === index ? (
                                             <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
@@ -984,7 +1094,7 @@ export default function SeasonSearchModal({
                                           onClick={() => handleDownloadClick(result, index)}
                                           disabled={downloadingIndex !== null}
                                           className="p-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
-                                          title={result.isSeasonPack ? `Download season pack (${result.matchedEventCount} events)` : 'Download'}
+                                          title={downloadTitle(result)}
                                         >
                                           {downloadingIndex === index ? (
                                             <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
@@ -1047,6 +1157,13 @@ export default function SeasonSearchModal({
                             })}
                           </tbody>
                         </table>
+                      ) : searchResults && lastSearchWasCustom ? (
+                        <div className="p-8 text-center text-gray-400">
+                          <p>No releases found for this text.</p>
+                          <p className="text-sm mt-2">
+                            A release must match an event of this season, or be a pack for the whole season.
+                          </p>
+                        </div>
                       ) : searchResults ? (
                         <div className="p-8 text-center text-gray-400">
                           <p>No season packs found for this season.</p>

@@ -335,30 +335,7 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
 });
 
 // API: Manual search for a season - returns search results for the user to select.
-app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/search", async (
-    int leagueId,
-    string season,
-    int? qualityProfileId,
-    SeasonSearchService seasonSearchService,
-    ILogger<Program> logger) =>
-{
-    logger.LogInformation("[SEASON SEARCH] POST /api/leagues/{LeagueId}/seasons/{Season}/search - Manual season search", leagueId, season);
-
-    try
-    {
-        var results = await seasonSearchService.SearchSeasonAsync(leagueId, season, qualityProfileId);
-        return Results.Ok(results);
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.NotFound(new { error = ex.Message });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "[SEASON SEARCH] Failed to search season {Season} for league {LeagueId}", season, leagueId);
-        return Results.Problem($"Season search failed: {ex.Message}");
-    }
-});
+app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/search", ManualSeasonSearchAsync);
 
 // ========================================
 // CALENDAR API - Date-range filtered events for calendar UI
@@ -516,5 +493,78 @@ app.MapGet("/api/calendar.ics", async (
 });
 
         return app;
+    }
+
+    /// <summary>Options for a manual season search.</summary>
+    internal sealed record SeasonSearchRequest(int? QualityProfileId, string? CustomQuery);
+
+    /// <summary>
+    /// Read the season search options. The UI sends them as a JSON body.
+    /// Older callers send qualityProfileId in the query string, so that
+    /// value is used when the body has none.
+    /// </summary>
+    internal static async Task<SeasonSearchRequest> ReadSeasonSearchRequestAsync(HttpRequest request, int? queryProfileId)
+    {
+        int? profileId = null;
+        string? customQuery = null;
+        // Read the body without a Content-Length check. A streamed fetch body
+        // arrives chunked and has no length.
+        using var reader = new StreamReader(request.Body, leaveOpen: true);
+        var json = await reader.ReadToEndAsync(request.HttpContext.RequestAborted);
+        if (!string.IsNullOrWhiteSpace(json))
+        {
+            try
+            {
+                var body = JsonSerializer.Deserialize<JsonElement>(json);
+                if (body.ValueKind == JsonValueKind.Object)
+                {
+                    if (body.TryGetProperty("qualityProfileId", out var profile) &&
+                        profile.ValueKind == JsonValueKind.Number && profile.TryGetInt32(out var id))
+                    {
+                        profileId = id;
+                    }
+                    if (body.TryGetProperty("customQuery", out var custom) &&
+                        custom.ValueKind == JsonValueKind.String)
+                    {
+                        customQuery = custom.GetString()?.Trim();
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // An unreadable body falls back to the defaults.
+            }
+        }
+
+        return new SeasonSearchRequest(profileId ?? queryProfileId,
+            string.IsNullOrEmpty(customQuery) ? null : customQuery);
+    }
+
+    internal static async Task<IResult> ManualSeasonSearchAsync(
+        int leagueId,
+        string season,
+        int? qualityProfileId,
+        HttpRequest request,
+        SeasonSearchService seasonSearchService,
+        ILogger<SeasonSearchService> logger)
+    {
+        logger.LogInformation("[SEASON SEARCH] POST /api/leagues/{LeagueId}/seasons/{Season}/search - Manual season search", leagueId, season);
+
+        try
+        {
+            var options = await ReadSeasonSearchRequestAsync(request, qualityProfileId);
+            var results = await seasonSearchService.SearchSeasonAsync(leagueId, season, options.QualityProfileId,
+                options.CustomQuery);
+            return Results.Ok(results);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.NotFound(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[SEASON SEARCH] Failed to search season {Season} for league {LeagueId}", season, leagueId);
+            return Results.Problem($"Season search failed: {ex.Message}");
+        }
     }
 }

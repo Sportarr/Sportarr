@@ -1,5 +1,5 @@
 import { formatEventDate } from '../utils/timezone';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -10,43 +10,7 @@ import {
   TagIcon,
   ArrowPathIcon
 } from '@heroicons/react/24/outline';
-import { apiGet } from '../utils/api';
-
-interface League {
-  id: number;
-  name: string;
-  sport: string;
-  logoUrl?: string;
-}
-
-interface EventOption {
-  id: number;
-  externalId?: string;
-  title: string;
-  sport: string;
-  eventDate: string;
-  broadcastDate?: string | null;
-  season?: string;
-  seasonNumber?: number;
-  episodeNumber?: number;
-  venue?: string;
-  leagueName?: string;
-  homeTeam?: string;
-  awayTeam?: string;
-  hasFile: boolean;
-  usesMultiPart: boolean;
-  files: Array<{
-    id: number;
-    partName?: string;
-    partNumber?: number;
-    quality?: string;
-  }>;
-}
-
-interface PartDefinition {
-  name: string;
-  partNumber: number;
-}
+import { useLeagueSeasonEvents } from '../hooks/useLeagueSeasonEvents';
 
 interface FileMapping {
   eventId?: number;
@@ -85,17 +49,13 @@ export default function FileDetailsModal({
   const [selectedPart, setSelectedPart] = useState<string | null>(currentMapping?.partName ?? null);
   const [selectedPartNumber, setSelectedPartNumber] = useState<number | null>(currentMapping?.partNumber ?? null);
 
-  // Data state
-  const [leagues, setLeagues] = useState<League[]>([]);
-  const [seasons, setSeasons] = useState<string[]>([]);
-  const [events, setEvents] = useState<EventOption[]>([]);
-  const [parts, setParts] = useState<PartDefinition[]>([]);
-
-  // Loading state
-  const [loadingLeagues, setLoadingLeagues] = useState(true);
-  const [loadingSeasons, setLoadingSeasons] = useState(false);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-  const [loadingParts, setLoadingParts] = useState(false);
+  // League, season, event and part lists, shared with the season match dialog.
+  const {
+    leagues, seasons, events, parts,
+    loadingLeagues, loadingSeasons, loadingEvents, loadingParts,
+    loadLeagues, loadSeasons, loadEvents, loadEventParts, clearSeasons, clearParts, partsEventId,
+    setEvents,
+  } = useLeagueSeasonEvents();
 
   // Search state for events
   const [eventSearch, setEventSearch] = useState('');
@@ -129,19 +89,11 @@ export default function FileDetailsModal({
     setSelectedPartNumber(currentMapping?.partNumber ?? null);
     setEventSearch('');
     setDebouncedSearch('');
-    setSeasons([]);
+    clearSeasons();
     setEvents([]);
-    setParts([]);
+    clearParts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, fileName]);
-
-  // Only the newest answer for each list is allowed to land. Changing league,
-  // season or event while a request was in flight let the older answer arrive
-  // last, so the picker offered events or parts belonging to the previous
-  // selection and could submit one of them against the current league.
-  const seasonSeq = useRef(0);
-  const eventSeq = useRef(0);
-  const partSeq = useRef(0);
 
   // Load seasons when league changes
   useEffect(() => {
@@ -151,7 +103,7 @@ export default function FileDetailsModal({
       setSelectedEventId(null);
       setEvents([]);
     } else {
-      setSeasons([]);
+      clearSeasons();
       setEvents([]);
     }
   }, [selectedLeagueId]);
@@ -159,7 +111,8 @@ export default function FileDetailsModal({
   // Load events when league, season, or search changes (server-side search)
   useEffect(() => {
     if (selectedLeagueId) {
-      loadEvents(selectedLeagueId, selectedSeason, debouncedSearch);
+      // A search shows more results than the plain list.
+      loadEvents(selectedLeagueId, selectedSeason, debouncedSearch, debouncedSearch ? 200 : undefined);
       // Only clear selection if league/season changed, not search
     }
   }, [selectedLeagueId, selectedSeason, debouncedSearch]);
@@ -174,93 +127,32 @@ export default function FileDetailsModal({
     if (selectedEventId) {
       const event = events.find(e => e.id === selectedEventId);
       if (event?.usesMultiPart) {
-        loadParts(event.sport);
+        loadEventParts(event.id, event.sport);
       } else {
-        setParts([]);
+        clearParts();
         setSelectedPart(null);
         setSelectedPartNumber(null);
       }
     } else {
-      setParts([]);
+      clearParts();
     }
   }, [selectedEventId, events]);
 
-  const loadLeagues = async () => {
-    setLoadingLeagues(true);
-    try {
-      const response = await apiGet('/api/leagues');
-      if (response.ok) {
-        const data = await response.json();
-        setLeagues(data);
-      }
-    } catch (err) {
-      console.error('Failed to load leagues:', err);
-    } finally {
-      setLoadingLeagues(false);
+  // The part numbers depend on the event type. When the parts of a newly
+  // picked event land, the picked part takes its number from that list. A
+  // part the event does not have is cleared, so a stale part is never saved.
+  useEffect(() => {
+    if (!selectedEventId || partsEventId !== selectedEventId || !selectedPart) return;
+    const match = parts.find(p => p.name.toLowerCase() === selectedPart.toLowerCase());
+    if (match) {
+      setSelectedPart(match.name);
+      setSelectedPartNumber(match.partNumber);
+    } else {
+      setSelectedPart(null);
+      setSelectedPartNumber(null);
     }
-  };
-
-  const loadSeasons = async (leagueId: number) => {
-    const seq = ++seasonSeq.current;
-    setLoadingSeasons(true);
-    try {
-      const response = await apiGet(`/api/library/leagues/${leagueId}/seasons`);
-      if (seq !== seasonSeq.current) return;
-      if (response.ok) {
-        const data = await response.json();
-        if (seq !== seasonSeq.current) return;
-        setSeasons(data.seasons || []);
-      }
-    } catch (err) {
-      console.error('Failed to load seasons:', err);
-    } finally {
-      if (seq === seasonSeq.current) setLoadingSeasons(false);
-    }
-  };
-
-  const loadEvents = async (leagueId: number, season: string | null, search: string = '') => {
-    const seq = ++eventSeq.current;
-    setLoadingEvents(true);
-    try {
-      const params = new URLSearchParams();
-      if (season) params.append('season', season);
-      if (search) params.append('search', search);
-      // Increase limit when searching to show more results
-      if (search) params.append('limit', '200');
-
-      const queryString = params.toString();
-      const url = `/api/library/leagues/${leagueId}/events${queryString ? `?${queryString}` : ''}`;
-      const response = await apiGet(url);
-      if (seq !== eventSeq.current) return;
-      if (response.ok) {
-        const data = await response.json();
-        if (seq !== eventSeq.current) return;
-        setEvents(data.events || []);
-      }
-    } catch (err) {
-      console.error('Failed to load events:', err);
-    } finally {
-      if (seq === eventSeq.current) setLoadingEvents(false);
-    }
-  };
-
-  const loadParts = async (sport: string) => {
-    const seq = ++partSeq.current;
-    setLoadingParts(true);
-    try {
-      const response = await apiGet(`/api/library/parts/${encodeURIComponent(sport)}`);
-      if (seq !== partSeq.current) return;
-      if (response.ok) {
-        const data = await response.json();
-        if (seq !== partSeq.current) return;
-        setParts(data.parts || []);
-      }
-    } catch (err) {
-      console.error('Failed to load parts:', err);
-    } finally {
-      if (seq === partSeq.current) setLoadingParts(false);
-    }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parts, partsEventId, selectedEventId]);
 
   const handlePartChange = (partName: string) => {
     const part = parts.find(p => p.name === partName);
@@ -559,7 +451,7 @@ export default function FileDetailsModal({
                   </button>
                   <button
                     onClick={handleSave}
-                    disabled={!selectedEventId}
+                    disabled={!selectedEventId || loadingParts}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Save

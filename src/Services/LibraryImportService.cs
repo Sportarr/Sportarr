@@ -2870,15 +2870,29 @@ public class LibraryImportService
     /// Public wrapper: build the destination preview for a specific event + file combination.
     /// Used by the /api/library/preview endpoint so the UI can refresh the preview after manual selection.
     /// </summary>
-    public async Task<string?> BuildDestinationPreviewForEventAsync(int eventId, string originalFileName)
+    public async Task<string?> BuildDestinationPreviewForEventAsync(int eventId, string originalFileName,
+        string? partName = null, int? partNumber = null)
     {
         var evt = await _db.Events.Include(e => e.League).FirstOrDefaultAsync(e => e.Id == eventId);
         if (evt == null) return null;
         var settings = await GetMediaManagementSettingsAsync();
-        return await BuildDestinationPreviewAsync(evt, originalFileName, settings);
+
+        // Apply the same part rules as the import, so the preview shows the
+        // name the import gives the file.
+        var config = await _configService.GetConfigAsync();
+        if (EventPartDetector.IsFullEvent(partName) ||
+            (config.EnableMultiPartEpisodes && !EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, evt)))
+        {
+            partName = null;
+            partNumber = null;
+        }
+        partNumber ??= EventPartDetector.ResolvePartNumber(partName, evt.Sport, evt.Title, evt.League?.Name);
+
+        return await BuildDestinationPreviewAsync(evt, originalFileName, settings, partName, partNumber);
     }
 
-    private async Task<string> BuildDestinationPreviewAsync(Event matchedEvent, string originalFileName, MediaManagementSettings settings)
+    private async Task<string> BuildDestinationPreviewAsync(Event matchedEvent, string originalFileName, MediaManagementSettings settings,
+        string? partName = null, int? partNumber = null)
     {
         var extension = Path.GetExtension(originalFileName);
         var episodeNumber = await _episodeNumberResolver.ResolveAsync(matchedEvent);
@@ -2899,6 +2913,7 @@ public class LibraryImportService
             // regardless of its actual quality, and the empty release
             // group made {Release Group} formats look broken.
             var parsedPreview = _fileParser.Parse(originalFileName);
+            var (partSuffix, partNameSuffix) = FileNamingService.PartTokens(partName, partNumber);
             var tokens = new FileNamingTokens
             {
                 EventTitle = matchedEvent.Title,
@@ -2913,7 +2928,8 @@ public class LibraryImportService
                 Series = matchedEvent.League?.Name ?? matchedEvent.Sport ?? "Unknown",
                 Season = matchedEvent.SeasonNumber?.ToString("0000") ?? matchedEvent.Season ?? brandingDate.Year.ToString(),
                 Episode = episodeNumber.ToString("00"),
-                Part = string.Empty
+                Part = partSuffix,
+                PartName = partNameSuffix
             };
             // Preview-only: no resolved file on disk and no grabbed release at
             // this point, so Size/IndexerFlag conditions can't be evaluated

@@ -43,7 +43,13 @@ public class SeasonSearchService
     /// Search for all events in a season and return aggregated results.
     /// Returns releases with information about which events they match.
     /// </summary>
-    public async Task<SeasonSearchResults> SearchSeasonAsync(int leagueId, string season, int? qualityProfileId = null)
+    /// <param name="customQuery">
+    /// Text to send to the indexers instead of the built season query. With
+    /// this text, a release for one event of the season is kept as well as
+    /// the season packs.
+    /// </param>
+    public async Task<SeasonSearchResults> SearchSeasonAsync(int leagueId, string season, int? qualityProfileId = null,
+        string? customQuery = null)
     {
         var league = await _db.Leagues.FirstOrDefaultAsync(l => l.Id == leagueId);
 
@@ -68,6 +74,10 @@ public class SeasonSearchService
             .OrderBy(e => e.EventDate)
             .ToListAsync();
 
+        customQuery = string.IsNullOrWhiteSpace(customQuery) ? null : customQuery.Trim();
+        var usingCustomQuery = customQuery != null;
+        var searchQuery = customQuery ?? BuildSeasonSearchQuery(league, season, seasonEvents);
+
         if (seasonEvents.Count == 0)
         {
             return new SeasonSearchResults
@@ -75,6 +85,7 @@ public class SeasonSearchService
                 LeagueId = leagueId,
                 LeagueName = league.Name,
                 Season = season,
+                SearchQuery = searchQuery,
                 EventCount = 0,
                 Releases = new List<SeasonSearchRelease>()
             };
@@ -87,11 +98,8 @@ public class SeasonSearchService
         var config = await _configService.GetConfigAsync();
         var enableMultiPart = config.EnableMultiPartEpisodes;
 
-        // Build search query for the season
-        // Use league name + season for the search query
-        var searchQuery = BuildSeasonSearchQuery(league, season, seasonEvents);
-
-        _logger.LogDebug("[Season Search] Search query: '{Query}'", searchQuery);
+        _logger.LogDebug("[Season Search] Search query: '{Query}'{Custom}", searchQuery,
+            usingCustomQuery ? " (custom)" : string.Empty);
 
         // Search all indexers
         var allReleases = await _indexerSearchService.SearchAllIndexersAsync(
@@ -184,8 +192,8 @@ public class SeasonSearchService
             }
 
             // Determine if this is a "season pack" (matches multiple events or has season pack keywords)
-            // Season search should ONLY return season packs - users wanting specific events/parts
-            // should use the event-level search instead.
+            // The built season query returns season packs only. Users who want
+            // one event use the event search or custom text (see below).
             //
             // The title check runs whether or not any individual event matched.
             // A pack covering a whole season names no single fixture, so it
@@ -203,8 +211,11 @@ public class SeasonSearchService
             var isSeasonPack = matchedEvents.Count > 1
                 || (IsLikelySeasonPack(release.Title, season, league.Name) && namesThisLeague);
 
-            // Skip non-season packs - season search is specifically for season-level content
-            if (!isSeasonPack)
+            // The built query asks for the season, so only packs are kept.
+            // Custom text often names one event, so a release that matches
+            // exactly one event of the season is kept too.
+            var isSingleEvent = !isSeasonPack && usingCustomQuery && matchedEvents.Count == 1;
+            if (!isSeasonPack && !isSingleEvent)
             {
                 continue;
             }
@@ -277,13 +288,15 @@ public class SeasonSearchService
             .ThenByDescending(r => r.Seeders ?? 0)
             .ToList();
 
-        _logger.LogInformation("[Season Search] Found {Count} season packs matching season events", seasonReleases.Count);
+        _logger.LogInformation("[Season Search] Found {Count} releases matching season events ({Packs} season packs)",
+            seasonReleases.Count, seasonReleases.Count(r => r.IsSeasonPack));
 
         return new SeasonSearchResults
         {
             LeagueId = leagueId,
             LeagueName = league.Name,
             Season = season,
+            SearchQuery = searchQuery,
             EventCount = seasonEvents.Count,
             MonitoredEventCount = seasonEvents.Count(e => e.Monitored),
             DownloadedEventCount = seasonEvents.Count(e => e.HasFile),
@@ -412,6 +425,8 @@ public class SeasonSearchResults
     public int LeagueId { get; set; }
     public string LeagueName { get; set; } = string.Empty;
     public string Season { get; set; } = string.Empty;
+    /// <summary>The text sent to the indexers. The UI shows it in the custom search box.</summary>
+    public string SearchQuery { get; set; } = string.Empty;
     public int EventCount { get; set; }
     public int MonitoredEventCount { get; set; }
     public int DownloadedEventCount { get; set; }

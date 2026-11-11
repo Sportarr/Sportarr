@@ -13,14 +13,17 @@ import {
   ArrowLeftIcon,
   PencilSquareIcon,
   HeartIcon,
-  XMarkIcon
+  XMarkIcon,
+  QueueListIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
 import FileBrowserModal from '../components/FileBrowserModal';
 import FileDetailsModal from '../components/FileDetailsModal';
+import SeasonBatchMatchModal, { type SeasonBatchMatchResult } from '../components/SeasonBatchMatchModal';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import { apiGet, apiPost } from '../utils/api';
+import { buildLibraryImportRequest, type LibraryImportRequest } from '../utils/libraryImportRequest';
 import { useQueryClient } from '@tanstack/react-query';
 import FileMetadataEditor, { type FileMetadataEditorValues } from '../components/FileMetadataEditor';
 import { Dialog, Transition } from '@headlessui/react';
@@ -65,38 +68,6 @@ interface ScanResult {
   unmatchedFiles: ImportableFile[];
   alreadyInLibrary: ImportableFile[];
   errors: string[];
-}
-
-interface FileImportRequest {
-  filePath: string;
-  eventId?: number;
-  createNew: boolean;
-  eventTitle?: string;
-  organization?: string;
-  eventDate?: string;
-  quality?: string;
-  partName?: string;
-  partNumber?: number;
-  leagueId?: number;
-  season?: string;
-  // Pre-import metadata overrides — sent through to LibraryImportService and
-  // applied to the new EventFile after creation. Mirrors the post-import
-  // editor's field set so users can correct parser mistakes BEFORE the file
-  // is committed to the library.
-  source?: string;
-  codec?: string;
-  releaseGroup?: string;
-  originalTitle?: string;
-  languages?: string[];
-  indexerFlags?: string;
-  importMode?: string;
-  overrideSourcePrecedence?: boolean;
-}
-
-function nonEmpty(s: string | undefined): string | undefined {
-  if (s === undefined || s === null) return undefined;
-  const t = s.trim();
-  return t.length === 0 ? undefined : t;
 }
 
 interface FileMapping {
@@ -144,6 +115,11 @@ interface RecentFolder {
 }
 
 const RECENT_FOLDERS_KEY = 'sportarr-library-import-recent-folders';
+
+// Numeric-aware path order, so ...02.FP2 / ...03.Quali / ...04.Race read in
+// filename order. Sorting by the full path keeps files grouped by folder.
+const byPath = (a: { filePath: string }, b: { filePath: string }) =>
+  a.filePath.localeCompare(b.filePath, undefined, { numeric: true, sensitivity: 'base' });
 const MAX_RECENT_FOLDERS = 8;
 
 const LibraryImportPage: React.FC = () => {
@@ -219,7 +195,7 @@ const LibraryImportPage: React.FC = () => {
   const [fileEventMappings, setFileEventMappings] = useState<Map<string, FileMapping>>(new Map());
   // Per-file metadata overrides keyed by filePath. Pre-filled from parser
   // values on first edit, sent through to /api/library/import alongside
-  // the FileImportRequest. Optional — files without an entry use parser defaults.
+  // the import request. Optional. Files without an entry use parser defaults.
   const [fileMetadataOverrides, setFileMetadataOverrides] =
     useState<Map<string, FileMetadataEditorValues>>(new Map());
   const [editorOpenForFile, setEditorOpenForFile] = useState<string | null>(null);
@@ -270,6 +246,7 @@ const LibraryImportPage: React.FC = () => {
 
   // File details modal state
   const [showFileDetailsModal, setShowFileDetailsModal] = useState(false);
+  const [showSeasonMatch, setShowSeasonMatch] = useState(false);
   const [activeFile, setActiveFile] = useState<ImportableFile | null>(null);
 
   // Legacy search modal state (keeping for quick search)
@@ -347,13 +324,8 @@ const LibraryImportPage: React.FC = () => {
         throw new Error('Scan finished but returned no result');
       }
 
-      // Present files in a stable, human order: numeric-aware path sort so
-      // sequences like ...02.FP2 / ...03.Quali / ...04.Race read in
-      // chronological filename order instead of whatever order the
-      // filesystem walk returned. Sorting by full path keeps files grouped
-      // by folder on recursive scans.
-      const byPath = (a: { filePath: string }, b: { filePath: string }) =>
-        a.filePath.localeCompare(b.filePath, undefined, { numeric: true, sensitivity: 'base' });
+      // Present files in a stable, human order instead of the order the
+      // filesystem walk returned.
       result.matchedFiles.sort(byPath);
       result.unmatchedFiles.sort(byPath);
       result.alreadyInLibrary?.sort(byPath);
@@ -423,9 +395,12 @@ const LibraryImportPage: React.FC = () => {
     // the manually selected event, not the original auto-match
     if (mapping.eventId) {
       try {
-        const resp = await apiGet(
-          `/api/library/preview?eventId=${mapping.eventId}&fileName=${encodeURIComponent(activeFile.fileName)}`
-        );
+        const params = new URLSearchParams({ eventId: String(mapping.eventId), fileName: activeFile.fileName });
+        if (mapping.partName && mapping.partNumber) {
+          params.append('partName', mapping.partName);
+          params.append('partNumber', String(mapping.partNumber));
+        }
+        const resp = await apiGet(`/api/library/preview?${params.toString()}`);
         if (resp.ok) {
           const data: { destinationPreview: string } = await resp.json();
           mapping = { ...mapping, destinationPreview: data.destinationPreview };
@@ -444,6 +419,56 @@ const LibraryImportPage: React.FC = () => {
     setSelectedFiles(newSelected);
 
     setActiveFile(null);
+  };
+
+  // The selected files of every list, in numeric-aware path order.
+  const selectedInOrder = (): ImportableFile[] => {
+    if (!scanResult) return [];
+    return [...scanResult.matchedFiles, ...scanResult.unmatchedFiles, ...scanResult.alreadyInLibrary]
+      .filter(f => selectedFiles.has(f.filePath))
+      .sort(byPath);
+  };
+
+  const handleSeasonMatch = async ({ leagueId, leagueName, season, pairs }: SeasonBatchMatchResult) => {
+    // A preview failure is not fatal. The row then shows the event title.
+    const previews = await Promise.all(pairs.map(async pair => {
+      try {
+        const params = new URLSearchParams({ eventId: String(pair.eventId), fileName: pair.file.fileName });
+        if (pair.partName && pair.partNumber) {
+          params.append('partName', pair.partName);
+          params.append('partNumber', String(pair.partNumber));
+        }
+        const resp = await apiGet(`/api/library/preview?${params.toString()}`);
+        if (!resp.ok) return undefined;
+        const data: { destinationPreview?: string } = await resp.json();
+        return data.destinationPreview;
+      } catch {
+        return undefined;
+      }
+    }));
+
+    setFileEventMappings(prev => {
+      const next = new Map(prev);
+      pairs.forEach((pair, index) => {
+        next.set(pair.file.filePath, {
+          eventId: pair.eventId,
+          eventTitle: pair.eventTitle,
+          leagueId,
+          leagueName,
+          season,
+          partName: pair.partName,
+          partNumber: pair.partNumber,
+          createNew: false,
+          destinationPreview: previews[index],
+        });
+      });
+      return next;
+    });
+    setSelectedFiles(prev => {
+      const next = new Set(prev);
+      pairs.forEach(pair => next.add(pair.file.filePath));
+      return next;
+    });
   };
 
   // Legacy quick search functions
@@ -484,7 +509,7 @@ const LibraryImportPage: React.FC = () => {
     setScanError(null);
 
     try {
-      const requests: FileImportRequest[] = Array.from(selectedFiles).map(filePath => {
+      const requests: LibraryImportRequest[] = Array.from(selectedFiles).map(filePath => {
         // Also check alreadyInLibrary for re-imports
         const file = [...scanResult.matchedFiles, ...scanResult.unmatchedFiles, ...scanResult.alreadyInLibrary]
           .find(f => f.filePath === filePath);
@@ -493,57 +518,9 @@ const LibraryImportPage: React.FC = () => {
           throw new Error(`File not found: ${filePath}`);
         }
 
-        // Pull per-file metadata overrides (Codec / Source / ReleaseGroup /
-        // OriginalTitle / Languages / IndexerFlags) and quality if the user
-        // touched the metadata editor row. Quality from the editor wins over
-        // the parser-derived file.quality below.
-        const overrides = fileMetadataOverrides.get(filePath);
-        const overridePart: Partial<FileImportRequest> = overrides ? {
-          quality: nonEmpty(overrides.quality),
-          source: nonEmpty(overrides.source),
-          codec: nonEmpty(overrides.codec),
-          releaseGroup: nonEmpty(overrides.releaseGroup),
-          originalTitle: nonEmpty(overrides.originalTitle),
-          languages: overrides.languages && overrides.languages.length > 0 ? overrides.languages : undefined,
-          indexerFlags: nonEmpty(overrides.indexerFlags),
-          partName: overrides.partName ?? undefined,
-          partNumber: typeof overrides.partNumber === 'number' ? overrides.partNumber : undefined,
-        } : {};
-
-        const manualMapping = fileEventMappings.get(filePath);
-        if (manualMapping) {
-          return {
-            filePath: file.filePath,
-            eventId: manualMapping.eventId,
-            createNew: manualMapping.createNew ?? false,
-            eventTitle: manualMapping.eventTitle,
-            partName: overridePart.partName ?? manualMapping.partName,
-            partNumber: overridePart.partNumber ?? manualMapping.partNumber,
-            leagueId: manualMapping.leagueId,
-            season: manualMapping.season,
-            ...overridePart
-          };
-        }
-
-        // Use matchedEventId for new matches, or existingEventId for re-imports
-        if (file.matchedEventId || file.existingEventId) {
-          return {
-            filePath: file.filePath,
-            eventId: file.matchedEventId || file.existingEventId,
-            createNew: false,
-            ...overridePart
-          };
-        }
-
-        return {
-          filePath: file.filePath,
-          createNew: true,
-          eventTitle: file.parsedTitle,
-          organization: file.parsedOrganization,
-          eventDate: file.parsedDate,
-          quality: overridePart.quality ?? file.quality,
-          ...overridePart
-        };
+        // A manual match wins over the scan match. Editor overrides win
+        // over the values the scan found.
+        return buildLibraryImportRequest(file, fileEventMappings.get(filePath), fileMetadataOverrides.get(filePath));
       });
 
       if (importMode !== 'auto') {
@@ -897,6 +874,15 @@ const LibraryImportPage: React.FC = () => {
             <button onClick={clearSelection} className="px-3 py-1.5 bg-gray-700 text-white rounded hover:bg-gray-600 text-sm transition-colors">
               Clear Selection
             </button>
+            <button
+              onClick={() => setShowSeasonMatch(true)}
+              disabled={selectedFiles.size === 0}
+              className="px-3 py-1.5 bg-gray-700 text-white rounded hover:bg-gray-600 text-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Pick one league and season for the selected files and pair them with its events in order"
+            >
+              <QueueListIcon className="w-4 h-4" />
+              Match season
+            </button>
             <div className="flex-1" />
             <span className="text-gray-400 text-sm">{selectedFiles.size} file(s) selected</span>
           </div>
@@ -1022,6 +1008,11 @@ const LibraryImportPage: React.FC = () => {
                               )}
                               <span className="text-gray-500 ml-2">({file.fileSizeFormatted})</span>
                             </p>
+                            {mapping?.destinationPreview && (
+                              <p className="text-xs text-gray-500 truncate" title={mapping.destinationPreview}>
+                                → {mapping.destinationPreview}
+                              </p>
+                            )}
                           </div>
                           <button
                             onClick={() => setEditorOpenForFile(file.filePath)}
@@ -1095,6 +1086,11 @@ const LibraryImportPage: React.FC = () => {
                               )}
                               <span className="text-gray-500 ml-2">({file.fileSizeFormatted})</span>
                             </p>
+                            {mapping?.destinationPreview && (
+                              <p className="text-xs text-gray-500 truncate" title={mapping.destinationPreview}>
+                                → {mapping.destinationPreview}
+                              </p>
+                            )}
                           </div>
                           <button
                             onClick={() => setEditorOpenForFile(file.filePath)}
@@ -1347,6 +1343,20 @@ const LibraryImportPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Season match for the selected files */}
+      <SeasonBatchMatchModal
+        isOpen={showSeasonMatch}
+        onClose={() => setShowSeasonMatch(false)}
+        files={showSeasonMatch && scanResult
+          ? selectedInOrder().map(f => ({
+            filePath: f.filePath,
+            fileName: f.fileName,
+            inLibrary: scanResult.alreadyInLibrary.some(held => held.filePath === f.filePath),
+          }))
+          : []}
+        onConfirm={handleSeasonMatch}
+      />
 
       {/* File Details Modal */}
       <FileDetailsModal

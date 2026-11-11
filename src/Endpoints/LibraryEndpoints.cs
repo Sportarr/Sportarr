@@ -66,11 +66,13 @@ public static class LibraryEndpoints
         });
 
         // Returns a fresh destination preview for a manually selected event + file.
-        app.MapGet("/api/library/preview", async (LibraryImportService service, int eventId, string fileName) =>
+        // The optional part gives the part token the import will add.
+        app.MapGet("/api/library/preview", async (LibraryImportService service, int eventId, string fileName,
+            string? partName = null, int? partNumber = null) =>
         {
             try
             {
-                var preview = await service.BuildDestinationPreviewForEventAsync(eventId, fileName);
+                var preview = await service.BuildDestinationPreviewForEventAsync(eventId, fileName, partName, partNumber);
                 if (preview == null)
                     return Results.NotFound(new { error = "Event not found" });
                 return Results.Ok(new { destinationPreview = preview });
@@ -307,6 +309,9 @@ public static class LibraryEndpoints
                     usesMultiPart = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, e) &&
                         (EventPartDetector.IsFightingSport(e.Sport) ||
                          EventPartDetector.IsMotorsport(e.Sport)),
+                    // False when the event keeps one whole file. Multi-part
+                    // episodes are off, or the event is set to Full Event.
+                    keepsParts = EventPartDetector.UsesParts(config.EnableMultiPartEpisodes, e),
                     files = e.Files.Select(f => new
                     {
                         id = f.Id,
