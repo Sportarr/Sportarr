@@ -55,13 +55,13 @@
     "expected": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \ud835\udd38"
   },
   {
-    "name": "PROPER and DDP5.1 are removed",
-    "input": "Formula.1.2024.Round.05.China.Sprint.PROPER.1080p.WEB-DL.DDP5.1.H.264-GROUP.mkv",
+    "name": "PROPER and DDP5.1 after the quality tag are removed",
+    "input": "Formula.1.2024.Round.05.China.Sprint.1080p.PROPER.WEB-DL.DDP5.1.H.264-GROUP.mkv",
     "expected": "formula 1 2024 round 05 china sprint"
   },
   {
     "name": "lowercase repack is removed",
-    "input": "nba.2024.11.03.lakers.vs.celtics.repack.720p.web.h264-grp.mkv",
+    "input": "nba.2024.11.03.lakers.vs.celtics.720p.repack.web.h264-grp.mkv",
     "expected": "nba 2024 11 03 lakers vs celtics"
   },
   {
@@ -90,23 +90,23 @@
     "expected": "wwe raw 2024 10 07"
   },
   {
-    "name": "edition words are removed",
-    "input": "UFC.229.Khabib.vs.McGregor.EXTENDED.REMASTERED.1080p.BluRay.x264-GRP.mkv",
+    "name": "edition words after the quality tag are removed",
+    "input": "UFC.229.Khabib.vs.McGregor.1080p.EXTENDED.REMASTERED.BluRay.x264-GRP.mkv",
     "expected": "ufc 229 khabib vs mcgregor"
   },
   {
     "name": "directors cut is removed",
-    "input": "Boxing.2024.Fury.vs.Usyk.Directors.Cut.720p.mkv",
+    "input": "Boxing.2024.Fury.vs.Usyk.720p.Directors.Cut.mkv",
     "expected": "boxing 2024 fury vs usyk"
   },
   {
-    "name": "an uppercase language tag is removed",
-    "input": "Bundesliga.2024.Matchday.10.Highlights.GERMAN.720p.WEB.h264-GRP.mkv",
+    "name": "a language tag after the quality tag is removed",
+    "input": "Bundesliga.2024.Matchday.10.Highlights.720p.GERMAN.WEB.h264-GRP.mkv",
     "expected": "bundesliga 2024 matchday 10 highlights"
   },
   {
     "name": "MULTiSUBS is removed",
-    "input": "UFC.300.Main.Card.MULTiSUBS.1080p.WEBRip.x265-GRP.mkv",
+    "input": "UFC.300.Main.Card.1080p.MULTiSUBS.WEBRip.x265-GRP.mkv",
     "expected": "ufc 300 main card"
   },
   {
@@ -211,7 +211,7 @@
   },
   {
     "name": "non-breaking spaces and tabs are spaces",
-    "input": "UFC\u00a0300\tMain Card\u00a0DIRECTORS\u00a0CUT.mkv",
+    "input": "UFC\u00a0300\tMain Card\u00a0720p\u00a0DIRECTORS\u00a0CUT.mkv",
     "expected": "ufc 300 main card"
   },
   {
@@ -223,5 +223,80 @@
     "name": "an empty name stays empty",
     "input": "",
     "expected": ""
+  },
+  {
+    "name": "a lowercase language tag in the tail is removed",
+    "input": "UFC.300.1080p.MULTi.WEB.x264-GRP.mkv",
+    "expected": "ufc 300"
+  },
+  {
+    "name": "PROPER before the quality tag stays",
+    "input": "Formula.1.2024.Round.05.China.Sprint.PROPER.1080p.WEB.h264-GRP.mkv",
+    "expected": "formula 1 2024 round 05 china sprint proper"
+  },
+  {
+    "name": "a language tag before the quality tag stays",
+    "input": "Bundesliga.2024.Matchday.10.Highlights.GERMAN.720p.WEB.h264-GRP.mkv",
+    "expected": "bundesliga 2024 matchday 10 highlights german"
+  },
+  {
+    "name": "Spanish Open keeps its title word",
+    "input": "GOLF.2024.SPANISH.OPEN.ROUND.1.720p.HDTV.x264-GRP",
+    "expected": "golf 2024 spanish open round 1"
+  },
+  {
+    "name": "Italian Open keeps its title word",
+    "input": "GOLF.2024.ITALIAN.OPEN.ROUND.1.720p.HDTV.x264-GRP",
+    "expected": "golf 2024 italian open round 1"
+  },
+  {
+    "name": "French Open with no tail keeps every word",
+    "input": "TENNIS 2024 FRENCH OPEN MENS FINAL",
+    "expected": "tennis 2024 french open mens final"
+  },
+  {
+    "name": "German Open with no tail keeps every word",
+    "input": "TENNIS 2024 GERMAN OPEN MENS FINAL",
+    "expected": "tennis 2024 german open mens final"
+  },
+  {
+    "name": "Japanese Grand Prix keeps its title word",
+    "input": "FORMULA1.2024.JAPANESE.GRAND.PRIX.RACE",
+    "expected": "formula1 2024 japanese grand prix race"
+  },
+  {
+    "name": "Chinese Grand Prix keeps its title word",
+    "input": "FORMULA1.2024.CHINESE.GRAND.PRIX.RACE",
+    "expected": "formula1 2024 chinese grand prix race"
+  },
+  {
+    "name": "AVC in the title stays",
+    "input": "AVC Champions League 2024 Final",
+    "expected": "avc champions league 2024 final"
+  },
+  {
+    "name": "the same title without AVC is another key",
+    "input": "Champions League 2024 Final",
+    "expected": "champions league 2024 final"
+  },
+  {
+    "name": "AAC in the title stays",
+    "input": "NCAA Basketball 2024 AAC Tournament Final",
+    "expected": "ncaa basketball 2024 aac tournament final"
+  },
+  {
+    "name": "the same title without AAC is another key",
+    "input": "NCAA Basketball 2024 Tournament Final",
+    "expected": "ncaa basketball 2024 tournament final"
+  },
+  {
+    "name": "a dotted scene name keeps its title words",
+    "input": "Formula.1.2024.Round.1.Bahrain.Race.1080p.WEB.h264-GRP",
+    "expected": "formula 1 2024 round 1 bahrain race"
+  },
+  {
+    "name": "a WEBDL-1080p tail keeps the title words",
+    "input": "Formula 1 - S2024E10 - Round 1 Bahrain (Race) WEBDL-1080p",
+    "expected": "formula 1 s2024e10 round 1 bahrain race"
   }
 ]

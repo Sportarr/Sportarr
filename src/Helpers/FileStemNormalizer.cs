@@ -43,16 +43,18 @@ public static class FileStemNormalizer
     private const string GenericQuality = "(?:" + MediaFileParser.GenericQualityTokens + ")";
     private const string ProperRepack = "(?:" + MediaFileParser.ProperRepackTokens + ")";
     private const string Edition = "(?:" + MediaFileParser.EditionTokens + ")";
+    private const string Language = "(?:" + MediaFileParser.LanguageTokens + ")";
 
     private const RegexOptions Options =
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled;
 
-    // Language words are removed only in capitals, which is the release
-    // convention. "Spanish Grand Prix" and "Italian Grand Prix" must stay
-    // two keys.
-    private static readonly Regex LanguagePattern = new(
-        @"(?<![A-Za-z0-9])(?:" + MediaFileParser.LanguageTokens + @")(?![A-Za-z0-9])",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    // The technical tail starts at the first resolution or source token.
+    // Tokens are removed only in the tail. Title words such as "Spanish
+    // Open", "AVC" or "AAC" then stay, and different events keep
+    // different keys.
+    private static readonly Regex TailStartPattern = new(
+        Start + "(?:" + Quality + "|" + Source + ")" + End,
+        Options);
 
     // A release group is removed only when it follows a quality, source or
     // codec token. "Arsenal-Chelsea" at the end of a name is not a group.
@@ -71,6 +73,7 @@ public static class FileStemNormalizer
         new(Start + GenericQuality + End, Options),
         new(Start + ProperRepack + End, Options),
         new(Start + Edition + End, Options),
+        new(Start + Language + End, Options),
     };
 
     /// <summary>
@@ -93,15 +96,28 @@ public static class FileStemNormalizer
         name = CleanCodePoints(name).Normalize(NormalizationForm.FormC);
         name = SpacesToAscii(name);
 
-        name = LanguagePattern.Replace(name, " ");
         name = name.ToLowerInvariant();
         name = SportarrIdToken.Strip(name);
         name = GroupPattern.Replace(name, "${tech} ");
-        foreach (var pattern in TokenPatterns)
-            name = pattern.Replace(name, " ");
+        name = StripTailTokens(name);
 
         name = CollapseToLettersAndDigits(name);
         return TakeCodePoints(name, MaxLength).TrimEnd(' ');
+    }
+
+    // The fence before the first tail token is a character that is not an
+    // ASCII letter or digit. The fences in the tail patterns therefore read
+    // the cut tail the same way as the full name.
+    private static string StripTailTokens(string name)
+    {
+        var tailStart = TailStartPattern.Match(name);
+        if (!tailStart.Success)
+            return name;
+
+        var tail = name[tailStart.Index..];
+        foreach (var pattern in TokenPatterns)
+            tail = pattern.Replace(tail, " ");
+        return name[..tailStart.Index] + " " + tail;
     }
 
     private static string DropMediaExtension(string name)
