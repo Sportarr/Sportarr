@@ -14,7 +14,7 @@ public class FileStemNormalizerTests
 {
     // The hub test holds the same hash. Edit both fixture copies together
     // and then change the hash in both tests.
-    private const string FixtureSha256 = "92e71ed9fa451a51d080b3199a739a57bf38eafe1725ea5b28af37d1e3837b4b";
+    private const string FixtureSha256 = "9d0e3f0242c0bd3215817b927dd73c16dbf8cc24447f8f6f7afb790c8102e4f0";
 
     private static string FixturePath =>
         Path.Combine(AppContext.BaseDirectory, "Services", "Fixtures", "StemNormalization", "cases.json");

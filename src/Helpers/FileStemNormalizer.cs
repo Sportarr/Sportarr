@@ -52,8 +52,12 @@ public static class FileStemNormalizer
     // Tokens are removed only in the tail. Title words such as "Spanish
     // Open", "AVC" or "AAC" then stay, and different events keep
     // different keys.
+    // "Cam" and "TS" are also title words ("Onboard Cam", "Cam Smith"), so
+    // they do not start the tail. The tail still removes them.
+    private const string TitleWordSources = "(?:cam|ts)" + End;
+
     private static readonly Regex TailStartPattern = new(
-        Start + "(?:" + Quality + "|" + Source + ")" + End,
+        Start + "(?:" + Quality + "|(?!" + TitleWordSources + ")" + Source + ")" + End,
         Options);
 
     // A release group is removed only when it follows a quality, source or

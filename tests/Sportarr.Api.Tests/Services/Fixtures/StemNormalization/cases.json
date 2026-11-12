@@ -298,5 +298,45 @@
     "name": "a WEBDL-1080p tail keeps the title words",
     "input": "Formula 1 - S2024E10 - Round 1 Bahrain (Race) WEBDL-1080p",
     "expected": "formula 1 s2024e10 round 1 bahrain race"
+  },
+  {
+    "name": "Onboard Cam with Japanese GP keeps every word",
+    "input": "F1 2024 Onboard Cam Japanese GP Pole Lap",
+    "expected": "f1 2024 onboard cam japanese gp pole lap"
+  },
+  {
+    "name": "Onboard Cam with Chinese GP keeps every word",
+    "input": "F1 2024 Onboard Cam Chinese GP Pole Lap",
+    "expected": "f1 2024 onboard cam chinese gp pole lap"
+  },
+  {
+    "name": "Cam Norrie at the French Open keeps every word",
+    "input": "Tennis 2024 Cam Norrie vs Alcaraz French Open R2",
+    "expected": "tennis 2024 cam norrie vs alcaraz french open r2"
+  },
+  {
+    "name": "Cam Norrie at the Italian Open keeps every word",
+    "input": "Tennis 2024 Cam Norrie vs Alcaraz Italian Open R2",
+    "expected": "tennis 2024 cam norrie vs alcaraz italian open r2"
+  },
+  {
+    "name": "Cam Smith at the Spanish Open keeps every word",
+    "input": "Golf 2024 Cam Smith Spanish Open Round 1",
+    "expected": "golf 2024 cam smith spanish open round 1"
+  },
+  {
+    "name": "Cam Smith at the Italian Open keeps every word",
+    "input": "Golf 2024 Cam Smith Italian Open Round 1",
+    "expected": "golf 2024 cam smith italian open round 1"
+  },
+  {
+    "name": "CAM inside the tail is removed",
+    "input": "Golf.2024.Cam.Smith.Spanish.Open.Round.1.720p.CAM.x264-GRP.mkv",
+    "expected": "golf 2024 cam smith spanish open round 1"
+  },
+  {
+    "name": "TS does not start the tail",
+    "input": "NHL 2024 Bruins vs Panthers TS Japanese Feed",
+    "expected": "nhl 2024 bruins vs panthers ts japanese feed"
   }
 ]
