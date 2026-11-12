@@ -1,0 +1,227 @@
+[
+  {
+    "name": "brief example with season episode, quality, source, codec and group",
+    "input": "Formula 1 - S2024E10 - Round 1: Bahrain (Race) 1080p WEB-DL x264-GROUP.mkv",
+    "expected": "formula 1 s2024e10 round 1 bahrain race"
+  },
+  {
+    "name": "non-ASCII letters survive",
+    "input": "Bundesliga 2024-09-21 Bayern M\u00fcnchen vs Werder Bremen 720p HDTV x264-GRP.mkv",
+    "expected": "bundesliga 2024 09 21 bayern m\u00fcnchen vs werder bremen"
+  },
+  {
+    "name": "a decomposed letter is composed first",
+    "input": "Bundesliga 2024 Bayern Mu\u0308nchen vs Union Berlin.mkv",
+    "expected": "bundesliga 2024 bayern m\u00fcnchen vs union berlin"
+  },
+  {
+    "name": "branded event token is removed",
+    "input": "NFL - S2026E23 - Cowboys vs Giants - WEBDL-1080p - sportarr-ev-174218.mkv",
+    "expected": "nfl s2026e23 cowboys vs giants"
+  },
+  {
+    "name": "braced event token after the group is removed",
+    "input": "UFC.319.Prelims.2026-08-16.720p.WEB.h264-GROUP{sportarr-ev-2340001}.mkv",
+    "expected": "ufc 319 prelims 2026 08 16"
+  },
+  {
+    "name": "bare event token is removed",
+    "input": "NFL - S2026E23 - Cowboys vs Giants [ev-2338110].mkv",
+    "expected": "nfl s2026e23 cowboys vs giants"
+  },
+  {
+    "name": "league token is removed",
+    "input": "NFL {sportarr-lg-004391} Week 1 Highlights.mkv",
+    "expected": "nfl week 1 highlights"
+  },
+  {
+    "name": "a year after ev is not a token",
+    "input": "UFC 300 ev-2026 Prelims.mkv",
+    "expected": "ufc 300 ev 2026 prelims"
+  },
+  {
+    "name": "a 300 character name is cut to 200 characters",
+    "input": "abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abc",
+    "expected": "abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij ab"
+  },
+  {
+    "name": "a cut that ends on a space is trimmed",
+    "input": "abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi end.mkv",
+    "expected": "abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi abcdefghi"
+  },
+  {
+    "name": "the cut counts code points, not UTF-16 units",
+    "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \ud835\udd38\ud835\udd39\ud835\udd3a.mkv",
+    "expected": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \ud835\udd38"
+  },
+  {
+    "name": "PROPER and DDP5.1 are removed",
+    "input": "Formula.1.2024.Round.05.China.Sprint.PROPER.1080p.WEB-DL.DDP5.1.H.264-GROUP.mkv",
+    "expected": "formula 1 2024 round 05 china sprint"
+  },
+  {
+    "name": "lowercase repack is removed",
+    "input": "nba.2024.11.03.lakers.vs.celtics.repack.720p.web.h264-grp.mkv",
+    "expected": "nba 2024 11 03 lakers vs celtics"
+  },
+  {
+    "name": "AAC2.0 is removed",
+    "input": "NHL.2024.10.08.Bruins.vs.Panthers.720p.WEB.AAC2.0.H.264-GRP.mkv",
+    "expected": "nhl 2024 10 08 bruins vs panthers"
+  },
+  {
+    "name": "UHD, BluRay, TrueHD 7.1, Atmos and HEVC are removed",
+    "input": "NFL.Super.Bowl.LVIII.2024.02.11.2160p.UHD.BluRay.TrueHD.7.1.Atmos.HEVC-GRP.mkv",
+    "expected": "nfl super bowl lviii 2024 02 11"
+  },
+  {
+    "name": "E-AC-3 is removed",
+    "input": "Premier.League.2024.10.05.Arsenal.vs.Southampton.1080p.WEB.E-AC-3.x264-GRP.mkv",
+    "expected": "premier league 2024 10 05 arsenal vs southampton"
+  },
+  {
+    "name": "DD+5.1 and H.265 are removed",
+    "input": "Serie.A.2024.Inter.vs.Milan.1080p.WEB.DD+5.1.H.265-GRP.mkv",
+    "expected": "serie a 2024 inter vs milan"
+  },
+  {
+    "name": "DTS-HD MA 5.1 is removed",
+    "input": "WWE Raw 2024 10 07 1080p BluRay DTS-HD MA 5.1 x264-GRP.mkv",
+    "expected": "wwe raw 2024 10 07"
+  },
+  {
+    "name": "edition words are removed",
+    "input": "UFC.229.Khabib.vs.McGregor.EXTENDED.REMASTERED.1080p.BluRay.x264-GRP.mkv",
+    "expected": "ufc 229 khabib vs mcgregor"
+  },
+  {
+    "name": "directors cut is removed",
+    "input": "Boxing.2024.Fury.vs.Usyk.Directors.Cut.720p.mkv",
+    "expected": "boxing 2024 fury vs usyk"
+  },
+  {
+    "name": "an uppercase language tag is removed",
+    "input": "Bundesliga.2024.Matchday.10.Highlights.GERMAN.720p.WEB.h264-GRP.mkv",
+    "expected": "bundesliga 2024 matchday 10 highlights"
+  },
+  {
+    "name": "MULTiSUBS is removed",
+    "input": "UFC.300.Main.Card.MULTiSUBS.1080p.WEBRip.x265-GRP.mkv",
+    "expected": "ufc 300 main card"
+  },
+  {
+    "name": "a language word in the event title stays",
+    "input": "Formula 1 2024 Spanish Grand Prix Race 1080p.mkv",
+    "expected": "formula 1 2024 spanish grand prix race"
+  },
+  {
+    "name": "Real stays",
+    "input": "La Liga 2024 Real Madrid vs Real Sociedad 1080p.mkv",
+    "expected": "la liga 2024 real madrid vs real sociedad"
+  },
+  {
+    "name": "a token inside a word stays",
+    "input": "NFL 2024 Week 5 Patriots vs Dolphins HDTV.mkv",
+    "expected": "nfl 2024 week 5 patriots vs dolphins"
+  },
+  {
+    "name": "words that hold a token inside them stay",
+    "input": "Euro 2024 Germany vs Scotland Opening Atmosphere Middlesbrough Individual.mkv",
+    "expected": "euro 2024 germany vs scotland opening atmosphere middlesbrough individual"
+  },
+  {
+    "name": "HDR stays and 4K goes",
+    "input": "NFL 2024 Week 1 Chiefs vs Ravens 4K HDR.mkv",
+    "expected": "nfl 2024 week 1 chiefs vs ravens hdr"
+  },
+  {
+    "name": "a dash between team names is not a group",
+    "input": "Premier League 2024 Arsenal-Chelsea.mkv",
+    "expected": "premier league 2024 arsenal chelsea"
+  },
+  {
+    "name": "a bracket tag after the group goes with the group",
+    "input": "Formula.1.2024.Round.01.Bahrain.Race.1080p.WEB.h264-GRP[rarbg].mkv",
+    "expected": "formula 1 2024 round 01 bahrain race"
+  },
+  {
+    "name": "a name that is only tokens becomes empty",
+    "input": "1080p.WEB-DL.x264-GROUP.mkv",
+    "expected": ""
+  },
+  {
+    "name": "underscores are separators",
+    "input": "NHL_2024_10_08_Bruins_vs_Panthers_720p_HDTV.mkv",
+    "expected": "nhl 2024 10 08 bruins vs panthers"
+  },
+  {
+    "name": "a POSIX path keeps only the file name",
+    "input": "/data/media/Sports/NBA/Season 2024/NBA - S2024E101 - Lakers vs Celtics.mkv",
+    "expected": "nba s2024e101 lakers vs celtics"
+  },
+  {
+    "name": "a Windows path keeps only the file name",
+    "input": "D:\\Sports\\NBA\\Season 2024\\NBA - S2024E101 - Lakers vs Celtics.mp4",
+    "expected": "nba s2024e101 lakers vs celtics"
+  },
+  {
+    "name": "a stem with dots keeps its last part",
+    "input": "Formula.1.2024.Round.1",
+    "expected": "formula 1 2024 round 1"
+  },
+  {
+    "name": "an uppercase extension is dropped",
+    "input": "UFC 300 Prelims.MKV",
+    "expected": "ufc 300 prelims"
+  },
+  {
+    "name": "a ts extension is dropped",
+    "input": "NHL 2024 Bruins vs Panthers.ts",
+    "expected": "nhl 2024 bruins vs panthers"
+  },
+  {
+    "name": "an unknown extension stays",
+    "input": "UFC 300 Prelims.part1",
+    "expected": "ufc 300 prelims part1"
+  },
+  {
+    "name": "Greek capitals lower without a final sigma",
+    "input": "Super League Greece 2024 \u039f\u039b\u03a5\u039c\u03a0\u0399\u0391\u039a\u039f\u03a3 vs \u03a0\u0391\u039f\u039a.mkv",
+    "expected": "super league greece 2024 \u03bf\u03bb\u03c5\u03bc\u03c0\u03b9\u03b1\u03ba\u03bf\u03c3 vs \u03c0\u03b1\u03bf\u03ba"
+  },
+  {
+    "name": "a dotted capital I stays as it is",
+    "input": "S\u00fcper Lig 2024 \u0130stanbul Ba\u015fak\u015fehir vs Kas\u0131mpa\u015fa 1080p.mkv",
+    "expected": "s\u00fcper lig 2024 \u0130stanbul ba\u015fak\u015fehir vs kas\u0131mpa\u015fa"
+  },
+  {
+    "name": "sharp s is not folded",
+    "input": "DFB-Pokal 2024 Fu\u00dfball Highlights.mkv",
+    "expected": "dfb pokal 2024 fu\u00dfball highlights"
+  },
+  {
+    "name": "Japanese letters survive",
+    "input": "J1 League 2024 \u6d66\u548c\u30ec\u30c3\u30ba vs \u9e7f\u5cf6\u30a2\u30f3\u30c8\u30e9\u30fc\u30ba.mkv",
+    "expected": "j1 league 2024 \u6d66\u548c\u30ec\u30c3\u30ba vs \u9e7f\u5cf6\u30a2\u30f3\u30c8\u30e9\u30fc\u30ba"
+  },
+  {
+    "name": "symbols and punctuation become one space",
+    "input": "NBA \ud83c\udfc0 2024 \u2022 Lakers @ Celtics!! (Live).mkv",
+    "expected": "nba 2024 lakers celtics live"
+  },
+  {
+    "name": "non-breaking spaces and tabs are spaces",
+    "input": "UFC\u00a0300\tMain Card\u00a0DIRECTORS\u00a0CUT.mkv",
+    "expected": "ufc 300 main card"
+  },
+  {
+    "name": "a Kelvin sign lowers to k",
+    "input": "NHL 2024 \u212aings vs Ducks.mkv",
+    "expected": "nhl 2024 kings vs ducks"
+  },
+  {
+    "name": "an empty name stays empty",
+    "input": "",
+    "expected": ""
+  }
+]

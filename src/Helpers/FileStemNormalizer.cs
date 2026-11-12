@@ -1,0 +1,193 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+using Sportarr.Api.Services;
+
+namespace Sportarr.Api.Helpers;
+
+/// <summary>
+/// Reduces a file name to the key that match memory stores. The hub does
+/// the same steps in backend/app/utils/file_stem.py. Both sides test one
+/// shared fixture, tests/Sportarr.Api.Tests/Services/Fixtures/StemNormalization/cases.json.
+/// Change the two sides and the fixture together.
+/// </summary>
+public static class FileStemNormalizer
+{
+    /// <summary>The longest key, in Unicode code points.</summary>
+    public const int MaxLength = 200;
+
+    // A real file name is shorter than this. The cap keeps the regex work
+    // small when a caller sends a very long value.
+    private const int MaxInputLength = 1000;
+
+    // Only these extensions are dropped. A generic rule would cut ".1"
+    // from a stem such as "Round.1".
+    private static readonly HashSet<string> MediaExtensions = new(StringComparer.Ordinal)
+    {
+        "mkv", "mp4", "avi", "m4v", "mov", "wmv", "ts", "m2ts", "mts",
+        "webm", "flv", "mpg", "mpeg", "iso", "vob", "strm",
+    };
+
+    // The fences are ASCII on purpose. Both regex engines then read them
+    // the same way.
+    private const string Start = @"(?<![a-z0-9])";
+    private const string End = @"(?![a-z0-9])";
+
+    // A channel layout can follow an audio codec, as in "DDP5.1" or "DD+5.1".
+    private const string Channels = @"(?:\+?[ .]?[0-9][ .][0-9])?";
+
+    private const string Audio = "(?:" + MediaFileParser.AudioCodecTokens + ")" + Channels;
+    private const string Video = "(?:" + MediaFileParser.VideoCodecTokens + ")";
+    private const string Source = "(?:" + MediaFileParser.SourceTokens + ")";
+    private const string Quality = "(?:" + MediaFileParser.QualityTokens + ")";
+    private const string GenericQuality = "(?:" + MediaFileParser.GenericQualityTokens + ")";
+    private const string ProperRepack = "(?:" + MediaFileParser.ProperRepackTokens + ")";
+    private const string Edition = "(?:" + MediaFileParser.EditionTokens + ")";
+
+    private const RegexOptions Options =
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled;
+
+    // Language words are removed only in capitals, which is the release
+    // convention. "Spanish Grand Prix" and "Italian Grand Prix" must stay
+    // two keys.
+    private static readonly Regex LanguagePattern = new(
+        @"(?<![A-Za-z0-9])(?:" + MediaFileParser.LanguageTokens + @")(?![A-Za-z0-9])",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    // A release group is removed only when it follows a quality, source or
+    // codec token. "Arsenal-Chelsea" at the end of a name is not a group.
+    private static readonly Regex GroupPattern = new(
+        Start + "(?<tech>" + Audio + "|" + Video + "|" + Source + "|" + Quality + "|" + GenericQuality + ")"
+        + @"-[a-z0-9]+(?:\[[a-z0-9]+\])?[^a-z0-9]*$",
+        Options);
+
+    // Audio and video go first. Otherwise "HD" takes the middle of "DTS-HD".
+    private static readonly Regex[] TokenPatterns =
+    {
+        new(Start + Audio + End, Options),
+        new(Start + Video + End, Options),
+        new(Start + Source + End, Options),
+        new(Start + Quality + End, Options),
+        new(Start + GenericQuality + End, Options),
+        new(Start + ProperRepack + End, Options),
+        new(Start + Edition + End, Options),
+    };
+
+    /// <summary>
+    /// The match memory key for a file name, a stem or a path. The result
+    /// is lower case, holds only letters, digits and single spaces, and
+    /// keeps years and season and episode tokens.
+    /// </summary>
+    public static string Normalize(string? fileNameOrStem)
+    {
+        if (string.IsNullOrEmpty(fileNameOrStem))
+            return string.Empty;
+
+        var name = fileNameOrStem;
+        var lastSeparator = name.LastIndexOfAny(new[] { '/', '\\' });
+        if (lastSeparator >= 0)
+            name = name[(lastSeparator + 1)..];
+
+        name = DropMediaExtension(name);
+        name = TakeCodePoints(name, MaxInputLength);
+        name = CleanCodePoints(name).Normalize(NormalizationForm.FormC);
+        name = SpacesToAscii(name);
+
+        name = LanguagePattern.Replace(name, " ");
+        name = name.ToLowerInvariant();
+        name = SportarrIdToken.Strip(name);
+        name = GroupPattern.Replace(name, "${tech} ");
+        foreach (var pattern in TokenPatterns)
+            name = pattern.Replace(name, " ");
+
+        name = CollapseToLettersAndDigits(name);
+        return TakeCodePoints(name, MaxLength).TrimEnd(' ');
+    }
+
+    private static string DropMediaExtension(string name)
+    {
+        var dot = name.LastIndexOf('.');
+        if (dot < 0)
+            return name;
+
+        var extension = name[(dot + 1)..];
+        if (!extension.All(char.IsAscii))
+            return name;
+
+        return MediaExtensions.Contains(extension.ToLowerInvariant()) ? name[..dot] : name;
+    }
+
+    // A lone surrogate becomes U+FFFD. Normalization then cannot fail.
+    private static string CleanCodePoints(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        foreach (var rune in text.EnumerateRunes())
+            builder.Append(rune.ToString());
+        return builder.ToString();
+    }
+
+    // The token lists use \s. The two engines disagree on some \s
+    // characters, so every space becomes an ASCII space first.
+    private static string SpacesToAscii(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var category = Rune.GetUnicodeCategory(rune);
+            var isSpace = category is UnicodeCategory.SpaceSeparator
+                    or UnicodeCategory.LineSeparator
+                    or UnicodeCategory.ParagraphSeparator
+                || rune.Value is >= 0x09 and <= 0x0D or 0x85;
+            builder.Append(isSpace ? " " : rune.ToString());
+        }
+        return builder.ToString();
+    }
+
+    // Each run of characters that are not letters or digits becomes one
+    // space. The check reads the Unicode category, because \w differs
+    // between the two regex engines.
+    private static string CollapseToLettersAndDigits(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        var pendingSpace = false;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (IsLetterOrDigit(rune))
+            {
+                if (pendingSpace && builder.Length > 0)
+                    builder.Append(' ');
+                pendingSpace = false;
+                builder.Append(rune.ToString());
+            }
+            else
+            {
+                pendingSpace = true;
+            }
+        }
+        return builder.ToString();
+    }
+
+    private static bool IsLetterOrDigit(Rune rune) => Rune.GetUnicodeCategory(rune) switch
+    {
+        UnicodeCategory.UppercaseLetter or UnicodeCategory.LowercaseLetter or UnicodeCategory.TitlecaseLetter
+            or UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter
+            or UnicodeCategory.DecimalDigitNumber or UnicodeCategory.LetterNumber or UnicodeCategory.OtherNumber => true,
+        _ => false,
+    };
+
+    // The cap counts code points, as Python does. A UTF-16 count would cut
+    // a letter outside the Basic Multilingual Plane in half.
+    private static string TakeCodePoints(string text, int limit)
+    {
+        var count = 0;
+        var length = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (count == limit)
+                return text[..length];
+            count++;
+            length += rune.Utf16SequenceLength;
+        }
+        return text;
+    }
+}

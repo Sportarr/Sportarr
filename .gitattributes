@@ -14,3 +14,6 @@ agents/plex/**/*.plist text eol=lf
 # Custom for Visual Studio
 *.cs     diff=csharp
 *.sln    merge=union
+
+# The app and the hub hash this fixture. Keep its bytes exact.
+tests/Sportarr.Api.Tests/Services/Fixtures/StemNormalization/cases.json -text

@@ -22,26 +22,37 @@ public class MediaFileParser
     // Named resolutions are searched on their own first. A generic "HD" or
     // "SD" sits earlier in a name like "Event.HDTV.1080p" and would otherwise
     // win on position and report the release as plain HD.
+    // FileStemNormalizer uses these token lists too. The hub keeps a copy
+    // in backend/app/utils/file_stem.py. Change all three together.
+    internal const string QualityTokens = @"2160p|1080p|720p|480p|360p|4K|UHD";
+    internal const string GenericQualityTokens = @"HD|SD";
+    internal const string SourceTokens = @"BluRay|Blu-Ray|BDREMUX|BD|WEB-DL|WEBDL|WEBRip|WEB|HDTV|PDTV|DVDRip|DVD|Telecine|HDCAM|CAM|TELESYNC|TS";
+    internal const string VideoCodecTokens = @"x265|x264|h[\.\s]?265|h[\.\s]?264|HEVC|AVC|XviD|DivX|VP9|AV1";
+    internal const string AudioCodecTokens = @"AAC(?:[\s\.]2[\s\.]0)?|AC3|E[\-\s]?AC[\-\s]?3|DDP|DD(?:[\s\.]5[\s\.]1)?|TrueHD|Atmos|DTS(?:[\s\-]HD)?(?:[\s\-]MA)?|FLAC|MP3|Opus";
+    internal const string ProperRepackTokens = @"PROPER|REPACK";
+    internal const string EditionTokens = @"EXTENDED|UNRATED|DIRECTORS?\.?\s*CUT|THEATRICAL|REMASTERED|IMAX|CRITERION";
+    internal const string LanguageTokens = @"MULTI|MULTiSUBS|DUAL|DUBBED|SUBBED|GERMAN|FRENCH|SPANISH|ITALIAN|JAPANESE|KOREAN|CHINESE";
+
     private static readonly Regex QualityPattern = new(
-        TokenStart + @"(?<quality>2160p|1080p|720p|480p|360p|4K|UHD)" + TokenEnd,
+        TokenStart + @"(?<quality>" + QualityTokens + ")" + TokenEnd,
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex GenericQualityPattern = new(
-        TokenStart + @"(?<quality>HD|SD)" + TokenEnd,
+        TokenStart + @"(?<quality>" + GenericQualityTokens + ")" + TokenEnd,
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex SourcePattern = new(
-        TokenStart + @"(?<source>BluRay|Blu-Ray|BDREMUX|BD|WEB-DL|WEBDL|WEBRip|WEB|HDTV|PDTV|DVDRip|DVD|Telecine|HDCAM|CAM|TELESYNC|TS)" + TokenEnd,
+        TokenStart + @"(?<source>" + SourceTokens + ")" + TokenEnd,
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex VideoCodecPattern = new(@"(?<codec>x265|x264|h[\.\s]?265|h[\.\s]?264|HEVC|AVC|XviD|DivX|VP9|AV1)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex AudioCodecPattern = new(@"(?<audio>AAC(?:[\s\.]2[\s\.]0)?|AC3|E[\-\s]?AC[\-\s]?3|DDP|DD(?:[\s\.]5[\s\.]1)?|TrueHD|Atmos|DTS(?:[\s\-]HD)?(?:[\s\-]MA)?|FLAC|MP3|Opus)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ProperRepackPattern = new(@"\b(?<proper>PROPER|REPACK)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex VideoCodecPattern = new(@"(?<codec>" + VideoCodecTokens + ")", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AudioCodecPattern = new(@"(?<audio>" + AudioCodecTokens + ")", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ProperRepackPattern = new(@"\b(?<proper>" + ProperRepackTokens + @")\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     // REAL only counts as a proper-marker when fully uppercase (scene
     // convention). A case-insensitive match flags every file containing
     // "Real" (Real Madrid, Real Sociedad, Real Salt Lake...) as a PROPER.
     private static readonly Regex RealProperPattern = new(@"\bREAL\b", RegexOptions.Compiled);
-    private static readonly Regex EditionPattern = new(@"(?<edition>EXTENDED|UNRATED|DIRECTORS?\.?\s*CUT|THEATRICAL|REMASTERED|IMAX|CRITERION)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex LanguagePattern = new(@"(?<lang>MULTI|MULTiSUBS|DUAL|DUBBED|SUBBED|GERMAN|FRENCH|SPANISH|ITALIAN|JAPANESE|KOREAN|CHINESE)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EditionPattern = new(@"(?<edition>" + EditionTokens + ")", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex LanguagePattern = new(@"(?<lang>" + LanguageTokens + ")", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Date patterns
     private static readonly Regex DatePattern = new(@"(?<year>\d{4})[-.]?(?<month>\d{2})[-.]?(?<day>\d{2})", RegexOptions.Compiled);
