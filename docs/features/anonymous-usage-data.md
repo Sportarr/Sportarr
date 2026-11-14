@@ -59,7 +59,7 @@ A person on the sportarr.net team then reviews each name that qualifies. Only an
 
 ### Matches other installs agreed on
 
-When you scan a folder on the **Library Import** page, Sportarr sends the cleaned names of the files it needs to match. It leaves out files already in your library, files you ignored, and files that carry a Sportarr event id in their name or their metadata file. This request does not carry the install id.
+When you scan a folder on the **Library Import** page, Sportarr sends the cleaned names of the files in the folder. It leaves out files already in your library, files you ignored, and files that carry a Sportarr event id in their name or their metadata file. Sportarr does not read embedded tags first, so a file that it later matches by the id in its tags can still be looked up. This request does not carry the install id.
 
 The service answers with the event for each name that has an approved match. Sportarr uses that event only when all of these are true.
 
