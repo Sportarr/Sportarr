@@ -922,8 +922,12 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
               aliases you add, so popular aliases can be promoted into the shared metadata and
               benefit everyone automatically. It also includes the titles of releases that match a
               monitored league but no event, with the league and the date, so missing events can
-              be added. Submissions carry only that data and a random install identifier. No
-              personal information, indexer name or address is collected.
+              be added. Imports you make yourself also send the file name, the event you matched it
+              to, the season, and whether you chose it by hand, and Library Import scans send cleaned
+              file names and receive matches other installs agreed on. Submissions carry only that
+              data and a random install identifier. No personal information, indexer name or address
+              is collected.{' '}
+              <a href="https://wiki.sportarr.net/features/anonymous-usage-data/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">See exactly what is sent</a>.
             </p>
           </div>
         </label>

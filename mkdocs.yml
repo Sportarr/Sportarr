@@ -108,6 +108,7 @@ nav:
       - Notifications: features/notifications.md
       - File Naming: features/file-naming.md
       - Library Import: features/library-import.md
+      - Anonymous Usage Data: features/anonymous-usage-data.md
       - IPTV DVR (Alpha): features/iptv-dvr.md
   - Troubleshooting: troubleshooting.md
   - API:

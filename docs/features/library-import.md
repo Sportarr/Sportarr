@@ -110,6 +110,8 @@ Each matched file shows a score.
 
 A file that scores under 40 is not matched. It is listed under **Unmatched Files**. The score goes away after you choose a file's event yourself.
 
+With **Send Anonymous Usage Data** on, a file can also match at 90 to the event that other installs matched it to, as [Anonymous Usage Data](anonymous-usage-data.md#matches-other-installs-agreed-on) explains.
+
 ## Choose an event yourself
 
 Click **Match** on an unmatched file, or **Edit** on a matched one, to choose the league, season, event, and part. When an unmatched file's folder names one of your leagues, the dialog starts on that league and season and says "Chosen from the file's folder."
