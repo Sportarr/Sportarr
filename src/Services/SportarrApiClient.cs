@@ -153,6 +153,170 @@ public class SportarrApiClient
         }
     }
 
+    // The hub reads at most this many rows in one file match submission.
+    private const int FileMatchSubmitBatchSize = 50;
+
+    // The hub accepts at most this many stems in one lookup.
+    private const int FileMatchLookupBatchSize = 200;
+
+    /// <summary>
+    /// Report the events that users tied to file stems, as anonymous usage
+    /// data. The server counts distinct installs per (event, stem), and an
+    /// approved count becomes shared match memory. The caller checks
+    /// SendAnonymousUsageData. Each suggestion's StemDisplay must be the
+    /// exact stem that the app normalized. That is the file name without
+    /// the directory and the extension, not cut first. The hub makes the key
+    /// again from StemDisplay and drops a row whose key differs from
+    /// StemNorm. Sends batches of 50. Returns true only when every batch
+    /// gets a success status. Never throws.
+    /// </summary>
+    public async Task<bool> SubmitFileMatchSuggestionsAsync(string installId, IReadOnlyList<FileMatchSuggestion> suggestions)
+    {
+        if (suggestions.Count == 0)
+            return true;
+
+        string url;
+        try
+        {
+            var root = _apiBaseUrl.Replace("/api/v2/json", string.Empty).TrimEnd('/');
+            url = $"{root}/api/metadata/suggestions/file-matches";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[SportarrAPI] File match submission failed (ignored)");
+            return false;
+        }
+
+        var allSent = true;
+        foreach (var batch in suggestions.Chunk(FileMatchSubmitBatchSize))
+        {
+            try
+            {
+                var payload = JsonSerializer.Serialize(new
+                {
+                    installId,
+                    suggestions = batch.Select(s => new
+                    {
+                        leagueId = s.LeagueId,
+                        eventId = s.EventId,
+                        stemNorm = s.StemNorm,
+                        stemDisplay = s.StemDisplay,
+                        season = s.Season,
+                        kind = s.Kind,
+                    }),
+                });
+
+                using var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+                using var response = await _httpClient.PostAsync(url, content);
+                _logger.LogDebug("[SportarrAPI] File match suggestions ({Count}) -> {Status}", batch.Length, (int)response.StatusCode);
+                if (!response.IsSuccessStatusCode)
+                    allSent = false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[SportarrAPI] File match submission failed (ignored)");
+                allSent = false;
+            }
+        }
+        return allSent;
+    }
+
+    /// <summary>
+    /// Ask the hub for the approved event of each normalized stem. The hub
+    /// leaves out a stem that has no approved match. When leagueId is set,
+    /// only matches in that league come back. Sends batches of 200, one
+    /// after another. A batch that fails is skipped, and the hits of the
+    /// other batches still merge. A cancelled token returns an empty
+    /// result. Never throws.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, FileMatchHit>> LookupFileMatchesAsync(
+        IReadOnlyList<string> stems, string? leagueId, CancellationToken ct)
+    {
+        var empty = new Dictionary<string, FileMatchHit>(StringComparer.Ordinal);
+
+        // The hub rejects the whole request for one blank or long stem, so
+        // the client drops such a stem before it sends.
+        var unique = stems
+            .Where(s => !string.IsNullOrWhiteSpace(s)
+                && s.EnumerateRunes().Count() <= Sportarr.Api.Helpers.FileStemNormalizer.MaxLength)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (unique.Count == 0)
+            return empty;
+
+        var hits = new Dictionary<string, FileMatchHit>(StringComparer.Ordinal);
+        try
+        {
+            var root = _apiBaseUrl.Replace("/api/v2/json", string.Empty).TrimEnd('/');
+            var url = $"{root}/api/metadata/match/by-name";
+
+            foreach (var batch in unique.Chunk(FileMatchLookupBatchSize))
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    // The hub reads leagueId as a string only. A null value
+                    // is left out of the body.
+                    var payload = leagueId is null
+                        ? JsonSerializer.Serialize(new { stems = batch })
+                        : JsonSerializer.Serialize(new { stems = batch, leagueId });
+
+                    using var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+                    using var response = await _httpClient.PostAsync(url, content, ct);
+                    _logger.LogDebug("[SportarrAPI] File match lookup ({Count}) -> {Status}", batch.Length, (int)response.StatusCode);
+                    if (!response.IsSuccessStatusCode)
+                        continue;
+
+                    var json = await response.Content.ReadAsStringAsync(ct);
+                    MergeFileMatchHits(json, hits);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[SportarrAPI] File match lookup batch failed (skipped)");
+                }
+            }
+            return hits;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _logger.LogDebug("[SportarrAPI] File match lookup cancelled");
+            return empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[SportarrAPI] File match lookup failed (ignored)");
+            return empty;
+        }
+    }
+
+    // Reads {"matches": {"<stem>": {"eventId", "leagueId", "installs"}}}.
+    // An entry without an event id or a league id is skipped.
+    private static void MergeFileMatchHits(string json, Dictionary<string, FileMatchHit> hits)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object
+            || !doc.RootElement.TryGetProperty("matches", out var matches)
+            || matches.ValueKind != JsonValueKind.Object)
+            return;
+
+        foreach (var entry in matches.EnumerateObject())
+        {
+            var hit = entry.Value;
+            if (hit.ValueKind != JsonValueKind.Object)
+                continue;
+            var eventId = hit.TryGetProperty("eventId", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+            var hitLeagueId = hit.TryGetProperty("leagueId", out var l) && l.ValueKind == JsonValueKind.String ? l.GetString() : null;
+            if (string.IsNullOrEmpty(eventId) || string.IsNullOrEmpty(hitLeagueId))
+                continue;
+            var installs = hit.TryGetProperty("installs", out var i) && i.ValueKind == JsonValueKind.Number && i.TryGetInt32(out var n) ? n : 0;
+            hits[entry.Name] = new FileMatchHit(eventId, hitLeagueId, installs);
+        }
+    }
+
     /// <summary>
     /// Submit a user's team alias list as an anonymous usage-data suggestion.
     /// The server tallies distinct installs per (team, alias) so popular
