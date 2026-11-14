@@ -49,6 +49,17 @@ public class LibraryImportService
     /// <summary>The longest total wait for hub league searches in one scan.</summary>
     internal TimeSpan HubScanBudget { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>The longest wait for the match memory lookup of one scan.</summary>
+    internal TimeSpan MatchMemoryTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// The confidence of a match that comes from match memory. It is above
+    /// the auto-import floor, but only the Library Import page asks match
+    /// memory, and the user reviews each match there. So no background scan
+    /// imports a file on this match. The page only selects it first.
+    /// </summary>
+    internal const int MatchMemoryConfidence = 90;
+
     /// <summary>The last background send of file matches. Tests wait on it.</summary>
     internal Task? LastMatchReport { get; private set; }
 
@@ -195,6 +206,18 @@ public class LibraryImportService
             var claimedEventIds = new HashSet<int>();
             var supercarsRoundRaceCache = new Dictionary<(int Year, int Round), List<int>>();
             var folders = scanOptions.ResolveFolders ? await FolderResolution.LoadAsync(_db) : null;
+
+            // Ask the hub once, before the loop, for the files that need a
+            // match. A file with a Sportarr id in its name or its sidecar
+            // names its event already, so its stem does not leave the app.
+            var memory = scanOptions.LookupMatchMemory
+                ? await LookUpMatchMemoryAsync(files.Where(f =>
+                    ignoredPaths?.Contains(f) != true &&
+                    !eventByFilePath.ContainsKey(f) &&
+                    !eventFileByFilePath.ContainsKey(f) &&
+                    SportarrIdToken.ExtractEventId(Path.GetFileNameWithoutExtension(f)) == null &&
+                    string.IsNullOrEmpty(sidecars?[f]?.SportarrId)))
+                : null;
 
             var processedFileCount = 0;
             foreach (var filePath in files)
@@ -358,6 +381,44 @@ public class LibraryImportService
                         {
                             _logger.LogWarning("[Library Import] File '{File}' carries id token {Token} but no local event has that id - falling back to fuzzy matching",
                                 filename, tokenEventId);
+                        }
+                    }
+
+                    // Match memory goes before fuzzy matching. A hit claims
+                    // its event the way a fuzzy match does, and the upgrade
+                    // rule below judges it the same way.
+                    if (matchedEvent == null && memory?.HitFor(filePath) is { } hit)
+                    {
+                        var memoryEvent = await _db.Events
+                            .Include(e => e.League)
+                            .FirstOrDefaultAsync(e => e.ExternalId == hit.EventId);
+                        if (memoryEvent == null)
+                        {
+                            memory.NotInLibrary++;
+                            _logger.LogDebug("[Library Import] Match memory names {Event} for '{File}', but that event is not in the library",
+                                hit.EventId, filename);
+                        }
+                        else if (folderLeague != null && memoryEvent.LeagueId != folderLeague.Id)
+                        {
+                            memory.OtherLeague++;
+                            _logger.LogDebug("[Library Import] Match memory names '{Event}' for '{File}', but its league is not the '{League}' folder league",
+                                memoryEvent.Title, filename, folderLeague.Name);
+                        }
+                        else if (claimedEventIds.Contains(memoryEvent.Id))
+                        {
+                            memory.Claimed++;
+                            _logger.LogDebug("[Library Import] Match memory names '{Event}' for '{File}', but another file in this scan has that event",
+                                memoryEvent.Title, filename);
+                        }
+                        else
+                        {
+                            memory.Applied++;
+                            matchedEvent = memoryEvent;
+                            matchConfidence = MatchMemoryConfidence;
+                            if (!isPartFile)
+                                claimedEventIds.Add(memoryEvent.Id);
+                            _logger.LogDebug("[Library Import] Match memory: '{File}' = '{Event}' ({Installs} installs)",
+                                filename, memoryEvent.Title, hit.Installs);
                         }
                     }
 
@@ -586,6 +647,13 @@ public class LibraryImportService
                     folders.HubStopped ? ", then stopped after a slow or failed call" : "");
             }
 
+            if (memory != null)
+            {
+                _logger.LogInformation(
+                    "[Library Import] Asked match memory about {Stems} stems: {Hits} hits, {Applied} applied, {NotInLibrary} not in the library, {OtherLeague} in another league, {Claimed} already claimed",
+                    memory.StemsSent, memory.Hits.Count, memory.Applied, memory.NotInLibrary, memory.OtherLeague, memory.Claimed);
+            }
+
             _logger.LogInformation(
                 "Scan complete: {Total} files, {Matched} matched, {Unmatched} unmatched, {AlreadyInLibrary} already in library",
                 result.TotalFiles, result.MatchedFiles.Count, result.UnmatchedFiles.Count, result.AlreadyInLibrary.Count);
@@ -765,6 +833,63 @@ public class LibraryImportService
         if (!folders.HubStopped)
             folders.HubSuggestionByName[name] = suggestion;
         return suggestion;
+    }
+
+    /// <summary>The hub's match memory answers for one scan, with the counts for its log line.</summary>
+    private sealed class MatchMemory(Dictionary<string, string> stemByPath, IReadOnlyDictionary<string, FileMatchHit> hits)
+    {
+        public IReadOnlyDictionary<string, FileMatchHit> Hits { get; } = hits;
+        public int StemsSent { get; init; }
+        public int Applied { get; set; }
+        public int NotInLibrary { get; set; }
+        public int OtherLeague { get; set; }
+        public int Claimed { get; set; }
+
+        // Only a file that the scan sent gets a hit.
+        public FileMatchHit? HitFor(string filePath) =>
+            stemByPath.TryGetValue(filePath, out var stem) && Hits.TryGetValue(stem, out var hit) ? hit : null;
+    }
+
+    /// <summary>
+    /// Ask the hub for the event that other installs matched each file to.
+    /// Returns null when the scan must not ask. The lookup sends file stems,
+    /// so it runs only when Send Anonymous Usage Data is on. A slow or
+    /// failed lookup gives no hits, and the scan then matches as before.
+    /// </summary>
+    private async Task<MatchMemory?> LookUpMatchMemoryAsync(IEnumerable<string> files)
+    {
+        if (_apiClient == null || !(await _configService.GetConfigAsync()).SendAnonymousUsageData)
+            return null;
+
+        var stemByPath = new Dictionary<string, string>();
+        foreach (var file in files)
+        {
+            var stem = FileStemNormalizer.Normalize(Path.GetFileNameWithoutExtension(file));
+            if (stem.Length > 0)
+                stemByPath[file] = stem;
+        }
+        if (stemByPath.Count == 0)
+            return null;
+
+        var stems = stemByPath.Values.Distinct(StringComparer.Ordinal).ToList();
+        IReadOnlyDictionary<string, FileMatchHit> hits;
+        try
+        {
+            // The folder league check happens per file, so the request
+            // names no league.
+            // The hub client retries a failed batch, and the retry waits on
+            // this token too. So one retried batch can use up the time and
+            // empty the whole lookup. That is safe, because the scan then
+            // uses fuzzy matching only.
+            using var timeout = new CancellationTokenSource(MatchMemoryTimeout);
+            hits = await _apiClient.LookupFileMatchesAsync(stems, null, timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Library Import] Match memory lookup failed (ignored)");
+            hits = new Dictionary<string, FileMatchHit>();
+        }
+        return new MatchMemory(stemByPath, hits) { StemsSent = stems.Count };
     }
 
     /// <summary>

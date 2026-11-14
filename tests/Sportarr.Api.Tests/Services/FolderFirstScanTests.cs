@@ -280,7 +280,11 @@ public class FolderFirstScanTests : IDisposable
             });
     }
 
-    /// <summary>Counts the hub calls and answers each one with the given function.</summary>
+    /// <summary>
+    /// Counts the hub league searches and answers each one with the given
+    /// function. The match memory lookup of the scan gets no hits and is
+    /// not counted.
+    /// </summary>
     private sealed class CountingHubHandler(Func<CancellationToken, Task<HttpResponseMessage>> answer) : HttpMessageHandler
     {
         public int Calls;
@@ -288,6 +292,8 @@ public class FolderFirstScanTests : IDisposable
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/api/metadata/match/by-name", StringComparison.Ordinal))
+                return Json("""{"matches":{}}""");
             Interlocked.Increment(ref Calls);
             try
             {
