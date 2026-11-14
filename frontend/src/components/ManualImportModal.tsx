@@ -733,7 +733,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess, i
                     </div>
                     <div className="text-right">
                       <span className={`text-sm font-bold ${getConfidenceColor(pendingImport.suggestionConfidence)}`}>
-                        {pendingImport.suggestionConfidence}%
+                        {Math.min(pendingImport.suggestionConfidence, 100)}%
                       </span>
                       <div className="text-xs text-gray-500">confidence</div>
                     </div>

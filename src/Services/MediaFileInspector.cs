@@ -25,8 +25,9 @@ public class MediaFileInspector
     /// Inspect a file with ffprobe. Returns null when ffprobe is unavailable,
     /// the path doesn't exist, or the binary couldn't be parsed. Never throws —
     /// callers treat null as "no augmentation, fall back to filename parsing".
+    /// Tests override it to give a probe result without ffprobe.
     /// </summary>
-    public async Task<MediaFileInspection?> InspectAsync(string filePath, CancellationToken cancellationToken = default)
+    public virtual async Task<MediaFileInspection?> InspectAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
         {

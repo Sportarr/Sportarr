@@ -588,8 +588,7 @@ public class FileWatcherService : BackgroundService
             {
                 existingPending.Size = fileInfo.Length;
                 existingPending.Quality = quality;
-                existingPending.SuggestedEventId = suggestedEventId;
-                existingPending.SuggestionConfidence = confidence;
+                FileMatchSuggestionCollector.ApplyAutomaticSuggestion(existingPending, suggestedEventId, confidence);
                 existingPending.ErrorMessage = rejectionReason;
                 await db.SaveChangesAsync();
                 _logger.LogInformation("[File Watcher] Filled in the listed file: {Path} (Confidence: {Confidence}%)",

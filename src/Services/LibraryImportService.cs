@@ -793,6 +793,60 @@ public class LibraryImportService
         }
     }
 
+    /// <summary>The Sportarr id in the sidecar of a video, or null.</summary>
+    public string? ReadSidecarSportarrId(string videoPath) =>
+        File.Exists(videoPath) ? ReadSidecarOrNone(videoPath)?.SportarrId : null;
+
+    /// <summary>
+    /// Report the match of an accepted pending import as anonymous usage
+    /// data. A failure here never reaches the caller, because the file is
+    /// already in the library.
+    /// </summary>
+    /// <param name="import">The accepted row, with its final event.</param>
+    /// <param name="sourceFilePath">The video before the import. Its name is the stem.</param>
+    /// <param name="importedFilePath">The video after the import. Its embedded tag moves with it.</param>
+    /// <param name="preImportSidecarId">The sidecar id read before the import, if any.</param>
+    public async Task ReportAcceptedPendingImportAsync(
+        PendingImport import,
+        string sourceFilePath,
+        string importedFilePath,
+        string? preImportSidecarId)
+    {
+        if (_apiClient == null)
+            return;
+        try
+        {
+            if (!(await _configService.GetConfigAsync()).SendAnonymousUsageData)
+                return;
+            var evt = await _db.Events.AsNoTracking().Include(e => e.League)
+                .FirstOrDefaultAsync(e => e.Id == import.SuggestedEventId);
+            if (evt == null)
+                return;
+
+            // A download names its video only after the import. Its source
+            // sidecar is still there unless the import moved it.
+            var sidecarId = preImportSidecarId ?? (sourceFilePath == import.FilePath
+                ? null
+                : ReadSidecarSportarrId(sourceFilePath));
+            var suggestion = FileMatchSuggestionCollector.FromAcceptedPendingImport(import, sourceFilePath, evt, sidecarId);
+            if (suggestion == null)
+                return;
+
+            // The import reads the embedded tag the same way. Probe only a
+            // file that would be reported, because the probe can take seconds.
+            var parsed = await _fileParser.ParseWithInspectionAsync(
+                Path.GetFileNameWithoutExtension(importedFilePath), importedFilePath);
+            if (parsed.SportarrEventId != null || parsed.SportarrLeagueId != null)
+                return;
+
+            await ReportFileMatchesAsync(new[] { suggestion });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Pending Import] File match report failed (ignored)");
+        }
+    }
+
     /// <summary>
     /// Import matched files into library - moves/copies/hardlinks files to library folder
     /// </summary>
@@ -846,7 +900,8 @@ public class LibraryImportService
                 // the match is not reported. Read the sidecar before a move takes it.
                 var reportMatch = request.ReportMatch && mayReportMatches;
                 var carriedSportarrId = reportMatch
-                    ? parsedInfo.SportarrEventId ?? ReadSidecarOrNone(request.FilePath)?.SportarrId
+                    ? parsedInfo.SportarrEventId ?? parsedInfo.SportarrLeagueId
+                        ?? ReadSidecarOrNone(request.FilePath)?.SportarrId
                     : null;
 
                 // Parse import mode from request: "move", "copy", or "hardlink"

@@ -765,7 +765,9 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                 .Select(pi => pi.FilePath)
                 .ToListAsync(cancellationToken),
             StringComparer.OrdinalIgnoreCase);
-        // Keep confidence-100 choices because the source is not recorded.
+        // Keep a row at 100 or above. 101 is the user's pick
+        // (FileMatchSuggestionCollector.UserChoiceConfidence), and 100 is an
+        // exact match. A new guess must replace neither.
         var refreshablePendingByPath = (await db.PendingImports
                 .Where(pi => pi.DownloadClientId == null && pi.Status == PendingImportStatus.Pending &&
                     pi.SuggestionConfidence < 100)
@@ -867,8 +869,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                                     var confidence = tokenEventId.HasValue ? 100 : 0;
                                     if (pending.SuggestedEventId == tokenEventId &&
                                         pending.SuggestionConfidence == confidence) continue;
-                                    pending.SuggestedEventId = tokenEventId;
-                                    pending.SuggestionConfidence = confidence;
+                                    FileMatchSuggestionCollector.ApplyAutomaticSuggestion(pending, tokenEventId, confidence);
                                     refreshedCount++;
                                 }
                             }

@@ -15,9 +15,38 @@ public static partial class FileMatchSuggestionCollector
 
     /// <summary>
     /// The confidence that the edit endpoint gives a pending import when
-    /// the user picks its event.
+    /// the user picks another event. No automatic writer goes above
+    /// MaxAutomaticConfidence, so this value marks the user's choice. The
+    /// screens show it as 100.
     /// </summary>
-    public const int UserChoiceConfidence = 100;
+    public const int UserChoiceConfidence = 101;
+
+    /// <summary>The highest confidence that a match engine gives.</summary>
+    public const int MaxAutomaticConfidence = 100;
+
+    /// <summary>
+    /// Apply the user's edit of a pending import. Only a change of event
+    /// marks the row as the user's choice. A change of part alone keeps
+    /// the confidence.
+    /// </summary>
+    public static void ApplyUserEdit(PendingImport import, int? eventId, string? part)
+    {
+        if (eventId != import.SuggestedEventId)
+            import.SuggestionConfidence = UserChoiceConfidence;
+        import.SuggestedEventId = eventId;
+        import.SuggestedPart = part;
+    }
+
+    /// <summary>
+    /// Store an automatic suggestion on a pending import. The confidence
+    /// is set with the event, so a new automatic suggestion removes the
+    /// mark of an earlier user choice.
+    /// </summary>
+    public static void ApplyAutomaticSuggestion(PendingImport import, int? eventId, int confidence)
+    {
+        import.SuggestedEventId = eventId;
+        import.SuggestionConfidence = Math.Min(confidence, MaxAutomaticConfidence);
+    }
 
     // The metadata service accepts only its own short ids.
     [GeneratedRegex(@"^ev-[0-9]{6,29}$", RegexOptions.CultureInvariant)]

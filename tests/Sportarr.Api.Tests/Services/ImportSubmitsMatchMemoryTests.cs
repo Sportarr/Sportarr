@@ -39,6 +39,7 @@ public class ImportSubmitsMatchMemoryTests : IDisposable
     private readonly MemoryCache _cache;
     private readonly RecordingHandler _handler = new();
     private NfoSidecar? _sidecar;
+    private readonly Dictionary<string, string> _embeddedIds = new();
 
     public ImportSubmitsMatchMemoryTests()
     {
@@ -63,7 +64,12 @@ public class ImportSubmitsMatchMemoryTests : IDisposable
 
     private LibraryImportService CreateService(IConfiguration configuration)
     {
-        var fileParser = new MediaFileParser(Mock.Of<ILogger<MediaFileParser>>());
+        // The probe stands in for ffprobe. It gives the embedded tag that a test sets.
+        var inspector = new Mock<MediaFileInspector>(Mock.Of<ILogger<MediaFileInspector>>());
+        inspector.Setup(i => i.InspectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string path, CancellationToken _) =>
+                new MediaFileInspection { FilePath = path, SportarrId = _embeddedIds.GetValueOrDefault(path) });
+        var fileParser = new MediaFileParser(Mock.Of<ILogger<MediaFileParser>>(), inspector.Object);
         var api = new SportarrApiClient(_http, Mock.Of<ILogger<SportarrApiClient>>(), configuration, _config, _cache);
         return new LibraryImportService(
             _db,
@@ -321,6 +327,98 @@ public class ImportSubmitsMatchMemoryTests : IDisposable
         {
             new FileMatchSuggestion("lg-000032", "ev-312923", "panthers browns", "Panthers Browns", "2025", "manual"),
         });
+
+        Service.LastMatchReport.Should().BeNull();
+        _handler.Bodies.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AFileMatchedByItsEmbeddedTagNeverReports()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var file = Write("Panthers Browns.mkv");
+        _embeddedIds[file] = "ev-312923";
+
+        var result = await Service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = first.Id, SuggestedEventId = first.Id, ReportMatch = true, ImportMode = "copy" },
+        });
+
+        result.Imported.Should().ContainSingle();
+        _handler.Bodies.Should().BeEmpty();
+    }
+
+    private PendingImport Pending(string file, int eventId, int confidence) => new()
+    {
+        DownloadId = "disk-1", Title = Path.GetFileNameWithoutExtension(file), FilePath = file,
+        SuggestedEventId = eventId, SuggestionConfidence = confidence,
+    };
+
+    [Fact]
+    public async Task AnAcceptAtTheUserChoiceConfidenceReportsManual()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var file = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+
+        await Service.ReportAcceptedPendingImportAsync(
+            Pending(file, first.Id, FileMatchSuggestionCollector.UserChoiceConfidence), file, file, null);
+
+        var sent = (await SentSuggestions()).Should().ContainSingle().Subject;
+        sent.GetProperty("kind").GetString().Should().Be("manual");
+        sent.GetProperty("eventId").GetString().Should().Be("ev-312923");
+    }
+
+    [Fact]
+    public async Task AnAcceptOfAnAutomaticHundredReportsConfirmed()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var file = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+
+        await Service.ReportAcceptedPendingImportAsync(Pending(file, first.Id, 100), file, file, null);
+
+        (await SentSuggestions()).Should().ContainSingle().Which.GetProperty("kind").GetString().Should().Be("confirmed");
+    }
+
+    [Fact]
+    public async Task AnAcceptedFileWithAnEmbeddedTagNeverReports()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var source = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+        var imported = Path.Combine(_tempDir, "library", "NFL - S2025E06 - Carolina Panthers vs Cleveland Browns.mkv");
+        File.WriteAllBytes(imported, new byte[1024]);
+        // The tag moves with the file, so the probe reads the imported copy.
+        _embeddedIds[imported] = "ev-312923";
+
+        await Service.ReportAcceptedPendingImportAsync(Pending(source, first.Id, 72), source, imported, null);
+
+        Service.LastMatchReport.Should().BeNull();
+        _handler.Bodies.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AnAcceptedFileWithASidecarIdNeverReports()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var file = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+
+        await Service.ReportAcceptedPendingImportAsync(Pending(file, first.Id, 72), file, file, "ev-312923");
+
+        _handler.Bodies.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AnAcceptWithUsageDataOffSendsNothing()
+    {
+        await UsageData(false);
+        var (first, _) = Seed();
+        var file = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+
+        await Service.ReportAcceptedPendingImportAsync(Pending(file, first.Id, 72), file, file, null);
 
         Service.LastMatchReport.Should().BeNull();
         _handler.Bodies.Should().BeEmpty();

@@ -3357,7 +3357,7 @@ export default function LeagueDetailPage() {
                           <>
                             <span className="text-gray-600">→</span>
                             <span className={file.suggestionConfidence >= 70 ? 'text-green-400' : file.suggestionConfidence >= 40 ? 'text-yellow-400' : 'text-orange-400'}>
-                              {file.suggestedEventTitle} ({file.suggestionConfidence}%)
+                              {file.suggestedEventTitle} ({Math.min(file.suggestionConfidence, 100)}%)
                             </span>
                           </>
                         )}

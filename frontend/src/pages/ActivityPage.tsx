@@ -1758,7 +1758,7 @@ export default function ActivityPage() {
                               {pendingImport.suggestedEvent?.title
                                 ? <>
                                     {pendingImport.suggestedEvent.title}
-                                    {!pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">({pendingImport.suggestionConfidence}%)</span>}
+                                    {!pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">({Math.min(pendingImport.suggestionConfidence, 100)}%)</span>}
                                     {pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">· {pendingImport.fileCount} files, {pendingImport.matchedEventsCount} matched</span>}
                                   </>
                                 : pendingImport.isPack
@@ -2019,7 +2019,7 @@ export default function ActivityPage() {
                     {pendingImport.downloadClient?.name && <span>{pendingImport.downloadClient.name}</span>}
                     {pendingImport.detected && <span>{formatDate(pendingImport.detected)}</span>}
                     {pendingImport.isPack && pendingImport.matchedEventsCount != null && <span>{pendingImport.matchedEventsCount} matched</span>}
-                    {!pendingImport.isPack && pendingImport.suggestedEvent && <span>{pendingImport.suggestionConfidence}% match</span>}
+                    {!pendingImport.isPack && pendingImport.suggestedEvent && <span>{Math.min(pendingImport.suggestionConfidence, 100)}% match</span>}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {pendingImport.isPack ? (

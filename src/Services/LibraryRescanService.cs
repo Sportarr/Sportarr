@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services.Import;
+using Sportarr.Api.Helpers;
 
 namespace Sportarr.Api.Services;
 
@@ -163,8 +164,11 @@ public class LibraryRescanService
         {
             if (existing.DownloadClientId != null || existing.ErrorMessage != null) return;
             existing.ErrorMessage = reason;
-            existing.SuggestedEventId ??= file.MatchedEventId;
-            if (existing.SuggestionConfidence == 0) existing.SuggestionConfidence = file.MatchConfidence ?? 0;
+            // A new suggestion takes its own confidence, so it never keeps
+            // the mark of an earlier user choice.
+            if (existing.SuggestedEventId == null && file.MatchedEventId != null)
+                FileMatchSuggestionCollector.ApplyAutomaticSuggestion(existing, file.MatchedEventId, file.MatchConfidence ?? 0);
+            else if (existing.SuggestionConfidence == 0) existing.SuggestionConfidence = file.MatchConfidence ?? 0;
             await _db.SaveChangesAsync(ct);
             return;
         }

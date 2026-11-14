@@ -155,6 +155,64 @@ public class FileMatchSuggestionCollectorTests
     }
 
     [Fact]
+    public void AnAutomaticHundredIsConfirmed()
+    {
+        var import = Pending(confidence: 100);
+
+        FileMatchSuggestionCollector.UserChoiceConfidence.Should().BeGreaterThan(100,
+            "a match engine gives 100 for an exact match, and that is not the user's choice");
+        FileMatchSuggestionCollector.FromAcceptedPendingImport(import, FilePath, Evt())!.Kind.Should().Be("confirmed");
+    }
+
+    [Fact]
+    public void AnEditToAnotherEventMarksTheUserChoice()
+    {
+        var import = Pending(confidence: 72);
+
+        FileMatchSuggestionCollector.ApplyUserEdit(import, eventId: 9, part: "Main Card");
+
+        import.SuggestedEventId.Should().Be(9);
+        import.SuggestedPart.Should().Be("Main Card");
+        import.SuggestionConfidence.Should().Be(FileMatchSuggestionCollector.UserChoiceConfidence);
+    }
+
+    [Fact]
+    public void AnEditOfThePartAloneKeepsTheConfidence()
+    {
+        var import = Pending(confidence: 72);
+
+        FileMatchSuggestionCollector.ApplyUserEdit(import, eventId: 7, part: "Prelims");
+
+        import.SuggestedPart.Should().Be("Prelims");
+        import.SuggestionConfidence.Should().Be(72);
+        FileMatchSuggestionCollector.FromAcceptedPendingImport(import, FilePath, Evt())!.Kind.Should().Be("confirmed");
+    }
+
+    [Fact]
+    public void AnAutomaticSuggestionAfterAUserEditClearsTheMark()
+    {
+        var import = Pending(confidence: 72);
+        FileMatchSuggestionCollector.ApplyUserEdit(import, eventId: 9, part: null);
+
+        FileMatchSuggestionCollector.ApplyAutomaticSuggestion(import, eventId: 7, confidence: 100);
+
+        import.SuggestedEventId.Should().Be(7);
+        import.SuggestionConfidence.Should().Be(100);
+        FileMatchSuggestionCollector.FromAcceptedPendingImport(import, FilePath, Evt())!.Kind.Should().Be("confirmed");
+    }
+
+    [Fact]
+    public void AnAutomaticSuggestionNeverReachesTheUserChoiceConfidence()
+    {
+        var import = Pending(confidence: 0);
+
+        FileMatchSuggestionCollector.ApplyAutomaticSuggestion(import, eventId: 7,
+            confidence: FileMatchSuggestionCollector.UserChoiceConfidence);
+
+        import.SuggestionConfidence.Should().Be(FileMatchSuggestionCollector.MaxAutomaticConfidence);
+    }
+
+    [Fact]
     public void APendingImportWhoseReleaseNameCarriesAnIdIsNotReported()
     {
         var import = Pending(confidence: 72);
