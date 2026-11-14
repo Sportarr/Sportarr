@@ -40,6 +40,8 @@ public class ImportSubmitsMatchMemoryTests : IDisposable
     private readonly RecordingHandler _handler = new();
     private NfoSidecar? _sidecar;
     private readonly Dictionary<string, string> _embeddedIds = new();
+    // While set, the probe waits for it, as a slow ffprobe would.
+    private TaskCompletionSource? _probeGate;
 
     public ImportSubmitsMatchMemoryTests()
     {
@@ -67,8 +69,12 @@ public class ImportSubmitsMatchMemoryTests : IDisposable
         // The probe stands in for ffprobe. It gives the embedded tag that a test sets.
         var inspector = new Mock<MediaFileInspector>(Mock.Of<ILogger<MediaFileInspector>>());
         inspector.Setup(i => i.InspectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string path, CancellationToken _) =>
-                new MediaFileInspection { FilePath = path, SportarrId = _embeddedIds.GetValueOrDefault(path) });
+            .Returns(async (string path, CancellationToken _) =>
+            {
+                if (_probeGate != null)
+                    await _probeGate.Task;
+                return (MediaFileInspection?)new MediaFileInspection { FilePath = path, SportarrId = _embeddedIds.GetValueOrDefault(path) };
+            });
         var fileParser = new MediaFileParser(Mock.Of<ILogger<MediaFileParser>>(), inspector.Object);
         var api = new SportarrApiClient(_http, Mock.Of<ILogger<SportarrApiClient>>(), configuration, _config, _cache);
         return new LibraryImportService(
@@ -395,8 +401,7 @@ public class ImportSubmitsMatchMemoryTests : IDisposable
 
         await Service.ReportAcceptedPendingImportAsync(Pending(source, first.Id, 72), source, imported, null);
 
-        Service.LastMatchReport.Should().BeNull();
-        _handler.Bodies.Should().BeEmpty();
+        (await SentSuggestions()).Should().BeEmpty();
     }
 
     [Fact]
@@ -422,6 +427,79 @@ public class ImportSubmitsMatchMemoryTests : IDisposable
 
         Service.LastMatchReport.Should().BeNull();
         _handler.Bodies.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AnAcceptRenamedWithASportarrIdItWroteItselfStillReports()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var source = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+        // The default file format ends in the Sportarr id, so the library copy carries it.
+        var imported = Path.Combine(_tempDir, "library",
+            "NFL - S2025E06 - Carolina Panthers vs Cleveland Browns {sportarr-ev-312923}.mkv");
+        File.WriteAllBytes(imported, new byte[1024]);
+
+        await Service.ReportAcceptedPendingImportAsync(Pending(source, first.Id, 72), source, imported, null);
+
+        var sent = (await SentSuggestions()).Should().ContainSingle().Subject;
+        sent.GetProperty("stemDisplay").GetString().Should().Be("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP");
+        sent.GetProperty("kind").GetString().Should().Be("confirmed");
+    }
+
+    [Fact]
+    public async Task AnAcceptedFileWithAnEmbeddedLeagueTagNeverReports()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var file = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+        _embeddedIds[file] = "lg-000032";
+
+        await Service.ReportAcceptedPendingImportAsync(Pending(file, first.Id, 72), file, file, null);
+
+        if (Service.LastMatchReport != null)
+            await Service.LastMatchReport;
+        _handler.Bodies.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AFileWithAnEmbeddedLeagueTagNeverReportsFromAnImport()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var file = Write("Panthers Browns.mkv");
+        _embeddedIds[file] = "lg-000032";
+
+        var result = await Service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = first.Id, SuggestedEventId = first.Id, ReportMatch = true, ImportMode = "copy" },
+        });
+
+        result.Imported.Should().ContainSingle();
+        _handler.Bodies.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AnAcceptReturnsBeforeASlowProbeFinishes()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var file = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+        _probeGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var accept = Service.ReportAcceptedPendingImportAsync(Pending(file, first.Id, 72), file, file, null);
+
+            var finished = await Task.WhenAny(accept, Task.Delay(TimeSpan.FromSeconds(5)));
+            finished.Should().BeSameAs(accept, "the probe must not hold up the response");
+            _handler.Bodies.Should().BeEmpty("the probe has not finished");
+        }
+        finally
+        {
+            _probeGate.TrySetResult();
+        }
+
+        (await SentSuggestions()).Should().ContainSingle();
     }
 
     private sealed class RecordingHandler : HttpMessageHandler

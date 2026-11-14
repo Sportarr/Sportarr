@@ -64,6 +64,18 @@ public class MediaFileParser
     }
 
     /// <summary>
+    /// Read only the Sportarr id in the file's embedded SPORTARR tag. The
+    /// file name is not read. Returns null when there is no tag or no probe.
+    /// </summary>
+    public async Task<string?> ReadEmbeddedSportarrIdAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        if (_inspector == null || string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            return null;
+        var probed = await _inspector.InspectAsync(filePath, cancellationToken);
+        return string.IsNullOrEmpty(probed?.SportarrId) ? null : probed.SportarrId;
+    }
+
+    /// <summary>
     /// Parse a filename and augment with ffprobe inspection of the file's
     /// actual binary metadata. Sonarr-parity behavior — ffprobe always runs
     /// when a real on-disk path is supplied, not just as a fallback when

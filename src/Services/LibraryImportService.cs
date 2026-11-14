@@ -779,18 +779,27 @@ public class LibraryImportService
             return;
         try
         {
-            var config = await _configService.GetConfigAsync();
-            if (!config.SendAnonymousUsageData)
-                return;
-            var installId = await _configService.GetOrCreateAnalyticsInstanceIdAsync();
-            if (installId == null)
-                return;
-            LastMatchReport = _apiClient.SubmitFileMatchSuggestionsAsync(installId, suggestions);
+            var send = await StartMatchSendAsync(suggestions);
+            if (send != null)
+                LastMatchReport = send;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "[Library Import] File match report failed (ignored)");
         }
+    }
+
+    /// <summary>
+    /// Start the send of file matches, or return null when the user does
+    /// not allow usage data. Uses only the config service and the client,
+    /// so it is safe after the request scope ends.
+    /// </summary>
+    private async Task<Task<bool>?> StartMatchSendAsync(IReadOnlyList<FileMatchSuggestion> suggestions)
+    {
+        if (_apiClient == null || !(await _configService.GetConfigAsync()).SendAnonymousUsageData)
+            return null;
+        var installId = await _configService.GetOrCreateAnalyticsInstanceIdAsync();
+        return installId == null ? null : _apiClient.SubmitFileMatchSuggestionsAsync(installId, suggestions);
     }
 
     /// <summary>The Sportarr id in the sidecar of a video, or null.</summary>
@@ -799,7 +808,9 @@ public class LibraryImportService
 
     /// <summary>
     /// Report the match of an accepted pending import as anonymous usage
-    /// data. A failure here never reaches the caller, because the file is
+    /// data. The event lookup and the sidecar read run now. The probe and
+    /// the send run in the background, so the response does not wait for
+    /// them. A failure never reaches the caller, because the file is
     /// already in the library.
     /// </summary>
     /// <param name="import">The accepted row, with its final event.</param>
@@ -832,14 +843,28 @@ public class LibraryImportService
             if (suggestion == null)
                 return;
 
-            // The import reads the embedded tag the same way. Probe only a
-            // file that would be reported, because the probe can take seconds.
-            var parsed = await _fileParser.ParseWithInspectionAsync(
-                Path.GetFileNameWithoutExtension(importedFilePath), importedFilePath);
-            if (parsed.SportarrEventId != null || parsed.SportarrLeagueId != null)
-                return;
-
-            await ReportFileMatchesAsync(new[] { suggestion });
+            // The probe can take seconds, so it runs after the response. The
+            // work below must not touch the database context, because the
+            // request scope ends with the response. The collector already
+            // checked the source name. Only the embedded tag is read here,
+            // because the library name carries the id that Sportarr wrote.
+            var fileParser = _fileParser;
+            var logger = _logger;
+            LastMatchReport = Task.Run(async () =>
+            {
+                try
+                {
+                    if (await fileParser.ReadEmbeddedSportarrIdAsync(importedFilePath) != null)
+                        return;
+                    var send = await StartMatchSendAsync(new[] { suggestion });
+                    if (send != null)
+                        await send;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "[Pending Import] File match report failed (ignored)");
+                }
+            });
         }
         catch (Exception ex)
         {
