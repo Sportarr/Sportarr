@@ -404,6 +404,13 @@ public class LibraryImportService
                             _logger.LogDebug("[Library Import] Match memory names '{Event}' for '{File}', but its league is not the '{League}' folder league",
                                 memoryEvent.Title, filename, folderLeague.Name);
                         }
+                        else if (MatchMemoryDisagreement(memoryEvent, filename, parsedYear, sportsResult.SeasonYearEnd,
+                                     folderSeason, folderSeasonYear) is { } disagreement)
+                        {
+                            memory.Disagrees++;
+                            _logger.LogDebug("[Library Import] Match memory names '{Event}' for '{File}', but {Disagreement}",
+                                memoryEvent.Title, filename, disagreement);
+                        }
                         else if (claimedEventIds.Contains(memoryEvent.Id))
                         {
                             memory.Claimed++;
@@ -451,6 +458,8 @@ public class LibraryImportService
                             if (folderSeason != null)
                             {
                                 // An event added by hand can have only a season number.
+                                // InFolderSeason holds the same rule for one event.
+                                // Keep the two the same.
                                 candidateQuery = candidateQuery.Where(e => e.Season == folderSeason ||
                                     (e.Season == null && e.SeasonNumber == folderSeasonYear));
                             }
@@ -650,8 +659,9 @@ public class LibraryImportService
             if (memory != null)
             {
                 _logger.LogInformation(
-                    "[Library Import] Asked match memory about {Stems} stems: {Hits} hits, {Applied} applied, {NotInLibrary} not in the library, {OtherLeague} in another league, {Claimed} already claimed",
-                    memory.StemsSent, memory.Hits.Count, memory.Applied, memory.NotInLibrary, memory.OtherLeague, memory.Claimed);
+                    "[Library Import] Asked match memory about {Stems} stems: {Hits} hits, {Applied} applied, {NotInLibrary} not in the library, {OtherLeague} in another league, {Disagrees} disagree on season, year or session, {Claimed} already claimed",
+                    memory.StemsSent, memory.Hits.Count, memory.Applied, memory.NotInLibrary, memory.OtherLeague,
+                    memory.Disagrees, memory.Claimed);
             }
 
             _logger.LogInformation(
@@ -843,6 +853,7 @@ public class LibraryImportService
         public int Applied { get; set; }
         public int NotInLibrary { get; set; }
         public int OtherLeague { get; set; }
+        public int Disagrees { get; set; }
         public int Claimed { get; set; }
 
         // Only a file that the scan sent gets a hit.
@@ -2961,7 +2972,7 @@ public class LibraryImportService
         // of it. A second copy of a filled session otherwise moves onto a
         // sibling session, because the filled event is not a candidate.
         var sessions = SessionsOf(originalTitle, eventTitle, evt.League?.Name);
-        if (!string.IsNullOrEmpty(sessions.File) && !FileNamesEventSession(sessions))
+        if (NamesAnotherSession(sessions))
         {
             logger?.LogDebug("[Match] Session gate: file names '{FileSession}', event '{Event}' is '{EventSession}' - rejecting",
                 sessions.File, eventTitle, sessions.Event);
@@ -3015,23 +3026,9 @@ public class LibraryImportService
         // CRITICAL: sports events repeat every year. Year mismatch = wrong season.
         if (parsedYear.HasValue)
         {
-            // Broadcaster-branded year — release groups tag NYE late-Eastern
-            // airings with the broadcast year, not the UTC year.
-            var eventYear = (evt.BroadcastDate ?? evt.EventDate).Year;
-            var eventSeasonYear = evt.SeasonNumber ?? (int.TryParse(evt.Season, out var sy) ? sy : (int?)null);
-
-            // Accept if parsedYear matches:
-            // (a) the event's calendar year directly, OR
-            // (b) the start year of the season (e.g. SeasonNumber = 2025 for "2025-2026"), OR
-            // (c) the end year of a season span (e.g. SeasonYearEnd = 2026 for "2025-2026")
-            var yearMatches = eventYear == parsedYear.Value
-                || eventSeasonYear == parsedYear.Value
-                || (seasonYearEnd.HasValue && parsedYear.Value <= seasonYearEnd.Value
-                    && eventSeasonYear.HasValue && parsedYear.Value >= eventSeasonYear.Value)
-                || CricketRugbyReleaseNamePolicy.HasSplitSeasonYearMatch(originalTitle, evt);
-
-            if (!yearMatches)
+            if (!YearFits(parsedYear.Value, seasonYearEnd, originalTitle, evt))
             {
+                var eventYear = (evt.BroadcastDate ?? evt.EventDate).Year;
                 logger?.LogDebug("[Match] Year mismatch: file has {ParsedYear}, event '{Event}' is from {EventYear} (Season: {Season})",
                     parsedYear.Value, eventTitle, eventYear, evt.Season);
                 return 0;
@@ -3540,6 +3537,58 @@ public class LibraryImportService
     private static bool FileNamesEventSession((string? File, string? Event) sessions) =>
         string.IsNullOrEmpty(sessions.Event) ||
         string.Equals(sessions.Event, sessions.File, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True when the file names a session and the event is another one.
+    /// The session gate of the scorer rejects such an event.
+    /// </summary>
+    private static bool NamesAnotherSession((string? File, string? Event) sessions) =>
+        !string.IsNullOrEmpty(sessions.File) && !FileNamesEventSession(sessions);
+
+    /// <summary>
+    /// The year rule of the scorer. Sports events repeat every year, so a
+    /// file year that fits none of these is the wrong season:
+    /// the event's calendar year, the start year of its season, a year
+    /// inside the file's season span, or a split cricket or rugby season.
+    /// </summary>
+    private static bool YearFits(int parsedYear, int? seasonYearEnd, string originalTitle, Event evt)
+    {
+        // Release groups tag a late New Year's Eve airing with the
+        // broadcast year, so the broadcast date counts first.
+        var eventYear = (evt.BroadcastDate ?? evt.EventDate).Year;
+        var eventSeasonYear = evt.SeasonNumber ?? (int.TryParse(evt.Season, out var sy) ? sy : (int?)null);
+        return eventYear == parsedYear
+            || eventSeasonYear == parsedYear
+            || (seasonYearEnd.HasValue && parsedYear <= seasonYearEnd.Value
+                && eventSeasonYear.HasValue && parsedYear >= eventSeasonYear.Value)
+            || CricketRugbyReleaseNamePolicy.HasSplitSeasonYearMatch(originalTitle, evt);
+    }
+
+    /// <summary>
+    /// True when the event is in the season that the folder names. This is
+    /// the rule of the folder season filter on the candidate query. An
+    /// event added by hand can have only a season number.
+    /// </summary>
+    private static bool InFolderSeason(Event evt, string folderSeason, int? folderSeasonYear) =>
+        evt.Season == folderSeason || (evt.Season == null && evt.SeasonNumber == folderSeasonYear);
+
+    /// <summary>
+    /// Why the file and the event of a match memory hit disagree, or null
+    /// when they agree. The checks are the scorer's own rules for the
+    /// folder season, the year and the motorsport session. Consensus from
+    /// other installs does not override what this file says.
+    /// </summary>
+    private static string? MatchMemoryDisagreement(
+        Event evt, string filename, int? parsedYear, int? seasonYearEnd, string? folderSeason, int? folderSeasonYear)
+    {
+        if (folderSeason != null && !InFolderSeason(evt, folderSeason, folderSeasonYear))
+            return $"the folder names season {folderSeason}";
+        if (parsedYear.HasValue && !YearFits(parsedYear.Value, seasonYearEnd, filename, evt))
+            return $"the file names the year {parsedYear.Value}";
+        if (NamesAnotherSession(SessionsOf(filename, evt.Title, evt.League?.Name)))
+            return "the file names another session";
+        return null;
+    }
 
     /// <summary>
     /// The award of the two strong title tiers: 60 for the same title, 40

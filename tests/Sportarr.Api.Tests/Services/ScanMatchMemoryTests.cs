@@ -313,6 +313,95 @@ public class ScanMatchMemoryTests : IDisposable
         _log.Lines.Should().Contain(l => l.Level == LogLevel.Information && l.Message.Contains("1 already claimed"));
     }
 
+    private Event AddBahrain2025()
+    {
+        var race = new Event
+        {
+            Title = "Bahrain Grand Prix - Race", Sport = "Motorsport", LeagueId = _bahrain.LeagueId, Season = "2025",
+            SeasonNumber = 2025, EpisodeNumber = 10, Round = "1", EventDate = new DateTime(2025, 4, 13, 15, 0, 0, DateTimeKind.Utc),
+            ExternalId = "ev-110001", Status = "completed", Monitored = true,
+        };
+        _db.Events.Add(race);
+        _db.SaveChanges();
+        return race;
+    }
+
+    [Fact]
+    public async Task AHitFromAnotherSeasonThanTheFolderFallsToFuzzyMatching()
+    {
+        await UsageData(true);
+        var bahrain2025 = AddBahrain2025();
+        var file = WriteInLibrary("Formula 1", "Season 2025", "Bahrain Grand Prix Race.mkv");
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.FolderSeason.Should().Be("2025");
+        found.MatchedEventId.Should().Be(bahrain2025.Id, "fuzzy matching finds the race of the folder season");
+        found.MatchConfidence.Should().NotBe(90);
+        _log.Lines.Should().Contain(l => l.Level == LogLevel.Information && l.Message.Contains("1 disagree on season, year or session"));
+    }
+
+    [Fact]
+    public async Task AHitThatOnlyTheFolderSeasonRejectsIsVetoed()
+    {
+        await UsageData(true);
+        AddBahrain2025();
+        // The name says 2024, so only the folder season disagrees with the hit.
+        var file = WriteInLibrary("Formula 1", "Season 2025", "zz clip 2024 0001.mkv");
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        Find(scan, file).MatchedEventId.Should().NotBe(_bahrain.Id);
+        _log.Lines.Should().Contain(l => l.Level == LogLevel.Debug && l.Message.Contains("Match memory") && l.Message.Contains("season 2025"));
+    }
+
+    [Fact]
+    public async Task AHitFromAnotherYearThanThePathIsVetoed()
+    {
+        await UsageData(true);
+        var file = WriteOutside(Path.Combine("2023", "zz clip 0001.mkv"));
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_outside, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.FolderLeagueId.Should().BeNull();
+        found.MatchedEventId.Should().NotBe(_bahrain.Id);
+        _log.Lines.Should().Contain(l => l.Level == LogLevel.Debug && l.Message.Contains("Match memory") && l.Message.Contains("2023"));
+    }
+
+    [Fact]
+    public async Task AHitOnAnotherSessionThanTheFileNamesIsVetoed()
+    {
+        await UsageData(true);
+        var file = WriteOutside("zz Bahrain Qualifying 0001.mkv");
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_outside, options: ScanOptions.Interactive);
+
+        Find(scan, file).MatchedEventId.Should().NotBe(_bahrain.Id);
+        _log.Lines.Should().Contain(l => l.Level == LogLevel.Debug && l.Message.Contains("Match memory") && l.Message.Contains("session"));
+    }
+
+    [Fact]
+    public async Task AHitThatAgreesOnSeasonYearAndSessionApplies()
+    {
+        await UsageData(true);
+        AddBahrain2025();
+        var file = WriteInLibrary("Formula 1", "Season 2024", "zz race clip 0001.mkv");
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.FolderSeason.Should().Be("2024");
+        found.MatchedEventId.Should().Be(_bahrain.Id);
+        found.MatchConfidence.Should().Be(90);
+    }
+
     [Fact]
     public async Task NoLookupLineGoesAboveDebugPerStem()
     {
