@@ -9,6 +9,7 @@ using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Models.Requests;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Import;
 using Sportarr.Api.Validators;
 
 namespace Sportarr.Api.Endpoints;
@@ -417,8 +418,9 @@ app.MapPut("/api/pending-imports/{id:int}/suggestion", async (
 
     import.SuggestedEventId = request.EventId;
     import.SuggestedPart = request.Part;
-    // User manually selected = higher confidence
-    import.SuggestionConfidence = 100;
+    // User manually selected = higher confidence. The accept endpoint
+    // reads this value as the user's own choice.
+    import.SuggestionConfidence = FileMatchSuggestionCollector.UserChoiceConfidence;
 
     await db.SaveChangesAsync();
     return Results.Ok(import);
@@ -449,7 +451,8 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     LibraryImportService libraryImportService,
     ConfigService configService,
     EventPartDetector partDetector,
-    CustomFormatService customFormatService) =>
+    CustomFormatService customFormatService,
+    ILogger<Program> logger) =>
 {
     // Accept a pending import and perform the actual import.
     // Body is optional: when present, may carry { metadataOverrides: { quality, source,
@@ -503,6 +506,14 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     if (import is null) return Results.NotFound();
     if (import.SuggestedEventId is null)
         return Results.BadRequest(new { error = "No event selected for import" });
+
+    // A move takes the sidecar away, so read its Sportarr id now. Skip
+    // the read when Send Anonymous Usage Data is off.
+    var preImportSidecarId = (await configService.GetConfigAsync()).SendAnonymousUsageData
+        ? ReadSidecarSportarrId(import.FilePath)
+        : null;
+    // The path of the file whose match this accept reports, if any.
+    string? matchSourcePath = null;
 
     IDisposable? dvrClaim = null;
     if (import.DownloadId.StartsWith("dvr-", StringComparison.Ordinal))
@@ -669,7 +680,11 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                     ReleaseGroup = overrides?.ReleaseGroup,
                     OriginalTitle = overrides?.OriginalTitle,
                     Languages = overrides?.Languages,
-                    IndexerFlags = overrides?.IndexerFlags
+                    IndexerFlags = overrides?.IndexerFlags,
+                    // The user chose the event. A recording's event came from the DVR.
+                    ReportMatch = recording == null && preImportSidecarId == null
+                        && !FileMatchSuggestionCollector.CarriesIdToken(import.Title),
+                    SuggestedEventId = FileMatchSuggestionCollector.SuggestionBeforeUserChoice(import),
                 };
                 var replacement = await libraryImportService.ImportFilesAsync([request]);
                 if (replacement.Imported.Count != 1)
@@ -780,6 +795,10 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 recording.LastUpdated = DateTime.UtcNow;
                 recording.ErrorMessage = null;
             }
+            else
+            {
+                matchSourcePath = import.FilePath;
+            }
         }
         else
         {
@@ -800,6 +819,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
             if (imported == null)
                 throw new InvalidOperationException(tempQueueItem.ErrorMessage ?? "The file was not imported.");
             importedHistory = imported;
+            matchSourcePath = imported.SourcePath;
 
             importedFile = await db.EventFiles.SingleOrDefaultAsync(f =>
                 f.EventId == import.SuggestedEventId.Value && f.FilePath == imported.DestinationPath)
@@ -831,6 +851,12 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                     evt.League?.MonitoredParts, presentParts, config.EnableMultiPartEpisodes);
             }
             await db.SaveChangesAsync();
+        }
+
+        if (matchSourcePath != null)
+        {
+            await ReportAcceptedMatchAsync(import, matchSourcePath, preImportSidecarId,
+                db, configService, libraryImportService, logger);
         }
 
         return Results.Ok(import);
@@ -1419,6 +1445,47 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
         "symlink" => PostImportMode.Symlink,
         _ => PostImportMode.Auto
     };
+
+    /// <summary>The Sportarr id in the sidecar of a video, or null.</summary>
+    private static string? ReadSidecarSportarrId(string videoPath) =>
+        File.Exists(videoPath) ? NfoSidecarReader.TryRead(videoPath)?.SportarrId : null;
+
+    /// <summary>
+    /// Report the match of an accepted pending import as anonymous usage
+    /// data. A failure here never fails the accept, because the file is
+    /// already in the library.
+    /// </summary>
+    private static async Task ReportAcceptedMatchAsync(
+        PendingImport import,
+        string sourceFilePath,
+        string? preImportSidecarId,
+        SportarrDbContext db,
+        ConfigService configService,
+        LibraryImportService libraryImportService,
+        ILogger logger)
+    {
+        try
+        {
+            if (!(await configService.GetConfigAsync()).SendAnonymousUsageData)
+                return;
+            var evt = await db.Events.AsNoTracking().Include(e => e.League)
+                .FirstOrDefaultAsync(e => e.Id == import.SuggestedEventId);
+            if (evt == null)
+                return;
+            // A download names its video only after the import. Its source
+            // sidecar is still there unless the import moved it.
+            var sidecarId = preImportSidecarId ?? (sourceFilePath == import.FilePath
+                ? null
+                : ReadSidecarSportarrId(sourceFilePath));
+            var suggestion = FileMatchSuggestionCollector.FromAcceptedPendingImport(import, sourceFilePath, evt, sidecarId);
+            if (suggestion != null)
+                await libraryImportService.ReportFileMatchesAsync([suggestion]);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "[Pending Import] File match report failed (ignored)");
+        }
+    }
 
     /// <summary>
     /// Build the queue item a manually accepted import is transferred with.

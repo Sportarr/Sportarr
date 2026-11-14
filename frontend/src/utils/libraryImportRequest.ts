@@ -39,6 +39,9 @@ export interface ImportRequestOverrides {
 export interface LibraryImportRequest {
   filePath: string;
   eventId?: number;
+  // The scan's suggestion. The server compares it with eventId to tell a
+  // kept match from one the user picked.
+  suggestedEventId?: number;
   createNew: boolean;
   eventTitle?: string;
   organization?: string;
@@ -115,9 +118,14 @@ export function buildLibraryImportRequest(
     if (part.partNumber !== undefined) request.partNumber = part.partNumber;
     return request;
   };
+  // The server reads the scan's suggestion to tell a kept match from a pick.
+  const withSuggestion = (request: LibraryImportRequest): LibraryImportRequest => {
+    if (file.matchedEventId != null) request.suggestedEventId = file.matchedEventId;
+    return request;
+  };
 
   if (mapping) {
-    return withPart({
+    return withSuggestion(withPart({
       ...set,
       filePath: file.filePath,
       eventId: mapping.eventId,
@@ -125,17 +133,17 @@ export function buildLibraryImportRequest(
       eventTitle: mapping.eventTitle,
       leagueId: mapping.leagueId,
       season: mapping.season,
-    });
+    }));
   }
 
   // A new match from the scan, or a re-import of a file the library holds.
   if (file.matchedEventId || file.existingEventId) {
-    return withPart({
+    return withSuggestion(withPart({
       ...set,
       filePath: file.filePath,
       eventId: file.matchedEventId || file.existingEventId,
       createNew: false,
-    });
+    }));
   }
 
   return withPart({

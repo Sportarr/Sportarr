@@ -49,6 +49,9 @@ public class LibraryImportService
     /// <summary>The longest total wait for hub league searches in one scan.</summary>
     internal TimeSpan HubScanBudget { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>The last background send of file matches. Tests wait on it.</summary>
+    internal Task? LastMatchReport { get; private set; }
+
     public LibraryImportService(
         SportarrDbContext db,
         ILogger<LibraryImportService> logger,
@@ -765,6 +768,32 @@ public class LibraryImportService
     }
 
     /// <summary>
+    /// Report the events that the user tied to files, as anonymous usage
+    /// data. Sends nothing when Send Anonymous Usage Data is off. The send
+    /// runs in the background. The caller does not wait for it, and a
+    /// failure never reaches the caller.
+    /// </summary>
+    public async Task ReportFileMatchesAsync(IReadOnlyList<FileMatchSuggestion> suggestions)
+    {
+        if (suggestions.Count == 0 || _apiClient == null)
+            return;
+        try
+        {
+            var config = await _configService.GetConfigAsync();
+            if (!config.SendAnonymousUsageData)
+                return;
+            var installId = await _configService.GetOrCreateAnalyticsInstanceIdAsync();
+            if (installId == null)
+                return;
+            LastMatchReport = _apiClient.SubmitFileMatchSuggestionsAsync(installId, suggestions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Library Import] File match report failed (ignored)");
+        }
+    }
+
+    /// <summary>
     /// Import matched files into library - moves/copies/hardlinks files to library folder
     /// </summary>
     public async Task<ImportResult> ImportFilesAsync(
@@ -782,6 +811,10 @@ public class LibraryImportService
         // Get media management settings for file transfer
         var settings = await GetMediaManagementSettingsAsync();
         var config = await _configService.GetConfigAsync();
+
+        // The matches that the user chose. One send follows the batch save.
+        var matchReports = new List<FileMatchSuggestion>();
+        var mayReportMatches = config.SendAnonymousUsageData && _apiClient != null;
 
         foreach (var request in requests)
         {
@@ -808,6 +841,13 @@ public class LibraryImportService
                 var parsedInfo = await _fileParser.ParseWithInspectionAsync(
                     Path.GetFileNameWithoutExtension(request.FilePath),
                     request.FilePath);
+
+                // A Sportarr id in the tag or the sidecar names the event, so
+                // the match is not reported. Read the sidecar before a move takes it.
+                var reportMatch = request.ReportMatch && mayReportMatches;
+                var carriedSportarrId = reportMatch
+                    ? parsedInfo.SportarrEventId ?? ReadSidecarOrNone(request.FilePath)?.SportarrId
+                    : null;
 
                 // Parse import mode from request: "move", "copy", or "hardlink"
                 // Default (Auto) when the request doesn't specify a mode, mirroring
@@ -1177,6 +1217,15 @@ public class LibraryImportService
                         result.Imported.Add(destinationPath);
                         notifyQueue.Add((existingEvent, destinationPath,
                             request.Quality ?? _fileParser.BuildQualityString(parsedInfo), linkedFile));
+
+                        // A re-import of a file the event already holds is not a new choice.
+                        if (reportMatch && !isReimport)
+                        {
+                            var suggestion = FileMatchSuggestionCollector.FromImport(request.FilePath, existingEvent,
+                                request.SuggestedEventId, createNew: false, carriedSportarrId);
+                            if (suggestion != null)
+                                matchReports.Add(suggestion);
+                        }
                     }
                     else
                     {
@@ -1374,6 +1423,8 @@ public class LibraryImportService
         }
 
         await _db.SaveChangesAsync();
+
+        await ReportFileMatchesAsync(matchReports);
 
         // NOTIFICATIONS: manual imports fire the same OnDownload
         // notifications as automatic imports. Previously only the
@@ -3628,6 +3679,20 @@ public class FileImportRequest
     public required string FilePath { get; set; }
     public int? EventId { get; set; }
     public bool CreateNew { get; set; }
+
+    /// <summary>
+    /// The event that the scan suggested when the user imported the file,
+    /// or null when it had none. The match report compares it with EventId.
+    /// </summary>
+    public int? SuggestedEventId { get; set; }
+
+    /// <summary>
+    /// The user chose the event of this file, so the import reports the
+    /// match as anonymous usage data. Only the server sets this, and only
+    /// for the Library Import page and an accepted pending import. An
+    /// automatic import leaves it false.
+    /// </summary>
+    public bool ReportMatch { get; set; }
 
     /// <summary>
     /// An automatic import (the file watcher, a rescan, a completed download

@@ -42,7 +42,18 @@ describe('library import request', () => {
   it('sends the scan match when there is no manual match', () => {
     const request = buildLibraryImportRequest({ ...file, matchedEventId: 12 }, undefined, undefined);
 
-    expect(request).toEqual({ filePath: file.filePath, eventId: 12, createNew: false });
+    expect(request).toEqual({ filePath: file.filePath, eventId: 12, suggestedEventId: 12, createNew: false });
+  });
+
+  // The server compares the two ids to tell a kept match from a user's pick.
+  it('sends the scan suggestion beside a manual match', () => {
+    const request = buildLibraryImportRequest({ ...file, matchedEventId: 12 }, mapping, undefined);
+
+    expect(request).toMatchObject({ eventId: 7, suggestedEventId: 12 });
+  });
+
+  it('sends no suggestion when the scan matched nothing', () => {
+    expect(buildLibraryImportRequest(file, mapping, undefined).suggestedEventId).toBeUndefined();
   });
 
   // The server keeps a number alone only when multi-part episodes are off.

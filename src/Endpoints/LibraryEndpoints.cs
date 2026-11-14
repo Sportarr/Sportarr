@@ -50,6 +50,11 @@ public static class LibraryEndpoints
                     return Results.BadRequest(new { error = "No files to import" });
                 }
 
+                // The user chose each event on the Library Import page, so
+                // the import may report the match. The server sets this.
+                foreach (var request in requests)
+                    request.ReportMatch = true;
+
                 var body = System.Text.Json.JsonSerializer.Serialize(requests);
                 var task = await taskService.QueueTaskAsync(
                     $"Library Import ({requests.Count} file{(requests.Count == 1 ? "" : "s")})",
