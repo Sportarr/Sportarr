@@ -161,7 +161,7 @@ public class ScanMatchMemoryTests : IDisposable
     public async Task AHitOnALibraryEventMatchesTheFileAt90()
     {
         await UsageData(true);
-        var file = WriteOutside("zz clip 0001.mkv");
+        var file = WriteOutside("zz clip 2024 0001.mkv");
         HubKnows(file, "ev-100001", "lg-000278");
 
         var scan = await Service.ScanFolderAsync(_outside, options: ScanOptions.Interactive);
@@ -272,7 +272,7 @@ public class ScanMatchMemoryTests : IDisposable
         });
         _bahrain.FilePath = heldPath;
         _db.SaveChanges();
-        var file = WriteOutside("zz clip 0001 HDTV-720p.mkv");
+        var file = WriteOutside("zz clip 2024 0001 HDTV-720p.mkv");
         HubKnows(file, "ev-100001", "lg-000278");
 
         var scan = await Service.ScanFolderAsync(_outside, options: ScanOptions.Interactive);
@@ -402,11 +402,91 @@ public class ScanMatchMemoryTests : IDisposable
         found.MatchConfidence.Should().Be(90);
     }
 
+    // This name gives the same stem every year, so a hit can name the event of another year.
+    private const string YearlessName = "Bahrain Grand Prix - Race 1080p.mkv";
+
+    [Fact]
+    public async Task AYearlessNameInAFlatFolderDoesNotTakeTheHit()
+    {
+        await UsageData(true);
+        AddBahrain2025();
+        var file = WriteInLibrary("Formula 1", YearlessName);
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.FolderSeason.Should().BeNull();
+        found.MatchConfidence.Should().NotBe(90);
+        _log.Lines.Should().Contain(l => l.Level == LogLevel.Debug && l.Message.Contains("Match memory") && l.Message.Contains("names no year"));
+        _log.Lines.Should().Contain(l => l.Level == LogLevel.Information && l.Message.Contains("1 name no year"));
+    }
+
+    [Fact]
+    public async Task AYearlessNameOutsideTheRootsDoesNotTakeTheHit()
+    {
+        await UsageData(true);
+        var file = WriteOutside(YearlessName);
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_outside, options: ScanOptions.Interactive);
+
+        Find(scan, file).MatchConfidence.Should().NotBe(90);
+        _log.Lines.Should().Contain(l => l.Level == LogLevel.Information && l.Message.Contains("1 name no year"));
+    }
+
+    [Fact]
+    public async Task AYearlessNameInAnotherSeasonFolderGetsTheSeasonVeto()
+    {
+        await UsageData(true);
+        var bahrain2025 = AddBahrain2025();
+        var file = WriteInLibrary("Formula 1", "Season 2025", YearlessName);
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.MatchedEventId.Should().Be(bahrain2025.Id, "fuzzy matching finds the race of the folder season");
+        found.MatchConfidence.Should().NotBe(90);
+        _log.Lines.Should().Contain(l => l.Level == LogLevel.Information && l.Message.Contains("1 disagree on season, year or session"));
+    }
+
+    [Fact]
+    public async Task AYearlessNameInTheRightSeasonFolderTakesTheHit()
+    {
+        await UsageData(true);
+        AddBahrain2025();
+        var file = WriteInLibrary("Formula 1", "Season 2024", YearlessName);
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.MatchedEventId.Should().Be(_bahrain.Id);
+        found.MatchConfidence.Should().Be(90);
+    }
+
+    [Fact]
+    public async Task AYearlessNameWithASidecarAiredDateInTheRightYearTakesTheHit()
+    {
+        await UsageData(true);
+        AddBahrain2025();
+        var file = WriteInLibrary("Formula 1", YearlessName);
+        _sidecars[file] = new NfoSidecar(new DateTime(2024, 3, 2), null, null);
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.MatchedEventId.Should().Be(_bahrain.Id);
+        found.MatchConfidence.Should().Be(90);
+    }
+
     [Fact]
     public async Task NoLookupLineGoesAboveDebugPerStem()
     {
         await UsageData(true);
-        var files = Enumerable.Range(1, 3).Select(i => WriteOutside($"zz clip {i:D4}.mkv")).ToList();
+        var files = Enumerable.Range(1, 3).Select(i => WriteOutside($"zz clip 2024 {i:D4}.mkv")).ToList();
         HubKnows(files[0], "ev-100001", "lg-000278");
         HubKnows(files[1], "ev-999999", "lg-000278");
 

@@ -417,6 +417,15 @@ public class LibraryImportService
                             _logger.LogDebug("[Library Import] Match memory names '{Event}' for '{File}', but another file in this scan has that event",
                                 memoryEvent.Title, filename);
                         }
+                        else if (parsedYear == null && folderSeason == null)
+                        {
+                            // A name with no year gives the same stem every
+                            // year. The hit can then name the event of
+                            // another year, and nothing here can check it.
+                            memory.NoYear++;
+                            _logger.LogDebug("[Library Import] Match memory names '{Event}' for '{File}', but the file names no year and no season",
+                                memoryEvent.Title, filename);
+                        }
                         else
                         {
                             memory.Applied++;
@@ -659,9 +668,9 @@ public class LibraryImportService
             if (memory != null)
             {
                 _logger.LogInformation(
-                    "[Library Import] Asked match memory about {Stems} stems: {Hits} hits, {Applied} applied, {NotInLibrary} not in the library, {OtherLeague} in another league, {Disagrees} disagree on season, year or session, {Claimed} already claimed",
+                    "[Library Import] Asked match memory about {Stems} stems: {Hits} hits, {Applied} applied, {NotInLibrary} not in the library, {OtherLeague} in another league, {Disagrees} disagree on season, year or session, {Claimed} already claimed, {NoYear} name no year",
                     memory.StemsSent, memory.Hits.Count, memory.Applied, memory.NotInLibrary, memory.OtherLeague,
-                    memory.Disagrees, memory.Claimed);
+                    memory.Disagrees, memory.Claimed, memory.NoYear);
             }
 
             _logger.LogInformation(
@@ -855,6 +864,7 @@ public class LibraryImportService
         public int OtherLeague { get; set; }
         public int Disagrees { get; set; }
         public int Claimed { get; set; }
+        public int NoYear { get; set; }
 
         // Only a file that the scan sent gets a hit.
         public FileMatchHit? HitFor(string filePath) =>
