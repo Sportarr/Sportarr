@@ -138,4 +138,32 @@ public class LibraryFolderResolverTests
     [Fact]
     public void SplitPath_SeasonFolderDirectlyUnderTheRoot()
         => LibraryFolderResolver.SplitPath("/lib/UFC", "/lib/UFC/Season 2024/x.mkv").Should().Be(("UFC", "Season 2024"));
+
+    private static readonly League[] RootLeagues =
+    {
+        new() { Name = "Formula 1", Sport = "Motorsport" },
+        new() { Name = "F1 Academy", Sport = "Motorsport" },
+        new() { Name = "UFC", Sport = "Fighting" },
+    };
+
+    [Theory]
+    [InlineData("/lib/Formula 1/x.mkv")]
+    [InlineData("/lib/Formula 1/Season 2024/x.mkv")]
+    [InlineData("/lib/Formula 1/Bahrain Grand Prix/x.mkv")]
+    public void RootLeagueApplies_ToTheRootsOwnFolders(string file)
+        => LibraryFolderResolver.RootLeagueApplies("/lib/Formula 1", file, RootLeagues).Should().BeTrue();
+
+    [Theory]
+    [InlineData("/lib/Formula 1/F1 Academy/Season 2024/x.mkv")]
+    [InlineData("/lib/Formula 1/UFC/Season 2024/x.mkv")]
+    [InlineData("/lib/Formula 1/UFC/x.mkv")]
+    public void RootLeagueApplies_NotToTheFolderOfAnotherLeague(string file)
+        => LibraryFolderResolver.RootLeagueApplies("/lib/Formula 1", file, RootLeagues).Should().BeFalse();
+
+    [Theory]
+    [InlineData("Season 2024", false)]
+    [InlineData("UFC", false)]
+    [InlineData("NBA", true)]
+    public void IsUnlinkedFolder_SkipsSeasonAndLeagueFolders(string name, bool unlinked)
+        => LibraryFolderResolver.IsUnlinkedFolder(name, RootLeagues).Should().Be(unlinked);
 }

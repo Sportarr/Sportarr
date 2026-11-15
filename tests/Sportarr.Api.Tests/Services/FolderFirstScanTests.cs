@@ -253,6 +253,44 @@ public class FolderFirstScanTests : IDisposable
         scan.UnresolvedFolders.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("F1")]
+    [InlineData("Formula 1")]
+    public async Task ALeagueFolderBelowALeagueNamedRootIsThatLeaguesFolder(string rootName)
+    {
+        var academy = new League { Name = "F1 Academy", Sport = "Motorsport", ExternalId = "lg-005000" };
+        _db.Leagues.Add(academy);
+        await _db.SaveChangesAsync();
+        var miami = new Event
+        {
+            Title = "Miami Race 1", Sport = "Motorsport", LeagueId = academy.Id, Season = "2024",
+            SeasonNumber = 2024, EpisodeNumber = 3, EventDate = new DateTime(2024, 5, 4, 14, 0, 0, DateTimeKind.Utc),
+            ExternalId = "ev-500003", Status = "completed", Monitored = true,
+        };
+        _db.Events.Add(miami);
+        var f1Root = Path.Combine(_root, "media", rootName);
+        _db.RootFolders.Add(new RootFolder { Path = f1Root });
+        await _db.SaveChangesAsync();
+        var academyFile = Write("media", rootName, "F1 Academy", "Season 2024", "F1 Academy 2024-05-04 Miami Race 1.mkv");
+        var ufcFile = Write("media", rootName, "UFC", "Season 2024", "UFC 300 Pereira vs Hill.mkv");
+        var f1File = Write("media", rootName, "Season 2024", "Bahrain Grand Prix - Race.mkv");
+
+        var scan = await _service.ScanFolderAsync(f1Root, options: ScanOptions.LibraryBackground);
+
+        var academyMatch = Find(scan, academyFile);
+        academyMatch.FolderLeagueName.Should().Be("F1 Academy");
+        academyMatch.FolderSeason.Should().Be("2024");
+        academyMatch.MatchedEventId.Should().Be(miami.Id);
+        var ufcMatch = Find(scan, ufcFile);
+        ufcMatch.FolderLeagueName.Should().Be("UFC");
+        ufcMatch.MatchedEventId.Should().Be(_ufc300.Id);
+        var f1Match = Find(scan, f1File);
+        f1Match.FolderLeagueName.Should().Be("Formula 1");
+        f1Match.FolderSeason.Should().Be("2024");
+        f1Match.MatchedEventId.Should().Be(_bahrain.Id);
+        scan.UnresolvedFolders.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task SpanSeasonFolderResolvesToTheSpan()
     {

@@ -98,6 +98,38 @@ public sealed class UnmappedFoldersTests : IDisposable
         Assert.Empty(names);
     }
 
+    private static League F1Academy() => new() { Name = "F1 Academy", Sport = "Motorsport" };
+
+    [Fact]
+    public async Task ARootNamedAfterALeagueListsNoFolderOfALeagueYouHave()
+    {
+        var root = MakeFolders("Formula 1", "F1 Academy", "UFC", "Season 2024");
+
+        var names = await UnmappedNamesAsync(root, F1(), F1Academy(), Ufc());
+
+        Assert.Empty(names);
+    }
+
+    [Fact]
+    public async Task ARootNamedAfterALeagueListsTheFolderOfALeagueYouDoNotHave()
+    {
+        var root = MakeFolders("Formula 1", "F1 Academy", "UFC", "Season 2024");
+
+        var names = await UnmappedNamesAsync(root, F1(), Ufc());
+
+        Assert.Equal(new[] { "F1 Academy" }, names);
+    }
+
+    [Fact]
+    public async Task ASeasonFolderDirectlyUnderAGenericRootIsNotListed()
+    {
+        var root = MakeFolders("media", "Season 2024", "NBA");
+
+        var names = await UnmappedNamesAsync(root, F1());
+
+        Assert.Equal(new[] { "NBA" }, names);
+    }
+
     [Fact]
     public async Task AFolderNamedByALeaguesAlternateNameIsNotListed()
     {

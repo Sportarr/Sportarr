@@ -762,6 +762,28 @@ public class LibraryImportService
             }
             return league;
         }
+
+        private readonly Dictionary<string, bool> _rootLeagueAppliesByFolder = new();
+
+        /// <summary>
+        /// The root's own league for this file, or null. A folder directly
+        /// below the root that names a league takes the file from the root.
+        /// </summary>
+        public League? RootLeagueFor(string root, string filePath)
+        {
+            var league = LeagueOfRoot(root);
+            if (league == null) return null;
+            var first = LibraryFolderResolver.FirstFolderBelowRoot(root, filePath);
+            if (first == null) return league;
+
+            var folderPath = Path.Combine(root, first);
+            if (!_rootLeagueAppliesByFolder.TryGetValue(folderPath, out var applies))
+            {
+                applies = LibraryFolderResolver.RootLeagueApplies(root, filePath, Leagues);
+                _rootLeagueAppliesByFolder[folderPath] = applies;
+            }
+            return applies ? league : null;
+        }
     }
 
     /// <summary>
@@ -783,9 +805,10 @@ public class LibraryImportService
         var leagueFolderPath = LibraryFolderResolver.LeagueFolderPath(root, filePath);
 
         // A root whose own name names a league is that league's folder.
-        // The folders below it are season or event folders, not leagues.
-        // Any other root is never a league folder.
-        var rootLeague = folders.LeagueOfRoot(root);
+        // Its season and event folders get its league. A folder below it
+        // that names a league is that league's folder, as under a generic
+        // root. Any other root is never a league folder.
+        var rootLeague = folders.RootLeagueFor(root, filePath);
         League? league;
         if (rootLeague != null)
         {

@@ -115,21 +115,10 @@ app.MapGet("/api/rootfolder/{id:int}/unmappedfolders", async (int id, SportarrDb
     }
 
     // A Library Import scan links folders to leagues by these rules, so
-    // the list shows no folder that the scan links.
+    // the list shows no league folder that the scan links. Below a root
+    // named after a league, the list also shows the other folders. One of
+    // them can be a league that you do not have yet.
     var leagues = await db.Leagues.AsNoTracking().ToListAsync();
-
-    // A root named after a league is that league's folder. The folders
-    // below it hold that league's seasons and events.
-    if (LibraryFolderResolver.LeagueOfRoot(folder.Path, leagues) != null)
-    {
-        return Results.Ok(new
-        {
-            rootFolderId = folder.Id,
-            rootFolderPath = folder.Path,
-            accessible = true,
-            unmapped = Array.Empty<object>(),
-        });
-    }
 
     var unmapped = new List<object>();
     try
@@ -139,8 +128,8 @@ app.MapGet("/api/rootfolder/{id:int}/unmappedfolders", async (int id, SportarrDb
             var name = Path.GetFileName(sub);
             if (string.IsNullOrEmpty(name)) continue;
             if (IsExcludedSubfolder(name)) continue;
-            // The name or an alternate name of one league, or its short form.
-            if (LibraryFolderResolver.ResolveLeague(name, leagues) != null) continue;
+            // A season folder, or the name, alternate name or short form of one league.
+            if (!LibraryFolderResolver.IsUnlinkedFolder(name, leagues)) continue;
             unmapped.Add(new
             {
                 name,

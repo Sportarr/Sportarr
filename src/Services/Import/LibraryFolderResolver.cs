@@ -76,11 +76,43 @@ public static partial class LibraryFolderResolver
     /// <summary>
     /// The league that the root folder's own name names exactly, by the
     /// strict rule of <see cref="ResolveLeague"/>. Such a root is that
-    /// league's folder, so the folders below it are not league folders.
-    /// Null for a root such as "/media".
+    /// league's folder. <see cref="RootLeagueApplies"/> tells which files
+    /// below it get its league. Null for a root such as "/media".
     /// </summary>
     public static League? LeagueOfRoot(string rootPath, IReadOnlyCollection<League> leagues) =>
         ResolveLeague(Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), leagues);
+
+    /// <summary>The folder directly below the root that holds the file. Null for a file directly in the root.</summary>
+    public static string? FirstFolderBelowRoot(string rootPath, string filePath)
+    {
+        var folders = Split(rootPath, filePath).Folders;
+        return folders.Length == 0 ? null : folders[0];
+    }
+
+    /// <summary>
+    /// True when a root named after a league gives its league to the file.
+    /// The root's league applies to a file directly in the root and to the
+    /// files in its season folders and event folders. A folder directly
+    /// below the root that names a league is that league's folder. The
+    /// root's league does not apply to the files in it, and the league
+    /// folder rule of a generic root applies instead.
+    /// </summary>
+    public static bool RootLeagueApplies(string rootPath, string filePath, IReadOnlyCollection<League> leagues)
+    {
+        var first = FirstFolderBelowRoot(rootPath, filePath);
+        return first == null || ResolveLeague(first, leagues) == null;
+    }
+
+    /// <summary>
+    /// True when the unlinked folders list of a root shows this folder
+    /// directly below the root. A folder that names a league is linked.
+    /// A season folder belongs to the root's own league, or to no league
+    /// under a generic root, so it is never a league to add. Below a root
+    /// named after a league, any other folder can be a league that you do
+    /// not have yet, so the list shows it.
+    /// </summary>
+    public static bool IsUnlinkedFolder(string folderName, IReadOnlyCollection<League> leagues) =>
+        ParseSeasonFolder(folderName) == null && ResolveLeague(folderName, leagues) == null;
 
     /// <summary>
     /// (leagueFolderName, seasonFolderName) for a file below the root. The
