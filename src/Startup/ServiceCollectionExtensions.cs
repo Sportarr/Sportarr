@@ -447,6 +447,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddSportarrFileServices(this IServiceCollection services)
     {
+        // The background send of an accepted pending import keeps these after the request scope ends. They must hold no scoped state.
         services.AddScoped<MediaFileParser>();
         services.AddScoped<MediaFileInspector>();
         // Singleton: the watcher and the importer run in different scopes and

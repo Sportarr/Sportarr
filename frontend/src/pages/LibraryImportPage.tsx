@@ -56,6 +56,8 @@ interface ImportableFile {
   matchedSeason?: string;
   destinationPreview?: string;
   matchConfidence?: number;
+  // The match came from match memory.
+  matchedByMemory?: boolean;
   existingEventId?: number;
   rejections?: string[];
   heldBySourcePrecedence?: boolean;

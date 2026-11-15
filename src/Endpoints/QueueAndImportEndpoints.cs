@@ -409,7 +409,8 @@ app.MapGet("/api/pending-imports/{id:int}/matches", async (
 app.MapPut("/api/pending-imports/{id:int}/suggestion", async (
     int id,
     UpdateSuggestionRequest request,
-    SportarrDbContext db) =>
+    SportarrDbContext db,
+    ConfigService configService) =>
 {
     // Update the suggested event/part for a pending import
     var import = await db.PendingImports.FindAsync(id);
@@ -420,7 +421,14 @@ app.MapPut("/api/pending-imports/{id:int}/suggestion", async (
     FileMatchSuggestionCollector.ApplyUserEdit(import, request.EventId, request.Part);
 
     await db.SaveChangesAsync();
-    return Results.Ok(import);
+    var config = await configService.GetConfigAsync();
+    var saved = await db.PendingImports
+        .AsNoTracking()
+        .Include(pi => pi.DownloadClient)
+        .Include(pi => pi.SuggestedEvent)
+            .ThenInclude(e => e!.League)
+        .FirstAsync(pi => pi.Id == id);
+    return Results.Ok(PendingImportResponse.FromPendingImport(saved, config.EnableMultiPartEpisodes));
 });
 
 app.MapGet("/api/pending-imports/{id:int}/video-candidates", async (
@@ -503,9 +511,10 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     if (import.SuggestedEventId is null)
         return Results.BadRequest(new { error = "No event selected for import" });
 
+    var acceptConfig = await configService.GetConfigAsync();
     // A move takes the sidecar away, so read its Sportarr id now. Skip
     // the read when Send Anonymous Usage Data is off.
-    var preImportSidecarId = (await configService.GetConfigAsync()).SendAnonymousUsageData
+    var preImportSidecarId = acceptConfig.SendAnonymousUsageData
         ? libraryImportService.ReadSidecarSportarrId(import.FilePath)
         : null;
     // The source and the imported path of the file whose match this
@@ -636,7 +645,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 import.ResolvedAt = DateTime.UtcNow;
                 import.ErrorMessage = null;
                 await db.SaveChangesAsync();
-                return Results.Ok(import);
+                return Results.Ok(PendingImportResponse.FromPendingImport(import, acceptConfig.EnableMultiPartEpisodes));
             }
 
             var heldFiles = await db.EventFiles
@@ -712,7 +721,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 import.ResolvedAt = DateTime.UtcNow;
                 import.ErrorMessage = null;
                 await db.SaveChangesAsync();
-                return Results.Ok(import);
+                return Results.Ok(PendingImportResponse.FromPendingImport(import, acceptConfig.EnableMultiPartEpisodes));
             }
 
             // Extract release group from filename
@@ -859,7 +868,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
                 import, matchSourcePath, matchImportedPath, preImportSidecarId);
         }
 
-        return Results.Ok(import);
+        return Results.Ok(PendingImportResponse.FromPendingImport(import, acceptConfig.EnableMultiPartEpisodes));
     }
     catch (Exception ex)
     {

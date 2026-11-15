@@ -1309,6 +1309,15 @@ public class PendingImportResponse
     public string? Protocol { get; set; }
     public string? TorrentInfoHash { get; set; }
 
+    /// <summary>The highest confidence that an API response shows.</summary>
+    public const int MaxShownConfidence = 100;
+
+    /// <summary>
+    /// The confidence as an API client sees it. The edit endpoint stores 101
+    /// to mark the user's choice. That mark stays inside the app.
+    /// </summary>
+    public static int ShownConfidence(int confidence) => Math.Min(confidence, MaxShownConfidence);
+
     public static PendingImportResponse FromPendingImport(PendingImport import, bool enableMultiPartEpisodes) => new()
     {
         Id = import.Id,
@@ -1333,7 +1342,7 @@ public class PendingImportResponse
         SuggestedEvent = import.SuggestedEvent is null
             ? null : EventResponse.FromEvent(import.SuggestedEvent, enableMultiPartEpisodes, filesLoaded: false),
         SuggestedPart = import.SuggestedPart,
-        SuggestionConfidence = import.SuggestionConfidence,
+        SuggestionConfidence = ShownConfidence(import.SuggestionConfidence),
         Detected = import.Detected,
         ResolvedAt = import.ResolvedAt,
         Protocol = import.Protocol,

@@ -193,6 +193,48 @@ public class ImportSubmitsMatchMemoryTests : IDisposable
     }
 
     [Fact]
+    public async Task AMatchMemoryAnswerImportedUnchangedReportsNothing()
+    {
+        await UsageData(true);
+        var (first, _) = Seed();
+        var file = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+
+        var result = await Service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new()
+            {
+                FilePath = file, EventId = first.Id, SuggestedEventId = first.Id, SuggestedByMemory = true,
+                ReportMatch = true, ImportMode = "copy",
+            },
+        });
+
+        result.Imported.Should().ContainSingle();
+        Service.LastMatchReport.Should().BeNull("the hub gave this answer, so it must not count it again");
+        _handler.Bodies.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AMatchMemoryAnswerTheUserChangedReportsManual()
+    {
+        await UsageData(true);
+        var (first, second) = Seed();
+        var file = Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+
+        await Service.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new()
+            {
+                FilePath = file, EventId = second.Id, SuggestedEventId = first.Id, SuggestedByMemory = true,
+                ReportMatch = true, ImportMode = "copy",
+            },
+        });
+
+        var sent = (await SentSuggestions()).Should().ContainSingle().Subject;
+        sent.GetProperty("kind").GetString().Should().Be("manual");
+        sent.GetProperty("eventId").GetString().Should().Be("ev-313015");
+    }
+
+    [Fact]
     public async Task WithUsageDataOffNothingIsSent()
     {
         await UsageData(false);

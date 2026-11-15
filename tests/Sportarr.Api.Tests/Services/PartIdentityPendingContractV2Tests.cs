@@ -958,6 +958,35 @@ public class PartIdentityPendingContractV2Tests
         rig.Event.HasFile.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task LeagueScan_ShowsAPendingUserChoiceAsOneHundred()
+    {
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync();
+        var root = (await rig.Db.RootFolders.SingleAsync()).Path;
+        var folder = Path.Combine(root, "UFC");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "UFC.9999.2020.09.01.Main.Card.720p.WEB-DL.mkv");
+        await File.WriteAllBytesAsync(path, Enumerable.Repeat((byte)'m', 4096).ToArray());
+        rig.Db.PendingImports.Add(new PendingImport
+        {
+            DownloadId = "disk-user-choice", Title = Path.GetFileName(path), FilePath = path, Size = 4096,
+            SuggestedEventId = rig.Event.Id,
+            SuggestionConfidence = Sportarr.Api.Helpers.FileMatchSuggestionCollector.UserChoiceConfidence,
+        });
+        await rig.Db.SaveChangesAsync();
+
+        await using var app = await CreatePendingHost(rig, includeLeagueScan: true);
+        using var client = app.GetTestClient();
+        using var scanResponse = await client.PostAsJsonAsync($"/api/leagues/{rig.Event.LeagueId}/scan", new { });
+        var scanBody = await scanResponse.Content.ReadAsStringAsync();
+        scanResponse.IsSuccessStatusCode.Should().BeTrue(scanBody);
+        using var scan = System.Text.Json.JsonDocument.Parse(scanBody);
+
+        var file = scan.RootElement.GetProperty("files").EnumerateArray().Single();
+        file.GetProperty("filePath").GetString().Should().Be(path);
+        file.GetProperty("suggestionConfidence").GetInt32().Should().Be(100);
+    }
+
     [Theory]
     [InlineData("reject")]
     [InlineData("remove-from-client")]

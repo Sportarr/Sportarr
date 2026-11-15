@@ -1725,7 +1725,7 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
         suggestedEventId = p.Import.SuggestedEventId,
         suggestedEventTitle = p.Suggestion?.EventTitle,
         suggestedLeague = p.Suggestion?.League,
-        suggestionConfidence = p.Import.SuggestionConfidence,
+        suggestionConfidence = PendingImportResponse.ShownConfidence(p.Import.SuggestionConfidence),
         part = p.Suggestion?.Part
     }).ToList();
 
@@ -1758,7 +1758,7 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
                 suggestedEventId = pi.SuggestedEventId,
                 suggestedEventTitle = pi.SuggestedEvent?.Title,
                 suggestedLeague = (string?)null,
-                suggestionConfidence = pi.SuggestionConfidence,
+                suggestionConfidence = PendingImportResponse.ShownConfidence(pi.SuggestionConfidence),
                 part = pi.SuggestedPart
             });
 

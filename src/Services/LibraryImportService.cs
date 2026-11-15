@@ -344,6 +344,8 @@ public class LibraryImportService
                     // Try to find a matching event using multiple strategies
                     Event? matchedEvent = null;
                     int matchConfidence = 0;
+                    // The event that match memory gave, if any.
+                    int? memoryEventId = null;
 
                     // AUTHORITATIVE ID TOKEN (docs/RELEASE_NAMING.md): a file
                     // named with sportarr-ev-XXXXXXX, or carrying an
@@ -433,6 +435,7 @@ public class LibraryImportService
                             memory.Applied++;
                             matchedEvent = memoryEvent;
                             matchConfidence = MatchMemoryConfidence;
+                            memoryEventId = memoryEvent.Id;
                             if (!isPartFile)
                                 claimedEventIds.Add(memoryEvent.Id);
                             _logger.LogDebug("[Library Import] Match memory: '{File}' = '{Event}' ({Installs} installs)",
@@ -631,6 +634,7 @@ public class LibraryImportService
                         MatchedSeason = matchedEvent?.Season ?? matchedEvent?.SeasonNumber?.ToString() ?? (matchedEvent?.BroadcastDate ?? matchedEvent?.EventDate)?.Year.ToString(),
                         DestinationPreview = destinationPreview,
                         MatchConfidence = matchConfidence > 0 ? Math.Min(100, matchConfidence) : null,
+                        MatchedByMemory = matchedEvent != null && matchedEvent.Id == memoryEventId,
                         Rejections = judged.Rejections,
                         HeldBySourcePrecedence = judged.Rejections.Contains(SourcePrecedence.IptvRecordingRejection),
                         FolderLeagueId = folderLeague?.Id,
@@ -1070,6 +1074,8 @@ public class LibraryImportService
 
         // The matches that the user chose. One send follows the batch save.
         var matchReports = new List<FileMatchSuggestion>();
+        // The source paths that this batch imported.
+        var importedSources = new List<string>();
         var mayReportMatches = config.SendAnonymousUsageData && _apiClient != null;
 
         foreach (var request in requests)
@@ -1100,7 +1106,11 @@ public class LibraryImportService
 
                 // A Sportarr id in the tag or the sidecar names the event, so
                 // the match is not reported. Read the sidecar before a move takes it.
-                var reportMatch = request.ReportMatch && mayReportMatches;
+                // A match memory answer that the user kept is the hub's own
+                // answer. A report would count it again, so it is not sent.
+                var keptMemoryAnswer = request.SuggestedByMemory && request.SuggestedEventId.HasValue
+                    && request.EventId == request.SuggestedEventId;
+                var reportMatch = request.ReportMatch && mayReportMatches && !keptMemoryAnswer;
                 var carriedSportarrId = reportMatch
                     ? parsedInfo.SportarrEventId ?? parsedInfo.SportarrLeagueId
                         ?? ReadSidecarOrNone(request.FilePath)?.SportarrId
@@ -1472,6 +1482,7 @@ public class LibraryImportService
                         }
 
                         result.Imported.Add(destinationPath);
+                        importedSources.Add(request.FilePath);
                         notifyQueue.Add((existingEvent, destinationPath,
                             request.Quality ?? _fileParser.BuildQualityString(parsedInfo), linkedFile));
 
@@ -1651,6 +1662,7 @@ public class LibraryImportService
                     }
 
                     result.Created.Add(destinationPath);
+                    importedSources.Add(request.FilePath);
                     notifyQueue.Add((newEvent, destinationPath,
                         request.Quality ?? _fileParser.BuildQualityString(parsedInfo), eventFile));
                     _logger.LogInformation("Created new event from file: {EventTitle} -> {FilePath} (Part: {PartName})",
@@ -1679,6 +1691,7 @@ public class LibraryImportService
             }
         }
 
+        await CompletePendingImportsOfAsync(importedSources);
         await _db.SaveChangesAsync();
 
         await ReportFileMatchesAsync(matchReports);
@@ -1727,6 +1740,39 @@ public class LibraryImportService
 
         return result;
     }
+
+    /// <summary>
+    /// Complete each pending row of a file that this batch imported. A disk
+    /// scan, the watcher or a rescan can list a file in Activity that the
+    /// user then imports from Library Import. Without this step the row
+    /// stays in the pending list. The row is completed as the accept
+    /// endpoint completes it. A rejected row is already gone, and a row in
+    /// another state is not changed. The caller saves.
+    /// </summary>
+    private async Task CompletePendingImportsOfAsync(IReadOnlyCollection<string> sourcePaths)
+    {
+        if (sourcePaths.Count == 0)
+            return;
+        var imported = new HashSet<string>(sourcePaths, SourcePathComparer);
+        var pending = await _db.PendingImports
+            .Where(p => p.Status == PendingImportStatus.Pending)
+            .ToListAsync();
+        foreach (var row in pending.Where(p => imported.Contains(p.FilePath)))
+        {
+            row.Status = PendingImportStatus.Completed;
+            row.ResolvedAt = DateTime.UtcNow;
+            row.ErrorMessage = null;
+            _logger.LogInformation("[Import] Completed pending import {Id} because its file was imported: {Path}",
+                row.Id, row.FilePath);
+        }
+    }
+
+    /// <summary>
+    /// Compares source paths. Windows paths ignore case, so a pending row
+    /// can spell the path another way than the import request.
+    /// </summary>
+    internal static StringComparer SourcePathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     /// <summary>
     /// Transfer file to library folder with proper naming
@@ -3971,6 +4017,12 @@ public class ImportableFile
     /// </summary>
     public string? DestinationPreview { get; set; }
     public int? MatchConfidence { get; set; }
+
+    /// <summary>
+    /// True when the match came from match memory. The page sends it back
+    /// with the import, so a served answer does not count as a new report.
+    /// </summary>
+    public bool MatchedByMemory { get; set; }
     public int? ExistingEventId { get; set; }
 
     /// <summary>The league that the file's league folder names, when one fits.</summary>
@@ -4033,6 +4085,12 @@ public class FileImportRequest
     /// automatic import leaves it false.
     /// </summary>
     public bool ReportMatch { get; set; }
+
+    /// <summary>
+    /// The suggestion came from match memory. An import that keeps it sends
+    /// the hub's own answer back, so it is not reported. The page sets this.
+    /// </summary>
+    public bool SuggestedByMemory { get; set; }
 
     /// <summary>
     /// An automatic import (the file watcher, a rescan, a completed download

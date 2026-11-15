@@ -11,6 +11,8 @@ export interface ImportRequestFile {
   parsedDate?: string;
   quality?: string;
   matchedEventId?: number;
+  // The scan match came from match memory.
+  matchedByMemory?: boolean;
   existingEventId?: number;
 }
 
@@ -42,6 +44,9 @@ export interface LibraryImportRequest {
   // The scan's suggestion. The server compares it with eventId to tell a
   // kept match from one the user picked.
   suggestedEventId?: number;
+  // The suggestion came from match memory. The server does not report a
+  // kept memory answer, because the hub would count its own answer again.
+  suggestedByMemory?: boolean;
   createNew: boolean;
   eventTitle?: string;
   organization?: string;
@@ -121,6 +126,7 @@ export function buildLibraryImportRequest(
   // The server reads the scan's suggestion to tell a kept match from a pick.
   const withSuggestion = (request: LibraryImportRequest): LibraryImportRequest => {
     if (file.matchedEventId != null) request.suggestedEventId = file.matchedEventId;
+    if (file.matchedByMemory) request.suggestedByMemory = true;
     return request;
   };
 

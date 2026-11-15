@@ -30,6 +30,8 @@ namespace Sportarr.Api.Tests.Services;
 /// matching runs. Background scans never ask, and nothing leaves the app
 /// when Send Anonymous Usage Data is off.
 /// </summary>
+// The timeout test measures real time, so these run away from other test load.
+[Collection(WallClockFixtureCollection.Name)]
 public class ScanMatchMemoryTests : IDisposable
 {
     private readonly string _tempDir;
@@ -173,6 +175,34 @@ public class ScanMatchMemoryTests : IDisposable
         found.Rejections.Should().BeEmpty();
         _hub.LookupStems.Should().ContainSingle().Which.Should().Equal(StemOf(file));
         _log.Lines.Should().Contain(l => l.Level == LogLevel.Information && l.Message.Contains("1 applied"));
+    }
+
+    [Fact]
+    public async Task AHitMarksTheFileAsMatchedByMemory()
+    {
+        await UsageData(true);
+        var file = WriteOutside("zz clip 2024 0001.mkv");
+        HubKnows(file, "ev-100001", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_outside, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.MatchedEventId.Should().Be(_bahrain.Id);
+        found.MatchedByMemory.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AFuzzyMatchIsNotMarkedAsMatchedByMemory()
+    {
+        await UsageData(true);
+        var file = WriteInLibrary("Formula 1", "Season 2024", "Formula 1 2024 Bahrain Grand Prix Race.mkv");
+        HubKnows(file, "ev-200300", "lg-000079");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.MatchedEventId.Should().Be(_bahrain.Id);
+        found.MatchedByMemory.Should().BeFalse();
     }
 
     [Fact]

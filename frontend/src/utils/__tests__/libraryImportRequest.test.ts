@@ -52,6 +52,15 @@ describe('library import request', () => {
     expect(request).toMatchObject({ eventId: 7, suggestedEventId: 12 });
   });
 
+  // The server does not report a kept memory answer back to the hub.
+  it('marks a suggestion that came from match memory', () => {
+    const memory = { ...file, matchedEventId: 12, matchedByMemory: true };
+
+    expect(buildLibraryImportRequest(memory, undefined, undefined).suggestedByMemory).toBe(true);
+    expect(buildLibraryImportRequest(memory, mapping, undefined).suggestedByMemory).toBe(true);
+    expect(buildLibraryImportRequest({ ...file, matchedEventId: 12 }, undefined, undefined).suggestedByMemory).toBeUndefined();
+  });
+
   it('sends no suggestion when the scan matched nothing', () => {
     expect(buildLibraryImportRequest(file, mapping, undefined).suggestedEventId).toBeUndefined();
   });

@@ -1133,6 +1133,12 @@ public class TaskService : ITaskService
         }
     }
 
+    /// <summary>The file requests in the body of a library import task.</summary>
+    internal static List<FileImportRequest> ReadLibraryImportRequests(string? body) =>
+        System.Text.Json.JsonSerializer.Deserialize<List<FileImportRequest>>(
+            body ?? "[]",
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+
     /// <summary>
     /// Run a league refresh in the background. Wraps
     /// LeagueEventSyncService.SyncLeagueEventsAsync so the renamer's
@@ -1153,9 +1159,7 @@ public class TaskService : ITaskService
         List<FileImportRequest> requests;
         try
         {
-            requests = System.Text.Json.JsonSerializer.Deserialize<List<FileImportRequest>>(
-                task.Body ?? "[]",
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            requests = ReadLibraryImportRequests(task.Body);
         }
         catch (Exception ex)
         {
