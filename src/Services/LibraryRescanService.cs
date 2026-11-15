@@ -7,24 +7,21 @@ using Sportarr.Api.Helpers;
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Walks every configured root folder, parses every media file, and asks
-/// LibraryImportService to match each one to a canonical Event.
+/// Walks every root folder and asks LibraryImportService to match each
+/// media file to an event.
 ///
-/// This is the "Rescan library" capability sportarr previously lacked.
-/// LibraryImportService already does the per-file parse + match + import
-/// for the manual Library Import page; this service wraps that flow with
-/// a per-root-folder loop so the same logic can run automatically:
-///   * After a backup restore: pick up files the restored EventFile rows
-///     no longer reference (the EventFile rows were never restored, or
-///     the source machine never imported them in the first place)
-///   * On demand via the admin UI button
-///   * On a periodic schedule (handled separately by DiskScanService for
-///     existence checks; this service is the import-side equivalent)
+/// LibraryImportService does the parse, match and import for the Library
+/// Import page. This service runs that same flow once for each root folder.
+/// Only the Rescan library button on the backup page starts it. It is most
+/// useful after a backup restore. It then finds the files that no restored
+/// EventFile row points to. DiskScanService only checks that files exist.
+/// This service does the import side.
 ///
-/// High-confidence matches auto-link. Medium-confidence matches land in
-/// PendingImports for review (the existing review queue). Unmatched files
-/// are summarized in the result so the admin can spot patterns (e.g. an
-/// entire league's files are unmatched because the league was renamed).
+/// It imports each file that matches an event at 85 or above and has no
+/// event link yet. When the event has a file, the new copy replaces it only
+/// if the upgrade rule accepts it. Activity lists a copy that the rule
+/// leaves, with the reason. The result counts the unmatched files, so the
+/// user can see a pattern, such as a renamed league.
 /// </summary>
 public class LibraryRescanService
 {
@@ -43,14 +40,12 @@ public class LibraryRescanService
     }
 
     /// <summary>
-    /// Walk every configured root folder, scan every media file under it,
-    /// and auto-import high-confidence matches into EventFile rows. The
-    /// result aggregates per-root-folder scan counts so the admin sees the
-    /// overall scope of changes.
+    /// Walks every root folder and scans each media file below it. Imports
+    /// each match at 85 or above that has no event link yet. The result adds
+    /// up the counts of all root folders, so the user sees the full scope.
     ///
-    /// When `autoImportHighConfidence` is false, the scan still runs and
-    /// the result captures matches but nothing is written. Useful for the
-    /// "what would happen if I rescanned?" preview.
+    /// When `autoImportHighConfidence` is false, the scan runs and counts
+    /// the matches but writes nothing. This gives a preview of a rescan.
     /// </summary>
     public async Task<LibraryRescanResult> RescanAllAsync(
         bool autoImportHighConfidence = true,
@@ -196,9 +191,8 @@ public class LibraryRescanService
 }
 
 /// <summary>
-/// Aggregate result of a full-library rescan across every configured root
-/// folder. Returned to the admin UI so the user sees a single summary
-/// after the rescan completes.
+/// The result of a rescan of all root folders. The Rescan library card
+/// shows it to the user as one summary.
 /// </summary>
 public class LibraryRescanResult
 {
