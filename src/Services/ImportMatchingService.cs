@@ -1241,66 +1241,8 @@ public class ImportMatchingService
             : TeamPairIdentity.Unknown;
     }
 
-    private HashSet<string> ParticipantTerms(string canonicalName, Team? team)
-    {
-        var terms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            NormalizeTitle(canonicalName)
-        };
-
-        AddParticipantTerm(terms, team?.ShortName);
-        AddParticipantAliases(terms, team?.AlternateName);
-        AddParticipantAliases(terms, team?.UserAliases);
-        AddParticipantTerm(terms, LeagueNameSuffixStripper.StripKnownSuffixes(canonicalName));
-        AddParticipantTerm(terms, LeagueNameSuffixStripper.StripNationalTeamSportSuffix(canonicalName, team?.Sport));
-        AddParticipantTerm(terms, Regex.Replace(
-            canonicalName,
-            @"\s+(football club|cricket club|afc|fc)$",
-            "",
-            RegexOptions.IgnoreCase).Trim());
-
-        var normalizedCanonical = NormalizeTitle(canonicalName);
-        foreach (var (knownName, variations) in TeamNameVariationData.Variations)
-        {
-            var normalizedKnownName = NormalizeTitle(knownName);
-            if (!normalizedCanonical.Contains(normalizedKnownName, StringComparison.OrdinalIgnoreCase) &&
-                !normalizedKnownName.Contains(normalizedCanonical, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            foreach (var variation in variations)
-            {
-                AddParticipantTerm(terms, variation);
-            }
-        }
-
-        terms.RemoveWhere(string.IsNullOrWhiteSpace);
-        return terms;
-    }
-
-    private void AddParticipantAliases(HashSet<string> terms, string? aliases)
-    {
-        if (string.IsNullOrWhiteSpace(aliases))
-        {
-            return;
-        }
-
-        foreach (var alias in aliases.Split(
-                     new[] { ',', '|', '/' },
-                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            AddParticipantTerm(terms, alias);
-        }
-    }
-
-    private void AddParticipantTerm(HashSet<string> terms, string? term)
-    {
-        if (!string.IsNullOrWhiteSpace(term))
-        {
-            terms.Add(NormalizeTitle(term));
-        }
-    }
+    private HashSet<string> ParticipantTerms(string canonicalName, Team? team) =>
+        TeamParticipantTerms.Build(canonicalName, team, NormalizeTitle);
 
     private static bool ContainsParticipant(string side, string participant)
     {
@@ -1357,7 +1299,7 @@ public class ImportMatchingService
     /// <summary>
     /// Normalize title for better comparison
     /// </summary>
-    private string NormalizeTitle(string title)
+    internal static string NormalizeTitle(string title)
     {
         // Remove common separators and normalize
         var normalized = title

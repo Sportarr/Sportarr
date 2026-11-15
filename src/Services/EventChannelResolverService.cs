@@ -27,6 +27,10 @@ namespace Sportarr.Api.Services;
 ///      are absent. Manual / preferred mappings get an extra boost.
 ///   4. Country tiebreaker — small boost when the channel's country
 ///      matches the event's league country.
+///   5. Per-event channel name. Some providers rename channels for each
+///      match day, as in "Prefix | Home vs. Away (2026-10-24 21:25:10)".
+///      A name that gives the event's teams and start time is evidence.
+///      A name that gives another match removes the channel from the list.
 ///
 /// Phase 2 also changes the SHAPE of the output: callers now get a
 /// ranked LIST including backup channels (primary + N fallbacks) so
@@ -37,11 +41,26 @@ public class EventChannelResolverService
 {
     private readonly SportarrDbContext _db;
     private readonly ILogger<EventChannelResolverService> _logger;
+    private readonly ConfigService? _configService;
 
     /// <summary>
     /// The candidate source for a guide listing match.
     /// </summary>
     public const string EpgProgramSource = "epg_program";
+
+    /// <summary>
+    /// The candidate source for a per-event channel whose name names the
+    /// event's teams and start time.
+    /// </summary>
+    public const string EventChannelSource = "event_channel";
+
+    /// <summary>
+    /// True for a source that is evidence the channel airs the event. A
+    /// guide listing and a per-event channel name are evidence. A mapping or
+    /// a broadcaster name is a guess.
+    /// </summary>
+    public static bool IsEvidence(string? source) =>
+        source == EpgProgramSource || source == EventChannelSource;
 
     private const int MinAcceptableConfidence = 65;
     private const int HighConfidence = 85;
@@ -56,6 +75,25 @@ public class EventChannelResolverService
     // we don't match the wrong program.
     private static readonly TimeSpan EpgWindow = TimeSpan.FromMinutes(30);
 
+    // A per-event channel name is direct evidence, so it scores above a
+    // typical guide match. A copy in another language scores lower, so the
+    // main copy comes first and the others stay as backups. Both stay above
+    // the cap on guesses.
+    private const int EventChannelConfidence = 95;
+    private const int EventChannelLanguageConfidence = 92;
+
+    // The matcher's view of events and the zone of each source. A scope
+    // lives for one request or one pass, so these caches stay fresh.
+    private EventChannelVocabulary? _vocabulary;
+    private List<TimeZoneInfo>? _stampZones;
+    private readonly Dictionary<int, EventChannelTarget> _targets = new();
+    private readonly Dictionary<int, (string Name, string? Group, EventChannelName? Parsed)> _parsedNames = new();
+    private readonly Dictionary<string, ZoneVote> _inferredZones = new();
+
+    // A group needs this many stamps near the event to get its own zone.
+    // With fewer, the source's zone applies.
+    private const int MinStampsForGroupZone = 2;
+
     // Regional preference. Pulled from the SPORTARR_PREFERRED_COUNTRY
     // env var (and SPORTARR_PREFERRED_LANGUAGE) on startup so the
     // resolver can boost channels that match the user's region.
@@ -69,10 +107,12 @@ public class EventChannelResolverService
     private readonly string? _preferredLanguage;
     private const int W_REGIONAL_PREFERENCE = 8;
 
-    public EventChannelResolverService(SportarrDbContext db, ILogger<EventChannelResolverService> logger)
+    public EventChannelResolverService(
+        SportarrDbContext db, ILogger<EventChannelResolverService> logger, ConfigService? configService = null)
     {
         _db = db;
         _logger = logger;
+        _configService = configService;
         _preferredCountry = NormalizeRegion(Environment.GetEnvironmentVariable("SPORTARR_PREFERRED_COUNTRY"));
         _preferredLanguage = NormalizeRegion(Environment.GetEnvironmentVariable("SPORTARR_PREFERRED_LANGUAGE"));
         if (_preferredCountry != null || _preferredLanguage != null)
@@ -96,12 +136,23 @@ public class EventChannelResolverService
     /// are backups in confidence order (consumers should keep at least
     /// the top 3 — the DVR scheduler uses them for failure fallback).
     /// </summary>
-    public async Task<List<EventChannelCandidate>> ResolveAsync(int eventId, CancellationToken ct = default)
+    public async Task<List<EventChannelCandidate>> ResolveAsync(int eventId, CancellationToken ct = default) =>
+        (await ResolveDetailedAsync(eventId, ct)).Candidates;
+
+    /// <summary>
+    /// Resolves the candidates and also returns the per-event channels that
+    /// name another match. A caller must not record this event from those
+    /// channels by another route, such as a team mapping.
+    /// </summary>
+    public async Task<EventChannelResolution> ResolveDetailedAsync(int eventId, CancellationToken ct = default)
     {
+        var foreign = new HashSet<int>();
         var evt = await _db.Events
             .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
             .FirstOrDefaultAsync(e => e.Id == eventId, ct);
-        if (evt == null) return new List<EventChannelCandidate>();
+        if (evt == null) return new EventChannelResolution(new List<EventChannelCandidate>(), foreign);
 
         var leagueId = evt.LeagueId ?? 0;
 
@@ -109,7 +160,7 @@ public class EventChannelResolverService
             .Include(c => c.Source)
             .Where(c => c.IsEnabled && c.Source != null && c.Source.IsActive)
             .ToListAsync(ct);
-        if (channels.Count == 0) return new List<EventChannelCandidate>();
+        if (channels.Count == 0) return new EventChannelResolution(new List<EventChannelCandidate>(), foreign);
 
         // Pull league mappings + Phase 1 Confidence scores. Mappings now
         // come with their own 0-100 confidence; the resolver pipes that
@@ -142,6 +193,12 @@ public class EventChannelResolverService
 
         var broadcastTokens = TokenizeBroadcast(evt.Broadcast);
 
+        // An event without two team names cannot match a per-event name.
+        // Its channels then score by the older signals alone.
+        var eventChannelScores = !string.IsNullOrWhiteSpace(evt.HomeTeamName) && !string.IsNullOrWhiteSpace(evt.AwayTeamName)
+            ? await ScoreEventChannelsAsync(evt, channels, foreign, ct)
+            : new Dictionary<int, int>();
+
         var candidates = new List<EventChannelCandidate>();
         var rawScores = new Dictionary<int, int>();
         foreach (var ch in channels)
@@ -150,6 +207,26 @@ public class EventChannelResolverService
 
             int score = 0;
             string source;
+
+            // A per-event channel airs only the event its name gives. A
+            // channel named for another match, another squad or another day
+            // must not reach this event through a mapping or a broadcaster
+            // name.
+            if (foreign.Contains(ch.Id)) continue;
+            if (eventChannelScores.TryGetValue(ch.Id, out var eventChannelScore))
+            {
+                score = eventChannelScore;
+                rawScores[ch.Id] = score;
+                candidates.Add(new EventChannelCandidate(
+                    ch.Id,
+                    ch.Name,
+                    ch.Source?.Name ?? "(unknown)",
+                    ch.QualityScore,
+                    ch.DetectedQuality,
+                    score,
+                    EventChannelSource));
+                continue;
+            }
 
             // EPG match wins outright if we have one — it's the
             // closest thing to ground truth we can get.
@@ -239,7 +316,7 @@ public class EventChannelResolverService
             // evidence, so a guess never outranks one, however it is boosted.
             // The full score still orders the guesses among themselves.
             rawScores[ch.Id] = score;
-            if (source != EpgProgramSource) score = Math.Min(score, EpgMatchConfidence - 1);
+            if (!IsEvidence(source)) score = Math.Min(score, EpgMatchConfidence - 1);
             if (score < MinAcceptableConfidence) continue;
 
             candidates.Add(new EventChannelCandidate(
@@ -257,12 +334,195 @@ public class EventChannelResolverService
         // as a last resort.
         var health = channels.ToDictionary(c => c.Id, c => ChannelHealth.Rank(c.Status));
 
-        return candidates
+        var ordered = candidates
             .OrderByDescending(c => health.GetValueOrDefault(c.ChannelId, 1))
             .ThenByDescending(c => c.Confidence)
             .ThenByDescending(c => rawScores.GetValueOrDefault(c.ChannelId))
             .ThenByDescending(c => c.QualityScore)
             .ToList();
+        return new EventChannelResolution(ordered, foreign);
+    }
+
+    /// <summary>
+    /// Scores the per-event channels that name this event. Each source, and
+    /// each group in it with enough stamps, writes its stamps in one zone.
+    /// When the same teams meet twice close together, a channel goes only to
+    /// the game nearest its stamp. Only a per-event channel that clearly
+    /// names another match goes into the foreign set. A doubtful one scores
+    /// as a normal channel.
+    /// </summary>
+    private async Task<Dictionary<int, int>> ScoreEventChannelsAsync(
+        Event evt, List<IptvChannel> channels, HashSet<int> foreign, CancellationToken ct)
+    {
+        var scores = new Dictionary<int, int>();
+        var parsed = channels
+            .Select(c => (Channel: c, Name: ParseCached(c)))
+            .Where(p => p.Name != null)
+            .Select(p => (p.Channel, Name: p.Name!))
+            .ToList();
+        if (parsed.Count == 0) return scores;
+
+        _vocabulary ??= await EventChannelVocabulary.LoadAsync(_db, ct);
+        _stampZones ??= EventChannelNameMatcher.CandidateZones(await ConfiguredTimeZoneAsync());
+        var target = _vocabulary.Target(evt);
+        var nearby = await NearbyTargetsAsync(evt, ct);
+
+        // Stamps more than a day and a half away cannot fit this event in
+        // any zone, so they say nothing about the zone here.
+        var reach = TimeSpan.FromHours(36);
+        var near = parsed.Where(p => (p.Name.Stamp - evt.EventDate).Duration() <= reach).ToList();
+        var zones = new Dictionary<(int SourceId, string Group), ZoneVote>();
+        var sourceZones = new Dictionary<int, ZoneVote>();
+        ZoneVote ZoneFor(IptvChannel channel)
+        {
+            var group = channel.Group ?? string.Empty;
+            if (zones.TryGetValue((channel.SourceId, group), out var zone)) return zone;
+            if (!sourceZones.TryGetValue(channel.SourceId, out var sourceZone))
+            {
+                sourceZone = InferZoneCached(
+                    near.Where(p => p.Channel.SourceId == channel.SourceId).ToList(), nearby);
+                sourceZones[channel.SourceId] = sourceZone;
+            }
+            var groupNames = near
+                .Where(p => p.Channel.SourceId == channel.SourceId && (p.Channel.Group ?? string.Empty) == group)
+                .ToList();
+            zone = groupNames.Count >= MinStampsForGroupZone
+                ? InferZoneCached(groupNames, nearby)
+                : sourceZone;
+            zones[(channel.SourceId, group)] = zone;
+            return zone;
+        }
+
+        bool NamesAnotherMatch(EventChannelName name) =>
+            EventChannelNameMatcher.NamesAnotherMatch(name, target, _stampZones, nearby);
+
+        foreach (var (channel, name) in parsed)
+        {
+            var strict = EventChannelNameMatcher.TeamsMatch(name, target);
+            if (!strict && NamesAnotherMatch(name))
+            {
+                foreign.Add(channel.Id);
+                continue;
+            }
+            if (!EventChannelNameMatcher.SidesFit(name, target)) continue;
+
+            var vote = ZoneFor(channel);
+            // Tied zones read this stamp as different games, so it proves
+            // nothing either way.
+            if (vote.Doubtful.Contains(name)) continue;
+            var zone = vote.Zone;
+            var delta = EventChannelNameMatcher.DeltaInZone(name.Stamp, evt.EventDate, zone);
+
+            // A stamp that fits another game of the same teams better, or
+            // fits only that game, names that game. This holds for a
+            // doubleheader however far apart the games are. A game of
+            // another league that the prefix rules out does not count.
+            var rivals = nearby
+                .Where(other => other.Event.Id != evt.Id
+                    && EventChannelNameMatcher.SidesFit(name, other)
+                    && !EventChannelNameMatcher.NamesOtherCompetition(name, other))
+                .Select(other => (Target: other,
+                    Delta: EventChannelNameMatcher.DeltaInZone(name.Stamp, other.Event.EventDate, zone)))
+                .Where(r => r.Delta != null)
+                .ToList();
+            if (rivals.Any(r => delta == null || r.Delta!.Value.Duration() < delta.Value.Duration()))
+            {
+                foreign.Add(channel.Id);
+                continue;
+            }
+
+            // A rival game as near as this one makes the name doubtful for
+            // both, unless the prefix names this event's own league and not
+            // the rival's.
+            var tiedRivals = rivals.Where(r => r.Delta!.Value.Duration() == delta!.Value.Duration()).ToList();
+            if (tiedRivals.Count > 0
+                && !(EventChannelNameMatcher.NamesOwnLeague(name, target)
+                     && tiedRivals.All(r => !EventChannelNameMatcher.NamesOwnLeague(name, r.Target))))
+            {
+                continue;
+            }
+
+            if (!strict) continue;
+            if (delta == null)
+            {
+                if (NamesAnotherMatch(name)) foreign.Add(channel.Id);
+                continue;
+            }
+
+            scores[channel.Id] = name.Language == null ? EventChannelConfidence : EventChannelLanguageConfidence;
+        }
+        return scores;
+    }
+
+    private EventChannelName? ParseCached(IptvChannel channel)
+    {
+        if (_parsedNames.TryGetValue(channel.Id, out var cached)
+            && cached.Name == channel.Name && cached.Group == channel.Group)
+        {
+            return cached.Parsed;
+        }
+        var parsed = EventChannelNameMatcher.TryParse(channel.Name, channel.Group);
+        _parsedNames[channel.Id] = (channel.Name, channel.Group, parsed);
+        return parsed;
+    }
+
+    // The vote depends only on the names and the nearby events. The key
+    // holds the names, groups and stamps, and each event's id, start and
+    // teams, so a renamed slot or a moved game gets a fresh vote.
+    private ZoneVote InferZoneCached(
+        List<(IptvChannel Channel, EventChannelName Name)> names, List<EventChannelTarget> nearby)
+    {
+        var key = string.Join('\n', names
+                .Select(n => $"{n.Channel.Id}|{n.Channel.Name}|{n.Channel.Group}")
+                .OrderBy(k => k, StringComparer.Ordinal))
+            + "\n#\n"
+            + string.Join('\n', nearby
+                .Select(t => $"{t.Event.Id}|{t.Event.EventDate:O}|{t.Event.HomeTeamName}|{t.Event.AwayTeamName}")
+                .OrderBy(k => k, StringComparer.Ordinal));
+        if (!_inferredZones.TryGetValue(key, out var zone))
+        {
+            zone = EventChannelNameMatcher.InferZone(names.Select(n => n.Name).ToList(), nearby, _stampZones!);
+            _inferredZones[key] = zone;
+        }
+        return zone;
+    }
+
+    // Team events within two days of this one, for the zone vote and the
+    // nearest-game rule. The event itself is in the list.
+    private async Task<List<EventChannelTarget>> NearbyTargetsAsync(Event evt, CancellationToken ct)
+    {
+        var from = evt.EventDate.AddDays(-2);
+        var to = evt.EventDate.AddDays(2);
+        var missing = await _db.Events
+            .AsNoTracking()
+            .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Where(e => e.EventDate >= from && e.EventDate <= to
+                && e.HomeTeamName != null && e.AwayTeamName != null && e.Id != evt.Id)
+            .ToListAsync(ct);
+        _targets[evt.Id] = _vocabulary!.Target(evt);
+        foreach (var other in missing)
+        {
+            if (!_targets.ContainsKey(other.Id)) _targets[other.Id] = _vocabulary.Target(other);
+        }
+        return _targets.Values
+            .Where(t => t.HasTeams && t.Event.EventDate >= from && t.Event.EventDate <= to)
+            .ToList();
+    }
+
+    private async Task<string?> ConfiguredTimeZoneAsync()
+    {
+        if (_configService == null) return null;
+        try
+        {
+            return (await _configService.GetConfigAsync()).TimeZone;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Resolver] Could not read the configured time zone; using the system zone");
+            return null;
+        }
     }
 
     /// <summary>
@@ -659,8 +919,17 @@ public class EventChannelResolverService
 }
 
 /// <summary>
-/// One candidate channel for an event. Confidence is 0-100. Source
-/// describes which signal contributed: "broadcast", "league-mapping".
+/// The ranked candidates for an event, and the per-event channels that name
+/// another match.
+/// </summary>
+public record EventChannelResolution(
+    List<EventChannelCandidate> Candidates,
+    IReadOnlySet<int> ForeignEventChannelIds);
+
+/// <summary>
+/// One candidate channel for an event. Confidence is 0-100. Source names the
+/// signal that contributed. It is "event_channel", "epg_program",
+/// "broadcast" or "league-mapping".
 /// </summary>
 public record EventChannelCandidate(
     int ChannelId,

@@ -2338,7 +2338,7 @@ public class ReleaseMatchingService
     /// A short code is one upper-case word of two to four letters, such as "OKC" or "PHI".
     /// Nicknames like "Heat" are not codes, so the check never removes them.
     /// </summary>
-    private static bool IsShortCode(string value)
+    internal static bool IsShortCode(string value)
     {
         var trimmed = value.Trim();
         return trimmed.Length is >= 2 and <= 4 && trimmed.All(char.IsLetter) && trimmed.All(char.IsUpper);
@@ -2767,6 +2767,11 @@ public class ReleaseMatchingService
             .Select(alias => RemoveSeparators(NormalizeTitle(alias)))
             .Any(alias => compactLabel.Equals(alias, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// The league's name, its alternate names and its known short forms.
+    /// </summary>
+    internal static IEnumerable<string> LeagueNameAliases(League league) => LeagueAliases(league);
 
     private static IEnumerable<string> LeagueAliases(League league)
     {

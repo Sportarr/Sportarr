@@ -50,6 +50,13 @@ public class DvrChannelReresolveService : BackgroundService
     // anyway, and its EPG data is usually still missing.
     private readonly TimeSpan _horizon = TimeSpan.FromDays(14);
 
+    // The timer, the manual endpoint and the pre-recording refresh can all
+    // start a pass. Two passes at once could move the same row twice.
+    private readonly SemaphoreSlim _passLock = new(1, 1);
+
+    // Recordings already warned about, so each warns once.
+    private readonly HashSet<int> _warnedForeign = new();
+
     public DvrChannelReresolveService(
         IServiceProvider serviceProvider,
         ILogger<DvrChannelReresolveService> logger)
@@ -99,6 +106,19 @@ public class DvrChannelReresolveService : BackgroundService
     /// </summary>
     public async Task<int> RunPassAsync(CancellationToken ct = default)
     {
+        await _passLock.WaitAsync(ct);
+        try
+        {
+            return await RunPassCoreAsync(ct);
+        }
+        finally
+        {
+            _passLock.Release();
+        }
+    }
+
+    private async Task<int> RunPassCoreAsync(CancellationToken ct)
+    {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var resolver = scope.ServiceProvider.GetRequiredService<EventChannelResolverService>();
@@ -141,9 +161,14 @@ public class DvrChannelReresolveService : BackgroundService
 
             try
             {
-                if (await TryReresolveAsync(db, resolver, recording, minImprovement, lockWindow, ct))
+                var resolution = await resolver.ResolveDetailedAsync(recording.EventId!.Value, ct);
+                if (await TryReresolveAsync(db, resolution, recording, minImprovement, lockWindow, ct))
                 {
                     moved++;
+                }
+                else
+                {
+                    WarnIfOnForeignChannel(recording, resolution);
                 }
             }
             catch (Exception ex)
@@ -152,6 +177,10 @@ public class DvrChannelReresolveService : BackgroundService
                     "[DVR Re-resolve] Recording {Id} could not be re-resolved", recording.Id);
             }
         }
+
+        // A recording that started, ended or left the window needs no more
+        // warnings, so it leaves the set.
+        _warnedForeign.IntersectWith(candidates.Select(r => r.Id));
 
         if (moved > 0)
         {
@@ -162,15 +191,31 @@ public class DvrChannelReresolveService : BackgroundService
         return moved;
     }
 
+    // A recording left on a slot that names another match will record the
+    // wrong game. Nothing better exists, so the user must step in.
+    private void WarnIfOnForeignChannel(DvrRecording recording, EventChannelResolution resolution)
+    {
+        if (!resolution.ForeignEventChannelIds.Contains(recording.ChannelId))
+        {
+            _warnedForeign.Remove(recording.Id);
+            return;
+        }
+        // Passes run one at a time, so the set needs no lock.
+        if (!_warnedForeign.Add(recording.Id)) return;
+        _logger.LogWarning(
+            "[DVR Re-resolve] Recording {Id} for event {EventId} is on channel {ChannelId}, whose name gives another match, and no better channel exists",
+            recording.Id, recording.EventId, recording.ChannelId);
+    }
+
     private async Task<bool> TryReresolveAsync(
         SportarrDbContext db,
-        EventChannelResolverService resolver,
+        EventChannelResolution resolution,
         DvrRecording recording,
         int minImprovement,
         TimeSpan lockWindow,
         CancellationToken ct)
     {
-        var ranked = await resolver.ResolveAsync(recording.EventId!.Value, ct);
+        var ranked = resolution.Candidates;
         if (recording.Method == DvrRecordingMethod.Catchup)
         {
             // A move to a channel without an archive leaves the download
@@ -184,21 +229,29 @@ public class DvrChannelReresolveService : BackgroundService
         ranked = ranked
             .Where(c => c.ChannelId == recording.ChannelId || !redundant.Contains(c.ChannelId))
             .ToList();
-        var teamChannels = await TeamChannelsAsync(db, recording, redundant, ct);
+        // A team slot channel that names another match today is not a team
+        // channel for this event.
+        var teamChannels = (await TeamChannelsAsync(db, recording, redundant, ct))
+            .Where(c => !resolution.ForeignEventChannelIds.Contains(c.Id))
+            .ToList();
         var teamIds = teamChannels.Select(c => c.Id).ToList();
 
         // With team channels, an empty resolver list still lets an unusable
-        // channel move to the first team channel.
+        // channel move to the first team channel. Without either, nothing can
+        // replace the primary. Its backups still lose any slot that names
+        // another match.
         if (ranked.Count == 0 && teamChannels.Count == 0)
         {
+            await DropForeignFallbacksAsync(db, recording, resolution.ForeignEventChannelIds, ct);
             return false;
         }
 
-        var onTeamChannel = await IsOnATeamMappedChannelAsync(db, recording, ct);
+        var onTeamChannel = await IsOnATeamMappedChannelAsync(db, recording, ct)
+            && !resolution.ForeignEventChannelIds.Contains(recording.ChannelId);
         if (teamChannels.Count > 0)
         {
             var listed = ranked
-                .Where(c => c.Source == TeamChannelSelection.GuideMatchSource)
+                .Where(TeamChannelSelection.IsEvidence)
                 .Select(c => c.ChannelId)
                 .ToHashSet();
             var currentListed = listed.Contains(recording.ChannelId);
@@ -220,11 +273,15 @@ public class DvrChannelReresolveService : BackgroundService
                 // Take the first channel in backup order that can record.
                 // The scheduler's pick can be the current channel or a dead
                 // team channel, so it is not used here.
-                if (!await CanRecordAsync(db, recording, recording.ChannelId, ct))
+                // A slot channel that names another match cannot record this
+                // event either.
+                if (resolution.ForeignEventChannelIds.Contains(recording.ChannelId)
+                    || !await CanRecordAsync(db, recording, recording.ChannelId, ct))
                 {
                     foreach (var candidateId in TeamChannelSelection.MergeOrder(teamChannels, ranked))
                     {
                         if (candidateId == recording.ChannelId
+                            || resolution.ForeignEventChannelIds.Contains(candidateId)
                             || !await CanRecordAsync(db, recording, candidateId, ct))
                         {
                             continue;
@@ -303,7 +360,8 @@ public class DvrChannelReresolveService : BackgroundService
         // The margin stops two guesses from trading places every pass. A
         // guide listing is evidence, so a guess gives way to it as soon as
         // it scores higher, or the guess could never be left.
-        var guessToGuide = best.Source == "epg_program" && current?.Source != "epg_program";
+        var guessToGuide = EventChannelResolverService.IsEvidence(best.Source)
+            && !EventChannelResolverService.IsEvidence(current?.Source);
         var requiredGain = guessToGuide ? 1 : minImprovement;
         if (best.Confidence < currentConfidence + requiredGain)
         {
@@ -464,6 +522,51 @@ public class DvrChannelReresolveService : BackgroundService
             // recording, so the resolver can move it to a working channel.
             && m.Channel.Status != IptvChannelStatus.Offline
             && m.Channel.Status != IptvChannelStatus.Error, ct);
+    }
+
+    private static async Task DropForeignFallbacksAsync(
+        SportarrDbContext db, DvrRecording recording, IReadOnlySet<int> foreign, CancellationToken ct)
+    {
+        var before = recording.FallbackChannelIds;
+        if (string.IsNullOrEmpty(before) || foreign.Count == 0)
+        {
+            return;
+        }
+        List<int>? ids;
+        try
+        {
+            ids = JsonSerializer.Deserialize<List<int>>(before);
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+        if (ids == null || !ids.Any(foreign.Contains))
+        {
+            return;
+        }
+
+        var kept = ids.Where(id => !foreign.Contains(id)).ToList();
+        var fresh = kept.Count > 0 ? JsonSerializer.Serialize(kept) : null;
+        var now = DateTime.UtcNow;
+        // The same guard as RefreshFallbacksAsync. A change in the meantime wins.
+        var written = await db.DvrRecordings
+            .Where(r => r.Id == recording.Id
+                && r.Status == DvrRecordingStatus.Scheduled
+                && !r.ChannelPinned
+                && r.ChannelId == recording.ChannelId
+                && r.FallbackChannelIds == before)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.FallbackChannelIds, fresh)
+                .SetProperty(r => r.LastUpdated, now), ct);
+        if (written == 1)
+        {
+            var entry = db.Entry(recording);
+            entry.Property(r => r.FallbackChannelIds).OriginalValue = fresh;
+            entry.Property(r => r.LastUpdated).OriginalValue = now;
+            recording.FallbackChannelIds = fresh;
+            recording.LastUpdated = now;
+        }
     }
 
     private async Task RefreshFallbacksAsync(

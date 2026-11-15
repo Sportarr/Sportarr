@@ -22,6 +22,13 @@ public static class TeamChannelSelection
     public const string GuideMatchSource = EventChannelResolverService.EpgProgramSource;
 
     /// <summary>
+    /// True for a candidate that is evidence the channel airs the event. A
+    /// guide listing and a per-event channel name are evidence.
+    /// </summary>
+    public static bool IsEvidence(EventChannelCandidate candidate) =>
+        EventChannelResolverService.IsEvidence(candidate.Source);
+
+    /// <summary>
     /// Backups stored on a recording. This stays inside the rotation cap in
     /// DvrRecordingService.
     /// </summary>
@@ -88,8 +95,8 @@ public static class TeamChannelSelection
     }
 
     /// <summary>
-    /// The highest ranked team channel that is not dead and that the guide
-    /// shows carrying the event.
+    /// The highest ranked team channel that is not dead and that the guide or
+    /// a per-event channel name shows carrying the event.
     /// </summary>
     public static IptvChannel? FirstGuideMatchedTeamChannel(
         IReadOnlyList<IptvChannel> teamChannels, IReadOnlyList<EventChannelCandidate> candidates)
@@ -124,7 +131,7 @@ public static class TeamChannelSelection
         }
 
         var listed = candidates.FirstOrDefault(c =>
-            c.Source == GuideMatchSource
+            IsEvidence(c)
             && knownBadChannelIds?.Contains(c.ChannelId) != true
             && !teamChannels.Any(t => t.Id == c.ChannelId && ChannelHealth.IsKnownBad(t.Status)));
         if (listed != null)
@@ -181,7 +188,7 @@ public static class TeamChannelSelection
 
     private static HashSet<int> GuideMatchedIds(IEnumerable<EventChannelCandidate> candidates) =>
         candidates
-            .Where(c => c.Source == GuideMatchSource)
+            .Where(IsEvidence)
             .Select(c => c.ChannelId)
             .ToHashSet();
 }

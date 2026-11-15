@@ -112,7 +112,14 @@ public class EventDvrService
         // resolver. The rest of the merged order becomes FallbackChannelIds
         // on the recording, so the DVR service can rotate to them when a
         // recording fails partway through.
-        var candidates = await _channelResolver.ResolveAsync(evt.Id);
+        var resolution = await _channelResolver.ResolveDetailedAsync(evt.Id);
+        var candidates = resolution.Candidates;
+
+        // A team can be mapped to a per-event slot channel. When the slot
+        // names another match today, it must not record this event.
+        teamChannels = teamChannels
+            .Where(c => !resolution.ForeignEventChannelIds.Contains(c.Id))
+            .ToList();
 
         IptvChannel? channel = null;
         if (teamChannels.Count > 0)
@@ -121,7 +128,7 @@ public class EventDvrService
             // another channel. A guide listing is evidence. A team mapping
             // is a standing preference that can be wrong for one game.
             var knownBad = await KnownBadChannelIdsAsync(candidates
-                .Where(c => c.Source == TeamChannelSelection.GuideMatchSource)
+                .Where(TeamChannelSelection.IsEvidence)
                 .Select(c => c.ChannelId));
             var primaryId = TeamChannelSelection.PickPrimaryChannelId(teamChannels, candidates, knownBad);
             channel = teamChannels.FirstOrDefault(c => c.Id == primaryId)
@@ -136,10 +143,18 @@ public class EventDvrService
         }
         else if (candidates.Count > 0)
         {
-            // Use the resolver's recommendation as primary.
+            // Evidence comes first, as on the manual path. The first guide or
+            // per-event match that is not known to be dead wins. Otherwise the
+            // resolver's top candidate is used.
+            var knownBad = await KnownBadChannelIdsAsync(candidates
+                .Where(TeamChannelSelection.IsEvidence)
+                .Select(c => c.ChannelId));
+            var pickId = candidates
+                .FirstOrDefault(c => TeamChannelSelection.IsEvidence(c) && !knownBad.Contains(c.ChannelId))?.ChannelId
+                ?? candidates[0].ChannelId;
             channel = await _db.IptvChannels
                 .Include(c => c.Source)
-                .FirstOrDefaultAsync(c => c.Id == candidates[0].ChannelId);
+                .FirstOrDefaultAsync(c => c.Id == pickId);
         }
 
         // Team channels by rank come first, then the resolver candidates.
@@ -149,13 +164,17 @@ public class EventDvrService
         // didn't return anything (e.g., league has no broadcast string,
         // no EPG match, no scored mappings) — these still produce a
         // recording, just without fallback candidates.
+        // A league channel that is a slot named for another match today is
+        // skipped here too.
         if (channel == null)
         {
-            channel = await _autoMappingService.GetBestChannelForLeagueAsync(evt.LeagueId.Value);
+            channel = await _autoMappingService.GetBestChannelForLeagueAsync(
+                evt.LeagueId.Value, resolution.ForeignEventChannelIds);
         }
         if (channel == null)
         {
-            channel = await _iptvService.GetPreferredChannelForLeagueAsync(evt.LeagueId.Value);
+            channel = await _iptvService.GetPreferredChannelForLeagueAsync(
+                evt.LeagueId.Value, resolution.ForeignEventChannelIds);
         }
 
         if (channel == null)
@@ -388,6 +407,8 @@ public class EventDvrService
         }
     }
 
+    private EventChannelPicker? _statusPicker;
+
     /// <summary>
     /// Get DVR status for an event.
     /// </summary>
@@ -413,8 +434,11 @@ public class EventDvrService
 
         if (evt.LeagueId.HasValue)
         {
-            var channel = await _iptvService.GetPreferredChannelForEventAsync(
-                evt.HomeTeamId, evt.AwayTeamId, evt.LeagueId.Value);
+            // The picker is kept for the scope, so a status for many events
+            // parses the channel names once.
+            _statusPicker ??= new EventChannelPicker(
+                _db, _iptvService, _channelResolver, (await _configService.GetConfigAsync()).TimeZone);
+            var channel = await _statusPicker.PickAsync(evt);
             hasChannelMapping = channel != null;
             mappedChannelName = channel?.Name;
         }

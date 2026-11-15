@@ -560,6 +560,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<DvrChannelReresolveService>();
         services.AddHostedService(sp => sp.GetRequiredService<DvrChannelReresolveService>());
 
+        // Syncs playlists and the guide shortly before a live recording, then
+        // re-resolves its channel.
+        services.AddScoped<IPreRecordingRefreshActions, PreRecordingRefreshActions>();
+        services.AddHostedService<DvrPreRecordingRefreshService>();
+
         // Downloads finished events from the provider's catchup/timeshift
         // archive (Method=Catchup rows) - the post-air counterpart to the
         // live scheduler above. Method ported from timeshifter by

@@ -230,6 +230,12 @@ public class IptvSourceService
     // existing rows and both insert every channel.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> SyncGates = new();
 
+    /// <summary>
+    /// True while a playlist sync for this source runs.
+    /// </summary>
+    public static bool IsSyncRunning(int sourceId) =>
+        SyncGates.TryGetValue(sourceId, out var gate) && gate.CurrentCount == 0;
+
     public async Task<int> SyncChannelsAsync(int sourceId)
     {
         var gate = SyncGates.GetOrAdd(sourceId, _ => new SemaphoreSlim(1, 1));
@@ -848,7 +854,7 @@ public class IptvSourceService
     /// <summary>
     /// Get the preferred channel for a league
     /// </summary>
-    public async Task<IptvChannel?> GetPreferredChannelForLeagueAsync(int leagueId)
+    public async Task<IptvChannel?> GetPreferredChannelForLeagueAsync(int leagueId, IReadOnlySet<int>? excluded = null)
     {
         var mappings = await _db.ChannelLeagueMappings
             .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
@@ -856,8 +862,11 @@ public class IptvSourceService
             .ThenInclude(c => c!.Source)
             .ToListAsync();
 
+        // An excluded channel, such as a slot named for another match, is
+        // passed over, so the next mapping gets its turn.
         return mappings
             .Where(m => m.Channel != null && m.Channel.IsEnabled && m.Channel.Source?.IsActive == true)
+            .Where(m => excluded?.Contains(m.ChannelId) != true)
             .OrderByDescending(m => ChannelHealth.Rank(m.Channel!.Status))
             .ThenByDescending(m => m.IsPreferred)
             .ThenByDescending(m => m.Priority)

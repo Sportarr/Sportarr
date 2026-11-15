@@ -70,6 +70,7 @@ interface DvrSettings {
   reresolveChannelsEnabled: boolean;
   reresolveLockMinutes: number;
   reresolveMinImprovement: number;
+  refreshChannelsBeforeRecordings: boolean;
   enableReconnect: boolean;
   maxReconnectAttempts: number;
   reconnectDelaySeconds: number;
@@ -190,6 +191,7 @@ const defaultDvrSettings: DvrSettings = {
   reresolveChannelsEnabled: true,
   reresolveLockMinutes: 45,
   reresolveMinImprovement: 10,
+  refreshChannelsBeforeRecordings: true,
   enableReconnect: true,
   maxReconnectAttempts: 5,
   reconnectDelaySeconds: 5,
@@ -1082,6 +1084,30 @@ export default function DvrSettingsPage() {
                       </div>
                     </>
                   )}
+                  <div className="md:col-span-2">
+                    <label
+                      className={`flex items-start space-x-3 ${
+                        dvrSettings.reresolveChannelsEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={dvrSettings.refreshChannelsBeforeRecordings}
+                        disabled={!dvrSettings.reresolveChannelsEnabled}
+                        onChange={(e) => handleSettingsChange('refreshChannelsBeforeRecordings', e.target.checked)}
+                        className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                      />
+                      <div>
+                        <span className="text-white font-medium">Refresh channels before recordings</span>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Sync playlists and the guide in the hours before a live recording, then check its channel again.
+                        </p>
+                        {!dvrSettings.reresolveChannelsEnabled && (
+                          <p className="text-xs text-amber-400 mt-1">Turn on Re-resolve Channels on New EPG Data to use this.</p>
+                        )}
+                      </div>
+                    </label>
+                  </div>
                 </div>
                 {/* Available Hardware Info */}
                 {availableHwAccel.length > 0 && (

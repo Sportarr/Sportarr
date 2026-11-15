@@ -821,7 +821,7 @@ public class ChannelAutoMappingService
     /// Get the best quality channel for a league for DVR recording.
     /// Considers channel quality, status, and priority.
     /// </summary>
-    public async Task<IptvChannel?> GetBestChannelForLeagueAsync(int leagueId)
+    public async Task<IptvChannel?> GetBestChannelForLeagueAsync(int leagueId, IReadOnlySet<int>? excluded = null)
     {
         var mappings = await _db.ChannelLeagueMappings
             .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
@@ -833,8 +833,11 @@ public class ChannelAutoMappingService
             return null;
 
         // Score each channel and select the best
+        // An excluded channel, such as a slot named for another match, is
+        // passed over, so the next mapping gets its turn.
         var scoredChannels = mappings
             .Where(m => m.Channel != null && m.Channel.IsEnabled && m.Channel.Source?.IsActive == true)
+            .Where(m => excluded?.Contains(m.ChannelId) != true)
             .Select(m => new
             {
                 Mapping = m,

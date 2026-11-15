@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
@@ -1636,10 +1637,15 @@ public class DvrRecordingService
             throw new ArgumentException($"Event {eventId} not found or has no league");
         }
 
-        // Find the mapped channel: the event's team preference first,
-        // then the league preference.
-        var channel = await _iptvService.GetPreferredChannelForEventAsync(
-            evt.HomeTeamId, evt.AwayTeamId, evt.League.Id);
+        // A per-event channel named for the event comes first. Then the
+        // team preference and the league preference follow. A per-event slot
+        // that names another match is skipped, as on the other paths.
+        var config = await _configService.GetConfigAsync();
+        var picker = new EventChannelPicker(
+            _db, _iptvService,
+            new EventChannelResolverService(_db, NullLogger<EventChannelResolverService>.Instance, _configService),
+            config.TimeZone);
+        var channel = await picker.PickAsync(evt);
 
         if (channel == null)
         {

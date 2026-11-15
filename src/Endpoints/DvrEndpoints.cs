@@ -662,6 +662,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         reresolveChannelsEnabled = config.DvrReresolveChannelsEnabled,
         reresolveLockMinutes = config.DvrReresolveLockMinutes,
         reresolveMinImprovement = config.DvrReresolveMinImprovement,
+        refreshChannelsBeforeRecordings = config.DvrRefreshChannelsBeforeRecordings,
         enableReconnect = config.DvrEnableReconnect,
         maxReconnectAttempts = config.DvrMaxReconnectAttempts,
         // Values stored before the 5-300 clamp existed display as the
@@ -786,6 +787,8 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         // Floor of 1 point. A zero margin lets two equal channels swap on
         // every pass.
         config.DvrReresolveMinImprovement = Math.Clamp(reresolveMargin.GetInt32(), 1, 50);
+    if (settings.TryGetProperty("refreshChannelsBeforeRecordings", out var refreshBefore))
+        config.DvrRefreshChannelsBeforeRecordings = refreshBefore.GetBoolean();
     if (settings.TryGetProperty("enableReconnect", out var enableReconnect))
         config.DvrEnableReconnect = enableReconnect.GetBoolean();
     if (settings.TryGetProperty("maxReconnectAttempts", out var maxReconnect))

@@ -111,6 +111,20 @@ Channel selection still uses your preferences, EPG matches, broadcaster names,
 and league mappings. Live scores establish event progress, not what is visible
 on the selected channel.
 
+Some providers rename a block of channels for each match day, with names such
+as "Provider 026 | Team A vs. Team B (2026-10-24 21:25)". Sportarr reads the
+teams and the time from these names. A channel named for the event's teams near
+its start ranks above an EPG match. A copy in another language, such as
+"(Spanish)", stays as a backup. A channel named for a different match is not
+used for the event.
+
+**Refresh channels before recordings** is on by default. You find it in
+**IPTV > Options > Recording > Advanced**. In the hours before a live
+recording, Sportarr syncs the playlists that matter for it and refreshes the
+guide once. Then it checks the recording's channel again, so the recording can
+move to a channel that appeared or changed. The setting needs **Re-resolve
+Channels on New EPG Data** to be on.
+
 Event TV listings supply all known broadcasters for an event. Sportarr combines
 their network, channel, and streaming-service names when matching your IPTV
 lineup. Duplicate names are removed. An empty or unavailable event lookup keeps

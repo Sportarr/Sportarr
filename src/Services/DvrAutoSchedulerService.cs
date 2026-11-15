@@ -186,6 +186,18 @@ public class DvrAutoSchedulerService : BackgroundService, IManualPassService
         // because the scheduler reads padding and the DVR opt-out from it.
         var teamsWithChannels = await TeamsWithChannelsAsync(db, eventsToSchedule, cancellationToken);
 
+        // A per-event channel named for the match also lets its event
+        // through. The resolver runs only for events without a mapped
+        // channel, and only when such channels exist.
+        var unmapped = eventsToSchedule
+            .Where(e => !HasMappedChannel(e, leaguesWithChannels, teamsWithChannels))
+            .ToList();
+        var eventsWithEventChannels = unmapped.Count > 0
+            ? await EventsWithEventChannelsAsync(
+                db, scope.ServiceProvider.GetRequiredService<EventChannelResolverService>(), unmapped,
+                config.TimeZone, cancellationToken)
+            : new HashSet<int>();
+
         // Schedule recordings for events with channel mappings
         foreach (var evt in eventsToSchedule)
         {
@@ -194,7 +206,8 @@ public class DvrAutoSchedulerService : BackgroundService, IManualPassService
 
             result.EventsChecked++;
 
-            if (!HasMappedChannel(evt, leaguesWithChannels, teamsWithChannels))
+            if (!HasMappedChannel(evt, leaguesWithChannels, teamsWithChannels)
+                && !eventsWithEventChannels.Contains(evt.Id))
             {
                 result.SkippedNoChannel++;
                 continue;
@@ -275,6 +288,61 @@ public class DvrAutoSchedulerService : BackgroundService, IManualPassService
         return leaguesWithChannels.Contains(evt.LeagueId.Value)
             || (evt.HomeTeamId.HasValue && teamsWithChannels.Contains(evt.HomeTeamId.Value))
             || (evt.AwayTeamId.HasValue && teamsWithChannels.Contains(evt.AwayTeamId.Value));
+    }
+
+    /// <summary>
+    /// The events that the resolver finds on a per-event channel. The names
+    /// are parsed once per pass and matched in memory. The resolver runs only
+    /// for an event that a name matches.
+    /// </summary>
+    internal static async Task<HashSet<int>> EventsWithEventChannelsAsync(
+        SportarrDbContext db, EventChannelResolverService resolver, IReadOnlyCollection<Event> events,
+        string? configuredZone, CancellationToken ct)
+    {
+        var result = new HashSet<int>();
+        var ids = events
+            .Where(e => e.LeagueId.HasValue
+                && !string.IsNullOrWhiteSpace(e.HomeTeamName)
+                && !string.IsNullOrWhiteSpace(e.AwayTeamName))
+            .Select(e => e.Id)
+            .ToList();
+        if (ids.Count == 0)
+        {
+            return result;
+        }
+
+        var channels = (await EventChannelNameMatcher.LoadAsync(db, ct))
+            .Where(c => !c.Name.IsRerun)
+            .ToList();
+        if (channels.Count == 0)
+        {
+            return result;
+        }
+
+        var teamEvents = await db.Events
+            .AsNoTracking()
+            .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Where(e => ids.Contains(e.Id))
+            .ToListAsync(ct);
+        var vocabulary = await EventChannelVocabulary.LoadAsync(db, ct);
+        var zones = EventChannelNameMatcher.CandidateZones(configuredZone);
+        foreach (var evt in teamEvents)
+        {
+            if (ct.IsCancellationRequested) break;
+            if (!EventChannelNameMatcher.AnyNearMatch(channels, vocabulary.Target(evt), zones))
+            {
+                continue;
+            }
+
+            var candidates = await resolver.ResolveAsync(evt.Id, ct);
+            if (candidates.Any(c => c.Source == EventChannelResolverService.EventChannelSource))
+            {
+                result.Add(evt.Id);
+            }
+        }
+        return result;
     }
 
     /// <summary>

@@ -741,11 +741,12 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
                               <td className="px-3 py-2 text-gray-400">{c.sourceName}</td>
                               <td className="px-3 py-2">
                                 <span className={`text-xs px-2 py-0.5 rounded ${
+                                  c.source === 'event_channel' ? 'bg-green-900/40 text-green-300' :
                                   c.source === 'epg_program' ? 'bg-purple-900/40 text-purple-300' :
                                   c.source === 'broadcast' ? 'bg-blue-900/40 text-blue-300' :
                                   'bg-gray-700/50 text-gray-300'
                                 }`}>
-                                  {c.source}
+                                  {c.source === 'event_channel' ? 'event channel name' : c.source}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-right font-mono text-white">{c.confidence}</td>
