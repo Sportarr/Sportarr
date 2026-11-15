@@ -762,6 +762,9 @@ export default function IptvChannelsSettings() {
         channelId: mappingChannel.id,
         leagueIds: selectedLeagues,
         preferredLeagueId: preferredLeagueId,
+        // Only a league the form showed as mapped becomes an exclusion when
+        // unticked.
+        loadedLeagueIds: channelMappings.map((m) => m.leagueId),
       });
       await loadChannels();
       setMappingChannel(null);
@@ -1734,7 +1737,8 @@ export default function IptvChannelsSettings() {
               <div className="mb-6">
                 <p className="text-sm text-gray-400 mb-2">
                   Select the leagues that this channel broadcasts. When events are scheduled for these leagues,
-                  Sportarr can automatically record them from this channel.
+                  Sportarr can automatically record them from this channel. If you untick a league, auto-mapping
+                  will not add it back. You can undo this on the Coverage page under Excluded channels.
                 </p>
                 <p className="text-xs text-gray-500 mb-4">
                   💡 For per-mapping actions (lock to prevent auto-mapper changes, see why a mapping was made, run a test resolve), visit the <span className="text-purple-300">IPTV → Coverage</span> page.

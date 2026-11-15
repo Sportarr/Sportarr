@@ -482,6 +482,31 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/mappings", async (int leagueId, Spo
     }));
 });
 
+// The channels excluded from a league. Unmap keeps a row as an exclusion,
+// and every other list hides it. This list lets the user see and undo it.
+app.MapGet("/api/iptv/leagues/{leagueId:int}/exclusions", async (int leagueId, IptvSourceService iptvService) =>
+{
+    var rows = await iptvService.GetLeagueExclusionsAsync(leagueId);
+    return Results.Ok(rows.Select(m => new
+    {
+        mappingId = m.Id,
+        channelId = m.ChannelId,
+        channelName = m.Channel?.Name,
+        sourceName = m.Channel?.Source?.Name,
+        country = m.Channel?.Country,
+    }));
+});
+
+// Remove an exclusion. The channel becomes unmapped, not mapped.
+app.MapDelete("/api/iptv/leagues/{leagueId:int}/exclusions/{channelId:int}", async (
+    int leagueId, int channelId, IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    if (!await iptvService.RemoveLeagueExclusionAsync(leagueId, channelId))
+        return Results.NotFound(new { error = "Exclusion not found" });
+    logger.LogInformation("[IPTV] Removed exclusion channel={Channel} league={League}", channelId, leagueId);
+    return Results.NoContent();
+});
+
 // Get all channels across all sources (for Channel Management page)
 app.MapGet("/api/iptv/channels", async (
     IptvSourceService iptvService,
@@ -607,50 +632,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}/manual",
     var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
     var isManual = data.TryGetProperty("isManual", out var prop) && prop.GetBoolean();
 
-    var mapping = await db.ChannelLeagueMappings
-        .FirstOrDefaultAsync(m => m.ChannelId == channelId && m.LeagueId == leagueId);
-    if (mapping == null)
-    {
-        // Auto-create the mapping when the admin marks IsManual=true on
-        // a (channel, league) pair that didn't exist yet — that's the
-        // common path for "this channel actually broadcasts X league
-        // but the auto-mapper missed it" fix-ups.
-        if (!isManual) return Results.NotFound(new { error = "Mapping not found" });
-        mapping = new ChannelLeagueMapping
-        {
-            ChannelId = channelId,
-            LeagueId = leagueId,
-            IsManual = true,
-            // Manual mappings get a top-of-the-band confidence so the
-            // event resolver treats them as authoritative.
-            Confidence = 95,
-            IsPreferred = false,
-            Priority = 300, // ~FHD-equivalent
-        };
-        db.ChannelLeagueMappings.Add(mapping);
-        await db.SaveChangesAsync();
-        logger.LogInformation("[IPTV] Admin manually created mapping channel={Channel} league={League}", channelId, leagueId);
-        return Results.Ok(new { mapping.Id, mapping.IsManual, created = true });
-    }
-
-    // Re-mapping a pair the admin had previously excluded clears the
-    // exclusion, otherwise the row stayed invisible to every resolver and
-    // the admin had no way to undo it from the UI.
-    if (mapping.IsExcluded)
-    {
-        mapping.Priority = 1;
-    }
-
-    mapping.IsManual = isManual;
-    if (isManual)
-    {
-        // Mark high-confidence so it ranks above auto-mapped competitors.
-        mapping.Confidence = Math.Max(mapping.Confidence, 95);
-    }
-    await db.SaveChangesAsync();
-    logger.LogInformation("[IPTV] Admin toggled IsManual={IsManual} for mapping channel={Channel} league={League}",
-        isManual, channelId, leagueId);
-    return Results.Ok(new { mapping.Id, mapping.IsManual, mapping.Confidence });
+    return await SetMappingManualAsync(channelId, leagueId, isManual, db, logger);
 });
 
 // Phase 4 — DELETE a mapping. This is the "this channel is NOT for this
@@ -786,87 +768,7 @@ app.MapDelete("/api/iptv/channels/{channelId:int}/team-mappings/{teamId:int}", a
 // scheduled in the next N days have a primary + backup channel
 // resolved, and how many have nothing. Drives the bot's coverage
 // digest and a planned admin dashboard panel.
-app.MapGet("/api/iptv/coverage-report", async (
-    SportarrDbContext db, ILogger<Program> logger, int days = 14) =>
-{
-    var now = DateTime.UtcNow;
-    var horizon = now.AddDays(Math.Clamp(days, 1, 90));
-
-    var leagues = await db.Leagues
-        .AsNoTracking()
-        .Where(l => l.Monitored)
-        .ToListAsync();
-
-    // One query for channel counts per league.
-    var channelCounts = await db.ChannelLeagueMappings
-        .Where(m => m.Priority >= 0)
-        .GroupBy(m => m.LeagueId)
-        .Select(g => new
-        {
-            LeagueId = g.Key,
-            Total = g.Count(),
-            Preferred = g.Count(m => m.IsPreferred),
-            Manual = g.Count(m => m.IsManual),
-            AverageConfidence = g.Average(m => (double)m.Confidence),
-        })
-        .ToDictionaryAsync(x => x.LeagueId, x => x);
-
-    // One query for upcoming event counts + how many have a recording
-    // already scheduled (proxy for "has a resolved channel"). Events
-    // without recordings + without manual mappings are the coverage gap.
-    var upcomingEvents = await db.Events
-        .Where(e => e.Monitored)
-        .Where(e => e.EventDate > now && e.EventDate <= horizon)
-        .GroupBy(e => e.LeagueId)
-        .Select(g => new
-        {
-            LeagueId = g.Key,
-            Total = g.Count(),
-            WithRecording = g.Count(e => db.DvrRecordings.Any(r => r.EventId == e.Id && r.Status != DvrRecordingStatus.Cancelled && r.Status != DvrRecordingStatus.Failed)),
-            WithFallback = g.Count(e => db.DvrRecordings.Any(r => r.EventId == e.Id && r.FallbackChannelIds != null)),
-        })
-        .ToDictionaryAsync(x => x.LeagueId ?? 0, x => x);
-
-    var leagueRows = leagues.Select(l =>
-    {
-        channelCounts.TryGetValue(l.Id, out var ch);
-        upcomingEvents.TryGetValue(l.Id, out var ev);
-        return new
-        {
-            leagueId = l.Id,
-            leagueName = l.Name,
-            sport = l.Sport,
-            country = l.Country,
-            channels = new
-            {
-                total = ch?.Total ?? 0,
-                preferred = ch?.Preferred ?? 0,
-                manual = ch?.Manual ?? 0,
-                averageConfidence = ch != null ? Math.Round(ch.AverageConfidence, 1) : 0,
-            },
-            upcomingEvents = new
-            {
-                total = ev?.Total ?? 0,
-                withRecording = ev?.WithRecording ?? 0,
-                withFallback = ev?.WithFallback ?? 0,
-                uncovered = (ev?.Total ?? 0) - (ev?.WithRecording ?? 0),
-            },
-        };
-    }).ToList();
-
-    var totals = new
-    {
-        leagues = leagueRows.Count,
-        leaguesWithAnyChannel = leagueRows.Count(r => r.channels.total > 0),
-        leaguesWithPreferred = leagueRows.Count(r => r.channels.preferred > 0),
-        upcomingEvents = leagueRows.Sum(r => r.upcomingEvents.total),
-        eventsWithRecording = leagueRows.Sum(r => r.upcomingEvents.withRecording),
-        eventsWithFallback = leagueRows.Sum(r => r.upcomingEvents.withFallback),
-        eventsUncovered = leagueRows.Sum(r => r.upcomingEvents.uncovered),
-    };
-
-    return Results.Ok(new { generatedAt = now, horizonDays = days, totals, leagues = leagueRows });
-});
+app.MapGet("/api/iptv/coverage-report", (SportarrDbContext db, int days = 14) => CoverageReportAsync(db, days));
 
 // Test resolve — diagnostic. Pick a sample upcoming event for a
 // league (or use ?eventId=N for a specific one) and run the
@@ -1987,6 +1889,146 @@ app.MapGet("/api/v1/stream/sessions", (FFmpegStreamService streamService) =>
         if (string.IsNullOrWhiteSpace(client)) client = "unknown";
 
         return $"{address}|{client}|{channelId}";
+    }
+
+    /// <summary>
+    /// Sets or clears the manual lock on a mapping. Locking an excluded pair
+    /// maps it again.
+    /// </summary>
+    public static async Task<IResult> SetMappingManualAsync(
+        int channelId, int leagueId, bool isManual, SportarrDbContext db, ILogger logger)
+    {
+        var mapping = await db.ChannelLeagueMappings
+            .FirstOrDefaultAsync(m => m.ChannelId == channelId && m.LeagueId == leagueId);
+        if (mapping == null)
+        {
+            // Locking a pair that has no row creates a manual mapping. This
+            // is how the user adds a league that the auto-mapper missed.
+            if (!isManual) return Results.NotFound(new { error = "Mapping not found" });
+            mapping = new ChannelLeagueMapping
+            {
+                ChannelId = channelId,
+                LeagueId = leagueId,
+                IsManual = true,
+                // Manual mappings get a top-of-the-band confidence so the
+                // event resolver treats them as authoritative.
+                Confidence = 95,
+                IsPreferred = false,
+                Priority = 300, // ~FHD-equivalent
+            };
+            db.ChannelLeagueMappings.Add(mapping);
+            await db.SaveChangesAsync();
+            logger.LogInformation("[IPTV] Manually created mapping channel={Channel} league={League}", channelId, leagueId);
+            return Results.Ok(new { mapping.Id, mapping.IsManual, created = true });
+        }
+
+        // Locking an excluded pair clears the exclusion and maps it again.
+        if (mapping.IsExcluded)
+        {
+            mapping.Priority = 1;
+        }
+
+        mapping.IsManual = isManual;
+        if (isManual)
+        {
+            // Mark high-confidence so it ranks above auto-mapped competitors.
+            mapping.Confidence = Math.Max(mapping.Confidence, 95);
+        }
+        await db.SaveChangesAsync();
+        logger.LogInformation("[IPTV] Toggled IsManual={IsManual} for mapping channel={Channel} league={League}",
+            isManual, channelId, leagueId);
+        return Results.Ok(new { mapping.Id, mapping.IsManual, mapping.Confidence });
+    }
+
+    /// <summary>
+    /// Builds the per-league channel and event coverage report.
+    /// </summary>
+    public static async Task<IResult> CoverageReportAsync(SportarrDbContext db, int days)
+    {
+        var now = DateTime.UtcNow;
+        var horizon = now.AddDays(Math.Clamp(days, 1, 90));
+
+        var leagues = await db.Leagues
+            .AsNoTracking()
+            .Where(l => l.Monitored)
+            .ToListAsync();
+
+        // One query for channel counts per league.
+        var channelCounts = await db.ChannelLeagueMappings
+            .Where(m => m.Priority >= 0)
+            .GroupBy(m => m.LeagueId)
+            .Select(g => new
+            {
+                LeagueId = g.Key,
+                Total = g.Count(),
+                Preferred = g.Count(m => m.IsPreferred),
+                Manual = g.Count(m => m.IsManual),
+                AverageConfidence = g.Average(m => (double)m.Confidence),
+            })
+            .ToDictionaryAsync(x => x.LeagueId, x => x);
+
+        var excludedCounts = await db.ChannelLeagueMappings
+            .Where(m => m.Priority < 0)
+            .GroupBy(m => m.LeagueId)
+            .Select(g => new { LeagueId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.LeagueId, x => x.Count);
+
+        // One query for upcoming event counts + how many have a recording
+        // already scheduled (proxy for "has a resolved channel"). Events
+        // without recordings + without manual mappings are the coverage gap.
+        var upcomingEvents = await db.Events
+            .Where(e => e.Monitored)
+            .Where(e => e.EventDate > now && e.EventDate <= horizon)
+            .GroupBy(e => e.LeagueId)
+            .Select(g => new
+            {
+                LeagueId = g.Key,
+                Total = g.Count(),
+                WithRecording = g.Count(e => db.DvrRecordings.Any(r => r.EventId == e.Id && r.Status != DvrRecordingStatus.Cancelled && r.Status != DvrRecordingStatus.Failed)),
+                WithFallback = g.Count(e => db.DvrRecordings.Any(r => r.EventId == e.Id && r.FallbackChannelIds != null)),
+            })
+            .ToDictionaryAsync(x => x.LeagueId ?? 0, x => x);
+
+        var leagueRows = leagues.Select(l =>
+        {
+            channelCounts.TryGetValue(l.Id, out var ch);
+            upcomingEvents.TryGetValue(l.Id, out var ev);
+            return new
+            {
+                leagueId = l.Id,
+                leagueName = l.Name,
+                sport = l.Sport,
+                country = l.Country,
+                channels = new
+                {
+                    total = ch?.Total ?? 0,
+                    preferred = ch?.Preferred ?? 0,
+                    manual = ch?.Manual ?? 0,
+                    averageConfidence = ch != null ? Math.Round(ch.AverageConfidence, 1) : 0,
+                    excluded = excludedCounts.GetValueOrDefault(l.Id),
+                },
+                upcomingEvents = new
+                {
+                    total = ev?.Total ?? 0,
+                    withRecording = ev?.WithRecording ?? 0,
+                    withFallback = ev?.WithFallback ?? 0,
+                    uncovered = (ev?.Total ?? 0) - (ev?.WithRecording ?? 0),
+                },
+            };
+        }).ToList();
+
+        var totals = new
+        {
+            leagues = leagueRows.Count,
+            leaguesWithAnyChannel = leagueRows.Count(r => r.channels.total > 0),
+            leaguesWithPreferred = leagueRows.Count(r => r.channels.preferred > 0),
+            upcomingEvents = leagueRows.Sum(r => r.upcomingEvents.total),
+            eventsWithRecording = leagueRows.Sum(r => r.upcomingEvents.withRecording),
+            eventsWithFallback = leagueRows.Sum(r => r.upcomingEvents.withFallback),
+            eventsUncovered = leagueRows.Sum(r => r.upcomingEvents.uncovered),
+        };
+
+        return Results.Ok(new { generatedAt = now, horizonDays = days, totals, leagues = leagueRows });
     }
 
     /// <summary>

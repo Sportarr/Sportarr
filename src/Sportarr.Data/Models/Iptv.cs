@@ -1172,6 +1172,13 @@ public class MapChannelToLeaguesRequest
     public int ChannelId { get; set; }
     public List<int> LeagueIds { get; set; } = new();
     public int? PreferredLeagueId { get; set; }
+
+    /// <summary>
+    /// The leagues the form showed as mapped when it opened. An unticked
+    /// league from this list becomes an exclusion. Other rows stay as they
+    /// are. When the list is missing, unticked rows are deleted, as before.
+    /// </summary>
+    public List<int>? LoadedLeagueIds { get; set; }
 }
 
 /// <summary>

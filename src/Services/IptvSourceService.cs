@@ -795,12 +795,37 @@ public class IptvSourceService
             .Where(m => m.ChannelId == request.ChannelId)
             .ToListAsync();
 
-        // The form lists mapped leagues only, so an exclusion is never in the
-        // request. Keep it unless the user maps that league again.
+        // Replace the rows for the leagues in the request.
         _db.ChannelLeagueMappings.RemoveRange(existingMappings
-            .Where(m => !m.IsExcluded || request.LeagueIds.Contains(m.LeagueId)));
+            .Where(m => request.LeagueIds.Contains(m.LeagueId)));
 
-        // Add new mappings. IsManual makes the admin's decision durable:
+        // The form lists mapped leagues only, so an exclusion is never in the
+        // request. Keep it.
+        var unticked = existingMappings
+            .Where(m => !m.IsExcluded && !request.LeagueIds.Contains(m.LeagueId))
+            .ToList();
+        if (request.LoadedLeagueIds == null)
+        {
+            // An older client does not say what it showed. Delete the rows, as
+            // before. An exclusion here could block a league the user never saw.
+            _db.ChannelLeagueMappings.RemoveRange(unticked);
+        }
+        else
+        {
+            // An unticked league that the form showed becomes an exclusion, the
+            // same as Unmap. A deleted row came back on the next sweep. A row
+            // the auto-mapper added while the form was open was never shown,
+            // so it stays as it is.
+            foreach (var row in unticked.Where(m => request.LoadedLeagueIds.Contains(m.LeagueId)))
+            {
+                row.IsManual = true;
+                row.IsPreferred = false;
+                row.Confidence = 0;
+                row.Priority = ChannelLeagueMapping.ExcludedPriority;
+            }
+        }
+
+        // Add new mappings. IsManual makes the user's decision durable:
         // the auto-mapper drops non-manual rows it can't justify by score,
         // and a hand-picked channel usually has nothing in its name for the
         // scorer to justify - without the flag, the next auto-map run
@@ -849,6 +874,38 @@ public class IptvSourceService
             .ThenBy(m => m.Priority)
             .Select(m => m.Channel!)
             .ToListAsync();
+    }
+
+    /// <summary>
+    /// Get the channels excluded from a league, with their channel and source.
+    /// </summary>
+    public async Task<List<ChannelLeagueMapping>> GetLeagueExclusionsAsync(int leagueId)
+    {
+        return await _db.ChannelLeagueMappings
+            .AsNoTracking()
+            .Where(m => m.LeagueId == leagueId && m.Priority < 0)
+            .Include(m => m.Channel)
+            .ThenInclude(c => c!.Source)
+            .OrderBy(m => m.Channel!.Name)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Remove the exclusion of a channel from a league. Returns false when
+    /// the pair has no exclusion.
+    /// </summary>
+    public async Task<bool> RemoveLeagueExclusionAsync(int leagueId, int channelId)
+    {
+        var exclusion = await _db.ChannelLeagueMappings
+            .FirstOrDefaultAsync(m => m.LeagueId == leagueId && m.ChannelId == channelId && m.Priority < 0);
+        if (exclusion == null)
+            return false;
+
+        // Delete the row. Do not turn it back into a mapping. The channel is
+        // then unmapped, and the auto-mapper can map it again on evidence.
+        _db.ChannelLeagueMappings.Remove(exclusion);
+        await _db.SaveChangesAsync();
+        return true;
     }
 
     /// <summary>

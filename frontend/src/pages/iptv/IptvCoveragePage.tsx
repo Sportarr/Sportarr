@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import PageHeader from '../../components/PageHeader';
 import PageShell from '../../components/PageShell';
+import ExcludedChannelsSection, { type LeagueChannelExclusion } from './ExcludedChannelsSection';
 
 // Matches the response shape from GET /api/iptv/coverage-report.
 // Per-league rollup of channel coverage + upcoming-event scheduling
@@ -30,6 +31,7 @@ interface CoverageChannelStats {
   preferred: number;
   manual: number;
   averageConfidence: number;
+  excluded?: number;
 }
 
 interface CoverageEventStats {
@@ -147,6 +149,8 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
   // null = not fetched yet, [] = fetched + empty, [...] = data.
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [mappingsByLeague, setMappingsByLeague] = useState<Record<number, LeagueChannelMapping[] | null>>({});
+  const [exclusionsByLeague, setExclusionsByLeague] = useState<Record<number, LeagueChannelExclusion[]>>({});
+  const [exclusionErrors, setExclusionErrors] = useState<Record<number, string>>({});
   // A failed mapping fetch used to be stored as an empty list, so a network
   // blip read as "no channels are mapped to this league" and reopening the
   // row never retried, because the row looked already loaded.
@@ -228,9 +232,30 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
       delete next[leagueId];
       return next;
     });
+    // The two requests settle apart. A failed exclusion list must not hide
+    // the mapped channels.
+    const [mapped, excluded] = await Promise.allSettled([
+      apiClient.get<LeagueChannelMapping[]>(`/iptv/leagues/${leagueId}/mappings`),
+      apiClient.get<LeagueChannelExclusion[]>(`/iptv/leagues/${leagueId}/exclusions`),
+    ]);
+    if (excluded.status === 'fulfilled') {
+      setExclusionsByLeague((prev) => ({ ...prev, [leagueId]: excluded.value.data }));
+      setExclusionErrors((prev) => {
+        if (!(leagueId in prev)) return prev;
+        const next = { ...prev };
+        delete next[leagueId];
+        return next;
+      });
+    } else {
+      const reason = excluded.reason;
+      setExclusionErrors((prev) => ({
+        ...prev,
+        [leagueId]: reason instanceof Error ? reason.message : 'Failed to load excluded channels',
+      }));
+    }
     try {
-      const { data } = await apiClient.get<LeagueChannelMapping[]>(`/iptv/leagues/${leagueId}/mappings`);
-      setMappingsByLeague((prev) => ({ ...prev, [leagueId]: data }));
+      if (mapped.status === 'rejected') throw mapped.reason;
+      setMappingsByLeague((prev) => ({ ...prev, [leagueId]: mapped.value.data }));
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Failed to load channel mappings';
       toast.error(message);
@@ -312,6 +337,36 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
     } finally {
       setBusyMapping(null);
       setConfirmUnmap(null);
+    }
+  }, [fetchMappings]);
+
+  // Map again uses the manual lock endpoint. Locking an excluded pair clears
+  // the exclusion and makes it a manual mapping.
+  const mapAgain = useCallback(async (leagueId: number, channelId: number) => {
+    setBusyMapping(channelId);
+    try {
+      await apiClient.post(`/iptv/channels/${channelId}/mappings/${leagueId}/manual`, { isManual: true });
+      await fetchMappings(leagueId);
+      await load();
+      toast.success('Channel mapped to league');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to map channel');
+    } finally {
+      setBusyMapping(null);
+    }
+  }, [fetchMappings]);
+
+  const removeExclusion = useCallback(async (leagueId: number, channelId: number) => {
+    setBusyMapping(channelId);
+    try {
+      await apiClient.delete(`/iptv/leagues/${leagueId}/exclusions/${channelId}`);
+      await fetchMappings(leagueId);
+      await load();
+      toast.success('Exclusion removed');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to remove exclusion');
+    } finally {
+      setBusyMapping(null);
     }
   }, [fetchMappings]);
 
@@ -463,7 +518,7 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
           </div>
 
           {/* Per-league table */}
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-x-auto">
+          <div className="[container-type:inline-size] bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-black/40 text-xs text-gray-400 uppercase tracking-wide">
                 <tr>
@@ -498,7 +553,12 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
                         <td className="px-2 py-2.5 text-center text-gray-500">
                           {isOpen ? <ChevronDownIcon className="w-4 h-4 inline" /> : <ChevronRightIcon className="w-4 h-4 inline" />}
                         </td>
-                        <td className="px-4 py-2.5 text-white font-medium">{row.leagueName}</td>
+                        <td className="px-4 py-2.5 text-white font-medium">
+                          {row.leagueName}
+                          {(row.channels.excluded ?? 0) > 0 && (
+                            <span className="ml-2 text-xs font-normal text-gray-500">{row.channels.excluded} excluded</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2.5 text-gray-400">
                           {row.sport || '—'}
                           {row.country && <span className="ml-2 text-xs text-gray-600">{row.country}</span>}
@@ -533,13 +593,21 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
                       </tr>
                       {isOpen && (
                         <tr className="bg-black/40">
-                          <td colSpan={10} className="px-6 py-4">
+                          <td colSpan={10} className="px-3 sm:px-6 py-4">
+                            {/* The table scrolls sideways on phones. The panel
+                                keeps the visible width and stays in view, so
+                                its buttons stay on screen. */}
+                            <div className="sticky left-3 sm:left-6 max-w-[calc(100cqw-1.5rem)] sm:max-w-[calc(100cqw-3rem)]">
                             <LeagueChannelInspector
                               loadError={mappingErrors[row.leagueId]}
                               onRetry={() => void fetchMappings(row.leagueId)}
                               leagueId={row.leagueId}
                               leagueName={row.leagueName}
                               mappings={mappingsByLeague[row.leagueId]}
+                              exclusions={exclusionsByLeague[row.leagueId]}
+                              exclusionError={exclusionErrors[row.leagueId]}
+                              onMapAgain={(cid) => mapAgain(row.leagueId, cid)}
+                              onRemoveExclusion={(cid) => removeExclusion(row.leagueId, cid)}
                               busyMapping={busyMapping}
                               onTogglePreferred={(cid, pref) => togglePreferred(row.leagueId, cid, pref)}
                               onToggleManual={(cid, man) => toggleManualLock(row.leagueId, cid, man)}
@@ -547,6 +615,7 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
                               onExplain={(cid) => openExplain(row.leagueId, cid)}
                               onTestResolve={() => runTestResolve(row.leagueId, row.leagueName)}
                             />
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -782,10 +851,8 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
         </div>
       )}
 
-      {/* Confirm-unmap dialog — DELETE is destructive enough to deserve
-          a guard. Auto-mapped rows that get re-deleted will stay gone
-          until the next auto-map run re-derives them above threshold;
-          the dialog spells this out so the choice is informed. */}
+      {/* Confirm-unmap dialog. Unmap keeps the row as an exclusion, so the
+          auto-mapper does not add the channel back. */}
       {confirmUnmap && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
              onClick={() => setConfirmUnmap(null)}>
@@ -795,9 +862,8 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
           >
             <div className="text-white font-semibold mb-2">Unmap channel?</div>
             <p className="text-sm text-gray-400 mb-4">
-              Remove <span className="text-white">{confirmUnmap.channelName}</span> from this league's mapping list?
-              Auto-mapped rows can be re-derived on the next auto-mapping sweep if signals still point here.
-              For a permanent "do not map" decision, toggle Manual lock + Unmap in succession.
+              Unmap removes <span className="text-white">{confirmUnmap.channelName}</span> from this league and keeps it off.
+              Auto-mapping will not add it back. You can undo this under Excluded channels.
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmUnmap(null)} className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded">
@@ -819,27 +885,7 @@ export default function IptvCoveragePage({ embedded = false }: { embedded?: bool
   return embedded ? body : <PageShell>{body}</PageShell>;
 }
 
-/**
- * Inline panel that renders when a league row is expanded. Lists every
- * channel mapped to the league with badges (preferred ⭐ / manual 🔒 /
- * confidence %) and four per-channel actions: preferred toggle, manual
- * lock toggle, unmap (with confirm), and explain ("?" → popover with
- * decoded MappingSignals). Loading + empty + populated states are all
- * handled inline.
- */
-function LeagueChannelInspector({
-  leagueId,
-  leagueName,
-  mappings,
-  busyMapping,
-  loadError,
-  onRetry,
-  onTogglePreferred,
-  onToggleManual,
-  onUnmap,
-  onExplain,
-  onTestResolve,
-}: {
+interface MappedChannelListProps {
   leagueId: number;
   leagueName: string;
   mappings: LeagueChannelMapping[] | null | undefined;
@@ -851,7 +897,60 @@ function LeagueChannelInspector({
   onUnmap: (channelId: number, channelName: string) => void;
   onExplain: (channelId: number) => void;
   onTestResolve: () => void;
+}
+
+/**
+ * The expanded league panel. The excluded section keeps one place in the
+ * tree in every state. It does not remount and close when the mapped list
+ * changes, and it stays visible when the mapped list fails to load.
+ */
+function LeagueChannelInspector({
+  exclusions,
+  exclusionError,
+  onMapAgain,
+  onRemoveExclusion,
+  ...rest
+}: MappedChannelListProps & {
+  exclusions: LeagueChannelExclusion[] | undefined;
+  exclusionError?: string;
+  onMapAgain: (channelId: number) => void;
+  onRemoveExclusion: (channelId: number) => void;
 }) {
+  return (
+    <div>
+      <MappedChannelList {...rest} />
+      <ExcludedChannelsSection
+        exclusions={exclusions}
+        error={exclusionError}
+        busy={rest.busyMapping !== null}
+        onMapAgain={onMapAgain}
+        onRemove={onRemoveExclusion}
+      />
+    </div>
+  );
+}
+
+/**
+ * Inline panel that renders when a league row is expanded. Lists every
+ * channel mapped to the league with badges (preferred ⭐ / manual 🔒 /
+ * confidence %) and four per-channel actions: preferred toggle, manual
+ * lock toggle, unmap (with confirm), and explain ("?" → popover with
+ * decoded MappingSignals). Loading + empty + populated states are all
+ * handled inline.
+ */
+function MappedChannelList({
+  leagueId,
+  leagueName,
+  mappings,
+  busyMapping,
+  loadError,
+  onRetry,
+  onTogglePreferred,
+  onToggleManual,
+  onUnmap,
+  onExplain,
+  onTestResolve,
+}: MappedChannelListProps) {
   if (loadError) {
     return (
       <div className="space-y-2">
@@ -895,7 +994,7 @@ function LeagueChannelInspector({
   }
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div className="text-xs uppercase tracking-wide text-gray-400">
           {mappings.length} channel{mappings.length === 1 ? '' : 's'} mapped to {leagueName} (sorted by preferred → confidence)
         </div>
@@ -923,7 +1022,7 @@ function LeagueChannelInspector({
           return (
             <div
               key={`${leagueId}-${m.channelId}`}
-              className={`flex items-center gap-3 px-3 py-2 rounded ${m.isPreferred ? 'bg-green-900/15 border border-green-700/30' : 'bg-gray-900/40 border border-gray-800'}`}
+              className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 px-3 py-2 rounded ${m.isPreferred ? 'bg-green-900/15 border border-green-700/30' : 'bg-gray-900/40 border border-gray-800'}`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -947,7 +1046,7 @@ function LeagueChannelInspector({
                   {m.detectedNetwork && ` · ${m.detectedNetwork}`}
                 </div>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="flex items-center justify-end gap-1 flex-shrink-0">
                 <button
                   onClick={() => onTogglePreferred(m.channelId, m.isPreferred)}
                   disabled={isBusy}

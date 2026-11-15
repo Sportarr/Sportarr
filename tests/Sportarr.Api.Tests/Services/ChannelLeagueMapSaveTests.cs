@@ -102,8 +102,58 @@ public class ChannelLeagueMapSaveTests : IDisposable
         row.IsExcluded.Should().BeFalse();
     }
 
+    // Issue #437: an unticked league was deleted, so the next auto-mapping
+    // sweep could add it back. It is now an exclusion, the same as Unmap.
     [Fact]
-    public async Task UncheckingAMappedLeagueStillRemovesIt()
+    public async Task UntickingAMappedLeagueStoresAnExclusion()
+    {
+        _db.ChannelLeagueMappings.AddRange(
+            new ChannelLeagueMapping { ChannelId = Espn, LeagueId = Nfl, IsManual = true, Confidence = 100 },
+            new ChannelLeagueMapping { ChannelId = Espn, LeagueId = Ncaa, Confidence = 70, IsPreferred = true });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Svc().MapChannelToLeaguesAsync(new MapChannelToLeaguesRequest
+        {
+            ChannelId = Espn, LeagueIds = [Nfl], LoadedLeagueIds = [Nfl, Ncaa],
+        });
+
+        var rows = await RowsAsync(Espn);
+        rows.Single(m => m.LeagueId == Nfl).IsExcluded.Should().BeFalse();
+        var unticked = rows.Single(m => m.LeagueId == Ncaa);
+        unticked.IsExcluded.Should().BeTrue();
+        unticked.IsManual.Should().BeTrue("the auto-mapper skips manual rows");
+        unticked.IsPreferred.Should().BeFalse();
+        (await Svc().GetLeagueExclusionsAsync(Ncaa)).Select(m => m.ChannelId).Should().Equal(Espn);
+        (await Svc().GetChannelsForLeagueAsync(Ncaa)).Should().BeEmpty();
+    }
+
+    // The auto-mapper can add a row while the form is open. The form never
+    // showed it, so saving must not turn it into an exclusion.
+    [Fact]
+    public async Task ARowAddedWhileTheFormWasOpenIsLeftAlone()
+    {
+        _db.ChannelLeagueMappings.AddRange(
+            new ChannelLeagueMapping { ChannelId = Espn, LeagueId = Nfl, IsManual = true, Confidence = 100 },
+            new ChannelLeagueMapping { ChannelId = Espn, LeagueId = Ncaa, Confidence = 70, MappingSignals = "[]" });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Svc().MapChannelToLeaguesAsync(new MapChannelToLeaguesRequest
+        {
+            ChannelId = Espn, LeagueIds = [Nfl], LoadedLeagueIds = [Nfl],
+        });
+
+        var added = (await RowsAsync(Espn)).Single(m => m.LeagueId == Ncaa);
+        added.IsExcluded.Should().BeFalse("the form never showed this league");
+        added.IsManual.Should().BeFalse();
+        added.Confidence.Should().Be(70);
+    }
+
+    // A client that does not send the loaded leagues keeps the old behavior.
+    // The unticked row is deleted, not excluded.
+    [Fact]
+    public async Task WithoutTheLoadedLeaguesAnUntickedRowIsDeleted()
     {
         _db.ChannelLeagueMappings.AddRange(
             new ChannelLeagueMapping { ChannelId = Espn, LeagueId = Nfl, IsManual = true, Confidence = 100 },
