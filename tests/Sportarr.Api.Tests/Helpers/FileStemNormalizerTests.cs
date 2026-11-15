@@ -14,7 +14,7 @@ public class FileStemNormalizerTests
 {
     // The hub test holds the same hash. Edit both fixture copies together
     // and then change the hash in both tests.
-    private const string FixtureSha256 = "9d0e3f0242c0bd3215817b927dd73c16dbf8cc24447f8f6f7afb790c8102e4f0";
+    private const string FixtureSha256 = "698c4dce654760768763a72c1cfd715fee2aa8f55182d7825529acaa35511f42";
 
     private static string FixturePath =>
         Path.Combine(AppContext.BaseDirectory, "Services", "Fixtures", "StemNormalization", "cases.json");
@@ -22,7 +22,8 @@ public class FileStemNormalizerTests
     public sealed record StemCase(
         [property: JsonPropertyName("name")] string Name,
         [property: JsonPropertyName("input")] string Input,
-        [property: JsonPropertyName("expected")] string Expected)
+        [property: JsonPropertyName("expected")] string Expected,
+        [property: JsonPropertyName("event_words")] List<string>? EventWords = null)
     {
         public override string ToString() => Name;
     }
@@ -43,6 +44,26 @@ public class FileStemNormalizerTests
     {
         var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(FixturePath))).ToLowerInvariant();
         hash.Should().Be(FixtureSha256);
+    }
+
+    // The hub test reads the same list from the fixture. The two copies of
+    // the word list therefore cannot drift.
+    [Fact]
+    public void EventWords_AreTheListInTheFixture()
+    {
+        var pinned = SharedCases().Select(c => (StemCase)c[0]).Single(c => c.EventWords != null);
+        FileStemNormalizer.EventWords.Should().Equal(pinned.EventWords);
+    }
+
+    public static IEnumerable<object[]> EventWordCases() =>
+        FileStemNormalizer.EventWords.Select(word => new object[] { word });
+
+    [Theory]
+    [MemberData(nameof(EventWordCases))]
+    public void Normalize_KeepsAnEventWordAfterADashedTag(string word)
+    {
+        FileStemNormalizer.Normalize($"Event 2024 1080p-{word}.mkv").Should().Be($"event 2024 {word}");
+        FileStemNormalizer.Normalize($"Event 2024 WEB-{word}2.mkv").Should().Be($"event 2024 {word}2");
     }
 
     [Fact]

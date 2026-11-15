@@ -60,11 +60,41 @@ public static class FileStemNormalizer
         Start + "(?:" + Quality + "|(?!" + TitleWordSources + ")" + Source + ")" + End,
         Options);
 
+    /// <summary>
+    /// Session, card and show words from EventPartDetector. A word after a
+    /// dashed tag names the event, so the group rule keeps it. The word can
+    /// carry a number, as in "Race2". Two spoken words are one word here,
+    /// as in "WarmUp". The hub holds the same list in
+    /// backend/app/utils/file_stem.py, and the shared fixture holds it too.
+    /// Change the three together.
+    /// </summary>
+    public static readonly IReadOnlyList<string> EventWords = new[]
+    {
+        "afternoon", "analysis", "buyin", "countdown", "course", "day",
+        "documentary", "duel", "duels", "earlycard", "earlyprelim",
+        "earlypreliminary", "earlyprelims", "ep", "essais", "fastfriday",
+        "fp", "gp", "grandprix", "grille", "highlights", "hyperpole",
+        "kickoff", "leadcard", "magazine", "maincard", "mainevent",
+        "mainshow", "mc", "morning", "notebook", "postevent", "postfight",
+        "postfightshow", "postshow", "ppv", "practice", "prelim",
+        "prelimcard", "preliminary", "prelims", "preshow", "preview", "q",
+        "quali", "qualif", "qualification", "qualifications", "qualifier",
+        "qualifs", "qualifying", "qualy", "race", "review", "session",
+        "shakedown", "shakedownday", "shakedowntest", "shootout", "sprint",
+        "sq", "superpole", "test", "testday", "testing", "tests", "top",
+        "topten", "undercard", "warmup", "zerohour",
+    };
+
+    private static readonly string EventWord =
+        "(?:" + string.Join("|", EventWords) + ")[0-9]*" + End;
+
     // A release group is removed only when it follows a quality, source or
     // codec token. "Arsenal-Chelsea" at the end of a name is not a group.
+    // "Cam" and "TS" are title words, so they are not such a token here.
+    // An event word is not a group, as in "1080p-Sprint".
     private static readonly Regex GroupPattern = new(
-        Start + "(?<tech>" + Audio + "|" + Video + "|" + Source + "|" + Quality + "|" + GenericQuality + ")"
-        + @"-[a-z0-9]+(?:\[[a-z0-9]+\])?[^a-z0-9]*$",
+        Start + "(?<tech>" + Audio + "|" + Video + "|(?!" + TitleWordSources + ")" + Source + "|" + Quality + "|" + GenericQuality + ")"
+        + "-(?!" + EventWord + @")[a-z0-9]+(?:\[[a-z0-9]+\])?(?<rest>[^a-z0-9]*)$",
         Options);
 
     // Audio and video go first. Otherwise "HD" takes the middle of "DTS-HD".
@@ -102,11 +132,23 @@ public static class FileStemNormalizer
 
         name = name.ToLowerInvariant();
         name = SportarrIdToken.Strip(name);
-        name = GroupPattern.Replace(name, "${tech} ");
+        name = GroupPattern.Replace(name, RemoveGroup);
         name = StripTailTokens(name);
 
         name = CollapseToLettersAndDigits(name);
         return TakeCodePoints(name, MaxLength).TrimEnd(' ');
+    }
+
+    // The group must be the last token. The pattern reads only ASCII, so
+    // this check finds a word in another script after the group.
+    private static string RemoveGroup(Match match)
+    {
+        foreach (var rune in match.Groups["rest"].Value.EnumerateRunes())
+        {
+            if (IsLetterOrDigit(rune))
+                return match.Value;
+        }
+        return match.Groups["tech"].Value + " ";
     }
 
     // The fence before the first tail token is a character that is not an

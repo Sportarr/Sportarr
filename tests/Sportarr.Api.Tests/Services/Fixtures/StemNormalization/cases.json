@@ -338,5 +338,158 @@
     "name": "TS does not start the tail",
     "input": "NHL 2024 Bruins vs Panthers TS Japanese Feed",
     "expected": "nhl 2024 bruins vs panthers ts japanese feed"
+  },
+  {
+    "name": "a session word after a dashed quality tag stays",
+    "input": "F1 2024 Bahrain 1080p-Sprint.mkv",
+    "expected": "f1 2024 bahrain sprint"
+  },
+  {
+    "name": "another session word after a dashed quality tag is another key",
+    "input": "F1 2024 Bahrain 1080p-Race.mkv",
+    "expected": "f1 2024 bahrain race"
+  },
+  {
+    "name": "a session word after a dashed source tag stays",
+    "input": "F1 2024 Bahrain WEB-Sprint.mkv",
+    "expected": "f1 2024 bahrain sprint"
+  },
+  {
+    "name": "another session word after a dashed source tag is another key",
+    "input": "F1 2024 Bahrain WEB-Race.mkv",
+    "expected": "f1 2024 bahrain race"
+  },
+  {
+    "name": "a numbered session word after a dashed tag stays",
+    "input": "British Superbike 2024 Brands Hatch 1080p-Race1.mkv",
+    "expected": "british superbike 2024 brands hatch race1"
+  },
+  {
+    "name": "another numbered session word is another key",
+    "input": "British Superbike 2024 Brands Hatch 1080p-Race2.mkv",
+    "expected": "british superbike 2024 brands hatch race2"
+  },
+  {
+    "name": "a card word after a dashed codec tag stays",
+    "input": "UFC 300 x264-Prelims.mkv",
+    "expected": "ufc 300 x264 prelims"
+  },
+  {
+    "name": "another card word after a dashed codec tag is another key",
+    "input": "UFC 300 x264-MainCard.mkv",
+    "expected": "ufc 300 x264 maincard"
+  },
+  {
+    "name": "Cam before a dash is no tag for a group",
+    "input": "F1 2024 Onboard Cam-Verstappen.mkv",
+    "expected": "f1 2024 onboard cam verstappen"
+  },
+  {
+    "name": "another driver after Cam is another key",
+    "input": "F1 2024 Onboard Cam-Hamilton.mkv",
+    "expected": "f1 2024 onboard cam hamilton"
+  },
+  {
+    "name": "TS before a dash is no tag for a group",
+    "input": "WRC 2024 Rally Sweden TS-Evans.mkv",
+    "expected": "wrc 2024 rally sweden ts evans"
+  },
+  {
+    "name": "another driver after TS is another key",
+    "input": "WRC 2024 Rally Sweden TS-Ogier.mkv",
+    "expected": "wrc 2024 rally sweden ts ogier"
+  },
+  {
+    "name": "a group that is no session word is still removed",
+    "input": "F1 2024 Bahrain Race 1080p-SPRINTERS.mkv",
+    "expected": "f1 2024 bahrain race"
+  },
+  {
+    "name": "a group before a word in another script is not the last token",
+    "input": "\u0424\u043e\u0440\u043c\u0443\u043b\u0430 1 2024 \u0411\u0430\u0445\u0440\u0435\u0439\u043d 1080p-GRP \u0413\u043e\u043d\u043a\u0430.mkv",
+    "expected": "\u0444\u043e\u0440\u043c\u0443\u043b\u0430 1 2024 \u0431\u0430\u0445\u0440\u0435\u0439\u043d grp \u0433\u043e\u043d\u043a\u0430"
+  },
+  {
+    "name": "another word in another script is another key",
+    "input": "\u0424\u043e\u0440\u043c\u0443\u043b\u0430 1 2024 \u0411\u0430\u0445\u0440\u0435\u0439\u043d 1080p-GRP \u041a\u0432\u0430\u043b\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u044f.mkv",
+    "expected": "\u0444\u043e\u0440\u043c\u0443\u043b\u0430 1 2024 \u0431\u0430\u0445\u0440\u0435\u0439\u043d grp \u043a\u0432\u0430\u043b\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u044f"
+  },
+  {
+    "name": "the session words a group never takes",
+    "input": "F1 2024 Bahrain 1080p-Qualifying.mkv",
+    "expected": "f1 2024 bahrain qualifying",
+    "event_words": [
+      "afternoon",
+      "analysis",
+      "buyin",
+      "countdown",
+      "course",
+      "day",
+      "documentary",
+      "duel",
+      "duels",
+      "earlycard",
+      "earlyprelim",
+      "earlypreliminary",
+      "earlyprelims",
+      "ep",
+      "essais",
+      "fastfriday",
+      "fp",
+      "gp",
+      "grandprix",
+      "grille",
+      "highlights",
+      "hyperpole",
+      "kickoff",
+      "leadcard",
+      "magazine",
+      "maincard",
+      "mainevent",
+      "mainshow",
+      "mc",
+      "morning",
+      "notebook",
+      "postevent",
+      "postfight",
+      "postfightshow",
+      "postshow",
+      "ppv",
+      "practice",
+      "prelim",
+      "prelimcard",
+      "preliminary",
+      "prelims",
+      "preshow",
+      "preview",
+      "q",
+      "quali",
+      "qualif",
+      "qualification",
+      "qualifications",
+      "qualifier",
+      "qualifs",
+      "qualifying",
+      "qualy",
+      "race",
+      "review",
+      "session",
+      "shakedown",
+      "shakedownday",
+      "shakedowntest",
+      "shootout",
+      "sprint",
+      "sq",
+      "superpole",
+      "test",
+      "testday",
+      "testing",
+      "tests",
+      "top",
+      "topten",
+      "undercard",
+      "warmup",
+      "zerohour"
+    ]
   }
 ]
