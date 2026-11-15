@@ -26,7 +26,7 @@ The service counts how many installs use each alias. The sportarr.net team adds 
 
 ### Releases that match no event
 
-An RSS sync can find a release that names one of your monitored leagues and a date, but no event in that league. Sportarr then sends the release title, the league's id, and the date. It sends only dates from 30 days ago to 7 days ahead. It does not send the name of the indexer.
+An RSS sync can find a release that names one of your monitored leagues and a date, when that league has no event within a day of that date. Sportarr then sends the release title, the league's id, and the date. It sends only dates from 30 days ago to 7 days ahead. It does not send the name of the indexer.
 
 The service counts how many installs saw each release. That shows the sportarr.net team which events are missing, so they can add them.
 
@@ -35,16 +35,21 @@ The service counts how many installs saw each release. That shows the sportarr.n
 When you import a file to an event yourself, Sportarr sends these items.
 
 - The file's name, without its folder or its extension
-- A cleaned copy of the name, with the quality, codec, and release group tags taken out
+- A cleaned copy of the name, as described below
 - The sportarr.net id of the event and of its league
 - The event's season
 - Whether you picked the event yourself or kept Sportarr's suggestion
+
+To clean the name, Sportarr puts it in lower case and takes out any Sportarr id. It takes out the quality, source, codec, language, and release group tags, but only from the first quality or source tag on, such as `1080p` or `WEB-DL`. Title words before that tag stay. A word after a dashed tag that names part of the event stays too, such as `Sprint` in `1080p-Sprint`. Each run of spaces and punctuation then becomes one space. Years and season and episode numbers stay.
 
 This happens when you import from **Library Import**, and when you accept a file in the **Manual Import** dialog. Sportarr does not send these items in the cases below.
 
 - An import that Sportarr makes on its own, such as a completed download, **Rescan library**, or the file watcher
 - A file that Sportarr already knows by its own id, in the file's name, its embedded tags, its metadata file, or the release title
 - A file you import as a new event
+- A file that the event already holds, when you import it again
+- An event or a league that has no sportarr.net id
+- A match from other installs that you import without a change, because sportarr.net gave that answer itself
 - An IPTV recording
 
 The service counts how many installs matched each cleaned name to each event. Once a day it looks for the names that installs agree on. A name qualifies only when all of these are true.
@@ -59,13 +64,14 @@ A person on the sportarr.net team then reviews each name that qualifies. Only an
 
 ### Matches other installs agreed on
 
-When you scan a folder on the **Library Import** page, Sportarr sends the cleaned names of the files in the folder. It leaves out files already in your library, files you ignored, and files that carry a Sportarr event id in their name or their metadata file. Sportarr does not read embedded tags first, so a file that it later matches by the id in its tags can still be looked up. This request does not carry the install id.
+When you scan a folder on the **Library Import** page, Sportarr sends the cleaned names of the files in the folder. It leaves out files already in your library and files that carry a Sportarr event id in their name or their metadata file. Library Import still lists files you ignored, so their cleaned names are sent too. Sportarr does not read embedded tags first, so a file that it later matches by the id in its tags can still be looked up. This request does not carry the install id.
 
 The service answers with the event for each name that has an approved match. Sportarr uses that event only when all of these are true.
 
 - The event is in your library.
 - The event is in the league that the file's folder names, if the folder names one.
-- The event fits the season folder, the year in the file name, and the session the file names.
+- The event fits the season folder, the year the file gives, and the session the file names.
+- The file's name, its folders, or its metadata file give a year. A name with no year is the same every year, so its match could be the event of another year.
 - No other file in the same scan already took that event.
 
 A file matched this way shows a score of 90. You review it on the page before you import, the same as any other match. If sportarr.net does not answer within 5 seconds, the scan matches the files the usual way.

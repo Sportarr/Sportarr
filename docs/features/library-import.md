@@ -18,7 +18,7 @@ Sportarr reads the league and the season from the names of your folders. A libra
 /data/sports/NBA/Season 2024-2025/NBA - 2024-10-22 - Knicks vs Celtics.mkv
 ```
 
-The first folder whose name is a season is the season folder. The folder above it is the league folder. Without a season folder, the first folder below the root folder is the league folder. A folder below the season folder, such as an event folder, changes neither. Sportarr does not use the event folder's name for matching, so the file's own name must name the event.
+The first folder whose name is a season is the season folder. The folder above it is the league folder. Without a season folder, the first folder below the root folder is the league folder. A folder below the season folder, such as an event folder, changes neither. Sportarr does not use the event folder's name for matching. The file's own name must name the event, or a metadata file beside it must give the title, as [Metadata files beside a video](#metadata-files-beside-a-video) explains.
 
 Sportarr reads these season folder names. Capital letters do not matter.
 
@@ -32,15 +32,15 @@ A single year also fits a league whose seasons cross two years. When a league ha
 
 `Season 0` and `Specials` are not season folders. Their files are matched against all of the league's events.
 
-Your root folder is never read as a league. Files directly in a root folder get no league from their folders. When you scan a folder inside a root folder, Sportarr still reads the path from the root folder down. So a scan of `Formula 1/Season 2024` alone still finds the league and the season.
+A root folder is read as a league only when its own name names one of your leagues, by the rules in [How a folder names a league](#how-a-folder-names-a-league). A root folder named `Formula 1` is then the Formula 1 folder, and each folder below it is a season or event folder. Any other root folder is never read as a league, and files directly in it get no league from their folders. When you scan a folder inside a root folder, Sportarr still reads the path from the root folder down. So a scan of `Formula 1/Season 2024` alone still finds the league and the season.
 
-Sportarr reads folders only inside your root folders. When you scan a folder outside them, such as a downloads folder, its files get no league or season from their folders and are matched against your whole library. Their folders are not listed under **Folders Without a League**.
+Sportarr reads folders only inside your root folders. When you scan a folder outside them, such as a downloads folder, its files get no league or season from their folders and are matched against your whole library. A season folder outside them gets no league either, even when the folder above it names one. Folders outside your root folders are not listed under **Folders Without a League**.
 
 ### How a folder names a league
 
-A league folder is linked to a league in your library only when its name is that league's name or one of its alternate names. Capital letters, spaces, dots, and hyphens do not count, so `formula.1` names Formula 1. A short form such as `F1` for Formula 1 also works.
+A league folder is linked to a league in your library only when its name is that league's name or one of its alternate names. Capital letters, spaces, dots, and hyphens do not count, so `formula.1` names Formula 1. For a league named with one word and a number, Sportarr also reads the first letter and the number, so `F1` names Formula 1. A few soccer leagues have short forms built in, such as `WSL` for the English Womens Super League. Any other short form works only when it is one of the league's alternate names.
 
-A folder named with only part of a league's name is not linked to that league. `Premier League` does not name the Antigua and Barbuda Premier League. When two leagues in your library have the same name, the folder is not linked to either. A file in a folder that is not linked is still matched against your whole library.
+A folder named with only part of a league's name is not linked to that league. `Premier League` does not name the Antigua and Barbuda Premier League. When a folder's name names two leagues in your library, the folder is not linked to either. It is listed under **Folders Without a League** with the folders that are not one of your leagues. A file in a folder that is not linked is still matched against your whole library.
 
 When the folder names a league, Sportarr looks for each file's event in that league only, and in the season that the season folder names. The folder wins over a league name in the file name. When the league has no season that fits the season folder, Sportarr looks through all of that league's events.
 
@@ -55,15 +55,15 @@ Sportarr asks the metadata service for a league with that exact name. When it fi
 
 Sportarr then scans the same folder again. A new league's events can take a few minutes to load. Scan again if its files stay unmatched. If the league cannot be added, the row shows why.
 
-If the metadata service does not answer within a few seconds, the row has no button. After one slow or failed answer, Sportarr stops asking for the rest of that scan, so the rows after it have no button either. Scan again to retry.
-
 When the metadata service has no league with that exact name, the row says "No matching league found. Add the league from the Leagues page, then scan again." Add the league from **Library > Add League**. If your folder uses a name of its own, rename it to the league's name so that the folder links to the league.
+
+The row shows the same text when the metadata service does not answer in time. Sportarr waits up to 5 seconds for each answer and up to 15 seconds in all for one scan. After one slow or failed answer, Sportarr stops asking for the rest of that scan, so the rows after it show that text too. Scan again to retry.
 
 ## Files named by another database
 
 Some libraries were named by another database such as TheTVDB, with TV-style names like `Formula 1 - S2024E05 - Chinese Grand Prix.mkv`. The season and episode numbers in those names come from that database. They often differ from Sportarr's own numbers, so Sportarr matches these files on their titles and dates.
 
-An S/E number counts only when something else about the file agrees with the event. That can be the title, the round, or the location. It can also be the date, but only when it is the event's own day and no other event that could match the file falls on that day. A date a few days away does not count.
+An S/E number counts only when something else about the file agrees with the event. That can be the title, the round, the location, or the event's own day. A date a few days away does not count. When two or more events that could match the file fall on the file's date, the number does not change the score of any of them.
 
 | The file's episode number | Something else agrees | Effect on the score |
 |---|---|---|
@@ -124,6 +124,8 @@ Click **Match** on an unmatched file, or **Edit** on a matched one, to choose th
 
 When an event already has a file, the row says why the new file would not replace it. The rules are in [A file for an event that already has one](download-clients.md#a-file-for-an-event-that-already-has-one). An IPTV recording held by an indexer file is not selected. Select **Import anyway** on that file if you want the recording to replace the indexer file.
 
+When **Activity** also lists a file that you import here, the file leaves **Activity**.
+
 **Import Mode** decides what happens to the original files. **Auto** follows your Media Management settings. **Hardlink/Copy** and **Copy** leave the originals untouched, so seeding torrents stay intact. **Hardlink/Copy** links when the source and the library are on the same filesystem and copies otherwise. **Move** relocates the files and frees the source.
 
 ## Background scans
@@ -137,3 +139,5 @@ Two other scans read your library. **Rescan library** on **System > Backup** wal
 | Completed downloads | No | No | No |
 
 The rescan and the file watcher import a file on their own only when it scores 85 or higher. The file watcher lists a lower-scoring file in **Activity** for review. The rescan leaves it where it is. Scan its folder from Library Import to review it.
+
+When the event already has a file, the rescan replaces that file only with an upgrade. A copy that is not an upgrade stays where it is, and **Activity** lists it with the reason.
