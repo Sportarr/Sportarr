@@ -654,6 +654,7 @@ public class EventChannelResolverService
                 leagueTerms.Add("f" + formula.Groups[1].Value);
                 leagueTerms.Add("formula " + formula.Groups[1].Value);
             }
+            AddSeriesFullNames(leagueTerms, $"{evt.League.Name} {evt.League.AlternateName}");
         }
 
         var matches = new Dictionary<int, EpgProgram>();
@@ -726,6 +727,41 @@ public class EventChannelResolverService
         if (leagueTerms.Count == 0) return true;
         if (CountTermHits(leagueTerms, $"{p.Title} {p.Description} {p.Category}") > 0) return true;
         return hits >= 3;
+    }
+
+    // Series that guides name in full while the league uses the short form,
+    // or the other way round. Each entry holds the short form and the full
+    // name. Only full series names are listed. A loose word such as
+    // "superbike" also names other series.
+    private static readonly (string Short, string Full)[] SeriesFullNames =
+    {
+        ("wec", "world endurance championship"),
+        ("wrc", "world rally championship"),
+        ("btcc", "british touring car championship"),
+        ("worldsbk", "superbike world championship"),
+        ("wsbk", "superbike world championship"),
+        ("sbk", "superbike world championship"),
+        ("imsa", "weathertech sportscar championship"),
+        ("elms", "european le mans series"),
+        ("dtm", "deutsche tourenwagen masters"),
+    };
+
+    /// <summary>
+    /// Adds the other form of the league's series name to the league terms,
+    /// so "WEC" also answers to "World Endurance Championship".
+    /// </summary>
+    internal static void AddSeriesFullNames(HashSet<string> leagueTerms, string leagueText)
+    {
+        var text = " " + CollapseSpaces(NormalizeForSearch(leagueText)) + " ";
+        foreach (var (shortForm, full) in SeriesFullNames)
+        {
+            if (text.Contains(" " + shortForm + " ", StringComparison.Ordinal)
+                || text.Contains(" " + full + " ", StringComparison.Ordinal))
+            {
+                leagueTerms.Add(shortForm);
+                leagueTerms.Add(full);
+            }
+        }
     }
 
     // Two-letter words that carry no meaning in a title. Short words that name
