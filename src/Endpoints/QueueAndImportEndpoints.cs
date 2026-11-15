@@ -224,7 +224,9 @@ app.MapPost("/api/queue/{id:int}/pause", async (int id, SportarrDbContext db, Do
         item.Status = DownloadStatus.Paused;
         item.LastUpdate = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        return Results.Ok(item);
+        // The row holds its download client. Send only the id and the status,
+        // so the client password and API key stay on the server.
+        return Results.Ok(new { item.Id, item.Status });
     }
 
     return Results.StatusCode(500);
@@ -248,7 +250,8 @@ app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, D
         item.Status = DownloadStatus.Downloading;
         item.LastUpdate = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        return Results.Ok(item);
+        // Only the id and the status. The row holds the client secrets.
+        return Results.Ok(new { item.Id, item.Status });
     }
 
     return Results.StatusCode(500);
@@ -283,7 +286,8 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, F
             return Results.BadRequest(new { error = item.ErrorMessage ?? "Import was rejected" });
         }
 
-        return Results.Ok(item);
+        // Only the id and the status. The row holds the client secrets.
+        return Results.Ok(new { item.Id, item.Status });
     }
     catch (Exception ex)
     {

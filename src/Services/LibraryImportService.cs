@@ -1075,8 +1075,8 @@ public class LibraryImportService
 
         // The matches that the user chose. One send follows the batch save.
         var matchReports = new List<FileMatchSuggestion>();
-        // The source paths that this batch imported.
-        var importedSources = new List<string>();
+        // The source and the library path of each file that this batch imported.
+        var importedSources = new List<(string Source, string Destination)>();
         var mayReportMatches = config.SendAnonymousUsageData && _apiClient != null;
 
         foreach (var request in requests)
@@ -1483,7 +1483,7 @@ public class LibraryImportService
                         }
 
                         result.Imported.Add(destinationPath);
-                        importedSources.Add(request.FilePath);
+                        importedSources.Add((request.FilePath, destinationPath));
                         notifyQueue.Add((existingEvent, destinationPath,
                             request.Quality ?? _fileParser.BuildQualityString(parsedInfo), linkedFile));
 
@@ -1663,7 +1663,7 @@ public class LibraryImportService
                     }
 
                     result.Created.Add(destinationPath);
-                    importedSources.Add(request.FilePath);
+                    importedSources.Add((request.FilePath, destinationPath));
                     notifyQueue.Add((newEvent, destinationPath,
                         request.Quality ?? _fileParser.BuildQualityString(parsedInfo), eventFile));
                     _logger.LogInformation("Created new event from file: {EventTitle} -> {FilePath} (Part: {PartName})",
@@ -1750,22 +1750,51 @@ public class LibraryImportService
     /// endpoint completes it. A rejected row is already gone, and a row in
     /// another state is not changed. The caller saves.
     /// </summary>
-    private async Task CompletePendingImportsOfAsync(IReadOnlyCollection<string> sourcePaths)
+    private async Task CompletePendingImportsOfAsync(IReadOnlyCollection<(string Source, string Destination)> importedFiles)
     {
-        if (sourcePaths.Count == 0)
+        if (importedFiles.Count == 0)
             return;
-        var imported = new HashSet<string>(sourcePaths, SourcePathComparer);
+        var destinations = new Dictionary<string, string>(SourcePathComparer);
+        foreach (var (source, destination) in importedFiles)
+            destinations[source] = destination;
         var pending = await _db.PendingImports
             .Where(p => p.Status == PendingImportStatus.Pending)
             .ToListAsync();
-        foreach (var row in pending.Where(p => imported.Contains(p.FilePath)))
+        foreach (var row in pending.Where(p => destinations.ContainsKey(p.FilePath)))
         {
             row.Status = PendingImportStatus.Completed;
             row.ResolvedAt = DateTime.UtcNow;
             row.ErrorMessage = null;
             _logger.LogInformation("[Import] Completed pending import {Id} because its file was imported: {Path}",
                 row.Id, row.FilePath);
+            await MarkDvrChoiceRecordingImportedAsync(row, destinations[row.FilePath]);
         }
+    }
+
+    /// <summary>
+    /// A "dvr-N" row asks the user to choose between a recording and a
+    /// downloaded file. When the user imports the recording's file here, mark
+    /// the recording imported, as the accept endpoint does. Otherwise the
+    /// recording stays completed and not imported, and the retention prune
+    /// can delete the file that it points to. The caller saves.
+    /// </summary>
+    private async Task MarkDvrChoiceRecordingImportedAsync(PendingImport row, string destination)
+    {
+        if (!row.DownloadId.StartsWith("dvr-", StringComparison.Ordinal)
+            || !int.TryParse(row.DownloadId.AsSpan(4), out var recordingId))
+            return;
+        var recording = await _db.DvrRecordings.FirstOrDefaultAsync(r => r.Id == recordingId);
+        // A recording that has changed since the row was written is not this file.
+        if (recording == null || recording.Status != DvrRecordingStatus.Completed
+            || recording.OutputPath == null || !SourcePathComparer.Equals(recording.OutputPath, row.FilePath))
+            return;
+        recording.OutputPath = destination;
+        recording.Status = DvrRecordingStatus.Imported;
+        recording.ImportedAt = DateTime.UtcNow;
+        recording.LastUpdated = DateTime.UtcNow;
+        recording.ErrorMessage = null;
+        _logger.LogInformation("[Import] Marked recording {RecordingId} imported because its file was imported: {Path}",
+            recording.Id, destination);
     }
 
     /// <summary>

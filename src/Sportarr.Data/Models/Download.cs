@@ -1309,6 +1309,14 @@ public class PendingImportResponse
     public string? Protocol { get; set; }
     public string? TorrentInfoHash { get; set; }
 
+    /// <summary>
+    /// The pack fields as the row stores them. The pack routes read the same
+    /// flag. Only they scan the folder, so the list stays cheap.
+    /// </summary>
+    public bool IsPack { get; set; }
+    public int FileCount { get; set; }
+    public int MatchedEventsCount { get; set; }
+
     /// <summary>The highest confidence that an API response shows.</summary>
     public const int MaxShownConfidence = 100;
 
@@ -1346,7 +1354,10 @@ public class PendingImportResponse
         Detected = import.Detected,
         ResolvedAt = import.ResolvedAt,
         Protocol = import.Protocol,
-        TorrentInfoHash = import.TorrentInfoHash
+        TorrentInfoHash = import.TorrentInfoHash,
+        IsPack = import.IsPack,
+        FileCount = import.FileCount,
+        MatchedEventsCount = import.MatchedEventsCount
     };
 }
 

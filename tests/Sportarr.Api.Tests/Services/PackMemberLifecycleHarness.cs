@@ -79,6 +79,9 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
             typeof(ReleaseMatchScorer), typeof(SearchResultCache), typeof(ReleaseProfileService), typeof(QualityDetectionService),
             typeof(IndexerStatusService), typeof(IndexerSearchService), typeof(AutomaticSearchService)
         }) services.AddSingleton(type);
+        // The app serializes with these options. A route that returns an entity graph needs them.
+        services.ConfigureHttpJsonOptions(o =>
+            o.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles);
         var app = builder.Build();
         app.MapEventSearchAndGrabEndpoints();
         app.MapQueueAndImportEndpoints();
@@ -208,6 +211,8 @@ internal sealed class PackMemberLifecycleHarness : IAsyncDisposable
                 string? response = null;
                 if (request.Method == HttpMethod.Post && path == "/api/v2/auth/login") response = "Ok.";
                 if (request.Method == HttpMethod.Get && path == "/api/v2/app/version") response = "5.0.0";
+                if (request.Method == HttpMethod.Get && path == "/api/v2/app/webapiVersion") response = "2.11.4";
+                if (request.Method == HttpMethod.Post && path is "/api/v2/torrents/stop" or "/api/v2/torrents/start") response = "";
                 if (request.Method == HttpMethod.Get && path == "/api/v2/torrents/info")
                     response = HideJobFromStatus ? "[]" : System.Text.Json.JsonSerializer.Serialize(new[] { new { hash = "owned-pack-job",
                         name = "NFL.2020.Week1.720p.WEB-DL.H264-PackLifecycle", state = JobState, progress = 1,

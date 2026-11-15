@@ -178,6 +178,70 @@ public class PendingImportWiringTests
     }
 
     [Fact]
+    public async Task ThePendingListCarriesThePackFieldsThatTheRowStores()
+    {
+        await using var host = await WiringHost.CreateAsync();
+        var (first, _) = host.Seed();
+        var plain = await host.AddPendingAsync(host.Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv"), first.Id, 50);
+        var pack = new PendingImport
+        {
+            DownloadId = "pack-job", Title = "NFL-2025-Week15", FilePath = Path.Combine(Path.GetTempPath(), "NFL-2025-Week15"),
+            Size = 4096, IsPack = true, FileCount = 4, MatchedEventsCount = 3, Status = PendingImportStatus.Pending,
+            Detected = DateTime.UtcNow.AddMinutes(1),
+        };
+        host.Db.PendingImports.Add(pack);
+        await host.Db.SaveChangesAsync();
+
+        var list = await host.Client.GetFromJsonAsync<JsonElement>("/api/pending-imports");
+        var row = await host.Client.GetFromJsonAsync<JsonElement>($"/api/pending-imports/{pack.Id}");
+
+        var rows = list.EnumerateArray().ToDictionary(r => r.GetProperty("id").GetInt32());
+        rows[pack.Id].GetProperty("isPack").GetBoolean().Should().BeTrue();
+        rows[pack.Id].GetProperty("fileCount").GetInt32().Should().Be(4);
+        rows[pack.Id].GetProperty("matchedEventsCount").GetInt32().Should().Be(3);
+        rows[plain.Id].GetProperty("isPack").GetBoolean().Should().BeFalse();
+        row.GetProperty("isPack").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task APageImportOfADvrChoiceFileMarksTheRecordingImported()
+    {
+        await using var host = await WiringHost.CreateAsync();
+        var (first, _) = host.Seed();
+        var file = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var recording = new DvrRecording
+        {
+            EventId = first.Id, ChannelId = 1, Title = first.Title, Status = DvrRecordingStatus.Completed,
+            OutputPath = file, Quality = "HDTV-720p", ErrorMessage = "Choose which file to keep.",
+            ScheduledStart = DateTime.UtcNow.AddHours(-3), ScheduledEnd = DateTime.UtcNow.AddHours(-1),
+        };
+        host.Db.DvrRecordings.Add(recording);
+        await host.Db.SaveChangesAsync();
+        var pending = new PendingImport
+        {
+            DownloadId = $"dvr-{recording.Id}", Title = Path.GetFileName(file), FilePath = file, Size = 4096,
+            SuggestedEventId = first.Id, SuggestionConfidence = 100, Protocol = "DVR", Status = PendingImportStatus.Pending,
+        };
+        host.Db.PendingImports.Add(pending);
+        await host.Db.SaveChangesAsync();
+        host.Db.ChangeTracker.Clear();
+
+        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = first.Id, ImportMode = "copy" },
+        });
+
+        var imported = result.Imported.Should().ContainSingle().Subject;
+        (await host.Db.PendingImports.AsNoTracking().SingleAsync(p => p.Id == pending.Id))
+            .Status.Should().Be(PendingImportStatus.Completed);
+        var saved = await host.Db.DvrRecordings.AsNoTracking().SingleAsync(r => r.Id == recording.Id);
+        saved.Status.Should().Be(DvrRecordingStatus.Imported);
+        saved.ImportedAt.Should().NotBeNull();
+        saved.ErrorMessage.Should().BeNull();
+        saved.OutputPath.Should().Be(imported, "the recording follows its file into the library");
+    }
+
+    [Fact]
     public async Task ThePageImportRouteSetsReportMatchAndItSurvivesTheTaskBody()
     {
         var name = Guid.NewGuid().ToString("N");
