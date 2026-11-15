@@ -422,6 +422,7 @@
       "afternoon",
       "analysis",
       "buyin",
+      "condensed",
       "countdown",
       "course",
       "day",
@@ -433,9 +434,15 @@
       "earlypreliminary",
       "earlyprelims",
       "ep",
+      "eprix",
       "essais",
+      "essaislibres",
+      "essaisqualificatifs",
+      "extended",
       "fastfriday",
+      "final",
       "fp",
+      "freepractice",
       "gp",
       "grandprix",
       "grille",
@@ -449,6 +456,8 @@
       "mainshow",
       "mc",
       "morning",
+      "moto2",
+      "moto3",
       "notebook",
       "postevent",
       "postfight",
@@ -463,6 +472,7 @@
       "preshow",
       "preview",
       "q",
+      "qf",
       "quali",
       "qualif",
       "qualification",
@@ -471,15 +481,25 @@
       "qualifs",
       "qualifying",
       "qualy",
+      "quarterfinal",
       "race",
+      "replay",
       "review",
+      "round",
+      "semi",
+      "semifinal",
       "session",
+      "sf",
       "shakedown",
       "shakedownday",
       "shakedowntest",
       "shootout",
       "sprint",
+      "sprintquali",
+      "sprintqualifying",
+      "sprintshootout",
       "sq",
+      "ss",
       "superpole",
       "test",
       "testday",
@@ -491,5 +511,75 @@
       "warmup",
       "zerohour"
     ]
+  },
+  {
+    "name": "a joined free practice word stays",
+    "input": "F1 2024 Bahrain 1080p-FreePractice1.mkv",
+    "expected": "f1 2024 bahrain freepractice1"
+  },
+  {
+    "name": "another numbered free practice is another key",
+    "input": "F1 2024 Bahrain 1080p-FreePractice2.mkv",
+    "expected": "f1 2024 bahrain freepractice2"
+  },
+  {
+    "name": "a joined sprint qualifying word stays",
+    "input": "F1 2024 Bahrain 1080p-SprintQualifying.mkv",
+    "expected": "f1 2024 bahrain sprintqualifying"
+  },
+  {
+    "name": "a real group after the same tag is removed",
+    "input": "F1 2024 Bahrain 1080p-GRP.mkv",
+    "expected": "f1 2024 bahrain"
+  },
+  {
+    "name": "a numbered round word stays",
+    "input": "Supercars 2024 1080p-Round1.mkv",
+    "expected": "supercars 2024 round1"
+  },
+  {
+    "name": "another numbered round is another key",
+    "input": "Supercars 2024 1080p-Round2.mkv",
+    "expected": "supercars 2024 round2"
+  },
+  {
+    "name": "a joined French practice word stays",
+    "input": "F1 2024 Monaco 1080p-EssaisLibres1.mkv",
+    "expected": "f1 2024 monaco essaislibres1"
+  },
+  {
+    "name": "another numbered French practice is another key",
+    "input": "F1 2024 Monaco 1080p-EssaisLibres2.mkv",
+    "expected": "f1 2024 monaco essaislibres2"
+  },
+  {
+    "name": "a final word stays",
+    "input": "Tennis 2024 Wimbledon 1080p-Final.mkv",
+    "expected": "tennis 2024 wimbledon final"
+  },
+  {
+    "name": "a semifinal word is another key",
+    "input": "Tennis 2024 Wimbledon 1080p-SemiFinal.mkv",
+    "expected": "tennis 2024 wimbledon semifinal"
+  },
+  {
+    "name": "a numbered special stage stays",
+    "input": "WRC 2024 Sweden 1080p-SS1.mkv",
+    "expected": "wrc 2024 sweden ss1"
+  },
+  {
+    "name": "another special stage is another key",
+    "input": "WRC 2024 Sweden 1080p-SS2.mkv",
+    "expected": "wrc 2024 sweden ss2"
+  },
+  {
+    "name": "a class word stays",
+    "input": "MotoGP 2024 Qatar 1080p-Moto2.mkv",
+    "expected": "motogp 2024 qatar moto2"
+  },
+  {
+    "name": "another class word is another key",
+    "input": "MotoGP 2024 Qatar 1080p-Moto3.mkv",
+    "expected": "motogp 2024 qatar moto3"
   }
 ]

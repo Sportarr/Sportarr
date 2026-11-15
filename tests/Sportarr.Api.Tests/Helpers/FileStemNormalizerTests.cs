@@ -14,7 +14,7 @@ public class FileStemNormalizerTests
 {
     // The hub test holds the same hash. Edit both fixture copies together
     // and then change the hash in both tests.
-    private const string FixtureSha256 = "698c4dce654760768763a72c1cfd715fee2aa8f55182d7825529acaa35511f42";
+    private const string FixtureSha256 = "64b24ee91604eeeed89bbd8a86a4456b0c86ff9598f9263730bf46ad209a6f0f";
 
     private static string FixturePath =>
         Path.Combine(AppContext.BaseDirectory, "Services", "Fixtures", "StemNormalization", "cases.json");
@@ -58,11 +58,13 @@ public class FileStemNormalizerTests
     public static IEnumerable<object[]> EventWordCases() =>
         FileStemNormalizer.EventWords.Select(word => new object[] { word });
 
+    // A codec tag does not start the technical tail. The test then checks
+    // the group rule alone, because the tail removes "extended".
     [Theory]
     [MemberData(nameof(EventWordCases))]
     public void Normalize_KeepsAnEventWordAfterADashedTag(string word)
     {
-        FileStemNormalizer.Normalize($"Event 2024 1080p-{word}.mkv").Should().Be($"event 2024 {word}");
+        FileStemNormalizer.Normalize($"Event 2024 x264-{word}.mkv").Should().Be($"event 2024 x264 {word}");
         FileStemNormalizer.Normalize($"Event 2024 WEB-{word}2.mkv").Should().Be($"event 2024 {word}2");
     }
 

@@ -61,27 +61,32 @@ public static class FileStemNormalizer
         Options);
 
     /// <summary>
-    /// Session, card and show words from EventPartDetector. A word after a
-    /// dashed tag names the event, so the group rule keeps it. The word can
-    /// carry a number, as in "Race2". Two spoken words are one word here,
-    /// as in "WarmUp". The hub holds the same list in
-    /// backend/app/utils/file_stem.py, and the shared fixture holds it too.
-    /// Change the three together.
+    /// Session, card and show words from EventPartDetector, and round,
+    /// stage and class words that it does not hold, as in "Final" or
+    /// "Moto2". A word after a dashed tag names the event, so the group
+    /// rule keeps it. The word can carry a number, as in "Race2". Two
+    /// spoken words are one word here, as in "WarmUp". The hub holds the
+    /// same list in backend/app/utils/file_stem.py, and the shared fixture
+    /// holds it too. Change the three together.
     /// </summary>
     public static readonly IReadOnlyList<string> EventWords = new[]
     {
-        "afternoon", "analysis", "buyin", "countdown", "course", "day",
-        "documentary", "duel", "duels", "earlycard", "earlyprelim",
-        "earlypreliminary", "earlyprelims", "ep", "essais", "fastfriday",
-        "fp", "gp", "grandprix", "grille", "highlights", "hyperpole",
-        "kickoff", "leadcard", "magazine", "maincard", "mainevent",
-        "mainshow", "mc", "morning", "notebook", "postevent", "postfight",
+        "afternoon", "analysis", "buyin", "condensed", "countdown",
+        "course", "day", "documentary", "duel", "duels", "earlycard",
+        "earlyprelim", "earlypreliminary", "earlyprelims", "ep", "eprix",
+        "essais", "essaislibres", "essaisqualificatifs", "extended",
+        "fastfriday", "final", "fp", "freepractice", "gp", "grandprix",
+        "grille", "highlights", "hyperpole", "kickoff", "leadcard",
+        "magazine", "maincard", "mainevent", "mainshow", "mc", "morning",
+        "moto2", "moto3", "notebook", "postevent", "postfight",
         "postfightshow", "postshow", "ppv", "practice", "prelim",
         "prelimcard", "preliminary", "prelims", "preshow", "preview", "q",
-        "quali", "qualif", "qualification", "qualifications", "qualifier",
-        "qualifs", "qualifying", "qualy", "race", "review", "session",
-        "shakedown", "shakedownday", "shakedowntest", "shootout", "sprint",
-        "sq", "superpole", "test", "testday", "testing", "tests", "top",
+        "qf", "quali", "qualif", "qualification", "qualifications",
+        "qualifier", "qualifs", "qualifying", "qualy", "quarterfinal",
+        "race", "replay", "review", "round", "semi", "semifinal", "session",
+        "sf", "shakedown", "shakedownday", "shakedowntest", "shootout",
+        "sprint", "sprintquali", "sprintqualifying", "sprintshootout", "sq",
+        "ss", "superpole", "test", "testday", "testing", "tests", "top",
         "topten", "undercard", "warmup", "zerohour",
     };
 
