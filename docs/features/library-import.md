@@ -124,7 +124,7 @@ Click **Match** on an unmatched file, or **Edit** on a matched one, to choose th
 
 When an event already has a file, the row says why the new file would not replace it. The rules are in [A file for an event that already has one](download-clients.md#a-file-for-an-event-that-already-has-one). An IPTV recording held by an indexer file is not selected. Select **Import anyway** on that file if you want the recording to replace the indexer file.
 
-When **Activity** also lists a file that you import here, the file leaves **Activity**.
+When **Activity** lists a pending import for a file that you import here, the pending import leaves **Activity**. A completed download that waits in the queue for **Import Anyway** stays there.
 
 **Import Mode** decides what happens to the original files. **Auto** follows your Media Management settings. **Hardlink/Copy** and **Copy** leave the originals untouched, so seeding torrents stay intact. **Hardlink/Copy** links when the source and the library are on the same filesystem and copies otherwise. **Move** relocates the files and frees the source.
 
