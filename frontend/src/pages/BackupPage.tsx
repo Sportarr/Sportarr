@@ -502,9 +502,12 @@ const BackupPage: React.FC = () => {
           <div className="bg-gray-800 rounded p-4 border border-gray-700">
             <h3 className="text-sm font-semibold text-white mb-1">Rescan library</h3>
             <p className="text-xs text-gray-400 mb-3">
-              Walk every configured root folder and auto-import media
-              files that match known events. Medium-confidence matches
-              land in Library Import for review.
+              Sportarr looks through every root folder and imports each
+              file that matches an event at 85% or higher and is not in
+              your library yet. If the event already has a file, the new
+              copy replaces it only when it is an upgrade. A copy that is
+              not an upgrade stays where it is, and Activity lists it with
+              the reason so you can decide.
             </p>
             <button
               type="button"

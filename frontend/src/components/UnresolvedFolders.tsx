@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowPathIcon, FolderIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../utils/api';
 import { BUTTON_INFO } from '../utils/designTokens';
 import { isTeamlessSport, usesFightingEventTypes } from '../utils/leagueSportRules';
@@ -11,6 +12,7 @@ export interface UnresolvedFolder {
   suggestedLeagueExternalId?: string | null;
   suggestedLeagueName?: string | null;
   suggestedSport?: string | null;
+  suggestedSportFormat?: string | null;
 }
 
 interface RootFolder {
@@ -29,9 +31,19 @@ interface UnresolvedFoldersProps {
   onLeagueAdded: () => Promise<void> | void;
 }
 
+// A path with a drive letter or a backslash is a Windows path.
+function isWindowsPath(path: string): boolean {
+  return /^[A-Za-z]:/.test(path) || path.includes('\\');
+}
+
 function isInside(path: string, root: string): boolean {
   const trimmed = root.replace(/[\\/]+$/, '');
-  return trimmed.length > 0 && (path.startsWith(trimmed + '/') || path.startsWith(trimmed + '\\'));
+  if (trimmed.length === 0) return false;
+  // Windows ignores letter case in paths. Other systems do not.
+  const ignoreCase = isWindowsPath(path) || isWindowsPath(root);
+  const folder = ignoreCase ? path.toLowerCase() : path;
+  const base = ignoreCase ? trimmed.toLowerCase() : trimmed;
+  return folder.startsWith(base + '/') || folder.startsWith(base + '\\');
 }
 
 async function readJson<T>(url: string): Promise<T | null> {
@@ -58,6 +70,7 @@ async function readError(response: Response): Promise<string> {
 export default function UnresolvedFolders({ folders, onLeagueAdded }: UnresolvedFoldersProps) {
   const [addingPath, setAddingPath] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const queryClient = useQueryClient();
 
   if (folders.length === 0) return null;
 
@@ -65,6 +78,7 @@ export default function UnresolvedFolders({ folders, onLeagueAdded }: Unresolved
     const externalId = folder.suggestedLeagueExternalId;
     const name = folder.suggestedLeagueName;
     const sport = folder.suggestedSport ?? '';
+    const sportFormat = folder.suggestedSportFormat ?? null;
     if (!externalId || !name) return;
 
     setAddingPath(folder.path);
@@ -90,7 +104,8 @@ export default function UnresolvedFolders({ folders, onLeagueAdded }: Unresolved
         externalId,
         name,
         sport,
-        monitored: isTeamlessSport(sport, name) || usesFightingEventTypes(sport, name),
+        sportFormat,
+        monitored: isTeamlessSport(sport, name, sportFormat) || usesFightingEventTypes(sport, name),
         monitorType: 'Future',
         qualityProfileId: root?.defaultQualityProfileId ?? profiles?.[0]?.id ?? null,
         rootFolderId: root?.id ?? null,
@@ -117,6 +132,10 @@ export default function UnresolvedFolders({ folders, onLeagueAdded }: Unresolved
         setAddingPath(null);
         return;
       }
+
+      // The league lists elsewhere in the app must show the new league.
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      queryClient.invalidateQueries({ queryKey: ['sportarr-leagues'] });
 
       const added = await response.json().catch(() => null);
       if (added?.monitored === false) {

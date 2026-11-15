@@ -309,6 +309,7 @@ public class FolderFirstScanTests : IDisposable
         folder.SuggestedLeagueExternalId.Should().BeNull();
         folder.SuggestedLeagueName.Should().BeNull();
         folder.SuggestedSport.Should().BeNull();
+        folder.SuggestedSportFormat.Should().BeNull();
         var file = scan.UnmatchedFiles.Should().ContainSingle().Subject;
         file.FilePath.Should().Be(path);
         file.FolderLeagueId.Should().BeNull();
@@ -512,6 +513,25 @@ public class FolderFirstScanTests : IDisposable
         folder.SuggestedLeagueExternalId.Should().Be("lg-000001");
         folder.SuggestedLeagueName.Should().Be("English Premier League");
         folder.SuggestedSport.Should().Be("Soccer");
+    }
+
+    [Fact]
+    public async Task TheSuggestedLeagueCarriesTheHubSportFormat()
+    {
+        // The sport name alone does not tell that this league has no teams.
+        // The format tells it, so the Add button must get the format.
+        Write("Tour de France", "x.mkv");
+        var service = ServiceWithHub("""
+            {"data":{"search":[
+              {"idLeague":"lg-000777","strLeague":"Tour de France","strSport":"Cycling","strSportFormat":"EventSport"}
+            ]}}
+            """);
+
+        var scan = await service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var folder = scan.UnresolvedFolders.Should().ContainSingle().Subject;
+        folder.SuggestedLeagueExternalId.Should().Be("lg-000777");
+        folder.SuggestedSportFormat.Should().Be("EventSport");
     }
 
     [Fact]

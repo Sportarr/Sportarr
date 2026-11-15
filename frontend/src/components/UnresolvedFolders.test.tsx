@@ -1,5 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import UnresolvedFolders, { type UnresolvedFolder } from './UnresolvedFolders';
 import { apiGet, apiPost } from '../utils/api';
@@ -12,6 +14,11 @@ vi.mock('../utils/api', () => ({
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+let queryClient: QueryClient;
+
+const render = (ui: ReactElement) =>
+  rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -34,6 +41,7 @@ const withoutSuggestion: UnresolvedFolder = {
 
 describe('UnresolvedFolders', () => {
   beforeEach(() => {
+    queryClient = new QueryClient();
     vi.mocked(apiGet).mockReset();
     vi.mocked(apiPost).mockReset();
     vi.mocked(apiGet).mockImplementation(async (url: string) => {
@@ -97,5 +105,86 @@ describe('UnresolvedFolders', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('League already exists in library');
     expect(onLeagueAdded).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Add Formula 1' })).toBeEnabled();
+  });
+  it('uses the hub sport format to monitor a league that has no teams', async () => {
+    vi.mocked(apiPost).mockResolvedValue(json({ id: 6, monitored: true }, 201));
+    const folder: UnresolvedFolder = {
+      path: '/library/Tour de France',
+      name: 'Tour de France',
+      suggestedLeagueExternalId: 'lg-000777',
+      suggestedLeagueName: 'Tour de France',
+      suggestedSport: 'Cycling',
+      suggestedSportFormat: 'EventSport',
+    };
+    const onLeagueAdded = vi.fn().mockResolvedValue(undefined);
+    render(<UnresolvedFolders folders={[folder]} onLeagueAdded={onLeagueAdded} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add Tour de France' }));
+
+    await waitFor(() => expect(onLeagueAdded).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(apiPost).mock.calls[0][1]).toMatchObject({
+      sport: 'Cycling',
+      sportFormat: 'EventSport',
+      monitored: true,
+    });
+  });
+
+  it('matches a Windows root folder whatever the letter case', async () => {
+    vi.mocked(apiGet).mockImplementation(async (url: string) => {
+      if (url === '/api/rootfolder') {
+        return json([{ id: 3, path: 'D:\\Sports\\', defaultQualityProfileId: 9 }]);
+      }
+      if (url === '/api/qualityprofile') return json([{ id: 7 }]);
+      return json({}, 404);
+    });
+    vi.mocked(apiPost).mockResolvedValue(json({ id: 5, monitored: true }, 201));
+    const folder = { ...withSuggestion, path: 'd:\\sports\\Formula 1' };
+    const onLeagueAdded = vi.fn().mockResolvedValue(undefined);
+    render(<UnresolvedFolders folders={[folder]} onLeagueAdded={onLeagueAdded} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add Formula 1' }));
+
+    await waitFor(() => expect(onLeagueAdded).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(apiPost).mock.calls[0][1]).toMatchObject({ rootFolderId: 3, qualityProfileId: 9 });
+  });
+
+  it('keeps the letter case of a path that is not a Windows path', async () => {
+    vi.mocked(apiGet).mockImplementation(async (url: string) => {
+      if (url === '/api/rootfolder') return json([{ id: 4, path: '/Library', defaultQualityProfileId: 9 }]);
+      if (url === '/api/qualityprofile') return json([{ id: 7 }]);
+      return json({}, 404);
+    });
+    vi.mocked(apiPost).mockResolvedValue(json({ id: 5, monitored: true }, 201));
+    const onLeagueAdded = vi.fn().mockResolvedValue(undefined);
+    render(<UnresolvedFolders folders={[withSuggestion]} onLeagueAdded={onLeagueAdded} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add Formula 1' }));
+
+    await waitFor(() => expect(onLeagueAdded).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(apiPost).mock.calls[0][1]).toMatchObject({ rootFolderId: null, qualityProfileId: 7 });
+  });
+
+  it('refreshes the league lists after an add', async () => {
+    vi.mocked(apiPost).mockResolvedValue(json({ id: 5, monitored: true }, 201));
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const onLeagueAdded = vi.fn().mockResolvedValue(undefined);
+    render(<UnresolvedFolders folders={[withSuggestion]} onLeagueAdded={onLeagueAdded} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add Formula 1' }));
+
+    await waitFor(() => expect(onLeagueAdded).toHaveBeenCalledTimes(1));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['leagues'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sportarr-leagues'] });
+  });
+
+  it('does not refresh the league lists when the add fails', async () => {
+    vi.mocked(apiPost).mockResolvedValue(json({ error: 'League already exists in library' }, 400));
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    render(<UnresolvedFolders folders={[withSuggestion]} onLeagueAdded={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add Formula 1' }));
+
+    await screen.findByRole('alert');
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });

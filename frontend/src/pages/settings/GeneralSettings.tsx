@@ -923,7 +923,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
               benefit everyone automatically. It also includes the titles of releases that match a
               monitored league but no event, with the league and the date, so missing events can
               be added. Imports you make yourself also send the file name, the event you matched it
-              to, the season, and whether you chose it by hand, and Library Import scans send cleaned
+              to, the season, and whether you chose it by hand. Library Import scans send cleaned
               file names and receive matches other installs agreed on. Submissions carry only that
               data and a random install identifier. No personal information, indexer name or address
               is collected.{' '}

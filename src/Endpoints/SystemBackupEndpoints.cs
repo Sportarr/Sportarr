@@ -371,10 +371,10 @@ public static class SystemBackupEndpoints
         });
 
         // POST /api/library/rescan
-        // Walk every configured root folder and auto-import any media
-        // files that match a known event with high confidence. Files
-        // that match at medium confidence land in PendingImports for
-        // admin review (the existing Library Import page).
+        // Walk every root folder. Import each file that matches an event
+        // at 85 or above and has no event link yet. When the event has a
+        // file, the new copy replaces it only if the upgrade rule accepts
+        // it. Activity lists a copy that the rule leaves, with the reason.
         app.MapPost("/api/library/rescan", async (LibraryRescanService rescan, ILogger<BackupService> logger) =>
         {
             try

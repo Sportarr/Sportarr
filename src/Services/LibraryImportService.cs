@@ -832,7 +832,8 @@ public class LibraryImportService
         var suggestion = options.AskHubForLeagues && _apiClient != null
             ? await HubSuggestionAsync(folders, name)
             : null;
-        return new UnresolvedFolder(path, name, suggestion?.ExternalId, suggestion?.Name, suggestion?.Sport);
+        return new UnresolvedFolder(path, name, suggestion?.ExternalId, suggestion?.Name, suggestion?.Sport,
+            LeagueSportRules.NormalizeSportFormat(suggestion?.SportFormat));
     }
 
     /// <summary>
@@ -3977,7 +3978,10 @@ public sealed record UnresolvedFolder(
     string Name,
     string? SuggestedLeagueExternalId,
     string? SuggestedLeagueName,
-    string? SuggestedSport);
+    string? SuggestedSport,
+    // The hub's event format. It tells a league without teams from a team
+    // league when the sport name does not.
+    string? SuggestedSportFormat);
 
 /// <summary>
 /// A file that can potentially be imported

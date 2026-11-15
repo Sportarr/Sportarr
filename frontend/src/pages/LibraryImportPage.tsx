@@ -27,6 +27,7 @@ import { apiGet, apiPost } from '../utils/api';
 import { buildLibraryImportRequest, type LibraryImportRequest } from '../utils/libraryImportRequest';
 import { useQueryClient } from '@tanstack/react-query';
 import FileMetadataEditor, { type FileMetadataEditorValues } from '../components/FileMetadataEditor';
+import { folderDefaultsFor } from '../utils/folderDefaults';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 
@@ -129,14 +130,6 @@ const RECENT_FOLDERS_KEY = 'sportarr-library-import-recent-folders';
 const byPath = (a: { filePath: string }, b: { filePath: string }) =>
   a.filePath.localeCompare(b.filePath, undefined, { numeric: true, sensitivity: 'base' });
 const MAX_RECENT_FOLDERS = 8;
-
-// The league and season to preselect in the match dialog. A file that has a
-// matched or linked event keeps that event. Its folder can belong to another
-// league, so the folder must not choose for it.
-function folderDefaultsFor(file: ImportableFile): { leagueId?: number; season?: string } | undefined {
-  if (file.matchedEventId || file.existingEventId || !file.folderLeagueId) return undefined;
-  return { leagueId: file.folderLeagueId, season: file.folderSeason ?? undefined };
-}
 
 const LibraryImportPage: React.FC = () => {
   const queryClient = useQueryClient();
