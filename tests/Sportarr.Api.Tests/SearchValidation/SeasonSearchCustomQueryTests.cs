@@ -181,7 +181,7 @@ public class SeasonSearchCustomQueryTests
             var config = await configService.GetConfigAsync();
             config.IndexerRetention = 0;
             config.SearchCacheDuration = 300;
-            config.IndexerHttpTimeoutSeconds = 10;
+            config.IndexerHttpTimeoutSeconds = 30;
             await configService.SaveConfigAsync(config);
 
             using var scope = _app.Services.CreateScope();
