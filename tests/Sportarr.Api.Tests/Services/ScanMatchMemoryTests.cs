@@ -404,6 +404,25 @@ public class ScanMatchMemoryTests : IDisposable
         _log.Lines.Should().Contain(l => l.Level == LogLevel.Information && l.Message.Contains("1 already claimed"));
     }
 
+    [Fact]
+    public async Task AnIgnoredFileIsListedButItsStemIsNotSent()
+    {
+        // The Library Import page lists ignored files, so it scans with them.
+        await UsageData(true);
+        var ignored = WriteOutside("zz clip 0001.mkv");
+        var other = WriteOutside("zz clip 0002.mkv");
+        _db.Blocklist.Add(new BlocklistItem
+        {
+            Title = "zz clip 0001", FilePath = ignored, Reason = BlocklistReason.ManualBlock,
+        });
+        _db.SaveChanges();
+
+        var scan = await Service.ScanFolderAsync(_outside, includeIgnoredFiles: true, options: ScanOptions.Interactive);
+
+        Find(scan, ignored).Should().NotBeNull("the page still lists the ignored file");
+        _hub.LookupStems.Should().ContainSingle().Which.Should().Equal(StemOf(other));
+    }
+
     private Event AddBahrain2025()
     {
         var race = new Event

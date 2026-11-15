@@ -40,7 +40,7 @@ When you import a file to an event yourself, Sportarr sends these items.
 - The event's season
 - Whether you picked the event yourself or kept Sportarr's suggestion
 
-To clean the name, Sportarr puts it in lower case and takes out any Sportarr id. It takes out the quality, source, codec, language, and release group tags, but only from the first quality or source tag on, such as `1080p` or `WEB-DL`. Title words before that tag stay. A word after a dashed tag that names part of the event stays too, such as `Sprint` in `1080p-Sprint`. Each run of spaces and punctuation then becomes one space. Years and season and episode numbers stay.
+To clean the name, Sportarr puts it in lower case and takes out any Sportarr id. It takes out a release group at the end of the name when a quality, source, or codec tag comes right before it, such as `GRP` in `x265-GRP`. A word after a dashed tag that names part of the event stays, such as `Sprint` in `1080p-Sprint`. Then Sportarr takes out the quality, source, codec, language, proper, repack, and edition tags, but only from the first quality or source tag on, such as `1080p` or `WEB-DL`. Title words before that tag stay. Each run of spaces and punctuation then becomes one space. Years and season and episode numbers stay.
 
 This happens when you import from **Library Import**, and when you accept a file in the **Manual Import** dialog. Sportarr does not send these items in the cases below.
 
@@ -64,7 +64,7 @@ A person on the sportarr.net team then reviews each name that qualifies. Only an
 
 ### Matches other installs agreed on
 
-When you scan a folder on the **Library Import** page, Sportarr sends the cleaned names of the files in the folder. It leaves out files already in your library and files that carry a Sportarr event id in their name or their metadata file. Library Import still lists files you ignored, so their cleaned names are sent too. Sportarr does not read embedded tags first, so a file that it later matches by the id in its tags can still be looked up. This request does not carry the install id.
+When you scan a folder on the **Library Import** page, Sportarr sends the cleaned names of the files in the folder. It leaves out files already in your library, files you ignored, and files that carry a Sportarr event id in their name or their metadata file. Library Import still lists the files you ignored, but it does not send their names. Sportarr does not read embedded tags first, so a file that it later matches by the id in its tags can still be looked up. This request does not carry the install id.
 
 The service answers with the event for each name that has an approved match. Sportarr uses that event only when all of these are true.
 

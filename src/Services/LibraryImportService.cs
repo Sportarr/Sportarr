@@ -170,17 +170,16 @@ public class LibraryImportService
 
             result.TotalFiles = files.Count;
 
+            // The files that you ignored. Their names never go to the hub.
+            var blocklistedPaths = new HashSet<string>(
+                await _db.Blocklist
+                    .Where(b => b.FilePath != null)
+                    .Select(b => b.FilePath!)
+                    .ToListAsync(),
+                StringComparer.OrdinalIgnoreCase);
+
             // Manual review may reconsider a file that automatic scans ignore.
-            HashSet<string>? ignoredPaths = null;
-            if (!includeIgnoredFiles)
-            {
-                ignoredPaths = new HashSet<string>(
-                    await _db.Blocklist
-                        .Where(b => b.FilePath != null)
-                        .Select(b => b.FilePath!)
-                        .ToListAsync(),
-                    StringComparer.OrdinalIgnoreCase);
-            }
+            var ignoredPaths = includeIgnoredFiles ? null : blocklistedPaths;
 
             // Preload every Event/EventFile whose FilePath falls under this scanned
             // folder in two queries total, instead of two FirstOrDefaultAsync calls
@@ -210,9 +209,11 @@ public class LibraryImportService
             // Ask the hub once, before the loop, for the files that need a
             // match. A file with a Sportarr id in its name or its sidecar
             // names its event already, so its stem does not leave the app.
+            // The stem of an ignored file does not leave the app either,
+            // also when the page lists that file.
             var memory = scanOptions.LookupMatchMemory
                 ? await LookUpMatchMemoryAsync(files.Where(f =>
-                    ignoredPaths?.Contains(f) != true &&
+                    !blocklistedPaths.Contains(f) &&
                     !eventByFilePath.ContainsKey(f) &&
                     !eventFileByFilePath.ContainsKey(f) &&
                     SportarrIdToken.ExtractEventId(Path.GetFileNameWithoutExtension(f)) == null &&
@@ -756,7 +757,7 @@ public class LibraryImportService
         {
             if (!_leagueByRoot.TryGetValue(root, out var league))
             {
-                league = LibraryFolderResolver.ResolveLeague(Path.GetFileName(root), Leagues);
+                league = LibraryFolderResolver.LeagueOfRoot(root, Leagues);
                 _leagueByRoot[root] = league;
             }
             return league;

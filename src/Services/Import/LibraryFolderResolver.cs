@@ -74,6 +74,15 @@ public static partial class LibraryFolderResolver
     }
 
     /// <summary>
+    /// The league that the root folder's own name names exactly, by the
+    /// strict rule of <see cref="ResolveLeague"/>. Such a root is that
+    /// league's folder, so the folders below it are not league folders.
+    /// Null for a root such as "/media".
+    /// </summary>
+    public static League? LeagueOfRoot(string rootPath, IReadOnlyCollection<League> leagues) =>
+        ResolveLeague(Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), leagues);
+
+    /// <summary>
     /// (leagueFolderName, seasonFolderName) for a file below the root. The
     /// first folder that parses as a season is the season folder. The folder
     /// above it is the league folder. Without a season folder, the first

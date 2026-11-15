@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Import;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Endpoints;
@@ -113,20 +114,21 @@ app.MapGet("/api/rootfolder/{id:int}/unmappedfolders", async (int id, SportarrDb
         });
     }
 
-    // Build the league-name set the user has claimed. We normalize on
-    // both sides (lowercase + strip illegal chars in the same way
-    // FileNamingService does) so a league called "UFC" matches a folder
-    // called "ufc/" or "UFC " etc. without false positives.
-    var leagueNames = await db.Leagues
-        .AsNoTracking()
-        .Select(l => l.Name)
-        .ToListAsync();
-    var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    foreach (var name in leagueNames)
+    // A Library Import scan links folders to leagues by these rules, so
+    // the list shows no folder that the scan links.
+    var leagues = await db.Leagues.AsNoTracking().ToListAsync();
+
+    // A root named after a league is that league's folder. The folders
+    // below it hold that league's seasons and events.
+    if (LibraryFolderResolver.LeagueOfRoot(folder.Path, leagues) != null)
     {
-        var normalized = NormalizeFolderName(name);
-        if (!string.IsNullOrEmpty(normalized))
-            claimed.Add(normalized);
+        return Results.Ok(new
+        {
+            rootFolderId = folder.Id,
+            rootFolderPath = folder.Path,
+            accessible = true,
+            unmapped = Array.Empty<object>(),
+        });
     }
 
     var unmapped = new List<object>();
@@ -137,7 +139,8 @@ app.MapGet("/api/rootfolder/{id:int}/unmappedfolders", async (int id, SportarrDb
             var name = Path.GetFileName(sub);
             if (string.IsNullOrEmpty(name)) continue;
             if (IsExcludedSubfolder(name)) continue;
-            if (claimed.Contains(NormalizeFolderName(name))) continue;
+            // The name or an alternate name of one league, or its short form.
+            if (LibraryFolderResolver.ResolveLeague(name, leagues) != null) continue;
             unmapped.Add(new
             {
                 name,
@@ -164,23 +167,6 @@ app.MapGet("/api/rootfolder/{id:int}/unmappedfolders", async (int id, SportarrDb
         accessible = true,
         unmapped = sorted,
     });
-
-    static string NormalizeFolderName(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "";
-        // Strip the same set of characters FileNamingService.CleanFileName
-        // strips, then lowercase + collapse internal whitespace so the
-        // comparison is invariant to user-driven naming variations.
-        var cleaned = new System.Text.StringBuilder(name.Length);
-        foreach (var ch in name)
-        {
-            if (ch == ':' || ch == '*' || ch == '?' || ch == '"' || ch == '<' || ch == '>' || ch == '|')
-                continue;
-            cleaned.Append(ch);
-        }
-        var s = cleaned.ToString().Trim().ToLowerInvariant();
-        return System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ");
-    }
 
     static bool IsExcludedSubfolder(string name)
     {
