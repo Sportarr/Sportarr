@@ -24,6 +24,9 @@ public class SportsFileNameParser
 
     private readonly ILogger<SportsFileNameParser> _logger;
 
+    // The patterns that Parse tries. Only a test gives another list.
+    private readonly IReadOnlyList<SportsPattern> _patterns;
+
     // Memoization cache. Parse() is deterministic on its input and is
     // hit inside hot loops — RssSyncService.FindMatchingEvent calls
     // ValidateRelease once per monitored event, and each ValidateRelease
@@ -34,6 +37,22 @@ public class SportsFileNameParser
     // covers an hour of RSS feeds for a normal install).
     private const int _parseCacheCapacity = 5000;
     private static readonly ConcurrentDictionary<string, SportsParseResult> _parseCache = new();
+
+    // Library names from another database: "Formula 1 - S2024E10 - Round 1: Bahrain (Race)",
+    // "MotoGP - S2024E12 - Qatar Airways Grand Prix of Qatar MotoGP Free Practice Nr. 1".
+    // The episode number is not Sportarr's. The title must carry the match.
+    // This field comes before SportsPatterns, because static fields start in text order.
+    private static readonly SportsPattern LibraryNamePattern = new()
+    {
+        Sport = "Motorsport",
+        Organization = "Formula 1",
+        Pattern = new Regex(@"^(?<org>Formula[\.\-\s]*1|F1|MotoGP)\s*-\s*S\d{2,4}E\d{1,4}\s*-\s*(?:Round\s*(?<round>\d+)\s*:\s*)?(?<name>.+?)\s*(?:\((?<session>[^)]+)\))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+        OrganizationExtractor = LibraryNameOrganization,
+        TitleBuilder = LibraryNameTitle,
+        RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
+        LocationExtractor = (match) => LibraryNameLocation(match.Groups["name"].Value),
+        SessionExtractor = LibraryNameSession
+    };
 
     // Sports-specific naming patterns
     private static readonly List<SportsPattern> SportsPatterns = new()
@@ -335,21 +354,8 @@ public class SportsFileNameParser
             SessionExtractor = match => DetectMotorsportSession(match.Groups["name"].Value)
         },
 
-        // Library names from another database: "Formula 1 - S2024E10 - Round 1: Bahrain (Race)",
-        // "MotoGP - S2024E12 - Qatar Airways Grand Prix of Qatar MotoGP Free Practice Nr. 1".
-        // The episode number is not Sportarr's. The title must carry the match.
         // MUST come before the release patterns below. They need a year after the series name.
-        new SportsPattern
-        {
-            Sport = "Motorsport",
-            Organization = "Formula 1",
-            Pattern = new Regex(@"^(?<org>Formula[\.\-\s]*1|F1|MotoGP)\s*-\s*S\d{2,4}E\d{1,4}\s*-\s*(?:Round\s*(?<round>\d+)\s*:\s*)?(?<name>.+?)\s*(?:\((?<session>[^)]+)\))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
-            OrganizationExtractor = LibraryNameOrganization,
-            TitleBuilder = LibraryNameTitle,
-            RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
-            LocationExtractor = (match) => LibraryNameLocation(match.Groups["name"].Value),
-            SessionExtractor = LibraryNameSession
-        },
+        LibraryNamePattern,
 
         // F1 Academy: F1.Academy.2026.China.Grand.Prix.Practice, Formula1.Academy.2026.Round03.Miami
         // MUST come before F1 pattern to prevent F1 Academy releases matching as Formula 1
@@ -833,7 +839,27 @@ public class SportsFileNameParser
     public SportsFileNameParser(ILogger<SportsFileNameParser> logger)
     {
         _logger = logger;
+        _patterns = SportsPatterns;
     }
+
+    /// <summary>
+    /// A parser that tries only the given patterns. Tests use it. Its
+    /// results do not go into the shared cache, because they differ from
+    /// the results of the full list.
+    /// </summary>
+    internal SportsFileNameParser(ILogger<SportsFileNameParser> logger, IReadOnlyList<SportsPattern> patterns)
+    {
+        _logger = logger;
+        _patterns = patterns;
+    }
+
+    /// <summary>The patterns of a normal parser, in the order that Parse tries them.</summary>
+    internal static IReadOnlyList<SportsPattern> DefaultPatterns => SportsPatterns;
+
+    /// <summary>True for the pattern that reads library names, such as "Formula 1 - S2024E10 - ...".</summary>
+    internal static bool IsLibraryNamePattern(SportsPattern pattern) => ReferenceEquals(pattern, LibraryNamePattern);
+
+    private bool UsesSharedCache => ReferenceEquals(_patterns, SportsPatterns);
 
     /// <summary>
     /// Parse a sports filename to extract structured information
@@ -846,7 +872,7 @@ public class SportsFileNameParser
         // by reference — callers that mutate the returned object would
         // pollute the cache, so SportsParseResult should stay
         // effectively read-only at use sites (which it is today).
-        if (filename != null && _parseCache.TryGetValue(filename, out var cached))
+        if (filename != null && UsesSharedCache && _parseCache.TryGetValue(filename, out var cached))
         {
             return cached;
         }
@@ -872,7 +898,7 @@ public class SportsFileNameParser
         var cleanName = CleanFilename(tokenFreeName);
 
         // Try each sports pattern
-        foreach (var pattern in SportsPatterns)
+        foreach (var pattern in _patterns)
         {
             Match match;
             try
@@ -888,19 +914,37 @@ public class SportsFileNameParser
 
             if (match.Success)
             {
+                // The extractors run their own patterns, which can time out
+                // too. Read every field first, so a pattern that gives up
+                // leaves nothing in the result.
+                string? organization, eventTitle, location = null, session = null;
+                int? roundNumber = null;
+                try
+                {
+                    organization = pattern.OrganizationExtractor?.Invoke(match) ?? pattern.Organization;
+                    eventTitle = pattern.TitleBuilder(match);
+                    if (pattern.RoundExtractor != null)
+                        roundNumber = pattern.RoundExtractor(match);
+                    if (pattern.LocationExtractor != null)
+                        location = pattern.LocationExtractor(match);
+                    if (pattern.SessionExtractor != null)
+                        session = pattern.SessionExtractor(match);
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    _logger.LogWarning("[Sports Parser] Pattern for {Org} gave up reading '{Title}'; skipping it",
+                        pattern.Organization, cleanName);
+                    continue;
+                }
+
                 result.Sport = pattern.Sport;
-                result.Organization = pattern.OrganizationExtractor?.Invoke(match) ?? pattern.Organization;
-                result.EventTitle = pattern.TitleBuilder(match);
+                result.Organization = organization;
+                result.EventTitle = eventTitle;
                 result.MatchedPattern = pattern.Pattern.ToString();
                 result.Confidence = 90; // High confidence for pattern match
-
-                // Extract round number and location if the pattern supports it
-                if (pattern.RoundExtractor != null)
-                    result.RoundNumber = pattern.RoundExtractor(match);
-                if (pattern.LocationExtractor != null)
-                    result.Location = pattern.LocationExtractor(match);
-                if (pattern.SessionExtractor != null)
-                    result.Session = pattern.SessionExtractor(match);
+                result.RoundNumber = roundNumber;
+                result.Location = location;
+                result.Session = session;
 
                 // Debug-level on purpose. This line fires once per Parse()
                 // call, and Parse() is hit inside hot loops — RssSyncService
@@ -1232,7 +1276,7 @@ public class SportsFileNameParser
         // a parse cache; we don't need LRU semantics here — parse
         // results are tiny and the working set turns over with each
         // RSS poll cycle).
-        if (filename != null)
+        if (filename != null && UsesSharedCache)
         {
             if (_parseCache.Count >= _parseCacheCapacity)
             {
@@ -1393,6 +1437,11 @@ public class SportsFileNameParser
     private static readonly Regex TestingName = new(@"\btest(?:ing)?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
     // "Grand Prix of Qatar", "Grande Prémio Tissot de Portugal": the place follows the last joining word.
     private static readonly Regex PlaceAfterJoiningWord = new(@"^.*\b(?:of(?:\s+the)?|de|di|del|von)\s+(?<place>\S.*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+    // What follows the Grand Prix name: a " - ", a session word or a quality word.
+    private static readonly Regex GrandPrixNameEnd = new(
+        @"\s+-\s+|(?<![A-Za-z0-9])(?:race|sprint|qualifying|quali|(?:free\s+)?practice|fp\d|warm\s*up|" +
+        MediaFileParser.QualityTokens + "|" + MediaFileParser.SourceTokens + @")(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
     // "Monster Energy British Grand Prix": the place is the word before Grand Prix.
     private static readonly Regex PlaceBeforeGrandPrix = new(@"(?<place>\S+)\s+Grand\s+Prix\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
 
@@ -1425,6 +1474,12 @@ public class SportsFileNameParser
     {
         var grandPrix = MotoGpClassTail.Replace(name, string.Empty).Trim();
         if (grandPrix.Length == 0 || TestingName.IsMatch(grandPrix)) return null;
+
+        // The Grand Prix name ends at the first " - ", session word or
+        // quality word. Without the cut, "Qatar Race WEBDL 1080p" is the
+        // place, and its "Race" agrees with every race event.
+        grandPrix = GrandPrixNameEnd.Split(grandPrix, 2)[0].Trim();
+        if (grandPrix.Length == 0) return null;
 
         var afterJoiningWord = PlaceAfterJoiningWord.Match(grandPrix);
         if (afterJoiningWord.Success) return CleanLocationName(afterJoiningWord.Groups["place"].Value);

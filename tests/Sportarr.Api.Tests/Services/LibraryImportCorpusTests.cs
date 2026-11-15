@@ -25,8 +25,10 @@ namespace Sportarr.Api.Tests.Services;
 /// </summary>
 public class LibraryImportCorpusTests : IDisposable
 {
-    public const int RecordedRecallPercent = 76; // raised by each task, never lowered
-    public const int RecordedForeignHits = 134; // hits on files without an id token, never lowered
+    // The floors that the corpus has reached. A change may raise them when
+    // it lifts recall. No change may lower them.
+    public const int RecordedRecallPercent = 76;
+    public const int RecordedForeignHits = 134; // hits on files without an id token
 
     private readonly ITestOutputHelper _output;
     private readonly string _root;

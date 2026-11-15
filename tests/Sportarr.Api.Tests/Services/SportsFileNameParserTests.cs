@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Sportarr.Api.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -193,5 +194,62 @@ public class SportsFileNameParserTests
     public void FightNightFile_KeepsTheFighterNames(string name, string title)
     {
         _parser.Parse(name).EventTitle.Should().Be(title);
+    }
+
+    // The place ends at the first " - ", at a session word or at a quality
+    // word. A location such as "Qatar Race WEBDL 1080p" agrees with every race.
+    [Theory]
+    [InlineData("MotoGP - S2026E05 - Grand Prix of Qatar - Race - WEBDL-1080p", "Qatar")]
+    [InlineData("MotoGP - S2026E05 - Grand Prix of Qatar Race WEBDL-1080p", "Qatar")]
+    [InlineData("MotoGP - S2026E05 - Grand Prix of Qatar 1080p", "Qatar")]
+    [InlineData("Formula 1 - S2024E10 - Bahrain Grand Prix - Race - WEBDL-1080p", "Bahrain")]
+    public void LibraryNameLocation_StopsAtADashASessionOrAQualityWord(string name, string location)
+    {
+        _parser.Parse(name).Location.Should().Be(location);
+    }
+
+    private static RegexMatchTimeoutException GaveUp() =>
+        new("UFC 300 Pereira vs Hill", "stub", TimeSpan.FromMilliseconds(1));
+
+    [Fact]
+    public void ExtractorTimeout_IsCaughtLikeAPatternTimeout()
+    {
+        var stub = new SportsPattern
+        {
+            Sport = "Fighting", Organization = "Stub", Pattern = new Regex("^UFC"),
+            TitleBuilder = _ => throw GaveUp(),
+        };
+        var parser = new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>(), new[] { stub });
+
+        var parse = () => parser.Parse("UFC 300 Pereira vs Hill");
+
+        var result = parse.Should().NotThrow().Subject;
+        result.MatchedPattern.Should().BeNull("the pattern gave up, so it matched nothing");
+        result.Organization.Should().Be("UFC", "the generic reading still runs");
+    }
+
+    [Fact]
+    public void ExtractorTimeout_LeavesNoPartOfTheSkippedPattern()
+    {
+        // The title comes out, then the location extractor gives up.
+        var stub = new SportsPattern
+        {
+            Sport = "Motorsport", Organization = "Stub", Pattern = new Regex("^UFC"),
+            TitleBuilder = _ => "Stub Title",
+            RoundExtractor = _ => 99,
+            LocationExtractor = _ => throw GaveUp(),
+        };
+        var patterns = new[] { stub }.Concat(SportsFileNameParser.DefaultPatterns).ToList();
+        var parser = new SportsFileNameParser(Mock.Of<ILogger<SportsFileNameParser>>(), patterns);
+        const string name = "UFC.300.2024.PPV.1080p.WEB.h264-GRP";
+
+        var result = parser.Parse(name);
+
+        var expected = _parser.Parse(name);
+        result.Sport.Should().Be(expected.Sport);
+        result.Organization.Should().Be(expected.Organization);
+        result.EventTitle.Should().Be(expected.EventTitle);
+        result.RoundNumber.Should().Be(expected.RoundNumber);
+        result.MatchedPattern.Should().Be(expected.MatchedPattern);
     }
 }

@@ -252,6 +252,88 @@ public class ForeignNumberingImportTests : IDisposable
         result.MatchedFiles.Should().NotContain(f => f.MatchConfidence >= LibraryImportService.AutoImportConfidenceFloor);
     }
 
+    [Fact]
+    public async Task EqualNumberOnASharedDate_StaysUnmatched()
+    {
+        // The date falls on three events. E71 is the number of the second
+        // event by chance, so it must not pick that event from the three.
+        var nfl = new League { Name = "NFL", Sport = "American Football" };
+        _db.Leagues.Add(nfl);
+        _db.SaveChanges();
+        Event SameDay(string title, int episode, int hour) => new()
+        {
+            Title = title, Sport = "American Football", Season = "2025", SeasonNumber = 2025,
+            EpisodeNumber = episode, LeagueId = nfl.Id, Monitored = true,
+            EventDate = new DateTime(2025, 10, 5, hour, 0, 0, DateTimeKind.Utc),
+        };
+        _db.Events.AddRange(
+            SameDay("Kansas City Chiefs vs Jacksonville Jaguars", 70, 17),
+            SameDay("Denver Broncos vs Philadelphia Eagles", 71, 20),
+            SameDay("Seattle Seahawks vs Tampa Bay Buccaneers", 72, 23));
+        _db.SaveChanges();
+        WriteFile("NFL - S2025E71 - Week 5 Sunday Night Football 2025-10-05.mkv");
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false);
+
+        result.MatchedFiles.Should().BeEmpty();
+        result.UnmatchedFiles.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void ExactDateSharedByAnotherCandidate_LetsNoNumberAddOrSubtract()
+    {
+        var raceDay = new DateTime(2024, 3, 2);
+
+        // A different number without corroboration loses nothing.
+        BahrainScore(10, raceDay, dateShared: true).Should().Be(BahrainScore(null, raceDay, dateShared: true));
+
+        // An equal number with a strong title gains nothing.
+        int StrongTitle(int? episode) => LibraryImportService.CalculateMatchConfidence(
+            searchTitle: Corroborated, eventTitle: "Bahrain Grand Prix - Race",
+            organization: "Formula 1", evt: BahrainRace(), parsedDate: raceDay, parsedYear: 2024,
+            explicitEpisodeNumber: episode, parsedSport: "Motorsport", seriesLabel: "Formula 1",
+            dateSharedByAnotherCandidate: true);
+        StrongTitle(8).Should().Be(StrongTitle(null));
+    }
+
+    [Fact]
+    public void SessionGate_DoesNotJudgeAnEventOfAnotherSport()
+    {
+        // Session words name the sessions of a motorsport weekend only.
+        // For an event of another sport, the title score decides.
+        int Score(string sport) => LibraryImportService.CalculateMatchConfidence(
+            searchTitle: "FIS Ski Jumping World Cup Planica Practice 1", eventTitle: "Planica - Practice 2",
+            organization: null,
+            evt: new Event
+            {
+                Title = "Planica - Practice 2", Sport = sport, Season = "2025", SeasonNumber = 2025,
+                EventDate = new DateTime(2025, 3, 27, 10, 0, 0, DateTimeKind.Utc),
+                League = new League { Name = "FIS Ski Jumping World Cup", Sport = sport },
+            },
+            parsedDate: null, parsedYear: 2025, parsedSport: sport, seriesLabel: "FIS Ski Jumping World Cup");
+
+        Score("Motorsport").Should().Be(0);
+        Score("Ski Jumping").Should().BeGreaterThan(0);
+    }
+
+    [Theory]
+    [InlineData("Formula 1 - S2026E05 - Bahrain Grand Prix - Race - WEBDL-1080p.mkv")]
+    [InlineData("MotoGP - S2026E05 - Grand Prix of Qatar - Race - WEBDL-1080p.mkv")]
+    [InlineData("NFL - S2025E71 - Week 5 Sunday Night Football WEBDL-1080p.mkv")]
+    public async Task QualityAndSourceWords_DoNotStayInTheParsedTitle(string fileName)
+    {
+        WriteFile(fileName);
+
+        var result = await _service.ScanFolderAsync(_tempDir, includeSubfolders: false);
+
+        var title = result.UnmatchedFiles.Should().ContainSingle().Subject.ParsedTitle;
+        title.Should().NotBeNullOrWhiteSpace();
+        System.Text.RegularExpressions.Regex.IsMatch(title!,
+                @"(?<![A-Za-z0-9])(?:WEBDL|WEB-DL|WEB|1080p|720p|HDTV)(?![A-Za-z0-9])",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            .Should().BeFalse($"'{title}' keeps a quality or source word");
+    }
+
     private static readonly League MotoGp = new() { Name = "MotoGP", Sport = "Motorsport" };
 
     private static int MotoGpScore(string fileName, string eventTitle)
@@ -621,7 +703,7 @@ public class ForeignNumberingImportTests : IDisposable
             organization: "Formula 1", evt: BahrainRace(), parsedDate: null, parsedYear: 2024,
             parsedSport: "Motorsport");
 
-        score.Should().BeGreaterThan(0);
+        score.Should().BeGreaterThanOrEqualTo(40, "a library scan accepts a match at 40");
     }
 
     [Fact]

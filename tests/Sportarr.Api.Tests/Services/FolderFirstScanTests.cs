@@ -210,6 +210,50 @@ public class FolderFirstScanTests : IDisposable
     }
 
     [Fact]
+    public async Task AnEventWithAnEmptySeasonStillMatchesInItsSeasonFolder()
+    {
+        // An empty Season string is no season, the same as null.
+        var imola = new Event
+        {
+            Title = "Emilia Romagna Grand Prix - Race", Sport = "Motorsport", LeagueId = _bahrain.LeagueId,
+            Season = "", SeasonNumber = 2024, EpisodeNumber = 30, Round = "7",
+            EventDate = new DateTime(2024, 5, 19, 13, 0, 0, DateTimeKind.Utc),
+            ExternalId = "ev-100007", Status = "completed", Monitored = true,
+        };
+        _db.Events.Add(imola);
+        _db.SaveChanges();
+        var path = Write("Formula 1", "Season 2024", "Formula 1 - S2024E30 - Emilia Romagna Grand Prix - Race.mkv");
+
+        var scan = await _service.ScanFolderAsync(_root, options: ScanOptions.LibraryBackground);
+
+        var file = Find(scan, path);
+        file.FolderSeason.Should().Be("2024");
+        file.MatchedEventId.Should().Be(imola.Id);
+    }
+
+    [Fact]
+    public async Task AConfiguredRootNamedAfterALeagueIsThatLeaguesFolder()
+    {
+        var ufcRoot = Path.Combine(_root, "media", "UFC");
+        _db.RootFolders.Add(new RootFolder { Path = ufcRoot });
+        await _db.SaveChangesAsync();
+        var direct = Write("media", "UFC", "UFC 300 Pereira vs Hill.mkv");
+        var inSeason = Write("media", "UFC", "Season 2024", "UFC 299 O'Malley vs Vera 2.mkv");
+
+        var scan = await _service.ScanFolderAsync(ufcRoot, options: ScanOptions.LibraryBackground);
+
+        var directFile = Find(scan, direct);
+        directFile.FolderLeagueName.Should().Be("UFC");
+        directFile.FolderSeason.Should().BeNull();
+        directFile.MatchedEventId.Should().Be(_ufc300.Id);
+        var seasonFile = Find(scan, inSeason);
+        seasonFile.FolderLeagueName.Should().Be("UFC");
+        seasonFile.FolderSeason.Should().Be("2024");
+        seasonFile.MatchedEventId.Should().Be(_ufc299.Id);
+        scan.UnresolvedFolders.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task SpanSeasonFolderResolvesToTheSpan()
     {
         var path = Write("NBA", "Season 2024", "NBA - S2024E01 - Celtics vs Knicks.mkv");
@@ -577,6 +621,20 @@ public class FolderFirstScanTests : IDisposable
         file.MatchedEventId.Should().Be(_ufc300.Id);
         file.MatchConfidence.Should().Be(100);
         Find(scan, foreign).MatchedEventId.Should().NotBe(_ufc300.Id, "the sidecar id file claims its event first");
+    }
+
+    [Fact]
+    public async Task Scan_FileNameTokenBeatsADifferentSidecarId()
+    {
+        // The name and the sidecar name two events. The name wins.
+        var path = Write("UFC", "Season 2024", "UFC - S2024E10 - UFC 300 Pereira vs Hill - sportarr-ev-200300.mkv");
+        WriteNfo(path, title: null, aired: null, sportarrId: "ev-200299");
+
+        var scan = await _service.ScanFolderAsync(_root, options: ScanOptions.LibraryBackground);
+
+        var file = Find(scan, path);
+        file.MatchedEventId.Should().Be(_ufc300.Id);
+        file.MatchConfidence.Should().Be(100);
     }
 
     [Fact]

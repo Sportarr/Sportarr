@@ -71,7 +71,7 @@ public class ScanMatchMemoryTests : IDisposable
 
     private LibraryImportService Service { get; }
 
-    private LibraryImportService CreateService()
+    private LibraryImportService CreateService(TimeSpan? matchMemoryTimeout = null)
     {
         var fileParser = new MediaFileParser(Mock.Of<ILogger<MediaFileParser>>());
         var api = new SportarrApiClient(_http, Mock.Of<ILogger<SportarrApiClient>>(), _configuration, _config, _cache);
@@ -91,6 +91,7 @@ public class ScanMatchMemoryTests : IDisposable
             api)
         {
             SidecarReader = path => _sidecars.GetValueOrDefault(path),
+            MatchMemoryTimeout = matchMemoryTimeout ?? TimeSpan.FromSeconds(5),
         };
     }
 
@@ -200,9 +201,69 @@ public class ScanMatchMemoryTests : IDisposable
 
         var found = Find(scan, file);
         found.FolderLeagueId.Should().Be(_bahrain.LeagueId);
-        found.MatchedEventId.Should().NotBe(_ufc300.Id);
+        found.MatchedEventId.Should().BeNull("the name holds nothing that fuzzy matching can use");
+        found.MatchConfidence.Should().BeNull();
         _log.Lines.Should().Contain(l => l.Level == LogLevel.Debug && l.Message.Contains("league"));
         _log.Lines.Should().Contain(l => l.Level == LogLevel.Information && l.Message.Contains("1 in another league"));
+    }
+
+    [Fact]
+    public async Task AHitInAnotherLeagueThanTheFolderFallsToFuzzyMatching()
+    {
+        await UsageData(true);
+        var file = WriteInLibrary("Formula 1", "Season 2024", "Formula 1 2024 Bahrain Grand Prix Race.mkv");
+        HubKnows(file, "ev-200300", "lg-000079");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.MatchedEventId.Should().Be(_bahrain.Id, "fuzzy matching finds the race in the folder league");
+        found.MatchConfidence.Should().NotBe(LibraryImportService.MatchMemoryConfidence);
+    }
+
+    [Fact]
+    public async Task ALookupThatNeverAnswersIsCancelledAtTheTimeoutAndTheScanCompletes()
+    {
+        await UsageData(true);
+        _hub.Hang = true;
+        var service = CreateService(matchMemoryTimeout: TimeSpan.FromMilliseconds(200));
+        var file = WriteInLibrary("Formula 1", "Season 2024", "Formula 1 2024 Bahrain Grand Prix Race.mkv");
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var scan = await service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        clock.Stop();
+        _hub.SawCancellation.Should().BeTrue("the timeout cancels the request itself");
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(4), "the default timeout is 5 s, so this proves the 200 ms one");
+        scan.Errors.Should().BeEmpty();
+        var found = Find(scan, file);
+        found.MatchedEventId.Should().Be(_bahrain.Id, "the scan falls back to fuzzy matching");
+        found.MatchConfidence.Should().NotBe(LibraryImportService.MatchMemoryConfidence);
+    }
+
+    [Fact]
+    public async Task AHitOnAnEventWithAnEmptySeasonAppliesInItsSeasonFolder()
+    {
+        // An empty Season string is no season, the same as null.
+        await UsageData(true);
+        var imola = new Event
+        {
+            Title = "Emilia Romagna Grand Prix - Race", Sport = "Motorsport", LeagueId = _bahrain.LeagueId,
+            Season = "", SeasonNumber = 2024, EpisodeNumber = 30, Round = "7",
+            EventDate = new DateTime(2024, 5, 19, 13, 0, 0, DateTimeKind.Utc),
+            ExternalId = "ev-100007", Status = "completed", Monitored = true,
+        };
+        _db.Events.Add(imola);
+        _db.SaveChanges();
+        var file = WriteInLibrary("Formula 1", "Season 2024", "zz race clip 0007.mkv");
+        HubKnows(file, "ev-100007", "lg-000278");
+
+        var scan = await Service.ScanFolderAsync(_root, options: ScanOptions.Interactive);
+
+        var found = Find(scan, file);
+        found.FolderSeason.Should().Be("2024");
+        found.MatchedEventId.Should().Be(imola.Id);
+        found.MatchConfidence.Should().Be(LibraryImportService.MatchMemoryConfidence);
     }
 
     [Fact]
@@ -504,6 +565,9 @@ public class ScanMatchMemoryTests : IDisposable
         public Dictionary<string, (string EventId, string LeagueId)> Answers { get; } = new(StringComparer.Ordinal);
         public List<List<string>> LookupStems { get; } = new();
         public bool Throw { get; set; }
+        // The lookup waits until its token cancels it.
+        public bool Hang { get; set; }
+        public bool SawCancellation { get; private set; }
         public int Requests => Volatile.Read(ref _requests);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -519,6 +583,18 @@ public class ScanMatchMemoryTests : IDisposable
                 LookupStems.Add(stems);
             if (Throw)
                 throw new HttpRequestException("hub down");
+            if (Hang)
+            {
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    SawCancellation = true;
+                    throw;
+                }
+            }
 
             var matches = stems
                 .Where(Answers.ContainsKey)

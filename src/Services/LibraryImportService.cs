@@ -257,6 +257,7 @@ public class LibraryImportService
                     var eventTitle = sportsResult.Confidence >= 60 && !string.IsNullOrEmpty(sportsResult.EventTitle)
                         ? sportsResult.EventTitle
                         : parsedInfo.EventTitle;
+                    eventTitle = WithoutQualityWords(eventTitle);
 
                     var organization = sportsResult.Organization;
                     var sport = sportsResult.Sport;
@@ -282,7 +283,8 @@ public class LibraryImportService
                     var parsedYear = ExtractYearFromPath(filePath, filename, sportsResult.EventYear, eventDate);
 
                     // Read the S/E token ("Formula E - S2025E05 - Jeddah E Prix", "UFC Primetime - S27E03 - ...").
-                    // The scorer adds points when the episode number agrees. A different number does not reject.
+                    // The number can come from another database. The scorer uses it only
+                    // when other signals agree, and it never rejects an event alone.
                     int? explicitEpisodeNumber = null;
                     string? seriesLabel = null;
                     var seMatch = System.Text.RegularExpressions.Regex.Match(filename, @"S(\d{2,4})E(\d{1,4})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -467,10 +469,11 @@ public class LibraryImportService
                             if (folderSeason != null)
                             {
                                 // An event added by hand can have only a season number.
+                                // An empty Season string is no season, the same as null.
                                 // InFolderSeason holds the same rule for one event.
                                 // Keep the two the same.
                                 candidateQuery = candidateQuery.Where(e => e.Season == folderSeason ||
-                                    (e.Season == null && e.SeasonNumber == folderSeasonYear));
+                                    ((e.Season == null || e.Season == "") && e.SeasonNumber == folderSeasonYear));
                             }
 
                             // The folder is the user's own statement of the league.
@@ -738,6 +741,22 @@ public class LibraryImportService
                 .OrderByDescending(r => r.Length)
                 .FirstOrDefault();
         }
+
+        private readonly Dictionary<string, League?> _leagueByRoot = new();
+
+        /// <summary>
+        /// The league that the root's own folder name names exactly, by the
+        /// strict rule of the league folders. Null for a root such as "/media".
+        /// </summary>
+        public League? LeagueOfRoot(string root)
+        {
+            if (!_leagueByRoot.TryGetValue(root, out var league))
+            {
+                league = LibraryFolderResolver.ResolveLeague(Path.GetFileName(root), Leagues);
+                _leagueByRoot[root] = league;
+            }
+            return league;
+        }
     }
 
     /// <summary>
@@ -758,21 +777,33 @@ public class LibraryImportService
         var (leagueFolder, seasonFolderName) = LibraryFolderResolver.SplitPath(root, filePath);
         var leagueFolderPath = LibraryFolderResolver.LeagueFolderPath(root, filePath);
 
-        // A configured root is never a league folder. A season folder is not one either.
-        if (leagueFolderPath.Length <= root.Length ||
-            LibraryFolderResolver.ParseSeasonFolder(leagueFolder) != null)
+        // A root whose own name names a league is that league's folder.
+        // The folders below it are season or event folders, not leagues.
+        // Any other root is never a league folder.
+        var rootLeague = folders.LeagueOfRoot(root);
+        League? league;
+        if (rootLeague != null)
         {
-            return (null, null, null);
+            league = rootLeague;
         }
+        else
+        {
+            // A season folder is never a league folder either.
+            if (leagueFolderPath.Length <= root.Length ||
+                LibraryFolderResolver.ParseSeasonFolder(leagueFolder) != null)
+            {
+                return (null, null, null);
+            }
 
-        if (!folders.LeagueByFolder.TryGetValue(leagueFolderPath, out var league))
-        {
-            league = LibraryFolderResolver.ResolveLeague(leagueFolder, folders.Leagues);
-            folders.LeagueByFolder[leagueFolderPath] = league;
-            if (league == null)
-                result.UnresolvedFolders.Add(await DescribeUnresolvedFolderAsync(folders, leagueFolderPath, leagueFolder, options));
+            if (!folders.LeagueByFolder.TryGetValue(leagueFolderPath, out league))
+            {
+                league = LibraryFolderResolver.ResolveLeague(leagueFolder, folders.Leagues);
+                folders.LeagueByFolder[leagueFolderPath] = league;
+                if (league == null)
+                    result.UnresolvedFolders.Add(await DescribeUnresolvedFolderAsync(folders, leagueFolderPath, leagueFolder, options));
+            }
+            if (league == null) return (null, null, null);
         }
-        if (league == null) return (null, null, null);
 
         var seasonFolder = seasonFolderName == null ? null : LibraryFolderResolver.ParseSeasonFolder(seasonFolderName);
         if (seasonFolder == null) return (league, null, null);
@@ -2767,6 +2798,39 @@ public class LibraryImportService
         return named.Count == 1 ? named[0] : null;
     }
 
+    // The resolution and source words of the file parser. "CAM" and "TS"
+    // stay out, because "Onboard Cam" and similar titles use them as words.
+    private static readonly System.Text.RegularExpressions.Regex QualityWord = new(
+        @"(?<![A-Za-z0-9])(?:" + MediaFileParser.QualityTokens + "|" +
+        string.Join("|", MediaFileParser.SourceTokens.Split('|').Where(token => token is not ("CAM" or "TS"))) +
+        @")(?![A-Za-z0-9])",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    /// <summary>
+    /// The parsed title without quality and source words such as "WEBDL"
+    /// and "1080p". They name the copy, never the event.
+    /// </summary>
+    internal static string? WithoutQualityWords(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return title;
+        try
+        {
+            if (!QualityWord.IsMatch(title))
+                return title;
+            var cleaned = QualityWord.Replace(title, " ");
+            // Close the gaps and the separators that the removed words leave.
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"(?:\s*[-.]\s*){2,}|\s{2,}", " ");
+            return cleaned.Trim(' ', '-', '.', '_');
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return title;
+        }
+    }
+
     /// <summary>True when the event's broadcast day or UTC day is the date.</summary>
     private static bool FallsOn(Event evt, DateTime date) =>
         (evt.BroadcastDate ?? evt.EventDate).Date == date.Date || evt.EventDate.Date == date.Date;
@@ -2981,7 +3045,7 @@ public class LibraryImportService
         // A file that names one session of a weekend is never another session
         // of it. A second copy of a filled session otherwise moves onto a
         // sibling session, because the filled event is not a candidate.
-        var sessions = SessionsOf(originalTitle, eventTitle, evt.League?.Name);
+        var sessions = SessionsOf(originalTitle, eventTitle, evt);
         if (NamesAnotherSession(sessions))
         {
             logger?.LogDebug("[Match] Session gate: file names '{FileSession}', event '{Event}' is '{EventSession}' - rejecting",
@@ -3095,26 +3159,30 @@ public class LibraryImportService
         var locationAgrees = locationWords.Intersect(eventWords, StringComparer.OrdinalIgnoreCase).Any();
 
         // ── EXPLICIT S/E EPISODE NUMBER ─────────────────────────────────────────
-        // The number is Sportarr's own only on a file that Sportarr named.
-        // Such a file carries the id token and does not reach this scorer.
-        // A file named by another database carries that database's number.
-        // So the number only supports other agreement. It does not decide alone.
-        // Corroboration is a strong title, the exact date of this event when
-        // no other candidate falls on it, an equal round, or a location in
-        // the event title. A near date does not corroborate. A week holds
-        // many events, so an equal number near it is chance.
+        // A file with the id token does not reach this scorer. Any other
+        // file can carry a number that is not this event's: another database
+        // named it, or Sportarr named it without the token. So the number
+        // only supports other agreement. It does not decide alone.
+        // Corroboration is a strong title, the exact date of this event, an
+        // equal round, or a location in the event title. A near date does
+        // not corroborate. A week holds many events, so an equal number near
+        // it is chance.
         // A round and a location name a weekend, not a session. When the event
         // names a session, they corroborate only if the file names that session.
         // Same number with corroboration: add 50.
         // Same number without corroboration: add nothing. The match is chance.
         // Different number with corroboration: add nothing. The other signals decide.
         // Different number without corroboration: subtract 30.
-        if (explicitEpisodeNumber.HasValue && evt.EpisodeNumber.HasValue)
+        // When two or more candidates fall on the file's date, the number
+        // adds and subtracts nothing for any candidate. Such a day holds
+        // many numbers, so an equal one is chance, and a different one does
+        // not tell the events apart.
+        var dateSharedByCandidates = parsedDate.HasValue && dateSharedByAnotherCandidate;
+        if (explicitEpisodeNumber.HasValue && evt.EpisodeNumber.HasValue && !dateSharedByCandidates)
         {
             var numberAgrees = evt.EpisodeNumber.Value == explicitEpisodeNumber.Value;
-            var exactUniqueDate = dateMatch is { Reject: false, DaysDifference: 0 } &&
-                !dateSharedByAnotherCandidate;
-            var corroborated = strongTitleAward > 0 || exactUniqueDate ||
+            var exactDate = dateMatch is { Reject: false, DaysDifference: 0 };
+            var corroborated = strongTitleAward > 0 || exactDate ||
                 ((roundAgrees || locationAgrees) && FileNamesEventSession(sessions));
             if (numberAgrees && corroborated)
             {
@@ -3512,10 +3580,17 @@ public class LibraryImportService
 
     /// <summary>
     /// The motorsport session that the file names and the one the event
-    /// names. Each is null when it names none.
+    /// names. Each is null when it names none. An event of another sport
+    /// has no sessions, so both are null for it.
     /// </summary>
-    private static (string? File, string? Event) SessionsOf(string fileTitle, string eventTitle, string? leagueName)
+    private static (string? File, string? Event) SessionsOf(string fileTitle, string eventTitle, Event evt)
     {
+        // The detector reads "Practice 2" in any title, whatever the sport.
+        var sport = string.IsNullOrEmpty(evt.Sport) ? evt.League?.Sport : evt.Sport;
+        if (!EventPartDetector.IsMotorsport(sport ?? string.Empty))
+            return (null, null);
+
+        var leagueName = evt.League?.Name;
         // The identity form reads a Supercars "Race2" as "Race", the way the
         // league titles its races, so the two sides compare.
         var eventSession = EventPartDetector.DetectMotorsportSessionIdentity(eventTitle, leagueName, releaseTitle: false);
@@ -3577,10 +3652,11 @@ public class LibraryImportService
     /// <summary>
     /// True when the event is in the season that the folder names. This is
     /// the rule of the folder season filter on the candidate query. An
-    /// event added by hand can have only a season number.
+    /// event added by hand can have only a season number. An empty Season
+    /// string is no season, the same as null.
     /// </summary>
     private static bool InFolderSeason(Event evt, string folderSeason, int? folderSeasonYear) =>
-        evt.Season == folderSeason || (evt.Season == null && evt.SeasonNumber == folderSeasonYear);
+        evt.Season == folderSeason || (string.IsNullOrEmpty(evt.Season) && evt.SeasonNumber == folderSeasonYear);
 
     /// <summary>
     /// Why the file and the event of a match memory hit disagree, or null
@@ -3595,7 +3671,7 @@ public class LibraryImportService
             return $"the folder names season {folderSeason}";
         if (parsedYear.HasValue && !YearFits(parsedYear.Value, seasonYearEnd, filename, evt))
             return $"the file names the year {parsedYear.Value}";
-        if (NamesAnotherSession(SessionsOf(filename, evt.Title, evt.League?.Name)))
+        if (NamesAnotherSession(SessionsOf(filename, evt.Title, evt)))
             return "the file names another session";
         return null;
     }
