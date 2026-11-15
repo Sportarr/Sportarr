@@ -26,7 +26,10 @@ namespace Sportarr.Api.Services;
 ///   stream.
 /// - A rival channel must beat the current one by
 ///   Config.DvrReresolveMinImprovement confidence points. This stops two
-///   near-equal channels from swapping back and forth on every pass.
+///   near-equal channels from swapping back and forth on every pass. One
+///   exception applies. When both channels have evidence and the new one has
+///   at least the same confidence, the recording moves to the channel with
+///   the higher mapping rank. The rank is stable, so this does not flap.
 /// - A recording of an event with team channels follows the guide the same
 ///   way the scheduler does. When the guide lists the event on the
 ///   scheduler's pick and not on the current channel, the recording moves to
@@ -363,7 +366,17 @@ public class DvrChannelReresolveService : BackgroundService
         var guessToGuide = EventChannelResolverService.IsEvidence(best.Source)
             && !EventChannelResolverService.IsEvidence(current?.Source);
         var requiredGain = guessToGuide ? 1 : minImprovement;
-        if (best.Confidence < currentConfidence + requiredGain)
+
+        // When both channels have evidence and the new one is at least as
+        // good, the user's mapping choice decides. The rank does not change
+        // between passes. A move back needs the full margin, so the
+        // recording cannot flap.
+        var toHigherMapping = current != null
+            && EventChannelResolverService.IsEvidence(best.Source)
+            && EventChannelResolverService.IsEvidence(current.Source)
+            && best.Confidence >= current.Confidence
+            && best.MappingRank > current.MappingRank;
+        if (!toHigherMapping && best.Confidence < currentConfidence + requiredGain)
         {
             // The primary stays, so the hysteresis has done its job. The
             // backups still follow today's ranking: a channel whose guide
@@ -372,7 +385,9 @@ public class DvrChannelReresolveService : BackgroundService
             return false;
         }
 
-        var gainReason = $"confidence rose from {currentConfidence} to {best.Confidence} via {best.Source}";
+        var gainReason = toHigherMapping
+            ? $"both channels have evidence, the new one at confidence {best.Confidence} via {best.Source}, and your league mapping ranks it higher"
+            : $"confidence rose from {currentConfidence} to {best.Confidence} via {best.Source}";
         return await MoveAsync(db, recording, best.ChannelId, best.ChannelName, current?.ChannelName,
             ranked, teamChannels, lockWindow, gainReason, ct);
     }

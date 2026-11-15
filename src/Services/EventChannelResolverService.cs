@@ -312,10 +312,12 @@ public class EventChannelResolverService
             }
 
             score = Math.Clamp(score, 0, 100);
+            // The mapping rank decides between equal matches first. This
+            // score breaks the remaining ties, then quality does.
+            rawScores[ch.Id] = score;
             // A mapping or a broadcaster name is a guess. A guide listing is
             // evidence, so a guess never outranks one, however it is boosted.
             // The full score still orders the guesses among themselves.
-            rawScores[ch.Id] = score;
             if (!IsEvidence(source)) score = Math.Min(score, EpgMatchConfidence - 1);
             if (score < MinAcceptableConfidence) continue;
 
@@ -334,14 +336,29 @@ public class EventChannelResolverService
         // as a last resort.
         var health = channels.ToDictionary(c => c.Id, c => ChannelHealth.Rank(c.Status));
 
+        // The user's mapping choice decides between equal matches. Region
+        // boosts must not overrule it. It comes after confidence, so a guess
+        // never passes evidence.
+        candidates = candidates
+            .Select(c => c with { MappingRank = MappingRankOf(c.ChannelId, manualMappedChannels, preferredChannelIds) })
+            .ToList();
+
         var ordered = candidates
             .OrderByDescending(c => health.GetValueOrDefault(c.ChannelId, 1))
             .ThenByDescending(c => c.Confidence)
+            .ThenByDescending(c => c.MappingRank)
             .ThenByDescending(c => rawScores.GetValueOrDefault(c.ChannelId))
             .ThenByDescending(c => c.QualityScore)
             .ToList();
         return new EventChannelResolution(ordered, foreign);
     }
+
+    /// <summary>
+    /// The rank of the user's mapping for a channel. A manual mapping is 2,
+    /// a preferred mapping is 1 and any other channel is 0.
+    /// </summary>
+    private static int MappingRankOf(int channelId, HashSet<int> manual, HashSet<int> preferred) =>
+        manual.Contains(channelId) ? 2 : preferred.Contains(channelId) ? 1 : 0;
 
     /// <summary>
     /// Scores the per-event channels that name this event. Each source, and
@@ -929,7 +946,8 @@ public record EventChannelResolution(
 /// <summary>
 /// One candidate channel for an event. Confidence is 0-100. Source names the
 /// signal that contributed. It is "event_channel", "epg_program",
-/// "broadcast" or "league-mapping".
+/// "broadcast" or "league-mapping". MappingRank is the user's league mapping
+/// choice. It is 2 for manual, 1 for preferred and 0 for any other channel.
 /// </summary>
 public record EventChannelCandidate(
     int ChannelId,
@@ -938,4 +956,5 @@ public record EventChannelCandidate(
     int QualityScore,
     string? DetectedQuality,
     int Confidence,
-    string Source);
+    string Source,
+    int MappingRank = 0);
