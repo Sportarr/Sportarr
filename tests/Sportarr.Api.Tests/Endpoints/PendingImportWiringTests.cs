@@ -204,15 +204,115 @@ public class PendingImportWiringTests
     }
 
     [Fact]
-    public async Task APageImportOfADvrChoiceFileMarksTheRecordingImported()
+    public async Task APageImportThatMovesADvrChoiceFileMarksTheRecordingImported()
     {
         await using var host = await WiringHost.CreateAsync();
         var (first, _) = host.Seed();
         var file = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var (recording, pending) = await AddDvrChoiceAsync(host, file, first);
+
+        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = first.Id, ImportMode = "move" },
+        });
+
+        var imported = result.Imported.Should().ContainSingle().Subject;
+        File.Exists(file).Should().BeFalse();
+        (await host.Db.PendingImports.AsNoTracking().SingleAsync(p => p.Id == pending.Id))
+            .Status.Should().Be(PendingImportStatus.Completed);
+        var saved = await host.Db.DvrRecordings.AsNoTracking().SingleAsync(r => r.Id == recording.Id);
+        saved.Status.Should().Be(DvrRecordingStatus.Imported);
+        saved.ImportedAt.Should().NotBeNull();
+        saved.ErrorMessage.Should().BeNull();
+        saved.OutputPath.Should().Be(imported, "a move takes the recording's file into the library");
+    }
+
+    [Fact]
+    public async Task APageImportThatCopiesADvrChoiceFileKeepsTheRecordingOnItsCapture()
+    {
+        await using var host = await WiringHost.CreateAsync();
+        var (first, _) = host.Seed();
+        var file = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var (recording, _) = await AddDvrChoiceAsync(host, file, first);
+
+        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = first.Id, ImportMode = "copy" },
+        });
+
+        result.Imported.Should().ContainSingle().Which.Should().NotBe(file);
+        var saved = await host.Db.DvrRecordings.AsNoTracking().SingleAsync(r => r.Id == recording.Id);
+        saved.Status.Should().Be(DvrRecordingStatus.Imported);
+        saved.ImportedAt.Should().NotBeNull();
+        saved.OutputPath.Should().Be(file, "a delete of the recording must remove the capture, not the library copy");
+    }
+
+    [Fact]
+    public async Task APageImportOfADvrChoiceFileToAnotherEventLeavesTheRecording()
+    {
+        await using var host = await WiringHost.CreateAsync();
+        var (first, second) = host.Seed();
+        var file = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var (recording, pending) = await AddDvrChoiceAsync(host, file, first);
+
+        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = second.Id, ImportMode = "move" },
+        });
+
+        result.Imported.Should().ContainSingle();
+        (await host.Db.PendingImports.AsNoTracking().SingleAsync(p => p.Id == pending.Id))
+            .Status.Should().Be(PendingImportStatus.Completed);
+        await AssertUnchangedAsync(host, recording);
+    }
+
+    [Fact]
+    public async Task APageImportOfADvrChoiceFileToAnotherPartLeavesTheRecording()
+    {
+        await using var host = await WiringHost.CreateAsync();
+        var (first, _) = host.Seed();
+        var file = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var (recording, _) = await AddDvrChoiceAsync(host, file, first, part: "Second Half");
+
+        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = first.Id, ImportMode = "move" },
+        });
+
+        result.Imported.Should().ContainSingle();
+        await AssertUnchangedAsync(host, recording);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APageImportLeavesARecordingThatChangedSinceTheRowWasWritten(bool pathChanged)
+    {
+        await using var host = await WiringHost.CreateAsync();
+        var (first, _) = host.Seed();
+        var file = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var (recording, _) = await AddDvrChoiceAsync(host, file, first,
+            status: pathChanged ? DvrRecordingStatus.Completed : DvrRecordingStatus.Failed,
+            outputPath: pathChanged ? file + ".old" : file);
+
+        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = first.Id, ImportMode = "move" },
+        });
+
+        result.Imported.Should().ContainSingle();
+        await AssertUnchangedAsync(host, recording);
+    }
+
+    /// <summary>A recording and its "dvr-N" choice row, as the DVR service writes them.</summary>
+    private static async Task<(DvrRecording Recording, PendingImport Pending)> AddDvrChoiceAsync(
+        WiringHost host, string file, Event evt, string? part = null,
+        DvrRecordingStatus status = DvrRecordingStatus.Completed, string? outputPath = null)
+    {
         var recording = new DvrRecording
         {
-            EventId = first.Id, ChannelId = 1, Title = first.Title, Status = DvrRecordingStatus.Completed,
-            OutputPath = file, Quality = "HDTV-720p", ErrorMessage = "Choose which file to keep.",
+            EventId = evt.Id, ChannelId = 1, Title = evt.Title, Status = status, PartName = part,
+            OutputPath = outputPath ?? file, Quality = "HDTV-720p", ErrorMessage = "Choose which file to keep.",
             ScheduledStart = DateTime.UtcNow.AddHours(-3), ScheduledEnd = DateTime.UtcNow.AddHours(-1),
         };
         host.Db.DvrRecordings.Add(recording);
@@ -220,25 +320,22 @@ public class PendingImportWiringTests
         var pending = new PendingImport
         {
             DownloadId = $"dvr-{recording.Id}", Title = Path.GetFileName(file), FilePath = file, Size = 4096,
-            SuggestedEventId = first.Id, SuggestionConfidence = 100, Protocol = "DVR", Status = PendingImportStatus.Pending,
+            SuggestedEventId = evt.Id, SuggestedPart = part, SuggestionConfidence = 100, Protocol = "DVR",
+            Status = PendingImportStatus.Pending,
         };
         host.Db.PendingImports.Add(pending);
         await host.Db.SaveChangesAsync();
         host.Db.ChangeTracker.Clear();
+        return (recording, pending);
+    }
 
-        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
-        {
-            new() { FilePath = file, EventId = first.Id, ImportMode = "copy" },
-        });
-
-        var imported = result.Imported.Should().ContainSingle().Subject;
-        (await host.Db.PendingImports.AsNoTracking().SingleAsync(p => p.Id == pending.Id))
-            .Status.Should().Be(PendingImportStatus.Completed);
-        var saved = await host.Db.DvrRecordings.AsNoTracking().SingleAsync(r => r.Id == recording.Id);
-        saved.Status.Should().Be(DvrRecordingStatus.Imported);
-        saved.ImportedAt.Should().NotBeNull();
-        saved.ErrorMessage.Should().BeNull();
-        saved.OutputPath.Should().Be(imported, "the recording follows its file into the library");
+    private static async Task AssertUnchangedAsync(WiringHost host, DvrRecording before)
+    {
+        var saved = await host.Db.DvrRecordings.AsNoTracking().SingleAsync(r => r.Id == before.Id);
+        saved.Status.Should().Be(before.Status);
+        saved.ImportedAt.Should().BeNull();
+        saved.OutputPath.Should().Be(before.OutputPath);
+        saved.ErrorMessage.Should().Be(before.ErrorMessage);
     }
 
     [Fact]

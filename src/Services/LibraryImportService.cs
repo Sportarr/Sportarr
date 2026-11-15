@@ -1075,8 +1075,8 @@ public class LibraryImportService
 
         // The matches that the user chose. One send follows the batch save.
         var matchReports = new List<FileMatchSuggestion>();
-        // The source and the library path of each file that this batch imported.
-        var importedSources = new List<(string Source, string Destination)>();
+        // Each file that this batch imported, with the file row it now has.
+        var importedSources = new List<ImportedSource>();
         var mayReportMatches = config.SendAnonymousUsageData && _apiClient != null;
 
         foreach (var request in requests)
@@ -1483,7 +1483,8 @@ public class LibraryImportService
                         }
 
                         result.Imported.Add(destinationPath);
-                        importedSources.Add((request.FilePath, destinationPath));
+                        importedSources.Add(new ImportedSource(request.FilePath, destinationPath,
+                            linkedFile.EventId, linkedFile.PartName));
                         notifyQueue.Add((existingEvent, destinationPath,
                             request.Quality ?? _fileParser.BuildQualityString(parsedInfo), linkedFile));
 
@@ -1663,7 +1664,8 @@ public class LibraryImportService
                     }
 
                     result.Created.Add(destinationPath);
-                    importedSources.Add((request.FilePath, destinationPath));
+                    importedSources.Add(new ImportedSource(request.FilePath, destinationPath,
+                        eventFile.EventId, eventFile.PartName));
                     notifyQueue.Add((newEvent, destinationPath,
                         request.Quality ?? _fileParser.BuildQualityString(parsedInfo), eventFile));
                     _logger.LogInformation("Created new event from file: {EventTitle} -> {FilePath} (Part: {PartName})",
@@ -1750,13 +1752,13 @@ public class LibraryImportService
     /// endpoint completes it. A rejected row is already gone, and a row in
     /// another state is not changed. The caller saves.
     /// </summary>
-    private async Task CompletePendingImportsOfAsync(IReadOnlyCollection<(string Source, string Destination)> importedFiles)
+    private async Task CompletePendingImportsOfAsync(IReadOnlyCollection<ImportedSource> importedFiles)
     {
         if (importedFiles.Count == 0)
             return;
-        var destinations = new Dictionary<string, string>(SourcePathComparer);
-        foreach (var (source, destination) in importedFiles)
-            destinations[source] = destination;
+        var destinations = new Dictionary<string, ImportedSource>(SourcePathComparer);
+        foreach (var file in importedFiles)
+            destinations[file.Source] = file;
         var pending = await _db.PendingImports
             .Where(p => p.Status == PendingImportStatus.Pending)
             .ToListAsync();
@@ -1775,10 +1777,10 @@ public class LibraryImportService
     /// A "dvr-N" row asks the user to choose between a recording and a
     /// downloaded file. When the user imports the recording's file here, mark
     /// the recording imported, as the accept endpoint does. Otherwise the
-    /// recording stays completed and not imported, and the retention prune
-    /// can delete the file that it points to. The caller saves.
+    /// recording stays completed, and the next DVR import pass marks it
+    /// failed when a move took its file away. The caller saves.
     /// </summary>
-    private async Task MarkDvrChoiceRecordingImportedAsync(PendingImport row, string destination)
+    private async Task MarkDvrChoiceRecordingImportedAsync(PendingImport row, ImportedSource file)
     {
         if (!row.DownloadId.StartsWith("dvr-", StringComparison.Ordinal)
             || !int.TryParse(row.DownloadId.AsSpan(4), out var recordingId))
@@ -1788,14 +1790,33 @@ public class LibraryImportService
         if (recording == null || recording.Status != DvrRecordingStatus.Completed
             || recording.OutputPath == null || !SourcePathComparer.Equals(recording.OutputPath, row.FilePath))
             return;
-        recording.OutputPath = destination;
+        // The accept endpoint takes a recording only for its own event and part.
+        // A recording that points at the file of another event would delete
+        // that file when the user deletes the recording with its file.
+        var recordingPart = EventPartDetector.IsFullEvent(recording.PartName) ? null : recording.PartName;
+        var filePart = EventPartDetector.IsFullEvent(file.PartName) ? null : file.PartName;
+        if (recording.EventId != file.EventId
+            || !string.Equals(recordingPart, filePart, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("[Import] Recording {RecordingId} stays as it is because its file went to another event or part",
+                recording.Id);
+            return;
+        }
+        // A copy or a hardlink keeps the capture in place. The recording then
+        // keeps its own path, so a delete of the recording removes the capture
+        // and not the library file.
+        if (!File.Exists(file.Source))
+            recording.OutputPath = file.Destination;
         recording.Status = DvrRecordingStatus.Imported;
         recording.ImportedAt = DateTime.UtcNow;
         recording.LastUpdated = DateTime.UtcNow;
         recording.ErrorMessage = null;
         _logger.LogInformation("[Import] Marked recording {RecordingId} imported because its file was imported: {Path}",
-            recording.Id, destination);
+            recording.Id, file.Destination);
     }
+
+    /// <summary>A file that a batch imported, and the event and part it went to.</summary>
+    private readonly record struct ImportedSource(string Source, string Destination, int EventId, string? PartName);
 
     /// <summary>
     /// Compares source paths. Windows paths ignore case, so a pending row
