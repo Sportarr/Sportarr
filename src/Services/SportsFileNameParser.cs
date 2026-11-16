@@ -58,7 +58,9 @@ public class SportsFileNameParser
         {
             Sport = "Fighting",
             Organization = "UFC",
-            Pattern = new Regex(@"UFC[\.\-\s]+(?<number>\d+)[\.\-\s]+(?<fighter1>[A-Za-z]+)[\.\-\s]+vs?[\.\-\s]+(?<fighter2>[A-Za-z]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            // A fighter name can hold an accented letter, as in Procházka. A
+            // decomposed accent is a separate mark, so the groups take marks too.
+            Pattern = new Regex(@"UFC[\.\-\s]+(?<number>\d+)[\.\-\s]+(?<fighter1>[\p{L}\p{M}]+)[\.\-\s]+vs?[\.\-\s]+(?<fighter2>[\p{L}\p{M}]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"UFC {match.Groups["number"].Value}: {match.Groups["fighter1"].Value} vs {match.Groups["fighter2"].Value}"
         },
 

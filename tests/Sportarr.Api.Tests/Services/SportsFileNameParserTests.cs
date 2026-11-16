@@ -19,6 +19,25 @@ public class SportsFileNameParserTests
 {
     private readonly SportsFileNameParser _parser = new(Mock.Of<ILogger<SportsFileNameParser>>());
 
+    // The title keeps the whole name. A cut name such as "Proch" holds no
+    // whole word of the event title, so the match lost its title award.
+    [Theory]
+    [InlineData("UFC - S2024E22 - pt3 - UFC 303 Pereira vs Procházka 2 - WEBDL-1080p", "UFC 303: Pereira vs Procházka")]
+    [InlineData("UFC.299.OMalley.vs.Vera.2.1080p.WEB.h264-GRP", "UFC 299: OMalley vs Vera")]
+    public void NumberedUfcCard_KeepsAnAccentedFighterName(string name, string title)
+    {
+        _parser.Parse(name).EventTitle.Should().Be(title);
+    }
+
+    // Some file systems store the accent as a separate combining mark (NFD).
+    [Fact]
+    public void NumberedUfcCard_KeepsADecomposedAccent()
+    {
+        var name = "UFC.303.Pereira.vs.Procházka.2.1080p.WEB.h264-GRP".Normalize(System.Text.NormalizationForm.FormD);
+
+        _parser.Parse(name).EventTitle.Should().Be("UFC 303: Pereira vs Procházka".Normalize(System.Text.NormalizationForm.FormD));
+    }
+
     [Theory]
     // The exact Sky F1 releases from issue #107.
     [InlineData("Formula.1.2026x02.China.Race.SkyF1UHD.4K-GROUP", 2026)]
