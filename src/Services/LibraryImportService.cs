@@ -1721,7 +1721,7 @@ public class LibraryImportService
         }
 
         await CompletePendingImportsOfAsync(importedSources);
-        await _db.SaveChangesAsync();
+        await SaveLeavingRemovedPendingRowsAsync();
 
         await ReportFileMatchesAsync(matchReports);
 
@@ -1791,19 +1791,21 @@ public class LibraryImportService
             .Where(p => p.Status == PendingImportStatus.Pending)
             .ToListAsync();
         var matched = pending.Where(p => destinations.ContainsKey(p.FilePath)).ToList();
-        foreach (var row in matched.Where(p => !IsDvrChoiceRow(p)))
-            CompletePendingRow(row);
-
-        var choices = matched.Where(IsDvrChoiceRow).ToList();
-        if (choices.Count == 0)
+        if (!matched.Any(IsDvrChoiceRow))
+        {
+            foreach (var row in matched)
+                CompletePendingRow(row);
             return;
+        }
         // Recording retention and the accept endpoint resolve the same rows
         // under this gate. Without it, retention can remove a row between the
         // read above and the save, and the save then fails for the whole batch.
         await DvrIndexerChoice.EnterGateAsync();
         try
         {
-            foreach (var row in choices)
+            // Other steps can resolve a disk row while the batch waits for
+            // the gate. So the batch reads each row again.
+            foreach (var row in matched)
             {
                 var status = await _db.PendingImports.AsNoTracking()
                     .Where(p => p.Id == row.Id)
@@ -1818,11 +1820,41 @@ public class LibraryImportService
                 CompletePendingRow(row);
                 await MarkDvrChoiceRecordingImportedAsync(row, destinations[row.FilePath]);
             }
-            await _db.SaveChangesAsync();
+            await SaveLeavingRemovedPendingRowsAsync();
         }
         finally
         {
             DvrIndexerChoice.Gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Save the batch. Another step can remove a non-recording pending row
+    /// after this batch read it. That row stays removed, and the rest of the
+    /// batch saves. Any other conflict fails the save as before.
+    /// </summary>
+    private async Task SaveLeavingRemovedPendingRowsAsync()
+    {
+        while (true)
+        {
+            try
+            {
+                await _db.SaveChangesAsync();
+                return;
+            }
+            // EF Core checks the row count of each update inside the save.
+            // So this catch finds a row removed at any time before the save.
+            // A status change without a delete still gets overwritten.
+            catch (DbUpdateConcurrencyException ex) when (ex.Entries.Count > 0
+                && ex.Entries.All(e => e.Entity is PendingImport row && !IsDvrChoiceRow(row)))
+            {
+                foreach (var entry in ex.Entries)
+                {
+                    _logger.LogInformation("[Import] Pending import {Id} was removed by another step, so it stays removed",
+                        ((PendingImport)entry.Entity).Id);
+                    entry.State = EntityState.Detached;
+                }
+            }
         }
     }
 

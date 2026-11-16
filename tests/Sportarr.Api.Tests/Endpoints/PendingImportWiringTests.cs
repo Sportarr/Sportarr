@@ -6,7 +6,10 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -379,6 +382,139 @@ public class PendingImportWiringTests
         File.Exists(downloaded).Should().BeTrue();
     }
 
+    // SQLite saves in a transaction and checks the row count of each update.
+    // The in-memory provider saves without a transaction, so both run here.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APageImportKeepsGoingWhenAnotherStepRemovesTheDiskRowBeforeTheSave(bool sqlite)
+    {
+        await using var host = await WiringHost.CreateAsync(sqlite);
+        await host.UsageData(true);
+        await host.AddWebhookAsync();
+        var (first, second) = host.Seed();
+        var file = host.Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+        var pending = await host.AddPendingAsync(file, first.Id, 50);
+        // The reject endpoint removes the row after the batch read it and before the batch saves.
+        host.BeforeSave = async db =>
+        {
+            if (!db.ChangeTracker.Entries<PendingImport>()
+                    .Any(e => e.Entity.Id == pending.Id && e.State == EntityState.Modified))
+                return false;
+            await using var rejectDb = host.NewContext();
+            rejectDb.PendingImports.Remove(await rejectDb.PendingImports.SingleAsync(p => p.Id == pending.Id));
+            await rejectDb.SaveChangesAsync();
+            return true;
+        };
+
+        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = second.Id, SuggestedEventId = first.Id, ReportMatch = true, ImportMode = "copy" },
+        });
+
+        host.BeforeSaveRan.Should().BeTrue("the row must go between the read and the save");
+        result.Imported.Should().ContainSingle();
+        result.Failed.Should().BeEmpty();
+        (await host.Db.PendingImports.AsNoTracking().AnyAsync(p => p.Id == pending.Id)).Should().BeFalse();
+        (await host.SentSuggestions()).Should().ContainSingle()
+            .Which.GetProperty("eventId").GetString().Should().Be("ev-313015");
+        host.Handler.Webhooks.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("removed")]
+    [InlineData(nameof(PendingImportStatus.Importing))]
+    [InlineData(nameof(PendingImportStatus.Rejected))]
+    public async Task APageImportThatWaitsForTheRecordingChoiceGateLeavesADiskRowThatAnotherStepResolved(string? change)
+    {
+        await using var host = await WiringHost.CreateAsync();
+        await host.UsageData(true);
+        await host.AddWebhookAsync();
+        var (first, second) = host.Seed();
+        var recordingFile = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var (recording, choice) = await AddDvrChoiceAsync(host, recordingFile, first);
+        var diskFile = host.Write("NFL.2025.Ravens.vs.Lions.1080p.WEB.h264-GRP.mkv");
+        var disk = await host.AddPendingAsync(diskFile, first.Id, 50);
+        // The batch uses host.Db. The other step uses its own context on the same store.
+        await using var otherDb = host.NewContext();
+
+        Task<ImportResult> batch;
+        await DvrIndexerChoice.EnterGateAsync();
+        try
+        {
+            batch = host.Library.ImportFilesAsync(new List<FileImportRequest>
+            {
+                new() { FilePath = recordingFile, EventId = first.Id, ImportMode = "copy" },
+                new() { FilePath = diskFile, EventId = second.Id, SuggestedEventId = first.Id, ReportMatch = true, ImportMode = "copy" },
+            });
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (DvrIndexerChoice.GateWaiters == 0)
+            {
+                batch.IsCompleted.Should().BeFalse("the batch must wait for the recording choice gate");
+                DateTime.UtcNow.Should().BeBefore(deadline, "the batch must reach the gate");
+                await Task.Delay(10);
+            }
+            // The batch has read the disk row. Another step resolves it now.
+            var row = await otherDb.PendingImports.SingleAsync(p => p.Id == disk.Id);
+            if (change == "removed")
+                otherDb.PendingImports.Remove(row);
+            else if (change != null)
+                row.Status = Enum.Parse<PendingImportStatus>(change);
+            await otherDb.SaveChangesAsync();
+        }
+        finally
+        {
+            DvrIndexerChoice.Gate.Release();
+        }
+
+        var result = await batch;
+        result.Imported.Should().HaveCount(2);
+        result.Failed.Should().BeEmpty();
+        var saved = await host.Db.PendingImports.AsNoTracking().SingleOrDefaultAsync(p => p.Id == disk.Id);
+        if (change == "removed")
+            saved.Should().BeNull();
+        else
+            saved!.Status.Should().Be(change == null
+                ? PendingImportStatus.Completed
+                : Enum.Parse<PendingImportStatus>(change), "the batch leaves a row that another step resolved");
+        (await host.Db.PendingImports.AsNoTracking().SingleAsync(p => p.Id == choice.Id))
+            .Status.Should().Be(PendingImportStatus.Completed);
+        (await host.Db.DvrRecordings.AsNoTracking().SingleAsync(r => r.Id == recording.Id))
+            .Status.Should().Be(DvrRecordingStatus.Imported);
+        (await host.SentSuggestions()).Should().ContainSingle()
+            .Which.GetProperty("eventId").GetString().Should().Be("ev-313015");
+        host.Handler.Webhooks.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task APageImportStillFailsWhenAnotherStepRemovesARecordingThatItSaves()
+    {
+        await using var host = await WiringHost.CreateAsync();
+        var (first, _) = host.Seed();
+        var file = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var (recording, _) = await AddDvrChoiceAsync(host, file, first);
+        // Only a removed pending row is left alone. A removed recording is a real conflict.
+        host.BeforeSave = async db =>
+        {
+            if (!db.ChangeTracker.Entries<DvrRecording>()
+                    .Any(e => e.Entity.Id == recording.Id && e.State == EntityState.Modified))
+                return false;
+            await using var otherDb = host.NewContext();
+            otherDb.DvrRecordings.Remove(await otherDb.DvrRecordings.SingleAsync(r => r.Id == recording.Id));
+            await otherDb.SaveChangesAsync();
+            return true;
+        };
+
+        var import = () => host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = file, EventId = first.Id, ImportMode = "copy" },
+        });
+
+        await import.Should().ThrowAsync<DbUpdateConcurrencyException>();
+        host.BeforeSaveRan.Should().BeTrue();
+    }
+
     /// <summary>A recording and its "dvr-N" choice row, as the DVR service writes them.</summary>
     private static async Task<(DvrRecording Recording, PendingImport Pending)> AddDvrChoiceAsync(
         WiringHost host, string file, Event evt, string? part = null,
@@ -459,15 +595,32 @@ public class PendingImportWiringTests
         private readonly string _directory;
         private readonly string _incoming;
 
-        private WiringHost(WebApplication app, string directory, RecordingHandler handler, Dictionary<string, string> embeddedIds)
+        private readonly Func<DbContextOptionsBuilder<SportarrDbContext>, DbContextOptionsBuilder<SportarrDbContext>> _store;
+        private readonly SqliteConnection? _keeper;
+        private readonly SaveSeam _saves;
+
+        private WiringHost(WebApplication app, string directory, RecordingHandler handler, Dictionary<string, string> embeddedIds,
+            Func<DbContextOptionsBuilder<SportarrDbContext>, DbContextOptionsBuilder<SportarrDbContext>> store,
+            SqliteConnection? keeper, SaveSeam saves)
         {
             _app = app;
             _directory = directory;
             _incoming = Path.Combine(directory, "incoming");
             Handler = handler;
             EmbeddedIds = embeddedIds;
+            _store = store;
+            _keeper = keeper;
+            _saves = saves;
             Client = app.GetTestClient();
         }
+
+        /// <summary>
+        /// Runs before each save of the shared context until it returns true.
+        /// A test uses it to change a row between the batch's read and its save.
+        /// </summary>
+        public Func<DbContext, Task<bool>>? BeforeSave { set => _saves.Before = value; }
+
+        public bool BeforeSaveRan => _saves.Ran;
 
         public HttpClient Client { get; }
         public RecordingHandler Handler { get; }
@@ -476,13 +629,34 @@ public class PendingImportWiringTests
         public LibraryImportService Library => _app.Services.GetRequiredService<LibraryImportService>();
         private ConfigService Config => _app.Services.GetRequiredService<ConfigService>();
 
-        public static async Task<WiringHost> CreateAsync()
+        /// <summary>
+        /// The in-memory provider is the default. With sqlite set, the host
+        /// uses an in-memory SQLite database, which saves in a transaction.
+        /// </summary>
+        public static async Task<WiringHost> CreateAsync(bool sqlite = false)
         {
             var directory = Path.Combine(Path.GetTempPath(), "sportarr-pending-wiring-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Path.Combine(directory, "incoming"));
             Directory.CreateDirectory(Path.Combine(directory, "library"));
             var handler = new RecordingHandler();
             var embeddedIds = new Dictionary<string, string>();
+            // Each context on this store sees the same rows, with or without the seam.
+            Func<DbContextOptionsBuilder<SportarrDbContext>, DbContextOptionsBuilder<SportarrDbContext>> store;
+            SqliteConnection? keeper = null;
+            if (sqlite)
+            {
+                var connectionString = $"Data Source=pending-wiring-{Guid.NewGuid():N};Mode=Memory;Cache=Shared;Pooling=False";
+                // The open connection keeps the shared in-memory database alive.
+                keeper = new SqliteConnection(connectionString);
+                await keeper.OpenAsync();
+                store = options => options.UseSqlite(connectionString);
+            }
+            else
+            {
+                var root = new InMemoryDatabaseRoot();
+                store = options => options.UseInMemoryDatabase(directory, root);
+            }
+            var saves = new SaveSeam();
 
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -494,8 +668,11 @@ public class PendingImportWiringTests
             builder.Logging.ClearProviders();
             var services = builder.Services;
             // One context keeps the routes and the assertions on the same rows.
-            services.AddSingleton(new SportarrDbContext(new DbContextOptionsBuilder<SportarrDbContext>()
-                .UseInMemoryDatabase(directory).Options));
+            var shared = new SportarrDbContext(store(new DbContextOptionsBuilder<SportarrDbContext>())
+                .AddInterceptors(saves).Options);
+            if (sqlite)
+                await shared.Database.EnsureCreatedAsync();
+            services.AddSingleton(shared);
             services.AddMemoryCache();
             services.AddSingleton(new HttpClient(handler));
             services.AddSingleton(Mock.Of<IHttpClientFactory>());
@@ -534,7 +711,7 @@ public class PendingImportWiringTests
             var app = builder.Build();
             app.MapQueueAndImportEndpoints();
             await app.StartAsync();
-            var host = new WiringHost(app, directory, handler, embeddedIds);
+            var host = new WiringHost(app, directory, handler, embeddedIds, store, keeper, saves);
             var config = await host.Config.GetConfigAsync();
             config.SkipFreeSpaceCheck = true;
             config.UseHardlinks = false;
@@ -542,11 +719,22 @@ public class PendingImportWiringTests
             return host;
         }
 
-        /// <summary>A second context on the same in-memory store, as another service uses.</summary>
-        public SportarrDbContext NewContext() => new(new DbContextOptionsBuilder<SportarrDbContext>()
-            .UseInMemoryDatabase(_directory).Options);
+        /// <summary>A second context on the same store, as another service uses.</summary>
+        public SportarrDbContext NewContext() => new(_store(new DbContextOptionsBuilder<SportarrDbContext>()).Options);
 
         public async Task UsageData(bool on) => (await Config.GetConfigAsync()).SendAnonymousUsageData = on;
+
+        /// <summary>A webhook for imports. The handler records what it sends.</summary>
+        public async Task AddWebhookAsync()
+        {
+            Db.Notifications.Add(new Notification
+            {
+                Name = "Imports", Implementation = "Webhook",
+                ConfigJson = """{"webhook":"https://hooks.invalid/import","onDownload":true}""",
+            });
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
 
         public (Event First, Event Second) Seed()
         {
@@ -608,7 +796,25 @@ public class PendingImportWiringTests
         {
             Client.Dispose();
             await _app.DisposeAsync();
+            if (_keeper != null) await _keeper.DisposeAsync();
             if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
+        }
+    }
+
+    private sealed class SaveSeam : SaveChangesInterceptor
+    {
+        public Func<DbContext, Task<bool>>? Before { get; set; }
+        public bool Ran { get; private set; }
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (Before != null && eventData.Context != null && await Before(eventData.Context))
+            {
+                Before = null;
+                Ran = true;
+            }
+            return result;
         }
     }
 
@@ -616,10 +822,17 @@ public class PendingImportWiringTests
     {
         private readonly object _gate = new();
         public List<string> Bodies { get; } = new();
+        public List<string> Webhooks { get; } = new();
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content == null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
+            if (request.RequestUri!.Host == "hooks.invalid")
+            {
+                lock (_gate)
+                    Webhooks.Add(body);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
             if (request.RequestUri!.AbsolutePath.EndsWith("/suggestions/file-matches", StringComparison.Ordinal))
             {
                 lock (_gate)
