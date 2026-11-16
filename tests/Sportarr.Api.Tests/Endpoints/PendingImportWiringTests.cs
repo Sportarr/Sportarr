@@ -161,6 +161,27 @@ public class PendingImportWiringTests
         cleared.ResolvedAt.Should().NotBeNull();
     }
 
+    // Match season pairs files with events by order, so the user did not pick them.
+    [Fact]
+    public async Task APageImportOfASeasonMatchPairReportsNothing()
+    {
+        await using var host = await WiringHost.CreateAsync();
+        await host.UsageData(true);
+        var (first, second) = host.Seed();
+        var paired = host.Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+        var picked = host.Write("NFL.2025.Ravens.vs.Lions.1080p.WEB.h264-GRP.mkv");
+
+        var result = await host.Library.ImportFilesAsync(new List<FileImportRequest>
+        {
+            new() { FilePath = paired, EventId = first.Id, SuggestedEventId = second.Id, ReportMatch = true, PairedBySeasonMatch = true, ImportMode = "copy" },
+            new() { FilePath = picked, EventId = second.Id, SuggestedEventId = first.Id, ReportMatch = true, ImportMode = "copy" },
+        });
+
+        result.Imported.Should().HaveCount(2);
+        (await host.SentSuggestions()).Should().ContainSingle()
+            .Which.GetProperty("eventId").GetString().Should().Be("ev-313015", "only the user's own pick is reported");
+    }
+
     [Fact]
     public async Task AFailedPageImportLeavesThePendingRow()
     {
@@ -412,7 +433,7 @@ public class PendingImportWiringTests
         // The client tries to turn the report off. Only the server decides.
         using var response = await app.GetTestClient().PostAsJsonAsync("/api/library/import", new[]
         {
-            new { filePath = "/media/missing/file.mkv", eventId = 7, suggestedEventId = 7, reportMatch = false, suggestedByMemory = true },
+            new { filePath = "/media/missing/file.mkv", eventId = 7, suggestedEventId = 7, reportMatch = false, suggestedByMemory = true, pairedBySeasonMatch = true },
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.Accepted);
@@ -423,6 +444,7 @@ public class PendingImportWiringTests
         var request = TaskService.ReadLibraryImportRequests(body).Should().ContainSingle().Subject;
         request.ReportMatch.Should().BeTrue();
         request.SuggestedByMemory.Should().BeTrue();
+        request.PairedBySeasonMatch.Should().BeTrue();
         request.EventId.Should().Be(7);
         request.SuggestedEventId.Should().Be(7);
     }

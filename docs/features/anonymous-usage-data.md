@@ -50,6 +50,7 @@ This happens when you import from **Library Import**, and when you accept a file
 - A file that the event already holds, when you import it again
 - An event or a league that has no sportarr.net id
 - A match from other installs that you import without a change, because sportarr.net gave that answer itself
+- A file that **Match season** paired with an event, because the pair comes from the order of the list
 - An IPTV recording
 
 The service counts how many installs matched each cleaned name to each event. Once a day it looks for the names that installs agree on. A name qualifies only when all of these are true.

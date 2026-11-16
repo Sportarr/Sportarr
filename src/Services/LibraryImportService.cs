@@ -1135,7 +1135,9 @@ public class LibraryImportService
                 // answer. A report would count it again, so it is not sent.
                 var keptMemoryAnswer = request.SuggestedByMemory && request.SuggestedEventId.HasValue
                     && request.EventId == request.SuggestedEventId;
-                var reportMatch = request.ReportMatch && mayReportMatches && !keptMemoryAnswer;
+                // A Match season pair comes from the list order, so it is not reported.
+                var reportMatch = request.ReportMatch && mayReportMatches && !keptMemoryAnswer
+                    && !request.PairedBySeasonMatch;
                 var carriedSportarrId = reportMatch
                     ? parsedInfo.SportarrEventId ?? parsedInfo.SportarrLeagueId
                         ?? ReadSidecarOrNone(request.FilePath)?.SportarrId
@@ -4209,6 +4211,13 @@ public class FileImportRequest
     /// the hub's own answer back, so it is not reported. The page sets this.
     /// </summary>
     public bool SuggestedByMemory { get; set; }
+
+    /// <summary>
+    /// Match season paired the file with the event by its place in the list.
+    /// The pair comes from the list order, so the match is not reported, the
+    /// same as a match memory answer that the user kept. The page sets this.
+    /// </summary>
+    public bool PairedBySeasonMatch { get; set; }
 
     /// <summary>
     /// An automatic import (the file watcher, a rescan, a completed download

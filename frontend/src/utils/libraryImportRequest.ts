@@ -24,6 +24,8 @@ export interface ImportRequestMapping {
   partName?: string;
   partNumber?: number;
   createNew?: boolean;
+  // Match season paired the file with this event by its place in the list.
+  pairedBySeasonMatch?: boolean;
 }
 
 export interface ImportRequestOverrides {
@@ -47,6 +49,9 @@ export interface LibraryImportRequest {
   // The suggestion came from match memory. The server does not report a
   // kept memory answer, because the hub would count its own answer again.
   suggestedByMemory?: boolean;
+  // Match season paired the file with the event by order. The user did not
+  // pick the event, so the server does not report the match.
+  pairedBySeasonMatch?: boolean;
   createNew: boolean;
   eventTitle?: string;
   organization?: string;
@@ -131,7 +136,7 @@ export function buildLibraryImportRequest(
   };
 
   if (mapping) {
-    return withSuggestion(withPart({
+    const request = withSuggestion(withPart({
       ...set,
       filePath: file.filePath,
       eventId: mapping.eventId,
@@ -140,6 +145,8 @@ export function buildLibraryImportRequest(
       leagueId: mapping.leagueId,
       season: mapping.season,
     }));
+    if (mapping.pairedBySeasonMatch) request.pairedBySeasonMatch = true;
+    return request;
   }
 
   // A new match from the scan, or a re-import of a file the library holds.

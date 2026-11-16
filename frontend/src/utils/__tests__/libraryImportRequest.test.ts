@@ -61,6 +61,15 @@ describe('library import request', () => {
     expect(buildLibraryImportRequest({ ...file, matchedEventId: 12 }, undefined, undefined).suggestedByMemory).toBeUndefined();
   });
 
+  // Match season pairs files with events by order. The user did not pick them.
+  it('marks a pair that Match season made', () => {
+    const paired = { ...mapping, pairedBySeasonMatch: true };
+
+    expect(buildLibraryImportRequest({ ...file, matchedEventId: 12 }, paired, undefined))
+      .toMatchObject({ eventId: 7, suggestedEventId: 12, pairedBySeasonMatch: true });
+    expect(buildLibraryImportRequest(file, mapping, undefined).pairedBySeasonMatch).toBeUndefined();
+  });
+
   it('sends no suggestion when the scan matched nothing', () => {
     expect(buildLibraryImportRequest(file, mapping, undefined).suggestedEventId).toBeUndefined();
   });

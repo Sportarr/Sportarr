@@ -109,6 +109,9 @@ interface FileMapping {
   partNumber?: number;
   createNew?: boolean;
   destinationPreview?: string;
+  // Match season set this pair by order. A pick in the match dialog replaces
+  // the whole mapping, so the mark goes with it.
+  pairedBySeasonMatch?: boolean;
 }
 
 interface ImportResult {
@@ -496,6 +499,7 @@ const LibraryImportPage: React.FC = () => {
           partNumber: pair.partNumber,
           createNew: false,
           destinationPreview: previews[index],
+          pairedBySeasonMatch: true,
         });
       });
       return next;
