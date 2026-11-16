@@ -318,6 +318,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<string>("MappingSignals")
                         .HasColumnType("text");
 
+                    b.Property<bool>("PreferredSetByUser")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
 

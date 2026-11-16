@@ -795,6 +795,16 @@ public class IptvSourceService
             .Where(m => m.ChannelId == request.ChannelId)
             .ToListAsync();
 
+        // The form sends the preferred league every time it saves. Only a new
+        // choice is the user's. A resave keeps an automatic pick automatic,
+        // and a pick the user made stays the user's.
+        var oldPreferredRow = request.PreferredLeagueId is int chosenLeagueId
+            ? existingMappings.FirstOrDefault(m => m.LeagueId == chosenLeagueId)
+            : null;
+        var preferredSetByUser = oldPreferredRow == null
+            || !oldPreferredRow.IsPreferred
+            || oldPreferredRow.PreferredSetByUser;
+
         // Replace the rows for the leagues in the request.
         _db.ChannelLeagueMappings.RemoveRange(existingMappings
             .Where(m => request.LeagueIds.Contains(m.LeagueId)));
@@ -820,6 +830,7 @@ public class IptvSourceService
             {
                 row.IsManual = true;
                 row.IsPreferred = false;
+                row.PreferredSetByUser = false;
                 row.Confidence = 0;
                 row.Priority = ChannelLeagueMapping.ExcludedPriority;
             }
@@ -835,6 +846,7 @@ public class IptvSourceService
             ChannelId = request.ChannelId,
             LeagueId = leagueId,
             IsPreferred = leagueId == request.PreferredLeagueId,
+            PreferredSetByUser = leagueId == request.PreferredLeagueId && preferredSetByUser,
             IsManual = true,
             Confidence = 100,
             Created = DateTime.UtcNow
@@ -850,6 +862,7 @@ public class IptvSourceService
             foreach (var mapping in previous)
             {
                 mapping.IsPreferred = false;
+                mapping.PreferredSetByUser = false;
             }
         }
 

@@ -542,8 +542,10 @@ public class ChannelAutoMappingService
         // have come from the manual mapping endpoint - installs that saved
         // manual rows before the endpoint set IsManual would otherwise have
         // them deleted below as unjustifiable auto rows.
+        // A preferred channel the user chose stays too. Without evidence the
+        // sweep would drop the row, and the user's choice with it.
         var manualLeagueIds = existingMappings
-            .Where(m => m.IsManual || m.Priority < 0 || (m.MappingSignals == null && m.LastAutoMapped == null))
+            .Where(m => m.IsManual || m.PreferredSetByUser || m.Priority < 0 || (m.MappingSignals == null && m.LastAutoMapped == null))
             .Select(m => m.LeagueId)
             .ToHashSet();
 
@@ -883,74 +885,410 @@ public class ChannelAutoMappingService
             .ToList();
     }
 
+    // The preferred pick counts guide programmes from two weeks back to two
+    // weeks ahead. Past programmes count while the guide still keeps them.
+    internal static readonly TimeSpan PreferredGuideWindow = TimeSpan.FromDays(14);
+
+    // Team names come from events in a wider window. A league between rounds
+    // then still has its teams.
+    private static readonly TimeSpan PreferredTeamWindow = TimeSpan.FromDays(90);
+
     /// <summary>
-    /// Update the preferred channel for a league based on quality analysis.
-    /// Sets the highest quality online channel as preferred.
+    /// What one league's preferred pick did.
+    /// </summary>
+    public enum PreferredPickOutcome
+    {
+        /// <summary>The league has no usable channel.</summary>
+        NoChannel,
+        /// <summary>The user set the preferred channel by hand. The league stays as it is.</summary>
+        KeptHandSet,
+        /// <summary>The league has a preferred channel from the ranking.</summary>
+        Picked
+    }
+
+    /// <summary>
+    /// A mapped channel with the evidence that ranks it.
+    /// </summary>
+    internal sealed record PreferredCandidate(
+        ChannelLeagueMapping Mapping, ChannelQuality Quality, int GuideMatches);
+
+    /// <summary>
+    /// Update the preferred channel for one league.
     /// </summary>
     public async Task<bool> UpdatePreferredChannelForLeagueAsync(int leagueId)
     {
         var mappings = await _db.ChannelLeagueMappings
             .Where(m => m.LeagueId == leagueId && m.Priority >= 0)
             .Include(m => m.Channel)
+            .ThenInclude(c => c!.Source)
             .ToListAsync();
+        var league = await _db.Leagues
+            .Where(l => l.Id == leagueId)
+            .Select(l => new { l.Name, l.AlternateName, l.Sport })
+            .FirstOrDefaultAsync();
+        var guide = await PreferredGuide.CreateAsync(_db, DateTime.UtcNow);
 
-        if (mappings.Count == 0)
-            return false;
-
-        // Find the best channel
-        var best = mappings
-            .Where(m => m.Channel != null && m.Channel.IsEnabled)
-            .Select(m => new
-            {
-                Mapping = m,
-                Quality = DetectChannelQuality(m.Channel!.Name),
-                StatusScore = GetStatusScore(m.Channel!.Status)
-            })
-            .OrderByDescending(x => ChannelHealth.Rank(x.Mapping.Channel!.Status))
-            .ThenByDescending(x => x.Quality.Score)
-            .ThenByDescending(x => x.StatusScore)
-            .FirstOrDefault();
-
-        if (best == null)
-            return false;
-
-        // Update all mappings
-        foreach (var mapping in mappings)
-        {
-            mapping.IsPreferred = mapping.ChannelId == best.Mapping.ChannelId;
-            mapping.Priority = DetectChannelQuality(mapping.Channel?.Name ?? "").Score;
-        }
-
-        await _db.SaveChangesAsync();
-
-        _logger.LogInformation("[AutoMapping] Updated preferred channel for league {LeagueId}: {Channel} ({Quality})",
-            leagueId, best.Mapping.Channel?.Name, best.Quality.Label);
-
-        return true;
+        var outcome = await PickPreferredChannelAsync(
+            leagueId, league?.Name, league?.AlternateName, league?.Sport, mappings, guide);
+        return outcome == PreferredPickOutcome.Picked;
     }
 
     /// <summary>
-    /// Update preferred channels for all leagues that have multiple channel mappings.
+    /// Update preferred channels for all leagues that have channel mappings.
+    /// A league whose preferred channel the user set by hand stays as it is.
     /// </summary>
     public async Task<int> UpdateAllPreferredChannelsAsync()
     {
-        var leagueIds = await _db.ChannelLeagueMappings
+        var mappings = await _db.ChannelLeagueMappings
             .Where(m => m.Priority >= 0)
-            .Select(m => m.LeagueId)
-            .Distinct()
+            .Include(m => m.Channel)
+            .ThenInclude(c => c!.Source)
             .ToListAsync();
+        var leagueIds = mappings.Select(m => m.LeagueId).Distinct().ToList();
+        var leagues = await _db.Leagues
+            .Where(l => leagueIds.Contains(l.Id))
+            .Select(l => new { l.Id, l.Name, l.AlternateName, l.Sport })
+            .ToDictionaryAsync(l => l.Id);
+        var guide = await PreferredGuide.CreateAsync(_db, DateTime.UtcNow);
 
         var updated = 0;
-        foreach (var leagueId in leagueIds)
+        var kept = 0;
+        foreach (var group in mappings.GroupBy(m => m.LeagueId).OrderBy(g => g.Key))
         {
-            if (await UpdatePreferredChannelForLeagueAsync(leagueId))
+            leagues.TryGetValue(group.Key, out var league);
+            var outcome = await PickPreferredChannelAsync(
+                group.Key, league?.Name, league?.AlternateName, league?.Sport, group.ToList(), guide);
+            if (outcome == PreferredPickOutcome.Picked) updated++;
+            if (outcome == PreferredPickOutcome.KeptHandSet) kept++;
+        }
+
+        _logger.LogInformation(
+            "[AutoMapping] Updated preferred channels for {Count} leagues. Kept {Kept} leagues with a preferred channel set by hand",
+            updated, kept);
+        return updated;
+    }
+
+    private async Task<PreferredPickOutcome> PickPreferredChannelAsync(
+        int leagueId, string? leagueName, string? alternateName, string? sport,
+        List<ChannelLeagueMapping> mappings, PreferredGuide guide)
+    {
+        if (mappings.Count == 0)
+            return PreferredPickOutcome.NoChannel;
+
+        // The user chose this preferred channel, so the league stays as it is.
+        // A lock on the mapping alone does not count. The lock keeps the
+        // mapping, not the preferred mark.
+        var handSet = mappings.FirstOrDefault(m => m.IsPreferred && m.PreferredSetByUser);
+        if (handSet != null)
+        {
+            _logger.LogInformation(
+                "[AutoMapping] Skipped league {LeagueId} ({League}). Preferred channel {Channel} stays because the user chose it",
+                leagueId, leagueName, handSet.Channel?.Name);
+            return PreferredPickOutcome.KeptHandSet;
+        }
+
+        var usable = mappings
+            .Where(m => m.Channel != null && m.Channel.IsEnabled && m.Channel.Source?.IsActive == true)
+            .ToList();
+        if (usable.Count == 0)
+            return PreferredPickOutcome.NoChannel;
+
+        var matcher = await GuideMatcherForLeagueAsync(leagueId, leagueName, alternateName, sport, guide.Now);
+        await guide.LoadAsync(usable.Select(m => m.Channel!.TvgId));
+
+        var candidates = usable
+            .Select(m => new PreferredCandidate(
+                m,
+                DetectChannelQuality(m.Channel!.Name),
+                guide.CountMatches(m.Channel!.TvgId, matcher)))
+            .ToList();
+        var ranked = RankPreferredCandidates(candidates);
+        var best = ranked[0];
+
+        foreach (var c in ranked)
+        {
+            _logger.LogDebug(
+                "[AutoMapping] League {LeagueId} candidate {Channel}. Status {Status}, guide matches {GuideMatches}, confidence {Confidence}, quality {Quality}",
+                leagueId, c.Mapping.Channel!.Name, c.Mapping.Channel.Status, c.GuideMatches, c.Mapping.Confidence, c.Quality.Label);
+        }
+
+        var previous = mappings.Where(m => m.IsPreferred && m.ChannelId != best.Mapping.ChannelId).ToList();
+        var transaction = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync()
+            : null;
+        try
+        {
+            // Clear the old preferred row in its own save. The database
+            // allows one preferred row per league and checks each update.
+            if (previous.Count > 0)
             {
-                updated++;
+                foreach (var mapping in previous)
+                {
+                    mapping.IsPreferred = false;
+                    mapping.PreferredSetByUser = false;
+                }
+                await _db.SaveChangesAsync();
+            }
+
+            foreach (var mapping in mappings)
+            {
+                mapping.IsPreferred = mapping.ChannelId == best.Mapping.ChannelId;
+                // This pick is automatic, so the next run can replace it.
+                mapping.PreferredSetByUser = false;
+                mapping.Priority = DetectChannelQuality(mapping.Channel?.Name ?? "").Score;
+            }
+            await _db.SaveChangesAsync();
+
+            if (transaction != null)
+                await transaction.CommitAsync();
+        }
+        finally
+        {
+            if (transaction != null)
+                await transaction.DisposeAsync();
+        }
+
+        _logger.LogInformation(
+            "[AutoMapping] Updated preferred channel for league {LeagueId} ({League}): {Channel}. Guide matches {GuideMatches}, confidence {Confidence}, quality {Quality}, status {Status}",
+            leagueId, leagueName, best.Mapping.Channel!.Name, best.GuideMatches,
+            best.Mapping.Confidence, best.Quality.Label, best.Mapping.Channel.Status);
+
+        return PreferredPickOutcome.Picked;
+    }
+
+    /// <summary>
+    /// Ranks the channels of one league, best first. A dead channel goes
+    /// last. Then more guide matches win, then higher mapping confidence,
+    /// then better quality. The lowest channel id breaks a full tie, so the
+    /// pick does not change from run to run.
+    /// </summary>
+    internal static List<PreferredCandidate> RankPreferredCandidates(IEnumerable<PreferredCandidate> candidates) =>
+        candidates
+            .OrderByDescending(c => ChannelHealth.Rank(c.Mapping.Channel!.Status))
+            .ThenByDescending(c => c.GuideMatches)
+            .ThenByDescending(c => c.Mapping.Confidence)
+            .ThenByDescending(c => c.Quality.Score)
+            .ThenBy(c => c.Mapping.ChannelId)
+            .ToList();
+
+    /// <summary>
+    /// Builds the rule that decides if a guide programme shows a league.
+    /// A team league uses the names of its teams, the same as the event
+    /// match does. Any other league uses its name.
+    /// </summary>
+    private async Task<PreferredLeagueMatcher> GuideMatcherForLeagueAsync(
+        int leagueId, string? leagueName, string? alternateName, string? sport, DateTime now)
+    {
+        var from = now - PreferredTeamWindow;
+        var to = now + PreferredTeamWindow;
+        var teams = await _db.Events
+            .Where(e => e.LeagueId == leagueId && e.EventDate >= from && e.EventDate <= to)
+            .Where(e => e.HomeTeamName != null && e.HomeTeamName != "" && e.AwayTeamName != null && e.AwayTeamName != "")
+            .Select(e => new { e.HomeTeamName, e.AwayTeamName })
+            .Distinct()
+            .OrderBy(e => e.HomeTeamName)
+            .ThenBy(e => e.AwayTeamName)
+            .Take(1000)
+            .ToListAsync();
+
+        var teamTerms = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var team in teams)
+        {
+            if (EventChannelResolverService.TeamSearchTerm(team.HomeTeamName) is { } home) teamTerms.Add(home);
+            if (EventChannelResolverService.TeamSearchTerm(team.AwayTeamName) is { } away) teamTerms.Add(away);
+        }
+
+        var (words, forms) = string.IsNullOrWhiteSpace(leagueName)
+            ? (new List<string>(), new List<string>())
+            : EventChannelResolverService.LeagueNameTerms(leagueName, alternateName);
+
+        return new PreferredLeagueMatcher(
+            teamTerms.Select(GuideTerm.Of).ToList(),
+            words.Select(GuideTerm.Of).ToList(),
+            forms.Select(GuideTerm.Of).ToList(),
+            EventChannelResolverService.SportTerms(sport).Select(GuideTerm.Of).ToList());
+    }
+
+    /// <summary>
+    /// A search term in the form the guide text uses. A one-word term is
+    /// found in the word set. A longer term is found in the text.
+    /// </summary>
+    internal sealed record GuideTerm(string Text, string Padded, bool IsPhrase)
+    {
+        public static GuideTerm Of(string term)
+        {
+            var padded = EventChannelResolverService.PaddedTerm(term);
+            var text = padded.Trim(' ');
+            return new GuideTerm(text, padded, text.Contains(' '));
+        }
+    }
+
+    /// <summary>
+    /// The text of one guide programme, made once and searched many times.
+    /// The title is kept apart, because a sport word counts only there.
+    /// </summary>
+    internal sealed class GuideText
+    {
+        private readonly string _padded;
+        private readonly HashSet<string> _words;
+        private readonly string _titlePadded;
+        private readonly HashSet<string> _titleWords;
+
+        public GuideText(string title, string? category)
+        {
+            _titlePadded = EventChannelResolverService.SearchText(title);
+            _titleWords = Words(_titlePadded);
+            _padded = string.IsNullOrWhiteSpace(category)
+                ? _titlePadded
+                : EventChannelResolverService.SearchText($"{title} {category}");
+            _words = ReferenceEquals(_padded, _titlePadded) ? _titleWords : Words(_padded);
+        }
+
+        private static HashSet<string> Words(string padded) =>
+            padded.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
+
+        public bool Has(GuideTerm term) => term.IsPhrase
+            ? _padded.Contains(term.Padded, StringComparison.Ordinal)
+            : _words.Contains(term.Text);
+
+        public bool TitleHas(GuideTerm term) => term.IsPhrase
+            ? _titlePadded.Contains(term.Padded, StringComparison.Ordinal)
+            : _titleWords.Contains(term.Text);
+    }
+
+    /// <summary>
+    /// Decides if a guide programme shows a league.
+    /// </summary>
+    internal sealed class PreferredLeagueMatcher
+    {
+        private readonly List<GuideTerm> _teams;
+        private readonly List<GuideTerm> _words;
+        private readonly List<GuideTerm> _forms;
+        private readonly List<GuideTerm> _sport;
+
+        public PreferredLeagueMatcher(List<GuideTerm> teams, List<GuideTerm> words, List<GuideTerm> forms, List<GuideTerm> sport)
+        {
+            _teams = teams;
+            _words = words;
+            _forms = forms;
+            _sport = sport;
+        }
+
+        public bool IsEmpty => _teams.Count == 0 && _words.Count == 0 && _forms.Count == 0;
+
+        /// <summary>
+        /// A team league needs two of its teams, or one team plus the league
+        /// name or the full sport name in the title. One team name alone is weak,
+        /// because "Canterbury" and "Chiefs" each name teams in several sports.
+        /// Any other league needs its name.
+        /// </summary>
+        public bool Matches(GuideText text)
+        {
+            if (_teams.Count == 0) return NamesLeague(text);
+
+            var teams = 0;
+            foreach (var team in _teams)
+            {
+                if (!text.Has(team)) continue;
+                if (++teams >= 2) return true;
+            }
+            if (teams == 0) return false;
+            return NamesLeague(text) || (_sport.Count > 0 && _sport.All(text.TitleHas));
+        }
+
+        /// <summary>
+        /// A full series name or short form names the league on its own.
+        /// Otherwise every useful word of the league name must be there.
+        /// One word of a longer name, such as "british", names other things too.
+        /// </summary>
+        private bool NamesLeague(GuideText text) =>
+            _forms.Any(text.Has) || (_words.Count > 0 && _words.All(text.Has));
+    }
+
+    /// <summary>
+    /// Guide programmes for the preferred pick, loaded once per tvg-id and
+    /// shared by every league in a run.
+    /// </summary>
+    internal sealed class PreferredGuide
+    {
+        private readonly SportarrDbContext _db;
+        private readonly Dictionary<int, int> _sourcePriorities;
+        private readonly Dictionary<string, List<GuideText>> _textByTvgId = new(StringComparer.Ordinal);
+
+        public DateTime Now { get; }
+
+        private PreferredGuide(SportarrDbContext db, Dictionary<int, int> sourcePriorities, DateTime now)
+        {
+            _db = db;
+            _sourcePriorities = sourcePriorities;
+            Now = now;
+        }
+
+        public static async Task<PreferredGuide> CreateAsync(SportarrDbContext db, DateTime now)
+        {
+            var priorities = await db.EpgSources.ToDictionaryAsync(s => s.Id, s => s.Priority);
+            return new PreferredGuide(db, priorities, now);
+        }
+
+        /// <summary>
+        /// Loads the programmes of the tvg-ids that are not loaded yet, in one query.
+        /// </summary>
+        public async Task LoadAsync(IEnumerable<string?> tvgIds)
+        {
+            var missing = tvgIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id!)
+                .Distinct(StringComparer.Ordinal)
+                .Where(id => !_textByTvgId.ContainsKey(id))
+                .ToList();
+            if (missing.Count == 0) return;
+
+            var from = Now - PreferredGuideWindow;
+            var to = Now + PreferredGuideWindow;
+            // The title and category name the league or the teams. A
+            // description also names them in previews and news, so it is
+            // left out.
+            var rows = await _db.EpgPrograms
+                .AsNoTracking()
+                .Where(p => missing.Contains(p.ChannelId) && p.StartTime >= from && p.StartTime <= to)
+                .Select(p => new { p.ChannelId, p.EpgSourceId, p.Title, p.Category })
+                .ToListAsync();
+
+            foreach (var id in missing)
+                _textByTvgId[id] = new List<GuideText>();
+
+            // Several guide sources can carry the same channel. Only the
+            // preferred source counts, so one programme counts once. The
+            // event match uses the same rule.
+            foreach (var group in rows.GroupBy(r => r.ChannelId, StringComparer.Ordinal))
+            {
+                var source = group
+                    .Select(r => r.EpgSourceId)
+                    .Distinct()
+                    .OrderBy(id => _sourcePriorities.GetValueOrDefault(id, int.MaxValue))
+                    .ThenBy(id => id)
+                    .First();
+                if (!_textByTvgId.TryGetValue(group.Key, out var texts)) continue;
+                texts.AddRange(group
+                    .Where(r => r.EpgSourceId == source)
+                    .Select(r => new GuideText(r.Title, r.Category)));
             }
         }
 
-        _logger.LogInformation("[AutoMapping] Updated preferred channels for {Count} leagues", updated);
-        return updated;
+        /// <summary>
+        /// How many programmes on the tvg-id show the league.
+        /// </summary>
+        public int CountMatches(string? tvgId, PreferredLeagueMatcher matcher)
+        {
+            if (matcher.IsEmpty || string.IsNullOrWhiteSpace(tvgId)) return 0;
+            if (!_textByTvgId.TryGetValue(tvgId, out var texts)) return 0;
+            var count = 0;
+            foreach (var text in texts)
+            {
+                if (matcher.Matches(text)) count++;
+            }
+            return count;
+        }
     }
 
     // ============================================================================

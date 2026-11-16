@@ -2764,6 +2764,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "Leagues", "EnableDvr", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumn(db, "Leagues", "SessionTypeQualityProfiles", "TEXT NULL");
         EnsureColumn(db, "Leagues", "MonitoredFacets", "TEXT NULL");
+        EnsureColumn(db, "ChannelLeagueMappings", "PreferredSetByUser", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "MediaManagementSettings", "UnmonitorDeletedEvents", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "Teams", "UserAliases", "TEXT");
         EnsureColumn(db, "Indexers", "DisableSslCertificateValidation", "INTEGER NOT NULL DEFAULT 0");

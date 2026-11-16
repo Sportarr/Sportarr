@@ -304,6 +304,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("MappingSignals")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("PreferredSetByUser")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 

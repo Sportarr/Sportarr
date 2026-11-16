@@ -618,7 +618,13 @@ public class ChannelLeagueMapping
     public bool IsManual { get; set; }
 
     /// <summary>
-    /// A negative priority marks an exclusion: the admin said this channel
+    /// True when the user chose this row as the league's preferred channel.
+    /// Update Preferred does not replace a preferred channel with this flag.
+    /// </summary>
+    public bool PreferredSetByUser { get; set; }
+
+    /// <summary>
+    /// A negative priority marks an exclusion: the user said this channel
     /// does NOT carry this league.
     ///
     /// Deleting the row outright did not survive, because the auto-mapper

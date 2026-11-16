@@ -639,23 +639,9 @@ public class EventChannelResolverService
         // Words of the league name, such as "supercars" or "motogp". Two
         // shared title words alone are weak: an AFL game with "Gold Coast"
         // in it matched a Supercars session at the Gold Coast.
-        var leagueTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!hasTeamNames && !string.IsNullOrEmpty(evt.League?.Name))
-        {
-            foreach (var word in TitleSearchTokens(evt.League.Name).Where(w => !GenericLeagueWords.Contains(w)))
-                leagueTerms.Add(word);
-            // Guides write "F1" and "F2" for Formula 1 and Formula 2. The bare
-            // word "formula" also names Formula E, so only the full names count.
-            var formula = System.Text.RegularExpressions.Regex.Match(evt.League.Name, @"^Formula\s*(\d)\b",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (formula.Success)
-            {
-                leagueTerms.Remove("formula");
-                leagueTerms.Add("f" + formula.Groups[1].Value);
-                leagueTerms.Add("formula " + formula.Groups[1].Value);
-            }
-            AddSeriesFullNames(leagueTerms, $"{evt.League.Name} {evt.League.AlternateName}");
-        }
+        var leagueTerms = !hasTeamNames && !string.IsNullOrEmpty(evt.League?.Name)
+            ? LeagueTerms(evt.League.Name, evt.League.AlternateName)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var matches = new Dictionary<int, EpgProgram>();
         // Playlists routinely carry the same tvg-id on several channel
@@ -715,6 +701,67 @@ public class EventChannelResolverService
         "championship", "championships", "series", "league", "world", "cup", "tour", "the", "and",
         "national", "international", "grand", "prix", "racing", "motorsport", "association"
     };
+
+    /// <summary>
+    /// The words that name a league in guide text, such as "supercars" or
+    /// "f1". Generic words such as "series" are left out.
+    /// </summary>
+    internal static HashSet<string> LeagueTerms(string leagueName, string? alternateName)
+    {
+        var (words, forms) = LeagueNameTerms(leagueName, alternateName);
+        var leagueTerms = new HashSet<string>(words, StringComparer.OrdinalIgnoreCase);
+        leagueTerms.UnionWith(forms);
+        return leagueTerms;
+    }
+
+    /// <summary>
+    /// The league name split in two. Words are the useful words of the name.
+    /// Forms are whole names that stand for the series on their own, such as
+    /// "f1", "btcc" or "british touring car championship".
+    /// </summary>
+    internal static (List<string> Words, List<string> Forms) LeagueNameTerms(string leagueName, string? alternateName)
+    {
+        var words = TitleSearchTokens(leagueName)
+            .Where(w => !GenericLeagueWords.Contains(w))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var forms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Guides write "F1" and "F2" for Formula 1 and Formula 2. The bare
+        // word "formula" names every Formula series, so only the full names
+        // count. A letter series such as Formula E has no short form, because
+        // "fe" is not a series name in guides.
+        var formula = System.Text.RegularExpressions.Regex.Match(leagueName, @"^Formula\s*(\d|[a-z])\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (formula.Success)
+        {
+            var series = formula.Groups[1].Value.ToLowerInvariant();
+            words.Remove("formula");
+            if (char.IsDigit(series[0]))
+                forms.Add("f" + series);
+            forms.Add("formula " + series);
+        }
+        AddSeriesFullNames(forms, $"{leagueName} {alternateName}");
+        return (words, forms.ToList());
+    }
+
+    /// <summary>
+    /// The words of a sport name, such as "rugby" for "Rugby Union".
+    /// </summary>
+    internal static List<string> SportTerms(string? sport) =>
+        string.IsNullOrWhiteSpace(sport)
+            ? new List<string>()
+            : TitleSearchTokens(sport).Where(w => !GenericLeagueWords.Contains(w)).Distinct(StringComparer.Ordinal).ToList();
+
+    /// <summary>
+    /// A team name as a search term, in the same form the event match uses.
+    /// Returns null for a name that is too short to search for.
+    /// </summary>
+    internal static string? TeamSearchTerm(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var term = NormalizeForSearch(name);
+        return term.Length >= 2 ? term : null;
+    }
 
     /// <summary>
     /// A non-team event needs two title words, plus a word of its league name.
@@ -785,9 +832,27 @@ public class EventChannelResolverService
     /// </summary>
     internal static int CountTermHits(IEnumerable<string> searchTerms, string programText)
     {
-        var words = " " + CollapseSpaces(NormalizeForSearch(programText)) + " ";
-        return searchTerms.Count(t => words.Contains(" " + CollapseSpaces(t) + " ", StringComparison.Ordinal));
+        var words = SearchText(programText);
+        return searchTerms.Count(t => HasTerm(words, t));
     }
+
+    /// <summary>
+    /// Programme text in the form that <see cref="HasTerm"/> searches.
+    /// Make it once per programme when many terms are tested against it.
+    /// </summary>
+    internal static string SearchText(string programText) =>
+        " " + CollapseSpaces(NormalizeForSearch(programText)) + " ";
+
+    /// <summary>
+    /// True when the term occurs as whole words in text from <see cref="SearchText"/>.
+    /// </summary>
+    internal static bool HasTerm(string searchText, string term) =>
+        searchText.Contains(PaddedTerm(term), StringComparison.Ordinal);
+
+    /// <summary>
+    /// The term with a space at each end, so a plain search finds whole words only.
+    /// </summary>
+    internal static string PaddedTerm(string term) => " " + CollapseSpaces(term) + " ";
 
     private static string CollapseSpaces(string text) =>
         System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");

@@ -651,6 +651,7 @@ app.MapDelete("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}", asyn
     if (mapping == null) return Results.NotFound();
     mapping.IsManual = true;
     mapping.IsPreferred = false;
+    mapping.PreferredSetByUser = false;
     mapping.Confidence = 0;
     mapping.Priority = ChannelLeagueMapping.ExcludedPriority;
     await db.SaveChangesAsync();
@@ -1045,7 +1046,8 @@ app.MapPost("/api/iptv/channels/auto-map", async (ChannelAutoMappingService auto
     }
 });
 
-// Update preferred channels for all leagues (select best quality channel for each)
+// Update preferred channels for all leagues. Each league gets the channel that
+// shows it most in the guide. A preferred channel set by hand stays.
 app.MapPost("/api/iptv/leagues/update-preferred", async (ChannelAutoMappingService autoMappingService, ILogger<Program> logger) =>
 {
     try
@@ -1105,46 +1107,7 @@ app.MapPost("/api/iptv/leagues/{leagueId:int}/preferred-channel", async (int lea
         if (body == null)
             return Results.BadRequest(new { error = "Request body is required" });
 
-        // Get all channel mappings for this league
-        var mappings = await db.ChannelLeagueMappings
-            .Where(m => m.LeagueId == leagueId)
-            .ToListAsync();
-
-        if (mappings.Count == 0)
-            return Results.NotFound(new { error = "No channels are mapped to this league" });
-
-        // If channelId is null, clear the preferred channel (auto-select mode)
-        if (body.ChannelId == null)
-        {
-            foreach (var mapping in mappings)
-            {
-                mapping.IsPreferred = false;
-            }
-            await db.SaveChangesAsync();
-
-            logger.LogInformation("[IPTV] Cleared preferred channel for league {LeagueId} (auto-select mode)", leagueId);
-            return Results.Ok(new { success = true, message = "Cleared preferred channel - will auto-select best quality" });
-        }
-
-        // Check if the specified channel is mapped to this league
-        var targetMapping = mappings.FirstOrDefault(m => m.ChannelId == body.ChannelId);
-        if (targetMapping == null)
-            return Results.BadRequest(new { error = "Channel is not mapped to this league" });
-
-        // Set only the specified channel as preferred
-        foreach (var mapping in mappings)
-        {
-            mapping.IsPreferred = mapping.ChannelId == body.ChannelId;
-        }
-
-        await db.SaveChangesAsync();
-
-        // Get the channel name for logging
-        var channel = await db.IptvChannels.FirstOrDefaultAsync(c => c.Id == body.ChannelId);
-        logger.LogInformation("[IPTV] Set preferred channel for league {LeagueId}: {ChannelName} (ID: {ChannelId})",
-            leagueId, channel?.Name ?? "Unknown", body.ChannelId);
-
-        return Results.Ok(new { success = true, message = $"Set '{channel?.Name}' as preferred channel for DVR recordings" });
+        return await SetLeaguePreferredChannelAsync(leagueId, body.ChannelId, db, logger);
     }
     catch (Exception ex)
     {
@@ -1889,6 +1852,82 @@ app.MapGet("/api/v1/stream/sessions", (FFmpegStreamService streamService) =>
         if (string.IsNullOrWhiteSpace(client)) client = "unknown";
 
         return $"{address}|{client}|{channelId}";
+    }
+
+    /// <summary>
+    /// Sets the user's preferred channel for a league, or clears it when
+    /// channelId is null. Update Preferred does not replace a channel set here.
+    /// </summary>
+    public static async Task<IResult> SetLeaguePreferredChannelAsync(
+        int leagueId, int? channelId, SportarrDbContext db, ILogger logger)
+    {
+        var mappings = await db.ChannelLeagueMappings
+            .Where(m => m.LeagueId == leagueId)
+            .ToListAsync();
+
+        if (mappings.Count == 0)
+            return Results.NotFound(new { error = "No channels are mapped to this league" });
+
+        // A null channel clears the preferred channel. DVR then picks the best channel.
+        if (channelId == null)
+        {
+            foreach (var mapping in mappings)
+            {
+                mapping.IsPreferred = false;
+                mapping.PreferredSetByUser = false;
+            }
+            await db.SaveChangesAsync();
+
+            logger.LogInformation("[IPTV] Cleared preferred channel for league {LeagueId} (auto-select mode)", leagueId);
+            return Results.Ok(new { success = true, message = "Cleared preferred channel - will auto-select best quality" });
+        }
+
+        if (!mappings.Any(m => m.ChannelId == channelId))
+            return Results.BadRequest(new { error = "Channel is not mapped to this league" });
+
+        // The two saves run in one transaction. A failed second save then
+        // leaves the old preferred channel in place.
+        var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync()
+            : null;
+        try
+        {
+            // Clear the old preferred row in its own save. The database allows
+            // one preferred row per league and checks each update.
+            var previous = mappings.Where(m => m.IsPreferred && m.ChannelId != channelId).ToList();
+            if (previous.Count > 0)
+            {
+                foreach (var mapping in previous)
+                {
+                    mapping.IsPreferred = false;
+                    mapping.PreferredSetByUser = false;
+                }
+                await db.SaveChangesAsync();
+            }
+
+            // The flag marks the choice as the user's, so Update Preferred
+            // leaves the league alone.
+            foreach (var mapping in mappings)
+            {
+                mapping.IsPreferred = mapping.ChannelId == channelId;
+                mapping.PreferredSetByUser = mapping.ChannelId == channelId;
+            }
+            await db.SaveChangesAsync();
+
+            if (transaction != null)
+                await transaction.CommitAsync();
+        }
+        finally
+        {
+            if (transaction != null)
+                await transaction.DisposeAsync();
+        }
+
+        var channel = await db.IptvChannels.FirstOrDefaultAsync(c => c.Id == channelId);
+        logger.LogInformation("[IPTV] Set preferred channel for league {LeagueId}: {ChannelName} (ID: {ChannelId})",
+            leagueId, channel?.Name ?? "Unknown", channelId);
+
+        return Results.Ok(new { success = true, message = $"Set '{channel?.Name}' as preferred channel for DVR recordings" });
     }
 
     /// <summary>
