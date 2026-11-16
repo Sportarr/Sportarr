@@ -583,6 +583,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             return;
 
         var removed = 0;
+        var staleChoices = new List<PendingImport>();
         foreach (var pending in candidates)
         {
             if (File.Exists(pending.FilePath))
@@ -591,6 +592,12 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             var parentDir = Path.GetDirectoryName(pending.FilePath);
             if (string.IsNullOrEmpty(parentDir) || !Directory.Exists(parentDir))
                 continue; // Containing directory is gone too - the mount may just be down, not the file itself
+
+            if (pending.DownloadId.StartsWith("dvr-", StringComparison.Ordinal))
+            {
+                staleChoices.Add(pending);
+                continue;
+            }
 
             _logger.LogInformation(
                 "[Disk Scan] Removing stale PendingImport {Id} ({Title}) - source file has been missing for over {Days} days: {Path}",
@@ -603,6 +610,46 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
         {
             await db.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("[Disk Scan] Removed {Count} stale pending import(s)", removed);
+        }
+
+        if (staleChoices.Count > 0)
+            await RemoveStaleChoicesAsync(db, staleChoices, config.EventFileMissingDeleteAfterDays, cancellationToken);
+    }
+
+    /// <summary>
+    /// Remove recording choice rows whose recording file is gone. Recording
+    /// retention, the accept endpoint and a Library Import resolve the same
+    /// rows under the recording choice gate, so this step takes it too. The
+    /// disk scan never holds the gate when it calls this.
+    /// </summary>
+    private async Task RemoveStaleChoicesAsync(SportarrDbContext db, IReadOnlyList<PendingImport> choices, int days,
+        CancellationToken cancellationToken)
+    {
+        await DvrIndexerChoice.EnterGateAsync(cancellationToken);
+        try
+        {
+            var removed = 0;
+            foreach (var choice in choices)
+            {
+                // Another step can resolve the row while this one waits for the gate.
+                var status = await db.PendingImports.AsNoTracking()
+                    .Where(p => p.Id == choice.Id)
+                    .Select(p => (PendingImportStatus?)p.Status)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (status != PendingImportStatus.Pending || DvrIndexerChoice.IsImporting(choice.Id))
+                    continue;
+                _logger.LogInformation(
+                    "[Disk Scan] Removing stale recording choice {Id} ({Title}) - recording file has been missing for over {Days} days: {Path}",
+                    choice.Id, choice.Title, days, choice.FilePath);
+                db.PendingImports.Remove(choice);
+                removed++;
+            }
+            if (removed > 0)
+                await db.SaveChangesAsync(cancellationToken);
+        }
+        finally
+        {
+            DvrIndexerChoice.Gate.Release();
         }
     }
 

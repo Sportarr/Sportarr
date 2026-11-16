@@ -19,6 +19,8 @@ namespace Sportarr.Api.Tests.Services;
 /// as the existing EventFile missing-file handling: a temporarily-unreachable
 /// parent directory must not be mistaken for "the file was deleted".
 /// </summary>
+// A recording choice row takes the static recording choice gate.
+[Collection(DvrChoiceStateCollection.Name)]
 public class DiskScanServicePendingImportCleanupTests : IDisposable
 {
     private readonly string _tempDir;
@@ -35,10 +37,10 @@ public class DiskScanServicePendingImportCleanupTests : IDisposable
             Directory.Delete(_tempDir, recursive: true);
     }
 
-    private static SportarrDbContext CreateDb()
+    private static SportarrDbContext CreateDb(string? name = null)
     {
         var options = new DbContextOptionsBuilder<SportarrDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(name ?? Guid.NewGuid().ToString())
             .Options;
         return new SportarrDbContext(options);
     }
@@ -61,6 +63,15 @@ public class DiskScanServicePendingImportCleanupTests : IDisposable
         Status = PendingImportStatus.Pending,
         Detected = detected,
     };
+
+    /// <summary>A recording choice row past the grace period whose file is gone.</summary>
+    private PendingImport MakeChoiceRow(string filePath)
+    {
+        var row = MakeRow(filePath, DateTime.UtcNow.AddDays(-100));
+        row.DownloadId = "dvr-7";
+        row.Protocol = "DVR";
+        return row;
+    }
 
     [Fact]
     public async Task DoesNotRemoveRowWhenFileStillExists()
@@ -136,6 +147,77 @@ public class DiskScanServicePendingImportCleanupTests : IDisposable
 
         (await db.PendingImports.FindAsync(row.Id)).Should().NotBeNull(
             because: "client-tracked rows are reconciled against the client's own queue/history elsewhere");
+    }
+
+    [Fact]
+    public async Task PurgesAStaleRecordingChoiceRowAndTheDiskRowBesideIt()
+    {
+        using var db = CreateDb();
+        var choice = MakeChoiceRow(Path.Combine(_tempDir, "recording-gone.ts"));
+        var disk = MakeRow(Path.Combine(_tempDir, "download-gone.mkv"), DateTime.UtcNow.AddDays(-100));
+        db.PendingImports.AddRange(choice, disk);
+        await db.SaveChangesAsync();
+
+        await InvokeCleanupAsync(CreateService(), db, new Config { EventFileMissingDeleteAfterDays = 30 });
+
+        (await db.PendingImports.FindAsync(choice.Id)).Should().BeNull(
+            because: "a choice row whose recording file is gone has nothing left to choose");
+        (await db.PendingImports.FindAsync(disk.Id)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LeavesARecordingChoiceRowThatAnAcceptIsImporting()
+    {
+        using var db = CreateDb();
+        var choice = MakeChoiceRow(Path.Combine(_tempDir, "recording-in-use.ts"));
+        db.PendingImports.Add(choice);
+        await db.SaveChangesAsync();
+        using var claim = DvrIndexerChoice.TryStartImport(choice.Id);
+        claim.Should().NotBeNull();
+
+        await InvokeCleanupAsync(CreateService(), db, new Config { EventFileMissingDeleteAfterDays = 30 });
+
+        (await db.PendingImports.AsNoTracking().SingleAsync(p => p.Id == choice.Id))
+            .Status.Should().Be(PendingImportStatus.Pending, "the accept owns the row while it imports");
+    }
+
+    [Fact]
+    public async Task LeavesARecordingChoiceRowThatALibraryImportResolvedUnderTheGate()
+    {
+        var name = Guid.NewGuid().ToString();
+        using var db = CreateDb(name);
+        var choice = MakeChoiceRow(Path.Combine(_tempDir, "recording-imported.ts"));
+        db.PendingImports.Add(choice);
+        await db.SaveChangesAsync();
+        // The Library Import uses its own context on the same store.
+        using var importDb = CreateDb(name);
+
+        Task purge;
+        await DvrIndexerChoice.EnterGateAsync();
+        try
+        {
+            purge = InvokeCleanupAsync(CreateService(), db, new Config { EventFileMissingDeleteAfterDays = 30 });
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (DvrIndexerChoice.GateWaiters == 0)
+            {
+                purge.IsCompleted.Should().BeFalse("the purge must wait for the recording choice gate");
+                DateTime.UtcNow.Should().BeBefore(deadline, "the purge must reach the gate");
+                await Task.Delay(10);
+            }
+            // The purge has read the row. The Library Import completes it now.
+            var row = await importDb.PendingImports.SingleAsync(p => p.Id == choice.Id);
+            row.Status = PendingImportStatus.Completed;
+            row.ResolvedAt = DateTime.UtcNow;
+            await importDb.SaveChangesAsync();
+        }
+        finally
+        {
+            DvrIndexerChoice.Gate.Release();
+        }
+
+        await purge;
+        (await db.PendingImports.AsNoTracking().SingleAsync(p => p.Id == choice.Id))
+            .Status.Should().Be(PendingImportStatus.Completed, "the Library Import resolved the row first");
     }
 
     [Fact]
