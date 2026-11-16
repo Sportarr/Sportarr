@@ -30,6 +30,26 @@ import FileMetadataEditor, { type FileMetadataEditorValues } from '../components
 import { folderDefaultsFor } from '../utils/folderDefaults';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
+import {
+  FILE_LIST_SCROLL,
+  FILE_ROW_ACTIONS,
+  FILE_ROW_BUTTON,
+  FILE_ROW_CHECKBOX,
+  FILE_ROW_DETAILS,
+  FILE_ROW_GRID,
+  FILE_ROW_NAME,
+  FILE_ROW_PREVIEW,
+} from '../utils/designTokens';
+
+// Release names often have no spaces. A break opportunity after each
+// separator lets a narrow screen wrap them between parts, not mid-word.
+const wrapAtSeparators = (text: string | undefined) =>
+  (text ?? '').split(/([./\\_-])/).map((part, i) => (
+    <Fragment key={i}>
+      {part}
+      {i % 2 === 1 && <wbr />}
+    </Fragment>
+  ));
 
 interface ImportableFile {
   filePath: string;
@@ -921,24 +941,24 @@ const LibraryImportPage: React.FC = () => {
                   <CheckCircleIcon className="w-6 h-6 text-green-400" />
                   Matched Files ({scanResult.matchedFiles.length})
                 </h3>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className={FILE_LIST_SCROLL}>
                   {scanResult.matchedFiles.map(file => {
                     const isSelected = selectedFiles.has(file.filePath);
                     const mapping = fileEventMappings.get(file.filePath);
                     return (
                       <div key={file.filePath} className={`p-3 bg-gray-800 rounded-lg border ${isSelected ? 'border-green-500' : 'border-gray-700'}`}>
-                        <div className="flex items-center gap-3">
+                        <div className={FILE_ROW_GRID}>
                           <input
                             type="checkbox"
                             checked={isSelected}
                             disabled={file.heldBySourcePrecedence && !precedenceOverrides.has(file.filePath)}
                             onChange={() => toggleFileSelection(file.filePath)}
-                            className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-green-600"
+                            className={`w-5 h-5 rounded border-gray-600 bg-gray-700 text-green-600 ${FILE_ROW_CHECKBOX}`}
                           />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white font-medium truncate">{file.fileName}</p>
+                          <p className={FILE_ROW_NAME}>{wrapAtSeparators(file.fileName)}</p>
+                          <div className={FILE_ROW_DETAILS}>
                             <p className="text-sm text-gray-400">
-                              → <span className="text-green-400">{mapping?.destinationPreview || file.destinationPreview || mapping?.eventTitle || file.matchedEventTitle}</span>
+                              → <span className="text-green-400">{wrapAtSeparators(mapping?.destinationPreview || file.destinationPreview || mapping?.eventTitle || file.matchedEventTitle)}</span>
                               {mapping?.partName && (
                                 <span className="text-blue-400 ml-1">({mapping.partName})</span>
                               )}
@@ -959,28 +979,30 @@ const LibraryImportPage: React.FC = () => {
                               </label>
                             )}
                           </div>
-                          {!mapping && getConfidenceBadge(file.matchConfidence)}
-                          <button
-                            onClick={() => setEditorOpenForFile(file.filePath)}
-                            className={
-                              'px-3 py-1 text-white text-sm rounded transition-colors flex items-center gap-1 ' +
-                              (fileMetadataOverrides.has(file.filePath)
-                                ? 'bg-emerald-700 hover:bg-emerald-600'
-                                : 'bg-gray-700 hover:bg-gray-600')
-                            }
-                            title="Edit file metadata before import (Quality, Source, Codec, Languages…)"
-                          >
-                            <PencilSquareIcon className="w-4 h-4" />
-                            Metadata
-                          </button>
-                          <button
-                            onClick={() => openFileDetailsModal(file)}
-                            className="px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded transition-colors flex items-center gap-1"
-                            title="Edit match details"
-                          >
-                            <PencilSquareIcon className="w-4 h-4" />
-                            Edit
-                          </button>
+                          <div className={FILE_ROW_ACTIONS}>
+                            {!mapping && getConfidenceBadge(file.matchConfidence)}
+                            <button
+                              onClick={() => setEditorOpenForFile(file.filePath)}
+                              className={
+                                `${FILE_ROW_BUTTON} ` +
+                                (fileMetadataOverrides.has(file.filePath)
+                                  ? 'bg-emerald-700 hover:bg-emerald-600'
+                                  : 'bg-gray-700 hover:bg-gray-600')
+                              }
+                              title="Edit file metadata before import (Quality, Source, Codec, Languages…)"
+                            >
+                              <PencilSquareIcon className="w-4 h-4" />
+                              Metadata
+                            </button>
+                            <button
+                              onClick={() => openFileDetailsModal(file)}
+                              className={`${FILE_ROW_BUTTON} bg-gray-600 hover:bg-gray-500`}
+                              title="Edit match details"
+                            >
+                              <PencilSquareIcon className="w-4 h-4" />
+                              Edit
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -999,21 +1021,21 @@ const LibraryImportPage: React.FC = () => {
                 <p className="text-sm text-gray-400 mb-2">
                   Click "Match" to manually select the league, season, event, and part for each file
                 </p>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className={FILE_LIST_SCROLL}>
                   {scanResult.unmatchedFiles.map(file => {
                     const isSelected = selectedFiles.has(file.filePath);
                     const mapping = fileEventMappings.get(file.filePath);
                     return (
                       <div key={file.filePath} className={`p-3 bg-gray-800 rounded-lg border ${mapping ? 'border-green-500' : isSelected ? 'border-yellow-500' : 'border-gray-700'}`}>
-                        <div className="flex items-center gap-3">
+                        <div className={FILE_ROW_GRID}>
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleFileSelection(file.filePath)}
-                            className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-yellow-600"
+                            className={`w-5 h-5 rounded border-gray-600 bg-gray-700 text-yellow-600 ${FILE_ROW_CHECKBOX}`}
                           />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white font-medium truncate">{file.fileName}</p>
+                          <p className={FILE_ROW_NAME}>{wrapAtSeparators(file.fileName)}</p>
+                          <div className={FILE_ROW_DETAILS}>
                             <p className="text-sm text-gray-400">
                               {mapping ? (
                                 <>
@@ -1027,38 +1049,40 @@ const LibraryImportPage: React.FC = () => {
                                   )}
                                 </>
                               ) : file.parsedTitle ? (
-                                <>Parsed: {file.parsedTitle}</>
+                                <>Parsed: {wrapAtSeparators(file.parsedTitle)}</>
                               ) : (
                                 <span className="text-yellow-400">Will create new event</span>
                               )}
                               <span className="text-gray-500 ml-2">({file.fileSizeFormatted})</span>
                             </p>
                             {mapping?.destinationPreview && (
-                              <p className="text-xs text-gray-500 truncate" title={mapping.destinationPreview}>
-                                → {mapping.destinationPreview}
+                              <p className={FILE_ROW_PREVIEW} title={mapping.destinationPreview}>
+                                → {wrapAtSeparators(mapping.destinationPreview)}
                               </p>
                             )}
                           </div>
-                          <button
-                            onClick={() => setEditorOpenForFile(file.filePath)}
-                            className={
-                              'px-3 py-1 text-white text-sm rounded transition-colors flex items-center gap-1 ' +
-                              (fileMetadataOverrides.has(file.filePath)
-                                ? 'bg-emerald-700 hover:bg-emerald-600'
-                                : 'bg-gray-700 hover:bg-gray-600')
-                            }
-                            title="Edit file metadata before import"
-                          >
-                            <PencilSquareIcon className="w-4 h-4" />
-                            Metadata
-                          </button>
-                          <button
-                            onClick={() => openFileDetailsModal(file)}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors flex items-center gap-1"
-                          >
-                            <PencilSquareIcon className="w-4 h-4" />
-                            {mapping ? 'Edit' : 'Match'}
-                          </button>
+                          <div className={FILE_ROW_ACTIONS}>
+                            <button
+                              onClick={() => setEditorOpenForFile(file.filePath)}
+                              className={
+                                `${FILE_ROW_BUTTON} ` +
+                                (fileMetadataOverrides.has(file.filePath)
+                                  ? 'bg-emerald-700 hover:bg-emerald-600'
+                                  : 'bg-gray-700 hover:bg-gray-600')
+                              }
+                              title="Edit file metadata before import"
+                            >
+                              <PencilSquareIcon className="w-4 h-4" />
+                              Metadata
+                            </button>
+                            <button
+                              onClick={() => openFileDetailsModal(file)}
+                              className={`${FILE_ROW_BUTTON} bg-blue-600 hover:bg-blue-700`}
+                            >
+                              <PencilSquareIcon className="w-4 h-4" />
+                              {mapping ? 'Edit' : 'Match'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1078,21 +1102,21 @@ const LibraryImportPage: React.FC = () => {
                   These files are linked to events but may need re-importing if they weren't properly moved/renamed.
                   Click "Re-import" to move them to the correct location with proper naming.
                 </p>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className={FILE_LIST_SCROLL}>
                   {scanResult.alreadyInLibrary.map(file => {
                     const isSelected = selectedFiles.has(file.filePath);
                     const mapping = fileEventMappings.get(file.filePath);
                     return (
                       <div key={file.filePath} className={`p-3 bg-gray-800 rounded-lg border ${isSelected ? 'border-blue-500' : 'border-gray-700'}`}>
-                        <div className="flex items-center gap-3">
+                        <div className={FILE_ROW_GRID}>
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleFileSelection(file.filePath)}
-                            className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600"
+                            className={`w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 ${FILE_ROW_CHECKBOX}`}
                           />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white font-medium truncate">{file.fileName}</p>
+                          <p className={FILE_ROW_NAME}>{wrapAtSeparators(file.fileName)}</p>
+                          <div className={FILE_ROW_DETAILS}>
                             <p className="text-sm text-gray-400">
                               {mapping ? (
                                 <>
@@ -1112,31 +1136,33 @@ const LibraryImportPage: React.FC = () => {
                               <span className="text-gray-500 ml-2">({file.fileSizeFormatted})</span>
                             </p>
                             {mapping?.destinationPreview && (
-                              <p className="text-xs text-gray-500 truncate" title={mapping.destinationPreview}>
-                                → {mapping.destinationPreview}
+                              <p className={FILE_ROW_PREVIEW} title={mapping.destinationPreview}>
+                                → {wrapAtSeparators(mapping.destinationPreview)}
                               </p>
                             )}
                           </div>
-                          <button
-                            onClick={() => setEditorOpenForFile(file.filePath)}
-                            className={
-                              'px-3 py-1 text-white text-sm rounded transition-colors flex items-center gap-1 ' +
-                              (fileMetadataOverrides.has(file.filePath)
-                                ? 'bg-emerald-700 hover:bg-emerald-600'
-                                : 'bg-gray-700 hover:bg-gray-600')
-                            }
-                            title="Edit file metadata before re-import"
-                          >
-                            <PencilSquareIcon className="w-4 h-4" />
-                            Metadata
-                          </button>
-                          <button
-                            onClick={() => openFileDetailsModal(file)}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors flex items-center gap-1"
-                          >
-                            <ArrowPathIcon className="w-4 h-4" />
-                            Re-import
-                          </button>
+                          <div className={FILE_ROW_ACTIONS}>
+                            <button
+                              onClick={() => setEditorOpenForFile(file.filePath)}
+                              className={
+                                `${FILE_ROW_BUTTON} ` +
+                                (fileMetadataOverrides.has(file.filePath)
+                                  ? 'bg-emerald-700 hover:bg-emerald-600'
+                                  : 'bg-gray-700 hover:bg-gray-600')
+                              }
+                              title="Edit file metadata before re-import"
+                            >
+                              <PencilSquareIcon className="w-4 h-4" />
+                              Metadata
+                            </button>
+                            <button
+                              onClick={() => openFileDetailsModal(file)}
+                              className={`${FILE_ROW_BUTTON} bg-blue-600 hover:bg-blue-700`}
+                            >
+                              <ArrowPathIcon className="w-4 h-4" />
+                              Re-import
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );

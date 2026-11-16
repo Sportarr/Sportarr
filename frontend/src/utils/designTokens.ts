@@ -70,6 +70,42 @@ export const COMPACT_VIEW_BREAKPOINT = 1280;
 /** Constrained-height scrollable list (league picker, rename preview, etc.). */
 export const SCROLLABLE_LIST = 'max-h-60 overflow-y-auto';
 
+// ─── Import file rows ────────────────────────────────────────────────────────
+
+/** Scroll frame for an import file list. A phone gets more height because its rows stack. */
+export const FILE_LIST_SCROLL = 'space-y-2 max-h-[70vh] overflow-y-auto sm:max-h-64';
+
+/**
+ * Import file row. On a phone the checkbox and name share the first line, the
+ * details and the actions each get a full-width line below. From sm up the row
+ * is one line, with the checkbox and actions centered beside the text.
+ */
+export const FILE_ROW_GRID = 'grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-y-0';
+
+/** Checkbox cell of an import file row. */
+export const FILE_ROW_CHECKBOX = 'mt-0.5 sm:mt-0 sm:row-span-2';
+
+/**
+ * File name of an import file row. It wraps on a phone and truncates from sm up.
+ * Chromium breaks at <wbr> even with nowrap, so the wbr tags are hidden from sm up.
+ */
+export const FILE_ROW_NAME = 'min-w-0 text-white font-medium break-words sm:truncate sm:[&_wbr]:hidden';
+
+/**
+ * Destination preview line under a manual match. Like the file name, it wraps
+ * on a phone and truncates from sm up.
+ */
+export const FILE_ROW_PREVIEW = 'text-xs text-gray-500 break-words sm:truncate sm:[&_wbr]:hidden';
+
+/** Details cell (destination, size, warnings) of an import file row. */
+export const FILE_ROW_DETAILS = 'col-span-2 min-w-0 break-words sm:col-span-1 sm:col-start-2';
+
+/** Badge and button cell of an import file row. */
+export const FILE_ROW_ACTIONS = 'col-span-2 flex flex-wrap items-center gap-2 sm:col-span-1 sm:col-start-3 sm:row-start-1 sm:row-span-2 sm:flex-nowrap';
+
+/** Button in an import file row. It is 44px high on a phone for touch. */
+export const FILE_ROW_BUTTON = 'inline-flex min-h-11 items-center justify-center gap-1 rounded px-3 py-1 text-sm text-white transition-colors sm:min-h-0';
+
 // ─── Badges ──────────────────────────────────────────────────────────────────
 
 /** Base classes shared by all inline badges. */

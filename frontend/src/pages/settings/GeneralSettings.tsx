@@ -918,15 +918,10 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           <div>
             <span className="text-white font-medium">Send Anonymous Usage Data</span>
             <p className="text-sm text-gray-400 mt-1">
-              Help improve Sportarr by sending anonymous usage data. This currently includes team
-              aliases you add, so popular aliases can be promoted into the shared metadata and
-              benefit everyone automatically. It also includes the titles of releases that match a
-              monitored league but no event, with the league and the date, so missing events can
-              be added. Imports you make yourself also send the file name, the event you matched it
-              to, the season, and whether you chose it by hand. Library Import scans send cleaned
-              file names and receive matches other installs agreed on. Submissions carry only that
-              data and a random install identifier. No personal information, indexer name or address
-              is collected.{' '}
+              Help make imports and searches better for everyone. Sportarr shares anonymous match
+              data, like team aliases you add, release names it can't place, and the events you
+              pick for your files. In return, Library Import gets matches other users have agreed
+              on. Nothing that identifies you or your server is sent.{' '}
               <a href="https://wiki.sportarr.net/features/anonymous-usage-data/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">See exactly what is sent</a>.
             </p>
           </div>
