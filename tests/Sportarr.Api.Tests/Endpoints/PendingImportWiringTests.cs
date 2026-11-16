@@ -26,6 +26,8 @@ namespace Sportarr.Api.Tests.Endpoints;
 /// the screens use them. These seams broke silently before, because the
 /// helpers had tests and the routes did not.
 /// </summary>
+// A page import of a recording choice takes the static recording choice gate.
+[Collection(DvrChoiceStateCollection.Name)]
 public class PendingImportWiringTests
 {
     [Fact]
@@ -304,6 +306,58 @@ public class PendingImportWiringTests
         await AssertUnchangedAsync(host, recording);
     }
 
+    [Fact]
+    public async Task APageImportWaitsForRetentionThatResolvesTheSameChoiceAndStillReports()
+    {
+        await using var host = await WiringHost.CreateAsync();
+        await host.UsageData(true);
+        var (first, second) = host.Seed();
+        var file = host.Write("NFL.2025.Panthers.vs.Browns.720p.HDTV.DVR.mkv");
+        var (recording, pending) = await AddDvrChoiceAsync(host, file, first);
+        // The downloaded file that the choice compares with. Retention keeps it.
+        var downloaded = host.Write("NFL.2025.Panthers.vs.Browns.1080p.WEB.h264-GRP.mkv");
+        host.Db.EventFiles.Add(new EventFile { EventId = first.Id, FilePath = downloaded, Exists = true, Size = 4096 });
+        await host.Db.SaveChangesAsync();
+        host.Db.ChangeTracker.Clear();
+        // The batch uses host.Db. Retention uses its own context on the same store.
+        await using var retentionDb = host.NewContext();
+
+        Task<ImportResult> batch;
+        await DvrIndexerChoice.EnterGateAsync();
+        try
+        {
+            batch = host.Library.ImportFilesAsync(new List<FileImportRequest>
+            {
+                new() { FilePath = file, EventId = second.Id, SuggestedEventId = first.Id, ReportMatch = true, ImportMode = "copy" },
+            });
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (DvrIndexerChoice.GateWaiters == 0)
+            {
+                batch.IsCompleted.Should().BeFalse("the batch must wait for the recording choice gate");
+                DateTime.UtcNow.Should().BeBefore(deadline, "the batch must reach the gate");
+                await Task.Delay(10);
+            }
+            // Retention keeps the downloaded file and removes the choice row.
+            var row = await retentionDb.PendingImports.SingleAsync(p => p.Id == pending.Id);
+            (await DvrIndexerChoice.KeepDownloadAsync(retentionDb, row, blocklist: false))
+                .Should().Be(DvrIndexerChoice.Outcome.Resolved);
+        }
+        finally
+        {
+            DvrIndexerChoice.Gate.Release();
+        }
+
+        var result = await batch;
+        result.Imported.Should().ContainSingle();
+        result.Failed.Should().BeEmpty();
+        (await host.Db.PendingImports.AsNoTracking().AnyAsync(p => p.Id == pending.Id)).Should().BeFalse();
+        (await host.Db.DvrRecordings.AsNoTracking().SingleAsync(r => r.Id == recording.Id))
+            .Status.Should().Be(DvrRecordingStatus.Ignored, "retention decided first, so the batch leaves the recording");
+        (await host.SentSuggestions()).Should().ContainSingle()
+            .Which.GetProperty("eventId").GetString().Should().Be("ev-313015");
+        File.Exists(downloaded).Should().BeTrue();
+    }
+
     /// <summary>A recording and its "dvr-N" choice row, as the DVR service writes them.</summary>
     private static async Task<(DvrRecording Recording, PendingImport Pending)> AddDvrChoiceAsync(
         WiringHost host, string file, Event evt, string? part = null,
@@ -465,6 +519,10 @@ public class PendingImportWiringTests
             config.SendAnonymousUsageData = false;
             return host;
         }
+
+        /// <summary>A second context on the same in-memory store, as another service uses.</summary>
+        public SportarrDbContext NewContext() => new(new DbContextOptionsBuilder<SportarrDbContext>()
+            .UseInMemoryDatabase(_directory).Options);
 
         public async Task UsageData(bool on) => (await Config.GetConfigAsync()).SendAnonymousUsageData = on;
 

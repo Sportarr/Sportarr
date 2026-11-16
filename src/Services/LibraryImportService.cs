@@ -1774,7 +1774,9 @@ public class LibraryImportService
     /// user then imports from Library Import. Without this step the row
     /// stays in the pending list. The row is completed as the accept
     /// endpoint completes it. A rejected row is already gone, and a row in
-    /// another state is not changed. The caller saves.
+    /// another state is not changed. When a recording choice row is present,
+    /// this method saves all changes under the recording choice gate.
+    /// Otherwise the caller saves.
     /// </summary>
     private async Task CompletePendingImportsOfAsync(IReadOnlyCollection<ImportedSource> importedFiles)
     {
@@ -1786,15 +1788,52 @@ public class LibraryImportService
         var pending = await _db.PendingImports
             .Where(p => p.Status == PendingImportStatus.Pending)
             .ToListAsync();
-        foreach (var row in pending.Where(p => destinations.ContainsKey(p.FilePath)))
+        var matched = pending.Where(p => destinations.ContainsKey(p.FilePath)).ToList();
+        foreach (var row in matched.Where(p => !IsDvrChoiceRow(p)))
+            CompletePendingRow(row);
+
+        var choices = matched.Where(IsDvrChoiceRow).ToList();
+        if (choices.Count == 0)
+            return;
+        // Recording retention and the accept endpoint resolve the same rows
+        // under this gate. Without it, retention can remove a row between the
+        // read above and the save, and the save then fails for the whole batch.
+        await DvrIndexerChoice.EnterGateAsync();
+        try
         {
-            row.Status = PendingImportStatus.Completed;
-            row.ResolvedAt = DateTime.UtcNow;
-            row.ErrorMessage = null;
-            _logger.LogInformation("[Import] Completed pending import {Id} because its file was imported: {Path}",
-                row.Id, row.FilePath);
-            await MarkDvrChoiceRecordingImportedAsync(row, destinations[row.FilePath]);
+            foreach (var row in choices)
+            {
+                var status = await _db.PendingImports.AsNoTracking()
+                    .Where(p => p.Id == row.Id)
+                    .Select(p => (PendingImportStatus?)p.Status)
+                    .FirstOrDefaultAsync();
+                if (status != PendingImportStatus.Pending || DvrIndexerChoice.IsImporting(row.Id))
+                {
+                    _logger.LogInformation("[Import] Pending import {Id} was resolved by another step, so it stays as it is",
+                        row.Id);
+                    continue;
+                }
+                CompletePendingRow(row);
+                await MarkDvrChoiceRecordingImportedAsync(row, destinations[row.FilePath]);
+            }
+            await _db.SaveChangesAsync();
         }
+        finally
+        {
+            DvrIndexerChoice.Gate.Release();
+        }
+    }
+
+    private static bool IsDvrChoiceRow(PendingImport row) =>
+        row.DownloadId.StartsWith("dvr-", StringComparison.Ordinal);
+
+    private void CompletePendingRow(PendingImport row)
+    {
+        row.Status = PendingImportStatus.Completed;
+        row.ResolvedAt = DateTime.UtcNow;
+        row.ErrorMessage = null;
+        _logger.LogInformation("[Import] Completed pending import {Id} because its file was imported: {Path}",
+            row.Id, row.FilePath);
     }
 
     /// <summary>
@@ -1802,7 +1841,8 @@ public class LibraryImportService
     /// downloaded file. When the user imports the recording's file here, mark
     /// the recording imported, as the accept endpoint does. Otherwise the
     /// recording stays completed, and the next DVR import pass marks it
-    /// failed when a move took its file away. The caller saves.
+    /// failed when a move took its file away. The caller holds the recording
+    /// choice gate and saves.
     /// </summary>
     private async Task MarkDvrChoiceRecordingImportedAsync(PendingImport row, ImportedSource file)
     {
