@@ -166,8 +166,8 @@ public class SearchQueueService
         // event being queued repeatedly, and each entry ran its own search and
         // grabbed again, so one user got the same release sent to SABnzbd three
         // times in ten seconds and was left with folder, folder.1 and folder.2.
-        // Returning the search already in flight matches how Sonarr's command
-        // queue collapses an equivalent command instead of running it twice.
+        // The search already in flight is returned instead. An equal request
+        // joins it and does not run a second time.
         var inFlight = _activeSearches.Values
             .Concat(_pendingQueue)
             .FirstOrDefault(q => q.EventId == eventId

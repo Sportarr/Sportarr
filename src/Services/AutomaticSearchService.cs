@@ -104,7 +104,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             var config = await _configService.GetConfigAsync();
             var fullEventUpper = EventPartDetector.FullEventSegmentName.ToUpperInvariant();
 
-            // QUEUE THRESHOLD CHECK (Huntarr-style)
+            // QUEUE THRESHOLD CHECK
             // For automatic searches, check if download queue exceeds threshold
             // This prevents overwhelming download clients and indexers
             if (!isManualSearch)
@@ -1704,9 +1704,8 @@ public class AutomaticSearchService : IAutomaticSearchService
             _logger.LogInformation("[Automatic Search] Added to download client: {Client} (ID: {DownloadId})",
                 downloadClient.Name, downloadId);
 
-            // Recent/older event queue priority (issue #220), matching Sonarr's
-            // RecentTvPriority/OlderTvPriority split: "recent" is the same
-            // 14-day window Sonarr uses for episodes. ApplyQueuePriorityAsync
+            // Recent/older event queue priority (issue #220). An event from
+            // the last 14 days is recent. ApplyQueuePriorityAsync
             // interprets the raw value per client type and is a silent no-op
             // for client types with no queue concept.
             var isRecentEvent = evt.EventDate >= DateTime.UtcNow.AddDays(-14);
@@ -1968,7 +1967,7 @@ public class AutomaticSearchService : IAutomaticSearchService
     {
         _logger.LogInformation("[Automatic Search] Searching all monitored events (max 3 concurrent)");
 
-        // QUEUE THRESHOLD CHECK (Huntarr-style) - check at batch level before starting
+        // QUEUE THRESHOLD CHECK - check at batch level before starting
         var config = await _configService.GetConfigAsync();
         if (config.MaxDownloadQueueSize > 0)
         {
