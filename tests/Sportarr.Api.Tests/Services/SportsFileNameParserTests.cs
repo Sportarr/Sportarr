@@ -74,9 +74,9 @@ public class SportsFileNameParserTests
     }
 
     [Theory]
-    // Resolution-like NNNNxNNNN tokens must not be misread as {Year}x{Round}:
-    // 1920/2560/3840 are not 20[12]x years, and 2026x1080p has a 4-digit second
-    // term that the 1-2 digit round (plus word boundary) deliberately rejects.
+    // Resolution tokens such as 1920x1080 are not a {Year}x{Number} marker.
+    // 1920, 2560 and 3840 are not 20[12]x years. In 2026x1080p the second
+    // term has four digits, and the marker accepts one to three digits only.
     [InlineData("Some.Stream.1920x1080.h264-GROUP")]
     [InlineData("Some.Stream.2560x1440.h264-GROUP")]
     [InlineData("Formula.1.2026x1080p.China.Race-GROUP")]

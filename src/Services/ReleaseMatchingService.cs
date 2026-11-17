@@ -191,6 +191,13 @@ public class ReleaseMatchingService
         new Regex(@"(?<![0-9A-Za-z])20[12]\dx(\d{1,2})(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase), // 2026x02
     };
 
+    // A year index with up to three digits ("2026x109"). Some groups number
+    // every session of the season. No season has 100 rounds, so the round
+    // pattern above keeps its two-digit limit. This pattern only finds the
+    // token.
+    private static readonly Regex _yearIndexPattern = new(
+        @"(?<![0-9A-Za-z])20[12]\dx\d{1,3}(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private static readonly Regex _splitSeparatorsRegex = new(
         @"[\s\.\-_]+",
         RegexOptions.Compiled);
@@ -351,7 +358,7 @@ public class ReleaseMatchingService
         };
         var formulaOne = evt.League?.Name.Contains("Formula 1", StringComparison.OrdinalIgnoreCase) == true;
         var ambiguousFormulaOneYearX = formulaOne &&
-            _roundNumberPatterns[^1].IsMatch(release.Title) &&
+            _yearIndexPattern.IsMatch(release.Title) &&
             !_roundNumberPatterns.Take(_roundNumberPatterns.Length - 1)
                 .Any(pattern => pattern.IsMatch(release.Title));
 

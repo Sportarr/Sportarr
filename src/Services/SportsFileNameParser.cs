@@ -824,17 +824,34 @@ public class SportsFileNameParser
     // and without pulling the year out, match confidence caps below the
     // threshold and RSS sync silently drops the release.
     private static readonly Regex SeasonEpisodeYearPattern = new(@"[Ss](?<year>20[12]\d)[Ee]\d+", RegexOptions.Compiled);
-    // {Year}x{Round} season marker where the season is the year and a round
-    // follows immediately after an 'x' (e.g. "2026x02" = 2026 season, round 2).
-    // Scene releases use it for round-based sports -- Sky's Formula 1 feed is
-    // one example (Formula.1.2026x02.China.Race.SkyF1HD.1080p). YearOnlyPattern
-    // misses it because the 'x' joining the year and round is a word character,
-    // so the \b after the year never fires -- the year stays unextracted, the
-    // year-match bonus is lost, and the release scores below the confidence
-    // threshold and gets dropped. Only the year is captured; the round digits
-    // are matched (to anchor the format) but intentionally not surfaced -- see
-    // the extraction site below.
-    private static readonly Regex SeasonRoundYearPattern = new(@"\b(?<year>20[12]\d)x\d{1,2}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // {Year}x{Number} season marker. The season is the year, and a number
+    // follows the 'x'. One feed writes the round ("2026x02" is round 2).
+    // Another feed writes a season-wide session index ("2026x109" is the
+    // 109th session of 2026). The pattern accepts one to three digits. A
+    // four-digit number is a resolution. YearOnlyPattern misses this marker
+    // because the 'x' is a word character, so the \b after the year never
+    // fires. Without the year, the release loses the year-match bonus and
+    // RSS sync drops it. The parser takes only the year. The number is not
+    // surfaced, as the extraction site below explains.
+    private static readonly Regex SeasonRoundYearPattern = new(@"\b(?<year>20[12]\d)x\d{1,3}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // This pattern reads a Formula 1 name with a year index, such as
+    // "Formula.1.2026x109.Brazil.Race". An "R14" round token can follow the
+    // index. The name group holds the words after them.
+    private static readonly Regex FormulaOneYearIndexName = new(
+        @"^(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One)[\.\-\s]+20[12]\dx\d{1,3}[\.\-\s]+(?:(?:Round|Rd|R)[\.\-\s]*\d{1,2}[\.\-\s]+)?(?<name>.+)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+
+    // The place ends at a session word, a show word or a release tag.
+    private static readonly Regex YearIndexPlaceEnd = new(
+        @"(?<![A-Za-z0-9])(?:race|sprint|qualifying|quali|shootout|(?:free\s+)?practice|fp\d|warm\s*up|pre|post|test(?:ing)?|" +
+        @"show|notebook|highlights|" +
+        MediaFileParser.QualityTokens + "|" + MediaFileParser.GenericQualityTokens + "|" + MediaFileParser.SourceTokens +
+        @"|[xh]\s?26[45]|hevc|avc|av1|aac|ddp?\d*|eac3|atmos|english|german|french|multi|f1tv|f1live|sky\w*|ss|hlg|hdr|dv)(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
+
+    // "SpanishGP" and "Monaco Grand Prix" name the place with a suffix.
+    private static readonly Regex GrandPrixSuffix = new(@"\s*(?:\bGrand\s+Prix|GP)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
 
     public SportsFileNameParser(ILogger<SportsFileNameParser> logger)
     {
@@ -1183,8 +1200,8 @@ public class SportsFileNameParser
                     }
                     else
                     {
-                        // Fallback: {Year}x{Round} season marker (e.g.
-                        // "2026x02"). The 'x' joining the year and round is a
+                        // Fallback: {Year}x{Number} season marker (e.g.
+                        // "2026x02" or "2026x109"). The 'x' joining the year and number is a
                         // word character, so neither YearOnlyPattern nor the
                         // SxxxxExx marker above can pull the year out. Surface
                         // only the year -- that earns the year-match bonus and
@@ -1272,6 +1289,12 @@ public class SportsFileNameParser
             result = ExtractGenericInfo(cleanName, result);
         }
 
+        if (result.MatchedPattern == null &&
+            string.Equals(result.Organization, "Formula 1", StringComparison.Ordinal))
+        {
+            ReadFormulaOneYearIndexName(cleanName, result);
+        }
+
         // Memoize. Bounded by clear-when-full (cheap and good enough for
         // a parse cache; we don't need LRU semantics here — parse
         // results are tiny and the working set turns over with each
@@ -1286,6 +1309,31 @@ public class SportsFileNameParser
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Reads the place and the session from a Formula 1 name with a year
+    /// index, such as "Formula.1.2026x109.Brazil.Race". The index is not a
+    /// round, so the round stays empty. The title stays the generic title.
+    /// </summary>
+    private void ReadFormulaOneYearIndexName(string cleanName, SportsParseResult result)
+    {
+        try
+        {
+            var match = FormulaOneYearIndexName.Match(cleanName);
+            if (!match.Success) return;
+
+            var name = Regex.Replace(match.Groups["name"].Value, @"[\.\-\s]+", " ", RegexOptions.None, PatternTimeout).Trim();
+            var place = YearIndexPlaceEnd.Split(name, 2)[0].Trim();
+            place = GrandPrixSuffix.Replace(place, string.Empty).Trim();
+
+            result.Location = place.Length > 0 ? place : null;
+            result.Session = DetectMotorsportSession(name);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            _logger.LogWarning("[Sports Parser] Year index read gave up on '{Title}'", cleanName);
+        }
     }
 
     /// <summary>
@@ -1327,8 +1375,8 @@ public class SportsFileNameParser
             { @"^MLB[\.\-\s]", ("Baseball", "MLB") },
             { @"^(?:EPL|Premier[\.\-\s]*League)[\.\-\s]", ("Soccer", "Premier League") },
             { @"^(?:UCL|Champions[\.\-\s]*League)[\.\-\s]", ("Soccer", "Champions League") },
-            { @"^(?:F1[\.\-\s]*Academy|Formula[\.\-\s]*1[\.\-\s]*Academy)[\.\-\s]", ("Motorsport", "F1 Academy") },
-            { @"^(?:F1|Formula[\.\-\s]*1)[\.\-\s]", ("Motorsport", "Formula 1") },
+            { @"^(?:F1[\.\-\s]*Academy|Formula[\.\-\s]*(?:1|One)[\.\-\s]*Academy)[\.\-\s]", ("Motorsport", "F1 Academy") },
+            { @"^(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One)[\.\-\s]", ("Motorsport", "Formula 1") },
             { @"^Formula[\.\-\s]*E[\.\-\s]", ("Motorsport", "Formula E") },
             { @"^NASCAR[\.\-\s]", ("Motorsport", "NASCAR") },
             { @"^MotoGP[\.\-\s]", ("Motorsport", "MotoGP") },
@@ -1517,6 +1565,13 @@ public class SportsFileNameParser
 
         var cleaned = nameValue.Replace('.', ' ').Replace('-', ' ').Trim();
         var lower = cleaned.ToLowerInvariant();
+
+        // A "Post Race Show" or a "Pre Race Show" is a studio show, not the
+        // race. Without this check the word "race" reads it as the race.
+        // The words are listed, so "Preview Show" and the historic
+        // "Pre-Qualifying" session are not affected.
+        if (Regex.IsMatch(lower, @"\b(?:pre|post)\s+(?:race|qualifying|quali|sprint|match|event)\s+show\b|\b(?:pre|post)\s+race\b"))
+            return null;
 
         // Order matters: check more specific patterns first
         // Library names number sessions as "Nr. 1". A MotoGP weekend holds both
