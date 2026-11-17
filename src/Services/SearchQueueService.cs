@@ -44,6 +44,12 @@ public class SearchQueueService
     // Completed searches (kept for status, cleaned up automatically by timer)
     private static readonly ConcurrentDictionary<string, SearchQueueItem> _completedSearches = new();
 
+    // Searches this queue still has to finish, by queue id. Each one has a
+    // task row with that id as its CancellationId. The task runner skips
+    // those rows. A search waiting for a slot is in no list above, so this
+    // set is kept apart.
+    private static readonly ConcurrentDictionary<string, byte> _unfinished = new();
+
     // Lock for queue processing
     private static readonly SemaphoreSlim _processingLock = new(1, 1);
 
@@ -200,8 +206,18 @@ public class SearchQueueService
             CancellationId = queueItem.Id,
             Message = "Waiting in search queue..."
         };
+        // Claim the row before it exists, so the task runner never sees it unclaimed.
+        _unfinished[queueItem.Id] = 0;
         db.Tasks.Add(task);
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch
+        {
+            _unfinished.TryRemove(queueItem.Id, out _);
+            throw;
+        }
 
         queueItem.TaskId = task.Id;
         _pendingQueue.Enqueue(queueItem);
@@ -283,8 +299,10 @@ public class SearchQueueService
             item.Status = SearchQueueStatus.Cancelled;
             item.Message = "Queue cleared";
             item.CompletedAt = DateTime.UtcNow;
-            _completedSearches[item.Id] = item;
+            // Close the row first. A Queued row the queue no longer claims
+            // is free for the task runner to run.
             await MarkTaskCancelledAsync(item, "Queue cleared");
+            Finish(item);
             count++;
         }
         _logger.LogInformation("[SEARCH QUEUE] Cleared {Count} pending searches", count);
@@ -357,7 +375,7 @@ public class SearchQueueService
                 if (queueItem.Status == SearchQueueStatus.Cancelled)
                 {
                     queueItem.CompletedAt = DateTime.UtcNow;
-                    _completedSearches[queueItem.Id] = queueItem;
+                    Finish(queueItem);
                     continue;
                 }
 
@@ -403,8 +421,8 @@ public class SearchQueueService
                 {
                     _searchSemaphore.Release();
                     queueItem.CompletedAt = DateTime.UtcNow;
-                    _completedSearches[queueItem.Id] = queueItem;
                     await MarkTaskCancelledAsync(queueItem, queueItem.Message);
+                    Finish(queueItem);
                     continue;
                 }
 
@@ -436,6 +454,20 @@ public class SearchQueueService
         {
             _ = ProcessQueueAsync();
         }
+    }
+
+    /// <summary>
+    /// The queue ids of searches this queue has not finished. Their task rows
+    /// belong to this queue, and the task runner must not run them.
+    /// A restart empties the set. Startup then cancels every Queued or Running
+    /// task row (DatabaseInitializer), so no row is left for the runner to take.
+    /// </summary>
+    internal static IReadOnlyCollection<string> UnfinishedSearchIds() => _unfinished.Keys.ToList();
+
+    private static void Finish(SearchQueueItem item)
+    {
+        _completedSearches[item.Id] = item;
+        _unfinished.TryRemove(item.Id, out _);
     }
 
     /// <summary>
@@ -571,7 +603,7 @@ public class SearchQueueService
 
             // Move from active to completed
             _activeSearches.TryRemove(queueItem.Id, out _);
-            _completedSearches[queueItem.Id] = queueItem;
+            Finish(queueItem);
 
             // Release semaphore for next search
             _searchSemaphore.Release();

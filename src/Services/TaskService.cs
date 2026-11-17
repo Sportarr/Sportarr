@@ -105,8 +105,12 @@ public class TaskService : ITaskService
                     // here — that's a separate recovery concern — but we do
                     // refuse to start a second concurrent task.
                     var manualPassCommands = ManualPassCommands.ToList();
+                    // The search queue runs its own rows. They are not this
+                    // runner's work, and a running one is not an orphan.
+                    var searchQueueRows = SearchQueueService.UnfinishedSearchIds().ToList();
                     var runningTask = await db.Tasks
                         .Where(t => t.Status == Models.TaskStatus.Running && !manualPassCommands.Contains(t.CommandName))
+                        .Where(t => t.CancellationId == null || !searchQueueRows.Contains(t.CancellationId))
                         .FirstOrDefaultAsync();
 
                     if (runningTask != null)
@@ -137,6 +141,7 @@ public class TaskService : ITaskService
 
                     var nextTask = await db.Tasks
                         .Where(t => t.Status == Models.TaskStatus.Queued)
+                        .Where(t => t.CancellationId == null || !searchQueueRows.Contains(t.CancellationId))
                         .OrderByDescending(t => t.Priority)
                         .ThenBy(t => t.Queued)
                         .FirstOrDefaultAsync();
@@ -146,6 +151,14 @@ public class TaskService : ITaskService
                         _logger.LogDebug("[TASK] No queued tasks to process");
                         drained = true;
                         break;
+                    }
+
+                    // The search queue can write its row after the snapshot
+                    // above. Check the claim again before the runner takes it.
+                    if (nextTask.CancellationId != null &&
+                        SearchQueueService.UnfinishedSearchIds().Contains(nextTask.CancellationId))
+                    {
+                        continue;
                     }
 
                     nextTaskId = nextTask.Id;
@@ -188,7 +201,9 @@ public class TaskService : ITaskService
             {
                 using var scope = _scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
-                if (await db.Tasks.AnyAsync(t => t.Status == Models.TaskStatus.Queued))
+                var searchQueueRows = SearchQueueService.UnfinishedSearchIds().ToList();
+                if (await db.Tasks.AnyAsync(t => t.Status == Models.TaskStatus.Queued
+                    && (t.CancellationId == null || !searchQueueRows.Contains(t.CancellationId))))
                 {
                     _ = ProcessQueueAsync();
                 }
