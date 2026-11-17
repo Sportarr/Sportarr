@@ -148,14 +148,17 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         Assert.True(response.IsSuccessStatusCode, body);
     }
 
-    public async Task<AutomaticSearchResult> AutomaticAsync(ReleaseSearchResult release, string? requestedPart = null, bool manual = false)
+    public Task<AutomaticSearchResult> AutomaticAsync(ReleaseSearchResult release, string? requestedPart = null, bool manual = false) =>
+        AutomaticAsync(new[] { release }, requestedPart, manual);
+
+    public async Task<AutomaticSearchResult> AutomaticAsync(IReadOnlyCollection<ReleaseSearchResult> releases, string? requestedPart = null, bool manual = false)
     {
         var queries = Services.GetRequiredService<EventQueryService>().BuildEventQueries(Event, requestedPart, Event.League?.SearchQueryTemplate);
         var search = Services.GetRequiredService<IndexerSearchService>();
         var fingerprint = await search.GetSearchSourceFingerprintAsync(manual, Event.League?.Tags);
         var key = SearchResultCache.RequestKey(queries, Event.League?.Tags ?? new List<int>(),
             100, true, Sportarr.Api.Helpers.SportarrIdToken.Normalize(Event.ExternalId), fingerprint);
-        Services.GetRequiredService<SearchResultCache>().Store(key, new[] { release });
+        Services.GetRequiredService<SearchResultCache>().Store(key, releases);
         return await Services.GetRequiredService<AutomaticSearchService>().SearchAndDownloadEventAsync(Event.Id, null, requestedPart, manual);
     }
 

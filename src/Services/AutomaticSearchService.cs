@@ -533,8 +533,10 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // an unmonitored pre-lims release could be grabbed while the monitored main
                 // card is ignored. When the event (or, by inheritance, its league) monitors
                 // only specific parts, drop releases whose detected part is not monitored.
-                // Packs and full-event releases remain eligible. Manual searches still show every part.
-                if (!isManualSearch && string.IsNullOrEmpty(part) &&
+                // Packs and full-event releases remain eligible.
+                // A user search with no part gets the same filter, because it also picks the release.
+                // A search that names a part skips the filter, so any part can still be searched.
+                if (string.IsNullOrEmpty(part) &&
                     usesParts && EventPartDetector.IsFightingSport(evt.Sport ?? ""))
                 {
                     var effectiveMonitoredParts = evt.MonitoredParts ?? evt.League?.MonitoredParts;
@@ -944,7 +946,8 @@ public class AutomaticSearchService : IAutomaticSearchService
             if (matchedReleases == null)
                 return result;
 
-            var isIncompletePartlessSearch = !isManualSearch && string.IsNullOrEmpty(part) && !evt.HasFile &&
+            // A search with no part fills the missing parts first, whoever starts it.
+            var isIncompletePartlessSearch = string.IsNullOrEmpty(part) && !evt.HasFile &&
                 usesParts &&
                 EventPartDetector.EventUsesMultiPart(evt.Title, evt.Sport ?? string.Empty, evt.League?.Name);
             if (isIncompletePartlessSearch)
@@ -978,10 +981,13 @@ public class AutomaticSearchService : IAutomaticSearchService
                 }
             }
 
-            // MULTI-PART CONSISTENCY CHECK: For automatic searches, ensure new releases match existing parts
+            // MULTI-PART CONSISTENCY CHECK: ensure new releases match the parts already held.
             // This prevents downloading mismatched quality/codec/source for multi-part episodes
             // Plex requires all parts to have matching quality and codec for proper playback
-            if (!isManualSearch && (!string.IsNullOrEmpty(part) || isIncompletePartlessSearch))
+            // A search with no part applies it whoever starts it, because it picks the part too.
+            // A user search on one named part skips it. That search is an explicit upgrade of
+            // that part, and the other parts can still be upgraded the same way.
+            if ((!string.IsNullOrEmpty(part) && !isManualSearch) || isIncompletePartlessSearch)
             {
                 var existingPartFiles = await _db.EventFiles
                     .Where(f => f.EventId == eventId && f.Exists && f.PartName != null)
@@ -1170,7 +1176,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 }
             }
 
-            if (partlessMultiPartRequest && !isManualSearch)
+            if (partlessMultiPartRequest)
             {
                 // A release without a part can otherwise be compared with another part's file.
                 var heldReleaseTitles = (await _db.EventFiles.AsNoTracking()
@@ -1190,7 +1196,11 @@ public class AutomaticSearchService : IAutomaticSearchService
                     result.Message = "Only releases already held for this event were found";
                     return result;
                 }
+            }
 
+            // A search the user starts may retry a failed part at once.
+            if (partlessMultiPartRequest && !isManualSearch)
+            {
                 var failuresByPart = new Dictionary<string, DownloadQueueItem?>(StringComparer.OrdinalIgnoreCase);
                 var availableReleases = new List<ReleaseSearchResult>();
                 string? firstRetryRefusal = null;
