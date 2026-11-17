@@ -722,11 +722,12 @@ public class LeagueEventSyncService
                                 // Keep the recording window aligned to the
                                 // replacement's time, preserving its duration.
                                 if (rec.Status == DvrRecordingStatus.Scheduled &&
-                                    rec.ScheduledStart != replacement.EventDate)
+                                    rec.ScheduledStart != replacement.EventDate &&
+                                    !TryRealignScheduledRecording(_db, rec, replacement.EventDate))
                                 {
-                                    var drift = replacement.EventDate - rec.ScheduledStart;
-                                    rec.ScheduledStart = replacement.EventDate;
-                                    rec.ScheduledEnd += drift;
+                                    _logger.LogInformation(
+                                        "[League Event Sync] Recording {RecordingId} changed during the sync; its times stay as they are",
+                                        rec.Id);
                                 }
                             }
                             _logger.LogInformation(
@@ -1529,6 +1530,46 @@ public class LeagueEventSyncService
         }
     }
 
+    /// <summary>
+    /// Move a scheduled recording to a new start and keep its length. The
+    /// end and the extension baseline move by the same amount, so a time
+    /// change does not count as an extension. The write runs only when the
+    /// row still holds the times that were read, so it cannot undo an
+    /// extension that came in the meantime. Returns false when the row
+    /// changed. The tracked row gets the new times as saved values, so a
+    /// later save does not write them again.
+    /// </summary>
+    internal static bool TryRealignScheduledRecording(SportarrDbContext db, DvrRecording rec, DateTime newStart)
+    {
+        var oldStart = rec.ScheduledStart;
+        var oldEnd = rec.ScheduledEnd;
+        var drift = newStart - oldStart;
+        var newEnd = oldEnd + drift;
+        var newOriginal = rec.OriginalScheduledEnd + drift;
+        var changed = db.DvrRecordings
+            .Where(r => r.Id == rec.Id && r.Status == DvrRecordingStatus.Scheduled &&
+                        r.ScheduledStart == oldStart && r.ScheduledEnd == oldEnd)
+            .ExecuteUpdate(setters => setters
+                .SetProperty(r => r.ScheduledStart, newStart)
+                .SetProperty(r => r.ScheduledEnd, newEnd)
+                .SetProperty(r => r.OriginalScheduledEnd, newOriginal));
+        if (changed != 1)
+            return false;
+
+        var entry = db.Entry(rec);
+        SetSaved(entry.Property(r => r.ScheduledStart), newStart);
+        SetSaved(entry.Property(r => r.ScheduledEnd), newEnd);
+        SetSaved(entry.Property(r => r.OriginalScheduledEnd), newOriginal);
+        return true;
+
+        static void SetSaved<T>(Microsoft.EntityFrameworkCore.ChangeTracking.PropertyEntry<DvrRecording, T> property, T value)
+        {
+            property.CurrentValue = value;
+            property.OriginalValue = value;
+            property.IsModified = false;
+        }
+    }
+
     internal static (bool Changed, bool DateChanged) ApplyBroadcastDate(Event existingEvent, Event apiEvent)
     {
         if (!apiEvent.BroadcastDate.HasValue)
@@ -1704,8 +1745,13 @@ public class LeagueEventSyncService
                     continue;
                 }
                 var drift = existingEvent.EventDate - rec.ScheduledStart;
-                rec.ScheduledStart = existingEvent.EventDate;
-                rec.ScheduledEnd += drift;
+                if (!TryRealignScheduledRecording(_db, rec, existingEvent.EventDate))
+                {
+                    _logger.LogInformation(
+                        "[League Event Sync] Recording {RecordingId} changed during the sync; its times stay as they are",
+                        rec.Id);
+                    continue;
+                }
                 _logger.LogInformation(
                     "[League Event Sync] Realigned scheduled recording {RecordingId} for '{EventTitle}' to event time (drift was {Drift})",
                     rec.Id, apiEvent.Title, drift);

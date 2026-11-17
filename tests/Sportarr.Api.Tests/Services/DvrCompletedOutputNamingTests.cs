@@ -597,6 +597,35 @@ public class DvrCompletedOutputNamingTests
         Sportarr.Api.Helpers.LibraryPathFilter.IsExcluded(recording.OutputPath).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task AStreamDropAfterAFinishRequestCompletesTheRecording()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        var path = Path.Combine(fixture.Directory, ".Finish fixture - HDTV-1080p.DVR.ts");
+        await File.WriteAllBytesAsync(path, new byte[2 * 1024 * 1024]);
+        // The finish requests are static in the service. A unique id keeps
+        // this row apart from the rows of other tests.
+        fixture.Db.DvrRecordings.Add(new DvrRecording
+        {
+            Id = 44300, EventId = fixture.Recording.EventId, ChannelId = fixture.Recording.ChannelId,
+            Title = "Finish fixture", Status = DvrRecordingStatus.Recording, Method = DvrRecordingMethod.Live,
+            OutputPath = path, ScheduledStart = DateTime.UtcNow.AddMinutes(-10),
+            ActualStart = DateTime.UtcNow.AddMinutes(-10), ScheduledEnd = DateTime.UtcNow.AddHours(1),
+            PostPadding = 0, Quality = "HDTV-1080p"
+        });
+        await fixture.Db.SaveChangesAsync();
+        Assert.Equal(DvrEndChangeOutcome.Changed, (await fixture.Service.FinishRecordingAsync(44300, 10, "test")).Outcome);
+
+        await fixture.Service.HandleRecorderExitAsync(44300, 1, "stream ended");
+
+        fixture.Db.ChangeTracker.Clear();
+        var recording = await fixture.Db.DvrRecordings.SingleAsync(r => r.Id == 44300);
+        recording.Status.Should().Be(DvrRecordingStatus.Completed);
+        recording.OutputPath.Should().NotContain(".sportarr-dvr-recovery");
+        File.Exists(recording.OutputPath).Should().BeTrue();
+        (await fixture.Db.DvrRecordings.CountAsync()).Should().Be(2, "a completed recording does not rotate to a fallback");
+    }
+
     private sealed class NamingFixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;

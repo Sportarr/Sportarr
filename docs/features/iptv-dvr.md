@@ -107,6 +107,63 @@ The source's retrieval timestamp records when data was fetched; it cannot
 guarantee that the provider's result is correct or that an IPTV stream has no delay.
 Choose a buffer that allows for your stream's delay and desired postgame coverage.
 
+### Extend or finish a recording from a script
+
+Some sports have no livescore coverage, so the guards cannot act for them. A
+script with a better source can drive the same behavior through two API calls.
+Both take your API key, like the rest of the API.
+
+Each call acts on one recording id. Redundant copies of an event each need
+their own call. When a recording fails over to a fallback channel, the new
+recording gets a new id, and it also needs its own call.
+
+`POST /api/dvr/recordings/{id}/extend` moves the end of a scheduled or running
+recording later. `minutes` is a whole number from 1 to 240. A running capture
+keeps going to the new end. Extensions from this call and from Overtime Guard
+share one budget per recording. The budget counts from the end that the
+recording had before its first extension. It is the **Max Overtime Extension**
+setting, or six hours when that setting is 0. Sportarr stores that first end
+with the recording, so the budget stays in force after a restart and carries
+over to a fallback recording. When the budget has less room than you ask for,
+the call uses what is left. When nothing is left, the call returns 409. If you
+change the end of a scheduled recording yourself, the budget starts again from
+your new end.
+
+```bash
+curl -X POST "http://localhost:1867/api/dvr/recordings/42/extend" \
+  -H "X-Api-Key: YOUR_API_KEY" -H "Content-Type: application/json" \
+  -d '{"minutes": 20}'
+```
+
+`POST /api/dvr/recordings/{id}/finish` tells Sportarr that the event is over.
+`afterMinutes` is optional, from 0 to 60, and defaults to 0. A running
+recording stops after that delay, on the next scheduler pass, usually within a
+minute. It stops in the same way as with Early Finish Guard. It is completed and
+imported, and no fallback channel takes over. Overtime Guard does not extend it
+after this call. If the stream drops before the delay ends, the recording still
+counts as completed. For a recording that has not started, the call moves its
+end to now plus the delay. Its post padding still applies, so the `finishAt`
+in the response is that end plus the padding. A finish never moves an end
+later.
+
+```bash
+curl -X POST "http://localhost:1867/api/dvr/recordings/42/finish" \
+  -H "X-Api-Key: YOUR_API_KEY" -H "Content-Type: application/json" \
+  -d '{"afterMinutes": 10}'
+```
+
+Both calls return the new end and the extension used so far. An unknown id
+returns 404. A recording that is finished, failed, cancelled or importing
+returns 409. A scheduled catchup recording can change its end. A catchup
+download that is already running cannot, and returns 409. An extend call after
+a finish call cancels the finish.
+
+The existing `/stop` call stops a recording at once and also keeps it as
+completed. Use `/finish` when you want a delay, or when the stop must wait for
+the scheduler. `/cancel` on a running recording stops it and marks it
+cancelled, so it is not imported. Requests and their old and new end times are
+written to the log. A pending finish request resets when Sportarr restarts.
+
 Channel selection still uses your preferences, EPG matches, broadcaster names,
 and league mappings. Live scores establish event progress, not what is visible
 on the selected channel.

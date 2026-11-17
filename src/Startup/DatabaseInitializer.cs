@@ -2760,6 +2760,7 @@ public static class DatabaseInitializer
         EnsureColumn(db, "IptvChannels", "ArchiveDays", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DvrRecordings", "Method", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(db, "DvrRecordings", "ChannelPinned", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "DvrRecordings", "OriginalScheduledEnd", "TEXT NULL");
         EnsureColumn(db, "Leagues", "PartsBeforeFullEvent", "TEXT NULL");
         EnsureColumn(db, "Events", "PartsBeforeFullEvent", "TEXT NULL");
         EnsureColumn(db, "EventFiles", "IsParked", "INTEGER NOT NULL DEFAULT 0");

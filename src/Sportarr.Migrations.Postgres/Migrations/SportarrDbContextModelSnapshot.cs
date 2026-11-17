@@ -1003,6 +1003,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<int>("Method")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("OriginalScheduledEnd")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("OutputPath")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");

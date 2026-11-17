@@ -698,6 +698,13 @@ public class DvrRecording
     public DateTime ScheduledEnd { get; set; }
 
     /// <summary>
+    /// Scheduled end before the first extension. Null when nothing extended
+    /// the end. The extension cap counts from this time, so the cap stays
+    /// in force after a restart and on a fallback copy of the recording.
+    /// </summary>
+    public DateTime? OriginalScheduledEnd { get; set; }
+
+    /// <summary>
     /// Minutes to start recording before scheduled time
     /// </summary>
     public int PrePadding { get; set; } = 5;

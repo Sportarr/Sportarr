@@ -33,6 +33,15 @@ public class DvrWatchdogService : BackgroundService
     // before we forcibly stop a run. Leaves room for end-of-stream
     // flush and slow disk sync without us racing the recorder.
     private static readonly TimeSpan OverrunGrace = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Whether a live recording runs past its window plus the grace time.
+    /// The row's ScheduledEnd is read on each tick, so an extension moves
+    /// this limit too.
+    /// </summary>
+    internal static bool HasOverrun(DvrRecording row, DateTime now) =>
+        now > row.ScheduledEnd.AddMinutes(row.PostPadding).Add(OverrunGrace);
+
     // If the output file hasn't grown by this many bytes in this
     // window after recording start, assume the writer is dead and
     // mark the row Failed.
@@ -270,8 +279,7 @@ public class DvrWatchdogService : BackgroundService
             // Force a graceful stop. The recorder's StopRecordingAsync
             // sends 'q' to FFmpeg stdin and falls back to kill on
             // timeout; status will land Completed via that path.
-            var stopBy = row.ScheduledEnd.AddMinutes(row.PostPadding).Add(OverrunGrace);
-            if (now > stopBy)
+            if (HasOverrun(row, now))
             {
                 _logger.LogWarning(
                     "[DVR Watchdog] Recording {Id} overran (scheduled end {End} + {Pad}m + {Grace}m grace); forcing stop",

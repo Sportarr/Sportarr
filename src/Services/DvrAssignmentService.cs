@@ -80,6 +80,9 @@ public sealed class DvrAssignmentService(
         var channelChanged = channelId != recording.ChannelId;
         var fallbackJson = fallbackIds.Count == 0 ? null : JsonSerializer.Serialize(fallbackIds);
         var updatedAt = DateTime.UtcNow;
+        // A new end from the user is the new plan. The extension budget then
+        // starts again from it.
+        var keepExtensionBaseline = end == recording.ScheduledEnd;
         var changed = await db.DvrRecordings
             .Where(r => r.Id == id
                 && r.Status == DvrRecordingStatus.Scheduled
@@ -94,6 +97,7 @@ public sealed class DvrAssignmentService(
                 .SetProperty(r => r.FallbackChannelIds, fallbackJson)
                 .SetProperty(r => r.ScheduledStart, start)
                 .SetProperty(r => r.ScheduledEnd, end)
+                .SetProperty(r => r.OriginalScheduledEnd, r => keepExtensionBaseline ? r.OriginalScheduledEnd : null)
                 .SetProperty(r => r.Quality, quality)
                 .SetProperty(r => r.LastUpdated, updatedAt), cancellationToken);
         if (changed != 1)

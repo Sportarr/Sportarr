@@ -254,6 +254,35 @@ app.MapPost("/api/dvr/recordings/{id:int}/stop", async (int id, DvrRecordingServ
     return Results.Ok(new { success = true, fileSize = result.FileSize, durationSeconds = result.DurationSeconds });
 });
 
+// Extend a scheduled or running recording. An outside helper can use this
+// when it knows that an event runs long.
+app.MapPost("/api/dvr/recordings/{id:int}/extend", async (
+    int id, HttpContext context, DvrRecordingService dvrService, CancellationToken cancellationToken) =>
+{
+    var (body, bodyError) = await ReadEndChangeBodyAsync(context.Request, required: true, cancellationToken);
+    if (bodyError != null)
+        return Results.BadRequest(new { error = bodyError });
+    if (!TryReadWholeMinutes(body, "minutes", required: true, out var minutes, out var fieldError))
+        return Results.BadRequest(new { error = fieldError });
+
+    var result = await dvrService.ExtendRecordingAsync(id, minutes, DescribeCaller(context), cancellationToken);
+    return EndChangeResponse(result);
+});
+
+// Finish a scheduled or running recording because the event is over.
+app.MapPost("/api/dvr/recordings/{id:int}/finish", async (
+    int id, HttpContext context, DvrRecordingService dvrService, CancellationToken cancellationToken) =>
+{
+    var (body, bodyError) = await ReadEndChangeBodyAsync(context.Request, required: false, cancellationToken);
+    if (bodyError != null)
+        return Results.BadRequest(new { error = bodyError });
+    if (!TryReadWholeMinutes(body, "afterMinutes", required: false, out var afterMinutes, out var fieldError))
+        return Results.BadRequest(new { error = fieldError });
+
+    var result = await dvrService.FinishRecordingAsync(id, afterMinutes, DescribeCaller(context), cancellationToken);
+    return EndChangeResponse(result);
+});
+
 // Cancel a scheduled recording
 app.MapPost("/api/dvr/recordings/{id:int}/cancel", async (int id, DvrRecordingService dvrService) =>
 {
@@ -843,6 +872,134 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
 });
 
         return app;
+    }
+
+    private const int MaxEndChangeBodyBytes = 4096;
+
+    /// <summary>
+    /// Read the small JSON object that the extend and finish calls take.
+    /// An empty body is allowed only when the body is optional.
+    /// </summary>
+    private static async Task<(JsonElement? Body, string? Error)> ReadEndChangeBodyAsync(
+        HttpRequest request, bool required, CancellationToken cancellationToken)
+    {
+        using var buffer = new MemoryStream();
+        var chunk = new byte[1024];
+        int read;
+        while ((read = await request.Body.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > MaxEndChangeBodyBytes)
+                return (null, "The request body is too large.");
+            buffer.Write(chunk, 0, read);
+        }
+
+        if (buffer.Length == 0 || buffer.ToArray().All(b => b is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n'))
+            return required ? (null, "A JSON body is required.") : (null, null);
+
+        try
+        {
+            using var document = JsonDocument.Parse(buffer.ToArray());
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                return (null, "The request body must be a JSON object.");
+            return (document.RootElement.Clone(), null);
+        }
+        catch (JsonException)
+        {
+            return (null, "The request body is not valid JSON.");
+        }
+    }
+
+    /// <summary>
+    /// Read a whole number of minutes from the body. A missing optional
+    /// field gives 0. The service checks the range.
+    /// </summary>
+    private static bool TryReadWholeMinutes(JsonElement? body, string name, bool required,
+        out int minutes, out string? error)
+    {
+        minutes = 0;
+        error = null;
+        JsonElement value = default;
+        var found = false;
+        if (body.HasValue)
+        {
+            foreach (var property in body.Value.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found)
+        {
+            if (!required)
+                return true;
+            error = $"{name} is required.";
+            return false;
+        }
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out minutes))
+        {
+            error = $"{name} must be a whole number.";
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Name the caller for the log. The app has one user, so the sign-in
+    /// method is enough to tell a script with an API key from the UI. A
+    /// forms login comes as a "Session" identity from the session cookie,
+    /// or as a "Forms" identity from the cookie scheme.
+    /// </summary>
+    internal static string DescribeCaller(HttpContext context)
+    {
+        var identity = context.User?.Identity;
+        if (identity?.IsAuthenticated != true)
+            return "unknown";
+        return identity.AuthenticationType switch
+        {
+            "Session" or "Forms" => "forms login",
+            "ApiKey" => "API key",
+            "Basic" => "basic login",
+            "NoAuth" => "no authentication",
+            var other => other ?? identity.Name ?? "unknown",
+        };
+    }
+
+    private static IResult EndChangeResponse(DvrEndChangeResult result)
+    {
+        static DateTime? Utc(DateTime? value) => value.HasValue && value.Value.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+            : value?.ToUniversalTime();
+
+        return result.Outcome switch
+        {
+            DvrEndChangeOutcome.Changed => Results.Ok(new
+            {
+                success = true,
+                status = result.Status?.ToString(),
+                previousEnd = Utc(result.PreviousEnd),
+                scheduledEnd = Utc(result.ScheduledEnd),
+                finishAt = Utc(result.FinishAt),
+                appliedMinutes = result.AppliedMinutes,
+                totalExtensionMinutes = result.TotalExtensionMinutes,
+                extensionCapMinutes = result.ExtensionCapMinutes,
+            }),
+            DvrEndChangeOutcome.Invalid => Results.BadRequest(new { error = result.Error }),
+            DvrEndChangeOutcome.NotFound => Results.NotFound(new { error = result.Error }),
+            DvrEndChangeOutcome.CapReached => Results.Conflict(new
+            {
+                error = result.Error,
+                capReached = true,
+                scheduledEnd = Utc(result.ScheduledEnd),
+                totalExtensionMinutes = result.TotalExtensionMinutes,
+                extensionCapMinutes = result.ExtensionCapMinutes,
+            }),
+            _ => Results.Conflict(new { error = result.Error }),
+        };
     }
 
     // Only this endpoint takes a channel the user picked. Automatic and

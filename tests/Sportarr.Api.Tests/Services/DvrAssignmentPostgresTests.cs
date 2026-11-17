@@ -24,7 +24,8 @@ public class DvrAssignmentPostgresTests
         db.IptvChannels.AddRange(
             new IptvChannel { Id = 101, SourceId = 101, Name = "First", StreamUrl = "http://test/1" },
             new IptvChannel { Id = 102, SourceId = 101, Name = "Second", StreamUrl = "http://test/2" });
-        var start = new DateTime(2026, 10, 1, 18, 0, 0, DateTimeKind.Utc);
+        // A start in the future keeps the window open whatever the date of the run.
+        var start = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(7).AddHours(18), DateTimeKind.Utc);
         var recording = new DvrRecording
         {
             Title = "Test", ChannelId = 101, ScheduledStart = start,

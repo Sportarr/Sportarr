@@ -31,9 +31,36 @@ public class DvrRecordingService
     // writing the same output file.
     private static readonly ConcurrentDictionary<int, byte> _startsInFlight = new();
 
-    // Scoped scheduler calls share the extension budget. Restarting resets it.
-    private static readonly ConcurrentDictionary<int, int> _overtimeExtensions = new();
     private const int OvertimeStepMinutes = 10;
+
+    // A finish request holds the time at which the scheduler stops a live
+    // recording. Every change to a recording end and the last check before a
+    // scheduled stop run inside the gate. Thus two changes cannot pass the
+    // cap together, and a stop cannot miss an extension that came first.
+    private static readonly ConcurrentDictionary<int, DateTime> _finishRequests = new();
+    private static readonly SemaphoreSlim _endChangeGate = new(1, 1);
+
+    /// <summary>Largest extension one extend call accepts.</summary>
+    public const int MaxExtendMinutesPerCall = 240;
+
+    /// <summary>Largest delay one finish call accepts.</summary>
+    public const int MaxFinishDelayMinutes = 60;
+
+    /// <summary>
+    /// Total extension cap when the overtime ceiling setting is 0. A helper
+    /// that goes wrong cannot keep a recording open longer than this.
+    /// </summary>
+    public const int ExtensionSafetyCapMinutes = 360;
+
+    /// <summary>
+    /// Error of a scheduled stop that did not run, because the end of the
+    /// recording changed after the stop decision.
+    /// </summary>
+    public const string StopSkippedError = "The scheduled stop did not run because the recording changed.";
+
+    // A stream drop this long before the requested finish time can still
+    // lose the end of the event.
+    private static readonly TimeSpan FinishDropMargin = TimeSpan.FromMinutes(1);
 
     // A recorder that stops (naturally or via the watchdog's stall
     // detection) within this fraction of the scheduled duration of the
@@ -429,7 +456,22 @@ public class DvrRecordingService
     /// </summary>
     public async Task<DvrRecording?> UpdateRecordingAsync(int id, ScheduleDvrRecordingRequest request)
     {
-        var recording = await _db.DvrRecordings.FindAsync(id);
+        // An extend call changes the end inside the gate. This edit uses the
+        // gate too, so it cannot write over an extension.
+        await _endChangeGate.WaitAsync();
+        try
+        {
+            return await UpdateRecordingInsideGateAsync(id, request);
+        }
+        finally
+        {
+            _endChangeGate.Release();
+        }
+    }
+
+    private async Task<DvrRecording?> UpdateRecordingInsideGateAsync(int id, ScheduleDvrRecordingRequest request)
+    {
+        var recording = await LoadCurrentRecordingAsync(id, CancellationToken.None);
         if (recording == null)
         {
             return null;
@@ -444,7 +486,13 @@ public class DvrRecordingService
         if (request.ChannelId != recording.ChannelId) recording.ChannelPinned = true;
         recording.ChannelId = request.ChannelId;
         recording.ScheduledStart = request.ScheduledStart;
-        recording.ScheduledEnd = request.ScheduledEnd;
+        // A new end that the user sets is the new plan. The extension budget
+        // then starts again from it. The same end keeps the budget.
+        if (request.ScheduledEnd != recording.ScheduledEnd)
+        {
+            recording.ScheduledEnd = request.ScheduledEnd;
+            recording.OriginalScheduledEnd = null;
+        }
         recording.PrePadding = request.PrePadding;
         recording.PostPadding = request.PostPadding;
         recording.PartName = request.PartName;
@@ -836,6 +884,8 @@ public class DvrRecordingService
             Title = failed.Title,
             ScheduledStart = failed.ScheduledStart,
             ScheduledEnd = failed.ScheduledEnd,
+            // The copy keeps the extension budget of the failed row.
+            OriginalScheduledEnd = failed.OriginalScheduledEnd,
             PrePadding = failed.PrePadding,
             PostPadding = failed.PostPadding,
             PartName = failed.PartName,
@@ -906,6 +956,26 @@ public class DvrRecordingService
     }
 
     /// <summary>
+    /// Whether a recorder exit finalizes as Completed. A pending finish
+    /// request counts as a normal end at any time, but only with data on
+    /// disk. A Completed exit never rotates to a fallback channel.
+    /// </summary>
+    internal static bool ExitCountsAsCompleted(
+        DateTime now, DateTime scheduledStart, DateTime scheduledEnd, int postPaddingMinutes, long fileSize,
+        bool finishRequested)
+        => ExitLooksLikeANormalEnd(now, scheduledStart, scheduledEnd, postPaddingMinutes, fileSize) ||
+           (finishRequested && fileSize > 0);
+
+    /// <summary>
+    /// Whether to warn that a completed recording can miss the end of the
+    /// event. A finish request removes the warning only when the drop came
+    /// close to the requested finish time.
+    /// </summary>
+    internal static bool ExitMayLoseTheEnd(int exitCode, DateTime now, DateTime windowEnd, DateTime? finishAt)
+        => EarlyEndMayHideAFailure(exitCode, now, windowEnd) &&
+           (finishAt == null || now < finishAt.Value - FinishDropMargin);
+
+    /// <summary>
     /// Whether a recorder exit that finalizes as Completed can hide a failed
     /// stream. True for an error exit inside the early-end grace window. The
     /// event can still be live at that time, so the tail can be missing.
@@ -932,7 +1002,7 @@ public class DvrRecordingService
 
         var now = DateTime.UtcNow;
         var windowEnd = recording.ScheduledEnd.AddMinutes(recording.PostPadding);
-        _overtimeExtensions.TryRemove(recordingId, out _);
+        var finishRequested = _finishRequests.TryRemove(recordingId, out var finishAt);
         _earlyFinishGuard.Forget(recordingId);
 
         // Null means "couldn't read it" (missing, or a transient
@@ -968,7 +1038,9 @@ public class DvrRecordingService
         // elapsed, with data on disk: either the stream ran to its
         // scheduled finish, or the live event wrapped up early and the
         // feed dropped - both are completed runs, not failures.
-        if (ExitLooksLikeANormalEnd(now, recording.ScheduledStart, recording.ScheduledEnd, recording.PostPadding, fileSize))
+        // A finish request says that the event is over. Then the feed can
+        // drop before the requested stop, and that drop is not a failure.
+        if (ExitCountsAsCompleted(now, recording.ScheduledStart, recording.ScheduledEnd, recording.PostPadding, fileSize, finishRequested))
         {
             await FinalizeCaptureContainerAsync(recording);
             await ProbeCompletedOutputAsync(recording);
@@ -984,8 +1056,11 @@ public class DvrRecordingService
             await PersistRecordingStatusAsync(recording, "completed");
 
             _logger.LogInformation("[DVR] Recording {Id}: recorder exited {When} (scheduled end {End}); finalized as completed ({Size} bytes)",
-                recordingId, now >= windowEnd.AddSeconds(-30) ? "at the end of its window" : "within the early-end grace window", recording.ScheduledEnd, fileSize);
-            if (EarlyEndMayHideAFailure(exitCode, now, windowEnd))
+                recordingId,
+                now >= windowEnd.AddSeconds(-30) ? "at the end of its window"
+                    : finishRequested ? "after a finish request" : "within the early-end grace window",
+                recording.ScheduledEnd, fileSize);
+            if (ExitMayLoseTheEnd(exitCode, now, windowEnd, finishRequested ? finishAt : (DateTime?)null))
             {
                 _logger.LogWarning("[DVR] Recording {Id}: recorder exited with code {Code} before the end of its window ({Error}). " +
                     "It is kept as completed, but the end of the event can be missing",
@@ -1137,7 +1212,12 @@ public class DvrRecordingService
         return revealed;
     }
 
-    public async Task<RecordingResult> StopRecordingAsync(int recordingId)
+    /// <summary>
+    /// Stop an active recording. The scheduler gives the end that its stop
+    /// decision saw. When the end changed since that decision, the stop
+    /// does not run and the result carries StopSkippedError.
+    /// </summary>
+    public async Task<RecordingResult> StopRecordingAsync(int recordingId, DateTime? expectedScheduledEnd = null)
     {
         var recording = await _db.DvrRecordings.FindAsync(recordingId);
         if (recording == null)
@@ -1153,9 +1233,17 @@ public class DvrRecordingService
         if (finalizing == null)
             return new RecordingResult { Success = false, Error = "Recording is already being finalized." };
 
+        if (expectedScheduledEnd.HasValue &&
+            await StopBlockerAsync(recording, expectedScheduledEnd.Value) is { } blocker)
+        {
+            _logger.LogInformation("[DVR] Recording {Id}: the scheduled stop did not run because {Reason} (end {End:o})",
+                recordingId, blocker, recording.ScheduledEnd);
+            return new RecordingResult { Success = false, Error = StopSkippedError };
+        }
+
         var result = await _ffmpegRecorder.StopRecordingAsync(recordingId);
 
-        _overtimeExtensions.TryRemove(recordingId, out _);
+        _finishRequests.TryRemove(recordingId, out _);
         _earlyFinishGuard.Forget(recordingId);
 
         // The watchdog or the recorder's exit callback may have finalized
@@ -1411,7 +1499,9 @@ public class DvrRecordingService
 
         _earlyFinishGuard.RetainOnly(config.DvrEarlyFinishGuardEnabled
             ? recordings.Select(r => r.Id) : Array.Empty<int>());
-        var ready = recordings.Where(r => r.ScheduledEnd.AddMinutes(r.PostPadding) <= now).ToList();
+        var ready = recordings
+            .Where(r => r.ScheduledEnd.AddMinutes(r.PostPadding) <= now || FinishRequestIsDue(r.Id, now))
+            .ToList();
         if (!config.DvrEarlyFinishGuardEnabled)
             return ready;
 
@@ -1446,6 +1536,11 @@ public class DvrRecordingService
         if (_ffmpegRecorder.IsFinalizing(recording.Id) || _db.Entry(recording).State == EntityState.Detached ||
             recording.Status != DvrRecordingStatus.Recording || recording.Method != DvrRecordingMethod.Live)
             return false;
+        if (FinishRequestIsDue(recording.Id, DateTime.UtcNow))
+        {
+            _logger.LogInformation("[DVR] Recording {Id}: the requested finish time arrived; stopping it as finished", recording.Id);
+            return true;
+        }
         if (recording.ScheduledEnd.AddMinutes(recording.PostPadding) <= DateTime.UtcNow)
         {
             if (await ShouldExtendForOvertimeAsync(recording, cancellationToken))
@@ -1455,6 +1550,10 @@ public class DvrRecordingService
                 recording.Status == DvrRecordingStatus.Recording && recording.Method == DvrRecordingMethod.Live &&
                 recording.ScheduledEnd.AddMinutes(recording.PostPadding) <= DateTime.UtcNow;
         }
+        // A pending finish sets the stop time. An early stop from the feed
+        // would only be skipped at the last check, on every pass.
+        if (_finishRequests.ContainsKey(recording.Id))
+            return false;
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(TimeSpan.FromSeconds(10));
         try
@@ -1536,14 +1635,17 @@ public class DvrRecordingService
         if (recording.EventId == null || recording.Method != DvrRecordingMethod.Live)
             return false;
 
+        // A finish request says that the event is over. Do not extend past it.
+        if (_finishRequests.ContainsKey(recording.Id))
+            return false;
+
         try
         {
             var config = await _configService.GetConfigAsync();
             if (!config.DvrOvertimeGuardEnabled || config.DvrOvertimeMaxExtensionMinutes <= 0)
                 return false;
 
-            var extendedSoFar = _overtimeExtensions.GetValueOrDefault(recording.Id);
-            if (extendedSoFar >= config.DvrOvertimeMaxExtensionMinutes)
+            if (ExtensionRoomMinutes(recording, config.DvrOvertimeMaxExtensionMinutes) <= 0)
             {
                 _logger.LogWarning(
                     "[DVR] Recording {Id} hit the overtime extension ceiling ({Max}m); stopping at current end",
@@ -1560,29 +1662,53 @@ public class DvrRecordingService
             var eventId = recording.EventId;
             var livescore = await _sportarrApiClient.GetDvrLivescoreByLeagueAsync(evt.League.ExternalId, cancellationToken);
             config = await _configService.GetConfigAsync();
-            await _db.Entry(recording).ReloadAsync(cancellationToken);
-            if (_db.Entry(recording).State == EntityState.Detached ||
-                recording.Status != DvrRecordingStatus.Recording || recording.Method != DvrRecordingMethod.Live ||
-                recording.EventId != eventId || recording.ScheduledEnd.AddMinutes(recording.PostPadding) > DateTime.UtcNow)
+
+            // An extend call can land while the feed request runs. Read the
+            // row again inside the gate and check the cap again there.
+            await _endChangeGate.WaitAsync(cancellationToken);
+            try
+            {
+                await _db.Entry(recording).ReloadAsync(cancellationToken);
+                if (_db.Entry(recording).State == EntityState.Detached ||
+                    recording.Status != DvrRecordingStatus.Recording || recording.Method != DvrRecordingMethod.Live ||
+                    recording.EventId != eventId || recording.ScheduledEnd.AddMinutes(recording.PostPadding) > DateTime.UtcNow)
+                    return true;
+                if (!config.DvrOvertimeGuardEnabled || config.DvrOvertimeMaxExtensionMinutes <= 0 ||
+                    _finishRequests.ContainsKey(recording.Id))
+                    return false;
+                var matches = livescore?.Where(l => l.EventId == evt.ExternalId && l.LeagueId == evt.League.ExternalId).ToList();
+                var liveEntry = matches?.Count == 1 ? matches[0] : null;
+                if (liveEntry == null || liveEntry.RequestOrigin != _sportarrApiClient.DvrLiveSourceOrigin ||
+                    !liveEntry.IsFresh(DateTimeOffset.UtcNow) || !liveEntry.IsInProgress)
+                    return false;
+
+                var extension = await ExtendInsideGateAsync(recording, OvertimeStepMinutes,
+                    config.DvrOvertimeMaxExtensionMinutes, cancellationToken);
+                if (extension.RowChanged)
+                {
+                    // Another writer changed the row. Decide again on the next pass.
+                    _logger.LogInformation("[DVR] Overtime guard: recording {Id} not extended because {Reason}",
+                        recording.Id, extension.Reason);
+                    return true;
+                }
+                if (extension.Applied <= 0)
+                {
+                    _logger.LogWarning(
+                        "[DVR] Recording {Id} hit the overtime extension ceiling ({Max}m); stopping at current end",
+                        recording.Id, config.DvrOvertimeMaxExtensionMinutes);
+                    return false;
+                }
+
+                _logger.LogInformation(
+                    "[DVR] Overtime guard: '{Title}' is still in progress ({Status}); extended recording {Id} by {Step}m ({Total}m/{Max}m used)",
+                    evt.Title, liveEntry.Status, recording.Id, extension.Applied,
+                    extension.Used, config.DvrOvertimeMaxExtensionMinutes);
                 return true;
-            if (!config.DvrOvertimeGuardEnabled)
-                return false;
-            var matches = livescore?.Where(l => l.EventId == evt.ExternalId && l.LeagueId == evt.League.ExternalId).ToList();
-            var liveEntry = matches?.Count == 1 ? matches[0] : null;
-            if (liveEntry == null || liveEntry.RequestOrigin != _sportarrApiClient.DvrLiveSourceOrigin ||
-                !liveEntry.IsFresh(DateTimeOffset.UtcNow) || !liveEntry.IsInProgress)
-                return false;
-
-            recording.ScheduledEnd = recording.ScheduledEnd.AddMinutes(OvertimeStepMinutes);
-            recording.LastUpdated = DateTime.UtcNow;
-            await _db.SaveChangesAsync(cancellationToken);
-            _overtimeExtensions[recording.Id] = extendedSoFar + OvertimeStepMinutes;
-
-            _logger.LogInformation(
-                "[DVR] Overtime guard: '{Title}' is still in progress ({Status}); extended recording {Id} by {Step}m ({Total}m/{Max}m used)",
-                evt.Title, liveEntry.Status, recording.Id, OvertimeStepMinutes,
-                extendedSoFar + OvertimeStepMinutes, config.DvrOvertimeMaxExtensionMinutes);
-            return true;
+            }
+            finally
+            {
+                _endChangeGate.Release();
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1592,6 +1718,268 @@ public class DvrRecordingService
         {
             _logger.LogWarning(ex, "[DVR] Overtime check failed for recording {Id}; stopping as scheduled", recording.Id);
             return false;
+        }
+    }
+
+    private readonly record struct ExtensionChange(int Applied, int Used, bool RowChanged)
+    {
+        /// <summary>Why nothing was applied, or null when the end moved.</summary>
+        public string? Reason => Applied > 0 ? null : RowChanged ? "the row changed during the check" : "the extension cap is reached";
+    }
+
+    /// <summary>
+    /// Move the end of a recording later. Call this only inside the gate,
+    /// with a row that was read inside the gate. The scheduler and the
+    /// watchdog read ScheduledEnd from the row on each tick, so a running
+    /// recorder keeps going until the new end. The cap counts from
+    /// OriginalScheduledEnd, which the row keeps, so the cap holds after a
+    /// restart. When less room is left than asked, the room left is used.
+    /// </summary>
+    private async Task<ExtensionChange> ExtendInsideGateAsync(
+        DvrRecording recording, int minutes, int capMinutes, CancellationToken cancellationToken)
+    {
+        var room = ExtensionRoomMinutes(recording, capMinutes);
+        if (room <= 0)
+            return new ExtensionChange(0, UsedExtensionMinutes(recording), false);
+
+        var applied = Math.Min(minutes, room);
+        var oldEnd = recording.ScheduledEnd;
+        var newEnd = oldEnd.AddMinutes(applied);
+        var original = recording.OriginalScheduledEnd ?? oldEnd;
+        var status = recording.Status;
+        var updatedAt = DateTime.UtcNow;
+
+        // Write only when the row still holds the values read in the gate.
+        // A writer outside the gate, such as a status change, then wins.
+        var changed = await _db.DvrRecordings
+            .Where(r => r.Id == recording.Id && r.ScheduledEnd == oldEnd && r.Status == status)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.ScheduledEnd, newEnd)
+                .SetProperty(r => r.OriginalScheduledEnd, original)
+                .SetProperty(r => r.LastUpdated, updatedAt), cancellationToken);
+        await _db.Entry(recording).ReloadAsync(cancellationToken);
+        if (changed != 1)
+            return new ExtensionChange(0, UsedExtensionMinutes(recording), true);
+        return new ExtensionChange(applied, UsedExtensionMinutes(recording), false);
+    }
+
+    /// <summary>
+    /// Whole minutes the end moved past the end before the first extension.
+    /// </summary>
+    internal static int UsedExtensionMinutes(DvrRecording recording)
+    {
+        if (recording.OriginalScheduledEnd == null)
+            return 0;
+        var used = (recording.ScheduledEnd - recording.OriginalScheduledEnd.Value).TotalMinutes;
+        return used <= 0 ? 0 : (int)Math.Ceiling(used - 0.001);
+    }
+
+    /// <summary>
+    /// Whole minutes left before the end reaches the original end plus the cap.
+    /// </summary>
+    internal static int ExtensionRoomMinutes(DvrRecording recording, int capMinutes)
+    {
+        var limit = (recording.OriginalScheduledEnd ?? recording.ScheduledEnd).AddMinutes(capMinutes);
+        var room = (limit - recording.ScheduledEnd).TotalMinutes;
+        return room <= 0 ? 0 : (int)Math.Floor(room + 0.001);
+    }
+
+    /// <summary>
+    /// Total extension cap for a recording. The overtime ceiling setting is
+    /// the cap when it is above 0. Otherwise the fixed safety cap applies.
+    /// </summary>
+    public static int ExtensionCapMinutes(Config config) =>
+        config.DvrOvertimeMaxExtensionMinutes > 0 ? config.DvrOvertimeMaxExtensionMinutes : ExtensionSafetyCapMinutes;
+
+    private static bool FinishRequestIsDue(int recordingId, DateTime now) =>
+        _finishRequests.TryGetValue(recordingId, out var finishAt) && finishAt <= now;
+
+    /// <summary>
+    /// Last check before a scheduled stop, after the finalizing hold is in
+    /// place. It runs inside the gate. An extend call that finished before
+    /// this check moved the end, so the stop does not run. An extend call
+    /// after this check sees the finalizing hold and is refused.
+    /// </summary>
+    /// <returns>Why the stop must not run, or null when it can run.</returns>
+    private async Task<string?> StopBlockerAsync(DvrRecording recording, DateTime expectedScheduledEnd)
+    {
+        await _endChangeGate.WaitAsync();
+        try
+        {
+            await _db.Entry(recording).ReloadAsync();
+            if (_db.Entry(recording).State == EntityState.Detached)
+                return "the row is gone";
+            if (recording.Status != DvrRecordingStatus.Recording)
+                return $"the status changed to {recording.Status}";
+            if (recording.ScheduledEnd != expectedScheduledEnd)
+                return "the end changed";
+
+            // A newer finish call can ask for a later stop than the decision saw.
+            var now = DateTime.UtcNow;
+            if (_finishRequests.TryGetValue(recording.Id, out var finishAt) && finishAt > now &&
+                recording.ScheduledEnd.AddMinutes(recording.PostPadding) > now)
+                return "a later finish is pending";
+            return null;
+        }
+        finally
+        {
+            _endChangeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Why the end of this recording cannot change, or null when it can.
+    /// </summary>
+    private string? EndChangeBlocker(DvrRecording recording)
+    {
+        if (recording.Status == DvrRecordingStatus.Scheduled)
+            return null;
+        if (recording.Status != DvrRecordingStatus.Recording)
+            return $"The recording is {recording.Status}. Only a scheduled or running recording can change its end.";
+        if (recording.Method != DvrRecordingMethod.Live)
+            return "A catchup download is running. Its end cannot change.";
+        if (_ffmpegRecorder.IsFinalizing(recording.Id))
+            return "The recording is being finalized.";
+        return null;
+    }
+
+    private async Task<DvrRecording?> LoadCurrentRecordingAsync(int id, CancellationToken cancellationToken)
+    {
+        var recording = await _db.DvrRecordings.FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+        if (recording == null)
+            return null;
+        // The context can already track this row. Read the stored values again.
+        await _db.Entry(recording).ReloadAsync(cancellationToken);
+        return _db.Entry(recording).State == EntityState.Detached ? null : recording;
+    }
+
+    /// <summary>
+    /// Extend a scheduled or running recording by the given minutes. The
+    /// extension uses the same path as the Overtime Guard and the same
+    /// budget. When the budget has less room than the request, the call
+    /// uses the room that is left. A pending finish request is dropped,
+    /// because the caller says that the event goes on.
+    /// </summary>
+    public async Task<DvrEndChangeResult> ExtendRecordingAsync(
+        int id, int minutes, string caller, CancellationToken cancellationToken = default)
+    {
+        if (minutes < 1 || minutes > MaxExtendMinutesPerCall)
+            return DvrEndChangeResult.Fail(DvrEndChangeOutcome.Invalid,
+                $"minutes must be a whole number from 1 to {MaxExtendMinutesPerCall}.");
+
+        await _endChangeGate.WaitAsync(cancellationToken);
+        try
+        {
+            var recording = await LoadCurrentRecordingAsync(id, cancellationToken);
+            if (recording == null)
+                return DvrEndChangeResult.Fail(DvrEndChangeOutcome.NotFound, "Recording not found.");
+            var blocker = EndChangeBlocker(recording);
+            if (blocker != null)
+                return DvrEndChangeResult.Fail(DvrEndChangeOutcome.NotChangeable, blocker);
+
+            var config = await _configService.GetConfigAsync();
+            var cap = ExtensionCapMinutes(config);
+            var previousEnd = recording.ScheduledEnd;
+            var extension = await ExtendInsideGateAsync(recording, minutes, cap, cancellationToken);
+            if (extension.RowChanged)
+                return DvrEndChangeResult.Fail(DvrEndChangeOutcome.NotChangeable,
+                    "The recording changed during the request. Try again.");
+            if (extension.Applied <= 0)
+            {
+                _logger.LogInformation(
+                    "[DVR] Extend request from {Caller} for recording {Id} refused: the extension cap of {Cap}m is reached",
+                    caller, id, cap);
+                return DvrEndChangeResult.Fail(DvrEndChangeOutcome.CapReached,
+                    $"The extension cap of {cap} minutes is reached. The recording ends at its current end.",
+                    recording.ScheduledEnd, extension.Used, cap);
+            }
+
+            var applied = extension.Applied;
+            var total = extension.Used;
+            var droppedFinish = _finishRequests.TryRemove(id, out _);
+
+            _logger.LogInformation(
+                "[DVR] Extend request from {Caller}: recording {Id} ({Status}) end moved from {OldEnd:o} to {NewEnd:o} " +
+                "(+{Applied}m of {Requested}m asked, {Total}m/{Cap}m used){Dropped}",
+                caller, id, recording.Status, previousEnd, recording.ScheduledEnd, applied, minutes, total, cap,
+                droppedFinish ? "; the pending finish request is dropped" : "");
+
+            return new DvrEndChangeResult(DvrEndChangeOutcome.Changed, null, recording.Status,
+                previousEnd, recording.ScheduledEnd, null, applied, total, cap);
+        }
+        finally
+        {
+            _endChangeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Finish a recording because the event is over. A running recording
+    /// stops after the given delay through the same scheduler stop as the
+    /// Early Finish Guard, so it completes and is imported, and no fallback
+    /// channel takes over. A scheduled recording gets its end set to now
+    /// plus the delay. The finish never moves an end later.
+    /// </summary>
+    public async Task<DvrEndChangeResult> FinishRecordingAsync(
+        int id, int afterMinutes, string caller, CancellationToken cancellationToken = default)
+    {
+        if (afterMinutes < 0 || afterMinutes > MaxFinishDelayMinutes)
+            return DvrEndChangeResult.Fail(DvrEndChangeOutcome.Invalid,
+                $"afterMinutes must be a whole number from 0 to {MaxFinishDelayMinutes}.");
+
+        await _endChangeGate.WaitAsync(cancellationToken);
+        try
+        {
+            var recording = await LoadCurrentRecordingAsync(id, cancellationToken);
+            if (recording == null)
+                return DvrEndChangeResult.Fail(DvrEndChangeOutcome.NotFound, "Recording not found.");
+            var blocker = EndChangeBlocker(recording);
+            if (blocker != null)
+                return DvrEndChangeResult.Fail(DvrEndChangeOutcome.NotChangeable, blocker);
+
+            var cap = ExtensionCapMinutes(await _configService.GetConfigAsync());
+            var used = UsedExtensionMinutes(recording);
+            var now = DateTime.UtcNow;
+            var finishAt = now.AddMinutes(afterMinutes);
+            var previousEnd = recording.ScheduledEnd;
+
+            if (recording.Status == DvrRecordingStatus.Recording)
+            {
+                // The window end can come first. Then the normal stop applies.
+                var windowEnd = NormalizeToUtc(recording.ScheduledEnd).AddMinutes(recording.PostPadding);
+                if (finishAt > windowEnd)
+                    finishAt = windowEnd;
+                _finishRequests[id] = finishAt;
+                _logger.LogInformation(
+                    "[DVR] Finish request from {Caller}: recording {Id} stops as finished at {FinishAt:o} " +
+                    "(in {After}m; scheduled end {End:o} stays)",
+                    caller, id, finishAt, afterMinutes, previousEnd);
+                return new DvrEndChangeResult(DvrEndChangeOutcome.Changed, null, recording.Status,
+                    previousEnd, recording.ScheduledEnd, finishAt, 0, used, cap);
+            }
+
+            // The recording has not started. Its padding still applies when it runs.
+            var newEnd = finishAt < NormalizeToUtc(recording.ScheduledEnd) ? finishAt : NormalizeToUtc(recording.ScheduledEnd);
+            if (newEnd <= NormalizeToUtc(recording.ScheduledStart) ||
+                (recording.Method == DvrRecordingMethod.Live && newEnd.AddMinutes(recording.PostPadding) <= now))
+            {
+                return DvrEndChangeResult.Fail(DvrEndChangeOutcome.NotChangeable,
+                    "The recording has not started, and this end leaves nothing to record. Cancel it instead.");
+            }
+
+            recording.ScheduledEnd = newEnd;
+            recording.LastUpdated = now;
+            await _db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation(
+                "[DVR] Finish request from {Caller}: scheduled recording {Id} end moved from {OldEnd:o} to {NewEnd:o}",
+                caller, id, previousEnd, newEnd);
+            // The recorder stops after the post padding, so that is the real finish time.
+            return new DvrEndChangeResult(DvrEndChangeOutcome.Changed, null, recording.Status,
+                previousEnd, newEnd, newEnd.AddMinutes(recording.PostPadding), 0, used, cap);
+        }
+        finally
+        {
+            _endChangeGate.Release();
         }
     }
 
@@ -2469,4 +2857,33 @@ public class DvrRecordingService
             $"Cannot schedule recording: {reason}. " +
             $"Either cancel a conflicting recording, raise the cap, or change DvrConflictPolicy to Queue or Preempt.");
     }
+}
+
+public enum DvrEndChangeOutcome
+{
+    Changed,
+    Invalid,
+    NotFound,
+    NotChangeable,
+    CapReached,
+}
+
+/// <summary>
+/// Result of an extend or finish call. ScheduledEnd is the end after the
+/// call. FinishAt is when a finish takes effect. Minutes are whole minutes.
+/// </summary>
+public sealed record DvrEndChangeResult(
+    DvrEndChangeOutcome Outcome,
+    string? Error,
+    DvrRecordingStatus? Status,
+    DateTime? PreviousEnd,
+    DateTime? ScheduledEnd,
+    DateTime? FinishAt,
+    int AppliedMinutes,
+    int TotalExtensionMinutes,
+    int ExtensionCapMinutes)
+{
+    public static DvrEndChangeResult Fail(DvrEndChangeOutcome outcome, string error,
+        DateTime? scheduledEnd = null, int totalExtensionMinutes = 0, int extensionCapMinutes = 0) =>
+        new(outcome, error, null, null, scheduledEnd, null, 0, totalExtensionMinutes, extensionCapMinutes);
 }

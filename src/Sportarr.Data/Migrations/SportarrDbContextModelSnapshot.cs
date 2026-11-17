@@ -975,6 +975,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("Method")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("OriginalScheduledEnd")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("OutputPath")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");

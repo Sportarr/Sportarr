@@ -113,7 +113,14 @@ public class DvrSchedulerService : BackgroundService
 
             try
             {
-                var result = await dvrService.StopRecordingAsync(recording.Id);
+                // Give the end that the decision saw. An extend call that
+                // lands before the stop then keeps the recording going.
+                var result = await dvrService.StopRecordingAsync(recording.Id, recording.ScheduledEnd);
+
+                if (result.Error == DvrRecordingService.StopSkippedError)
+                {
+                    continue;
+                }
 
                 if (!result.Success)
                 {
