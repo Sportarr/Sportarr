@@ -1582,14 +1582,15 @@ public class AutomaticSearchService : IAutomaticSearchService
                     }
 
                     // The import applies the same profile rank before revision
-                    // and custom format score. Manual searches keep the user's
-                    // explicit choice.
-                    if (shouldUpgrade && !isManualSearch && newReleaseQualityRank < existingQualityRank)
+                    // and custom format score. A search the user starts also
+                    // picks the release itself, so these guards apply to it too.
+                    // Otherwise it downloads a release that never imports.
+                    if (shouldUpgrade && newReleaseQualityRank < existingQualityRank)
                     {
                         shouldUpgrade = false;
                         upgradeReason = $"lower quality profile rank than the existing file ({existingQualityRank} > {newReleaseQualityRank})";
                     }
-                    else if (shouldUpgrade && !isManualSearch && newReleaseQualityRank == existingQualityRank
+                    else if (shouldUpgrade && newReleaseQualityRank == existingQualityRank
                              && propersSetting != "doNotPrefer"
                              && revisionComparison < 0)
                     {
