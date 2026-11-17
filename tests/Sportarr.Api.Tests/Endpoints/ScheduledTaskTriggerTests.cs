@@ -299,7 +299,7 @@ public class ScheduledTaskTriggerTests
     }
 
     [Fact]
-    public async Task RestartMarksAStoppingRunNowAsCancelledAndLeavesQueueRows()
+    public async Task RestartMarksEveryStoppingTaskAsCancelled()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"run-now-{Guid.NewGuid():N}");
         try
@@ -310,14 +310,17 @@ public class ScheduledTaskTriggerTests
                 var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
                 db.Tasks.AddRange(
                     new AppTask { Name = "Housekeeping", CommandName = "Housekeeping", Status = AppTaskStatus.Aborting, Started = DateTime.UtcNow },
-                    new AppTask { Name = "RSS Sync", CommandName = "RssSync", Status = AppTaskStatus.Aborting, Started = DateTime.UtcNow });
+                    new AppTask { Name = "RSS Sync", CommandName = "RssSync", Status = AppTaskStatus.Aborting, Started = DateTime.UtcNow },
+                    // A stopping library import must not block an update for good.
+                    new AppTask { Name = "Library Import", CommandName = "LibraryImport", Status = AppTaskStatus.Aborting, Started = DateTime.UtcNow });
                 await db.SaveChangesAsync();
             }
 
             await provider.GetRequiredService<TaskService>().RecoverAndResumeAsync();
 
             (await WaitForTaskAsync(provider, "Housekeeping", _ => true)).Status.Should().Be(AppTaskStatus.Cancelled);
-            (await WaitForTaskAsync(provider, "RssSync", _ => true)).Status.Should().Be(AppTaskStatus.Aborting);
+            (await WaitForTaskAsync(provider, "RssSync", _ => true)).Status.Should().Be(AppTaskStatus.Cancelled);
+            (await WaitForTaskAsync(provider, "LibraryImport", _ => true)).Status.Should().Be(AppTaskStatus.Cancelled);
         }
         finally
         {

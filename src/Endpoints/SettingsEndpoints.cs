@@ -176,7 +176,8 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         {
             Branch = config.Branch.ToLower(),
             Automatic = config.UpdateAutomatically,
-            Mechanism = config.UpdateMechanism.ToLower(),
+            // An old Apt value shows as External. config.xml keeps it until the next save.
+            Mechanism = UpdateMechanisms.Normalize(config.UpdateMechanism).ToLowerInvariant(),
             ScriptPath = config.UpdateScriptPath
         }, jsonOptions),
 
@@ -351,6 +352,13 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         return Results.BadRequest(new { error = $"The {parsingBlock} block could not be read: {ex.Message}" });
     }
 
+    // Only the four mechanisms that Sportarr supports can be saved.
+    var updateMechanism = UpdateMechanisms.Docker;
+    if (updateSettingsObj != null && !UpdateMechanisms.TryParse(updateSettingsObj.Mechanism, out updateMechanism))
+    {
+        return Results.BadRequest(new { error = "The update mechanism must be builtin, docker, external or script." });
+    }
+
     // Get previous EnableMultiPartEpisodes value to detect changes
     var config = await configService.GetConfigAsync();
     var previousEnableMultiPart = config.EnableMultiPartEpisodes;
@@ -510,7 +518,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         {
             config.Branch = updateSettingsObj.Branch;
             config.UpdateAutomatically = updateSettingsObj.Automatic;
-            config.UpdateMechanism = updateSettingsObj.Mechanism;
+            config.UpdateMechanism = updateMechanism;
             config.UpdateScriptPath = updateSettingsObj.ScriptPath;
         }
 

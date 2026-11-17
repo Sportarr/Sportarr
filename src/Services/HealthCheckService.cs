@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +19,8 @@ public class HealthCheckService
     private readonly FileNamingService _fileNamingService;
     private readonly DatabaseHealthTracker _databaseHealth;
     private readonly BackupService _backupService;
+    private readonly UpdateCheckService? _updateCheck;
+    private readonly InstallUpdateService? _installUpdate;
 
     public HealthCheckService(
         SportarrDbContext db,
@@ -31,7 +32,9 @@ public class HealthCheckService
         IHttpClientFactory httpClientFactory,
         FileNamingService fileNamingService,
         DatabaseHealthTracker databaseHealth,
-        BackupService backupService)
+        BackupService backupService,
+        UpdateCheckService? updateCheck = null,
+        InstallUpdateService? installUpdate = null)
     {
         _db = db;
         _logger = logger;
@@ -43,6 +46,8 @@ public class HealthCheckService
         _fileNamingService = fileNamingService;
         _databaseHealth = databaseHealth;
         _backupService = backupService;
+        _updateCheck = updateCheck;
+        _installUpdate = installUpdate;
     }
 
     /// <summary>
@@ -70,6 +75,7 @@ public class HealthCheckService
             results.AddRange(await CheckRenamedLeagueFoldersAsync());
             results.AddRange(CheckHiddenUntrackedFiles());
             results.AddRange(await CheckUpdateAvailableAsync());
+            results.AddRange(await CheckBuiltInUpdateAsync());
             results.AddRange(await CheckDatabaseMigrationNeededAsync());
             results.AddRange(await CheckMetadataApiAsync());
             results.AddRange(await CheckNotificationsAsync());
@@ -641,60 +647,94 @@ public class HealthCheckService
     }
 
     /// <summary>
-    /// Check GitHub for a newer release than the running version. Mirrors
-    /// Sonarr/Radarr's update-available health check. Any failure to reach
-    /// GitHub is silently skipped - an update-check outage isn't itself a
-    /// health problem worth surfacing (that's what MetadataApiUnavailable
-    /// and general connectivity checks are for).
+    /// Check GitHub for a newer release than the running version. A failure
+    /// to reach GitHub is skipped quietly. An update-check outage is not a
+    /// health problem on its own. The metadata and connectivity checks cover
+    /// that.
     /// </summary>
     private async Task<List<HealthCheckResult>> CheckUpdateAvailableAsync()
     {
         var results = new List<HealthCheckResult>();
 
-        try
+        var release = _updateCheck != null
+            ? await _updateCheck.GetLatestAsync()
+            : await LatestReleaseClient.FetchAsync(_httpClientFactory, _logger);
+        if (release != null && LatestReleaseClient.IsNewer(release.Version, Sportarr.Api.Version.AppVersion))
         {
-            var httpClient = _httpClientFactory.CreateClient("TrashGuides"); // GitHub-friendly User-Agent already configured
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            using var response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases/latest", cts.Token);
-            if (!response.IsSuccessStatusCode)
-                return results;
-
-            var json = await response.Content.ReadAsStringAsync(cts.Token);
-            var release = JsonSerializer.Deserialize<JsonElement>(json);
-            var tagName = release.TryGetProperty("tag_name", out var tagProp) ? tagProp.GetString() : null;
-            var latestVersionText = tagName?.TrimStart('v', 'V');
-
-            if (!string.IsNullOrEmpty(latestVersionText) &&
-                System.Version.TryParse(NormalizeToThreePart(latestVersionText), out var latest) &&
-                System.Version.TryParse(NormalizeToThreePart(Sportarr.Api.Version.AppVersion), out var current) &&
-                latest > current)
+            var config = await _configService.GetConfigAsync();
+            var how = UpdateHint(config.UpdateMechanism, _installUpdate?.RunsInContainer ?? true);
+            results.Add(new HealthCheckResult
             {
-                results.Add(new HealthCheckResult
-                {
-                    Type = HealthCheckType.UpdateAvailable,
-                    Level = HealthCheckLevel.Notice,
-                    Message = $"A new version of Sportarr is available: {latestVersionText}",
-                    Details = $"You are running {Sportarr.Api.Version.AppVersion}. Update by pulling the latest Docker image or downloading the latest release from GitHub."
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Update check against GitHub failed - skipping, not a health issue on its own");
+                Type = HealthCheckType.UpdateAvailable,
+                Level = HealthCheckLevel.Notice,
+                Message = $"A new version of Sportarr is available: {release.Version}",
+                Details = $"You are running {Sportarr.Api.Version.AppVersion}. {how}"
+            });
         }
 
         return results;
     }
 
     /// <summary>
-    /// A release's tag (e.g. "4.2") or the app's base version (e.g. "4.1.0")
-    /// may not have exactly 3 parts - System.Version requires at least 2 and
-    /// treats missing parts as -1, which breaks comparison. Pad to 3.
+    /// How to update, for the mechanism in the settings. Docker is the
+    /// default, so a plain install outside a container often has it too.
+    /// The text then does not talk about images.
     /// </summary>
-    private static string NormalizeToThreePart(string versionText)
+    internal static string UpdateHint(string? mechanism, bool inContainer) =>
+        UpdateMechanisms.Normalize(mechanism) switch
+        {
+            UpdateMechanisms.BuiltIn => "Install it in Settings > General > Updates.",
+            UpdateMechanisms.Script => "Your update script runs when automatic updates are on.",
+            UpdateMechanisms.External => "Update with your installer or package manager.",
+            _ when inContainer => "Pull the latest image and recreate the container.",
+            _ => "Update by downloading the latest release, or set the update mechanism in Settings > General."
+        };
+
+    /// <summary>
+    /// Warn when the last built-in update was rolled back, and when the
+    /// mechanism is Built-in but this computer cannot use it.
+    /// </summary>
+    private async Task<List<HealthCheckResult>> CheckBuiltInUpdateAsync()
     {
-        var parts = versionText.Split('.');
-        return parts.Length >= 3 ? string.Join('.', parts[..3]) : string.Join('.', parts.Concat(Enumerable.Repeat("0", 3 - parts.Length)));
+        var results = new List<HealthCheckResult>();
+        if (_installUpdate == null)
+            return results;
+
+        var config = await _configService.GetConfigAsync();
+        var builtIn = UpdateMechanisms.Normalize(config.UpdateMechanism) == UpdateMechanisms.BuiltIn;
+        var automaticBuiltIn = builtIn && config.UpdateAutomatically;
+
+        var marker = UpdateResultMarker.Read(_installUpdate.UpdatesDir);
+        if (marker != null && marker.StillRelevant(Sportarr.Api.Version.AppVersion))
+        {
+            results.Add(new HealthCheckResult
+            {
+                Type = HealthCheckType.UpdateFailed,
+                Level = HealthCheckLevel.Warning,
+                Message = marker.Status == "RolledBack"
+                    ? $"Update to {marker.Version} failed and was rolled back"
+                    : $"Update to {marker.Version} failed",
+                Details = $"{marker.Message.TrimEnd('.')}. See logs/update.log in the data folder." +
+                          (automaticBuiltIn ? " Automatic updates skip this version. Use Install update in Settings > General to try it again." : "")
+            });
+        }
+
+        if (builtIn)
+        {
+            var problem = _installUpdate.GetEnvironmentProblem();
+            if (problem != null)
+            {
+                results.Add(new HealthCheckResult
+                {
+                    Type = HealthCheckType.UpdateCannotInstall,
+                    Level = HealthCheckLevel.Warning,
+                    Message = "The built-in update cannot install on this system",
+                    Details = problem
+                });
+            }
+        }
+
+        return results;
     }
 
     /// <summary>

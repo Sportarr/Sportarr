@@ -164,6 +164,15 @@ public static class DatabaseInitializer
         var specialEventTeamModesPending = !db.Database.IsNpgsql() &&
             pendingMigrations.Contains(SpecialEventTeamModesMigrationId);
 
+        // An update helper that waits for this start must know that the
+        // database changes now. A rollback then restores the database too.
+        if (pendingMigrations.Count > 0)
+        {
+            var dataPath = scope.ServiceProvider.GetService<IConfiguration>()?["Sportarr:DataPath"];
+            if (!string.IsNullOrEmpty(dataPath))
+                UpdateStartupMarkers.WriteMigrating(dataPath);
+        }
+
         db.Database.Migrate();
 
         Console.WriteLine("[Sportarr] Core migrations applied; running schema safety nets...");

@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sportarr.csproj" />
+    <ProjectReference Include="..\..\src\Sportarr.Update\Sportarr.Update.csproj" />
   </ItemGroup>
 
   <ItemGroup>

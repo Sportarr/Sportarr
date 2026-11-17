@@ -638,7 +638,7 @@ public class TaskService : ITaskService
     }
 
     /// <summary>
-    /// Clean up old completed tasks
+    /// Recovers task rows that a previous process left unfinished.
     /// </summary>
     public async Task RecoverAndResumeAsync()
     {
@@ -652,16 +652,16 @@ public class TaskService : ITaskService
             // start a second concurrent task), so flip it back to Queued. We
             // prefer requeue over fail so legitimate work gets retried after
             // a restart.
-            var manualPassCommands = ManualPassCommands.ToList();
+            //
+            // A task that a user was cancelling when the app stopped is not
+            // running any more. It ends as the user asked, whatever its kind.
             var orphans = await db.Tasks
                 .Where(t => t.Status == Models.TaskStatus.Running
-                    || (t.Status == Models.TaskStatus.Aborting && manualPassCommands.Contains(t.CommandName)))
+                    || t.Status == Models.TaskStatus.Aborting)
                 .ToListAsync();
 
             foreach (var orphan in orphans)
             {
-                // A Run Now pass that a user was cancelling when the app
-                // stopped ended as the user asked.
                 if (orphan.Status == Models.TaskStatus.Aborting)
                 {
                     orphan.Status = Models.TaskStatus.Cancelled;

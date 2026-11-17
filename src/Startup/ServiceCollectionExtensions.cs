@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http;
 using Polly;
@@ -132,6 +133,15 @@ public static class ServiceCollectionExtensions
                 }
             })
             .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(60));
+
+        // Downloads a release package for the built-in update. A package is
+        // large, so the timeout is long.
+        services.AddHttpClient(InstallUpdateService.DownloadHttpClientName)
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromMinutes(30);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(InstallUpdateService.DownloadUserAgent);
+            });
 
         services.AddHttpClient("TrashGuides")
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler())
@@ -588,6 +598,18 @@ public static class ServiceCollectionExtensions
         // notifications; previously checks only ran when the UI asked.
         services.AddSingleton<HealthCheckMonitorService>();
         services.AddHostedService(sp => sp.GetRequiredService<HealthCheckMonitorService>());
+
+        // Updates. The health monitor pass runs the update script or the
+        // built-in update when automatic updates are on.
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<UpdateCheckService>();
+        services.AddSingleton<IUpdateScriptRunner, ProcessUpdateScriptRunner>();
+        services.AddSingleton<UpdateScriptService>();
+        services.AddSingleton<IUpdateEnvironment, SystemUpdateEnvironment>();
+        services.AddSingleton<IUpdaterLauncher, ProcessUpdaterLauncher>();
+        services.AddSingleton<IUpdateSafety, UpdateSafety>();
+        services.AddSingleton<InstallUpdateService>();
+        services.AddSingleton<AutomaticUpdateService>();
 
         // Periodic sync of enabled import lists (previously manual-only).
         services.AddSingleton<ImportListSyncService>();

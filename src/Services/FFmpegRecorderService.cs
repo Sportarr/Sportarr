@@ -643,6 +643,53 @@ public class FFmpegRecorderService
     }
 
     /// <summary>
+    /// Kills every FFmpeg process that is still tracked. Sportarr calls this
+    /// after the host has stopped, when the graceful stop has had its time.
+    /// Under systemd with KillMode=process, systemd does not stop these
+    /// processes, so they must not outlive Sportarr.
+    /// </summary>
+    public int KillRemainingProcesses()
+    {
+        _shuttingDown = true;
+        List<RecordingProcess> remaining;
+        lock (_lock)
+        {
+            remaining = _activeRecordings.Values.ToList();
+        }
+
+        var killed = 0;
+        foreach (var recording in remaining)
+        {
+            try
+            {
+                if (recording.Process.HasExited)
+                    continue;
+                recording.StopRequested = true;
+                recording.Process.Kill(entireProcessTree: true);
+                recording.Process.WaitForExit(5000);
+                killed++;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // The process ended on its own.
+            }
+        }
+
+        if (killed > 0)
+            _logger.LogWarning("[DVR] Stopped {Count} FFmpeg process(es) that were still running at shutdown", killed);
+        return killed;
+    }
+
+    // Lets a test track a process without a real stream.
+    internal void TrackForTest(int recordingId, Process process, string outputPath)
+    {
+        lock (_lock)
+        {
+            _activeRecordings[recordingId] = new RecordingProcess { RecordingId = recordingId, Process = process, OutputPath = outputPath };
+        }
+    }
+
+    /// <summary>
     /// Wait for any start still proving its FFmpeg process to reach its
     /// handoff. Bounded, because a wedged start must not hold up shutdown.
     /// </summary>

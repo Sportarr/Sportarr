@@ -53,7 +53,8 @@ Name: "startupicon"; Description: "Start Sportarr when Windows starts"; GroupDes
 Name: "installservice"; Description: "Install as Windows Service (runs in background)"; GroupDescription: "Service:"; Flags: unchecked
 
 [Files]
-; Main application files from publish directory
+; Main application files from publish directory. This includes the
+; Sportarr.Update folder with the update helper for built-in updates.
 Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Data directory marker
 Source: "..\installer\data-readme.txt"; DestDir: "{app}\data"; Flags: ignoreversion; Check: not DirExists(ExpandConstant('{app}\data'))
@@ -112,6 +113,9 @@ begin
   Exec('sc', 'stop Sportarr', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(2000);
   Exec('taskkill', '/F /IM Sportarr.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // A built-in update can still run. Its helper must not start the old
+  // version again while this setup replaces the files.
+  Exec('taskkill', '/F /IM Sportarr.Update.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

@@ -25,6 +25,9 @@ public class HealthCheckMonitorService : BackgroundService, IManualPassService
     // minutes, and OnHealthRestored fires when it clears.
     private HashSet<string> _activeIssues = new();
 
+    // Lets a running update script check stop waiting when Sportarr stops.
+    private CancellationToken _stoppingToken;
+
     // Issue keys that actually fired an OnHealthIssue notification since
     // startup. Restore means "everything we announced has cleared", not
     // "zero issues exist" - a permanent baseline warning (an available
@@ -42,6 +45,7 @@ public class HealthCheckMonitorService : BackgroundService, IManualPassService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("[Health Monitor] Started; interval {Interval}", Interval);
+        _stoppingToken = stoppingToken;
 
         try { await Task.Delay(StartupDelay, stoppingToken); } catch (OperationCanceledException) { return; }
 
@@ -86,6 +90,9 @@ public class HealthCheckMonitorService : BackgroundService, IManualPassService
         var notificationService = scope.ServiceProvider.GetRequiredService<NotificationService>();
 
         var results = await healthService.PerformAllChecksAsync();
+
+        StartAutomaticUpdateCheck();
+
         var issues = results.Where(r => r.Level != HealthCheckLevel.Ok).ToList();
         var currentKeys = issues.Select(IssueKey).ToHashSet(StringComparer.Ordinal);
 
@@ -205,6 +212,43 @@ public class HealthCheckMonitorService : BackgroundService, IManualPassService
             announcedIssues.Add(key);
 
         return clearedAll && announcedIssues.Count == 0;
+    }
+
+    /// <summary>
+    /// Runs the automatic update checks in the background. A script or a
+    /// download can take a long time, and the health pass must not wait.
+    /// </summary>
+    private void StartAutomaticUpdateCheck()
+    {
+        // Remove the leftovers of an update that worked. The helper has
+        // ended by now, because this pass runs minutes after the start.
+        try { _services.GetService<InstallUpdateService>()?.CleanUpAfterSuccessfulUpdate(); }
+        catch (Exception ex) { _logger.LogDebug(ex, "[Update] Clean-up after the update failed"); }
+
+        var updateScript = _services.GetService<UpdateScriptService>();
+        var automaticUpdate = _services.GetService<AutomaticUpdateService>();
+        if (updateScript == null && automaticUpdate == null)
+            return;
+
+        var stoppingToken = _stoppingToken;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Each returns at once when its mechanism is not selected.
+                if (updateScript != null)
+                    await updateScript.RunIfDueAsync(stoppingToken);
+                if (automaticUpdate != null)
+                    await automaticUpdate.RunIfDueAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Update] Update script check failed");
+            }
+        });
     }
 
     private static string IssueKey(HealthCheckResult result) => $"{result.Type}:{result.Message}";

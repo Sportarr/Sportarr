@@ -74,26 +74,41 @@ jobs:
       - name: Build Windows x64
         run: |
           dotnet publish src/Sportarr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/win-x64
+          # The update helper ships in its own folder next to the app.
+          dotnet publish src/Sportarr.Update/Sportarr.Update.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/win-x64/Sportarr.Update
+          test -f publish/win-x64/Sportarr.Update/Sportarr.Update.exe
           cd publish/win-x64 && zip -r ../../Sportarr-win-x64-${{ steps.version.outputs.version }}.zip .
 
       - name: Build Linux x64
         run: |
           dotnet publish src/Sportarr.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/linux-x64
+          # The update helper ships in its own folder next to the app.
+          dotnet publish src/Sportarr.Update/Sportarr.Update.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/linux-x64/Sportarr.Update
+          test -f publish/linux-x64/Sportarr.Update/Sportarr.Update
           cd publish/linux-x64 && tar -czvf ../../Sportarr-linux-x64-${{ steps.version.outputs.version }}.tar.gz .
 
       - name: Build Linux ARM64
         run: |
           dotnet publish src/Sportarr.csproj -c Release -r linux-arm64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/linux-arm64
+          # The update helper ships in its own folder next to the app.
+          dotnet publish src/Sportarr.Update/Sportarr.Update.csproj -c Release -r linux-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/linux-arm64/Sportarr.Update
+          test -f publish/linux-arm64/Sportarr.Update/Sportarr.Update
           cd publish/linux-arm64 && tar -czvf ../../Sportarr-linux-arm64-${{ steps.version.outputs.version }}.tar.gz .
 
       - name: Build macOS x64
         run: |
           dotnet publish src/Sportarr.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/osx-x64
+          # The update helper ships in its own folder next to the app.
+          dotnet publish src/Sportarr.Update/Sportarr.Update.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/osx-x64/Sportarr.Update
+          test -f publish/osx-x64/Sportarr.Update/Sportarr.Update
           cd publish/osx-x64 && tar -czvf ../../Sportarr-osx-x64-${{ steps.version.outputs.version }}.tar.gz .
 
       - name: Build macOS ARM64 (Apple Silicon)
         run: |
           dotnet publish src/Sportarr.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/osx-arm64
+          # The update helper ships in its own folder next to the app.
+          dotnet publish src/Sportarr.Update/Sportarr.Update.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/osx-arm64/Sportarr.Update
+          test -f publish/osx-arm64/Sportarr.Update/Sportarr.Update
           cd publish/osx-arm64 && tar -czvf ../../Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz .
 
       - name: Update pr prerelease

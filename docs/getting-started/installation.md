@@ -159,6 +159,7 @@ User=sportarr
 WorkingDirectory=/opt/sportarr
 ExecStart=/opt/sportarr/Sportarr -data /var/lib/sportarr
 Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -206,9 +207,22 @@ launchctl load ~/Library/LaunchAgents/net.sportarr.plist
 
 ## Updating
 
-**System > Updates** tells you when a new release is out. It checks GitHub
-and reports what it finds; it does not install anything, so the update
-itself is the same job as the install.
+**System > Updates** tells you when a new release is out. Sportarr checks
+GitHub for the latest stable release. If GitHub cannot be reached, it skips
+the check and tries again later.
+
+Pick how you update in **Settings > General > Updates**:
+
+- **Built-in**: Sportarr downloads the new version, installs it and
+  restarts. See [Built-in updates](#built-in-updates). Not for Docker.
+- **Docker**: pull the new image and recreate the container.
+- **External**: update with your installer or package manager. Sportarr
+  shows when a new version is out.
+- **Script**: Sportarr runs your script when a new version is out. See
+  [Update with a script](#update-with-a-script).
+
+Older versions also offered Apt. It never installed anything, and Sportarr
+now shows it as External.
 
 Your settings and database live in the data directory, not beside the
 program, so replacing the program leaves them alone. Where that directory
@@ -276,6 +290,130 @@ data directory.
 For the portable build, close Sportarr, extract the new
 `Sportarr-win-x64-<version>.zip` over the folder, and start it again. Keep
 the `data` folder if it sits inside that same folder.
+
+### Built-in updates
+
+Set the mechanism to **Built-in** and save. The Updates section then shows
+the version you run and the latest version. Click **Install update** to
+install it now. Turn on **Automatic Updates** to let Sportarr install new
+versions on its own.
+
+Sportarr downloads the package for your system from the release, checks
+its size and checksum, and unpacks it in the `updates` folder of the data
+directory. It makes a normal database backup, which you find under
+**System > Backup**. Then it starts the update helper and stops. The helper
+backs up the files it replaces, copies the new files into the install folder
+and starts Sportarr again from the same folder, with the same data
+directory.
+
+The helper waits up to 10 minutes for the new version to answer. A version
+that migrates the database gets up to an hour, as long as it still runs. If
+the new version does not answer, the helper puts the old files back and
+starts the old version. If the new version had already changed a SQLite
+database, the helper also puts the database back from the backup. It cannot
+do that for Postgres. Then it leaves the new version in place, because the
+old version cannot run on the changed database, and the health page says
+which backup to restore. The health page always shows a failed or rolled
+back update. Each step is in `logs/update.log` in the data directory. After
+a good update, Sportarr removes the downloaded and unpacked files a few
+minutes after the start.
+
+Sportarr does not install while a recording runs or a download is imported.
+**Install update** then says so. Automatic updates wait for a quiet moment,
+and not in the first 15 minutes after a start. Automatic updates do not try
+a version again after it failed or was rolled back. The health page says so,
+and **Install update** still installs it. Before it installs,
+Sportarr checks the free space. The data directory needs room for the
+download, the backup of the replaced files and a copy of the database. The
+install folder needs room for the new files. If space is short, **Install
+update** says how much is needed.
+
+The built-in update needs these things:
+
+- A release build from the releases page or the Windows installer.
+  Development builds do not update themselves.
+- Sportarr can write to its install folder. The Windows installer puts
+  Sportarr in Program Files, so there it works for the Windows service, but
+  not for the tray app of a normal user.
+- No container. In Docker, pull the new image instead.
+- With Postgres, `pg_dump` installed, because Sportarr backs up the
+  database before each update.
+- Under systemd, these lines in the `[Service]` section of the unit:
+
+  ```ini
+  KillMode=process
+  Restart=on-failure
+  RestartSec=5
+  ```
+
+  `Restart=always` works too. Do not list exit code 1 in
+  `SuccessExitStatus` or `RestartPreventExitStatus`.
+
+  A new version that fails restarts until the helper puts the old one
+  back. systemd must not give up before that. So `RestartSec` must be at
+  least 2 seconds. Also, `RestartSec` times `StartLimitBurst` must be longer
+  than `StartLimitIntervalSec`, or the start limit must be off.
+  `RestartSec=5` works with the systemd defaults.
+
+  `KillMode=process` keeps the update helper running while Sportarr stops.
+  It also means that `systemctl stop` stops only the Sportarr process
+  itself, not other programs that it started. Sportarr stops its FFmpeg
+  recordings itself when it shuts down. After the helper copies the files,
+  Sportarr exits with an error code, and `Restart=on-failure` makes systemd
+  start the new version.
+- Built-in supports systemd system services, the Windows service and
+  Sportarr started by hand. Under any other supervisor, use Script or
+  External.
+- Not as a systemd user service. Run Sportarr as a system service, or use
+  Script or External. Started from a terminal, which puts it in a scope,
+  the built-in update works and the helper starts Sportarr itself.
+- Not under launchd on macOS. launchd stops the helper together with
+  Sportarr. Use Script or External there. Started from a terminal, the
+  built-in update works.
+
+If something is missing, the Updates section and the health page say what
+it is.
+
+### Update with a script
+
+Set the mechanism to **Script**, enter the path to your script and turn on
+**Automatic Updates**. Sportarr checks for a new release every 15 minutes. When it
+finds a newer release, it runs your script once for that version. If the
+script exits with an error, Sportarr tries again the next day. If GitHub
+cannot be reached, Sportarr skips the check and tries again later.
+
+The script gets these environment variables:
+
+| Variable | Value |
+|---|---|
+| `SPORTARR_UPDATE_VERSION` | The new version |
+| `SPORTARR_CURRENT_VERSION` | The version that is running |
+| `SPORTARR_UPDATE_URL` | The release page on GitHub |
+| `SPORTARR_UPDATE_DOWNLOAD_URL` | The archive for this system, or empty if Sportarr cannot tell which one |
+| `SPORTARR_INSTALL_DIR` | The folder Sportarr runs from |
+| `SPORTARR_DATA_DIR` | The data directory |
+
+To install the update, the script has to stop Sportarr. A service manager
+can stop every process that Sportarr started, and that includes your
+script. So let the script hand the work to something that outlives
+Sportarr. On Linux, start the real work with `systemd-run`. On Windows, use
+a scheduled task.
+
+```bash
+#!/bin/sh
+# /opt/sportarr-update/run.sh, the path you enter in Sportarr
+exec systemd-run --unit=sportarr-update --collect \
+  --setenv=SPORTARR_UPDATE_DOWNLOAD_URL="$SPORTARR_UPDATE_DOWNLOAD_URL" \
+  --setenv=SPORTARR_INSTALL_DIR="$SPORTARR_INSTALL_DIR" \
+  /opt/sportarr-update/install.sh
+```
+
+`systemd-run` needs the right to start a system unit. Run it as root, or
+allow it for the Sportarr user with a polkit rule or a sudoers line.
+`--collect` removes the unit when it ends, so the next update can use the
+same name. `install.sh` then does the steps under [Linux](#linux). Keep the old install
+folder until the new version answers on `/ping`, so you can go back if it
+does not start. Sportarr waits up to one hour for the script to end.
 
 ### After an update
 

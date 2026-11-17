@@ -56,7 +56,9 @@ public enum HealthCheckType
 
     // Added last so the stored numbers of the members above do not change.
     WatchFolderInaccessible,
-    HiddenFileNotTracked
+    HiddenFileNotTracked,
+    UpdateFailed,
+    UpdateCannotInstall
 }
 
 /// <summary>

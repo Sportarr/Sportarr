@@ -102,8 +102,13 @@ public class Config
     // Update
     public string Branch { get; set; } = "main";
     public bool UpdateAutomatically { get; set; } = false;
-    public string UpdateMechanism { get; set; } = "Docker"; // BuiltIn, Script, External, Docker, Apt
+    public string UpdateMechanism { get; set; } = "Docker"; // BuiltIn, Docker, External or Script. An old Apt value reads as External.
     public string UpdateScriptPath { get; set; } = ""; // Path to custom update script
+
+    // Automatic updates keep this state, so that each new version is tried once.
+    public string AutoUpdateLastVersion { get; set; } = "";
+    public DateTime AutoUpdateLastAttemptUtc { get; set; } = DateTime.MinValue;
+    public bool AutoUpdateLastSucceeded { get; set; } = false;
 
     // UI
     public string FirstDayOfWeek { get; set; } = "Sunday";

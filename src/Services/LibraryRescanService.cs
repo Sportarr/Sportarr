@@ -51,6 +51,45 @@ public class LibraryRescanService
         bool autoImportHighConfidence = true,
         CancellationToken ct = default)
     {
+        // The update waits while a rescan moves files. The count lives in
+        // memory, so a rescan that a stop cut short cannot block it later.
+        Interlocked.Increment(ref _running);
+        try
+        {
+            return await RescanAllCoreAsync(autoImportHighConfidence, ct);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _running);
+        }
+    }
+
+    private static int _running;
+
+    /// <summary>True while a rescan runs in this process.</summary>
+    public static bool IsRunning => Volatile.Read(ref _running) > 0;
+
+    // Test hook. It marks a rescan as running without one.
+    internal static IDisposable MarkRunningForTest()
+    {
+        Interlocked.Increment(ref _running);
+        return new Release();
+    }
+
+    private sealed class Release : IDisposable
+    {
+        private int _done;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _done, 1) == 0)
+                Interlocked.Decrement(ref _running);
+        }
+    }
+
+    private async Task<LibraryRescanResult> RescanAllCoreAsync(
+        bool autoImportHighConfidence,
+        CancellationToken ct)
+    {
         var result = new LibraryRescanResult
         {
             StartedAt = DateTime.UtcNow,

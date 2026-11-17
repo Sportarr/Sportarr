@@ -6,6 +6,17 @@ import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import { runSettingsSave } from '../../hooks/useSettings';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import {
+  UPDATE_MECHANISM_OPTIONS,
+  automaticUpdatesApply,
+  installBlockReason,
+  isCancelled,
+  isNewFailure,
+  lastResultText,
+  normalizeUpdateMechanism,
+  updateMechanismHelp,
+  type UpdateStatus,
+} from './updateMechanismPresentation';
 
 interface GeneralSettingsProps {
   showAdvanced?: boolean;
@@ -64,6 +75,9 @@ interface UpdateSettings {
   mechanism: string;
   scriptPath: string;
 }
+
+const UPDATE_POLL_INTERVAL_MS = 3000;
+const UPDATE_WAIT_LIMIT_MS = 20 * 60 * 1000;
 
 export default function GeneralSettings({ showAdvanced = false }: GeneralSettingsProps) {
   const navigate = useNavigate();
@@ -139,9 +153,89 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
     scriptPath: '',
   });
 
+  // Version and built-in update state from the server
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const updatePollTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (updatePollTimer.current !== null) window.clearInterval(updatePollTimer.current);
+  }, []);
+
+  const loadUpdateStatus = async () => {
+    try {
+      const response = await apiGet('/api/update/status');
+      if (response.ok) {
+        setUpdateStatus(await response.json());
+      }
+    } catch (error) {
+      console.error('Failed to load update status:', error);
+    }
+  };
+
+  const installUpdate = async () => {
+    setInstallingUpdate(true);
+    setInstallError(null);
+    try {
+      const response = await apiPost('/api/update/install', {});
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        toast.success('Installing Update', { description: data.message, duration: 10000 });
+        if (updateStatus) {
+          waitForNewVersion(updateStatus.currentVersion, updateStatus.lastResult?.time ?? null);
+        }
+      } else {
+        setInstallError(data.error || 'The update could not be installed.');
+        setInstallingUpdate(false);
+        loadUpdateStatus();
+      }
+    } catch (error) {
+      console.error('Failed to install update:', error);
+      setInstallError('The update could not be installed.');
+      setInstallingUpdate(false);
+    }
+  };
+
+  // Sportarr restarts during the update. Ask for the version until it
+  // changes, then load the page again so it uses the new version.
+  const waitForNewVersion = (oldVersion: string, failureTimeBefore: string | null) => {
+    const startedAt = Date.now();
+    if (updatePollTimer.current !== null) window.clearInterval(updatePollTimer.current);
+    const timer = window.setInterval(async () => {
+      if (Date.now() - startedAt > UPDATE_WAIT_LIMIT_MS) {
+        window.clearInterval(timer);
+        setInstallingUpdate(false);
+        setInstallError('Sportarr did not come back with a new version. Check the health page and logs/update.log.');
+        return;
+      }
+      try {
+        const response = await apiGet('/api/update/status');
+        if (!response.ok) return;
+        const status: UpdateStatus = await response.json();
+        if (status.currentVersion !== oldVersion) {
+          window.clearInterval(timer);
+          window.location.reload();
+          return;
+        }
+        // A rollback brings back the old version with a new failure.
+        if (isNewFailure(status, failureTimeBefore) && status.lastResult) {
+          window.clearInterval(timer);
+          setUpdateStatus(status);
+          setInstallingUpdate(false);
+          setInstallError(null);
+        }
+      } catch {
+        // Sportarr is restarting.
+      }
+    }, UPDATE_POLL_INTERVAL_MS);
+    updatePollTimer.current = timer;
+  };
+
   // Load settings from API on mount
   useEffect(() => {
     loadSettings();
+    loadUpdateStatus();
   }, []);
 
   // Detect changes by comparing current values with initial values
@@ -186,6 +280,9 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           backup: data.backupSettings ? JSON.parse(data.backupSettings) : null,
           update: data.updateSettings ? JSON.parse(data.updateSettings) : null,
         };
+        if (loadedSettings.update) {
+          loadedSettings.update.mechanism = normalizeUpdateMechanism(loadedSettings.update.mechanism);
+        }
 
         // Parse each settings category from JSON
         if (loadedSettings.host) {
@@ -323,6 +420,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
         update: updateSettings,
       };
       setHasUnsavedChanges(false);
+      loadUpdateStatus();
 
       toast.success('Settings Saved', {
         description: 'Your settings have been saved successfully.',
@@ -1217,46 +1315,92 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             </p>
           </div>
 
-          <label className="flex items-start space-x-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={updateSettings.automatic}
-              onChange={(e) => setUpdateSettings(prev => ({ ...prev, automatic: e.target.checked }))}
-              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-            />
-            <div>
-              <span className="text-white font-medium">Automatic Updates</span>
-              <p className="text-sm text-gray-400 mt-1">
-                Automatically download and install updates
-              </p>
-            </div>
-          </label>
-
           <div>
-            <label className="block text-white font-medium mb-2">Mechanism</label>
+            <label htmlFor="update-mechanism" className="block text-white font-medium mb-2">Mechanism</label>
             <select
+              id="update-mechanism"
               value={updateSettings.mechanism}
               onChange={(e) => setUpdateSettings(prev => ({ ...prev, mechanism: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
-              <option value="builtin">Built-in</option>
-              <option value="script">Script</option>
-              <option value="docker">Docker</option>
-              <option value="apt">Apt</option>
-              <option value="external">External</option>
+              {UPDATE_MECHANISM_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {updateMechanismHelp(updateSettings.mechanism)}
+            </p>
           </div>
 
           {updateSettings.mechanism === 'script' && (
             <div>
-              <label className="block text-white font-medium mb-2">Script Path</label>
+              <label htmlFor="update-script-path" className="block text-white font-medium mb-2">Script Path</label>
               <input
+                id="update-script-path"
                 type="text"
                 value={updateSettings.scriptPath}
                 onChange={(e) => setUpdateSettings(prev => ({ ...prev, scriptPath: e.target.value }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 placeholder="/path/to/update/script.sh"
               />
+            </div>
+          )}
+
+          <label className={`flex items-start space-x-3 ${automaticUpdatesApply(updateSettings.mechanism) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+            <input
+              type="checkbox"
+              checked={updateSettings.automatic}
+              disabled={!automaticUpdatesApply(updateSettings.mechanism)}
+              onChange={(e) => setUpdateSettings(prev => ({ ...prev, automatic: e.target.checked }))}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 disabled:cursor-not-allowed"
+            />
+            <div>
+              <span className="text-white font-medium">Automatic Updates</span>
+              <p className="text-sm text-gray-400 mt-1">
+                Install new versions on their own. Only applies with the Built-in and Script mechanisms.
+              </p>
+            </div>
+          </label>
+
+          {updateStatus && (
+            <div className="pt-4 border-t border-gray-800">
+              {updateStatus.lastResult && !installError && (
+                <p
+                  role={isCancelled(updateStatus.lastResult) ? 'status' : 'alert'}
+                  className={`text-sm mb-2 ${isCancelled(updateStatus.lastResult) ? 'text-amber-400' : 'text-red-400'}`}
+                >
+                  {lastResultText(updateStatus.lastResult, updateSettings.automatic)}
+                </p>
+              )}
+              <p className="text-sm text-gray-300">
+                <span className="text-gray-400">Current version:</span> {updateStatus.currentVersion}
+                {updateStatus.latestVersion && (
+                  <>
+                    <span className="text-gray-600 mx-2">|</span>
+                    <span className="text-gray-400">Latest version:</span> {updateStatus.latestVersion}
+                  </>
+                )}
+              </p>
+              {normalizeUpdateMechanism(updateSettings.mechanism) === 'builtin' && (
+                <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={installUpdate}
+                    disabled={installingUpdate || installBlockReason(updateSettings.mechanism, updateStatus) !== null}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {installingUpdate ? 'Installing...' : 'Install update'}
+                  </button>
+                  {installingUpdate && (
+                    <p className="text-sm text-gray-400">Sportarr restarts when the update is installed. This page reloads then.</p>
+                  )}
+                  {!installingUpdate && (installError ?? installBlockReason(updateSettings.mechanism, updateStatus)) && (
+                    <p role={installError ? 'alert' : undefined} className={`text-sm ${installError ? 'text-red-400' : 'text-gray-400'}`}>
+                      {installError ?? installBlockReason(updateSettings.mechanism, updateStatus)}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

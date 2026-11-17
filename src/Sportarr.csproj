@@ -161,6 +161,11 @@
     <Content Remove="Sportarr.Migrations.Postgres/**" />
     <EmbeddedResource Remove="Sportarr.Migrations.Postgres/**" />
     <None Remove="Sportarr.Migrations.Postgres/**" />
+    <!-- The update helper is a separate program. CI publishes it next to the app. -->
+    <Compile Remove="Sportarr.Update/**/*.cs" />
+    <Content Remove="Sportarr.Update/**" />
+    <EmbeddedResource Remove="Sportarr.Update/**" />
+    <None Remove="Sportarr.Update/**" />
   </ItemGroup>
 
   <!-- Include media server agents in build output -->

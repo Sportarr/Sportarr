@@ -636,6 +636,20 @@ builder.Services.AddSignalR();
 
 var app = builder.Build();
 
+// Tell a running update helper which process this is and that it is still
+// starting. The marker goes away once the web host is ready.
+if (UpdateStartupMarkers.PrepareStart(dataPath, TimeSpan.FromSeconds(20),
+        underSystemd: SystemUpdateEnvironment.IsSystemdSystemService(),
+        runningVersion: Sportarr.Api.Version.GetFullVersion()))
+{
+    Environment.Exit(1);
+}
+app.Lifetime.ApplicationStarted.Register(() => UpdateStartupMarkers.ClearStarting(dataPath));
+
+// Stop any FFmpeg that is still running when the host has stopped. Under
+// systemd with KillMode=process nothing else stops it.
+app.Lifetime.ApplicationStopped.Register(() => app.Services.GetRequiredService<FFmpegRecorderService>().KillRemainingProcesses());
+
 await DatabaseInitializer.InitializeAsync(app.Services);
 
 using (var scoreScope = app.Services.CreateScope())
@@ -1135,6 +1149,8 @@ app.MapSystemAgentEndpoints();
 
 app.MapSystemUpdatesEndpoint();
 
+app.MapUpdateEndpoints();
+
 app.MapSystemMaintenanceEndpoints();
 
 app.MapLibraryEndpoints();
@@ -1241,6 +1257,13 @@ try
             // Create shutdown token that tray icon can use to signal exit
             using var appShutdown = new CancellationTokenSource();
 
+            // A stop from inside the app, such as the built-in update, must
+            // also end the tray loop below. Otherwise the process stays.
+            app.Lifetime.ApplicationStopping.Register(() =>
+            {
+                try { appShutdown.Cancel(); } catch (ObjectDisposedException) { }
+            });
+
             // If --tray flag is set, hide console and show tray icon
             if (runInTray)
             {
@@ -1288,8 +1311,10 @@ try
                 Thread.Sleep(100);
             }
 
-            // Wait for web host to finish
-            webHostTask.Wait(TimeSpan.FromSeconds(5));
+            // Wait for the web host to stop fully, so that the stop handlers
+            // run. Recordings get time to finish. The bound stops a hung
+            // stop from keeping the process forever.
+            webHostTask.Wait(TimeSpan.FromSeconds(90));
 
             // If the web host died on startup, rethrow so the outer catch can
             // translate it into a user-friendly error (e.g. port in use).

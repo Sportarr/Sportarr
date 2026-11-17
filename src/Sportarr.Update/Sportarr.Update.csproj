@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The update helper. Sportarr starts it from a copy in the data folder.
+    It waits for Sportarr to stop, installs the staged files, starts
+    Sportarr again and rolls back if the new version does not answer.
+    Release packages carry it in a Sportarr.Update folder next to the app.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Sportarr.Update</AssemblyName>
+    <RootNamespace>Sportarr.Update</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- The helper uses no reflection, so a trimmed self-contained build is safe and small. -->
+    <PublishTrimmed Condition="'$(SelfContained)' == 'true'">true</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sportarr.Api.Tests" />
+  </ItemGroup>
+
+</Project>

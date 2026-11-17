@@ -29,6 +29,12 @@ public class DvrChoiceRecoveryService : IHostedService
             var reopened = await DvrIndexerChoice.ReopenInterruptedChoicesAsync(db, cancellationToken);
             if (reopened > 0)
                 _logger.LogInformation("[EventDVR] Reopened {Count} recording choices that stopped during an import", reopened);
+
+            // Other imports left in Importing by a stopped process go back
+            // to Pending too. The DVR choices above have their own rule.
+            var reopenedImports = await UpdateSafety.ReopenInterruptedImportsAsync(db, cancellationToken);
+            if (reopenedImports > 0)
+                _logger.LogInformation("[Import] Reopened {Count} imports that stopped while importing", reopenedImports);
         }
         catch (Exception ex)
         {
