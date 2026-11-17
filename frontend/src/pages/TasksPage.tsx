@@ -17,6 +17,7 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import { useCompactView } from '../hooks/useCompactView';
 import { TABLE_ROW_HOVER } from '../utils/designTokens';
 import { parseAsUtc } from '../utils/timezone';
+import { grabbedNothing } from '../utils/taskOutcome';
 
 interface ScheduledTask {
   id: string;
@@ -107,8 +108,12 @@ export default function TasksPage() {
     return duration;
   };
 
-  const getStatusColor = (status: AppTask['status']) => {
-    switch (status) {
+  // A search task that grabbed nothing shows as held, not as a success.
+  const getStatusLabel = (task: AppTask) => (grabbedNothing(task) ? 'Nothing grabbed' : task.status);
+
+  const getStatusColor = (task: AppTask) => {
+    if (grabbedNothing(task)) return 'text-yellow-400';
+    switch (task.status) {
       case 'Queued':
         return 'text-blue-400';
       case 'Running':
@@ -125,8 +130,9 @@ export default function TasksPage() {
     }
   };
 
-  const getStatusIcon = (status: AppTask['status']) => {
-    switch (status) {
+  const getStatusIcon = (task: AppTask) => {
+    if (grabbedNothing(task)) return <XCircleIcon className="w-5 h-5" />;
+    switch (task.status) {
       case 'Queued':
         return <ClockIcon className="w-5 h-5" />;
       case 'Running':
@@ -224,9 +230,9 @@ export default function TasksPage() {
                     <td className="px-3 py-1.5 font-medium text-white">{task.name}</td>
                     <td className="px-2 py-1.5 text-gray-400 text-xs">{task.commandName}</td>
                     <td className="px-2 py-1.5">
-                      <span className={`flex items-center gap-1 ${getStatusColor(task.status)}`}>
-                        {getStatusIcon(task.status)}
-                        <span className="text-xs">{task.status}</span>
+                      <span className={`flex items-center gap-1 ${getStatusColor(task)}`}>
+                        {getStatusIcon(task)}
+                        <span className="text-xs">{getStatusLabel(task)}</span>
                       </span>
                     </td>
                     {sectionTitle === 'Running' && (
@@ -283,14 +289,14 @@ export default function TasksPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <div className={`mt-1 ${getStatusColor(task.status)}`}>
-                      {getStatusIcon(task.status)}
+                    <div className={`mt-1 ${getStatusColor(task)}`}>
+                      {getStatusIcon(task)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <h3 className="text-base font-semibold text-white">{task.name}</h3>
-                        <span className={`px-2 py-0.5 text-xs rounded ${getStatusColor(task.status)}`}>
-                          {task.status}
+                        <span className={`px-2 py-0.5 text-xs rounded ${getStatusColor(task)}`}>
+                          {getStatusLabel(task)}
                         </span>
                       </div>
                       <p className="text-sm text-gray-400">{task.commandName}</p>

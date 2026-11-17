@@ -40,7 +40,7 @@ public class CachePolicyAutomaticRetentionDiagnosticsTests
         _output.WriteLine("Warm result: " + warm.Message);
         foreach (var message in logs.Messages) _output.WriteLine(message);
         Assert.Single(rig.Transport.Searches);
-        if (warm.Message.Contains("none have sufficient match confidence"))
+        if (warm.Message.Contains("none clearly match this event"))
         {
             Assert.Contains(logs.Messages, message => message.Contains("1/1 releases approved by quality/part validation"));
             Assert.Contains(logs.Messages, message => message.Contains("Top score: 45"));

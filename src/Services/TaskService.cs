@@ -243,9 +243,11 @@ public class TaskService : ITaskService
             task.Ended = DateTime.UtcNow;
             task.Duration = task.Ended - task.Started;
             task.Progress = 100;
-            // A league refresh writes its own closing sentence. It says why a
-            // sync found nothing, so the generic text must not replace it.
-            if (task.CommandName != "RefreshLeague" || string.IsNullOrWhiteSpace(task.Message))
+            // A league refresh and an event search write their own closing
+            // sentence. It says why nothing changed, so the generic text must
+            // not replace it.
+            if ((task.CommandName != "RefreshLeague" && task.CommandName != "EventSearch")
+                || string.IsNullOrWhiteSpace(task.Message))
             {
                 task.Message = "Task completed successfully";
             }
@@ -1001,17 +1003,13 @@ public class TaskService : ITaskService
             // They should work regardless of monitored status - only background scheduled searches check monitored flag
             var result = await automaticSearchService.SearchAndDownloadEventAsync(eventId, null, part, isManualSearch: true);
 
+            var closingMessage = result.Success
+                ? $"Found {result.ReleasesFound} releases - Downloaded: {result.SelectedRelease}"
+                : result.Message;
             if (dbTask != null)
             {
                 dbTask.Progress = 90;
-                if (result.Success)
-                {
-                    dbTask.Message = $"Found {result.ReleasesFound} releases - Downloaded: {result.SelectedRelease}";
-                }
-                else
-                {
-                    dbTask.Message = $"Search completed - {result.Message}";
-                }
+                dbTask.Message = closingMessage;
                 await db.SaveChangesAsync();
             }
 
@@ -1022,6 +1020,11 @@ public class TaskService : ITaskService
             {
                 throw new Exception($"No releases found for: {evt.Title}");
             }
+
+            // The task completes either way. The result tells the status bar
+            // that nothing was grabbed, so it does not show a plain success.
+            task.Message = closingMessage;
+            task.Result = System.Text.Json.JsonSerializer.Serialize(new { grabbed = result.Success });
         }
         catch (Exception ex)
         {

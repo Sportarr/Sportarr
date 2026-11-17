@@ -439,6 +439,25 @@ public class SearchQueueService
     }
 
     /// <summary>
+    /// The line a finished search shows when it found releases but grabbed none.
+    /// The count is added only when the reason does not give it already.
+    /// </summary>
+    internal static string NotGrabbedMessage(AutomaticSearchResult result) =>
+        result.Message.StartsWith("Found ", StringComparison.Ordinal)
+            ? result.Message
+            : $"Found {result.ReleasesFound} release{(result.ReleasesFound == 1 ? "" : "s")} - {result.Message}";
+
+    /// <summary>
+    /// The task row for a finished search. A search that found releases but
+    /// grabbed none still completed. Its result tells the status bar that
+    /// nothing was grabbed, so it shows neither a success nor a failure.
+    /// </summary>
+    internal static (Models.TaskStatus Status, string? Result) TaskOutcome(SearchQueueItem item) =>
+        item.Status == SearchQueueStatus.Completed
+            ? (Models.TaskStatus.Completed, JsonSerializer.Serialize(new { grabbed = item.Success }))
+            : (Models.TaskStatus.Failed, null);
+
+    /// <summary>
     /// Execute a single search.
     /// </summary>
     private async Task ExecuteSearchAsync(SearchQueueItem queueItem)
@@ -494,7 +513,7 @@ public class SearchQueueService
             else if (result.ReleasesFound > 0)
             {
                 queueItem.Status = SearchQueueStatus.Completed;
-                queueItem.Message = $"Found {result.ReleasesFound} releases - {result.Message}";
+                queueItem.Message = NotGrabbedMessage(result);
             }
             else
             {
@@ -508,7 +527,7 @@ public class SearchQueueService
                 var task = await db.Tasks.FindAsync(queueItem.TaskId.Value);
                 if (task != null)
                 {
-                    task.Status = queueItem.Success ? Models.TaskStatus.Completed : Models.TaskStatus.Failed;
+                    (task.Status, task.Result) = TaskOutcome(queueItem);
                     task.Ended = DateTime.UtcNow;
                     task.Duration = task.Ended - task.Started;
                     task.Progress = 100;

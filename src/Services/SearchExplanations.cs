@@ -168,8 +168,11 @@ public static class SearchExplanations
             text = text["Error: ".Length..].Trim();
 
         // These two messages explain a whole search better than the reasons do.
-        if (text.StartsWith("Found ", StringComparison.Ordinal) && text.Contains("sufficient match confidence", StringComparison.Ordinal))
-            return new("Releases passed the checks, but none matched this event closely enough to download automatically.", ManualSearchTip);
+        // Records saved before the reword keep the old wording.
+        if (text.StartsWith("Found ", StringComparison.Ordinal) &&
+            (text.Contains("none clearly match this event", StringComparison.Ordinal) ||
+             text.Contains("sufficient match confidence", StringComparison.Ordinal)))
+            return new("Releases passed the checks, but none matched this event closely enough for Sportarr to pick one.", ManualSearchTip);
         if (text.StartsWith("No valid releases found", StringComparison.Ordinal))
             return new("Every release belonged to a different date, round or event.", ManualSearchTip);
 

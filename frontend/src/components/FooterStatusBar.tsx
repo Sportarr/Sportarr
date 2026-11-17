@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, memo } from 'react';
 import { useTasks } from '../api/hooks';
+import { grabbedNothing } from '../utils/taskOutcome';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
 import { getRefetchIntervalWithBackoff } from '../utils/queryBackoff';
@@ -20,6 +21,7 @@ interface Task {
   message: string | null;
   started: string | null;
   ended: string | null;
+  result?: string | null;
 }
 
 interface ActiveSearchStatus {
@@ -87,7 +89,7 @@ const useSearchQueueStatus = () => {
 };
 
 /**
- * Sonarr-style fixed footer status bar
+ * Fixed footer status bar
  * Shows all status information (search progress, tasks, queue) at bottom-left of screen
  */
 function FooterStatusBar() {
@@ -206,12 +208,13 @@ function FooterStatusBar() {
   const progress = currentTask?.progress ?? 0;
   const isRunning = currentTask?.status === 'Running';
   const isQueued = currentTask?.status === 'Queued';
-  const isCompleted = currentTask?.status === 'Completed';
+  const isNothingGrabbed = currentTask?.status === 'Completed' && grabbedNothing(currentTask);
+  const isCompleted = currentTask?.status === 'Completed' && !isNothingGrabbed;
   const isFailed = currentTask?.status === 'Failed';
 
   return (
     <div className="px-3 py-2 space-y-2 border-t border-red-900/30">
-      {/* Active indexer search status - Sonarr style */}
+      {/* Active indexer search status */}
       {hasActiveSearch && (
         <div className="bg-black/40 border border-gray-700/50 rounded px-3 py-2 flex items-center gap-2">
           <MagnifyingGlassIcon className="w-4 h-4 text-blue-400 animate-pulse flex-shrink-0" />
@@ -274,7 +277,7 @@ function FooterStatusBar() {
                       <span className="text-gray-400"> ({search.part})</span>
                     )}
                   </div>
-                  <div className={`text-xs truncate ${search.success ? 'text-green-400' : 'text-yellow-400'}`}>
+                  <div className={`text-xs truncate ${search.success ? 'text-green-400' : 'text-yellow-400'}`} title={search.message}>
                     {search.message}
                   </div>
                 </div>
@@ -295,6 +298,7 @@ function FooterStatusBar() {
             {isCompleted && (
               <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
             )}
+            {isNothingGrabbed && <XCircleIcon className="w-4 h-4 text-yellow-400 flex-shrink-0" />}
             {isFailed && <XCircleIcon className="w-4 h-4 text-red-400 flex-shrink-0" />}
 
             <div className="flex-1 min-w-0">
@@ -302,7 +306,7 @@ function FooterStatusBar() {
                 {currentTask.name}
               </div>
               {currentTask.message && (
-                <div className="text-xs text-gray-400 truncate">
+                <div className="text-xs text-gray-400 truncate" title={currentTask.message}>
                   {currentTask.message}
                 </div>
               )}
@@ -328,6 +332,9 @@ function FooterStatusBar() {
             <div className={`text-xs mt-1 ${isFailed ? 'text-red-400' : 'text-green-400'}`}>
               {isFailed ? 'Task failed' : 'Task completed'}
             </div>
+          )}
+          {isNothingGrabbed && (
+            <div className="text-xs mt-1 text-yellow-400">Nothing grabbed</div>
           )}
         </div>
       )}

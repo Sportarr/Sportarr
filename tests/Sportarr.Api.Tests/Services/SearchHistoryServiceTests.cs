@@ -231,6 +231,7 @@ public class SearchHistoryServiceTests
     [InlineData("notGrabbed", "Automatic retry is disabled for this failed download", "automatic retry is off")]
     [InlineData("notGrabbed", "Download retry limit (3) reached", "failed 3 times")]
     [InlineData("nothingPassed", "Found 3 releases but none have sufficient match confidence (need score >= 70)", "none matched this event closely enough")]
+    [InlineData("nothingPassed", "Found 3 releases, but none clearly match this event. Use Manual Search to pick one.", "none matched this event closely enough for Sportarr to pick one")]
     [InlineData("notGrabbed", "Cutoff met - existing file (WEBDL-1080p) meets quality profile requirements. No upgrade needed.", "You already have a file that meets your quality profile")]
     [InlineData("notGrabbed", "No Usenet download client configured", "No download client is set up for this kind of release")]
     [InlineData("notGrabbed", "No releases available (may be delayed or filtered)", "a delay profile holds them back")]

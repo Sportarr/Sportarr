@@ -26,7 +26,7 @@ public class SearchButtonMatchFloorTests
         var outcome = await SearchAsync(rig, manual: true, loose);
 
         Assert.False(outcome.Success, outcome.Message);
-        Assert.Contains("sufficient match confidence", outcome.Message);
+        Assert.Equal("Found 1 release, but none clearly match this event. Use Manual Search to pick one.", outcome.Message);
         Assert.Equal(0, rig.Transport.ClientAdds);
         Assert.Empty(await rig.Db.DownloadQueue.ToListAsync());
 
@@ -98,7 +98,7 @@ public class SearchButtonMatchFloorTests
         var outcome = await SearchAsync(rig, manual: false, Release(rig, LooseTitle, "loose"));
 
         Assert.False(outcome.Success, outcome.Message);
-        Assert.Contains("sufficient match confidence", outcome.Message);
+        Assert.Equal("Found 1 release, but none clearly match this event. Use Manual Search to pick one.", outcome.Message);
         Assert.Equal(0, rig.Transport.ClientAdds);
         var record = await LatestRecordAsync(rig);
         Assert.False(record.IsManual);

@@ -212,6 +212,7 @@ export interface AppTask {
   priority: number;
   body: string | null;
   exception: string | null;
+  result?: string | null;
 }
 
 export const useTasks = (pageSize?: number) => {

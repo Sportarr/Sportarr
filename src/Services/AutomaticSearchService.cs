@@ -810,7 +810,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 {
                     // Have approved releases but none meet match score threshold
                     result.Success = false;
-                    result.Message = $"Found {approvedReleases.Count} releases but none have sufficient match confidence (need score >= {AutoGrabMinMatchScore})";
+                    result.Message = $"Found {approvedReleases.Count} release{(approvedReleases.Count == 1 ? "" : "s")}, but none clearly match this event. Use Manual Search to pick one.";
                     _logger.LogWarning("[Automatic Search] All {Count} approved releases have low match scores for: {Title}. " +
                         "Top score: {TopScore}. Consider using manual search.",
                         approvedReleases.Count, evt.Title,
