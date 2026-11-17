@@ -747,7 +747,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                 }
 
                 // Minimum-age filter: hold off grabbing releases that just
-                // appeared at the indexer. Manual searches bypass.
+                // appeared at the indexer. A search the user starts skips it.
+                // The rule is about timing, not about the right event.
                 if (!isManualSearch && config.IndexerMinimumAgeMinutes > 0)
                 {
                     var ageThreshold = DateTime.UtcNow.AddMinutes(-config.IndexerMinimumAgeMinutes);
@@ -776,48 +777,46 @@ public class AutomaticSearchService : IAutomaticSearchService
                 _logger.LogInformation("[Automatic Search] {ApprovedCount}/{TotalCount} releases approved by quality/part validation",
                     approvedReleases.Count, allReleases.Count);
 
-                // MATCH SCORE FILTERING: For automatic searches, require minimum match score
-                // This prevents auto-grabbing releases that only loosely match the event
-                // Manual searches show all results but automatic grabbing needs high confidence
-                if (!isManualSearch)
+                // MATCH SCORE FILTERING: hold back releases below the auto-grab score.
+                // This search always picks the release itself.
+                // That is also true when the user clicks Search, so the floor has no bypass.
+                // The interactive search is where the user picks a loose match by hand.
+                var highConfidenceReleases = approvedReleases
+                    .Where(r => r.MatchScore >= AutoGrabMinMatchScore)
+                    .ToList();
+                foreach (var low in approvedReleases.Where(r => r.MatchScore < AutoGrabMinMatchScore))
+                    trace.Hold(low, $"{SearchHistoryService.LowConfidencePrefix}{low.MatchScore} is below the automatic grab minimum of {AutoGrabMinMatchScore}");
+
+                if (highConfidenceReleases.Count < approvedReleases.Count)
                 {
-                    var highConfidenceReleases = approvedReleases
-                        .Where(r => r.MatchScore >= AutoGrabMinMatchScore)
-                        .ToList();
-                    foreach (var low in approvedReleases.Where(r => r.MatchScore < AutoGrabMinMatchScore))
-                        trace.Hold(low, $"{SearchHistoryService.LowConfidencePrefix}{low.MatchScore} is below the automatic grab minimum of {AutoGrabMinMatchScore}");
+                    _logger.LogInformation("[Automatic Search] Match score filter: {HighCount}/{TotalCount} releases have score >= {MinScore}",
+                        highConfidenceReleases.Count, approvedReleases.Count, AutoGrabMinMatchScore);
 
-                    if (highConfidenceReleases.Count < approvedReleases.Count)
+                    // Log low-scoring releases for debugging
+                    var lowScoreReleases = approvedReleases
+                        .Where(r => r.MatchScore < AutoGrabMinMatchScore)
+                        .OrderByDescending(r => r.MatchScore)
+                        .Take(3);
+                    foreach (var low in lowScoreReleases)
                     {
-                        _logger.LogInformation("[Automatic Search] Match score filter: {HighCount}/{TotalCount} releases have score >= {MinScore}",
-                            highConfidenceReleases.Count, approvedReleases.Count, AutoGrabMinMatchScore);
-
-                        // Log low-scoring releases for debugging
-                        var lowScoreReleases = approvedReleases
-                            .Where(r => r.MatchScore < AutoGrabMinMatchScore)
-                            .OrderByDescending(r => r.MatchScore)
-                            .Take(3);
-                        foreach (var low in lowScoreReleases)
-                        {
-                            _logger.LogDebug("[Automatic Search] Low match score release: '{Title}' (Score: {Score})",
-                                low.Title, low.MatchScore);
-                        }
+                        _logger.LogDebug("[Automatic Search] Low match score release: '{Title}' (Score: {Score})",
+                            low.Title, low.MatchScore);
                     }
-
-                    if (!highConfidenceReleases.Any() && approvedReleases.Any())
-                    {
-                        // Have approved releases but none meet match score threshold
-                        result.Success = false;
-                        result.Message = $"Found {approvedReleases.Count} releases but none have sufficient match confidence (need score >= {AutoGrabMinMatchScore})";
-                        _logger.LogWarning("[Automatic Search] All {Count} approved releases have low match scores for: {Title}. " +
-                            "Top score: {TopScore}. Consider using manual search.",
-                            approvedReleases.Count, evt.Title,
-                            approvedReleases.Max(r => r.MatchScore));
-                        return null;
-                    }
-
-                    approvedReleases = highConfidenceReleases;
                 }
+
+                if (!highConfidenceReleases.Any() && approvedReleases.Any())
+                {
+                    // Have approved releases but none meet match score threshold
+                    result.Success = false;
+                    result.Message = $"Found {approvedReleases.Count} releases but none have sufficient match confidence (need score >= {AutoGrabMinMatchScore})";
+                    _logger.LogWarning("[Automatic Search] All {Count} approved releases have low match scores for: {Title}. " +
+                        "Top score: {TopScore}. Consider using manual search.",
+                        approvedReleases.Count, evt.Title,
+                        approvedReleases.Max(r => r.MatchScore));
+                    return null;
+                }
+
+                approvedReleases = highConfidenceReleases;
 
                 if (!approvedReleases.Any())
                 {

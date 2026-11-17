@@ -56,7 +56,7 @@ public static class SearchExplanations
                 "The torrent has no seeders right now, so it cannot download.")),
         (r => Starts(r, SearchHistoryService.LowConfidencePrefix),
             new("Not sure it is this event",
-                "The release passed every check, but its name only loosely matches the event. Automatic searches skip these. " + ManualSearchTip)),
+                "The release passed every check, but its name only loosely matches the event. Sportarr does not download these on its own. " + ManualSearchTip)),
         (r => Starts(r, SearchHistoryService.MinimumAgePrefix),
             new("Too new",
                 "The release came out a short while ago. The Minimum Age setting under Settings > Indexers holds it back for now.")),
