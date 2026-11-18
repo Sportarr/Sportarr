@@ -1,20 +1,20 @@
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Common team codes for the four major US leagues.
-/// Release groups often name a game by these codes only ("NBA 2026 10 20 OKC SAS").
-/// The metadata hub sends a code for every team. The app keeps a team row only for
-/// teams the user follows, so the opponent of a followed team has no code on this
-/// side. This table fills that gap for NBA, NFL, NHL and MLB until the app stores
+/// Common team codes for the four major US leagues and the Indian Premier League.
+/// Release groups often name a game by these codes only ("NBA 2026 10 20 OKC SAS",
+/// "IPL 2024 MI vs CSK"). The metadata hub sends a code for every team. The app
+/// keeps a team row only for teams the user follows, so the opponent of a followed
+/// team has no code on this side. This table fills that gap until the app stores
 /// the code of every league team. A two-letter code is listed only when no other
-/// team of the same league uses it. The caller takes a code only with the league
-/// name, a date and an upper-case token in the title.
+/// team of the same league uses it. Each caller sets its own proof before it takes
+/// a code from a title.
 /// </summary>
 public static class TeamShortCodeData
 {
-    private static readonly Dictionary<string, string[]> Codes = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string[]> Nba = new(StringComparer.OrdinalIgnoreCase)
     {
-        // NBA. Variants cover the codes that other schedules use for the same team.
+        // Variants cover the codes that other schedules use for the same team.
         { "Atlanta Hawks", new[] { "ATL" } },
         { "Boston Celtics", new[] { "BOS" } },
         { "Brooklyn Nets", new[] { "BKN", "BRK" } },
@@ -45,8 +45,10 @@ public static class TeamShortCodeData
         { "Toronto Raptors", new[] { "TOR" } },
         { "Utah Jazz", new[] { "UTA", "UTAH" } },
         { "Washington Wizards", new[] { "WAS", "WSH" } },
+    };
 
-        // NFL
+    private static readonly Dictionary<string, string[]> Nfl = new(StringComparer.OrdinalIgnoreCase)
+    {
         { "Arizona Cardinals", new[] { "ARI" } },
         { "Atlanta Falcons", new[] { "ATL" } },
         { "Baltimore Ravens", new[] { "BAL" } },
@@ -79,8 +81,10 @@ public static class TeamShortCodeData
         { "New Orleans Saints", new[] { "NO" } },
         { "San Francisco 49ers", new[] { "SF" } },
         { "Tampa Bay Buccaneers", new[] { "TB" } },
+    };
 
-        // NHL
+    private static readonly Dictionary<string, string[]> Nhl = new(StringComparer.OrdinalIgnoreCase)
+    {
         { "Anaheim Ducks", new[] { "ANA" } },
         { "Arizona Coyotes", new[] { "ARI" } },
         { "Boston Bruins", new[] { "BOS" } },
@@ -115,8 +119,10 @@ public static class TeamShortCodeData
         { "Vegas Golden Knights", new[] { "VGK" } },
         { "Washington Capitals", new[] { "WSH" } },
         { "Winnipeg Jets", new[] { "WPG" } },
+    };
 
-        // MLB
+    private static readonly Dictionary<string, string[]> Mlb = new(StringComparer.OrdinalIgnoreCase)
+    {
         { "Arizona Diamondbacks", new[] { "ARI" } },
         { "Athletics", new[] { "ATH", "OAK" } },
         { "Oakland Athletics", new[] { "OAK", "ATH" } },
@@ -149,6 +155,72 @@ public static class TeamShortCodeData
         { "Toronto Blue Jays", new[] { "TOR" } },
         { "Washington Nationals", new[] { "WSH", "WSN" } },
     };
+
+    // A renamed franchise lists the codes of all its names, so each name
+    // finds the same team.
+    private static readonly Dictionary<string, string[]> Ipl = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "Chennai Super Kings", new[] { "CSK" } },
+        { "Delhi Capitals", new[] { "DC", "DD" } },
+        { "Delhi Daredevils", new[] { "DC", "DD" } },
+        { "Gujarat Titans", new[] { "GT" } },
+        { "Kolkata Knight Riders", new[] { "KKR" } },
+        { "Lucknow Super Giants", new[] { "LSG" } },
+        { "Mumbai Indians", new[] { "MI" } },
+        { "Punjab Kings", new[] { "PBKS", "KXIP" } },
+        { "Kings XI Punjab", new[] { "PBKS", "KXIP" } },
+        { "Rajasthan Royals", new[] { "RR" } },
+        { "Royal Challengers Bangalore", new[] { "RCB" } },
+        { "Royal Challengers Bengaluru", new[] { "RCB" } },
+        { "Sunrisers Hyderabad", new[] { "SRH" } },
+    };
+
+    private static readonly Dictionary<string, Dictionary<string, string[]>> Leagues = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "NBA", Nba },
+        { "NFL", Nfl },
+        { "NHL", Nhl },
+        { "MLB", Mlb },
+        { "IPL", Ipl },
+    };
+
+    private static readonly Dictionary<string, string[]> Codes = BuildFlatTable();
+
+    // A name in two leagues keeps the codes of the first league in the list
+    // above. A test keeps the tables free of such names, so the rule only
+    // stops a startup crash.
+    private static Dictionary<string, string[]> BuildFlatTable()
+    {
+        var codes = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        foreach (var league in Leagues.Values)
+        {
+            foreach (var (team, teamCodes) in league)
+                codes.TryAdd(team, teamCodes);
+        }
+        return codes;
+    }
+
+    /// <summary>
+    /// Team names that more than one league table lists.
+    /// </summary>
+    internal static IReadOnlyList<string> NamesInMoreThanOneLeague() =>
+        Leagues.Values.SelectMany(league => league.Keys)
+            .GroupBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+
+    /// <summary>
+    /// Returns the teams and codes of one league, or an empty table when the league has none.
+    /// The key is the league key of the match scorer, such as "NBA" or "IPL".
+    /// </summary>
+    public static IReadOnlyDictionary<string, string[]> LeagueTeams(string? leagueKey)
+    {
+        if (string.IsNullOrWhiteSpace(leagueKey)) return EmptyLeague;
+        return Leagues.TryGetValue(leagueKey, out var teams) ? teams : EmptyLeague;
+    }
+
+    private static readonly Dictionary<string, string[]> EmptyLeague = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Returns the codes known for a team, or an empty list when the team is not in the table.

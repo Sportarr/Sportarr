@@ -164,6 +164,26 @@ public class SearchButtonMatchFloorTests
         Assert.Equal("Prelims", (await rig.Db.DownloadQueue.SingleAsync()).Part);
     }
 
+    [Fact]
+    public async Task AutomaticSearchGrabsAnIplReleaseNamedByTeamCodes()
+    {
+        // The event has no team rows, as for an opponent of a followed team.
+        await using var rig = await PartIdentityIntegrationHarness.CreateAsync(multipart: false, relational: true,
+            title: "Mumbai Indians vs Chennai Super Kings", sport: "Cricket", leagueName: "Indian Premier League");
+        rig.Event.HomeTeamName = "Mumbai Indians";
+        rig.Event.AwayTeamName = "Chennai Super Kings";
+        rig.Event.Round = "29";
+        await rig.Db.SaveChangesAsync();
+        const string title = "IPL.2020.Match.29.MI.vs.CSK.720p.WEB-DL.H264-Code";
+        AssertHighConfidence(rig, title);
+
+        var outcome = await SearchAsync(rig, manual: false, Release(rig, title, "codes"));
+
+        Assert.True(outcome.Success, outcome.Message);
+        Assert.Equal(title, outcome.SelectedRelease);
+        Assert.Equal(1, rig.Transport.ClientAdds);
+    }
+
     private static Task<PartIdentityIntegrationHarness> CreateRigAsync() =>
         PartIdentityIntegrationHarness.CreateAsync(multipart: false, relational: true,
             title: "Spain vs Belgium", sport: "Soccer", leagueName: "FIFA World Cup");

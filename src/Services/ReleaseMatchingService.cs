@@ -933,6 +933,12 @@ public class ReleaseMatchingService
             }
 
             var (titleHomeName, titleAwayName) = ResolveTitleTeamAliases(evt);
+            var codeEvidence = TeamCodeEvidence.Evaluate(
+                release.Title,
+                evt,
+                CodeLeagueReader.GetSportPrefix(evt.League?.Name, evt.Sport),
+                CodeLeagueReader.DetectSportPrefix(release.Title),
+                TeamCodeEvidence.IsTiedToEvent(release.Title, evt, parseResult.EventDate));
             var teamMatch = hasLeagueReleaseIdentity
                 ? 2
                 : ValidateTeamNames(
@@ -945,7 +951,8 @@ public class ReleaseMatchingService
                     knownLeagues,
                     titleHomeName,
                     titleAwayName,
-                    parseResult.EventDate.HasValue);
+                    parseResult.EventDate.HasValue,
+                    codeEvidence);
             if (teamMatch >= 2)
             {
                 result.Confidence += 35;
@@ -2096,7 +2103,8 @@ public class ReleaseMatchingService
         IReadOnlyCollection<League>? knownLeagues = null,
         string? titleHomeName = null,
         string? titleAwayName = null,
-        bool releaseHasDate = false)
+        bool releaseHasDate = false,
+        TeamCodeEvidence.Result codeEvidence = default)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
 
@@ -2132,6 +2140,14 @@ public class ReleaseMatchingService
                 || ContainsOfficialTeamCode(releaseTitle, homeTeamName);
             awayMatches = awayMatches || ContainsOfficialTeamCode(releaseTitle, titleAwayName ?? awayTeamName)
                 || ContainsOfficialTeamCode(releaseTitle, awayTeamName);
+        }
+
+        // The scorer's code proof: unique codes face each other in the
+        // matchup, and a date or match number ties the title to this event.
+        if (trustShortCodes)
+        {
+            homeMatches |= codeEvidence.HomeByCode;
+            awayMatches |= codeEvidence.AwayByCode;
         }
 
         var normalizedHomeTeam = NormalizeTitle(homeTeamName);
@@ -2353,6 +2369,9 @@ public class ReleaseMatchingService
 
     private static readonly string[] MajorLeagueTokens = { "NBA", "NFL", "NHL", "MLB", "WNBA" };
 
+    // Reads the league keys that the team code proof needs. The scorer holds no state.
+    private static readonly ReleaseMatchScorer CodeLeagueReader = new();
+
     /// <summary>
     /// True when the title names a league other than the event league and does
     /// not name the event league. The known leagues come from the caller. The
@@ -2413,16 +2432,8 @@ public class ReleaseMatchingService
     /// token. Upper case keeps plain words such as "was", "car" or "min" from
     /// counting as a team.
     /// </summary>
-    private static bool ContainsOfficialTeamCode(string rawRelease, string teamName)
-    {
-        foreach (var code in TeamShortCodeData.CodesFor(teamName))
-        {
-            if (Regex.IsMatch(rawRelease, $@"(?<![A-Za-z0-9]){Regex.Escape(code)}(?![A-Za-z0-9])", RegexOptions.CultureInvariant))
-                return true;
-        }
-
-        return false;
-    }
+    private static bool ContainsOfficialTeamCode(string rawRelease, string teamName) =>
+        TeamCodeEvidence.ContainsOfficialCode(rawRelease, teamName);
 
     private static bool ContainsTeamAlias(string normalizedRelease, string? rawRelease, string alias)
     {

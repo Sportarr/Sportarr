@@ -539,7 +539,23 @@ public class ReleaseMatchScorer
 
         var normalizedReleaseTitle = NormalizeTitle(releaseTitle);
         var normalizedEventTitle = NormalizeTitle(evt.Title ?? "");
-        if (CricketRugbyReleaseNamePolicy.HasStrongEventIdentity(releaseTitle, evt))
+
+        // A release can name the teams by short codes ("MI vs CSK"). A code
+        // counts only with a date or a match number of this event. It gives
+        // the team checks the same weight as a known abbreviation, never the
+        // weight of a full name. A code of another team of the league in the
+        // matchup is a different game.
+        var codeReleaseDate = BuildParsedDate(parsed, eventYear) ??
+            SportsFileNameParser.ParseMonthFirstWrittenDate(releaseTitle) ??
+            ExtractDayMonthDate(releaseTitle, eventYear, ignoreAmbiguousHyphenatedPair: true);
+        var teamCodes = TeamCodeEvidence.Evaluate(
+            releaseTitle, evt, eventSportPrefix, parsed.SportPrefix,
+            TeamCodeEvidence.IsTiedToEvent(releaseTitle, evt, codeReleaseDate),
+            teamName => CheckTeamMatch(normalizedReleaseTitle, teamName).hasMatch);
+        if (teamCodes.Vetoed)
+            return 0;
+
+        if (CricketRugbyReleaseNamePolicy.HasStrongEventIdentity(teamCodes.ExpandedTitle ?? releaseTitle, evt))
             score += 20;
         var hasLeagueReleaseIdentity = LeagueReleaseNamePolicy.HasStrongEventIdentity(releaseTitle, evt);
         if (hasLeagueReleaseIdentity)
@@ -796,7 +812,7 @@ public class ReleaseMatchScorer
                     LeagueReleaseNamePolicy.HasExactChampionsHockeyLeagueTeamPair(releaseTitle, evt);
             var teamScore = hasExactCatalogPair
                     ? 40
-                    : GetTeamMatchScore(releaseTitle, evt, knownLeagues);
+                    : GetTeamMatchScore(releaseTitle, evt, knownLeagues, teamCodes);
             if (teamScore < 0)
                 return 0; // Wrong game or not a game at all - reject immediately
             score += teamScore; // 0-40 points for matching teams
@@ -1633,7 +1649,8 @@ public class ReleaseMatchScorer
     private int GetTeamMatchScore(
         string releaseTitle,
         Event evt,
-        IReadOnlyCollection<League>? knownLeagues)
+        IReadOnlyCollection<League>? knownLeagues,
+        TeamCodeEvidence.Result teamCodes)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
         var homeScore = 0;
@@ -1676,6 +1693,12 @@ public class ReleaseMatchScorer
             if (awayVariantMatch.hasMatch)
                 (awayHasMatch, awayScore) = awayVariantMatch;
         }
+
+        // A team code in the matchup scores like a known abbreviation.
+        if (!homeHasMatch && teamCodes.HomeByCode)
+            (homeHasMatch, homeScore) = (true, 15);
+        if (!awayHasMatch && teamCodes.AwayByCode)
+            (awayHasMatch, awayScore) = (true, 15);
 
         // Check if this looks like a game release (has "vs", "@", "at", or team matchup indicators)
         var looksLikeGame = normalizedRelease.Contains(" vs ") ||
