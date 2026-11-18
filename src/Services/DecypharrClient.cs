@@ -97,10 +97,10 @@ public class DecypharrClient
     /// Decypharr often changes the download ID/hash during debrid processing, so title matching is critical
     /// </summary>
     public async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindTorrentByTitleAsync(
-        DownloadClient config, string title, string category)
+        DownloadClient config, string title, string category, string? currentId = null)
     {
         _logger.LogDebug("[Decypharr] Finding torrent by title (common with debrid services): {Title}", title);
-        return await _qbClient.FindTorrentByTitleAsync(config, title, category);
+        return await _qbClient.FindTorrentByTitleAsync(config, title, category, currentId);
     }
 
     /// <summary>

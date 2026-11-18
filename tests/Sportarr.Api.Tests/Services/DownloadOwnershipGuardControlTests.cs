@@ -157,6 +157,93 @@ public class DownloadOwnershipGuardControlTests
         Assert.Equal(1, rig.ClientTransport.Adds); Assert.Empty(state.Pending);
     }
 
+    // Issue #442. A title match moved the queue row to another job id. The
+    // grab still has its row, so it must not go into the queue a second time.
+    [Fact]
+    public async Task GrabStillQueuedUnderAnotherId_IsNotReadoptedAgain()
+    {
+        await using var rig = await DownloadOwnershipRaceHttpHarness.CreateAsync();
+        await rig.GrabAsync().WaitAsync(DownloadOwnershipRaceHttpHarness.TestTimeout);
+        await rig.WithDatabaseAsync(async db =>
+        {
+            var row = await db.DownloadQueue.SingleAsync();
+            row.DownloadId = "ownership-job-moved";
+            await db.SaveChangesAsync();
+        });
+        await rig.DetectExternalAsync().WaitAsync(DownloadOwnershipRaceHttpHarness.TestTimeout);
+        await rig.DetectExternalAsync().WaitAsync(DownloadOwnershipRaceHttpHarness.TestTimeout);
+        var state = await rig.ReadAsync();
+        Assert.Equal("ownership-job-moved", Assert.Single(state.Queue).DownloadId);
+        Assert.Empty(state.Pending); Assert.Empty(state.Files);
+        Assert.Equal(1, rig.ClientTransport.Adds);
+    }
+
+    // Issue #442. A queue row that matches the grab by title, under another
+    // id, blocks readoption only while that row is active. An Imported or
+    // Failed row does not block it, so the lost grab gets a new row.
+    [Theory]
+    [InlineData(DownloadStatus.Imported, 2)]
+    [InlineData(DownloadStatus.Failed, 2)]
+    [InlineData(DownloadStatus.Downloading, 1)]
+    public async Task OnlyAnActiveRowUnderAnotherIdBlocksReadoption(DownloadStatus movedStatus, int expectedRows)
+    {
+        await using var rig = await DownloadOwnershipRaceHttpHarness.CreateAsync();
+        await rig.GrabAsync().WaitAsync(DownloadOwnershipRaceHttpHarness.TestTimeout);
+        await rig.WithDatabaseAsync(async db =>
+        {
+            var row = await db.DownloadQueue.SingleAsync();
+            row.DownloadId = "ownership-job-moved";
+            row.Status = movedStatus;
+            await db.SaveChangesAsync();
+        });
+        await rig.DetectExternalAsync().WaitAsync(DownloadOwnershipRaceHttpHarness.TestTimeout);
+        var state = await rig.ReadAsync();
+        Assert.Equal(expectedRows, state.Queue.Count);
+    }
+
+    private const string GhostHash = "25d1ecfb2dd5059f956bcb6b75617e9282444a0e";
+    private const string CopyHash = "b0b9ed1d12bfbe1a07115acc86f0d42fa9da8a31";
+
+    // Issue #442. A row whose torrent never reached the client must be
+    // removed. It must not move onto another copy of the same release.
+    // Real qBittorrent ids never change, so the name match does not run.
+    // A debrid proxy still uses the name match, but another row owns the
+    // copy, so the row stays on its own id.
+    [Theory]
+    [InlineData(DownloadClientType.QBittorrent, false)]
+    [InlineData(DownloadClientType.Decypharr, true)]
+    public async Task GhostRowIsRemovedAndNotMovedOntoAnotherCopy(DownloadClientType type, bool copyHasItsOwnRow)
+    {
+        await using var rig = await DownloadOwnershipRaceHttpHarness.CreateAsync();
+        rig.ClientTransport.TorrentId = CopyHash;
+        await rig.WithDatabaseAsync(async db =>
+        {
+            var client = new DownloadClient { Name = "Ghost fixture", Type = type,
+                Host = "ownership-client.invalid", Port = 8080, ApiKey = "fixture", Category = "sportarr",
+                Enabled = true, RemoveCompletedDownloads = false };
+            db.DownloadClients.Add(client);
+            await db.SaveChangesAsync();
+            db.DownloadQueue.Add(new DownloadQueueItem { EventId = rig.EventId, Title = DownloadOwnershipRaceHttpHarness.Title,
+                DownloadId = GhostHash, TorrentInfoHash = GhostHash, DownloadClientId = client.Id, GrabCategory = "sportarr",
+                Protocol = "Torrent", Status = DownloadStatus.Downloading, Added = DateTime.UtcNow.AddHours(-1),
+                MissingFromClientCount = 9, LastUpdate = DateTime.UtcNow });
+            if (copyHasItsOwnRow)
+                db.DownloadQueue.Add(new DownloadQueueItem { EventId = rig.EventId, Title = DownloadOwnershipRaceHttpHarness.Title,
+                    DownloadId = CopyHash, TorrentInfoHash = CopyHash, DownloadClientId = client.Id, GrabCategory = "sportarr",
+                    Protocol = "Torrent", Status = DownloadStatus.Imported, Added = DateTime.UtcNow.AddHours(-1),
+                    LastUpdate = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        });
+
+        await rig.MonitorAsync().WaitAsync(DownloadOwnershipRaceHttpHarness.TestTimeout);
+
+        var state = await rig.ReadAsync();
+        Assert.DoesNotContain(state.Queue, q => q.TorrentInfoHash == GhostHash);
+        Assert.Equal(copyHasItsOwnRow ? 1 : 0, state.Queue.Count(q => q.DownloadId == CopyHash));
+        Assert.Empty(state.Files);
+        Assert.Empty(rig.ClientTransport.UnexpectedRequests);
+    }
+
     [Fact]
     public async Task GenuineExternalWithUnreachableFile_RemainsPendingForReview()
     {

@@ -489,24 +489,49 @@ public class EnhancedDownloadMonitorService : BackgroundService
             var (titleMatchStatus, newDownloadId) = await downloadClientService.FindDownloadByTitleAsync(
                 download.DownloadClient,
                 download.Title,
-                download.GrabCategory ?? download.DownloadClient.Category);
+                download.GrabCategory ?? download.DownloadClient.Category,
+                download.DownloadId);
 
-            if (titleMatchStatus != null && newDownloadId != null)
+            var sameJob = newDownloadId != null &&
+                string.Equals(newDownloadId, download.DownloadId, StringComparison.OrdinalIgnoreCase);
+
+            // Another queue row can already own the job that the title match
+            // found. Two rows on one job import the same file twice (issue
+            // #442), so this row stays on its own id.
+            var heldByAnotherRow = false;
+            if (titleMatchStatus != null && newDownloadId != null && !sameJob)
+            {
+                var lowerNewId = newDownloadId.ToLowerInvariant();
+                heldByAnotherRow = await db.DownloadQueue.AnyAsync(q =>
+                    q.Id != download.Id &&
+                    q.DownloadClientId == download.DownloadClientId &&
+                    q.DownloadId.ToLower() == lowerNewId, cancellationToken);
+                if (heldByAnotherRow)
+                {
+                    _logger.LogInformation("[Enhanced Download Monitor] Title match for '{Title}' found {NewId}, but another queue row holds it. Not moving this row.",
+                        download.Title, newDownloadId);
+                }
+            }
+
+            if (titleMatchStatus != null && newDownloadId != null && !heldByAnotherRow)
             {
                 var coordinator = _serviceProvider.GetRequiredService<DownloadOwnershipCoordinator>();
                 if (coordinator.IsQuarantined(download.DownloadClient.Id, newDownloadId)) return;
 
-                _logger.LogInformation("[Enhanced Download Monitor] Found download by title match. Updating ID: {OldId} → {NewId}",
-                    download.DownloadId, newDownloadId);
+                if (!sameJob)
+                {
+                    _logger.LogInformation("[Enhanced Download Monitor] Found download by title match. Updating ID: {OldId} → {NewId}",
+                        download.DownloadId, newDownloadId);
 
-                // Update the download ID to the new one (debrid proxy changed it)
-                download.DownloadId = newDownloadId;
-                // The row now stands for a different job in the client, so the
-                // path recorded for the old one is wrong. Drop it before the
-                // update below, which only overwrites it when the new status
-                // actually carries a path. Serving the old path to an external
-                // extractor points it at someone else's folder.
-                download.OutputPath = null;
+                    // Update the download ID to the new one (debrid proxy changed it)
+                    download.DownloadId = newDownloadId;
+                    // The row now stands for a different job in the client, so the
+                    // path recorded for the old one is wrong. Drop it before the
+                    // update below, which only overwrites it when the new status
+                    // actually carries a path. Serving the old path to an external
+                    // extractor points it at someone else's folder.
+                    download.OutputPath = null;
+                }
                 status = titleMatchStatus;
             }
             else
@@ -1266,6 +1291,22 @@ public class EnhancedDownloadMonitorService : BackgroundService
                         if (!eventExists)
                         {
                             _logger.LogDebug("[Enhanced Download Monitor] Not re-adopting '{Title}' (id {Id}) — its event {EventId} no longer exists",
+                                download.Title, download.DownloadId, grab.EventId);
+                            continue;
+                        }
+
+                        // A queue row can still hold this grab under another
+                        // id, for example after a title match moved it. A
+                        // second row imports the same file again on each pass
+                        // (issue #442).
+                        var grabHash = grab.TorrentInfoHash ?? download.TorrentInfoHash;
+                        var stillQueued = (!string.IsNullOrEmpty(grabHash) && liveHashes.Contains(grabHash)) ||
+                            await db.DownloadQueue.AnyAsync(q => q.EventId == grab.EventId &&
+                                q.Part == grab.PartName && q.Title == grab.Title &&
+                                q.Status != DownloadStatus.Imported && q.Status != DownloadStatus.Failed, cancellationToken);
+                        if (stillQueued)
+                        {
+                            _logger.LogDebug("[Enhanced Download Monitor] Not re-adopting '{Title}' (id {Id}). A queue row for event {EventId} still holds this grab",
                                 download.Title, download.DownloadId, grab.EventId);
                             continue;
                         }

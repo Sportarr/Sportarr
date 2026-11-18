@@ -339,6 +339,8 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
                 UnexpectedRequests.Enqueue(uri.GetLeftPart(UriPartial.Path));
                 throw new InvalidOperationException("Unexpected ownership fixture HTTP request.");
             }
+            if (uri.AbsolutePath == "/api/v2/app/version")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("v5.2.4") };
             if (uri.AbsolutePath == "/api/v2/app/preferences")
                 return Json(new { save_path = DefaultSavePath ?? Path.GetDirectoryName(SourcePath) });
             if (uri.AbsolutePath == "/api/v2/torrents/categories")

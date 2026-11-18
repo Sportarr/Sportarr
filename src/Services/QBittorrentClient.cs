@@ -248,6 +248,7 @@ public class QBittorrentClient
         // arrived from one that was already there.
         List<QBittorrentTorrent>? torrentsBefore = null;
         string? knownHash = null;
+        var addRequestSent = false;
 
         try
         {
@@ -405,6 +406,7 @@ public class QBittorrentClient
             }
 
             _logger.LogInformation("[qBittorrent] POSTing to {Endpoint}", $"{baseUrl}/api/v2/torrents/add");
+            addRequestSent = true;
             using var response = await SendWithSessionRecoveryAsync(config, baseUrl,
                 HttpMethod.Post, $"{baseUrl}/api/v2/torrents/add", content);
             _logger.LogInformation("[qBittorrent] Response status: {StatusCode} ({StatusCodeInt})", response.StatusCode, (int)response.StatusCode);
@@ -441,6 +443,14 @@ public class QBittorrentClient
                     _logger.LogWarning("[qBittorrent] Add rejected (Fails.); no matching torrent could be verified in the requested category");
                     return AddDownloadResult.Failed("qBittorrent rejected the add (Fails.). It may be a duplicate or invalid torrent; no matching torrent could be verified. Check qBittorrent logs.", AddDownloadErrorType.TorrentRejected);
                 }
+
+                // The reply itself can confirm the add. Debrid proxies change
+                // the id later, so only real qBittorrent counts here.
+                var confirmedId = config.Type == DownloadClientType.QBittorrent
+                    ? ReadConfirmedTorrentId(responseContent, knownHash)
+                    : null;
+                if (string.IsNullOrEmpty(knownHash) && confirmedId != null)
+                    knownHash = confirmedId;
 
                 if (config.Type == DownloadClientType.QBittorrent && !string.IsNullOrEmpty(knownHash))
                 {
@@ -538,6 +548,18 @@ public class QBittorrentClient
 
                     if (!anyListRead)
                     {
+                        // qBittorrent took the torrent, but the list did not
+                        // load. A failure here makes the caller grab another
+                        // release for the same event (issue #442). Track the
+                        // confirmed hash. The download monitor removes the row
+                        // if the torrent does not show up.
+                        if (confirmedId != null)
+                        {
+                            _logger.LogWarning("[qBittorrent] qBittorrent accepted torrent {Hash}, but its torrent list could not be read. Tracking the torrent by its hash.",
+                                confirmedId);
+                            return await TrackUnseenTorrentAsync(config, confirmedId);
+                        }
+
                         return AddDownloadResult.Failed(
                             $"Sportarr could not read the torrent list from qBittorrent after adding torrent {knownHash}. The torrent may still have been added - check qBittorrent.",
                             AddDownloadErrorType.Unknown);
@@ -805,13 +827,32 @@ public class QBittorrentClient
             // something found on disk and moved into the library, taking the
             // data out from under the seeding torrent (issue #251). Ask the
             // client what it actually has before deciding.
-            var landed = await FindTorrentAfterTimeoutAsync(config, expectedName, torrentsBefore, knownHash, category);
+            var (landed, listRead) = await FindTorrentAfterTimeoutAsync(config, expectedName, torrentsBefore, knownHash, category);
             if (landed != null)
             {
                 _logger.LogInformation(
                     "[qBittorrent] The request timed out, but '{Name}' is present on the client. Treating the add as successful.",
                     landed.Name);
                 return AddDownloadResult.Succeeded(landed.Hash);
+            }
+
+            // The add request started, but no reply came and the list did
+            // not load. The torrent can still be there. A failure here
+            // makes the caller grab another release for the same event
+            // (issue #442), so track the known hash. The download monitor
+            // removes the row if the torrent does not show up. The snapshot
+            // from before the add must exist and must not hold the hash. If
+            // the torrent was already in the client, it can belong to
+            // another app.
+            if (addRequestSent && !listRead &&
+                config.Type == DownloadClientType.QBittorrent && !string.IsNullOrEmpty(knownHash) &&
+                torrentsBefore != null &&
+                !torrentsBefore.Any(t => QBittorrentHashHelper.MatchesHash(t, knownHash)))
+            {
+                _logger.LogWarning(
+                    "[qBittorrent] The add request for torrent {Hash} timed out and the torrent list could not be read. Tracking the torrent by its hash.",
+                    knownHash);
+                return await TrackUnseenTorrentAsync(config, knownHash);
             }
 
             return AddDownloadResult.Failed("Request to qBittorrent timed out", AddDownloadErrorType.Timeout);
@@ -833,7 +874,7 @@ public class QBittorrentClient
     /// merely reads like the expected one, and the release would then follow
     /// somebody else's download while its own add stayed untracked.
     /// </summary>
-    private async Task<QBittorrentTorrent?> FindTorrentAfterTimeoutAsync(
+    private async Task<(QBittorrentTorrent? Landed, bool ListRead)> FindTorrentAfterTimeoutAsync(
         DownloadClient config, string? expectedName, List<QBittorrentTorrent>? torrentsBefore,
         string? knownHash, string category)
     {
@@ -841,15 +882,19 @@ public class QBittorrentClient
         {
             // With nothing to compare against there is no way to tell an
             // arrival from a torrent that was always there.
-            return null;
+            return (null, false);
         }
 
         try
         {
             var torrents = await GetTorrentsAsync(config);
-            if (torrents == null || torrents.Count == 0)
+            if (torrents == null)
             {
-                return null;
+                return (null, false);
+            }
+            if (torrents.Count == 0)
+            {
+                return (null, true);
             }
 
             var knownHashes = torrentsBefore
@@ -857,7 +902,7 @@ public class QBittorrentClient
                 .Where(hash => !string.IsNullOrEmpty(hash))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            return torrents.FirstOrDefault(t =>
+            return (torrents.FirstOrDefault(t =>
                 !string.IsNullOrEmpty(t.Hash) &&
                 !knownHashes.Contains(t.Hash) &&
                 (string.IsNullOrEmpty(knownHash)
@@ -867,16 +912,81 @@ public class QBittorrentClient
                     : QBittorrentHashHelper.MatchesHash(t, knownHash)) &&
                 (IsOwnedCategory(t.Category, category) ||
                  string.IsNullOrWhiteSpace(category) && !string.IsNullOrWhiteSpace(knownHash) &&
-                 string.IsNullOrWhiteSpace(t.Category)));
+                 string.IsNullOrWhiteSpace(t.Category))), true);
         }
         catch (Exception ex)
         {
-            // Best effort. A client that cannot be reached twice running is
-            // reported as the failure it looks like.
+            // Best effort. The caller decides what an unread list means.
             _logger.LogWarning(ex, "[qBittorrent] Could not check whether the timed-out add had landed");
+            return (null, false);
+        }
+    }
+
+    /// <summary>
+    /// Track a torrent that the add path could not see in the client list.
+    /// The id is lower case because the client list uses lower case hashes.
+    /// </summary>
+    private async Task<AddDownloadResult> TrackUnseenTorrentAsync(DownloadClient config, string hash)
+    {
+        var id = hash.ToLowerInvariant();
+        if (config.InitialState == TorrentInitialState.ForceStarted)
+        {
+            // Best effort. The client may still not answer.
+            await SetForceStartAsync(config, id, true);
+        }
+        return AddDownloadResult.Succeeded(id);
+    }
+
+    /// <summary>
+    /// Read the torrent id that the add reply confirms, or null.
+    ///
+    /// WebAPI 2.14 and later reply with JSON that lists the added torrent ids.
+    /// Earlier versions reply "Ok." when the client took at least one torrent.
+    /// Sportarr sends one torrent per request, so either reply is about that
+    /// torrent.
+    /// </summary>
+    internal static string? ReadConfirmedTorrentId(string? responseBody, string? knownHash)
+    {
+        var body = responseBody?.Trim();
+        if (string.IsNullOrEmpty(body))
+            return null;
+
+        if (string.Equals(body, "Ok.", StringComparison.OrdinalIgnoreCase))
+            return string.IsNullOrEmpty(knownHash) ? null : knownHash;
+
+        if (!body.StartsWith('{'))
+            return null;
+
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            if (json.RootElement.ValueKind != JsonValueKind.Object ||
+                !json.RootElement.TryGetProperty("added_torrent_ids", out var idsElement) ||
+                idsElement.ValueKind != JsonValueKind.Array)
+                return null;
+
+            var ids = idsElement.EnumerateArray()
+                .Where(id => id.ValueKind == JsonValueKind.String)
+                .Select(id => id.GetString())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id!)
+                .ToList();
+
+            var match = ids.FirstOrDefault(id => string.Equals(id, knownHash, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+                return match;
+
+            // A hybrid torrent has a v2 based id that differs from the v1 hash.
+            return ids.Count == 1 ? ids[0] : null;
+        }
+        catch (JsonException)
+        {
             return null;
         }
     }
+
+    private static bool IsTorrentHash(string? id) =>
+        id is { Length: 40 or 64 } && id.All(Uri.IsHexDigit);
 
     private static bool IsOwnedCategory(string? actual, string? expected) =>
         !string.IsNullOrWhiteSpace(expected) &&
@@ -1076,7 +1186,7 @@ public class QBittorrentClient
     /// Used for Decypharr/debrid proxy compatibility where the hash may change
     /// </summary>
     public async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindTorrentByTitleAsync(
-        DownloadClient config, string title, string category)
+        DownloadClient config, string title, string category, string? currentId = null)
     {
         try
         {
@@ -1094,11 +1204,32 @@ public class QBittorrentClient
                 .Where(t => string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            var matchingTorrent =
-                candidates.FirstOrDefault(t => string.Equals(t.Name, title, StringComparison.OrdinalIgnoreCase))
-                ?? candidates.FirstOrDefault(t =>
-                    t.Name.Contains(title, StringComparison.OrdinalIgnoreCase) ||
-                    title.Contains(t.Name, StringComparison.OrdinalIgnoreCase));
+            // The row's own torrent comes first. The monitor also gets here
+            // when a status read times out, and a copy of the same release
+            // from another indexer has the same name. Without this pass the
+            // row moved to that copy, and the lost grab was added to the
+            // queue again on each pass (issue #442).
+            var matchingTorrent = string.IsNullOrWhiteSpace(currentId)
+                ? null
+                : candidates.FirstOrDefault(t => QBittorrentHashHelper.MatchesHash(t, currentId));
+
+            // The list is already here. A second read can time out and make
+            // the row's own torrent look missing.
+            if (matchingTorrent != null)
+                return (await BuildTorrentStatusAsync(config, matchingTorrent, null), matchingTorrent.Hash);
+
+            // Real qBittorrent keeps the infohash as the id, so it never
+            // changes. A name match can only find another torrent. Debrid
+            // proxies change the id, so they still use the name match.
+            var idIsStable = config.Type == DownloadClientType.QBittorrent && IsTorrentHash(currentId);
+            if (matchingTorrent == null && !idIsStable)
+            {
+                matchingTorrent =
+                    candidates.FirstOrDefault(t => string.Equals(t.Name, title, StringComparison.OrdinalIgnoreCase))
+                    ?? candidates.FirstOrDefault(t =>
+                        t.Name.Contains(title, StringComparison.OrdinalIgnoreCase) ||
+                        title.Contains(t.Name, StringComparison.OrdinalIgnoreCase));
+            }
 
             if (matchingTorrent == null)
             {
@@ -1233,6 +1364,12 @@ public class QBittorrentClient
         if (torrent == null)
             return null;
 
+        return await BuildTorrentStatusAsync(config, torrent, expectedCategory);
+    }
+
+    /// <summary>Build the status for a torrent that a list read returned.</summary>
+    private async Task<DownloadClientStatus?> BuildTorrentStatusAsync(DownloadClient config, QBittorrentTorrent torrent, string? expectedCategory)
+    {
         var categoryToMatch = expectedCategory ?? config.Category;
         if (!string.IsNullOrWhiteSpace(categoryToMatch) &&
             !torrent.Category.Equals(categoryToMatch, StringComparison.OrdinalIgnoreCase))

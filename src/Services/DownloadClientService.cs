@@ -547,7 +547,7 @@ public class DownloadClientService : IDownloadClientService
     /// Used for Decypharr/debrid proxy compatibility where download IDs may change
     /// </summary>
     public async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindDownloadByTitleAsync(
-        DownloadClient config, string title, string category)
+        DownloadClient config, string title, string category, string? currentId = null)
     {
         try
         {
@@ -556,8 +556,8 @@ public class DownloadClientService : IDownloadClientService
 
             return config.Type switch
             {
-                DownloadClientType.QBittorrent => await FindQBittorrentDownloadByTitleAsync(config, title, category),
-                DownloadClientType.Decypharr => await FindDecypharrDownloadByTitleAsync(config, title, category),
+                DownloadClientType.QBittorrent => await FindQBittorrentDownloadByTitleAsync(config, title, category, currentId),
+                DownloadClientType.Decypharr => await FindDecypharrDownloadByTitleAsync(config, title, category, currentId),
                 DownloadClientType.Sabnzbd or DownloadClientType.NZBdav or DownloadClientType.DecypharrUsenet =>
                     await FindSabnzbdDownloadByTitleAsync(config, title, category),
                 _ => (null, null)
@@ -1491,10 +1491,10 @@ public class DownloadClientService : IDownloadClientService
     }
 
     private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindQBittorrentDownloadByTitleAsync(
-        DownloadClient config, string title, string category)
+        DownloadClient config, string title, string category, string? currentId)
     {
         var client = GetQBittorrentClient(config);
-        return await client.FindTorrentByTitleAsync(config, title, category);
+        return await client.FindTorrentByTitleAsync(config, title, category, currentId);
     }
 
     private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindSabnzbdDownloadByTitleAsync(
@@ -1651,10 +1651,10 @@ public class DownloadClientService : IDownloadClientService
     }
 
     private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindDecypharrDownloadByTitleAsync(
-        DownloadClient config, string title, string category)
+        DownloadClient config, string title, string category, string? currentId)
     {
         var client = GetDecypharrClient(config);
-        return await client.FindTorrentByTitleAsync(config, title, category);
+        return await client.FindTorrentByTitleAsync(config, title, category, currentId);
     }
 
     private async Task<bool> RemoveFromDecypharrAsync(DownloadClient config, string downloadId, bool deleteFiles)

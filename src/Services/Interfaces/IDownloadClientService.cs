@@ -64,5 +64,5 @@ public interface IDownloadClientService
     /// Find a download by title and category (for re-identification)
     /// </summary>
     Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindDownloadByTitleAsync(
-        DownloadClient client, string title, string category);
+        DownloadClient client, string title, string category, string? currentId = null);
 }
