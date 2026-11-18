@@ -6,8 +6,13 @@ namespace Sportarr.Api.Helpers;
 
 public static class CricketRugbyReleaseNamePolicy
 {
+    // Releases write the number as "M38", "Match 38" or "Match38". The
+    // trailing boundary keeps "Full Match 1080p" from reading as a number.
+    // A part upload counts its parts ("Full Match 1 of 2", "Match 1 of 2"),
+    // so a number after "Full Match" or before "of" and one digit is not the
+    // match. A season count ("Match 30 of 74") keeps the number.
     private static readonly Regex MatchNumberPattern = new(
-        @"(?<![\p{L}\p{M}\p{N}])M0*(?<number>[1-9][0-9]{0,2})(?![\p{L}\p{M}\p{N}])",
+        @"(?<![\p{L}\p{M}\p{N}])(?:M|(?<!\bFull[\s._-]*)Match[\s._-]*)0*(?<number>[1-9][0-9]{0,2})(?![\p{L}\p{M}\p{N}])(?![\s._-]*of[\s._-]*[1-9](?![0-9]))",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex CricketSingleInningsPattern = new(
         @"\b(?:(?:[1-4](?:st|nd|rd|th)|First|Second|Third|Fourth)[\s._-]+Innings|Innings[\s._-]+[1-4])\b",
@@ -56,6 +61,15 @@ public static class CricketRugbyReleaseNamePolicy
             "NRL" => $"NRL {year} {NrlSearchName(home)} {NrlSearchName(away)}",
             _ => null
         };
+    }
+
+    /// <summary>
+    /// The match number the release names, or null when it names none.
+    /// </summary>
+    public static int? ReleaseMatchNumber(string releaseTitle)
+    {
+        var match = MatchNumberPattern.Match(releaseTitle);
+        return match.Success ? int.Parse(match.Groups["number"].Value) : null;
     }
 
     public static bool HasIdentityConflict(string releaseTitle, Event evt)
