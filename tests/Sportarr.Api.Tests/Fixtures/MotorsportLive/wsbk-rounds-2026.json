@@ -1,0 +1,112 @@
+{
+ "data": [
+  {
+   "type": "rounds",
+   "id": "2026-EST",
+   "attributes": {
+    "name": "Circuito Estoril",
+    "description": "Tissot Estoril Round",
+    "brief_description": "Estoril",
+    "source_id": "EST",
+    "country_iso": "POR",
+    "start_date": "2026-10-09T00:00:00+00:00",
+    "end_date": "2026-10-11T00:00:00+00:00",
+    "sequence_order": 11,
+    "status": "FINISHED"
+   },
+   "relationships": {
+    "categories": {
+     "data": [
+      {
+       "type": "categories",
+       "id": "SBK"
+      },
+      {
+       "type": "categories",
+       "id": "SSP"
+      },
+      {
+       "type": "categories",
+       "id": "YR3EC"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "type": "rounds",
+   "id": "2026-FRA",
+   "attributes": {
+    "name": "Circuit de Nevers Magny-Cours",
+    "description": "Acerbis French Round",
+    "brief_description": "Magny-Cours",
+    "source_id": "FRA",
+    "country_iso": "FRA",
+    "start_date": "2026-09-04T00:00:00+00:00",
+    "end_date": "2026-09-06T00:00:00+00:00",
+    "sequence_order": 9,
+    "status": "FINISHED"
+   },
+   "relationships": {
+    "categories": {
+     "data": [
+      {
+       "type": "categories",
+       "id": "SBK"
+      },
+      {
+       "type": "categories",
+       "id": "SPB"
+      },
+      {
+       "type": "categories",
+       "id": "SSP"
+      },
+      {
+       "type": "categories",
+       "id": "YR3EC"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "type": "rounds",
+   "id": "2026-JER",
+   "attributes": {
+    "name": "Circuito de Jerez - Ángel Nieto",
+    "description": "Pirelli Spanish Round",
+    "brief_description": "Jerez",
+    "source_id": "JER",
+    "country_iso": "ESP",
+    "start_date": "2026-10-16T00:00:00+00:00",
+    "end_date": "2026-10-18T00:00:00+00:00",
+    "sequence_order": 12,
+    "status": "FINISHED"
+   },
+   "relationships": {
+    "categories": {
+     "data": [
+      {
+       "type": "categories",
+       "id": "SBK"
+      },
+      {
+       "type": "categories",
+       "id": "SPB"
+      },
+      {
+       "type": "categories",
+       "id": "SSP"
+      },
+      {
+       "type": "categories",
+       "id": "WCR"
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "included": []
+}

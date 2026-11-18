@@ -142,6 +142,43 @@ public class DvrEarlyFinishSettingsTests
         Assert.Equal(before, await File.ReadAllTextAsync(Path.Combine(server.DataPath, "config.xml")));
     }
 
+    [Fact]
+    public async Task SeriesTimingDefaultsToOnAndSavesOff()
+    {
+        await using var server = await SettingsServer.StartAsync();
+
+        var before = await server.Client.GetFromJsonAsync<JsonElement>("api/dvr/settings");
+        Assert.True(before.GetProperty("motorsportSeriesTimingEnabled").GetBoolean());
+
+        using var response = await server.Client.PutAsJsonAsync("api/dvr/settings", new
+        {
+            motorsportSeriesTimingEnabled = false
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var after = await server.Client.GetFromJsonAsync<JsonElement>("api/dvr/settings");
+        Assert.False(after.GetProperty("motorsportSeriesTimingEnabled").GetBoolean());
+        var xml = await File.ReadAllTextAsync(Path.Combine(server.DataPath, "config.xml"));
+        Assert.Contains("<DvrMotorsportSeriesTimingEnabled>false</DvrMotorsportSeriesTimingEnabled>", xml);
+    }
+
+    [Theory]
+    [InlineData("\"motorsportSeriesTimingEnabled\":\"false\"")]
+    [InlineData("\"motorsportSeriesTimingEnabled\":0")]
+    [InlineData("\"motorsportSeriesTimingEnabled\":null")]
+    public async Task InvalidSeriesTimingDoesNotChangeEarlierSettings(string invalidField)
+    {
+        await using var server = await SettingsServer.StartAsync();
+        var before = await File.ReadAllTextAsync(Path.Combine(server.DataPath, "config.xml"));
+        var body = "{\"recordingPath\":\"/should-not-save\"," + invalidField + "}";
+
+        using var response = await server.Client.PutAsync("api/dvr/settings",
+            new StringContent(body, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(before, await File.ReadAllTextAsync(Path.Combine(server.DataPath, "config.xml")));
+    }
+
     private sealed class SettingsServer : IAsyncDisposable
     {
         private readonly WebApplication _app;

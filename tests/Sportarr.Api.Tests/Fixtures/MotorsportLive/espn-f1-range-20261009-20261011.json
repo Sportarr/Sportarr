@@ -1,0 +1,149 @@
+{
+ "season": null,
+ "day": null,
+ "events": [
+  {
+   "id": "600057445",
+   "date": "2026-10-09T08:30Z",
+   "endDate": "2026-10-11T12:00Z",
+   "name": "Singapore Airlines Singapore Grand Prix",
+   "shortName": "Singapore Airlines Singapore GP",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 28,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401839113",
+     "date": "2026-10-09T08:30Z",
+     "startDate": "2026-10-09T08:30Z",
+     "endDate": null,
+     "type": {
+      "id": "1",
+      "abbreviation": "FP1"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 28,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     }
+    },
+    {
+     "id": "401839114",
+     "date": "2026-10-09T12:30Z",
+     "startDate": "2026-10-09T12:30Z",
+     "endDate": null,
+     "type": {
+      "id": "5",
+      "abbreviation": "SS"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 15,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     }
+    },
+    {
+     "id": "401839115",
+     "date": "2026-10-10T09:00Z",
+     "startDate": "2026-10-10T09:00Z",
+     "endDate": null,
+     "type": {
+      "id": "6",
+      "abbreviation": "SR"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 20,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     }
+    },
+    {
+     "id": "401839116",
+     "date": "2026-10-10T13:30Z",
+     "startDate": "2026-10-10T13:30Z",
+     "endDate": null,
+     "type": {
+      "id": "2",
+      "abbreviation": "Qual"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 15,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     }
+    },
+    {
+     "id": "401839117",
+     "date": "2026-10-11T12:00Z",
+     "startDate": "2026-10-11T12:00Z",
+     "endDate": null,
+     "type": {
+      "id": "3",
+      "abbreviation": "Race"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 62,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

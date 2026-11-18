@@ -1,0 +1,149 @@
+{
+ "season": null,
+ "day": null,
+ "events": [
+  {
+   "id": "600057449",
+   "date": "2026-11-20T00:30Z",
+   "endDate": "2026-11-22T04:00Z",
+   "name": "Heineken Las Vegas Grand Prix",
+   "shortName": "Heineken Las Vegas GP",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Thu, November 19th at 7:30 PM EST",
+     "shortDetail": "11/19 - 7:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401839133",
+     "date": "2026-11-20T00:30Z",
+     "startDate": "2026-11-20T00:30Z",
+     "endDate": null,
+     "type": {
+      "id": "1",
+      "abbreviation": "FP1"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Thu, November 19th at 7:30 PM EST",
+       "shortDetail": "11/19 - 7:30 PM EST"
+      }
+     }
+    },
+    {
+     "id": "401839134",
+     "date": "2026-11-20T04:00Z",
+     "startDate": "2026-11-20T04:00Z",
+     "endDate": null,
+     "type": {
+      "id": "1",
+      "abbreviation": "FP2"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Thu, November 19th at 11:00 PM EST",
+       "shortDetail": "11/19 - 11:00 PM EST"
+      }
+     }
+    },
+    {
+     "id": "401839135",
+     "date": "2026-11-21T00:30Z",
+     "startDate": "2026-11-21T00:30Z",
+     "endDate": null,
+     "type": {
+      "id": "1",
+      "abbreviation": "FP3"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Fri, November 20th at 7:30 PM EST",
+       "shortDetail": "11/20 - 7:30 PM EST"
+      }
+     }
+    },
+    {
+     "id": "401839136",
+     "date": "2026-11-21T04:00Z",
+     "startDate": "2026-11-21T04:00Z",
+     "endDate": null,
+     "type": {
+      "id": "2",
+      "abbreviation": "Qual"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Fri, November 20th at 11:00 PM EST",
+       "shortDetail": "11/20 - 11:00 PM EST"
+      }
+     }
+    },
+    {
+     "id": "401839137",
+     "date": "2026-11-22T04:00Z",
+     "startDate": "2026-11-22T04:00Z",
+     "endDate": null,
+     "type": {
+      "id": "3",
+      "abbreviation": "Race"
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Sat, November 21st at 11:00 PM EST",
+       "shortDetail": "11/21 - 11:00 PM EST"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

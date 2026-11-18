@@ -12,6 +12,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Health;
 using Sportarr.Api.Middleware;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.MotorsportLive;
 using Sportarr.Api.Services.Interfaces;
 using Sportarr.Api.Validators;
 using System.Net.Http;
@@ -110,6 +111,28 @@ public static class ServiceCollectionExtensions
             {
                 client.Timeout = TimeSpan.FromSeconds(30);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd($"Sportarr/{Sportarr.Api.Version.GetFullVersion()}");
+            });
+
+        // Live status from motorsport timing sources (the series' own, or ESPN). A
+        // server can send gzip without a request for it, so every encoding
+        // is accepted and decoded. The timeout is short because the DVR
+        // scheduler waits for the answer.
+        services.AddHttpClient(MotorsportTimingFetcher.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
+                ConnectTimeout = TimeSpan.FromSeconds(4),
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+                ConnectCallback = MotorsportTimingConnect.Ipv4FirstAsync
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(10);
+                // The largest page, the MotoGP season calendar, is about 1 MB.
+                client.MaxResponseContentBufferSize = 5 * 1024 * 1024;
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                    $"Sportarr/{Sportarr.Api.Version.GetFullVersion()} (+https://github.com/Sportarr/Sportarr)");
             });
 
         // Torrent-file resolution: redirects are validated by hand (to
@@ -501,6 +524,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DvrRecordingService>();
         services.AddScoped<DvrAssignmentService>();
         services.AddSingleton<DvrEarlyFinishGuard>();
+        services.AddSingleton<MotorsportTimingFetcher>();
+        services.AddSingleton<IMotorsportLiveProvider, MotoGpLiveProvider>();
+        services.AddSingleton<IMotorsportLiveProvider, WorldSbkLiveProvider>();
+        services.AddSingleton<IMotorsportLiveProvider, EspnRacingLiveProvider>();
+        services.AddSingleton<IMotorsportLiveProvider, BritishSuperbikeLiveProvider>();
+        services.AddSingleton<IMotorsportLiveStatusService, MotorsportLiveStatusService>();
         services.AddScoped<EventDvrService>();
         services.AddScoped<DvrQualityScoreCalculator>();
         services.AddScoped<XmltvParserService>();

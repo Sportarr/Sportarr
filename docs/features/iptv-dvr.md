@@ -107,6 +107,58 @@ The source's retrieval timestamp records when data was fetched; it cannot
 guarantee that the provider's result is correct or that an IPTV stream has no delay.
 Choose a buffer that allows for your stream's delay and desired postgame coverage.
 
+### Motorsport series timing
+
+The livescore feed has no motorsport. For the series below, both guards ask
+another timing source instead. MotoGP, WorldSBK and British Superbikes use
+the series' own timing services. Formula 1 and IndyCar use ESPN's
+scoreboard, not a service of the series.
+
+| Series | Source |
+|---|---|
+| MotoGP, Moto2, Moto3 | motogp.com timing |
+| WorldSBK, WorldSSP, WorldSPB | worldsbk.com timing |
+| Formula 1, IndyCar | ESPN scoreboard |
+| British Superbikes | tsl-timing.com results |
+
+Sportarr matches the session that the event names, such as the race, the
+sprint or a qualifying session. It never uses a nearby session of another
+kind. While the session is live, Overtime Guard keeps the recording going in
+ten-minute steps, up to the extension cap. It does the same when the start
+time of the session has passed and the session has not begun yet.
+
+When the session is finished, Early Finish Guard stops the recording after
+the Post-Event Buffer. Two fetches about a minute apart must both show the
+finish first. The buffer counts from the finish time the source gives, or
+from when Sportarr first saw the finish. When Early Finish Guard is on and
+the session finished just before the scheduled end, Overtime Guard also
+keeps the buffer. When Early Finish Guard is off, the recording ends at its
+scheduled end or at the end of the last extension.
+
+A red flag can split a race into a stopped part and a restart. WorldSBK
+renames the stopped part, so a race counts as finished only when the part
+with the race name is over. MotoGP lists the restart as a new session, so
+Sportarr relies on that session appearing. To cover the time before it
+appears, a race, sprint or Superpole Race in these classes that stops well
+short of its usual length counts as live for 45 minutes. The length counts
+from when Sportarr saw the session go live, or else from its scheduled
+start. After that wait, its state is unknown and the normal schedule applies. It never counts as
+finished. For Formula 1 and IndyCar, the ESPN status decides. British
+Superbikes has no live status, so Overtime Guard cannot extend a race there.
+A race counts as finished once its result is published.
+
+A finish from before the recording started does not stop it. A recording
+scheduled to start more than 15 minutes after the session start shows a
+delayed broadcast, and the live finish does not stop it either. British
+Superbikes gives no session times, so the event time is used instead. An
+event with a date but no time skips this check. If the source gives no answer, the
+recording keeps its normal schedule.
+
+These sources are not public APIs. They are the services behind the series'
+own websites, and they can change without notice. To turn this off, clear
+**Use series timing for motorsport** in the same settings. DTM and other
+series are not covered.
+
 ### Extend or finish a recording from a script
 
 Some sports have no livescore coverage, so the guards cannot act for them. A

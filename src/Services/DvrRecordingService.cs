@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Sportarr.Api.Data;
 using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.MotorsportLive;
 
 namespace Sportarr.Api.Services;
 
@@ -32,6 +33,32 @@ public class DvrRecordingService
     private static readonly ConcurrentDictionary<int, byte> _startsInFlight = new();
 
     private const int OvertimeStepMinutes = 10;
+
+    // Time limit for one series timing lookup in the early finish checks.
+    private static readonly TimeSpan SeriesTimingBudget = TimeSpan.FromSeconds(5);
+
+    // Time limit for one series timing lookup at the scheduled end. A cold
+    // MotoGP lookup reads the calendar and then the event page, each with a
+    // 4 second limit. A shorter limit would stop a live race.
+    private static readonly TimeSpan OvertimeSeriesTimingBudget = TimeSpan.FromSeconds(9);
+
+    // Time limit for all series timing checks in one scheduler pass. It is
+    // separate from the livescore checks.
+    private static readonly TimeSpan SeriesTimingTickBudget = TimeSpan.FromSeconds(10);
+
+    // Time limit for all series timing lookups at the scheduled end in one
+    // scheduler pass. The scheduler makes a new instance for each pass. Two
+    // cold lookups fit. Hanging sources then delay the other stops of the
+    // pass by this limit at most. Only the time in the lookups counts,
+    // because a stop can take minutes.
+    private static readonly TimeSpan OvertimeSeriesTimingPassBudget = TimeSpan.FromSeconds(18);
+
+    // A lookup with less time than this cannot finish, so it is not started.
+    private static readonly TimeSpan OvertimeSeriesTimingMinimum = TimeSpan.FromMilliseconds(100);
+
+    internal TimeSpan OvertimeSeriesLookupLimit { get; set; } = OvertimeSeriesTimingBudget;
+    internal TimeSpan OvertimeSeriesPassLimit { get; set; } = OvertimeSeriesTimingPassBudget;
+    private TimeSpan _overtimeSeriesSpent;
 
     // A finish request holds the time at which the scheduler stops a live
     // recording. Every change to a recording end and the last check before a
@@ -85,6 +112,7 @@ public class DvrRecordingService
     private readonly SportarrApiClient _sportarrApiClient;
     private readonly EpisodeNumberResolver _episodeNumberResolver;
     private readonly DvrEarlyFinishGuard _earlyFinishGuard;
+    private readonly IMotorsportLiveStatusService? _motorsportLive;
 
     public DvrRecordingService(
         ILogger<DvrRecordingService> logger,
@@ -97,7 +125,8 @@ public class DvrRecordingService
         NotificationService notificationService,
         SportarrApiClient sportarrApiClient,
         EpisodeNumberResolver episodeNumberResolver,
-        DvrEarlyFinishGuard earlyFinishGuard)
+        DvrEarlyFinishGuard earlyFinishGuard,
+        IMotorsportLiveStatusService? motorsportLive = null)
     {
         _logger = logger;
         _db = db;
@@ -110,6 +139,7 @@ public class DvrRecordingService
         _sportarrApiClient = sportarrApiClient;
         _episodeNumberResolver = episodeNumberResolver;
         _earlyFinishGuard = earlyFinishGuard;
+        _motorsportLive = motorsportLive;
     }
 
     /// <summary>
@@ -1505,25 +1535,58 @@ public class DvrRecordingService
         if (!config.DvrEarlyFinishGuardEnabled)
             return ready;
 
+        // Livescore recordings come first. A slow series timing source then
+        // cannot use their time or reset their confirmations.
+        var pending = recordings.Except(ready).ToList();
+        var seriesTimed = pending.Where(r => r.Event != null && UsesSeriesTiming(config, r.Event)).ToList();
+
         // Optional status checks must not hold the scheduler through an outage.
-        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        budget.CancelAfter(TimeSpan.FromSeconds(10));
-        foreach (var recording in recordings.Except(ready))
+        using (var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
-            if (_ffmpegRecorder.IsFinalizing(recording.Id))
+            budget.CancelAfter(TimeSpan.FromSeconds(10));
+            foreach (var recording in pending.Except(seriesTimed))
             {
-                _earlyFinishGuard.Forget(recording.Id);
-                continue;
+                if (_ffmpegRecorder.IsFinalizing(recording.Id))
+                {
+                    _earlyFinishGuard.Forget(recording.Id);
+                    continue;
+                }
+                try
+                {
+                    if (await ShouldStopEarlyAsync(recording, budget.Token))
+                        ready.Add(recording);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    _earlyFinishGuard.RetainOnly(seriesTimed.Select(r => r.Id));
+                    break;
+                }
             }
-            try
+        }
+
+        using (var seriesBudget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            seriesBudget.CancelAfter(SeriesTimingTickBudget);
+            foreach (var recording in seriesTimed)
             {
-                if (await ShouldStopEarlyAsync(recording, budget.Token))
-                    ready.Add(recording);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                _earlyFinishGuard.RetainOnly(Array.Empty<int>());
-                break;
+                if (_ffmpegRecorder.IsFinalizing(recording.Id))
+                {
+                    _earlyFinishGuard.Forget(recording.Id);
+                    continue;
+                }
+                try
+                {
+                    if (await ShouldStopEarlyAsync(recording, seriesBudget.Token))
+                        ready.Add(recording);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // Only the series timed recordings lose their state. The
+                    // next pass asks again.
+                    foreach (var skipped in seriesTimed)
+                        _earlyFinishGuard.Forget(skipped.Id);
+                    break;
+                }
             }
         }
         return ready;
@@ -1558,7 +1621,7 @@ public class DvrRecordingService
         budget.CancelAfter(TimeSpan.FromSeconds(10));
         try
         {
-            return await ShouldStopEarlyAsync(recording, budget.Token);
+            return await ShouldStopEarlyAsync(recording, budget.Token, logDecision: true);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -1567,7 +1630,8 @@ public class DvrRecordingService
         }
     }
 
-    private async Task<bool> ShouldStopEarlyAsync(DvrRecording recording, CancellationToken cancellationToken)
+    private async Task<bool> ShouldStopEarlyAsync(DvrRecording recording, CancellationToken cancellationToken,
+        bool logDecision = false)
     {
         var config = await _configService.GetConfigAsync();
         if (!config.DvrEarlyFinishGuardEnabled || !recording.EventId.HasValue)
@@ -1579,7 +1643,9 @@ public class DvrRecordingService
         var evt = await _db.Events.AsNoTracking().Include(e => e.League)
             .FirstOrDefaultAsync(e => e.Id == recording.EventId.Value, cancellationToken);
         var leagueId = evt?.League?.ExternalId;
-        if (string.IsNullOrWhiteSpace(evt?.ExternalId) || string.IsNullOrWhiteSpace(leagueId))
+        var hasLivescoreIdentity = !string.IsNullOrWhiteSpace(evt?.ExternalId) && !string.IsNullOrWhiteSpace(leagueId);
+        var seriesTiming = evt != null && UsesSeriesTiming(config, evt);
+        if (evt == null || (!hasLivescoreIdentity && !seriesTiming))
         {
             _earlyFinishGuard.Forget(recording.Id);
             return false;
@@ -1587,7 +1653,20 @@ public class DvrRecordingService
 
         var eventId = recording.EventId;
         var actualStart = recording.ActualStart;
-        var scores = await _sportarrApiClient.GetDvrLivescoreByLeagueAsync(leagueId, cancellationToken);
+        var scores = hasLivescoreIdentity
+            ? await _sportarrApiClient.GetDvrLivescoreByLeagueAsync(leagueId!, cancellationToken)
+            : null;
+        var matches = scores?.Where(score => score.EventId == evt.ExternalId && score.LeagueId == leagueId).ToList();
+        var score = matches?.Count == 1 ? matches[0] : null;
+        if (score?.RequestOrigin != _sportarrApiClient.DvrLiveSourceOrigin)
+            score = null;
+
+        // The livescore feed has no motorsport. Ask the series timing source
+        // only when the feed has nothing usable for this event.
+        MotorsportLiveStatus? series = null;
+        if (seriesTiming && (score == null || !score.IsFresh(DateTimeOffset.UtcNow)))
+            series = await GetSeriesStatusAsync(evt, recording, cancellationToken);
+
         config = await _configService.GetConfigAsync();
         await _db.Entry(recording).ReloadAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
@@ -1610,13 +1689,56 @@ public class DvrRecordingService
             _earlyFinishGuard.Forget(recording.Id);
             return false;
         }
-        var matches = scores?.Where(score => score.EventId == evt.ExternalId && score.LeagueId == leagueId).ToList();
-        var score = matches?.Count == 1 ? matches[0] : null;
-        if (score?.RequestOrigin != _sportarrApiClient.DvrLiveSourceOrigin)
-            score = null;
-        return _earlyFinishGuard.Observe(recording, score, evt.ExternalId, leagueId,
-            DateTimeOffset.UtcNow, config.DvrEarlyFinishBufferMinutes);
+
+        if (series == null)
+            return _earlyFinishGuard.Observe(recording, score, evt.ExternalId ?? "", leagueId ?? "",
+                DateTimeOffset.UtcNow, config.DvrEarlyFinishBufferMinutes);
+
+        _earlyFinishGuard.Forget(recording.Id);
+        if (!config.DvrMotorsportSeriesTimingEnabled || series.Phase != MotorsportLivePhase.Finished ||
+            !series.Confirmed || !series.FinishedDuringRecording || series.FinishedAt == null)
+            return false;
+
+        var buffer = Math.Clamp(config.DvrEarlyFinishBufferMinutes, 0, 60);
+        if (DateTimeOffset.UtcNow < series.FinishedAt.Value.AddMinutes(buffer))
+            return false;
+
+        if (logDecision)
+        {
+            _logger.LogInformation(
+                "[DVR] Early finish guard: series timing ({Source}) shows '{Session}' finished at {FinishedAt:o} ({Basis}); " +
+                "stopping recording {Id} for '{Title}' after the {Buffer}m buffer",
+                series.Source, series.SessionName, series.FinishedAt.Value,
+                series.FinishedAtReported ? "reported by the source" : "first seen", recording.Id, evt.Title, buffer);
+        }
+        return true;
     }
+
+    /// <summary>
+    /// Ask the series timing source, inside its own time limit. A slow source
+    /// then cannot use the time of the checks for other recordings.
+    /// </summary>
+    private async Task<MotorsportLiveStatus?> GetSeriesStatusAsync(
+        Event evt, DvrRecording recording, CancellationToken cancellationToken, TimeSpan? limit = null)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(limit ?? SeriesTimingBudget);
+        try
+        {
+            return await _motorsportLive!.GetStatusAsync(evt, recording, budget.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// True when the series timing setting is on and a timing source covers
+    /// the league of the event.
+    /// </summary>
+    private bool UsesSeriesTiming(Config config, Event evt) =>
+        config.DvrMotorsportSeriesTimingEnabled && _motorsportLive?.ResolveSeries(evt.League) != null;
 
     /// <summary>
     /// Overtime guard: before an event-linked live recording is stopped at
@@ -1656,11 +1778,40 @@ public class DvrRecordingService
             var evt = await _db.Events
                 .Include(e => e.League)
                 .FirstOrDefaultAsync(e => e.Id == recording.EventId.Value, cancellationToken);
-            if (evt?.ExternalId == null || evt.League?.ExternalId == null)
+            var hasLivescoreIdentity = evt?.ExternalId != null && evt.League?.ExternalId != null;
+            var seriesTiming = evt != null && UsesSeriesTiming(config, evt);
+            if (evt == null || (!hasLivescoreIdentity && !seriesTiming))
                 return false;
 
             var eventId = recording.EventId;
-            var livescore = await _sportarrApiClient.GetDvrLivescoreByLeagueAsync(evt.League.ExternalId, cancellationToken);
+            var livescore = hasLivescoreIdentity
+                ? await _sportarrApiClient.GetDvrLivescoreByLeagueAsync(evt.League!.ExternalId!, cancellationToken)
+                : null;
+            var matches = livescore?.Where(l => l.EventId == evt.ExternalId && l.LeagueId == evt.League?.ExternalId).ToList();
+            var liveEntry = matches?.Count == 1 ? matches[0] : null;
+            if (liveEntry?.RequestOrigin != _sportarrApiClient.DvrLiveSourceOrigin)
+                liveEntry = null;
+
+            // The livescore feed has no motorsport. Ask the series timing source
+            // only when the feed has nothing usable for this event.
+            MotorsportLiveStatus? series = null;
+            if (seriesTiming && (liveEntry == null || !liveEntry.IsFresh(DateTimeOffset.UtcNow)))
+            {
+                var left = OvertimeSeriesPassLimit - _overtimeSeriesSpent;
+                if (left >= OvertimeSeriesTimingMinimum)
+                {
+                    var spent = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        series = await GetSeriesStatusAsync(evt, recording, cancellationToken,
+                            left < OvertimeSeriesLookupLimit ? left : OvertimeSeriesLookupLimit);
+                    }
+                    finally
+                    {
+                        _overtimeSeriesSpent += spent.Elapsed;
+                    }
+                }
+            }
             config = await _configService.GetConfigAsync();
 
             // An extend call can land while the feed request runs. Read the
@@ -1676,11 +1827,11 @@ public class DvrRecordingService
                 if (!config.DvrOvertimeGuardEnabled || config.DvrOvertimeMaxExtensionMinutes <= 0 ||
                     _finishRequests.ContainsKey(recording.Id))
                     return false;
-                var matches = livescore?.Where(l => l.EventId == evt.ExternalId && l.LeagueId == evt.League.ExternalId).ToList();
-                var liveEntry = matches?.Count == 1 ? matches[0] : null;
-                if (liveEntry == null || liveEntry.RequestOrigin != _sportarrApiClient.DvrLiveSourceOrigin ||
-                    !liveEntry.IsFresh(DateTimeOffset.UtcNow) || !liveEntry.IsInProgress)
-                    return false;
+                if (liveEntry == null || !liveEntry.IsFresh(DateTimeOffset.UtcNow) || !liveEntry.IsInProgress)
+                {
+                    return series != null && config.DvrMotorsportSeriesTimingEnabled &&
+                        await ExtendForSeriesTimingInsideGateAsync(recording, evt, series, config, cancellationToken);
+                }
 
                 var extension = await ExtendInsideGateAsync(recording, OvertimeStepMinutes,
                     config.DvrOvertimeMaxExtensionMinutes, cancellationToken);
@@ -1719,6 +1870,73 @@ public class DvrRecordingService
             _logger.LogWarning(ex, "[DVR] Overtime check failed for recording {Id}; stopping as scheduled", recording.Id);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Overtime guard for a motorsport session that the series timing source
+    /// reports. A live session extends the recording one step, and so does a
+    /// session whose start time passed before it began. When the Early Finish
+    /// Guard is on, a session that finished during the recording keeps the
+    /// recording until the buffer after the finish ends. Call this only
+    /// inside the gate.
+    /// </summary>
+    /// <returns>True when the recording must not stop now.</returns>
+    private async Task<bool> ExtendForSeriesTimingInsideGateAsync(
+        DvrRecording recording, Event evt, MotorsportLiveStatus series, Config config, CancellationToken cancellationToken)
+    {
+        int minutes;
+        string state;
+        if (series.Phase == MotorsportLivePhase.Live)
+        {
+            minutes = OvertimeStepMinutes;
+            state = "is live";
+        }
+        else if (series.Phase == MotorsportLivePhase.NotStarted && series.SessionStart.HasValue &&
+                 series.SessionStart.Value <= DateTimeOffset.UtcNow)
+        {
+            // The start time passed, but the session has not begun. The
+            // start is late, so the session still runs after the end.
+            minutes = OvertimeStepMinutes;
+            state = $"has not started, but its start time {series.SessionStart.Value:o} has passed";
+        }
+        else if (series.Phase == MotorsportLivePhase.Finished && config.DvrEarlyFinishGuardEnabled &&
+                 series.FinishedDuringRecording && series.FinishedAt.HasValue)
+        {
+            // The buffer after a finish belongs to the Early Finish Guard.
+            // When that guard is off, its buffer setting is hidden and unused.
+            var buffer = Math.Clamp(config.DvrEarlyFinishBufferMinutes, 0, 60);
+            var remaining = (series.FinishedAt.Value.AddMinutes(buffer) - DateTimeOffset.UtcNow).TotalMinutes;
+            if (remaining <= 0)
+                return false;
+            minutes = (int)Math.Ceiling(remaining);
+            state = $"finished at {series.FinishedAt.Value:o}; keeping the {buffer}m buffer";
+        }
+        else
+        {
+            return false;
+        }
+
+        var extension = await ExtendInsideGateAsync(recording, minutes, config.DvrOvertimeMaxExtensionMinutes, cancellationToken);
+        if (extension.RowChanged)
+        {
+            _logger.LogInformation("[DVR] Overtime guard: recording {Id} not extended because {Reason}",
+                recording.Id, extension.Reason);
+            return true;
+        }
+        if (extension.Applied <= 0)
+        {
+            _logger.LogWarning(
+                "[DVR] Recording {Id} hit the overtime extension ceiling ({Max}m); stopping at current end",
+                recording.Id, config.DvrOvertimeMaxExtensionMinutes);
+            return false;
+        }
+
+        _logger.LogInformation(
+            "[DVR] Overtime guard: series timing ({Source}) shows '{Session}' {State}; extended recording {Id} for '{Title}' " +
+            "by {Step}m ({Total}m/{Max}m used)",
+            series.Source, series.SessionName, state, recording.Id, evt.Title, extension.Applied,
+            extension.Used, config.DvrOvertimeMaxExtensionMinutes);
+        return true;
     }
 
     private readonly record struct ExtensionChange(int Applied, int Used, bool RowChanged)

@@ -46,4 +46,11 @@ public static class EnvironmentVariableNames
     /// not just the database password (matches Radarr/Sonarr's FILE__ convention).
     /// </summary>
     public const string SecretFilePrefix = "FILE__";
+
+    // Test only. These point the series timing sources at a fake server in
+    // the end-to-end test. Do not set them in a real install.
+    public const string TestMotoGpTimingUrl = "SPORTARR_TEST_MOTOGP_TIMING_URL";
+    public const string TestWorldSbkTimingUrl = "SPORTARR_TEST_WORLDSBK_TIMING_URL";
+    public const string TestEspnTimingUrl = "SPORTARR_TEST_ESPN_TIMING_URL";
+    public const string TestTslTimingUrl = "SPORTARR_TEST_TSL_TIMING_URL";
 }

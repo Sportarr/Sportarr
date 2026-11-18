@@ -1,0 +1,559 @@
+{
+ "data": [
+  {
+   "type": "sessions",
+   "id": "2026-EST-SBK-001",
+   "attributes": {
+    "short_name": "RC1",
+    "description": "Race 1",
+    "brief_description": "Race 1",
+    "source_id": "001",
+    "circuit_date": "2026-10-10",
+    "start_date_utc": "2026-10-10T14:30:00+00:00",
+    "end_date_utc": null,
+    "effective_start_date_utc": "2026-10-10T14:30:40+00:00",
+    "effective_end_date_utc": "2026-10-10T15:07:00+00:00",
+    "start_date_circuit": "2026-10-10T15:30:00+00:00",
+    "end_date_circuit": null,
+    "effective_start_date_circuit": "2026-10-10T15:30:40+00:00",
+    "effective_end_date_circuit": "2026-10-10T16:07:00+00:00",
+    "status": "FINISHED",
+    "duration": null,
+    "laps": 21,
+    "incremental_id": 5
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SBK"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SBK-002",
+   "attributes": {
+    "short_name": "SPRC",
+    "description": "Tissot Superpole Race",
+    "brief_description": "Superpole Race",
+    "source_id": "002",
+    "circuit_date": "2026-10-11",
+    "start_date_utc": "2026-10-11T10:10:00+00:00",
+    "end_date_utc": null,
+    "effective_start_date_utc": "2026-10-11T10:10:20+00:00",
+    "effective_end_date_utc": "2026-10-11T10:29:00+00:00",
+    "start_date_circuit": "2026-10-11T11:10:00+00:00",
+    "end_date_circuit": null,
+    "effective_start_date_circuit": "2026-10-11T11:10:20+00:00",
+    "effective_end_date_circuit": "2026-10-11T11:29:00+00:00",
+    "status": "FINISHED",
+    "duration": null,
+    "laps": 10,
+    "incremental_id": 7
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SBK"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SBK-003",
+   "attributes": {
+    "short_name": "RC2",
+    "description": "Race 2",
+    "brief_description": "Race 2",
+    "source_id": "003",
+    "circuit_date": "2026-10-11",
+    "start_date_utc": "2026-10-11T14:30:00+00:00",
+    "end_date_utc": null,
+    "effective_start_date_utc": "2026-10-11T14:30:19+00:00",
+    "effective_end_date_utc": "2026-10-11T15:07:58+00:00",
+    "start_date_circuit": "2026-10-11T15:30:00+00:00",
+    "end_date_circuit": null,
+    "effective_start_date_circuit": "2026-10-11T15:30:19+00:00",
+    "effective_end_date_circuit": "2026-10-11T16:07:58+00:00",
+    "status": "FINISHED",
+    "duration": null,
+    "laps": 21,
+    "incremental_id": 8
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SBK"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SBK-L1A",
+   "attributes": {
+    "short_name": "FP1",
+    "description": "Free Practice 1st Session",
+    "brief_description": "Free Practice 1",
+    "source_id": "L1A",
+    "circuit_date": "2026-10-09",
+    "start_date_utc": "2026-10-09T09:20:00+00:00",
+    "end_date_utc": "2026-10-09T10:05:00+00:00",
+    "effective_start_date_utc": "2026-10-09T09:20:00+00:00",
+    "effective_end_date_utc": "2026-10-09T10:09:06+00:00",
+    "start_date_circuit": "2026-10-09T10:20:00+00:00",
+    "end_date_circuit": "2026-10-09T11:05:00+00:00",
+    "effective_start_date_circuit": "2026-10-09T10:20:00+00:00",
+    "effective_end_date_circuit": "2026-10-09T11:09:06+00:00",
+    "status": "FINISHED",
+    "duration": 45,
+    "laps": null,
+    "incremental_id": 1
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SBK"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SBK-L2A",
+   "attributes": {
+    "short_name": "FP2",
+    "description": "Free Practice 2nd Session",
+    "brief_description": "Free Practice 2",
+    "source_id": "L2A",
+    "circuit_date": "2026-10-09",
+    "start_date_utc": "2026-10-09T14:00:00+00:00",
+    "end_date_utc": "2026-10-09T14:45:00+00:00",
+    "effective_start_date_utc": "2026-10-09T14:00:00+00:00",
+    "effective_end_date_utc": "2026-10-09T14:49:29+00:00",
+    "start_date_circuit": "2026-10-09T15:00:00+00:00",
+    "end_date_circuit": "2026-10-09T15:45:00+00:00",
+    "effective_start_date_circuit": "2026-10-09T15:00:00+00:00",
+    "effective_end_date_circuit": "2026-10-09T15:49:29+00:00",
+    "status": "FINISHED",
+    "duration": 45,
+    "laps": null,
+    "incremental_id": 2
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SBK"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SBK-L3A",
+   "attributes": {
+    "short_name": "FP3",
+    "description": "Free Practice 3rd Session",
+    "brief_description": "Free Practice 3",
+    "source_id": "L3A",
+    "circuit_date": "2026-10-10",
+    "start_date_utc": "2026-10-10T08:40:00+00:00",
+    "end_date_utc": "2026-10-10T09:00:00+00:00",
+    "effective_start_date_utc": "2026-10-10T08:40:00+00:00",
+    "effective_end_date_utc": "2026-10-10T09:03:08+00:00",
+    "start_date_circuit": "2026-10-10T09:40:00+00:00",
+    "end_date_circuit": "2026-10-10T10:00:00+00:00",
+    "effective_start_date_circuit": "2026-10-10T09:40:00+00:00",
+    "effective_end_date_circuit": "2026-10-10T10:03:08+00:00",
+    "status": "FINISHED",
+    "duration": 20,
+    "laps": null,
+    "incremental_id": 3
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SBK"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SBK-Q1A",
+   "attributes": {
+    "short_name": "SP",
+    "description": "Tissot Superpole",
+    "brief_description": "Superpole           ",
+    "source_id": "Q1A",
+    "circuit_date": "2026-10-10",
+    "start_date_utc": "2026-10-10T10:15:00+00:00",
+    "end_date_utc": "2026-10-10T10:30:00+00:00",
+    "effective_start_date_utc": "2026-10-10T10:15:00+00:00",
+    "effective_end_date_utc": "2026-10-10T10:34:17+00:00",
+    "start_date_circuit": "2026-10-10T11:15:00+00:00",
+    "end_date_circuit": "2026-10-10T11:30:00+00:00",
+    "effective_start_date_circuit": "2026-10-10T11:15:00+00:00",
+    "effective_end_date_circuit": "2026-10-10T11:34:17+00:00",
+    "status": "FINISHED",
+    "duration": 15,
+    "laps": null,
+    "incremental_id": 4
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SBK"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SBK-W1A",
+   "attributes": {
+    "short_name": "WUP",
+    "description": "Warm Up",
+    "brief_description": "Warm Up",
+    "source_id": "W1A",
+    "circuit_date": "2026-10-11",
+    "start_date_utc": "2026-10-11T08:15:00+00:00",
+    "end_date_utc": "2026-10-11T08:25:00+00:00",
+    "effective_start_date_utc": "2026-10-11T08:15:00+00:00",
+    "effective_end_date_utc": "2026-10-11T08:27:43+00:00",
+    "start_date_circuit": "2026-10-11T09:15:00+00:00",
+    "end_date_circuit": "2026-10-11T09:25:00+00:00",
+    "effective_start_date_circuit": "2026-10-11T09:15:00+00:00",
+    "effective_end_date_circuit": "2026-10-11T09:27:43+00:00",
+    "status": "FINISHED",
+    "duration": 10,
+    "laps": null,
+    "incremental_id": 6
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SBK"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SSP-001",
+   "attributes": {
+    "short_name": "RC1",
+    "description": "Race 1",
+    "brief_description": "Race 1",
+    "source_id": "001",
+    "circuit_date": "2026-10-10",
+    "start_date_utc": "2026-10-10T13:00:00+00:00",
+    "end_date_utc": null,
+    "effective_start_date_utc": "2026-10-10T13:00:56+00:00",
+    "effective_end_date_utc": "2026-10-10T13:34:03+00:00",
+    "start_date_circuit": "2026-10-10T14:00:00+00:00",
+    "end_date_circuit": null,
+    "effective_start_date_circuit": "2026-10-10T14:00:56+00:00",
+    "effective_end_date_circuit": "2026-10-10T14:34:03+00:00",
+    "status": "FINISHED",
+    "duration": null,
+    "laps": 18,
+    "incremental_id": 4
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SSP"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SSP-002",
+   "attributes": {
+    "short_name": "RC2",
+    "description": "Race 2 - Red Flag ",
+    "brief_description": "Race 2 - Red Flag ",
+    "source_id": "002",
+    "circuit_date": "2026-10-11",
+    "start_date_utc": "2026-10-11T13:00:00+00:00",
+    "end_date_utc": null,
+    "effective_start_date_utc": "2026-10-11T13:00:52+00:00",
+    "effective_end_date_utc": "2026-10-11T13:19:26+00:00",
+    "start_date_circuit": "2026-10-11T14:00:00+00:00",
+    "end_date_circuit": null,
+    "effective_start_date_circuit": "2026-10-11T14:00:52+00:00",
+    "effective_end_date_circuit": "2026-10-11T14:19:26+00:00",
+    "status": "FINISHED",
+    "duration": null,
+    "laps": 18,
+    "incremental_id": 6
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SSP"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SSP-102",
+   "attributes": {
+    "short_name": "RC2",
+    "description": "Race 2",
+    "brief_description": "Race 2",
+    "source_id": "102",
+    "circuit_date": "2026-10-11",
+    "start_date_utc": "2026-10-11T13:05:00+00:00",
+    "end_date_utc": null,
+    "effective_start_date_utc": "2026-10-11T13:33:57+00:00",
+    "effective_end_date_utc": "2026-10-11T13:46:39+00:00",
+    "start_date_circuit": "2026-10-11T14:05:00+00:00",
+    "end_date_circuit": null,
+    "effective_start_date_circuit": "2026-10-11T14:33:57+00:00",
+    "effective_end_date_circuit": "2026-10-11T14:46:39+00:00",
+    "status": "FINISHED",
+    "duration": null,
+    "laps": 6,
+    "incremental_id": 7
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SSP"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SSP-L1A",
+   "attributes": {
+    "short_name": "FP",
+    "description": "Free Practice",
+    "brief_description": "Free Practice",
+    "source_id": "L1A",
+    "circuit_date": "2026-10-09",
+    "start_date_utc": "2026-10-09T10:20:00+00:00",
+    "end_date_utc": "2026-10-09T11:00:00+00:00",
+    "effective_start_date_utc": "2026-10-09T10:20:00+00:00",
+    "effective_end_date_utc": "2026-10-09T11:06:00+00:00",
+    "start_date_circuit": "2026-10-09T11:20:00+00:00",
+    "end_date_circuit": "2026-10-09T12:00:00+00:00",
+    "effective_start_date_circuit": "2026-10-09T11:20:00+00:00",
+    "effective_end_date_circuit": "2026-10-09T12:06:00+00:00",
+    "status": "FINISHED",
+    "duration": 40,
+    "laps": null,
+    "incremental_id": 1
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SSP"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SSP-Q1A",
+   "attributes": {
+    "short_name": "SP",
+    "description": "Tissot Superpole",
+    "brief_description": "Superpole",
+    "source_id": "Q1A",
+    "circuit_date": "2026-10-09",
+    "start_date_utc": "2026-10-09T15:00:00+00:00",
+    "end_date_utc": "2026-10-09T15:40:00+00:00",
+    "effective_start_date_utc": "2026-10-09T15:00:00+00:00",
+    "effective_end_date_utc": "2026-10-09T15:43:49+00:00",
+    "start_date_circuit": "2026-10-09T16:00:00+00:00",
+    "end_date_circuit": "2026-10-09T16:40:00+00:00",
+    "effective_start_date_circuit": "2026-10-09T16:00:00+00:00",
+    "effective_end_date_circuit": "2026-10-09T16:43:49+00:00",
+    "status": "FINISHED",
+    "duration": 40,
+    "laps": null,
+    "incremental_id": 2
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SSP"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SSP-W1A",
+   "attributes": {
+    "short_name": "WUP1",
+    "description": "Warm Up 1",
+    "brief_description": "Warm Up 1",
+    "source_id": "W1A",
+    "circuit_date": "2026-10-10",
+    "start_date_utc": "2026-10-10T08:20:00+00:00",
+    "end_date_utc": "2026-10-10T08:30:00+00:00",
+    "effective_start_date_utc": "2026-10-10T08:20:00+00:00",
+    "effective_end_date_utc": "2026-10-10T08:32:50+00:00",
+    "start_date_circuit": "2026-10-10T09:20:00+00:00",
+    "end_date_circuit": "2026-10-10T09:30:00+00:00",
+    "effective_start_date_circuit": "2026-10-10T09:20:00+00:00",
+    "effective_end_date_circuit": "2026-10-10T09:32:50+00:00",
+    "status": "FINISHED",
+    "duration": 10,
+    "laps": null,
+    "incremental_id": 3
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SSP"
+     }
+    }
+   }
+  },
+  {
+   "type": "sessions",
+   "id": "2026-EST-SSP-W2A",
+   "attributes": {
+    "short_name": "WUP2",
+    "description": "Warm Up 2",
+    "brief_description": "Warm Up 2",
+    "source_id": "W2A",
+    "circuit_date": "2026-10-11",
+    "start_date_utc": "2026-10-11T08:35:00+00:00",
+    "end_date_utc": "2026-10-11T08:45:00+00:00",
+    "effective_start_date_utc": "2026-10-11T08:35:00+00:00",
+    "effective_end_date_utc": "2026-10-11T08:47:10+00:00",
+    "start_date_circuit": "2026-10-11T09:35:00+00:00",
+    "end_date_circuit": "2026-10-11T09:45:00+00:00",
+    "effective_start_date_circuit": "2026-10-11T09:35:00+00:00",
+    "effective_end_date_circuit": "2026-10-11T09:47:10+00:00",
+    "status": "FINISHED",
+    "duration": 10,
+    "laps": null,
+    "incremental_id": 5
+   },
+   "relationships": {
+    "round": {
+     "data": {
+      "type": "rounds",
+      "id": "2026-EST"
+     }
+    },
+    "category": {
+     "data": {
+      "type": "categories",
+      "id": "SSP"
+     }
+    }
+   }
+  }
+ ]
+}

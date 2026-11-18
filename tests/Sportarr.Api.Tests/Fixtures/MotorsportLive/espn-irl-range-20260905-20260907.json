@@ -1,0 +1,46 @@
+{
+ "season": null,
+ "day": null,
+ "events": [
+  {
+   "id": "202609061784",
+   "date": "2026-09-06T18:30Z",
+   "endDate": null,
+   "name": "Grand Prix of Monterey",
+   "shortName": "Grand Prix of Monterey",
+   "status": {
+    "period": 95,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "id": "202609061784",
+     "date": "2026-09-06T18:30Z",
+     "startDate": "2026-09-06T18:30Z",
+     "endDate": null,
+     "type": null,
+     "status": {
+      "period": 95,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

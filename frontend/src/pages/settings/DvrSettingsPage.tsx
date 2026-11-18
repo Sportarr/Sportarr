@@ -67,6 +67,7 @@ interface DvrSettings {
   overtimeMaxExtensionMinutes: number;
   earlyFinishGuardEnabled: boolean;
   earlyFinishBufferMinutes: number;
+  motorsportSeriesTimingEnabled: boolean;
   reresolveChannelsEnabled: boolean;
   reresolveLockMinutes: number;
   reresolveMinImprovement: number;
@@ -188,6 +189,7 @@ const defaultDvrSettings: DvrSettings = {
   overtimeMaxExtensionMinutes: 120,
   earlyFinishGuardEnabled: false,
   earlyFinishBufferMinutes: 5,
+  motorsportSeriesTimingEnabled: true,
   reresolveChannelsEnabled: true,
   reresolveLockMinutes: 45,
   reresolveMinImprovement: 10,
@@ -1036,6 +1038,24 @@ export default function DvrSettingsPage() {
                       <p id="early-finish-buffer-help" className="text-xs text-gray-500 mt-1">
                         Time to keep recording after the first final confirmation. Zero still requires a second fresh confirmation.
                       </p>
+                    </div>
+                  )}
+                  {(dvrSettings.overtimeGuardEnabled || dvrSettings.earlyFinishGuardEnabled) && (
+                    <div className="md:col-span-2">
+                      <label className="flex items-start space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={dvrSettings.motorsportSeriesTimingEnabled}
+                          onChange={(e) => handleSettingsChange('motorsportSeriesTimingEnabled', e.target.checked)}
+                          className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                        <div>
+                          <span className="text-white font-medium">Use series timing for motorsport</span>
+                          <p className="text-sm text-gray-400 mt-1">
+                            Ask the series' own timing whether a MotoGP, WorldSBK or British Superbikes session is live or finished. F1 and IndyCar use ESPN's scoreboard.
+                          </p>
+                        </div>
+                      </label>
                     </div>
                   )}
                   <div className="md:col-span-2">

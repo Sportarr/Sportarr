@@ -328,6 +328,7 @@ public class Config
     public int DvrOvertimeMaxExtensionMinutes { get; set; } = 120; // Ceiling on total overtime extension per recording (0 = disabled)
     public bool DvrEarlyFinishGuardEnabled { get; set; } = false;
     public int DvrEarlyFinishBufferMinutes { get; set; } = 5;
+    public bool DvrMotorsportSeriesTimingEnabled { get; set; } = true; // Let both guards read motorsport live status from series timing sources (ESPN for F1 and IndyCar)
     public bool DvrReresolveChannelsEnabled { get; set; } = true; // Move a scheduled recording to a better channel when new EPG data arrives
     public int DvrReresolveLockMinutes { get; set; } = 45; // Stop changing the channel this many minutes before the recording starts
     public int DvrReresolveMinImprovement { get; set; } = 10; // Confidence points a rival channel must beat the current one by

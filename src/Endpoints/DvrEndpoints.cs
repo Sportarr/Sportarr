@@ -688,6 +688,7 @@ app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
         overtimeMaxExtensionMinutes = config.DvrOvertimeMaxExtensionMinutes,
         earlyFinishGuardEnabled = config.DvrEarlyFinishGuardEnabled,
         earlyFinishBufferMinutes = Math.Clamp(config.DvrEarlyFinishBufferMinutes, 0, 60),
+        motorsportSeriesTimingEnabled = config.DvrMotorsportSeriesTimingEnabled,
         reresolveChannelsEnabled = config.DvrReresolveChannelsEnabled,
         reresolveLockMinutes = config.DvrReresolveLockMinutes,
         reresolveMinImprovement = config.DvrReresolveMinImprovement,
@@ -741,6 +742,10 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
     if (hasEarlyFinishBuffer && (earlyFinishBuffer.ValueKind != JsonValueKind.Number ||
         !earlyFinishBuffer.TryGetInt32(out earlyFinishBufferMinutes)))
         return Results.BadRequest(new { error = "earlyFinishBufferMinutes must be an integer." });
+
+    var hasSeriesTiming = settings.TryGetProperty("motorsportSeriesTimingEnabled", out var seriesTiming);
+    if (hasSeriesTiming && seriesTiming.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        return Results.BadRequest(new { error = "motorsportSeriesTimingEnabled must be a boolean." });
 
     var hasIndexerConflictPolicy = settings.TryGetProperty("indexerConflictPolicy", out var indexerConflictPolicy);
     if (hasIndexerConflictPolicy && (indexerConflictPolicy.ValueKind != JsonValueKind.String ||
@@ -805,6 +810,8 @@ app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService config
         config.DvrEarlyFinishGuardEnabled = earlyFinishGuard.GetBoolean();
     if (hasEarlyFinishBuffer)
         config.DvrEarlyFinishBufferMinutes = Math.Clamp(earlyFinishBufferMinutes, 0, 60);
+    if (hasSeriesTiming)
+        config.DvrMotorsportSeriesTimingEnabled = seriesTiming.GetBoolean();
 
     if (settings.TryGetProperty("reresolveChannelsEnabled", out var reresolveEnabled))
         config.DvrReresolveChannelsEnabled = reresolveEnabled.GetBoolean();

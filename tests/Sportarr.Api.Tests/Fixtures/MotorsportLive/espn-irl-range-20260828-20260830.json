@@ -1,0 +1,46 @@
+{
+ "season": null,
+ "day": null,
+ "events": [
+  {
+   "id": "202608294252",
+   "date": "2026-08-29T18:30Z",
+   "endDate": null,
+   "name": "Grand Prix of Milwaukee Race 1",
+   "shortName": "Grand Prix of Milwaukee Race 1",
+   "status": {
+    "period": 250,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "id": "202608294252",
+     "date": "2026-08-29T18:30Z",
+     "startDate": "2026-08-29T18:30Z",
+     "endDate": null,
+     "type": null,
+     "status": {
+      "period": 250,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}
