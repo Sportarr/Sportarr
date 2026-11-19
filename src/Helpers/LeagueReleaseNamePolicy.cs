@@ -3575,7 +3575,7 @@ public static class LeagueReleaseNamePolicy
 
     private static bool HasFormulaEConflict(string title, Event evt)
     {
-        if (Regex.IsMatch(title, @"\bFormula[\s._-]*1\b|\bF1\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return true;
+        if (Regex.IsMatch(title, @"\b(?:Formula|Formel)[\s._-]*1\b|\bF1\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return true;
         if (HasYearConflict(title, evt)) return true;
         if (int.TryParse(evt.Round, out var expectedRound))
         {
@@ -3628,7 +3628,7 @@ public static class LeagueReleaseNamePolicy
 
     private static bool HasFormulaEIdentity(string title, Event evt)
     {
-        if (!Regex.IsMatch(title, @"\bFormula[\s._-]*E\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+        if (!Regex.IsMatch(title, @"\b(?:Formula|Formel)[\s._-]*E\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
             !int.TryParse(evt.Round, out var expectedRound)) return false;
         var releaseRound = RoundPattern.Match(title);
         return releaseRound.Success && int.Parse(releaseRound.Groups["round"].Value) == expectedRound;

@@ -464,16 +464,17 @@ public class ReleaseCacheService
         // IMPORTANT: Check Formula E BEFORE Formula 1 to avoid false matches
         // IMPORTANT: Check Moto2/Moto3 BEFORE MotoGP, F2/F3 BEFORE F1
         if (normalized.Contains("FORMULA.E") || normalized.Contains("FORMULAE") ||
-            normalized.Contains("FORMULA E") || normalized.Contains("FE."))
+            normalized.Contains("FORMULA E") || normalized.Contains("FE.") ||
+            Regex.IsMatch(normalized, @"\bFORMEL[\.\-\s]*E\b"))
             return "FormulaE";
-        if (Regex.IsMatch(normalized, @"\bFORMULA[\.\-\s]*3\b") || normalized.Contains("F3.") ||
+        if (Regex.IsMatch(normalized, @"\b(?:FORMULA|FORMEL)[\.\-\s]*3\b") || normalized.Contains("F3.") ||
             Regex.IsMatch(normalized, @"\bF3\b"))
             return "Formula3";
-        if (Regex.IsMatch(normalized, @"\bFORMULA[\.\-\s]*2\b") || normalized.Contains("F2.") ||
+        if (Regex.IsMatch(normalized, @"\b(?:FORMULA|FORMEL)[\.\-\s]*2\b") || normalized.Contains("F2.") ||
             Regex.IsMatch(normalized, @"\bF2\b"))
             return "Formula2";
         if (normalized.Contains("FORMULA1") || normalized.Contains("FORMULA.1") || normalized.Contains("F1.") ||
-            Regex.IsMatch(normalized, @"\bF1\b"))
+            Regex.IsMatch(normalized, @"\bF1\b|\bFORMEL[\.\-\s]*1\b"))
             return "Formula1";
         if (Regex.IsMatch(normalized, @"\bMOTO[\.\-\s]*3\b"))
             return "Moto3";

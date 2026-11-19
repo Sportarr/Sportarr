@@ -71,6 +71,79 @@ public static class LanguageDetector
         @"^[\.\-\s_]*(GRAND[\.\-\s_]*PRIX|GP|OPEN|CUP|MASTERS|DERBY|LEAGUE|CHAMPIONSHIP|CLASSIC|SUPER[\.\-\s_]*CUP|TOUR)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Spelled-out language names. Many of them are also nationality words,
+    // so a location table can hold the same word.
+    private static readonly HashSet<string> LanguageNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Arabic", "Chinese", "Czech", "Danish", "Dutch", "English", "Finnish",
+        "Flemish", "French", "German", "Deutsch", "Greek", "Hebrew", "Hindi",
+        "Hungarian", "Indonesian", "Italian", "Japanese", "Korean", "Norwegian",
+        "Persian", "Polish", "Portuguese", "Romanian", "Russian", "Spanish",
+        "Swedish", "Thai", "Turkish", "Ukrainian", "Vietnamese"
+    };
+
+    // Words that follow a language tag in a release name: resolution,
+    // source, codec, audio, dub and subtitle marks, and language codes.
+    // Broadcaster names are not here. "Hungarian.Sky.Race" names a place.
+    private static readonly HashSet<string> ReleaseTrailerWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "web", "webrip", "webdl", "dl", "hdtv", "pdtv", "sdtv", "dsr", "hdrip",
+        "bluray", "blu", "bdrip", "brrip", "dvdrip", "dvd", "uhd", "fhd", "hd",
+        "sd", "hdr", "sdr", "dv", "4k", "x264", "x265", "h264", "h265", "h",
+        "x", "hevc", "avc", "xvid", "aac", "ac3", "eac3", "dd", "ddp", "dts",
+        "truehd", "atmos", "mp3", "mp4", "mkv", "ts", "ws", "dubbed", "dub",
+        "subbed", "sub", "subs", "multi", "dual", "audio", "proper", "repack",
+        "internal", "readnfo", "complete", "ger", "eng", "fre", "fr", "ita",
+        "spa", "esp", "nld", "pol", "por", "rus", "jpn", "chi", "kor", "hun",
+        "tur", "dan", "fin", "swe", "nor", "cze", "vff", "vfq", "vostfr",
+        "truefrench", "latino", "castellano", "hdr10", "hdr10plus", "ac3d",
+        "dtsd", "dvbrip", "dvb", "satrip", "ml", "amzn", "webhd",
+        "hdtvrip", "ddp5", "dd5", "remux", "uncut", "doku", "dubbing"
+    };
+
+    // Resolution, frame rate and codec forms with a number in them.
+    private static readonly Regex ReleaseTrailerPattern = new Regex(
+        @"^(\d{3,4}[pi]|\d{2,3}fps|\d{1,2}bit|[hx]26[45]|ddp?\d*|e?ac3|aac\d*)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex NextWord = new Regex(
+        @"\G[^A-Za-z0-9]*([A-Za-z0-9]+)", RegexOptions.Compiled);
+
+    // A release group that follows a language tag: "GERMAN-GROUP". A
+    // competition or session word is not a group: "Japanese-GP".
+    private static readonly Regex GroupAfterLanguage = new Regex(
+        $@"(?<=\b(?:{string.Join("|", LanguageNames)}))-(?!(?:gp|grand|prix|race|sprint|qualifying|quali|practice|fp[1-3]|q[1-3]|shootout|rennen|qualifikation|training|course|gara|carrera|corrida)$)[A-Za-z0-9]+$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Tells if the word at this position of a release title is a language
+    /// tag. A language name is a tag only at the end of the title, or when
+    /// a release trailer word follows it. "Rennen.GERMAN.1080p" is a tag.
+    /// "German.Grand.Prix" and "Hungarian.Free.Practice" name a place.
+    /// </summary>
+    internal static bool IsLanguageTag(string title, int index, int length)
+    {
+        if (!LanguageNames.Contains(title.Substring(index, length)))
+            return false;
+
+        var next = NextWord.Match(title, index + length);
+        if (!next.Success)
+            return true;
+
+        var word = next.Groups[1].Value;
+        return ReleaseTrailerWords.Contains(word) ||
+               ReleaseTrailerPattern.IsMatch(word) ||
+               LanguageNames.Contains(word);
+    }
+
+    /// <summary>
+    /// Removes a release group that follows a language tag, so that the tag
+    /// ends the title. Normalizers that turn "-" into a space lose the
+    /// group mark otherwise.
+    /// </summary>
+    internal static string RemoveGroupAfterLanguage(string title) =>
+        GroupAfterLanguage.Replace(title, "");
+
     // Subtitle-only indicators (these should not be treated as audio language)
     private static readonly Regex SubtitleOnlyPattern = new Regex(
         @"\b(SUBBED|SUB|SUBS|SUBTITLED|VOSTFR|HARDSUB|SOFTSUB|[\w]+[\.\-]SUB)\b",

@@ -186,6 +186,8 @@ public class ReleaseMatchingService
     {
         new Regex(@"(?<![0-9A-Za-z])Round[\s\._\-]*(\d+)(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new Regex(@"(?<![0-9A-Za-z])Rd[\s\._\-]*(\d+)(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        // German release names write "Runde 5" (issue #443).
+        new Regex(@"(?<![0-9A-Za-z])Runde[\s\._\-]*(\d+)(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new Regex(@"(?<![0-9A-Za-z])R(\d{1,2})(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         // Year X can identify rounds outside Formula 1. Check explicit tokens first.
         new Regex(@"(?<![0-9A-Za-z])20[12]\dx(\d{1,2})(?![0-9A-Za-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase), // 2026x02
@@ -1560,7 +1562,7 @@ public class ReleaseMatchingService
         // containing a DIFFERENT known location (e.g., "Thailand")
         if (isMotorsport && motoGpIdentity == MotoGpGrandPrixMatch.NotApplicable)
         {
-            var conflictingLocation = DetectConflictingLocation(release.Title, evt.Title);
+            var conflictingLocation = DetectConflictingLocation(release.Title, evt.Title, out var namesEventLocation);
             if (conflictingLocation != null)
             {
                 result.Confidence -= 100;
@@ -1569,11 +1571,20 @@ public class ReleaseMatchingService
                 _logger.LogTrace("[Release Matching] Hard rejection: location mismatch ({ReleaseLocation} vs {EventLocation}): '{Release}'",
                     conflictingLocation.Value.ReleaseLocation, conflictingLocation.Value.EventLocation, release.Title);
             }
+            else if (namesEventLocation &&
+                     !result.MatchReasons.Any(r => r.StartsWith("Location/naming variation match", StringComparison.Ordinal)))
+            {
+                // A local or foreign name of the event location, such as
+                // "Brasilien", earns the credit that an English place word
+                // earns from the variation match (issue #443).
+                result.Confidence += 10;
+                result.MatchReasons.Add("Release names the event location");
+            }
 
             if (ambiguousFormulaOneYearX && !result.IsHardRejection)
             {
                 var selectedRace = GetPrimaryMotorsportLocation(normalizedEvent);
-                var namedRace = GetPrimaryMotorsportLocation(normalizedRelease);
+                var namedRace = GetPrimaryMotorsportLocation(normalizedRelease, releaseTitle: true);
                 if (selectedRace != null && namedRace != null &&
                     !HasMotorsportLocation(normalizedRelease, selectedRace))
                 {
@@ -2809,6 +2820,12 @@ public class ReleaseMatchingService
         var abbrev = Regex.Match(league.Name ?? "", @"^([A-Za-z])[A-Za-z]*\s+(\d+)$");
         if (abbrev.Success)
             yield return abbrev.Groups[1].Value + abbrev.Groups[2].Value;
+
+        // German releases call Formula 1 "Formel 1" and Formula E "Formel E"
+        // (issue #443).
+        var formula = Regex.Match(league.Name ?? "", @"^Formula\s+(\d+|E)$", RegexOptions.IgnoreCase);
+        if (formula.Success)
+            yield return "Formel " + formula.Groups[1].Value;
     }
 
     public static string NormalizeTitle(string title)
@@ -2861,8 +2878,10 @@ public class ReleaseMatchingService
         return Regex.IsMatch(normalizedText, $@"\b{Regex.Escape(word)}\b", RegexOptions.IgnoreCase);
     }
 
+    // A competition or session word after the last dash is part of the
+    // name, not a release group: "Hungarian-Race", "Japanese-GP".
     private static readonly Regex _releaseGroupSuffixRegex = new(
-        @"-[A-Za-z0-9]+$",
+        @"-(?!(?:gp|grand|prix|race|sprint|qualifying|quali|practice|fp[1-3]|q[1-3]|shootout|rennen|qualifikation|training)$)[A-Za-z0-9]+$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex _qualitySourceMarkersRegex = new(
@@ -3049,12 +3068,12 @@ public class ReleaseMatchingService
         (new Regex(@"\bmoto[\.\-\s]*3\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Moto3"),
         (new Regex(@"\bmoto[\.\-\s]*2\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Moto2"),
         (new Regex(@"\bmoto[\.\-\s]*gp\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "MotoGP"),
-        (new Regex(@"\bformula[\.\-\s]*1[\.\-\s]*academy\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "F1 Academy"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*1[\.\-\s]*academy\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "F1 Academy"),
         (new Regex(@"\bf1[\.\-\s]*academy\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "F1 Academy"),
-        (new Regex(@"\bformula[\.\-\s]*e\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "FormulaE"),
-        (new Regex(@"\bformula[\.\-\s]*3\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula3"),
-        (new Regex(@"\bformula[\.\-\s]*2\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula2"),
-        (new Regex(@"\bformula[\.\-\s]*1\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula1"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*e\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "FormulaE"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*3\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula3"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*2\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula2"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*1\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula1"),
         (new Regex(@"\bf1[\.\b]", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula1"),
         (new Regex(@"\bf2[\.\b]", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula2"),
         (new Regex(@"\bf3[\.\b]", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula3"),
@@ -3254,45 +3273,45 @@ public class ReleaseMatchingService
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> MotorsportLocations = new(StringComparer.OrdinalIgnoreCase)
     {
-        { "Australia", new(StringComparer.OrdinalIgnoreCase) { "Australian", "Melbourne", "Albert Park" } },
-        { "Bahrain", new(StringComparer.OrdinalIgnoreCase) { "Bahraini", "Sakhir" } },
-        { "Saudi Arabia", new(StringComparer.OrdinalIgnoreCase) { "Saudi", "Jeddah" } },
-        { "Japan", new(StringComparer.OrdinalIgnoreCase) { "Japanese", "Suzuka", "Japon" } },
-        { "China", new(StringComparer.OrdinalIgnoreCase) { "Chinese", "Shanghai" } },
+        { "Australia", new(StringComparer.OrdinalIgnoreCase) { "Australian", "Melbourne", "Albert Park", "Australien", "Australie" } },
+        { "Bahrain", new(StringComparer.OrdinalIgnoreCase) { "Bahraini", "Sakhir", "Bahrein", "Barein" } },
+        { "Saudi Arabia", new(StringComparer.OrdinalIgnoreCase) { "Saudi", "Jeddah", "Saudi Arabien", "Arabie Saoudite", "Arabia Saudita", "Arabia Saudi" } },
+        { "Japan", new(StringComparer.OrdinalIgnoreCase) { "Japanese", "Suzuka", "Japon", "Giappone", "Japao" } },
+        { "China", new(StringComparer.OrdinalIgnoreCase) { "Chinese", "Shanghai", "Chine", "Cina" } },
         { "Miami", new(StringComparer.OrdinalIgnoreCase) { "Miami Gardens" } },
         { "Emilia Romagna", new(StringComparer.OrdinalIgnoreCase) { "Imola", "San Marino" } },
         { "Monaco", new(StringComparer.OrdinalIgnoreCase) { "Monte Carlo", "Monegasque" } },
-        { "Spain", new(StringComparer.OrdinalIgnoreCase) { "Spanish", "Barcelona", "Catalunya", "Catalonia", "Catalan", "Espagne", "Catalogne" } },
-        { "Canada", new(StringComparer.OrdinalIgnoreCase) { "Canadian", "Montreal" } },
-        { "Austria", new(StringComparer.OrdinalIgnoreCase) { "Austrian", "Spielberg", "Red Bull Ring", "Autriche" } },
-        { "Britain", new(StringComparer.OrdinalIgnoreCase) { "British", "Silverstone", "UK", "Great Britain", "United Kingdom", "Grande Bretagne", "Angleterre" } },
-        { "United Kingdom", new(StringComparer.OrdinalIgnoreCase) { "British", "Britain", "Silverstone", "UK", "Great Britain", "Grande Bretagne", "Angleterre" } },
-        { "Hungary", new(StringComparer.OrdinalIgnoreCase) { "Hungarian", "Budapest", "Hungaroring", "Hongrie", "Balaton Park" } },
-        { "Belgium", new(StringComparer.OrdinalIgnoreCase) { "Belgian", "Spa", "Spa-Francorchamps", "Belgique" } },
-        { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Dutch", "Zandvoort", "Assen", "Pays Bas" } },
-        { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Italian", "Monza", "Mugello", "Italie" } },
-        { "Azerbaijan", new(StringComparer.OrdinalIgnoreCase) { "Azerbaijani", "Baku" } },
-        { "Singapore", new(StringComparer.OrdinalIgnoreCase) { "Singaporean", "Marina Bay" } },
-        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "Americas", "Circuit of the Americas", "COTA", "Austin", "Texas", "Etats Unis" } },
-        { "Mexico", new(StringComparer.OrdinalIgnoreCase) { "Mexican", "Mexico City", "Mexique" } },
-        { "Brazil", new(StringComparer.OrdinalIgnoreCase) { "Brazilian", "Sao Paulo", "Interlagos", "Bresil" } },
+        { "Spain", new(StringComparer.OrdinalIgnoreCase) { "Spanish", "Barcelona", "Catalunya", "Catalonia", "Catalan", "Espagne", "Catalogne", "Spanien", "Spagna", "Espana", "Espanha" } },
+        { "Canada", new(StringComparer.OrdinalIgnoreCase) { "Canadian", "Montreal", "Kanada" } },
+        { "Austria", new(StringComparer.OrdinalIgnoreCase) { "Austrian", "Spielberg", "Red Bull Ring", "Autriche", "Oesterreich", "Osterreich" } },
+        { "Britain", new(StringComparer.OrdinalIgnoreCase) { "British", "Silverstone", "UK", "Great Britain", "United Kingdom", "Grande Bretagne", "Angleterre", "Grossbritannien", "Gran Bretagna", "Gran Bretana", "Gra Bretanha", "Reino Unido" } },
+        { "United Kingdom", new(StringComparer.OrdinalIgnoreCase) { "British", "Britain", "Silverstone", "UK", "Great Britain", "Grande Bretagne", "Angleterre", "Grossbritannien", "Gran Bretagna", "Gran Bretana", "Gra Bretanha", "Reino Unido" } },
+        { "Hungary", new(StringComparer.OrdinalIgnoreCase) { "Hungarian", "Budapest", "Hungaroring", "Hongrie", "Balaton Park", "Ungarn", "Ungheria", "Hungria" } },
+        { "Belgium", new(StringComparer.OrdinalIgnoreCase) { "Belgian", "Spa", "Spa-Francorchamps", "Belgique", "Belgien", "Belgio", "Belgica" } },
+        { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Dutch", "Zandvoort", "Assen", "Pays Bas", "Niederlande", "Olanda", "Paesi Bassi", "Paises Bajos", "Holland", "Holanda", "Paises Baixos" } },
+        { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Italian", "Monza", "Mugello", "Italie", "Italien", "Italia" } },
+        { "Azerbaijan", new(StringComparer.OrdinalIgnoreCase) { "Azerbaijani", "Baku", "Aserbaidschan", "Azerbaidjan", "Azerbaigian", "Azerbaiyan", "Azerbaijao" } },
+        { "Singapore", new(StringComparer.OrdinalIgnoreCase) { "Singaporean", "Marina Bay", "Singapur", "Singapour", "Cingapura" } },
+        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "Americas", "Circuit of the Americas", "COTA", "Austin", "Texas", "Etats Unis", "Vereinigte Staaten", "Stati Uniti", "Estados Unidos" } },
+        { "Mexico", new(StringComparer.OrdinalIgnoreCase) { "Mexican", "Mexico City", "Mexique", "Mexiko", "Messico" } },
+        { "Brazil", new(StringComparer.OrdinalIgnoreCase) { "Brazilian", "Sao Paulo", "Interlagos", "Bresil", "Brasilien", "Brasil", "Brasile", "San Paolo" } },
         { "Las Vegas", new(StringComparer.OrdinalIgnoreCase) { "Vegas" } },
-        { "Qatar", new(StringComparer.OrdinalIgnoreCase) { "Qatari", "Lusail" } },
-        { "Abu Dhabi", new(StringComparer.OrdinalIgnoreCase) { "AbuDhabi", "Yas Marina" } },
-        { "Thailand", new(StringComparer.OrdinalIgnoreCase) { "Thai", "Buriram", "Chang" } },
-        { "Malaysia", new(StringComparer.OrdinalIgnoreCase) { "Malaysian", "Sepang" } },
-        { "Argentina", new(StringComparer.OrdinalIgnoreCase) { "Argentine", "Argentinian", "Termas" } },
+        { "Qatar", new(StringComparer.OrdinalIgnoreCase) { "Qatari", "Lusail", "Katar", "Catar" } },
+        { "Abu Dhabi", new(StringComparer.OrdinalIgnoreCase) { "AbuDhabi", "Yas Marina", "UAE", "Vereinigte Arabische Emirate", "Emirats Arabes Unis", "Abou Dhabi", "Abu Dabi", "Emiratos Arabes Unidos", "Emirados Arabes Unidos" } },
+        { "Thailand", new(StringComparer.OrdinalIgnoreCase) { "Thai", "Buriram", "Chang", "Tailandia" } },
+        { "Malaysia", new(StringComparer.OrdinalIgnoreCase) { "Malaysian", "Sepang", "Malaisie", "Malasia" } },
+        { "Argentina", new(StringComparer.OrdinalIgnoreCase) { "Argentine", "Argentinian", "Termas", "Argentinien" } },
         { "Portugal", new(StringComparer.OrdinalIgnoreCase) { "Portuguese", "Portimao", "Algarve" } },
-        { "France", new(StringComparer.OrdinalIgnoreCase) { "French", "Le Mans", "Paul Ricard" } },
-        { "Germany", new(StringComparer.OrdinalIgnoreCase) { "German", "Sachsenring", "Hockenheim", "Nurburgring", "Allemagne" } },
+        { "France", new(StringComparer.OrdinalIgnoreCase) { "French", "Le Mans", "Paul Ricard", "Frankreich", "Francia", "Franca" } },
+        { "Germany", new(StringComparer.OrdinalIgnoreCase) { "German", "Sachsenring", "Hockenheim", "Nurburgring", "Allemagne", "Deutschland", "Germania", "Alemania", "Alemanha" } },
         { "India", new(StringComparer.OrdinalIgnoreCase) { "Indian" } },
-        { "South Africa", new(StringComparer.OrdinalIgnoreCase) { "South African", "Kyalami" } },
-        { "Korea", new(StringComparer.OrdinalIgnoreCase) { "Korean", "Yeongam" } },
-        { "Russia", new(StringComparer.OrdinalIgnoreCase) { "Russian", "Sochi" } },
-        { "Turkey", new(StringComparer.OrdinalIgnoreCase) { "Turkish", "Istanbul" } },
+        { "South Africa", new(StringComparer.OrdinalIgnoreCase) { "South African", "Kyalami", "Sudafrica", "Africa do Sul" } },
+        { "Korea", new(StringComparer.OrdinalIgnoreCase) { "Korean", "Yeongam", "Corea", "Coreia" } },
+        { "Russia", new(StringComparer.OrdinalIgnoreCase) { "Russian", "Sochi", "Rusia" } },
+        { "Turkey", new(StringComparer.OrdinalIgnoreCase) { "Turkish", "Istanbul", "Turkei", "Turquie", "Turchia", "Turquia" } },
         { "Vietnam", new(StringComparer.OrdinalIgnoreCase) { "Vietnamese", "Hanoi" } },
         { "Macau", new(StringComparer.OrdinalIgnoreCase) { "Macanese" } },
-        { "Indonesia", new(StringComparer.OrdinalIgnoreCase) { "Indonesian", "Mandalika" } },
+        { "Indonesia", new(StringComparer.OrdinalIgnoreCase) { "Indonesian", "Mandalika", "Indonesien" } },
         { "New Zealand", new(StringComparer.OrdinalIgnoreCase) { "New Zealander" } },
         { "Sweden", new(StringComparer.OrdinalIgnoreCase) { "Swedish" } },
         { "Finland", new(StringComparer.OrdinalIgnoreCase) { "Finnish" } },
@@ -3301,6 +3320,28 @@ public class ReleaseMatchingService
         { "Colombia", new(StringComparer.OrdinalIgnoreCase) { "Colombian" } },
         { "Morocco", new(StringComparer.OrdinalIgnoreCase) { "Moroccan", "Marrakech" } },
     };
+
+    // These place names are also broadcaster names: "Sky Sport Italia",
+    // "Sky Deutschland", "DAZN Espana", "ESPN Brasil". Such a name counts as
+    // a place only after a race name, as in "GP Italia" or "Grosser Preis
+    // von Deutschland". Elsewhere it counts for nothing (issue #443).
+    internal static readonly HashSet<string> BroadcasterPlaceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Italia", "Deutschland", "Espana", "Brasil"
+    };
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> _broadcasterPlaceRegexCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static Regex BroadcasterPlaceRegex(string name) => _broadcasterPlaceRegexCache.GetOrAdd(name, n => new Regex(
+        $@"\b(?:gp|gran\s+premio|gran\s+premi|grand\s+prix|grosser\s+preis|grande\s+premio)(?:\s+(?:de|do|da|di|del|della|du|von|of|d))?[\s']+{Regex.Escape(n)}\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase));
+
+    internal static System.Text.RegularExpressions.Match? FindBroadcasterPlace(string normalizedTitle, string name)
+    {
+        var match = BroadcasterPlaceRegex(name).Match(normalizedTitle);
+        return match.Success ? match : null;
+    }
 
     /// <summary>
     /// Parent-child location relationships. A release containing both "USA" and "Las Vegas"
@@ -3374,10 +3415,12 @@ public class ReleaseMatchingService
     {
         var names = MotorsportLocations[location].Append(location);
         return names.Any(name => !SearchNormalizationService.SceneLanguageTags.Contains(name) &&
-            GetWordBoundaryRegex(name).IsMatch(normalizedTitle));
+            (BroadcasterPlaceNames.Contains(name)
+                ? FindBroadcasterPlace(normalizedTitle, name) != null
+                : GetWordBoundaryRegex(name).IsMatch(normalizedTitle)));
     }
 
-    private static string? GetPrimaryMotorsportLocation(string normalizedTitle)
+    private static string? GetPrimaryMotorsportLocation(string normalizedTitle, bool releaseTitle = false)
     {
         string? firstLocation = null;
         var firstIndex = int.MaxValue;
@@ -3386,8 +3429,10 @@ public class ReleaseMatchingService
             var names = aliases.Append(location);
             foreach (var name in names)
             {
-                var match = GetWordBoundaryRegex(name).Match(normalizedTitle);
-                if (!match.Success || match.Index >= firstIndex)
+                var match = releaseTitle
+                    ? FindPlaceName(normalizedTitle, name)
+                    : GetWordBoundaryRegex(name).Match(normalizedTitle);
+                if (match is not { Success: true } || match.Index >= firstIndex)
                     continue;
 
                 firstLocation = location;
@@ -3398,13 +3443,35 @@ public class ReleaseMatchingService
         return firstLocation;
     }
 
+    // A language tag such as "GERMAN" in "Rennen.GERMAN.1080p" is not a
+    // place, so this skips it (issue #443). Use it on release titles only.
+    // An event title such as "French Round" names a place.
+    private static System.Text.RegularExpressions.Match? FindPlaceName(string normalizedTitle, string name)
+    {
+        if (BroadcasterPlaceNames.Contains(name))
+            return FindBroadcasterPlace(normalizedTitle, name);
+
+        foreach (System.Text.RegularExpressions.Match match in GetWordBoundaryRegex(name).Matches(normalizedTitle))
+        {
+            if (!LanguageDetector.IsLanguageTag(normalizedTitle, match.Index, match.Length))
+                return match;
+        }
+
+        return null;
+    }
+
+    private static bool NamesPlace(string normalizedTitle, string name) =>
+        FindPlaceName(normalizedTitle, name) != null;
+
     /// <summary>
     /// Detect if a release title contains a different motorsport location than the event.
     /// Returns the conflicting locations, or null if no conflict detected.
     /// Handles parent-child hierarchy (e.g., "USA Las Vegas" is NOT conflicting with "Las Vegas" event).
     /// </summary>
-    private (string EventLocation, string ReleaseLocation)? DetectConflictingLocation(string releaseTitle, string eventTitle)
+    private (string EventLocation, string ReleaseLocation)? DetectConflictingLocation(
+        string releaseTitle, string eventTitle, out bool namesEventLocation)
     {
+        namesEventLocation = false;
         var normalizedRelease = NormalizeTitle(releaseTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
 
@@ -3493,10 +3560,16 @@ public class ReleaseMatchingService
         // location is named - when the release also names a DIFFERENT known
         // location (Hongrie -> Hungary), the concrete location outranks the
         // language tag and the conflict check below runs (issue #156).
+        //
+        // A name that is also a broadcaster name counts only after a race
+        // name, as in "GP Italia" (see BroadcasterPlaceNames).
         bool releaseNamesEventLocationStrongly = expandedLocations.Any(loc =>
             loc.Length > 2
             && !SearchNormalizationService.SceneLanguageTags.Contains(loc)
-            && GetWordBoundaryRegex(loc).IsMatch(normalizedRelease));
+            && (BroadcasterPlaceNames.Contains(loc)
+                ? FindBroadcasterPlace(normalizedRelease, loc) != null
+                : GetWordBoundaryRegex(loc).IsMatch(normalizedRelease)));
+        namesEventLocation = releaseNamesEventLocationStrongly;
         if (releaseNamesEventLocationStrongly)
             return null;
 
@@ -3507,8 +3580,8 @@ public class ReleaseMatchingService
 
             // Check if release contains this different location
             bool releaseHasThisLocation =
-                GetWordBoundaryRegex(location).IsMatch(normalizedRelease) ||
-                aliases.Any(a => a.Length > 2 && GetWordBoundaryRegex(a).IsMatch(normalizedRelease));
+                NamesPlace(normalizedRelease, location) ||
+                aliases.Any(a => a.Length > 2 && NamesPlace(normalizedRelease, a));
 
             if (releaseHasThisLocation)
             {

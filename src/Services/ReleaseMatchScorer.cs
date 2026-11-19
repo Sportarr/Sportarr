@@ -264,7 +264,7 @@ public class ReleaseMatchScorer
     private static readonly Regex _motoGpSeasonYearRegex = new(
         @"(?<![A-Za-z0-9])S(20\d{2})E\d+\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex _parseRoundRegex = new(@"(?:Round|R|Week|W)[\.\s]*(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex _parseRoundRegex = new(@"(?:Round|Runde|R|Week|W)[\.\s]*(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _gameNumberRegex = new(@"\bGame[\.\s_-]*(\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _isoDateRegex = new(@"(?<!\d)((?:19[3-9]\d|20\d\d))[._/\-\s](0?[1-9]|1[0-2])[._/\-\s](0?[1-9]|[12]\d|3[01])(?!\d)", RegexOptions.Compiled);
     private static readonly Regex _euroDateRegex = new(@"(?<!\d)(\d{1,2})[._/\-\s](\d{1,2})[._/\-\s]((?:19[3-9]\d|20\d\d))(?!\d)", RegexOptions.Compiled);
@@ -272,11 +272,15 @@ public class ReleaseMatchScorer
     private static readonly Regex _compactIsoDateRegex = new(@"(?<!\d)((?:19[3-9]\d|20\d\d))(\d{2})(\d{2})(?!\d)", RegexOptions.Compiled);
 
     // DetectSportPrefix patterns - hit per release in the parse pass.
-    private static readonly Regex _formula3WordRegex = new(@"\bFORMULA[\.\-\s]*3\b", RegexOptions.Compiled);
+    private static readonly Regex _formula3WordRegex = new(@"\b(?:FORMULA|FORMEL)[\.\-\s]*3\b", RegexOptions.Compiled);
     private static readonly Regex _formula3ShortRegex = new(@"\bF3\b", RegexOptions.Compiled);
-    private static readonly Regex _formula2WordRegex = new(@"\bFORMULA[\.\-\s]*2\b", RegexOptions.Compiled);
+    private static readonly Regex _formula2WordRegex = new(@"\b(?:FORMULA|FORMEL)[\.\-\s]*2\b", RegexOptions.Compiled);
     private static readonly Regex _formula2ShortRegex = new(@"\bF2\b", RegexOptions.Compiled);
     private static readonly Regex _formula1ShortRegex = new(@"\bF1\b", RegexOptions.Compiled);
+    // German release names: "Formel.1", "Formel.E".
+    private static readonly Regex _formel1Regex = new(@"\bFORMEL[\.\-\s]*1\b", RegexOptions.Compiled);
+    private static readonly Regex _formelWordRegex = new(@"\bformel\b", RegexOptions.Compiled);
+    private static readonly Regex _formelERegex = new(@"\bFORMEL[\.\-\s]*E\b", RegexOptions.Compiled);
     private static readonly Regex _moto3Regex = new(@"\bMOTO[\.\-\s]*3\b", RegexOptions.Compiled);
     private static readonly Regex _moto2Regex = new(@"\bMOTO[\.\-\s]*2\b", RegexOptions.Compiled);
 
@@ -402,6 +406,28 @@ public class ReleaseMatchScorer
         var normalizedToken = NormalizeTitle(token);
         if (string.IsNullOrEmpty(normalizedToken)) return false;
         return GetWordBoundaryRegex(normalizedToken).IsMatch(normalizedHaystack);
+    }
+
+    // A language tag such as "GERMAN" in "Rennen.GERMAN.1080p" is not a
+    // place, so it does not count (issue #443). Only release titles carry
+    // language tags. An event title such as "French Round" names a place.
+    private bool ContainsReleaseLocationWord(string normalizedRelease, string token)
+    {
+        var normalizedToken = NormalizeTitle(token);
+        if (string.IsNullOrEmpty(normalizedToken)) return false;
+
+        // "Italia" in "Sky Sport Italia" names a broadcaster. Such a name
+        // counts only after a race name, as in "GP Italia".
+        if (ReleaseMatchingService.BroadcasterPlaceNames.Contains(normalizedToken))
+            return ReleaseMatchingService.FindBroadcasterPlace(normalizedRelease, normalizedToken) != null;
+
+        foreach (System.Text.RegularExpressions.Match match in GetWordBoundaryRegex(normalizedToken).Matches(normalizedRelease))
+        {
+            if (!LanguageDetector.IsLanguageTag(normalizedRelease, match.Index, match.Length))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -657,7 +683,8 @@ public class ReleaseMatchScorer
 
             if (leagueWords.Count > 0)
             {
-                var normalizedRelease = NormalizeTitle(releaseTitle);
+                // German releases write "Formel" for "Formula" (issue #443).
+                var normalizedRelease = _formelWordRegex.Replace(NormalizeTitle(releaseTitle), "formula");
                 var matchedWords = leagueWords.Count(w =>
                     normalizedRelease.Contains(w.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase));
 
@@ -992,7 +1019,8 @@ public class ReleaseMatchScorer
         // IMPORTANT: Check Moto2/Moto3 BEFORE MotoGP to avoid "MOTO" prefix confusion
         // IMPORTANT: Check F2/F3 BEFORE F1 to avoid false "F" prefix matches
         if (normalized.Contains("FORMULA.E") || normalized.Contains("FORMULAE") ||
-            normalized.Contains("FORMULA E") || normalized.Contains("FE."))
+            normalized.Contains("FORMULA E") || normalized.Contains("FE.") ||
+            _formelERegex.IsMatch(normalized))
             return "FormulaE";
         if (_formula3WordRegex.IsMatch(normalized) || normalized.Contains("F3.") ||
             _formula3ShortRegex.IsMatch(normalized))
@@ -1001,7 +1029,7 @@ public class ReleaseMatchScorer
             _formula2ShortRegex.IsMatch(normalized))
             return "Formula2";
         if (normalized.Contains("FORMULA1") || normalized.Contains("FORMULA.1") || normalized.Contains("F1.") ||
-            _formula1ShortRegex.IsMatch(normalized))
+            _formula1ShortRegex.IsMatch(normalized) || _formel1Regex.IsMatch(normalized))
             return "Formula1";
         if (_moto3Regex.IsMatch(normalized))
             return "Moto3";
@@ -1189,7 +1217,7 @@ public class ReleaseMatchScorer
     private int GetLocationMatchScore(string releaseTitle, Event evt, NascarVenueMatchContext? venueContext)
     {
         var eventTitle = evt.Title ?? "";
-        var normalizedRelease = NormalizeTitle(releaseTitle);
+        var normalizedRelease = NormalizeTitle(LanguageDetector.RemoveGroupAfterLanguage(releaseTitle));
         var normalizedEvent = NormalizeTitle(eventTitle);
         var useNascarVenues = venueContext != null &&
             evt.League?.Name.StartsWith("NASCAR Cup", StringComparison.OrdinalIgnoreCase) == true;
@@ -1342,7 +1370,7 @@ public class ReleaseMatchScorer
         var eventSessionType = DetectSessionType(normalizedEvent);
 
         // Detect what session type the RELEASE indicates
-        var releaseSessionType = DetectSessionType(normalizedRelease);
+        var releaseSessionType = DetectSessionType(normalizedRelease, releaseTitle: true);
 
         // If event has no specific session type (generic "Grand Prix"), allow anything
         if (eventSessionType == MotorsportSessionType.Unknown)
@@ -1378,7 +1406,7 @@ public class ReleaseMatchScorer
     /// Detect the session type from a title string.
     /// Order of checking matters - more specific patterns first!
     /// </summary>
-    private MotorsportSessionType DetectSessionType(string normalizedTitle)
+    private MotorsportSessionType DetectSessionType(string normalizedTitle, bool releaseTitle = false)
     {
         if (_f1ShowRegex.IsMatch(normalizedTitle))
             return MotorsportSessionType.Ancillary;
@@ -1390,6 +1418,15 @@ public class ReleaseMatchScorer
             return MotorsportSessionType.Practice; // Treat as non-race content
         if (_postRaceRegex.IsMatch(normalizedTitle))
             return MotorsportSessionType.Practice; // Treat as non-race content
+
+        // German session words name the session in a release name only.
+        // An English event title never changes meaning here (issue #443).
+        if (releaseTitle)
+        {
+            var german = EventPartDetector.DetectGermanSession(normalizedTitle);
+            if (german != null)
+                return CoarseSessionType(german);
+        }
 
         // Check for PRACTICE sessions first (FP1, FP2, FP3, Free Practice, Practice)
         if (_practiceRegex.IsMatch(normalizedTitle))
@@ -1434,19 +1471,26 @@ public class ReleaseMatchScorer
         // this scorer's coarse enum.
         var multilingual = EventPartDetector.DetectMultilingualSession(normalizedTitle);
         if (multilingual != null)
-        {
-            if (multilingual.StartsWith("Practice", StringComparison.OrdinalIgnoreCase))
-                return MotorsportSessionType.Practice;
-            if (multilingual.Equals("Sprint Qualifying", StringComparison.OrdinalIgnoreCase))
-                return MotorsportSessionType.SprintQualifying;
-            if (multilingual.StartsWith("Sprint", StringComparison.OrdinalIgnoreCase))
-                return MotorsportSessionType.Sprint;
-            if (multilingual.Equals("Qualifying", StringComparison.OrdinalIgnoreCase))
-                return MotorsportSessionType.Qualifying;
-            if (multilingual.Equals("Race", StringComparison.OrdinalIgnoreCase))
-                return MotorsportSessionType.Race;
-        }
+            return CoarseSessionType(multilingual);
 
+        return MotorsportSessionType.Unknown;
+    }
+
+    // Maps a canonical session name from EventPartDetector onto this
+    // scorer's coarse enum.
+    private static MotorsportSessionType CoarseSessionType(string session)
+    {
+        if (session.StartsWith("Practice", StringComparison.OrdinalIgnoreCase) ||
+            session.Equals("Training", StringComparison.OrdinalIgnoreCase))
+            return MotorsportSessionType.Practice;
+        if (session.Equals("Sprint Qualifying", StringComparison.OrdinalIgnoreCase))
+            return MotorsportSessionType.SprintQualifying;
+        if (session.StartsWith("Sprint", StringComparison.OrdinalIgnoreCase))
+            return MotorsportSessionType.Sprint;
+        if (session.Equals("Qualifying", StringComparison.OrdinalIgnoreCase))
+            return MotorsportSessionType.Qualifying;
+        if (session.Equals("Race", StringComparison.OrdinalIgnoreCase))
+            return MotorsportSessionType.Race;
         return MotorsportSessionType.Unknown;
     }
 
@@ -1490,37 +1534,37 @@ public class ReleaseMatchScorer
         // These are locations that appear in F1, MotoGP, and other motorsport releases
         var motorsportLocations = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            { "Qatar", new[] { "Lusail", "Qatari" } },
-            { "Brazil", new[] { "Brazilian", "Interlagos", "Sao Paulo" } },
-            { "Mexico", new[] { "Mexican", "Mexico City" } },
-            { "China", new[] { "Chinese", "Shanghai", "Sanya", "Haitang Bay" } },
-            { "USA", new[] { "United States", "American", "COTA", "Austin", "Circuit of the Americas", "Portland" } },
+            { "Qatar", new[] { "Lusail", "Qatari", "Katar", "Catar" } },
+            { "Brazil", new[] { "Brazilian", "Interlagos", "Sao Paulo", "Bresil", "Brasilien", "Brasil", "Brasile", "San Paolo" } },
+            { "Mexico", new[] { "Mexican", "Mexico City", "Mexique", "Mexiko", "Messico" } },
+            { "China", new[] { "Chinese", "Shanghai", "Sanya", "Haitang Bay", "Chine", "Cina" } },
+            { "USA", new[] { "United States", "American", "COTA", "Austin", "Circuit of the Americas", "Portland", "Etats Unis", "Vereinigte Staaten", "Stati Uniti", "Estados Unidos" } },
             { "Las Vegas", new[] { "Vegas" } },
             { "Miami", new[] { "Miami Gardens" } },
-            { "Abu Dhabi", new[] { "AbuDhabi", "Yas Marina" } },
+            { "Abu Dhabi", new[] { "AbuDhabi", "Yas Marina", "UAE", "Vereinigte Arabische Emirate", "Emirats Arabes Unis", "Abou Dhabi", "Abu Dabi", "Emiratos Arabes Unidos", "Emirados Arabes Unidos" } },
             { "Monaco", new[] { "Monte Carlo", "Monegasque" } },
-            { "Austria", new[] { "Austrian", "Spielberg", "Red Bull Ring" } },
-            { "Britain", new[] { "British", "Silverstone", "UK", "Great Britain", "United Kingdom", "London", "ExCeL" } },
-            { "United Kingdom", new[] { "British", "Britain", "Silverstone", "UK", "Great Britain", "London", "ExCeL" } },
-            { "Italy", new[] { "Italian", "Monza", "Imola", "Mugello", "Misano" } },
-            { "Belgium", new[] { "Belgian", "Spa", "Spa-Francorchamps" } },
-            { "Japan", new[] { "Japanese", "Suzuka", "Motegi", "Fuji", "Tokyo" } },
-            { "Singapore", new[] { "Singaporean", "Marina Bay" } },
-            { "Australia", new[] { "Australian", "Melbourne", "Albert Park", "Phillip Island" } },
-            { "Canada", new[] { "Canadian", "Montreal" } },
-            { "Azerbaijan", new[] { "Azerbaijani", "Baku" } },
-            { "Saudi Arabia", new[] { "Saudi", "Jeddah", "Diriyah" } },
-            { "Netherlands", new[] { "Dutch", "Zandvoort" } },
-            { "Hungary", new[] { "Hungarian", "Budapest", "Hungaroring" } },
-            { "Spain", new[] { "Spanish", "Barcelona", "Catalunya", "Jerez", "Valencia", "Aragon" } },
-            { "Bahrain", new[] { "Bahraini", "Sakhir" } },
+            { "Austria", new[] { "Austrian", "Spielberg", "Red Bull Ring", "Autriche", "Oesterreich", "Osterreich" } },
+            { "Britain", new[] { "British", "Silverstone", "UK", "Great Britain", "United Kingdom", "London", "ExCeL", "Grande Bretagne", "Grossbritannien", "Gran Bretagna", "Gran Bretana", "Gra Bretanha", "Reino Unido" } },
+            { "United Kingdom", new[] { "British", "Britain", "Silverstone", "UK", "Great Britain", "London", "ExCeL", "Grande Bretagne", "Grossbritannien", "Gran Bretagna", "Gran Bretana", "Gra Bretanha", "Reino Unido" } },
+            { "Italy", new[] { "Italian", "Monza", "Imola", "Mugello", "Misano", "Italie", "Italien", "Italia" } },
+            { "Belgium", new[] { "Belgian", "Spa", "Spa-Francorchamps", "Belgique", "Belgien", "Belgio", "Belgica" } },
+            { "Japan", new[] { "Japanese", "Suzuka", "Motegi", "Fuji", "Tokyo", "Japon", "Giappone", "Japao" } },
+            { "Singapore", new[] { "Singaporean", "Marina Bay", "Singapur", "Singapour", "Cingapura" } },
+            { "Australia", new[] { "Australian", "Melbourne", "Albert Park", "Phillip Island", "Australien", "Australie" } },
+            { "Canada", new[] { "Canadian", "Montreal", "Kanada" } },
+            { "Azerbaijan", new[] { "Azerbaijani", "Baku", "Aserbaidschan", "Azerbaidjan", "Azerbaigian", "Azerbaiyan", "Azerbaijao" } },
+            { "Saudi Arabia", new[] { "Saudi", "Jeddah", "Diriyah", "Saudi Arabien", "Arabie Saoudite", "Arabia Saudita", "Arabia Saudi" } },
+            { "Netherlands", new[] { "Dutch", "Zandvoort", "Pays Bas", "Niederlande", "Olanda", "Paesi Bassi", "Paises Bajos", "Holland", "Holanda", "Paises Baixos" } },
+            { "Hungary", new[] { "Hungarian", "Budapest", "Hungaroring", "Hongrie", "Ungarn", "Ungheria", "Hungria" } },
+            { "Spain", new[] { "Spanish", "Barcelona", "Catalunya", "Jerez", "Valencia", "Aragon", "Espagne", "Spanien", "Spagna", "Espana", "Espanha" } },
+            { "Bahrain", new[] { "Bahraini", "Sakhir", "Bahrein", "Barein" } },
             { "Emilia Romagna", new[] { "Emilia-Romagna", "San Marino" } },
             { "Portugal", new[] { "Portuguese", "Portimao", "Algarve" } },
-            { "France", new[] { "French", "Le Mans", "Paul Ricard" } },
-            { "Germany", new[] { "German", "Sachsenring", "Hockenheim", "Nurburgring", "Berlin" } },
-            { "Malaysia", new[] { "Malaysian", "Sepang" } },
-            { "Thailand", new[] { "Thai", "Buriram", "Chang" } },
-            { "Indonesia", new[] { "Indonesian", "Mandalika", "Lombok", "Jakarta" } },
+            { "France", new[] { "French", "Le Mans", "Paul Ricard", "Frankreich", "Francia", "Franca" } },
+            { "Germany", new[] { "German", "Sachsenring", "Hockenheim", "Nurburgring", "Berlin", "Allemagne", "Deutschland", "Germania", "Alemania", "Alemanha" } },
+            { "Malaysia", new[] { "Malaysian", "Sepang", "Malaisie", "Malasia" } },
+            { "Thailand", new[] { "Thai", "Buriram", "Chang", "Tailandia" } },
+            { "Indonesia", new[] { "Indonesian", "Mandalika", "Lombok", "Jakarta", "Indonesien" } },
             { "India", new[] { "Indian", "Buddh" } },
             { "Argentina", new[] { "Termas de Rio Hondo" } },
             { "Kazakhstan", new[] { "Sokol" } },
@@ -1570,10 +1614,10 @@ public class ReleaseMatchScorer
         {
             foreach (var eventLoc in eventLocations)
             {
-                if (ContainsLocationWord(normalizedRelease, eventLoc))
+                if (ContainsReleaseLocationWord(normalizedRelease, eventLoc))
                     return null;
                 if (motorsportLocations.TryGetValue(eventLoc, out var eventLocAliases)
-                    && eventLocAliases.Any(a => ContainsLocationWord(normalizedRelease, a)))
+                    && eventLocAliases.Any(a => ContainsReleaseLocationWord(normalizedRelease, a)))
                     return null;
             }
         }
@@ -1605,7 +1649,7 @@ public class ReleaseMatchScorer
                 continue;
 
             // Check if this different location appears in the release
-            if (ContainsLocationWord(normalizedRelease, location))
+            if (ContainsReleaseLocationWord(normalizedRelease, location))
             {
                 // Before flagging as conflict, check if this release location is a PARENT
                 // of any event location in the hierarchy
@@ -1623,7 +1667,7 @@ public class ReleaseMatchScorer
             {
                 if (checkAllLocations && SearchNormalizationService.SceneLanguageTags.Contains(alias))
                     continue;
-                if (ContainsLocationWord(normalizedRelease, alias))
+                if (ContainsReleaseLocationWord(normalizedRelease, alias))
                 {
                     // Same check for aliases
                     if (LocationHierarchy.TryGetValue(location, out var childLocations))
@@ -2285,10 +2329,10 @@ public class ReleaseMatchScorer
         (new Regex(@"\bmoto[\.\-\s]*3\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Moto3"),
         (new Regex(@"\bmoto[\.\-\s]*2\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Moto2"),
         (new Regex(@"\bmoto[\.\-\s]*gp\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "MotoGP"),
-        (new Regex(@"\bformula[\.\-\s]*e\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "FormulaE"),
-        (new Regex(@"\bformula[\.\-\s]*3\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula3"),
-        (new Regex(@"\bformula[\.\-\s]*2\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula2"),
-        (new Regex(@"\bformula[\.\-\s]*1\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula1"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*e\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "FormulaE"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*3\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula3"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*2\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula2"),
+        (new Regex(@"\b(?:formula|formel)[\.\-\s]*1\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula1"),
         (new Regex(@"\bf1[\.\b]", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula1"),
         (new Regex(@"\bf2[\.\b]", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula2"),
         (new Regex(@"\bf3[\.\b]", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Formula3"),

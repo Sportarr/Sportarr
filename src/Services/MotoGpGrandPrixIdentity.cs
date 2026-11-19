@@ -36,31 +36,36 @@ internal static class MotoGpGrandPrixIdentity
         public Regex? ReleaseDemonym { get; }
     }
 
+    // "Italia" also names a broadcaster, as in "Sky Sport Italia". Such a
+    // name counts only after a race name, as in "Gran Premio d Italia".
+    private static string AfterRaceName(string name) =>
+        @"(?:gp|gran premio|gran premi|grand prix|grosser preis|grande premio)(?:\s+(?:de|do|da|di|del|della|du|von|of|d))?\s+" + name;
+
     private static readonly Place[] Places =
     [
         new("San Marino", Names(@"san marino|saint marin|misano")),
         new("Aragon", Names(@"aragon|motorland")),
-        new("Catalonia", Names(@"catalonia|catalunya|catalogne|barcelona|montmelo"), "catalan"),
-        new("Austria", Names(@"austria|autriche|spielberg|red bull ring"), "austrian"),
-        new("Great Britain", Names(@"great britain|britain|united kingdom|grande bretagne|angleterre|silverstone"), "british"),
-        new("Germany", Names(@"germany|allemagne|sachsenring"), "german"),
-        new("Netherlands", Names(@"netherlands|pays bas|assen"), "dutch"),
-        new("Czechia", Names(@"czechia|czech republic|tchequie|brno"), "czech"),
-        new("Hungary", Names(@"hungary|hongrie|balaton park"), "hungarian"),
-        new("France", Names(@"france|le mans"), "french"),
-        new("Spain", Names(@"spain|espagne|jerez"), "spanish"),
-        new("Americas", Names(@"americas|ameriques|united states|cota|austin|circuit of the americas"), "american"),
-        new("Brazil", Names(@"brazil|bresil|goiania"), "brazilian"),
-        new("Italy", Names(@"italy|italie|mugello"), "italian"),
-        new("Thailand", Names(@"thailand|thailande|buriram"), "thai"),
+        new("Catalonia", Names(@"catalonia|catalunya|catalogne|katalonien|cataluna|barcelona|montmelo"), "catalan"),
+        new("Austria", Names(@"austria|autriche|oesterreich|osterreich|spielberg|red bull ring"), "austrian"),
+        new("Great Britain", Names(@"great britain|britain|united kingdom|grande bretagne|angleterre|grossbritannien|gran bretagna|gran bretana|gra bretanha|reino unido|silverstone"), "british"),
+        new("Germany", Names(@"germany|allemagne|germania|alemania|alemanha|sachsenring|" + AfterRaceName("deutschland")), "german"),
+        new("Netherlands", Names(@"netherlands|pays bas|niederlande|olanda|paesi bassi|paises bajos|paises baixos|holanda|assen"), "dutch"),
+        new("Czechia", Names(@"czechia|czech republic|tchequie|tschechien|chequia|republica checa|brno"), "czech"),
+        new("Hungary", Names(@"hungary|hongrie|ungarn|ungheria|hungria|balaton park"), "hungarian"),
+        new("France", Names(@"france|frankreich|francia|franca|le mans"), "french"),
+        new("Valencia", Names(@"valencia|valence|valenciana|ricardo tormo")),
+        new("Spain", Names(@"spain|espagne|spanien|spagna|espanha|jerez|" + AfterRaceName("espana")), "spanish"),
+        new("Americas", Names(@"americas|ameriques|united states|estados unidos|cota|austin|circuit of the americas"), "american"),
+        new("Brazil", Names(@"brazil|bresil|brasilien|brasile|goiania|" + AfterRaceName("brasil")), "brazilian"),
+        new("Italy", Names(@"italy|italie|italien|mugello|" + AfterRaceName("italia")), "italian"),
+        new("Thailand", Names(@"thailand|thailande|tailandia|buriram"), "thai"),
         new("Portugal", Names(@"portugal|portimao"), "portuguese"),
-        new("Valencia", Names(@"valencia|valence|ricardo tormo")),
-        new("Qatar", Names(@"qatar|lusail|losail"), "qatari"),
-        new("Japan", Names(@"japan|japon|motegi"), "japanese"),
-        new("Australia", Names(@"australia|australie|phillip island"), "australian"),
-        new("Malaysia", Names(@"malaysia|malaisie|sepang"), "malaysian"),
-        new("Indonesia", Names(@"indonesia|indonesie|mandalika"), "indonesian"),
-        new("Argentina", Names(@"argentina|argentine|termas de rio hondo"), "argentinian")
+        new("Qatar", Names(@"qatar|katar|catar|lusail|losail"), "qatari"),
+        new("Japan", Names(@"japan|japon|japao|giappone|motegi"), "japanese"),
+        new("Australia", Names(@"australia|australie|australien|phillip island"), "australian"),
+        new("Malaysia", Names(@"malaysia|malaisie|malasia|sepang"), "malaysian"),
+        new("Indonesia", Names(@"indonesia|indonesie|indonesien|mandalika"), "indonesian"),
+        new("Argentina", Names(@"argentina|argentine|argentinien|termas de rio hondo"), "argentinian")
     ];
 
     private static readonly Regex Separators = new(@"[^a-z0-9]+", RegexOptions.Compiled);

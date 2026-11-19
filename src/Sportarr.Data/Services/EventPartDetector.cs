@@ -1594,8 +1594,72 @@ public class EventPartDetector
         ("Grid Show",         new Regex(@"\bla\s+grille\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
         ("Practice",          new Regex(@"\bessais\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
         ("Race",              new Regex(@"(?<!road\s+)(?<!street\s+)(?<!race\s+)\b(?:la\s+)?course\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
-        // --- add other languages (de, it, es, ...) below ---
+        // --- add other languages (it, es, ...) below ---
     };
+
+    // German session words, as Sky Deutschland names them. Two rows name a
+    // sprint session and always apply. The other rows apply only when the
+    // name holds no English session word, so "Race Training Day" stays a
+    // race. A bare "Training" is a generic practice. It matches no
+    // numbered practice session.
+    //
+    // DetectMotorsportSessionFromFilename reads these rows. ReleaseEvaluator
+    // also sends event titles there to cap the size of a qualifying file.
+    // Only "Qualifikation" gives a qualifying session, and an English event
+    // title never holds it. The scorer reads these rows for release names
+    // only. Search queries do not use them.
+    private static readonly (string Session, Regex Pattern)[] GermanSprintSessionPatterns =
+    {
+        ("Sprint Qualifying", new Regex(@"\bsprint\s*qualifikation\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Sprint",            new Regex(@"\bsprint\s*rennen\b|\bsprintrennen\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+    };
+
+    private static readonly (string Session, Regex Pattern)[] GermanSessionPatterns =
+    {
+        ("Practice 3", new Regex(GermanNumberedTraining("3|drei"), RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Practice 2", new Regex(GermanNumberedTraining("2|zwei"), RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Practice 1", new Regex(GermanNumberedTraining("1|eins"), RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Qualifying", new Regex(@"\bqualifikation\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Training",   new Regex(@"\b(?:freies\s*)?training\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ("Race",       new Regex(@"\brennen\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+    };
+
+    private static readonly Regex EnglishSessionWord = new(
+        @"\b(?:race|sprint|qualifying|qualifyers?|qualifiers?|quali|q[123]|practice|fp[123]|shootout|warm\s*up|warmup|superpole)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // "3. Freies Training", "Freies Training 3" and "Training 3". A number
+    // that belongs to a round, a stage or "Formel 1" is not a practice number.
+    private static string GermanNumberedTraining(string number) =>
+        $@"(?<!\b(?:round|runde|rd|r|lauf|stage|etappe|wp|ss|formel|formula)\s*)\b(?:{number})\s*(?:freies\s*)?training\b|\b(?:freies\s*)?training\s*(?:{number})\b";
+
+    /// <summary>
+    /// Detect a motorsport session from German words in a release or file
+    /// name. Input should already be lower-cased with separators collapsed
+    /// to spaces. Returns a canonical session name, or null.
+    /// </summary>
+    public static string? DetectGermanSession(string cleanedTitle)
+    {
+        if (string.IsNullOrEmpty(cleanedTitle))
+            return null;
+
+        foreach (var (session, pattern) in GermanSprintSessionPatterns)
+        {
+            if (pattern.IsMatch(cleanedTitle))
+                return session;
+        }
+
+        if (EnglishSessionWord.IsMatch(cleanedTitle))
+            return null;
+
+        foreach (var (session, pattern) in GermanSessionPatterns)
+        {
+            if (pattern.IsMatch(cleanedTitle))
+                return session;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Detect a motorsport session from non-English vocabulary (French, etc.).
@@ -1639,7 +1703,7 @@ public class EventPartDetector
         if (IsMotorsportMatch(cleanFilename, @"\b(notebook|ted'?s|highlights|review|analysis|preview|magazine|morning|afternoon)\b", RegexOptions.IgnoreCase))
             return null;
 
-        var multilingualSession = DetectMultilingualSession(cleanFilename);
+        var multilingualSession = DetectMultilingualSession(cleanFilename) ?? DetectGermanSession(cleanFilename);
         if (multilingualSession != null)
             return multilingualSession;
 

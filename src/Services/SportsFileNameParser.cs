@@ -363,7 +363,7 @@ public class SportsFileNameParser
         {
             Sport = "Motorsport",
             Organization = "F1 Academy",
-            Pattern = new Regex(@"(?:F1[\.\-\s]*Academy|Formula[\.\-\s]*1[\.\-\s]*Academy|Formula[\.\-\s]*One[\.\-\s]*Academy)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|DD[25P]|SKY|F1TV|F1LIVE|STAR|ESPN|TSN|Multi|English|French|German)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            Pattern = new Regex(@"(?:F1[\.\-\s]*Academy|Formula[\.\-\s]*1[\.\-\s]*Academy|Formula[\.\-\s]*One[\.\-\s]*Academy|\bFormel[\.\-\s]*1[\.\-\s]*Academy)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|DD[25P]|SKY|F1TV|F1LIVE|STAR|ESPN|TSN|Multi|English|French|German)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => match.Groups["round"].Success
                 ? $"F1 Academy {match.Groups["year"].Value} Round {match.Groups["round"].Value}: {match.Groups["name"].Value.Replace(".", " ")} GP"
                 : $"F1 Academy {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")} GP",
@@ -377,7 +377,7 @@ public class SportsFileNameParser
         {
             Sport = "Motorsport",
             Organization = "Formula 1",
-            Pattern = new Regex(@"(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|DD[25P]|SKY|F1TV|F1LIVE|STAR|ESPN|TSN|Multi|English|French|German)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            Pattern = new Regex(@"(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One|\bFormel[\.\-\s]*1)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|DD[25P]|SKY|F1TV|F1LIVE|STAR|ESPN|TSN|Multi|English|French|German)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => match.Groups["round"].Success
                 ? $"F1 {match.Groups["year"].Value} Round {match.Groups["round"].Value}: {match.Groups["name"].Value.Replace(".", " ")} GP"
                 : $"F1 {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")} GP",
@@ -422,7 +422,7 @@ public class SportsFileNameParser
         {
             Sport = "Motorsport",
             Organization = "Formula E",
-            Pattern = new Regex(@"Formula[\.\-\s]+E[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)[\.\-\s]+E[\.\-\s]+Prix", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            Pattern = new Regex(@"(?:Formula|\bFormel)[\.\-\s]+E[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)*?)[\.\-\s]+E[\.\-\s]+Prix", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["name"].Value)} E Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value),
@@ -433,7 +433,7 @@ public class SportsFileNameParser
         {
             Sport = "Motorsport",
             Organization = "Formula E",
-            Pattern = new Regex(@"Formula[\.\-\s]+E[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            Pattern = new Regex(@"(?:Formula|\bFormel)[\.\-\s]+E[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["name"].Value)} E Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value),
@@ -498,7 +498,7 @@ public class SportsFileNameParser
         {
             Sport = "Motorsport",
             Organization = "Formula 2",
-            Pattern = new Regex(@"(?:Formula[\.\-\s]+2|F2)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            Pattern = new Regex(@"(?:Formula[\.\-\s]+2|\bFormel[\.\-\s]+2|F2)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["name"].Value)} Grand Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value),
@@ -510,7 +510,7 @@ public class SportsFileNameParser
         {
             Sport = "Motorsport",
             Organization = "Formula 3",
-            Pattern = new Regex(@"(?:Formula[\.\-\s]+3|F3)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
+            Pattern = new Regex(@"(?:Formula[\.\-\s]+3|\bFormel[\.\-\s]+3|F3)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z0-9]+)*?)(?=[\.\-\s]+(?:\d{3,4}p|WEB|HDTV|BluRay|BDRip|[hx]\.?26[45]|HEVC|AAC|DTS|SKY|Multi|English)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["name"].Value)} Grand Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value),
@@ -839,7 +839,7 @@ public class SportsFileNameParser
     // "Formula.1.2026x109.Brazil.Race". An "R14" round token can follow the
     // index. The name group holds the words after them.
     private static readonly Regex FormulaOneYearIndexName = new(
-        @"^(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One)[\.\-\s]+20[12]\dx\d{1,3}[\.\-\s]+(?:(?:Round|Rd|R)[\.\-\s]*\d{1,2}[\.\-\s]+)?(?<name>.+)$",
+        @"^(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One|\bFormel[\.\-\s]*1)[\.\-\s]+20[12]\dx\d{1,3}[\.\-\s]+(?:(?:Round|Rd|R)[\.\-\s]*\d{1,2}[\.\-\s]+)?(?<name>.+)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled, PatternTimeout);
 
     // The place ends at a session word, a show word or a release tag.
@@ -1375,16 +1375,16 @@ public class SportsFileNameParser
             { @"^MLB[\.\-\s]", ("Baseball", "MLB") },
             { @"^(?:EPL|Premier[\.\-\s]*League)[\.\-\s]", ("Soccer", "Premier League") },
             { @"^(?:UCL|Champions[\.\-\s]*League)[\.\-\s]", ("Soccer", "Champions League") },
-            { @"^(?:F1[\.\-\s]*Academy|Formula[\.\-\s]*(?:1|One)[\.\-\s]*Academy)[\.\-\s]", ("Motorsport", "F1 Academy") },
-            { @"^(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One)[\.\-\s]", ("Motorsport", "Formula 1") },
-            { @"^Formula[\.\-\s]*E[\.\-\s]", ("Motorsport", "Formula E") },
+            { @"^(?:F1[\.\-\s]*Academy|(?:Formula|Formel)[\.\-\s]*(?:1|One)[\.\-\s]*Academy)[\.\-\s]", ("Motorsport", "F1 Academy") },
+            { @"^(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One|Formel[\.\-\s]*1)[\.\-\s]", ("Motorsport", "Formula 1") },
+            { @"^(?:Formula|Formel)[\.\-\s]*E[\.\-\s]", ("Motorsport", "Formula E") },
             { @"^NASCAR[\.\-\s]", ("Motorsport", "NASCAR") },
             { @"^MotoGP[\.\-\s]", ("Motorsport", "MotoGP") },
             { @"^Moto2[\.\-\s]", ("Motorsport", "Moto2") },
             { @"^Moto3[\.\-\s]", ("Motorsport", "Moto3") },
             { @"^MotoE[\.\-\s]", ("Motorsport", "MotoE") },
-            { @"^(?:Formula[\.\-\s]+2|F2)[\.\-\s]", ("Motorsport", "Formula 2") },
-            { @"^(?:Formula[\.\-\s]+3|F3)[\.\-\s]", ("Motorsport", "Formula 3") },
+            { @"^(?:Formula[\.\-\s]+2|Formel[\.\-\s]+2|F2)[\.\-\s]", ("Motorsport", "Formula 2") },
+            { @"^(?:Formula[\.\-\s]+3|Formel[\.\-\s]+3|F3)[\.\-\s]", ("Motorsport", "Formula 3") },
             { @"^IndyCar[\.\-\s]", ("Motorsport", "IndyCar") },
             { @"^WSBK[\.\-\s]", ("Motorsport", "WSBK") },
             { @"^(?:WorldSSP|World[\.\-\s]*Supersport)[\.\-\s]", ("Motorsport", "WorldSSP") },
