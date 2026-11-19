@@ -188,6 +188,7 @@ public class LeagueAddService
                         EventTitle = league.Name,
                         League = league.Name,
                         Sport = league.Sport,
+                        LeagueId = league.Id,
                     },
                     league.Tags);
             }

@@ -307,6 +307,10 @@ Event names and payloads:
 | `file.imported` | A file is imported for an event |
 | `file.removed` | An event's file is deleted |
 
+Deleting a league sends one `event.removed` frame for each of its events,
+with `leagueId` set. It sends no `file.removed` frames, because each event's
+files go with it.
+
 Every frame names the event it concerns, so there is no league level "events
 changed" hint and none is needed. Sync the event named in the frame rather
 than re-reading a whole league.

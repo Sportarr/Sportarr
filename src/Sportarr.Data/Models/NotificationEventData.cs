@@ -39,12 +39,19 @@ public class NotificationEventData
     public string? EventTitle { get; set; }
     public string? League { get; set; }
     public string? Sport { get; set; }
+    // League add and league delete only. These have no event, so a consumer
+    // keys on the league's own id instead.
+    public int? LeagueId { get; set; }
 
     // Rename only: the covering directory of a batch of renamed files -
     // there's no single file to point at, so this feeds Series.Path
     // directly instead of going through File/DeletedFiles.
     public string? SeriesPath { get; set; }
     public int? RenamedCount { get; set; }
+
+    // League delete only: the nearest folder that still exists, for the
+    // Jellyfin and Emby rescan. It is not part of any payload.
+    public string? ExistingScanFolder { get; set; }
 
     // Grab -> WebhookPayload.Release. Quality/Size here are the release's
     // OWN claim (a torrent/nzb title's stated quality and advertised
@@ -98,9 +105,10 @@ public class NotificationEventData
     /// SPORTARR_{KEY} environment-variable passthrough, which needs a
     /// key/value walk rather than a typed object. Nested file objects are
     /// flattened with an index suffix (SPORTARR_DELETEDFILES_0_PATH, ...)
-    /// since env vars can't carry structure.
+    /// since env vars can't carry structure. maxDeletedFiles limits how many
+    /// files are flattened. deletedFiles_count always gives the full number.
     /// </summary>
-    public Dictionary<string, object> ToDictionary()
+    public Dictionary<string, object> ToDictionary(int? maxDeletedFiles = null)
     {
         var dict = new Dictionary<string, object>();
         if (EventId.HasValue) dict["eventId"] = EventId.Value;
@@ -112,6 +120,7 @@ public class NotificationEventData
         if (EventTitle != null) dict["eventTitle"] = EventTitle;
         if (League != null) dict["league"] = League;
         if (Sport != null) dict["sport"] = Sport;
+        if (LeagueId.HasValue) dict["leagueId"] = LeagueId.Value;
         if (SeriesPath != null) dict["seriesPath"] = SeriesPath;
         if (RenamedCount.HasValue) dict["renamedCount"] = RenamedCount.Value;
         if (Indexer != null) dict["indexer"] = Indexer;
@@ -127,7 +136,9 @@ public class NotificationEventData
         }
         if (DeletedFiles != null)
         {
-            for (var i = 0; i < DeletedFiles.Count; i++)
+            dict["deletedFiles_count"] = DeletedFiles.Count;
+            var flattened = Math.Min(DeletedFiles.Count, maxDeletedFiles ?? int.MaxValue);
+            for (var i = 0; i < flattened; i++)
             {
                 dict[$"deletedFiles_{i}_path"] = DeletedFiles[i].Path;
                 if (DeletedFiles[i].Quality != null) dict[$"deletedFiles_{i}_quality"] = DeletedFiles[i].Quality!;
@@ -222,6 +233,8 @@ public class WebhookSeriesInfo
     public string Title { get; set; } = "";
     public string? Path { get; set; }
     public string? League { get; set; }
+    /// <summary>League add and league delete only, where Id is absent.</summary>
+    public int? LeagueId { get; set; }
     public string? Sport { get; set; }
 }
 

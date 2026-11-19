@@ -341,6 +341,7 @@ public static class SonarrSeriesEndpoints
             SportarrDbContext db,
             ConfigService configService,
             IMetadataWriterService metadataWriterService,
+            IServiceScopeFactory scopeFactory,
             ILogger<Program> logger,
             bool deleteFiles = false,
             bool addImportListExclusion = false) =>
@@ -382,6 +383,8 @@ public static class SonarrSeriesEndpoints
             var eventFiles = eventIds.Any()
                 ? await db.EventFiles.Where(ef => eventIds.Contains(ef.EventId)).ToListAsync()
                 : new List<EventFile>();
+
+            var notice = await LeagueDeleteNotifier.CaptureAsync(db, league, events, eventFiles, deleteFiles);
 
             var failedPaths = new List<string>();
 
@@ -469,6 +472,8 @@ public static class SonarrSeriesEndpoints
 
             db.Leagues.Remove(league);
             await db.SaveChangesAsync();
+
+            _ = LeagueDeleteNotifier.SendInBackground(scopeFactory, notice, logger);
 
             logger.LogInformation("[V3-COMPAT] Deleted league {Name} and {EventCount} events",
                 league.Name, events.Count);

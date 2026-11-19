@@ -2138,7 +2138,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 
 // API: Delete league
 app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, FileNamingService naming,
-    [FromServices] IMetadataWriterService metadataWriterService, ILogger<Program> logger) =>
+    [FromServices] IMetadataWriterService metadataWriterService, IServiceScopeFactory scopeFactory, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -2157,6 +2157,8 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
     var eventFiles = eventIds.Any()
         ? await db.EventFiles.Where(ef => eventIds.Contains(ef.EventId)).ToListAsync()
         : new List<EventFile>();
+
+    var notice = await LeagueDeleteNotifier.CaptureAsync(db, league, events, eventFiles, deleteFiles);
 
     // Track league folders to delete (collect unique league folders from file paths)
     var leagueFoldersToDelete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -2252,6 +2254,8 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
 
     db.Leagues.Remove(league);
     await db.SaveChangesAsync();
+
+    _ = LeagueDeleteNotifier.SendInBackground(scopeFactory, notice, logger);
 
     var filesDeletedMsg = deleteFiles ? $", {eventFiles.Count} files deleted" : "";
     var foldersDeletedMsg = deleteFiles && leagueFoldersToDelete.Any() ? $", {leagueFoldersToDelete.Count} folder(s) deleted" : "";

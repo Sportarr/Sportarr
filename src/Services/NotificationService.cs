@@ -57,8 +57,10 @@ public class NotificationService : INotificationService
                     await stream.PublishAsync("file", "imported", data.EventId, data.EventExternalId, path: data.File.Path);
                 }
                 break;
-            case NotificationTrigger.OnEventFileDelete:
-            case NotificationTrigger.OnEventFileDeleteForUpgrade:
+            // A league delete has no event to name. Its notifier publishes
+            // one batch of event removals instead of a frame for each file.
+            case NotificationTrigger.OnEventFileDelete when data?.EventId != null:
+            case NotificationTrigger.OnEventFileDeleteForUpgrade when data?.EventId != null:
                 if (data?.DeletedFiles is { Count: > 0 })
                 {
                     foreach (var file in data.DeletedFiles)
@@ -201,6 +203,9 @@ public class NotificationService : INotificationService
                 // accept either so a rename triggers a folder scan instead
                 // of falling back to a full library refresh.
                 var filePath = !string.IsNullOrEmpty(data?.File?.Path) ? data!.File!.Path : data?.SeriesPath;
+                // Jellyfin and Emby scan the path they are given, so they get
+                // a folder that still exists when the sender has one.
+                var existingPath = data?.ExistingScanFolder ?? filePath;
 
                 var success = notification.Implementation switch
                 {
@@ -221,8 +226,8 @@ public class NotificationService : INotificationService
                     "CustomScript" => RunCustomScript(config, title, message, trigger, data),
                     // Media server library refresh notifications
                     "Plex" => await RefreshPlexLibraryAsync(config, filePath),
-                    "Jellyfin" => await RefreshJellyfinLibraryAsync(config, filePath),
-                    "Emby" => await RefreshEmbyLibraryAsync(config, filePath),
+                    "Jellyfin" => await RefreshJellyfinLibraryAsync(config, existingPath),
+                    "Emby" => await RefreshEmbyLibraryAsync(config, existingPath),
                     "Kodi" => await SendKodiAsync(config, title, message, trigger, filePath),
                     _ => false
                 };
@@ -477,6 +482,13 @@ public class NotificationService : INotificationService
     /// </summary>
     private static readonly SemaphoreSlim ScriptConcurrency = new(2, 2);
 
+    /// <summary>
+    /// Most files a custom script gets as separate variables. A league delete
+    /// can remove thousands of files, and the process environment has a size
+    /// limit. SPORTARR_DELETEDFILES_COUNT still gives the full number.
+    /// </summary>
+    internal const int CustomScriptDeletedFileLimit = 100;
+
     private bool RunCustomScript(Dictionary<string, JsonElement> config, string title, string message, NotificationTrigger trigger, NotificationEventData? data)
     {
         var scriptPath = GetConfigString(config, "scriptPath");
@@ -549,7 +561,7 @@ public class NotificationService : INotificationService
     /// Shared by the fire-and-forget notification path and the synchronous
     /// test path so the two can't drift.
     /// </summary>
-    private ProcessStartInfo BuildCustomScriptStartInfo(
+    internal ProcessStartInfo BuildCustomScriptStartInfo(
         Dictionary<string, JsonElement> config,
         string scriptPath,
         string title,
@@ -580,7 +592,7 @@ public class NotificationService : INotificationService
         psi.Environment["SPORTARR_MESSAGE"] = message;
         if (data != null)
         {
-            foreach (var (key, value) in data.ToDictionary())
+            foreach (var (key, value) in data.ToDictionary(CustomScriptDeletedFileLimit))
             {
                 psi.Environment[$"SPORTARR_{key.ToUpperInvariant()}"] = value?.ToString() ?? "";
             }
@@ -1103,6 +1115,7 @@ public class NotificationService : INotificationService
                 Title = data.EventTitle ?? "",
                 Path = seriesPath,
                 League = data.League,
+                LeagueId = data.LeagueId,
                 Sport = data.Sport
             };
         }
