@@ -2742,7 +2742,7 @@ public static class DatabaseInitializer
         }
     }
 
-    private static void EnsureCriticalColumns(SportarrDbContext db)
+    internal static void EnsureCriticalColumns(SportarrDbContext db)
     {
         EnsureColumn(db, "Events", "BroadcastDate", "TEXT NULL");
         EnsureColumn(db, "Events", "BroadcastDateVerified", "INTEGER NOT NULL DEFAULT 0");
@@ -2798,6 +2798,10 @@ public static class DatabaseInitializer
         EnsureColumn(db, "DownloadQueue", "FailedAt", "TEXT NULL");
         EnsureColumn(db, "DownloadQueue", "LastProgressAt", "TEXT NULL");
         EnsureColumn(db, "EventFiles", "IsIptvRecording", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "GrabHistory", "GrabSource", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "GrabHistory", "MatchScoreAtGrab", "INTEGER NULL");
+        EnsureColumn(db, "GrabHistory", "IdentityRejectedAtGrab", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "GrabHistory", "CrowdHintShown", "INTEGER NOT NULL DEFAULT 0");
 
         RelaxLegacyRootFolderColumns(db);
     }

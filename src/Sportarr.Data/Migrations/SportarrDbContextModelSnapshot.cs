@@ -1572,6 +1572,9 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("CrowdHintShown")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("CustomFormatScore")
                         .HasColumnType("INTEGER");
 
@@ -1594,12 +1597,18 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("FileExists")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("GrabSource")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("GrabbedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Guid")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IdentityRejectedAtGrab")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("ImportedAt")
                         .HasColumnType("TEXT");
@@ -1614,6 +1623,9 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<DateTime?>("LastRegrabAttempt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("MatchScoreAtGrab")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("PartName")
                         .HasMaxLength(100)

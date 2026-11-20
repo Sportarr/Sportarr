@@ -1045,6 +1045,18 @@ public class GrabHistory
     /// before this was recorded.
     /// </summary>
     public string? DestinationPath { get; set; }
+
+    /// <summary>How the grab was made. Older rows hold Unknown.</summary>
+    public GrabSource GrabSource { get; set; } = GrabSource.Unknown;
+
+    /// <summary>The match score that the app gave the release at the grab, or null when it has none.</summary>
+    public int? MatchScoreAtGrab { get; set; }
+
+    /// <summary>True when the identity check hard-rejected the release at the grab.</summary>
+    public bool IdentityRejectedAtGrab { get; set; } = false;
+
+    /// <summary>True when the search list showed a crowd answer on this release. Phase 2 sets it.</summary>
+    public bool CrowdHintShown { get; set; } = false;
 }
 
 /// <summary>

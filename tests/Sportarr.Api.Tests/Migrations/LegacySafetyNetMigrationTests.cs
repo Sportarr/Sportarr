@@ -51,4 +51,62 @@ public class LegacySafetyNetMigrationTests
         command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name LIKE 'IX_PendingReleases_%'";
         Assert.Equal(2L, await command.ExecuteScalarAsync());
     }
+
+    [Fact]
+    public async Task SqliteSafetyNetAddsTheGrabSourceColumnsToALegacyGrabHistory()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new SportarrDbContext(new DbContextOptionsBuilder<SportarrDbContext>()
+            .UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+
+        var evt = new Sportarr.Api.Models.Event { Title = "Legacy event", Sport = "Soccer", EventDate = DateTime.UtcNow };
+        db.Events.Add(evt);
+        await db.SaveChangesAsync();
+        db.GrabHistory.Add(new Sportarr.Api.Models.GrabHistory
+        {
+            EventId = evt.Id, Title = "Legacy.Release.2024", Indexer = "Legacy",
+            DownloadUrl = "http://legacy.invalid/1.nzb", Guid = "legacy-1", Protocol = "Usenet"
+        });
+        await db.SaveChangesAsync();
+
+        // A legacy table has none of the four columns.
+        string[] columns = { "GrabSource", "MatchScoreAtGrab", "IdentityRejectedAtGrab", "CrowdHintShown" };
+        await using var command = connection.CreateCommand();
+        foreach (var column in columns)
+        {
+            command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('GrabHistory') WHERE name='{column}'";
+            if ((long)(await command.ExecuteScalarAsync())! == 1L)
+                await db.Database.ExecuteSqlRawAsync($"ALTER TABLE GrabHistory DROP COLUMN \"{column}\"");
+        }
+
+        DatabaseInitializer.EnsureCriticalColumns(db);
+
+        foreach (var (column, notNull, defaultValue) in new[]
+        {
+            ("GrabSource", 1L, "0"),
+            ("MatchScoreAtGrab", 0L, (string?)null),
+            ("IdentityRejectedAtGrab", 1L, "0"),
+            ("CrowdHintShown", 1L, "0"),
+        })
+        {
+            command.CommandText = $"SELECT type, \"notnull\", dflt_value FROM pragma_table_info('GrabHistory') WHERE name='{column}'";
+            await using var reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync(), $"{column} is missing");
+            Assert.Equal("INTEGER", reader.GetString(0));
+            Assert.Equal(notNull, reader.GetInt64(1));
+            Assert.Equal(defaultValue, reader.IsDBNull(2) ? null : reader.GetString(2));
+        }
+
+        command.CommandText = "SELECT GrabSource, MatchScoreAtGrab, IdentityRejectedAtGrab, CrowdHintShown FROM GrabHistory";
+        await using (var row = await command.ExecuteReaderAsync())
+        {
+            Assert.True(await row.ReadAsync());
+            Assert.Equal(0L, row.GetInt64(0));
+            Assert.True(row.IsDBNull(1));
+            Assert.Equal(0L, row.GetInt64(2));
+            Assert.Equal(0L, row.GetInt64(3));
+        }
+    }
 }

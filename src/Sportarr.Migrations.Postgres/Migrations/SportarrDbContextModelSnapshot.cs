@@ -1618,6 +1618,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<bool>("CrowdHintShown")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("CustomFormatScore")
                         .HasColumnType("integer");
 
@@ -1640,12 +1643,18 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
                     b.Property<bool>("FileExists")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("GrabSource")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("GrabbedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Guid")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<bool>("IdentityRejectedAtGrab")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("ImportedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1660,6 +1669,9 @@ namespace Sportarr.Api.Migrations.Postgres.Migrations
 
                     b.Property<DateTime?>("LastRegrabAttempt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MatchScoreAtGrab")
+                        .HasColumnType("integer");
 
                     b.Property<string>("PartName")
                         .HasMaxLength(100)
