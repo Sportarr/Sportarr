@@ -89,7 +89,7 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
             typeof(EventQueryService), typeof(DelayProfileService), typeof(ReleaseMatchingService), typeof(ReleaseCacheService),
             typeof(ReleaseMatchScorer), typeof(SearchResultCache), typeof(ReleaseProfileService), typeof(QualityDetectionService),
             typeof(IndexerStatusService), typeof(IndexerSearchService), typeof(AutomaticSearchService),
-            typeof(ReleaseVerdictService)
+            typeof(ReleaseVerdictService), typeof(ReleaseChoiceReporter)
         }) services.AddSingleton(type);
         // A later registration replaces a default above.
         configureServices?.Invoke(services);
@@ -198,8 +198,21 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         public string? RssResponse { get; set; }
         public System.Collections.Concurrent.ConcurrentQueue<Uri> SourceRequests { get; } = new();
         public List<string> UnexpectedRequests { get; } = new();
+        public System.Collections.Concurrent.ConcurrentQueue<string> ReleaseChoiceBodies { get; } = new();
         public HttpClient CreateClient(string name) => new(this, false);
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var uri = request.RequestUri!;
+            if (uri.Host == "sportarr.net" && uri.AbsolutePath == "/api/metadata/suggestions/release-choices")
+            {
+                ReleaseChoiceBodies.Enqueue(await request.Content!.ReadAsStringAsync(cancellationToken));
+                return new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent("{\"accepted\":1}", Encoding.UTF8, "application/json") };
+            }
+            return await SendOtherAsync(request);
+        }
+
+        private Task<HttpResponseMessage> SendOtherAsync(HttpRequestMessage request)
         {
             var uri = request.RequestUri!;
             if (uri.Host == "sportarr.net" &&

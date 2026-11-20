@@ -494,6 +494,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<EventPartDetector>();
         services.AddScoped<FileFormatManager>();
         services.AddScoped<FileImportService>();
+        services.AddScoped<ReleaseChoiceReporter>();
         services.AddScoped<ImportMatchingService>();
         services.AddScoped<LibraryImportService>();
         services.AddScoped<ImportListService>();

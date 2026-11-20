@@ -103,8 +103,39 @@ public class FileImportService : IFileImportService
     private readonly IRemotePathMappingService _pathMappingService;
     private readonly IMetadataWriterService _metadataWriterService;
     private readonly ILogger<FileImportService> _logger;
+    private readonly ReleaseChoiceReporter? _releaseChoiceReporter;
+    private readonly ReleaseMatchScorer? _releaseMatchScorer;
 
     private static readonly string[] VideoExtensions = SupportedExtensions.Video;
+
+    /// <summary>
+    /// The release choice for a grab that imports for the first time, or
+    /// null. It never throws, so it cannot fail the import.
+    /// </summary>
+    private async Task<ReleaseChoice?> BuildReleaseChoiceAsync(GrabHistory grab, DownloadQueueItem download, Event eventInfo)
+    {
+        if (_releaseChoiceReporter == null || _releaseMatchScorer == null)
+            return null;
+        try
+        {
+            var isPack = download.IsPack || download.PackGroupId != null;
+            var titleGivesYear = _releaseMatchScorer.ParseReleaseTitle(grab.Title).Year != null;
+            var choice = ReleaseChoiceCollector.FromImport(grab, isPack, eventInfo, titleGivesYear, null);
+            // Read the indexer only for a choice that passed the other checks.
+            if (choice == null || grab.IndexerId == null)
+                return choice;
+            var indexerType = await _db.Indexers.AsNoTracking()
+                .Where(i => i.Id == grab.IndexerId)
+                .Select(i => (IndexerType?)i.Type)
+                .FirstOrDefaultAsync();
+            return choice with { IndexerFamily = ReleaseChoiceCollector.IndexerFamilyOf(indexerType) };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Import] Release choice skipped for {Title}", grab.Title);
+            return null;
+        }
+    }
 
     internal static void MarkDownloadImported(DownloadQueueItem download, DateTime importedAt)
     {
@@ -138,7 +169,9 @@ public class FileImportService : IFileImportService
         CustomFormatService customFormatService,
         IRemotePathMappingService pathMappingService,
         IMetadataWriterService metadataWriterService,
-        ILogger<FileImportService> logger)
+        ILogger<FileImportService> logger,
+        ReleaseChoiceReporter? releaseChoiceReporter = null,
+        ReleaseMatchScorer? releaseMatchScorer = null)
     {
         _db = db;
         _parser = parser;
@@ -154,6 +187,8 @@ public class FileImportService : IFileImportService
         _pathMappingService = pathMappingService;
         _metadataWriterService = metadataWriterService;
         _logger = logger;
+        _releaseChoiceReporter = releaseChoiceReporter;
+        _releaseMatchScorer = releaseMatchScorer;
     }
 
     /// <summary>
@@ -1074,8 +1109,14 @@ public class FileImportService : IFileImportService
                 .Where(g => g.EventId == download.EventId && g.Title == download.Title)
                 .OrderByDescending(g => g.GrabbedAt)
                 .FirstOrDefaultAsync();
+            ReleaseChoice? releaseChoice = null;
             if (grabHistoryEntry != null)
             {
+                // Only the first import of a grab reports. A re-import or a
+                // regrab of an imported row sends nothing.
+                if (!grabHistoryEntry.WasImported)
+                    releaseChoice = await BuildReleaseChoiceAsync(grabHistoryEntry, download, eventInfo);
+
                 grabHistoryEntry.WasImported = true;
                 grabHistoryEntry.ImportedAt = DateTime.UtcNow;
                 grabHistoryEntry.FileExists = true;
@@ -1117,6 +1158,20 @@ public class FileImportService : IFileImportService
                 // where a scan finds it, then report the failure.
                 FileParking.ReturnUntrackedParkedFile(destinationPath, _logger);
                 throw;
+            }
+
+            // The save succeeded, so the pick is now a fact. The send runs
+            // detached and the import never waits on the hub.
+            if (releaseChoice != null)
+            {
+                try
+                {
+                    _ = _releaseChoiceReporter?.Report(releaseChoice);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[Import] Release choice report skipped for {Title}", download.Title);
+                }
             }
 
             // Recompute whether the event is fully satisfied now that the new file is
