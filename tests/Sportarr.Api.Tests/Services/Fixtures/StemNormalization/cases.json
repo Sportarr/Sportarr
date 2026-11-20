@@ -581,5 +581,55 @@
     "name": "another class word is another key",
     "input": "MotoGP 2024 Qatar 1080p-Moto3.mkv",
     "expected": "motogp 2024 qatar moto3"
+  },
+  {
+    "name": "a dotted release title loses its tail from the quality tag on",
+    "input": "Formula1.2024.Round01.Bahrain.Race.1080p.F1TV.WEB-DL.AAC2.0.H.264-GROUP",
+    "expected": "formula1 2024 round01 bahrain race f1tv"
+  },
+  {
+    "name": "a release title loses a bracketed tag after its group",
+    "input": "UFC.300.Pereira.vs.Hill.PPV.1080p.WEB.h264-VERUM[TGx]",
+    "expected": "ufc 300 pereira vs hill ppv"
+  },
+  {
+    "name": "a dated release title keeps its date",
+    "input": "NBA.2024.11.05.Lakers.vs.Celtics.720p.WEB.h264-GRP",
+    "expected": "nba 2024 11 05 lakers vs celtics"
+  },
+  {
+    "name": "a release title with an hdtv source loses its tail",
+    "input": "WWE.Raw.2024.11.04.720p.HDTV.x264-NWCHD",
+    "expected": "wwe raw 2024 11 04"
+  },
+  {
+    "name": "a release title with a DDP5.1 tail loses the tail",
+    "input": "Formula1.2024.Round05.China.1080p.F1TV.WEB-DL.DDP5.1.H.264-GROUP",
+    "expected": "formula1 2024 round05 china f1tv"
+  },
+  {
+    "name": "a session word after a dashed codec tag in a release title stays",
+    "input": "Formula1.2024.Round05.China.1080p.WEB.h264-Sprint",
+    "expected": "formula1 2024 round05 china sprint"
+  },
+  {
+    "name": "a usenet release title with spaces gets the dotted key",
+    "input": "MotoGP 2024 Round 01 Qatar Race 1080p WEB-DL AAC2.0 H 264-GROUP",
+    "expected": "motogp 2024 round 01 qatar race"
+  },
+  {
+    "name": "a 2160p HEVC release title loses its tail",
+    "input": "NFL.2024.Week.10.Chiefs.vs.Broncos.2160p.WEB.HEVC.DDP5.1-GROUP",
+    "expected": "nfl 2024 week 10 chiefs vs broncos"
+  },
+  {
+    "name": "a leading site tag stays in the key, so the release collector skips such a title",
+    "input": "[www.Example.org] - Formula1.2024.Round01.Bahrain.Race.1080p",
+    "expected": "www example org formula1 2024 round01 bahrain race"
+  },
+  {
+    "name": "a slash cuts the start of the key, so the release collector skips such a title",
+    "input": "F1 2024/25 Bahrain Race 1080p",
+    "expected": "25 bahrain race"
   }
 ]
