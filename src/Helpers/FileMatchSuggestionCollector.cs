@@ -50,7 +50,7 @@ public static partial class FileMatchSuggestionCollector
 
     // The metadata service accepts only its own short ids.
     [GeneratedRegex(@"^ev-[0-9]{6,29}$", RegexOptions.CultureInvariant)]
-    private static partial Regex EventShortId();
+    internal static partial Regex EventShortId();
 
     [GeneratedRegex(@"^lg-[0-9]{6,29}$", RegexOptions.CultureInvariant)]
     private static partial Regex LeagueShortId();
