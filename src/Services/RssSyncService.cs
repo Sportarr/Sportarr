@@ -1627,7 +1627,8 @@ public class RssSyncService : BackgroundService
             DownloadClientId = downloadClient.Id,
             DownloadId = downloadId,
             RegrabCount = carriedRegrabCount,
-            LastRegrabAttempt = carriedLastRegrabAttempt
+            LastRegrabAttempt = carriedLastRegrabAttempt,
+            GrabSource = GrabSource.Rss
         };
         db.GrabHistory.Add(grabHistory);
 

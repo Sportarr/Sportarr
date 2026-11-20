@@ -1845,7 +1845,9 @@ public class AutomaticSearchService : IAutomaticSearchService
                 DownloadClientId = downloadClient.Id,
                 DownloadId = downloadId,
                 RegrabCount = regrabCount,
-                LastRegrabAttempt = lastRegrabAttempt
+                LastRegrabAttempt = lastRegrabAttempt,
+                GrabSource = isManualSearch ? GrabSource.UserStartedAutomatic : GrabSource.Automatic,
+                MatchScoreAtGrab = bestRelease.MatchScore
             };
             _db.GrabHistory.Add(grabHistory);
 
