@@ -61,6 +61,39 @@ The service counts how many installs matched each cleaned name to each event. On
 
 A person on the sportarr.net team then reviews each name that qualifies. Only an approved match is shared with other installs.
 
+### Releases you pick by hand
+
+Sometimes you pick a release in an event's **Manual Search** list that Sportarr scored low, did not match, or rejected because its name or date did not fit the event. When the file from that release imports for the first time, Sportarr sends these items.
+
+- The release title as the indexer gave it
+- A cleaned copy of the title, made the same way as for files
+- The sportarr.net id of the event and of its league
+- The event's season
+- Whether it was a low score, no match, or a rejection
+- Sportarr's match score for the release
+- The kind of indexer, which is Torznab, Newznab, RSS, or other
+- Whether the release came by torrent or usenet
+- The Sportarr version
+- A flag for a hint from other installs, which is always off in this version
+
+Sportarr never sends the indexer's name, address, or key, the download link, or the size, seeders, or age of the release. It never sends a file path or any download client detail, your quality profile or format names, the search text you typed, or the time of the grab.
+
+Sportarr does not send these items in the cases below.
+
+- An automatic grab, an RSS grab, or a search you start with the **Search** button, because Sportarr picked those releases itself
+- A season or week pack
+- A release you grab from a season search on a league page, because Sportarr matched that release to the events
+- A release that Sportarr already matched well
+- A title with no year
+- A title with a Sportarr id
+- A title that holds a web address or a slash
+- A title that starts with a tag in brackets, such as `[TGx]`, because such a tag often names a site
+- A title longer than 300 characters
+- An event or a league that has no sportarr.net id
+- A file that never imports, or a file from the same grab that imports again
+
+The service counts how many installs picked each cleaned title for each event. The sportarr.net team uses that list to fix matching and to add league and team names by hand. Nothing from this report comes back to any install.
+
 ## What Sportarr receives
 
 ### Matches other installs agreed on
