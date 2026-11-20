@@ -221,6 +221,75 @@ public class SportarrApiClient
         return allSent;
     }
 
+    // The hub reads at most this many rows in one release choice submission.
+    private const int ReleaseChoiceSubmitBatchSize = 50;
+
+    /// <summary>
+    /// Report the releases that users picked by hand against the app's
+    /// verdict, as anonymous usage data. The server counts distinct installs
+    /// per (event, title key). The caller checks SendAnonymousUsageData. Each
+    /// choice's TitleDisplay must be the exact text that the app normalized.
+    /// The hub makes the key again from TitleDisplay and drops a row whose key
+    /// differs from TitleNorm. Sends batches of 50. Returns true only when
+    /// every batch gets a success status. Never throws.
+    /// </summary>
+    public async Task<bool> SubmitReleaseChoicesAsync(string installId, string appVersion, IReadOnlyList<ReleaseChoice> choices)
+    {
+        if (choices.Count == 0)
+            return true;
+
+        string url;
+        try
+        {
+            var root = _apiBaseUrl.Replace("/api/v2/json", string.Empty).TrimEnd('/');
+            url = $"{root}/api/metadata/suggestions/release-choices";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[SportarrAPI] Release choice submission failed (ignored)");
+            return false;
+        }
+
+        var allSent = true;
+        foreach (var batch in choices.Chunk(ReleaseChoiceSubmitBatchSize))
+        {
+            try
+            {
+                var payload = JsonSerializer.Serialize(new
+                {
+                    installId,
+                    appVersion,
+                    choices = batch.Select(c => new
+                    {
+                        leagueId = c.LeagueId,
+                        eventId = c.EventId,
+                        season = c.Season,
+                        titleNorm = c.TitleNorm,
+                        titleDisplay = c.TitleDisplay,
+                        kind = c.Kind,
+                        verdict = c.Verdict,
+                        matchScore = c.MatchScore,
+                        indexerFamily = c.IndexerFamily,
+                        protocol = c.Protocol,
+                        hintShown = c.HintShown,
+                    }),
+                });
+
+                using var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+                using var response = await _httpClient.PostAsync(url, content);
+                _logger.LogDebug("[SportarrAPI] Release choices ({Count}) -> {Status}", batch.Length, (int)response.StatusCode);
+                if (!response.IsSuccessStatusCode)
+                    allSent = false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[SportarrAPI] Release choice submission failed (ignored)");
+                allSent = false;
+            }
+        }
+        return allSent;
+    }
+
     /// <summary>
     /// Ask the hub for the approved event of each normalized stem. The hub
     /// leaves out a stem that has no approved match. When leagueId is set,
