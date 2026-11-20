@@ -448,6 +448,8 @@ export default function ManualSearchModal({
         eventId: eventId,
         overrideBlocklist: release.isBlocklisted,
         replaceExisting: isOverride,
+        // The server stores a pick by hand only for this list.
+        pickedFrom: 'manualSearch',
       });
 
       if (!response.ok) {

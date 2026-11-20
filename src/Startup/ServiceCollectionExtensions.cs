@@ -461,6 +461,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IndexerSearchService>();
         services.AddScoped<ReleaseMatchingService>();
         services.AddSingleton<ReleaseMatchScorer>();
+        services.AddScoped<ReleaseVerdictService>();
         services.AddScoped<ReleaseCacheService>();
         services.AddSingleton<SearchQueueService>();
         services.AddSingleton<SearchResultCache>();

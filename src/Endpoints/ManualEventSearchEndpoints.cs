@@ -355,7 +355,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .Select(i => new { i.Id, i.EarlyReleaseLimit })
         .ToDictionaryAsync(i => i.Id, i => i.EarlyReleaseLimit);
     var knownLeagues = await LeagueMatchContext.LoadAsync(db);
-    var roundRaceNumbers = await LoadRoundRaceNumbersAsync(db, evt);
+    var roundRaceNumbers = await RoundRaceNumberContext.LoadAsync(db, evt);
     var datePeers = await EventDateMatchContext.LoadAsync(db, evt);
     var venueContext = await NascarVenueMatchContext.LoadAsync(db, evt);
 
@@ -637,7 +637,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     // already blocklisted pack was presented as approved and listed first.
     // They get the same checks a normal manual search applies.
     var knownLeagues = await LeagueMatchContext.LoadAsync(db);
-    var roundRaceNumbers = await LoadRoundRaceNumbersAsync(db, evt);
+    var roundRaceNumbers = await RoundRaceNumberContext.LoadAsync(db, evt);
     var datePeers = await EventDateMatchContext.LoadAsync(db, evt);
     var venueContext = await NascarVenueMatchContext.LoadAsync(db, evt);
 
@@ -720,22 +720,6 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     /// Torrents match on the info hash, usenet on title plus indexer, which is
     /// all the blocklist records for a protocol with no hash.
     /// </summary>
-    private static async Task<List<int>?> LoadRoundRaceNumbersAsync(SportarrDbContext db, Event evt)
-    {
-        if (string.IsNullOrEmpty(evt.Round) ||
-            evt.League?.Name.Contains("Supercars", StringComparison.OrdinalIgnoreCase) != true)
-        {
-            return null;
-        }
-
-        var titles = await db.Events
-            .AsNoTracking()
-            .Where(e => e.LeagueId == evt.LeagueId && e.Season == evt.Season && e.Round == evt.Round)
-            .Select(e => e.Title)
-            .ToListAsync();
-        return ReleaseMatchingService.RaceNumbersInTitles(titles);
-    }
-
     private static async Task MarkBlocklistedAsync(SportarrDbContext db, List<ReleaseSearchResult> results)
     {
         if (results.Count == 0) return;

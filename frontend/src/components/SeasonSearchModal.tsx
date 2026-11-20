@@ -327,6 +327,8 @@ export default function SeasonSearchModal({
         matchedEventIds: release.isSeasonPack ? release.matchedEvents.map(e => e.eventId) : undefined,
         isSeasonPack: release.isSeasonPack,
         overrideBlocklist: release.isBlocklisted,
+        // The app matched this release to its events, so it is not a pick by hand.
+        pickedFrom: 'seasonSearch',
       });
 
       if (response.ok) {

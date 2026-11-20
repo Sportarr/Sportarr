@@ -40,7 +40,8 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
     public static async Task<PartIdentityIntegrationHarness> CreateAsync(bool rename = true, bool multipart = true,
         string title = "UFC 9999", string sport = "Fighting", string leagueName = "UFC", bool relational = false,
         bool writeMetadata = false, string? mediaRoot = null,
-        Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor[]? interceptors = null)
+        Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor[]? interceptors = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         if (mediaRoot != null && Path.GetFullPath(mediaRoot) != "/data/e2e-lib" &&
             !Path.GetFullPath(mediaRoot).StartsWith("/data/e2e-lib/", StringComparison.Ordinal))
@@ -87,8 +88,11 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
             typeof(CustomFormatMatchCache), typeof(ReleaseEvaluator), typeof(EpisodeNumberResolver), typeof(PackImportService), typeof(FileImportService), typeof(LibraryImportService),
             typeof(EventQueryService), typeof(DelayProfileService), typeof(ReleaseMatchingService), typeof(ReleaseCacheService),
             typeof(ReleaseMatchScorer), typeof(SearchResultCache), typeof(ReleaseProfileService), typeof(QualityDetectionService),
-            typeof(IndexerStatusService), typeof(IndexerSearchService), typeof(AutomaticSearchService)
+            typeof(IndexerStatusService), typeof(IndexerSearchService), typeof(AutomaticSearchService),
+            typeof(ReleaseVerdictService)
         }) services.AddSingleton(type);
+        // A later registration replaces a default above.
+        configureServices?.Invoke(services);
         var app = builder.Build();
         app.MapManualEventSearchEndpoints();
         app.MapEventSearchAndGrabEndpoints();
@@ -139,10 +143,11 @@ internal sealed class PartIdentityIntegrationHarness : IAsyncDisposable
         PublishDate = new DateTime(2020, 9, 2, 0, 0, 0, DateTimeKind.Utc), Seeders = 20
     };
 
-    public async Task GrabAsync(ReleaseSearchResult release)
+    public async Task GrabAsync(ReleaseSearchResult release, string? pickedFrom = null)
     {
         var payload = System.Text.Json.JsonSerializer.SerializeToNode(release)!.AsObject();
         payload["eventId"] = Event.Id;
+        if (pickedFrom != null) payload["pickedFrom"] = pickedFrom;
         using var response = await Client.PostAsJsonAsync("/api/release/grab", payload);
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(response.IsSuccessStatusCode, body);

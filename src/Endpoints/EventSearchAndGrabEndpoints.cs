@@ -405,6 +405,38 @@ app.MapPost("/api/release/grab", async (
         queueItems.Add(await QueueJobAttachment.AddOrAttachAsync(db, queueItem));
     }
 
+    // Only the manual search list marks a pick by hand. The season search
+    // list posts here too, but the app matched those releases itself.
+    var pickedFrom = requestBody.TryGetValue("pickedFrom", out var pickedFromElement) &&
+        pickedFromElement.ValueKind == JsonValueKind.String
+            ? pickedFromElement.GetString()
+            : null;
+    var grabSource = pickedFrom switch
+    {
+        "manualSearch" => Sportarr.Api.Models.GrabSource.InteractivePick,
+        "seasonSearch" => Sportarr.Api.Models.GrabSource.SeasonSearch,
+        _ => Sportarr.Api.Models.GrabSource.Unknown,
+    };
+
+    // The posted score can come from a stale or cached list, so the grab
+    // computes the verdict again. A pack maps to many events and gets none.
+    int? matchScoreAtGrab = null;
+    var identityRejectedAtGrab = false;
+    if (grabSource == Sportarr.Api.Models.GrabSource.InteractivePick && !isPack)
+    {
+        try
+        {
+            var verdict = await context.RequestServices.GetRequiredService<ReleaseVerdictService>()
+                .ComputeAsync(release, eventId, release.Part, CancellationToken.None);
+            matchScoreAtGrab = verdict.MatchScore;
+            identityRejectedAtGrab = verdict.IdentityRejected;
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "[GRAB] Could not compute the match verdict for {Title}", release.Title);
+        }
+    }
+
     // Save grab history for manual grabs (matches auto/RSS behavior)
     // This allows cross-referencing download IDs to prevent re-detection as external downloads
     var grabHistory = new Sportarr.Api.Models.GrabHistory
@@ -426,7 +458,10 @@ app.MapPost("/api/release/grab", async (
         PartName = acquiredPart,
         GrabbedAt = DateTime.UtcNow,
         DownloadClientId = downloadClient.Id,
-        DownloadId = downloadId
+        DownloadId = downloadId,
+        GrabSource = grabSource,
+        MatchScoreAtGrab = matchScoreAtGrab,
+        IdentityRejectedAtGrab = identityRejectedAtGrab
     };
     db.GrabHistory.Add(grabHistory);
 
@@ -471,13 +506,11 @@ app.MapPost("/api/release/grab", async (
 
     acquisition.Dispose();
 
-    // Interactive/manual grabs from the search UI never fired OnGrab at all -
-    // only the automatic-search, RSS-sync, and pending-release-reaper paths
-    // did. Sonarr/Radarr fire Grab for both automatic and interactive-search
-    // grabs, so integrations built against that contract (e.g. Notifiarr)
-    // never saw a Grab payload for anything a user grabbed by hand. One
-    // notification per event in the pack, matching how each event gets its
-    // own Download/Upgrade notification later at import time.
+    // A grab from the search list fires OnGrab, as the automatic search, RSS
+    // sync and pending release reaper paths do. Integrations expect a Grab
+    // event for every grab, also for a grab made by hand. Each event in the
+    // pack gets one notification, as each event later gets its own import
+    // notification.
     try
     {
         foreach (var packEvent in packEvents)

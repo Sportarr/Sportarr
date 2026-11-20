@@ -135,6 +135,7 @@ describe('SeasonSearchModal custom search', () => {
       eventId: 2,
       isSeasonPack: false,
       matchedEventIds: undefined,
+      pickedFrom: 'seasonSearch',
     })));
   });
 
