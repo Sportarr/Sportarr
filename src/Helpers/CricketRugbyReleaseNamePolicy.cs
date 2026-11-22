@@ -30,9 +30,13 @@ public static class CricketRugbyReleaseNamePolicy
         @"(?:^|[^\p{L}\p{M}\p{N}])(?:DDP?|E[\s._-]*AC[\s._-]*3|AC[\s._-]*3|AAC|DTS(?:[\s._-]*HD)?(?:[\s._-]*MA)?)[\s._-]*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    private static readonly Regex WomensTokenPattern = new(
+        @"\bWomen(?:'s|s)?\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     public static string? BuildQuery(Event evt)
     {
-        var league = LeagueKey(evt.League?.Name);
+        var league = EventLeagueKey(evt);
         if (league == null)
         {
             return null;
@@ -59,6 +63,7 @@ public static class CricketRugbyReleaseNamePolicy
             "RugbyChampionship" => $"Rugby Championship {year} {BaseRugbyTeam(home)} {BaseRugbyTeam(away)}",
             "URC" => $"URC {year} {BaseRugbyTeam(home)} {BaseRugbyTeam(away)}",
             "NRL" => $"NRL {year} {NrlSearchName(home)} {NrlSearchName(away)}",
+            "WNRL" => $"NRLW {year} {NrlSearchName(home)} {NrlSearchName(away)}",
             _ => null
         };
     }
@@ -79,7 +84,7 @@ public static class CricketRugbyReleaseNamePolicy
             return true;
         }
 
-        var eventLeague = LeagueKey(evt.League?.Name);
+        var eventLeague = EventLeagueKey(evt);
         if (eventLeague == null)
         {
             return false;
@@ -111,7 +116,7 @@ public static class CricketRugbyReleaseNamePolicy
             return true;
         }
 
-        if (eventLeague == "NRL" && int.TryParse(evt.Round, out var eventRound) && eventRound > 50)
+        if (eventLeague is "NRL" or "WNRL" && int.TryParse(evt.Round, out var eventRound) && eventRound > 50)
         {
             if (RoundPattern.IsMatch(releaseTitle))
             {
@@ -119,7 +124,7 @@ public static class CricketRugbyReleaseNamePolicy
             }
         }
 
-        if (eventLeague is "SixNations" or "RugbyChampionship" or "URC" or "NRL" &&
+        if (eventLeague is "SixNations" or "RugbyChampionship" or "URC" or "NRL" or "WNRL" &&
             HasConflictingDayMonth(releaseTitle, evt.BroadcastDate ?? evt.EventDate.Date))
         {
             return true;
@@ -154,7 +159,7 @@ public static class CricketRugbyReleaseNamePolicy
 
     public static bool HasStrongEventIdentity(string releaseTitle, Event evt)
     {
-        var eventLeague = LeagueKey(evt.League?.Name);
+        var eventLeague = EventLeagueKey(evt);
         if (eventLeague == null || HasIdentityConflict(releaseTitle, evt) ||
             !string.Equals(eventLeague, ReleaseLeagueKey(releaseTitle), StringComparison.Ordinal))
         {
@@ -167,8 +172,9 @@ public static class CricketRugbyReleaseNamePolicy
             return false;
         }
 
-        var homeIdentity = eventLeague == "NRL" ? NrlSearchName(home) : BaseRugbyTeam(home);
-        var awayIdentity = eventLeague == "NRL" ? NrlSearchName(away) : BaseRugbyTeam(away);
+        var nrl = eventLeague is "NRL" or "WNRL";
+        var homeIdentity = nrl ? NrlSearchName(home) : BaseRugbyTeam(home);
+        var awayIdentity = nrl ? NrlSearchName(away) : BaseRugbyTeam(away);
         var normalizedRelease = Normalize(releaseTitle);
         var teamsMatch = ContainsPhrase(normalizedRelease, Normalize(homeIdentity)) &&
                          ContainsPhrase(normalizedRelease, Normalize(awayIdentity));
@@ -256,6 +262,26 @@ public static class CricketRugbyReleaseNamePolicy
                Regex.IsMatch(releaseTitle, $@"(?<![0-9]){start}(?![0-9])", RegexOptions.CultureInvariant);
     }
 
+    /// <summary>
+    /// The league key of one event. The hub keeps women's NRL games in the
+    /// men's league and marks the teams "Women", so an NRL event with a
+    /// women's team or title gets the women's key.
+    /// </summary>
+    public static string? EventLeagueKey(Event evt)
+    {
+        var league = LeagueKey(evt.League?.Name);
+        if (league != "NRL")
+        {
+            return league;
+        }
+
+        var (home, away) = EventQueryService.ResolveTeamNames(evt);
+        return new[] { home, away, evt.Title }
+            .Any(name => !string.IsNullOrEmpty(name) && WomensTokenPattern.IsMatch(name))
+            ? "WNRL"
+            : "NRL";
+    }
+
     public static string? LeagueKey(string? leagueName)
     {
         if (string.IsNullOrWhiteSpace(leagueName))
@@ -275,8 +301,14 @@ public static class CricketRugbyReleaseNamePolicy
         if (leagueName.Contains("United Rugby Championship", StringComparison.OrdinalIgnoreCase)) return "URC";
         if (leagueName.Contains("Rugby Championship", StringComparison.OrdinalIgnoreCase)) return "RugbyChampionship";
         if (leagueName.Equals("Rugby World Cup", StringComparison.OrdinalIgnoreCase)) return "RugbyWorldCup";
-        if (leagueName.Contains("National Rugby League", StringComparison.OrdinalIgnoreCase) ||
-            Regex.IsMatch(leagueName, @"\bNRL\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "NRL";
+        // The women's league plays the same clubs on the same days as the
+        // men's. It needs its own key, or a men's release matches its events.
+        // EventLeagueKey also finds women's games inside the men's league.
+        var nrlLeague = leagueName.Contains("National Rugby League", StringComparison.OrdinalIgnoreCase) ||
+            Regex.IsMatch(leagueName, @"\bNRL\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (Regex.IsMatch(leagueName, @"\bNRLW\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+            nrlLeague && leagueName.Contains("Women", StringComparison.OrdinalIgnoreCase)) return "WNRL";
+        if (nrlLeague) return "NRL";
         return null;
     }
 
@@ -286,7 +318,8 @@ public static class CricketRugbyReleaseNamePolicy
         if (Regex.IsMatch(releaseTitle, @"\bCricket[\s._-]+World[\s._-]+Cup\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "CWC";
         if (Regex.IsMatch(releaseTitle, @"\bWPL\b|\bWomen(?:'s|s)?\b.*\bIPL\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "WPL";
         if (Regex.IsMatch(releaseTitle, @"\bWBBL\b|\bWomen(?:'s|s)?\b.*\b(?:BBL|Big[\s._-]+Bash)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "WBBL";
-        if (Regex.IsMatch(releaseTitle, @"\bNRL[\s._-]+Women(?:'s|s)?\b|\bWomen(?:'s|s)?[\s._-]+NRL\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "WNRL";
+        // A women's NRL title can put "Women" after each club name, far from the tag.
+        if (Regex.IsMatch(releaseTitle, @"\bNRLW(?:\b|(?=20[0-9]{2}\b))|\bNRL\b.*\bWomen(?:'s|s)?\b|\bWomen(?:'s|s)?\b.*\bNRL\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "WNRL";
         if (Regex.IsMatch(releaseTitle, @"\bWomen(?:'s|s)?\b.*\bSix[\s._-]+Nations\b|\bSix[\s._-]+Nations\b.*\bWomen(?:'s|s)?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "WomensSixNations";
         if (Regex.IsMatch(releaseTitle, @"\bWPL\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "WPL";
         if (Regex.IsMatch(releaseTitle, @"\bIPL(?:\b|(?=20[0-9]{2}\b))|\bIndian[\s._-]+Premier[\s._-]+League\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return "IPL";
@@ -314,6 +347,9 @@ public static class CricketRugbyReleaseNamePolicy
 
     private static string NrlSearchName(string canonical)
     {
+        // Search and identity use the club name. The women's token is not
+        // part of the club name in a release title.
+        canonical = Regex.Replace(WomensTokenPattern.Replace(canonical, " "), @"\s+", " ").Trim();
         var candidate = TeamNameVariationData.Variations
             .Where(pair => canonical.Contains(pair.Key, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(pair => pair.Key.Length)

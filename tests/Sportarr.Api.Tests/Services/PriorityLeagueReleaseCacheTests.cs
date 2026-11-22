@@ -79,6 +79,41 @@ public class PriorityLeagueReleaseCacheTests
         (await cache.FindMatchingReleasesAsync(nrl)).Select(item => item.Guid).Should().Contain("nrl");
     }
 
+    // The hub keeps women's NRL games in the men's league. The cache must
+    // still hand each game only the releases of its own side.
+    [Fact]
+    public async Task WomensAndMensNrlGamesEachReachOnlyTheirOwnCachedReleases()
+    {
+        await using var db = new SportarrDbContext(new DbContextOptionsBuilder<SportarrDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options);
+        await db.Database.OpenConnectionAsync();
+        await db.Database.EnsureCreatedAsync();
+
+        var womens = AddEvent(
+            db, "Australian National Rugby League", "Rugby", "Brisbane Broncos Women", "Sydney Roosters Women",
+            "2024", "5", new DateTime(2024, 4, 6));
+        var mens = AddEvent(
+            db, "Australian National Rugby League", "Rugby", "Brisbane Broncos", "Sydney Roosters",
+            "2024", "5", new DateTime(2024, 4, 6));
+        await db.SaveChangesAsync();
+
+        var cache = new ReleaseCacheService(
+            db, NullLogger<ReleaseCacheService>.Instance, new ReleaseMatchScorer());
+        await cache.CacheReleasesAsync(new[]
+        {
+            Release("nrlw", "NRLW.2024.Round.5.Broncos.vs.Roosters.1080p"),
+            Release("nrl", "NRL.2024.Round.5.Broncos.vs.Roosters.1080p")
+        }, fromRss: true);
+
+        var womensGuids = (await cache.FindMatchingReleasesAsync(womens)).Select(item => item.Guid).ToList();
+        womensGuids.Should().Contain("nrlw");
+        womensGuids.Should().NotContain("nrl");
+        var mensGuids = (await cache.FindMatchingReleasesAsync(mens)).Select(item => item.Guid).ToList();
+        mensGuids.Should().Contain("nrl");
+        mensGuids.Should().NotContain("nrlw");
+    }
+
     private static Event AddEvent(
         SportarrDbContext db,
         string leagueName,

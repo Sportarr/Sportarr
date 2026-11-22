@@ -126,6 +126,12 @@ public static class SearchNormalizationService
         }
 
         if (releaseCategories.SetEquals(["women"]) &&
+            CricketRugbyReleaseNamePolicy.EventLeagueKey(evt) == "WNRL")
+        {
+            return false;
+        }
+
+        if (releaseCategories.SetEquals(["women"]) &&
             evt.League?.Name.Trim() is "Australian WNBL" or "Chinese WCBA")
         {
             return false;

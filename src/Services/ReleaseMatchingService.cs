@@ -938,7 +938,7 @@ public class ReleaseMatchingService
             var codeEvidence = TeamCodeEvidence.Evaluate(
                 release.Title,
                 evt,
-                CodeLeagueReader.GetSportPrefix(evt.League?.Name, evt.Sport),
+                CodeLeagueReader.GetSportPrefix(evt),
                 CodeLeagueReader.DetectSportPrefix(release.Title),
                 TeamCodeEvidence.IsTiedToEvent(release.Title, evt, parseResult.EventDate));
             var teamMatch = hasLeagueReleaseIdentity

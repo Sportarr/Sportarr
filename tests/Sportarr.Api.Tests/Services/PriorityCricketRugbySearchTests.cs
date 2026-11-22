@@ -284,6 +284,118 @@ public class PriorityCricketRugbySearchTests
         CricketRugbyReleaseNamePolicy.HasIdentityConflict(title, evt).Should().BeFalse();
     }
 
+    // The men's and women's NRL play the same clubs on the same day. The
+    // league tag is the only thing that tells the two games apart. The hub
+    // keeps women's games in the men's league and marks the teams "Women".
+    private const string HubNrl = "Australian National Rugby League";
+    private const string MensTitle = "NRL.2024.Round.5.Broncos.vs.Roosters.1080p";
+
+    public static IEnumerable<object[]> WomensNrlEvents()
+    {
+        yield return new object[] { HubNrl, "Brisbane Broncos Women", "Sydney Roosters Women" };
+        yield return new object[] { HubNrl, "Brisbane Broncos Womens", "Sydney Roosters Womens" };
+        yield return new object[] { "NRL Women's Premiership", "Brisbane Broncos", "Sydney Roosters" };
+        yield return new object[] { "NRLW", "Brisbane Broncos", "Sydney Roosters" };
+    }
+
+    // Some women's releases carry the NRL tag and put "Women" after each
+    // full club name instead of after the tag.
+    private const string BroncosFullNameWomensTitle =
+        "NRL.2024.Round.5.Brisbane.Broncos.Women.vs.Sydney.Roosters.Women.720p";
+    private const string TigersFullNameWomensTitle =
+        "NRL.2026.Round.10.Wests.Tigers.Women.vs.Gold.Coast.Titans.Women.1080p";
+
+    public static IEnumerable<object[]> WomensNrlEventsAndTitles() =>
+        (from shape in WomensNrlEvents()
+         from title in new[]
+         {
+             "NRLW.2024.Round.5.Broncos.vs.Roosters.1080p",
+             "NRL.Womens.2024.Round.5.Broncos.vs.Roosters.1080p"
+         }
+         select new[] { shape[0], shape[1], shape[2], "2024", "5", title })
+        .Append(new object[] { HubNrl, "Brisbane Broncos Women", "Sydney Roosters Women", "2024", "5", BroncosFullNameWomensTitle })
+        .Append(new object[] { HubNrl, "Wests Tigers Women", "Gold Coast Titans Women", "2026", "10", TigersFullNameWomensTitle });
+
+    [Theory]
+    [MemberData(nameof(WomensNrlEvents))]
+    public void WomensNrlEventRejectsTheMensRelease(string league, string home, string away)
+    {
+        var evt = NrlRoundFive(league, home, away);
+
+        _scorer.CalculateMatchScore(MensTitle, evt).Should().BeLessThan(ReleaseMatchScorer.AutoGrabMatchScore);
+        var result = _matcher.ValidateRelease(Release(MensTitle), evt);
+        result.IsMatch.Should().BeFalse();
+        result.IsHardRejection.Should().BeTrue();
+    }
+
+    [Theory]
+    [MemberData(nameof(WomensNrlEventsAndTitles))]
+    public void WomensNrlEventKeepsTheWomensRelease(
+        string league, string home, string away, string season, string round, string title)
+    {
+        var evt = NrlGame(league, home, away, season, round);
+
+        var result = _matcher.ValidateRelease(Release(title), evt);
+        result.IsMatch.Should().BeTrue(string.Join("; ", result.Rejections));
+        result.IsHardRejection.Should().BeFalse();
+        _scorer.CalculateMatchScore(title, evt).Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.AutoGrabMatchScore);
+    }
+
+    [Theory]
+    [InlineData("Brisbane Broncos", "Sydney Roosters", "2024", "5", "NRLW.2024.Round.5.Broncos.vs.Roosters.1080p")]
+    [InlineData("Brisbane Broncos", "Sydney Roosters", "2024", "5", "NRL.Womens.2024.Round.5.Broncos.vs.Roosters.1080p")]
+    [InlineData("Brisbane Broncos", "Sydney Roosters", "2024", "5", BroncosFullNameWomensTitle)]
+    [InlineData("Wests Tigers", "Gold Coast Titans", "2026", "10", TigersFullNameWomensTitle)]
+    public void MensNrlEventRejectsTheWomensRelease(string home, string away, string season, string round, string title)
+    {
+        var evt = NrlGame(HubNrl, home, away, season, round);
+
+        _scorer.CalculateMatchScore(title, evt).Should().BeLessThan(ReleaseMatchScorer.AutoGrabMatchScore);
+        var result = _matcher.ValidateRelease(Release(title), evt);
+        result.IsMatch.Should().BeFalse();
+        result.IsHardRejection.Should().BeTrue();
+    }
+
+    [Fact]
+    public void MensNrlEventKeepsTheMensRelease()
+    {
+        var evt = NrlRoundFive(HubNrl, "Brisbane Broncos", "Sydney Roosters");
+
+        var result = _matcher.ValidateRelease(Release(MensTitle), evt);
+        result.IsMatch.Should().BeTrue(string.Join("; ", result.Rejections));
+        _scorer.CalculateMatchScore(MensTitle, evt).Should().BeGreaterThanOrEqualTo(ReleaseMatchScorer.AutoGrabMatchScore);
+    }
+
+    [Theory]
+    [MemberData(nameof(WomensNrlEvents))]
+    public void WomensNrlEventSearchesTheWomensTag(string league, string home, string away)
+    {
+        _queries.BuildEventQueries(NrlRoundFive(league, home, away))
+            .Should().Equal("NRLW 2024 Broncos Roosters");
+    }
+
+    [Fact]
+    public void MensNrlEventSearchesTheMensTag()
+    {
+        _queries.BuildEventQueries(NrlRoundFive(HubNrl, "Brisbane Broncos", "Sydney Roosters"))
+            .Should().Equal("NRL 2024 Broncos Roosters");
+    }
+
+    [Fact]
+    public void MensReleaseNamingAClubStillKeysTheMensLeague()
+    {
+        CricketRugbyReleaseNamePolicy.ReleaseLeagueKey("NRL.2026.Round.10.Wests.Tigers.vs.Gold.Coast.Titans.1080p")
+            .Should().Be("NRL");
+    }
+
+    private static Event NrlRoundFive(string league, string home, string away) =>
+        NrlGame(league, home, away, "2024", "5");
+
+    // Round 5 of 2024 falls on 6 April. Later rounds follow one week apart.
+    private static Event NrlGame(string league, string home, string away, string season, string round) => TeamEvent(
+        league, "Rugby", home, away, season, round,
+        new DateTime(int.Parse(season), 4, 6).AddDays(7 * (int.Parse(round) - 5)));
+
     [Theory]
     [InlineData("Cricket India vs Australia 5th T20i Full Match Dec 03, 2023 720pEng30fps", 2023, 12, 3)]
     [InlineData("Cricket India vs Australia 4th T20i Full Match Dec 01, 2023 720pEng30fps", 2023, 12, 1)]

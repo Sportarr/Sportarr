@@ -512,7 +512,7 @@ public class ReleaseMatchScorer
             return string.Equals(releaseEventId, evt.ExternalId, StringComparison.OrdinalIgnoreCase) ? 100 : 0;
 
         var score = 0;
-        var eventSportPrefix = GetSportPrefix(evt.League?.Name, evt.Sport);
+        var eventSportPrefix = GetSportPrefix(evt);
         var isCombatEvent = EventPartDetector.IsFightingSport(evt.Sport ?? string.Empty);
         // Use the broadcast-local year so end-of-year shows (AEW Dec 31 8pm
         // Eastern = Jan 1 UTC) match releases titled with the broadcast year.
@@ -1087,6 +1087,15 @@ public class ReleaseMatchScorer
 
         return null;
     }
+
+    /// <summary>
+    /// Get the sport prefix for one event. A league can hold the games of
+    /// two sides, so the teams can change the prefix.
+    /// </summary>
+    public string? GetSportPrefix(Event evt) =>
+        CricketRugbyReleaseNamePolicy.EventLeagueKey(evt) == "WNRL"
+            ? "WNRL"
+            : GetSportPrefix(evt.League?.Name, evt.Sport);
 
     /// <summary>
     /// Get the sport prefix for an event.
@@ -2132,7 +2141,7 @@ public class ReleaseMatchScorer
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
         return sportPrefix is "NFL" or "NBA" or "WNBA" or "NHL" or "MLB" or "MLS" or "EPL" or "UCL" or "LaLiga" or
-            "IPL" or "BBL" or "SixNations" or "RugbyChampionship" or "NRL";
+            "IPL" or "BBL" or "SixNations" or "RugbyChampionship" or "NRL" or "WNRL";
     }
 
     private bool IsMotorsport(string? sportPrefix)

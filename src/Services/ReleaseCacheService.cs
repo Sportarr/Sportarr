@@ -215,7 +215,7 @@ public class ReleaseCacheService
         // Build search terms from event
         var eventSearchTerms = BuildEventSearchTerms(evt);
 
-        var sportPrefix = _matchScorer.GetSportPrefix(evt.League?.Name, evt.Sport);
+        var sportPrefix = _matchScorer.GetSportPrefix(evt);
         // Scene releases are tagged with the broadcaster-branded year, not the
         // UTC instant — a Dec 31 8pm Eastern airing is "AEW.2025.12.31.*" even
         // though the UTC date is 2026-01-01. Use BroadcastDate when available.
