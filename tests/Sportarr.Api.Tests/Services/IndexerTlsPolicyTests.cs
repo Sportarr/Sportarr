@@ -11,6 +11,10 @@ using Sportarr.Api.Startup;
 
 namespace Sportarr.Api.Tests.Services;
 
+// The TLS round trip has a 30 second client deadline. Under the parallel
+// suite the whole test process can stall for longer than that, so the
+// class runs alone.
+[Collection(WallClockFixtureCollection.Name)]
 public sealed class IndexerTlsPolicyTests
 {
     [Theory]
@@ -43,9 +47,9 @@ public sealed class IndexerTlsPolicyTests
     [Fact]
     public async Task DedicatedClientAcceptsSelfSignedCertificateWithoutFollowingRedirect()
     {
-        using var key = RSA.Create(2048);
-        var request = new CertificateRequest("CN=127.0.0.1", key,
-            HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        // An EC key signs and handshakes in a fraction of the CPU time of RSA.
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest("CN=127.0.0.1", key, HashAlgorithmName.SHA256);
         using var certificate = request.CreateSelfSigned(
             DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(5));
         var listener = new TcpListener(IPAddress.Loopback, 0);
