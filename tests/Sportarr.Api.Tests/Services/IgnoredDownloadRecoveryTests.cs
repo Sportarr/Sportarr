@@ -380,6 +380,42 @@ public class IgnoredDownloadRecoveryTests
     }
 
     [Fact]
+    public async Task AnIgnoredRowRefusesAMatchEdit()
+    {
+        await using var rig = await DownloadOwnershipRaceHttpHarness.CreateAsync();
+        await rig.GrabAsync();
+        using var ignored = await IgnoreAsync(rig);
+        var marker = Assert.Single((await rig.ReadAsync()).Pending);
+        using var edit = await rig.Client.PutAsJsonAsync($"/api/pending-imports/{marker.Id}/suggestion",
+            new { eventId = rig.EventId, part = (string?)null });
+        Assert.Equal(HttpStatusCode.Conflict, edit.StatusCode);
+        Assert.Equal(PendingImportStatus.Ignored, Assert.Single((await rig.ReadAsync()).Pending).Status);
+    }
+
+    [Fact]
+    public async Task AUserActionWaitsForABusyDecisionInsteadOfFailing()
+    {
+        // The Activity page sends bulk actions at the same time.
+        // Each request must wait for its turn and not return 409.
+        await using var rig = await DownloadOwnershipRaceHttpHarness.CreateAsync();
+        await rig.GrabAsync();
+        using var ignored = await IgnoreAsync(rig);
+        var marker = Assert.Single((await rig.ReadAsync()).Pending);
+        rig.Ownership.UserActionWait = DownloadOwnershipRaceHttpHarness.TestTimeout;
+        Task<HttpResponseMessage> resuming;
+        using (var held = rig.Ownership.TryEnterExternalDecision())
+        {
+            Assert.NotNull(held);
+            resuming = rig.Client.PostAsync($"/api/queue/ignored/{marker.Id}/resume", null);
+            await Task.Delay(300);
+            Assert.False(resuming.IsCompleted);
+        }
+        using var resumed = await resuming.WaitAsync(DownloadOwnershipRaceHttpHarness.TestTimeout);
+        Assert.Equal(HttpStatusCode.NoContent, resumed.StatusCode);
+        Assert.Empty((await rig.ReadAsync()).Pending);
+    }
+
+    [Fact]
     public async Task ClearAllIsOneCoordinatedSaveAndPreservesUnrelatedRecords()
     {
         await using var rig = await DownloadOwnershipRaceHttpHarness.CreateAsync();
@@ -452,6 +488,51 @@ public class IgnoredDownloadRecoveryTests
         var marker = Assert.Single((await rig.ReadAsync()).Pending);
         Assert.Equal("", marker.FilePath);
         Assert.Equal(DownloadOwnershipRaceHttpHarness.JobId, marker.DownloadId);
+    }
+
+    [Fact]
+    public async Task IgnoreDoesNotPersistALibraryRootFolderAsTheJobPath()
+    {
+        // The client reports a job folder that is the library root folder.
+        // That ignore would hide the whole library, so no path is kept.
+        await using var rig = await DownloadOwnershipRaceHttpHarness.CreateAsync();
+        await rig.GrabAsync();
+        string libraryRoot = "";
+        await rig.WithDatabaseAsync(async db =>
+        {
+            libraryRoot = (await db.RootFolders.SingleAsync()).Path;
+            (await db.DownloadClients.SingleAsync()).Type = DownloadClientType.QBittorrent;
+            await db.SaveChangesAsync();
+        });
+        rig.ClientTransport.SourcePath = libraryRoot;
+        rig.ClientTransport.TorrentSavePath = Path.GetDirectoryName(libraryRoot);
+        using var ignored = await IgnoreAsync(rig);
+        Assert.Equal(HttpStatusCode.NoContent, ignored.StatusCode);
+        var marker = Assert.Single((await rig.ReadAsync()).Pending);
+        Assert.Equal("", marker.FilePath);
+        Assert.Equal(PendingImportStatus.Ignored, marker.Status);
+    }
+
+    [Fact]
+    public async Task IgnoreDoesNotTurnACompletedRowIntoAnIgnoredRow()
+    {
+        // A completed row is history. Unignore deletes an ignored row,
+        // so the ignore must add its own row.
+        await using var rig = await DownloadOwnershipRaceHttpHarness.CreateAsync();
+        await rig.GrabAsync();
+        await rig.WithDatabaseAsync(async db =>
+        {
+            var client = await db.DownloadClients.SingleAsync();
+            db.PendingImports.Add(new PendingImport { DownloadClientId = client.Id, DownloadId = DownloadOwnershipRaceHttpHarness.JobId,
+                Title = "Earlier import", FilePath = "", Status = PendingImportStatus.Completed });
+            await db.SaveChangesAsync();
+        });
+        using var ignored = await IgnoreAsync(rig);
+        Assert.Equal(HttpStatusCode.NoContent, ignored.StatusCode);
+        var rows = (await rig.ReadAsync()).Pending;
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, p => p.Status == PendingImportStatus.Completed && p.Title == "Earlier import");
+        Assert.Contains(rows, p => p.Status == PendingImportStatus.Ignored);
     }
 
     [Theory]

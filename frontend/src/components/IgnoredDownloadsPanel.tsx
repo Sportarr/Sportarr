@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import apiClient from '../api/client';
-import { TrashIcon } from '@heroicons/react/24/outline';
 import ConfirmationModal from './ConfirmationModal';
-import { BUTTON_DESTRUCTIVE, BUTTON_SECONDARY } from '../utils/designTokens';
+import { BUTTON_SECONDARY } from '../utils/designTokens';
 
 interface IgnoredDownload {
   id: number;
@@ -65,21 +64,21 @@ export default function IgnoredDownloadsPanel({ refreshToken, compactView = fals
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-400">
-        Sportarr skips these jobs when polling download clients. Automatic file discovery also skips known job paths;
-        {' '}files with shared or unknown paths can still be discovered independently.
-        {' '}Unignore allows processing again; Clear All unignores every listed job. Files and release blocks are kept.
-        {' '}Ignoring a job does not prevent a future download.
+        Sportarr leaves these downloads in your download client and does not import them.
+        {' '}When Sportarr does not know the folder of a download, it can still find the files of that download on disk.
+        {' '}Unignore lets Sportarr process a download again. Your files and blocked releases stay as they are.
+        {' '}Ignoring a download does not stop Sportarr from grabbing that release again.
       </p>
       {!loading && items.length > 0 && (
         <div className="flex justify-end">
-          <button className={BUTTON_DESTRUCTIVE} disabled={busyId !== null} onClick={() => setConfirmClear(true)}>
-            <TrashIcon className="w-4 h-4" />Clear All
+          <button className={BUTTON_SECONDARY} disabled={busyId !== null} onClick={() => setConfirmClear(true)}>
+            Unignore All
           </button>
         </div>
       )}
       <ConfirmationModal isOpen={confirmClear} onClose={() => setConfirmClear(false)} onConfirm={clearAll}
-        title="Clear ignored downloads" confirmText="Clear All"
-        message="Unignore every download listed here? Sportarr can process these jobs again on its next scan. Files and release blocks will be kept." />
+        title="Unignore all downloads" confirmText="Unignore All"
+        message="Unignore every download listed here? Sportarr can import them on its next check. Your files and blocked releases will be kept." />
       {error && <p role="alert" className="text-red-400">{error}</p>}
       {loading ? <p role="status">Loading ignored downloads...</p> : !error && items.length === 0 ? (
         <p className="py-8 text-center text-gray-400">No ignored downloads</p>

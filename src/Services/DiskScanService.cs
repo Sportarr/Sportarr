@@ -1017,8 +1017,9 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 
         if (discoveredCount > 0 || refreshedCount > 0)
         {
-            // The walk uses a snapshot. Serialize only the fresh check and save
-            // with Ignore, so an ignore completed during the walk stays effective.
+            // The walk reads the ignored rows once, at the start. An ignore can
+            // finish during the walk. Read the rows again under the lease and
+            // drop new rows for those paths before the save.
             var coordinator = _serviceProvider.GetRequiredService<DownloadOwnershipCoordinator>();
             using var processing = await coordinator.EnterAcquisitionAsync(cancellationToken);
             var ignored = await db.PendingImports.AsNoTracking()

@@ -415,11 +415,12 @@ public class FileWatcherService : BackgroundService
             if (await db.PendingImports.AnyAsync(p => p.FilePath == filePath && p.Status == PendingImportStatus.Pending &&
                 (p.DownloadClientId != null || p.ErrorMessage != null))) return;
 
-            // User-ignored files: rejecting a pending import writes a
-            // Blocklist row carrying the path. Without this check the
-            // watcher re-detects the file on the next filesystem event (or
-            // auto-imports it), so the ignore never sticks for files that
-            // stay on disk. DiskScanService applies the same rule.
+            // Skip a file the user ignored. Two records do this. A rejected
+            // pending import writes a Blocklist row with the path. An ignored
+            // download writes an Ignored row with its job file or folder.
+            // Without this check the watcher finds the file again on the next
+            // filesystem event and can import it. DiskScanService applies the
+            // same rule.
             var isIgnored = await IsIgnoredDownloadFileAsync(db, filePath) ||
                 await db.Blocklist.AnyAsync(b => b.FilePath == filePath);
             if (isIgnored)

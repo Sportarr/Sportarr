@@ -89,7 +89,7 @@ public class QueueRemovalService
         if (removalMethod == "ignoreDownload")
         {
             // Check ownership briefly, then do client I/O without blocking unrelated jobs.
-            using (var preflight = _coordinator.TryEnterExternalDecision())
+            using (var preflight = await _coordinator.WaitForExternalDecisionAsync(_coordinator.UserActionWait))
             {
                 if (preflight == null) return Busy();
                 candidate = await _db.DownloadQueue.AsNoTracking().Include(q => q.DownloadClient)
@@ -101,7 +101,9 @@ public class QueueRemovalService
                 ignoreStatus = await _downloadClientService.GetDownloadStatusAsync(candidate.DownloadClient, candidate.DownloadId);
         }
 
-        using var decision = removalMethod == "ignoreDownload" ? _coordinator.TryEnterExternalDecision() : null;
+        using var decision = removalMethod == "ignoreDownload"
+            ? await _coordinator.WaitForExternalDecisionAsync(_coordinator.UserActionWait)
+            : null;
         if (removalMethod == "ignoreDownload" && decision == null)
             return Busy();
 
@@ -217,8 +219,11 @@ public class QueueRemovalService
 
         if (removalMethod == "ignoreDownload" && !string.IsNullOrWhiteSpace(item.DownloadId))
         {
+            // Reuse only an open row. A completed or rejected row is history,
+            // and Unignore deletes the row it ignored.
             var ignored = await _db.PendingImports.FirstOrDefaultAsync(p =>
-                p.DownloadClientId == item.DownloadClientId && p.DownloadId.ToLower() == item.DownloadId.ToLower());
+                p.DownloadClientId == item.DownloadClientId && p.DownloadId.ToLower() == item.DownloadId.ToLower() &&
+                (p.Status == PendingImportStatus.Pending || p.Status == PendingImportStatus.Ignored));
             if (ignored == null)
             {
                 ignored = new PendingImport
@@ -285,7 +290,10 @@ public class QueueRemovalService
         if (status is not { SavePathIsJobSpecific: true } || string.IsNullOrWhiteSpace(status.SavePath))
             return "";
 
-        var localPath = DownloadPathSafety.Normalize(await _pathMapping.RemapRemoteToLocalAsync(client.Host, status.SavePath));
+        var mappedPath = await _pathMapping.RemapRemoteToLocalAsync(client.Host, status.SavePath);
+        // A relative path does not name one folder on this machine.
+        if (string.IsNullOrWhiteSpace(mappedPath) || !Path.IsPathFullyQualified(mappedPath)) return "";
+        var localPath = DownloadPathSafety.Normalize(mappedPath);
         if (string.IsNullOrWhiteSpace(localPath)) return "";
         // Configured roots provide a common safety net for every adapter, including
         // job paths whose remote mappings collapse onto a shared local directory.
@@ -295,12 +303,14 @@ public class QueueRemovalService
             if (!string.IsNullOrWhiteSpace(root))
                 sharedRoots.Add(await _pathMapping.RemapRemoteToLocalAsync(client.Host, root));
         }
+        // A library root folder is also shared. An ignore must never hide it.
+        sharedRoots.AddRange(await _db.RootFolders.AsNoTracking().Select(r => r.Path).ToListAsync());
         return DownloadPathSafety.IsSharedRoot(localPath, sharedRoots) ? "" : localPath;
     }
 
     public async Task<QueueRemovalResult> ResumeIgnoredAsync(int? id = null)
     {
-        using var decision = _coordinator.TryEnterExternalDecision();
+        using var decision = await _coordinator.WaitForExternalDecisionAsync(_coordinator.UserActionWait);
         if (decision == null) return Busy();
         var ignored = await _db.PendingImports.Where(p => p.Status == PendingImportStatus.Ignored &&
             (id == null || p.Id == id)).ToListAsync();

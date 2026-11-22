@@ -692,7 +692,7 @@ public enum PendingImportStatus
     Importing,      // Currently being imported
     Completed,      // Successfully imported
     Rejected,       // User rejected this import
-    Ignored         // User stopped processing this client job; can be resumed
+    Ignored         // User ignored this client job. Unignore deletes the row
 }
 
 /// <summary>

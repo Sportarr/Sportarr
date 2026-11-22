@@ -261,7 +261,7 @@ app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, D
 // API: Queue Operations - Force Import
 app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger, [FromServices] DownloadOwnershipCoordinator coordinator) =>
 {
-    using var decision = coordinator.TryEnterExternalDecision();
+    using var decision = await coordinator.WaitForExternalDecisionAsync(coordinator.UserActionWait);
     if (decision == null)
         return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
 
@@ -315,7 +315,7 @@ app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Fi
 
     if (item is null) return Results.NotFound(new { error = "Queue item not found" });
 
-    using var decision = coordinator.TryEnterExternalDecision();
+    using var decision = await coordinator.WaitForExternalDecisionAsync(coordinator.UserActionWait);
     if (decision == null)
         return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
     await db.Entry(item).ReloadAsync();
@@ -456,6 +456,8 @@ app.MapPut("/api/pending-imports/{id:int}/suggestion", async (
     // Update the suggested event/part for a pending import
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();
+    if (import.Status == PendingImportStatus.Ignored)
+        return Results.Conflict(new { error = "Unignore this download before changing it." });
 
     // A new event marks the row as the user's choice. The accept endpoint
     // reads that mark. A change of part alone keeps the confidence.
@@ -500,7 +502,7 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
     CustomFormatService customFormatService,
     [FromServices] DownloadOwnershipCoordinator coordinator) =>
 {
-    using var decision = coordinator.TryEnterExternalDecision();
+    using var decision = await coordinator.WaitForExternalDecisionAsync(coordinator.UserActionWait);
     if (decision == null)
         return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
     // Accept a pending import and perform the actual import.
@@ -943,7 +945,7 @@ app.MapPost("/api/pending-imports/{id:int}/reject", async (
     bool search = false,
     bool? deleteFile = null) =>
 {
-    using var decision = coordinator.TryEnterExternalDecision();
+    using var decision = await coordinator.WaitForExternalDecisionAsync(coordinator.UserActionWait);
     if (decision == null)
         return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
 
@@ -1017,7 +1019,7 @@ app.MapDelete("/api/pending-imports/{id:int}", async (
     ILogger<Program> logger,
     bool? deleteFile = null) =>
 {
-    using var decision = coordinator.TryEnterExternalDecision();
+    using var decision = await coordinator.WaitForExternalDecisionAsync(coordinator.UserActionWait);
     if (decision == null)
         return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
 
@@ -1049,7 +1051,7 @@ app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
     ILogger<Program> logger,
     bool search = false) =>
 {
-    using var decision = coordinator.TryEnterExternalDecision();
+    using var decision = await coordinator.WaitForExternalDecisionAsync(coordinator.UserActionWait);
     if (decision == null)
         return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
 
@@ -1189,7 +1191,7 @@ app.MapPost("/api/pending-imports/{id:int}/import-pack", async (
     ILogger<Program> logger,
     [FromServices] DownloadOwnershipCoordinator coordinator) =>
 {
-    using var decision = coordinator.TryEnterExternalDecision();
+    using var decision = await coordinator.WaitForExternalDecisionAsync(coordinator.UserActionWait);
     if (decision == null)
         return Results.Conflict(new { error = "A download is being processed. Try again when processing finishes." });
     // Import all matching files from a pack-type pending import
@@ -1283,6 +1285,8 @@ app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
 {
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();
+    if (import.Status == PendingImportStatus.Ignored)
+        return Results.Conflict(new { error = "Unignore this download before you scan it." });
     if (!import.IsPack)
         return Results.BadRequest(new { error = "This is not a pack download" });
 

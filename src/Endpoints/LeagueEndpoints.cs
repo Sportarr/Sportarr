@@ -1590,10 +1590,15 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
         if (row.Title != null) trackedOwners.TryAdd(row.FilePath, row.Title);
     }
 
+    var pendingRecords = await db.PendingImports
+        .Select(pi => new { pi.FilePath, pi.Status }).ToListAsync();
     var pendingPaths = new HashSet<string>(
-        await db.PendingImports
-            .Select(pi => pi.FilePath).ToListAsync(),
-        StringComparer.OrdinalIgnoreCase);
+        pendingRecords.Select(pi => pi.FilePath), StringComparer.OrdinalIgnoreCase);
+    // An ignored download can be a folder. Skip the files below it too,
+    // as the disk scan and the file watcher do.
+    var ignoredPaths = pendingRecords.Where(pi => pi.Status == PendingImportStatus.Ignored)
+        .Select(pi => DownloadPathSafety.Normalize(pi.FilePath)).OfType<string>()
+        .ToHashSet(DownloadPathSafety.Comparer);
 
     // Blocklist suppresses re-discovery of paths the user has rejected via
     // /api/pending-imports/{id}/reject or /remove-from-client.
@@ -1638,6 +1643,13 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
                     skippedTracked++;
                     logger.LogDebug("[League Scan] Skipping {File}: already tracked by event '{Owner}'",
                         Path.GetFileName(filePath), trackedOwners.GetValueOrDefault(filePath, "(unknown)"));
+                    continue;
+                }
+                if (ignoredPaths.Count > 0 && DownloadPathSafety.FileAndAncestors(filePath).Any(ignoredPaths.Contains))
+                {
+                    skippedPending++;
+                    logger.LogInformation("[League Scan] Skipping {File}: it belongs to an ignored download (Activity > Blocklist)",
+                        Path.GetFileName(filePath));
                     continue;
                 }
                 if (pendingPaths.Contains(filePath))

@@ -111,7 +111,15 @@ public sealed class DownloadOwnershipCoordinator
         }
         finally
         {
-            lock (_sync) _waitingAcquisitions--;
+            // A user action can wait for this acquisition. Wake it when the acquisition leaves.
+            TaskCompletionSource changed;
+            lock (_sync)
+            {
+                _waitingAcquisitions--;
+                changed = _changed;
+                _changed = NewSignal();
+            }
+            changed.TrySetResult();
         }
     }
 
@@ -127,6 +135,38 @@ public sealed class DownloadOwnershipCoordinator
             return new Lease(this, external: true);
         }
     }
+
+    /// <summary>
+    /// Waits a short time for the external decision. A user action such as a
+    /// bulk reject sends many requests at once. Each one waits for its turn
+    /// instead of failing at once. The result is null when the time ends.
+    /// </summary>
+    public async Task<IDisposable?> WaitForExternalDecisionAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        using var expiry = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        expiry.CancelAfter(timeout);
+        while (true)
+        {
+            Task changed;
+            lock (_sync)
+            {
+                var lease = TryEnterExternalDecision();
+                if (lease != null) return lease;
+                changed = _changed.Task;
+            }
+            try
+            {
+                await changed.WaitAsync(expiry.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>The time a user action waits for the external decision. Tests set a shorter time.</summary>
+    public TimeSpan UserActionWait { get; set; } = TimeSpan.FromSeconds(15);
 
     private void Exit(bool external)
     {

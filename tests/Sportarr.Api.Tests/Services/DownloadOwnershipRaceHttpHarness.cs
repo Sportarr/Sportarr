@@ -94,6 +94,8 @@ internal sealed class DownloadOwnershipRaceHttpHarness : IAsyncDisposable
         services.AddSingleton<SearchQueueService>();
         var app = builder.Build(); app.MapEventSearchAndGrabEndpoints(); app.MapQueueAndImportEndpoints(); await app.StartAsync();
         var rig = new DownloadOwnershipRaceHttpHarness(app, directory, transport, saves, analysis);
+        // Busy tests expect a quick 409. A test that checks the wait sets a longer time.
+        rig.Ownership.UserActionWait = TimeSpan.FromMilliseconds(200);
         try
         {
             using var scope = app.Services.CreateScope();

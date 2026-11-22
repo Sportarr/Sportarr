@@ -801,13 +801,14 @@ export default function ActivityPage() {
     if (!canBulkImport) return;
     const items = selectedQueueItems;
     try {
-      await Promise.all(items.map(async item => {
+      // Import one item at a time. Each import holds the download lock while it copies files.
+      for (const item of items) {
         if (canImportQueueItem(item)) {
           await apiClient.post(`/queue/${item.id}/import`);
         } else {
           await apiClient.post(`/queue/${item.id}/retry`);
         }
-      }));
+      }
       clearRowSelections();
       loadQueue();
     } catch (error) {
@@ -2414,7 +2415,7 @@ export default function ActivityPage() {
           <div className="space-y-8">
             <section aria-labelledby="blocked-releases-heading" className="rounded-lg overflow-hidden">
               <h2 id="blocked-releases-heading" className="mb-3 text-lg font-semibold">Blocked releases</h2>
-              <p className="mb-4 text-sm text-gray-400">Sportarr skips these releases in automatic searches and RSS grabs. Blocking a release does not stop a job already in your download client. Remove an entry to allow that release to be downloaded automatically again; ignored jobs stay ignored.</p>
+              <p className="mb-4 text-sm text-gray-400">Sportarr skips these releases in automatic searches and RSS grabs. Blocking a release does not stop a download that is already in your download client. Remove an entry to let Sportarr grab that release automatically again. This does not change ignored downloads.</p>
             {blocklistItems.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <NoSymbolIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
