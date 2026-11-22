@@ -14,7 +14,7 @@ public class FileStemNormalizerTests
 {
     // The hub test holds the same hash. Edit both fixture copies together
     // and then change the hash in both tests.
-    private const string FixtureSha256 = "84c93afeaa9482e87209152f304081b376cd101bf85e2c41d12d7e1e9c0e97f6";
+    private const string FixtureSha256 = "55b6fee0d02ae977145a16d7192664ab6c74aae253f4aee300e0db085fb1d1f2";
 
     private static string FixturePath =>
         Path.Combine(AppContext.BaseDirectory, "Services", "Fixtures", "StemNormalization", "cases.json");
@@ -32,6 +32,11 @@ public class FileStemNormalizerTests
         JsonSerializer.Deserialize<List<StemCase>>(File.ReadAllText(FixturePath))!
             .Select(c => new object[] { c });
 
+    // The hub runs Python 3.12, which has Unicode 15.0. The .NET runtime
+    // can have a newer version. A letter that only the newer version knows
+    // can then give two keys. The hub computes the key again and drops a
+    // row whose key differs, so the gap splits a vote but never makes a
+    // wrong one.
     [Theory]
     [MemberData(nameof(SharedCases))]
     public void Normalize_MatchesTheSharedTable(StemCase c)

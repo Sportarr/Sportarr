@@ -631,5 +631,80 @@
     "name": "a slash cuts the start of the key, so the release collector skips such a title",
     "input": "F1 2024/25 Bahrain Race 1080p",
     "expected": "25 bahrain race"
+  },
+  {
+    "name": "a frame rate on the quality tag goes with the tail",
+    "input": "NHL.2024.10.22.Rangers.vs.Islanders.1080p60.WEB.h264-GRP",
+    "expected": "nhl 2024 10 22 rangers vs islanders"
+  },
+  {
+    "name": "the same game without a frame rate gets the same key",
+    "input": "NHL.2024.10.22.Rangers.vs.Islanders.1080p.WEB.h264-GRP",
+    "expected": "nhl 2024 10 22 rangers vs islanders"
+  },
+  {
+    "name": "a 50 frame rate on a 720p tag goes with the tail",
+    "input": "Formula1.2024.Round05.China.Sprint.720p50.WEB-DL.AAC2.0.H.264-GRP",
+    "expected": "formula1 2024 round05 china sprint"
+  },
+  {
+    "name": "a frame rate with fps goes with the tail",
+    "input": "MotoGP.2024.Round01.Qatar.Race.1080p50fps.WEB.h264-GRP",
+    "expected": "motogp 2024 round01 qatar race"
+  },
+  {
+    "name": "a frame rate tag alone starts the tail",
+    "input": "Bundesliga 2024 Bayern vs Dortmund 1080p25 GERMAN.mkv",
+    "expected": "bundesliga 2024 bayern vs dortmund"
+  },
+  {
+    "name": "a group after a frame rate tag is removed",
+    "input": "Formula1.2024.Round01.Bahrain.Race.2160p60-GRP.mkv",
+    "expected": "formula1 2024 round01 bahrain race"
+  },
+  {
+    "name": "a session word after a dashed frame rate tag stays",
+    "input": "F1 2024 Bahrain 1080p50-Sprint.mkv",
+    "expected": "f1 2024 bahrain sprint"
+  },
+  {
+    "name": "a frame rate outside the list stays",
+    "input": "NHL 2024 Bruins vs Panthers 1080p120.mkv",
+    "expected": "nhl 2024 bruins vs panthers 1080p120"
+  },
+  {
+    "name": "a frame rate as a dotted token after the quality tag goes with the tail",
+    "input": "NHL.2024.10.22.Rangers.vs.Islanders.1080p.60fps.WEB.h264-GRP",
+    "expected": "nhl 2024 10 22 rangers vs islanders"
+  },
+  {
+    "name": "a frame rate as a spaced token after the quality tag goes with the tail",
+    "input": "NHL 2024 10 22 Rangers vs Islanders 1080p 60fps WEB h264-GRP",
+    "expected": "nhl 2024 10 22 rangers vs islanders"
+  },
+  {
+    "name": "a frame rate token before the tail stays",
+    "input": "F1 2024 Onboard 60fps Lap.mkv",
+    "expected": "f1 2024 onboard 60fps lap"
+  },
+  {
+    "name": "a frame rate token is no tag for a group",
+    "input": "F1 2024 Bahrain Onboard 60fps-Hamilton.mkv",
+    "expected": "f1 2024 bahrain onboard 60fps hamilton"
+  },
+  {
+    "name": "another driver after a frame rate token is another key",
+    "input": "F1 2024 Bahrain Onboard 60fps-Verstappen.mkv",
+    "expected": "f1 2024 bahrain onboard 60fps verstappen"
+  },
+  {
+    "name": "a leading league tag stays, so another league keeps another key",
+    "input": "[NBA] Lakers vs Celtics 2024-10-22.mkv",
+    "expected": "nba lakers vs celtics 2024 10 22"
+  },
+  {
+    "name": "a frame rate on a resolution outside the list stays",
+    "input": "NHL 2024 108p60",
+    "expected": "nhl 2024 108p60"
   }
 ]

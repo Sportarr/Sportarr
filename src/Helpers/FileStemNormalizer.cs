@@ -39,8 +39,23 @@ public static class FileStemNormalizer
     private const string Audio = "(?:" + MediaFileParser.AudioCodecTokens + ")" + Channels;
     private const string Video = "(?:" + MediaFileParser.VideoCodecTokens + ")";
     private const string Source = "(?:" + MediaFileParser.SourceTokens + ")";
-    private const string Quality = "(?:" + MediaFileParser.QualityTokens + ")";
+
+    // A resolution with a frame rate, as in "1080p60" or "720p50fps". The
+    // plain resolution goes with the tail, so this form must go too.
+    // Otherwise one game gets two keys. MediaFileParser does not hold this
+    // form, so the list is kept here and in the hub. The resolutions are
+    // the ones in MediaFileParser.QualityTokens.
+    private const string FrameRateQualityTokens = "(?:2160|1080|720|480|360)p(?:24|25|30|50|60)(?:fps)?";
+
+    private const string Quality = "(?:" + FrameRateQualityTokens + "|" + MediaFileParser.QualityTokens + ")";
     private const string GenericQuality = "(?:" + MediaFileParser.GenericQualityTokens + ")";
+
+    // A frame rate can also be its own token after the resolution, as in
+    // "1080p 60fps". The tail removes it. Outside the tail it is a title
+    // word, as in "Onboard 60fps", so the group rule does not read it as a
+    // tag.
+    private const string FrameRate = "(?:(?:24|25|30|50|60)fps)";
+
     private const string ProperRepack = "(?:" + MediaFileParser.ProperRepackTokens + ")";
     private const string Edition = "(?:" + MediaFileParser.EditionTokens + ")";
     private const string Language = "(?:" + MediaFileParser.LanguageTokens + ")";
@@ -110,6 +125,7 @@ public static class FileStemNormalizer
         new(Start + Source + End, Options),
         new(Start + Quality + End, Options),
         new(Start + GenericQuality + End, Options),
+        new(Start + FrameRate + End, Options),
         new(Start + ProperRepack + End, Options),
         new(Start + Edition + End, Options),
         new(Start + Language + End, Options),

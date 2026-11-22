@@ -40,7 +40,7 @@ When you import a file to an event yourself, Sportarr sends these items.
 - The event's season
 - Whether you picked the event yourself or kept Sportarr's suggestion
 
-To clean the name, Sportarr puts it in lower case and takes out any Sportarr id. It takes out a release group at the end of the name when a quality, source, or codec tag comes right before it, such as `GRP` in `x265-GRP`. A word after a dashed tag that names part of the event stays, such as `Sprint` in `1080p-Sprint`. Then Sportarr takes out the quality, source, codec, language, proper, repack, and edition tags, but only from the first quality or source tag on, such as `1080p` or `WEB-DL`. Title words before that tag stay. Each run of spaces and punctuation then becomes one space. Years and season and episode numbers stay.
+To clean the name, Sportarr puts it in lower case and takes out any Sportarr id. It takes out a release group at the end of the name when a quality, source, or codec tag comes right before it, such as `GRP` in `x265-GRP`. A word after a dashed tag that names part of the event stays, such as `Sprint` in `1080p-Sprint`. Then Sportarr takes out the quality, source, codec, language, proper, repack, and edition tags, but only from the first quality or source tag on, such as `1080p` or `WEB-DL`. Title words before that tag stay. A frame rate of 24, 25, 30, 50 or 60 goes with the quality tag, such as `1080p60` or `60fps` in `1080p 60fps`. Other frame rates stay, so `1080p120` stays in the name. Each run of spaces and punctuation then becomes one space. Years and season and episode numbers stay.
 
 This happens when you import from **Library Import**, and when you accept a file in the **Manual Import** dialog. Sportarr does not send these items in the cases below.
 
