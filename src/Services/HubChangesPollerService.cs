@@ -348,15 +348,29 @@ public class HubChangesPollerService : BackgroundService
                     // upstream cost stays small.
                     var skippedSeasons = new List<string>();
                     var walkIncomplete = false;
+                    var targetedUnfinished = false;
+                    var holdWalkRemovals = false;
+                    // True when a sync saved its work and only its last hub
+                    // lookups met a 429. The lookups wait for a later walk.
+                    var lookupsRateLimited = false;
                     if (order.Seasons.Count > 0)
                     {
                         _logger.LogInformation(
                             "[Changes Poller] Refreshing {LeagueName} season(s) {Seasons} (hub reported changes)",
                             league.Name, string.Join(", ", order.Seasons));
 
-                        var seasonResult = await syncService.SyncLeagueEventsAsync(
-                            league.Id, seasons: order.Seasons.ToList(), fullHistoricalSync: false,
-                            forceRefresh: true, cancellationToken: cancellationToken);
+                        LeagueEventSyncResult seasonResult;
+                        try
+                        {
+                            seasonResult = await syncService.SyncLeagueEventsAsync(
+                                league.Id, seasons: order.Seasons.ToList(), fullHistoricalSync: false,
+                                forceRefresh: true, cancellationToken: cancellationToken);
+                        }
+                        catch (LeagueSyncRateLimitedException ex)
+                        {
+                            seasonResult = ex.Result;
+                            lookupsRateLimited = true;
+                        }
 
                         if (!seasonResult.Success)
                         {
@@ -364,9 +378,27 @@ public class HubChangesPollerService : BackgroundService
                                 league.Name, seasonResult.Message);
                         }
                         skippedSeasons.AddRange(seasonResult.SkippedSeasons);
+
+                        // The targeted sync moves events to their new season
+                        // by id. The walk below skips past seasons, so it
+                        // cannot do that itself.
+                        (targetedUnfinished, holdWalkRemovals) = HubChangesRefreshPlan.JudgeTargetedSync(seasonResult);
+                        if (targetedUnfinished)
+                        {
+                            // Keep every targeted season in the order. The
+                            // next cycle must run the targeted sync again
+                            // before a walk can remove anything.
+                            skippedSeasons.AddRange(order.Seasons);
+                        }
                     }
 
-                    if (order.SmartWalk)
+                    if (order.SmartWalk && lookupsRateLimited)
+                    {
+                        // The hub rate limits this install, so the walk waits
+                        // for the next cycle.
+                        walkIncomplete = true;
+                    }
+                    else if (order.SmartWalk)
                     {
                         _logger.LogInformation(
                             "[Changes Poller] Refreshing {LeagueName} (league-level change reported)",
@@ -375,16 +407,35 @@ public class HubChangesPollerService : BackgroundService
                         // A full-history reconciliation reads what the hub
                         // already serves. Only a targeted change needs to
                         // bypass the caches.
-                        var walkResult = await syncService.SyncLeagueEventsAsync(
-                            league.Id, seasons: null, fullHistoricalSync: order.FullHistory,
-                            forceRefresh: !order.FullHistory, cancellationToken: cancellationToken);
+                        LeagueEventSyncResult walkResult;
+                        try
+                        {
+                            walkResult = await syncService.SyncLeagueEventsAsync(
+                                league.Id, seasons: null, fullHistoricalSync: order.FullHistory,
+                                forceRefresh: !order.FullHistory, cancellationToken: cancellationToken,
+                                allowRemovals: !holdWalkRemovals);
+                        }
+                        catch (LeagueSyncRateLimitedException ex)
+                        {
+                            // The walk saved its work. Only the hub lookups
+                            // of protected events wait. A cancelled event is
+                            // asked about on the next walk. A stale-season
+                            // event is asked about on the next full-history
+                            // sync. The rows stay until then, so the order is
+                            // done.
+                            walkResult = ex.Result;
+                            lookupsRateLimited = true;
+                        }
 
                         if (!walkResult.Success)
                         {
                             _logger.LogWarning("[Changes Poller] Refresh of {LeagueName} failed: {Message}",
                                 league.Name, walkResult.Message);
                         }
-                        walkIncomplete = walkResult.SkippedSeasons.Count > 0 || walkResult.SeasonListUnavailable;
+                        // A walk that could not remove anything did not
+                        // finish its work, so it runs again next cycle.
+                        walkIncomplete = walkResult.SkippedSeasons.Count > 0 || walkResult.SeasonListUnavailable ||
+                            targetedUnfinished;
                     }
 
                     // A season the hub did not answer for was not applied.
@@ -400,6 +451,14 @@ public class HubChangesPollerService : BackgroundService
                     {
                         results[league.ExternalId!] = HubChangesRefreshResult.Done;
                         refreshedNames.Add(league.Name);
+                    }
+
+                    if (lookupsRateLimited)
+                    {
+                        _logger.LogWarning(
+                            "[Changes Poller] The hub rate limited this install at the end of the refresh of {LeagueName}; the remaining leagues wait for the next cycle",
+                            league.Name);
+                        rateLimited = true;
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

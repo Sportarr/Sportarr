@@ -140,6 +140,19 @@ public static class HubChangesRefreshPlan
     }
 
     /// <summary>
+    /// Judges the targeted season sync that runs before a walk. Unfinished
+    /// means a season was not applied, so the order stays for the next
+    /// cycle. HoldRemovals means the walk must not remove events this cycle.
+    /// An event that failed to process holds the removals only. It does not
+    /// keep the order alive, because the same event can fail every cycle.
+    /// </summary>
+    public static (bool Unfinished, bool HoldRemovals) JudgeTargetedSync(LeagueEventSyncResult result)
+    {
+        var unfinished = !result.Success || result.SkippedSeasons.Count > 0;
+        return (unfinished, unfinished || result.FailedCount > 0);
+    }
+
+    /// <summary>
     /// True when the hub answered 429 anywhere in the failure chain.
     /// </summary>
     public static bool IsRateLimited(Exception? exception)

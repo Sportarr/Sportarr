@@ -139,7 +139,17 @@ public class LeagueEventAutoSyncService : BackgroundService
                 // mid-year are picked up because LeagueEventSync also
                 // unions in the next 5 calendar years on top of whatever
                 // the optimized filter returns.
-                var result = await syncService.SyncLeagueEventsAsync(league.Id, seasons: null, fullHistoricalSync: false);
+                LeagueEventSyncResult result;
+                try
+                {
+                    result = await syncService.SyncLeagueEventsAsync(league.Id, seasons: null, fullHistoricalSync: false);
+                }
+                catch (LeagueSyncRateLimitedException ex)
+                {
+                    // The sync saved its work. Only its last hub lookups met
+                    // the rate limit, so count the result as normal.
+                    result = ex.Result;
+                }
 
                 if (result.Success)
                 {

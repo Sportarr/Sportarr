@@ -1468,13 +1468,22 @@ public class TaskService : ITaskService
             return;
         }
 
-        var result = await syncService.SyncLeagueEventsAsync(
-            leagueId,
-            seasons: null,
-            fullHistoricalSync: fullHistoricalSync,
-            forceRefresh: false,
-            onProgress: onProgress,
-            cancellationToken: cancellationToken);
+        LeagueEventSyncResult result;
+        try
+        {
+            result = await syncService.SyncLeagueEventsAsync(
+                leagueId,
+                seasons: null,
+                fullHistoricalSync: fullHistoricalSync,
+                forceRefresh: false,
+                onProgress: onProgress,
+                cancellationToken: cancellationToken);
+        }
+        catch (LeagueSyncRateLimitedException ex)
+        {
+            // The sync saved its work. Only the last hub lookups waited.
+            result = ex.Result;
+        }
 
         if (!result.Success)
         {

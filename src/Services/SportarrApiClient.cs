@@ -741,6 +741,50 @@ public class SportarrApiClient
         }
     }
 
+    /// <summary>
+    /// Looks up one event and tells "the hub does not have it" apart from
+    /// "the hub did not answer". Answered is true with a null event when the
+    /// hub answered and has no such event. Answered is false when the request
+    /// failed. A 429 is thrown, so the caller can stop its own hub requests.
+    /// </summary>
+    public async Task<(bool Answered, Event? Event)> TryLookupEventAsync(string id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_apiBaseUrl}/lookup/event/{Uri.EscapeDataString(id)}";
+            using var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                throw new HttpRequestException("Rate limited by Sportarr API (429)", null, System.Net.HttpStatusCode.TooManyRequests);
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[SportarrAPI] Event lookup failed for {Id}: HTTP {StatusCode}", id, (int)response.StatusCode);
+                return (false, null);
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Event>>(json, _jsonOptions);
+            var evt = result?.Data?.FirstOrDefault();
+            ApplyBroadcastDateFallback(evt);
+            return (true, evt);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            _logger.LogWarning("[SportarrAPI] Rate limited (429) looking up event: {Id}", id);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SportarrAPI] Failed to look up event: {Id}", id);
+            return (false, null);
+        }
+    }
+
     #endregion
 
     #region Schedule Endpoints

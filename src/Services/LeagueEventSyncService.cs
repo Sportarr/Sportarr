@@ -20,6 +20,22 @@ public class LeagueEventSyncService
     // Track seasons that need episode renumbering due to date changes
     private readonly HashSet<(int LeagueId, string Season)> _seasonsNeedingRenumber = new();
 
+    // The removal pass asks the hub about each protected event. This cap
+    // limits the events one sync asks about. The events past the cap stay
+    // as they are until a later sync.
+    private const int MaxStaleEventLookups = 50;
+
+    // Moves the lookup window on each sync in this process.
+    private static int _lookupRound;
+
+    // Ids the hub answered with no event, and when to ask again. The sync
+    // does not ask about them again before then. The cache lives in memory.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _emptyLookups = new();
+    private static readonly TimeSpan EmptyLookupTtl = TimeSpan.FromHours(24);
+
+    // Forgets the ids the hub answered with no event.
+    internal static void ForgetEmptyLookups() => _emptyLookups.Clear();
+
     public LeagueEventSyncService(
         SportarrDbContext db,
         SportarrApiClient sportarrApiClient,
@@ -77,6 +93,278 @@ public class LeagueEventSyncService
         });
     }
 
+    // Returns the last year of a season string, for example 2025 for
+    // "2024-2025" or "2024/25", and 2024 for "2024". Only a number right
+    // after the first year and a dash or slash counts as the second year,
+    // so "2024 Round 3" stays 2024. Returns null when the string holds no
+    // year.
+    internal static int? SeasonEndYear(string? season)
+    {
+        var start = SeasonNumberParser.Parse(season);
+        if (start == null) return null;
+        var match = System.Text.RegularExpressions.Regex.Match(season!, @"^\s*\d{4}\s*[-/]\s*(\d{4}|\d{2})(?!\d)");
+        if (!match.Success) return start;
+        var end = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        if (end < 100)
+        {
+            end += start.Value / 100 * 100;
+            if (end < start.Value) end += 100;
+        }
+        return Math.Max(start.Value, end);
+    }
+
+    // True when the year ranges of two seasons share a year. A season with
+    // no year overlaps every season, because the sync cannot place it.
+    internal static bool SeasonsOverlap(string? a, string? b)
+    {
+        var aStart = SeasonNumberParser.Parse(a);
+        var bStart = SeasonNumberParser.Parse(b);
+        if (aStart == null || bStart == null) return true;
+        var aEnd = SeasonEndYear(a) ?? aStart.Value;
+        var bEnd = SeasonEndYear(b) ?? bStart.Value;
+        return aStart.Value <= bEnd && bStart.Value <= aEnd;
+    }
+
+    // Picks at most size items, starting at an offset that moves each day.
+    // Over the days every item gets its turn, with no stored state.
+    internal static List<T> PickRotatingWindow<T>(IReadOnlyList<T> items, int size, int day)
+    {
+        if (items.Count <= size) return items.ToList();
+        var start = (int)((long)day * size % items.Count);
+        return Enumerable.Range(0, size).Select(i => items[(start + i) % items.Count]).ToList();
+    }
+
+    // Moves the records of one event to another event. The sync uses this
+    // when it removes a duplicate row, so that nothing points at the row
+    // that goes. Files move only when moveFiles is true.
+    //
+    // Every foreign key to Event in SportarrDbContext, and what happens:
+    //   EventFile.EventId (cascade): moves with moveFiles, else stays.
+    //   DownloadQueueItem.EventId (cascade): moves, so the download imports.
+    //   PendingRelease.EventId (cascade): moves, so the delayed grab stays.
+    //   GrabHistory.EventId (cascade): moves, so the history stays.
+    //   SearchHistoryEntry.EventId (cascade): moves, so the history stays.
+    //   BlocklistItem.EventId (set null): moves, so the block still applies.
+    //   ImportHistory.EventId (set null): moves.
+    //   EventFileHistory.EventId (set null): moves.
+    //   DvrRecording.EventId (set null): moves, then a scheduled recording
+    //     moves to the new row's time and keeps its length.
+    //   PendingImport.SuggestedEventId (set null): points at the new row.
+    //   EpgProgram.MatchedEventId (set null): points at the new row.
+    // StreamEvent.EventId is a change log with no relationship. It stays.
+    private async Task MoveEventRecordsAsync(Event from, Event to, bool moveFiles)
+    {
+        // The file fields change only when file rows really move. A row with
+        // no files must not mark the other row as downloaded.
+        if (moveFiles && from.Files.Any())
+        {
+            foreach (var file in from.Files.ToList())
+            {
+                from.Files.Remove(file);
+                to.Files.Add(file);
+                file.EventId = to.Id;
+            }
+            to.HasFile = true;
+            to.FilePath = from.FilePath;
+            to.FileSize = from.FileSize;
+            to.Quality = from.Quality;
+            from.HasFile = false;
+        }
+
+        // Each row gets the new key and the new navigation, so the change
+        // tracker cannot put back the old link.
+        foreach (var item in await _db.DownloadQueue.Where(q => q.EventId == from.Id).ToListAsync())
+        {
+            item.EventId = to.Id;
+            item.Event = to;
+        }
+        foreach (var pending in await _db.PendingReleases.Where(p => p.EventId == from.Id).ToListAsync())
+        {
+            pending.EventId = to.Id;
+            pending.Event = to;
+        }
+        foreach (var grab in await _db.GrabHistory.Where(g => g.EventId == from.Id).ToListAsync())
+        {
+            grab.EventId = to.Id;
+            grab.Event = to;
+        }
+        foreach (var search in await _db.SearchHistory.Where(h => h.EventId == from.Id).ToListAsync())
+        {
+            search.EventId = to.Id;
+            search.Event = to;
+        }
+        foreach (var blocked in await _db.Blocklist.Where(b => b.EventId == from.Id).ToListAsync())
+        {
+            blocked.EventId = to.Id;
+            blocked.Event = to;
+        }
+        foreach (var import in await _db.ImportHistories.Where(h => h.EventId == from.Id).ToListAsync())
+        {
+            import.EventId = to.Id;
+            import.Event = to;
+        }
+        foreach (var history in await _db.EventFileHistory.Where(h => h.EventId == from.Id).ToListAsync())
+        {
+            history.EventId = to.Id;
+            history.Event = to;
+        }
+        foreach (var suggested in await _db.PendingImports.Where(p => p.SuggestedEventId == from.Id).ToListAsync())
+        {
+            suggested.SuggestedEventId = to.Id;
+            suggested.SuggestedEvent = to;
+        }
+        foreach (var program in await _db.EpgPrograms.Where(p => p.MatchedEventId == from.Id).ToListAsync())
+        {
+            program.MatchedEventId = to.Id;
+            program.MatchedEvent = to;
+        }
+        foreach (var recording in await _db.DvrRecordings.Where(r => r.EventId == from.Id).ToListAsync())
+        {
+            recording.EventId = to.Id;
+            recording.Event = to;
+            if (recording.Status == DvrRecordingStatus.Scheduled &&
+                recording.ScheduledStart != to.EventDate &&
+                !TryRealignScheduledRecording(_db, recording, to.EventDate))
+            {
+                _logger.LogInformation(
+                    "[League Event Sync] Recording {RecordingId} changed during the sync; its times stay as they are",
+                    recording.Id);
+            }
+        }
+
+        CarryManualMonitor(from, to);
+    }
+
+    // Carries a monitor choice the user made by hand from a row that goes
+    // to the row that stays. Only a choice to monitor moves, so the event
+    // that stays is never searched less than before. When the row that
+    // stays has its own hand-made choice, that choice wins.
+    internal static void CarryManualMonitor(Event from, Event to)
+    {
+        if (!from.ManuallyMonitored || !from.Monitored || to.ManuallyMonitored)
+        {
+            return;
+        }
+        to.ManuallyMonitored = true;
+        if (!to.Monitored)
+        {
+            to.Monitored = true;
+            to.MonitoredParts = from.MonitoredParts;
+        }
+    }
+
+    // Puts a protected event where the hub has it now. Returns true when
+    // the row moved or handed its records to the hub's row for the event.
+    // Returns false when the row stays as it is. The row is never removed
+    // with its records.
+    private async Task<bool> PlaceProtectedEventAsync(Event row, Event? hubEvent, League league,
+        HashSet<string>? hubSeasons, Dictionary<int, Event> localById, HashSet<string> claimedIds)
+    {
+        if (hubEvent == null)
+        {
+            _logger.LogWarning(
+                "[League Event Sync] Kept event '{Title}' (S{Season}) with its files, downloads and recordings. The hub has no event with id {Id}.",
+                row.Title, row.Season, row.ExternalId);
+            return false;
+        }
+        if (!string.Equals(hubEvent.LeagueExternalId, league.ExternalId, StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrEmpty(hubEvent.Season) ||
+            (hubSeasons != null && !hubSeasons.Contains(hubEvent.Season!)))
+        {
+            _logger.LogWarning(
+                "[League Event Sync] Kept event '{Title}' (S{Season}). The hub has it outside the listed seasons of this league.",
+                row.Title, row.Season);
+            return false;
+        }
+
+        var idChanged = !string.IsNullOrEmpty(hubEvent.ExternalId) &&
+            !string.Equals(hubEvent.ExternalId, row.ExternalId, StringComparison.Ordinal);
+        if (idChanged)
+        {
+            // The hub answers under a new id. A season fetch can already have
+            // made a row with that id. Two rows for one event would make the
+            // old one look cancelled on the next sync. So the records go to
+            // the new row, and the old row goes.
+            var newRow = localById.Values.FirstOrDefault(e => e.Id != row.Id &&
+                string.Equals(e.ExternalId, hubEvent.ExternalId, StringComparison.Ordinal));
+            if (newRow != null)
+            {
+                if (newRow.HasFile || newRow.Files.Any())
+                {
+                    _logger.LogWarning(
+                        "[League Event Sync] Kept event '{Title}' (S{Season}). The hub's row for it already has files.",
+                        row.Title, row.Season);
+                    return false;
+                }
+                var fileCount = row.Files.Count;
+                await MoveEventRecordsAsync(row, newRow, moveFiles: true);
+                _logger.LogInformation(
+                    "[League Event Sync] Moved {FileCount} file(s) and the other records of event '{Title}' (S{Season}) to the hub's row for it in season {NewSeason}",
+                    fileCount, row.Title, row.Season, newRow.Season);
+                _seasonsNeedingRenumber.Add((league.Id, newRow.Season ?? hubEvent.Season!));
+                CaptureRemoval(row);
+                _db.Events.Remove(row);
+                localById.Remove(row.Id);
+                return true;
+            }
+
+            // Two old rows must not take the same new id.
+            if (!claimedIds.Add(hubEvent.ExternalId!))
+            {
+                _logger.LogWarning(
+                    "[League Event Sync] Kept event '{Title}' (S{Season}). Another row already took hub id {Id} in this sync.",
+                    row.Title, row.Season, hubEvent.ExternalId);
+                return false;
+            }
+            row.ExternalId = hubEvent.ExternalId;
+        }
+
+        if (string.Equals(hubEvent.Season, row.Season, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!idChanged)
+            {
+                _logger.LogInformation(
+                    "[League Event Sync] Kept event '{Title}' (S{Season}). The hub still has it in this season.",
+                    row.Title, row.Season);
+                return false;
+            }
+            row.LastUpdate = DateTime.UtcNow;
+            return true;
+        }
+
+        _logger.LogInformation(
+            "[League Event Sync] Moved event '{Title}' from season {OldSeason} to {NewSeason}, where the hub has it now. Its files, downloads and recordings stay with it.",
+            row.Title, row.Season, hubEvent.Season);
+        if (!string.IsNullOrEmpty(row.Season))
+        {
+            _seasonsNeedingRenumber.Add((league.Id, row.Season!));
+        }
+        _seasonsNeedingRenumber.Add((league.Id, hubEvent.Season!));
+        row.Season = hubEvent.Season;
+        row.SeasonNumber = SeasonNumberParser.Parse(hubEvent.Season);
+        row.LastUpdate = DateTime.UtcNow;
+        return true;
+    }
+
+    // Removes an event that its season's schedule no longer returns. The
+    // caller loads the event with its Files.
+    private void RemoveOrphanedEvent(Event orphan, string season)
+    {
+        if (orphan.HasFile || orphan.Files.Any())
+        {
+            _logger.LogWarning("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) which has {FileCount} file(s) on disk - files left for manual cleanup",
+                orphan.Title, season, orphan.Files.Count);
+            _db.EventFiles.RemoveRange(orphan.Files);
+        }
+        else
+        {
+            _logger.LogDebug("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) - no longer in API schedule",
+                orphan.Title, season);
+        }
+        CaptureRemoval(orphan);
+        _db.Events.Remove(orphan);
+    }
+
     /// <summary>
     /// Sync events for a league from Sportarr API API
     /// </summary>
@@ -93,6 +381,9 @@ public class LeagueEventSyncService
     /// frontend FooterStatusBar can render the in-flight refresh next to download / search progress.</param>
     /// <param name="cancellationToken">Used by TaskService to abort the sync mid-flight when the user cancels
     /// the task from the UI. The async sync respects cancellation between seasons.</param>
+    /// <param name="allowRemovals">When false, the sync adds and updates events but removes none.
+    /// The changes poller sets it to false when the targeted season sync before a walk did not
+    /// finish, because events that the hub moved to a new season still carry the old one.</param>
     /// <returns>Result with counts of new, updated, and skipped events</returns>
     public async Task<LeagueEventSyncResult> SyncLeagueEventsAsync(
         int leagueId,
@@ -100,7 +391,8 @@ public class LeagueEventSyncService
         bool fullHistoricalSync = false,
         bool forceRefresh = false,
         Func<int, string, Task>? onProgress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool allowRemovals = true)
     {
         var result = new LeagueEventSyncResult { LeagueId = leagueId };
 
@@ -322,6 +614,18 @@ public class LeagueEventSyncService
             .GroupBy(r => r.EventId!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());
 
+        // A removal is safe only when the sync has all the data. A season the
+        // hub renamed or an event it moved to another season looks gone until
+        // the sync fetches the new season. These sets record which seasons
+        // the sync got in full, which it did not get, and every event id the
+        // hub returned. The removals run after the loop and use them.
+        var completeSeasons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var emptySeasons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var processingFailedSeasons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var failedSeasons = new List<string>();
+        var seenApiIds = new HashSet<string>();
+        var pendingOrphans = new List<(int EventId, string Season)>();
+
         int seasonIndex = 0;
         // Sync each season
         foreach (var season in seasons)
@@ -331,6 +635,7 @@ public class LeagueEventSyncService
 
             var scheduledRecordingsByEventId = await LoadScheduledRecordingsAsync();
             var seasonStartCount = result.NewCount + result.UpdatedCount;
+            var seasonStartFailed = result.FailedCount;
 
             // Per-season progress checkpoint. Maps the season index
             // onto a 10-90 band so the early "loading league" and final
@@ -358,6 +663,7 @@ public class LeagueEventSyncService
             {
                 _logger.LogWarning("[League Event Sync] Season {Season}: API returned null (skipping cleanup to avoid data loss)", season);
                 result.SkippedSeasons.Add(season);
+                failedSeasons.Add(season);
                 continue;
             }
 
@@ -397,6 +703,15 @@ public class LeagueEventSyncService
             // the cleanup predicates below so all sides classify
             // identically.
             var fullSeasonEvents = events.ToList();
+
+            // Date and title signatures that more than one event of this
+            // answer share, such as a doubleheader. The match with a stale
+            // season skips them, because it cannot tell the games apart.
+            var repeatedSignatures = fullSeasonEvents
+                .GroupBy(e => BuildEventMatchSignature(e.EventDate, e.Title))
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToHashSet(StringComparer.Ordinal);
             foreach (var e in fullSeasonEvents) e.LeagueId = league.Id;
             SpecialEventClassifier.ApplySeasonFinalContext(fullSeasonEvents);
             var cupStageSizes = SpecialEventClassifier.ComputeCupStageSizes(events.Select(e => e.Round));
@@ -464,6 +779,28 @@ public class LeagueEventSyncService
                 }
             }
 
+            // Local rows of this league keyed by their stored TheSportsDB id.
+            // The hub can delete an event and make it again under a new short
+            // id. The TheSportsDB id stays, so it finds the old row.
+            var existingByTsdbId = new Dictionary<string, Event>(StringComparer.Ordinal);
+            var apiTsdbIds = events.Where(ev => !string.IsNullOrEmpty(ev.TsdbId)).Select(ev => ev.TsdbId!).Distinct().ToList();
+            if (apiTsdbIds.Count > 0)
+            {
+                // When several rows share the id, the row that holds files or
+                // a choice the user made wins. The oldest row comes next.
+                var tsdbRows = await _db.Events
+                    .Include(e => e.Files)
+                    .Where(e => e.LeagueId == league.Id && e.TsdbId != null && apiTsdbIds.Contains(e.TsdbId!))
+                    .ToListAsync();
+                foreach (var row in tsdbRows
+                    .OrderByDescending(e => e.HasFile || e.Files.Count > 0)
+                    .ThenByDescending(e => e.ManuallyMonitored)
+                    .ThenBy(e => e.Id))
+                {
+                    existingByTsdbId.TryAdd(row.TsdbId!, row);
+                }
+            }
+
             var apiTeamIds = new HashSet<string>();
             foreach (var ev in events)
             {
@@ -499,6 +836,35 @@ public class LeagueEventSyncService
                 .ToListAsync();
             // Refresh retained rows even when the new filter excludes them.
             SpecialEventClassifier.ApplySeasonFinalContext(localSeasonRows, fullSeasonEvents);
+            // Rows in seasons the hub no longer lists join the match. The hub
+            // can rename a season and give its events new ids with no
+            // TheSportsDB id. The date and title then find the old row, so it
+            // moves in place and no second copy stays monitored.
+            // They form a second map. The match uses it only when no row of
+            // this season is a candidate, so it cannot make a match that
+            // worked before ambiguous.
+            var staleByDateTitle = new Dictionary<string, List<Event>>(StringComparer.Ordinal);
+            if (fullHubSeasons != null && fullHubSeasons.Count > 0)
+            {
+                var listedSeasons = fullHubSeasons;
+                var listedSet = new HashSet<string>(fullHubSeasons, StringComparer.OrdinalIgnoreCase);
+                var seasonRowIds = localSeasonRows.Select(e => e.Id).ToHashSet();
+                var staleRows = (await _db.Events
+                        .Where(e => e.LeagueId == league.Id && e.Season != null && e.ExternalId != null &&
+                            e.Season != season && !listedSeasons.Contains(e.Season!))
+                        .ToListAsync())
+                    .Where(e => !listedSet.Contains(e.Season!) && seasonRowIds.Add(e.Id));
+                foreach (var stale in staleRows)
+                {
+                    var staleSig = BuildEventMatchSignature(stale.EventDate, stale.Title);
+                    if (!staleByDateTitle.TryGetValue(staleSig, out var staleBucket))
+                    {
+                        staleBucket = new List<Event>();
+                        staleByDateTitle[staleSig] = staleBucket;
+                    }
+                    staleBucket.Add(stale);
+                }
+            }
             foreach (var local in localSeasonRows)
             {
                 var sig = BuildEventMatchSignature(local.EventDate, local.Title);
@@ -520,7 +886,8 @@ public class LeagueEventSyncService
                 {
                     ProcessEvent(apiEvent, league, result, currentSeason, latestSeasonWithData, apiEpisodeMap,
                         existingByExternalId, teamsByExternalId, scheduledRecordingsByEventId,
-                        localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes, monitoredTeamIds);
+                        localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes, monitoredTeamIds,
+                        existingByTsdbId, staleByDateTitle, repeatedSignatures);
                 }
                 catch (Exception ex)
                 {
@@ -552,6 +919,29 @@ public class LeagueEventSyncService
                 {
                     apiExternalIds.Add(ev.TsdbId);
                 }
+            }
+            seenApiIds.UnionWith(apiExternalIds);
+
+            // An event that failed to process is still in seenApiIds, so no
+            // removal below can take its own row. But it can be a new id for
+            // a local row that the date and title match would have taken.
+            // That row then looks cancelled, so this season keeps its
+            // orphans for this pass.
+            if (result.FailedCount > seasonStartFailed)
+            {
+                processingFailedSeasons.Add(season);
+            }
+
+            // An empty answer, or one with no ids, is not proof that the
+            // season holds nothing. The stale cleanup checks these seasons
+            // again below.
+            if (originalEventCount > 0 && apiExternalIds.Count > 0)
+            {
+                completeSeasons.Add(season);
+            }
+            else
+            {
+                emptySeasons.Add(season);
             }
 
             // Safety guard. The cleanup pass below hard-deletes every
@@ -672,6 +1062,11 @@ public class LeagueEventSyncService
                 _logger.LogWarning(
                     "[League Event Sync] Season {Season}: {Orphaned}/{Local} local events appear orphaned ({ApiCount} API ids returned only {EventCount} events, {Floor} needed). Refusing cleanup. The API response looks unhealthy, so investigate the upstream response before retrying.",
                     season, orphanedEvents.Count, localEventsForSeason.Count, apiExternalIds.Count, events.Count, healthyApiFloor);
+                // A cut-short answer can leave out events that moved here
+                // from another season. Treat it as a failed season.
+                completeSeasons.Remove(season);
+                emptySeasons.Remove(season);
+                failedSeasons.Add(season);
                 continue;
             }
             if (localEventsForSeason.Count > 0 &&
@@ -683,6 +1078,7 @@ public class LeagueEventSyncService
                     season, orphanedEvents.Count, localEventsForSeason.Count, apiExternalIds.Count, events.Count, healthyApiFloor);
             }
 
+            var removedFossils = 0;
             if (orphanedEvents.Any())
             {
                 // Safety net for the re-identification case the in-place
@@ -737,44 +1133,83 @@ public class LeagueEventSyncService
                     }
 
                     // A duplicate-of-a-migrated-twin fossil may hold the
-                    // user's imported file; hand it to the twin instead of
-                    // dropping the import record, so the library keeps
-                    // tracking the file under the surviving event.
-                    if (fossilTwinByEventId.TryGetValue(orphan.Id, out var fossilTwin) &&
-                        orphan.Files.Any() && !fossilTwin.HasFile && !fossilTwin.Files.Any())
+                    // user's imported file and other records. Hand them to
+                    // the twin before the duplicate goes, so the library
+                    // keeps tracking them under the surviving event. When
+                    // the caller holds removals, the duplicate stays as it
+                    // is.
+                    if (allowRemovals && fossilTwinByEventId.TryGetValue(orphan.Id, out var fossilTwin))
                     {
-                        var transferred = orphan.Files.ToList();
-                        foreach (var file in transferred)
+                        var transferred = orphan.Files.Count;
+                        if (!fossilTwin.HasFile && !fossilTwin.Files.Any())
                         {
-                            orphan.Files.Remove(file);
-                            fossilTwin.Files.Add(file);
-                            file.EventId = fossilTwin.Id;
+                            await MoveEventRecordsAsync(orphan, fossilTwin, moveFiles: orphan.Files.Any());
                         }
-                        fossilTwin.HasFile = true;
-                        orphan.HasFile = false;
-                        _logger.LogInformation(
-                            "[League Event Sync] Transferred {Count} file(s) from duplicate legacy event '{Title}' (S{Season}) to its migrated twin '{TwinTitle}' before removing the duplicate",
-                            transferred.Count, orphan.Title, season, fossilTwin.Title);
-                    }
+                        else
+                        {
+                            // The twin has files. Give it only the parts it
+                            // does not have. A part that both rows hold
+                            // stays on the duplicate, so no file row is lost.
+                            // The part number decides when it is set. The
+                            // name decides only for a file with no number.
+                            static string PartKey(EventFile f) => f.PartNumber is int number
+                                ? $"n:{number}"
+                                : $"name:{(f.PartName ?? string.Empty).ToLowerInvariant()}";
+                            var twinParts = fossilTwin.Files.Select(PartKey).ToHashSet();
+                            transferred = 0;
+                            foreach (var file in orphan.Files.ToList())
+                            {
+                                if (!twinParts.Add(PartKey(file))) continue;
+                                orphan.Files.Remove(file);
+                                fossilTwin.Files.Add(file);
+                                file.EventId = fossilTwin.Id;
+                                transferred++;
+                            }
+                            if (orphan.Files.Any())
+                            {
+                                // The twin holds the event, so the duplicate
+                                // stops searching. Its files stay. A choice
+                                // the user made by hand to monitor it goes
+                                // to the twin.
+                                CarryManualMonitor(orphan, fossilTwin);
+                                orphan.HasFile = true;
+                                orphan.Monitored = false;
+                                _logger.LogWarning(
+                                    "[League Event Sync] Kept duplicate legacy event '{Title}' (S{Season}). Its twin '{TwinTitle}' already has {Count} of its part(s), so those files stay on the duplicate.",
+                                    orphan.Title, season, fossilTwin.Title, orphan.Files.Count);
+                                continue;
+                            }
+                            orphan.HasFile = false;
+                            await MoveEventRecordsAsync(orphan, fossilTwin, moveFiles: false);
+                        }
+                        if (transferred > 0)
+                        {
+                            _logger.LogInformation(
+                                "[League Event Sync] Transferred {Count} file(s) from duplicate legacy event '{Title}' (S{Season}) to its migrated twin '{TwinTitle}' before removing the duplicate",
+                                transferred, orphan.Title, season, fossilTwin.Title);
+                        }
 
-                    if (orphan.HasFile || orphan.Files.Any())
+                        // The twin in this season holds the event, so the
+                        // duplicate can go now.
+                        RemoveOrphanedEvent(orphan, season);
+                        removedFossils++;
+                    }
+                    else if (fossilTwinByEventId.ContainsKey(orphan.Id))
                     {
-                        _logger.LogWarning("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) which has {FileCount} file(s) on disk - files left for manual cleanup",
-                            orphan.Title, season, orphan.Files.Count);
-                        _db.EventFiles.RemoveRange(orphan.Files);
+                        continue;
                     }
                     else
                     {
-                        _logger.LogDebug("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) - no longer in API schedule",
-                            orphan.Title, season);
+                        // The hub can move an event to a season that this
+                        // sync has not fetched yet. The removal waits until
+                        // every season is done, then checks again.
+                        pendingOrphans.Add((orphan.Id, season));
                     }
-                    CaptureRemoval(orphan);
-                    _db.Events.Remove(orphan);
                 }
 
-                result.RemovedCount += orphanedEvents.Count;
-                _logger.LogInformation("[League Event Sync] Season {Season}: Removed {Count} cancelled/deleted events",
-                    season, orphanedEvents.Count);
+                result.RemovedCount += removedFossils;
+                _logger.LogInformation("[League Event Sync] Season {Season}: {Count} event(s) no longer in the API schedule, removed {Fossils} duplicate(s) now, the rest are checked after all seasons",
+                    season, orphanedEvents.Count, removedFossils);
             }
 
             // SELF-HEAL for out-of-filter events. The team filter prevents
@@ -859,6 +1294,13 @@ public class LeagueEventSyncService
                             continue;
                         }
 
+                        // A caller that holds removals keeps the row.
+                        if (!allowRemovals)
+                        {
+                            strayKeptCount++;
+                            continue;
+                        }
+
                         CaptureRemoval(stray);
                         _db.Events.Remove(stray);
                         strayRemovedCount++;
@@ -887,7 +1329,7 @@ public class LeagueEventSyncService
             await FlushStreamAsync();
 
             var seasonEventsProcessed = (result.NewCount + result.UpdatedCount) - seasonStartCount;
-            var seasonRemovals = orphanedEvents.Count;
+            var seasonRemovals = removedFossils;
 
             // Only recalculate episode numbers for:
             // 1. Current or future seasons (old seasons are finalized and won't change)
@@ -911,40 +1353,218 @@ public class LeagueEventSyncService
                 season, seasonEventsProcessed, result.NewCount - seasonStartCount + result.UpdatedCount, result.UpdatedCount);
         }
 
-        // Stale-season cleanup: events tagged with a Season string the
-        // API no longer returns. The per-season loop above only walks
-        // seasons hub currently lists, so events from a season hub has
-        // since consolidated away (e.g. an old "1992-1993" sibling that
-        // hub deduped into "1992", or a "2026" orphan that hub merged
-        // into "2025-2026") sit forever in the local DB untouched.
-        //
-        // CRITICAL: compares against `fullHubSeasons` (the unfiltered
-        // upstream catalog) rather than the local `seasons` variable.
-        // In optimized refreshes `seasons` only holds current/future
-        // entries, so using it here would flag every legitimate
-        // historical season as "stale" and the halfway-threshold
-        // guard would refuse to clean anything (the original bug
-        // that left the 1-event "1992-1993" / "1991-1992" / "1990-1991"
-        // orphans visible after a daily refresh even though hub had
-        // already deduped them).
-        //
-        // Skips when the caller passed in a custom seasons list
-        // (fullHubSeasons stays null in that path) -- without the
-        // full catalog to compare against, anything outside the
-        // caller-supplied list would look stale even when it is
-        // actually a legitimate season the caller chose not to sync.
-        if (fullHubSeasons != null && fullHubSeasons.Any())
-        {
-            var hubSeasons = new HashSet<string>(fullHubSeasons, StringComparer.OrdinalIgnoreCase);
+        // REMOVAL PASS. A removal is safe only on data the sync really got.
+        // A renamed season or a moved event looks gone until the sync
+        // fetches the new season. The rules below keep every row that the
+        // missing data could still explain.
+        var hubSeasonSet = fullHubSeasons != null
+            ? new HashSet<string>(fullHubSeasons, StringComparer.OrdinalIgnoreCase)
+            : null;
 
-            var localEventsByLeague = await _db.Events
+        // A targeted sync with no orphans has nothing to check here, so it
+        // does not load the league.
+        var needLocalEvents = allowRemovals && (pendingOrphans.Count > 0 || hubSeasonSet != null);
+        var localEventsByLeague = needLocalEvents
+            ? await _db.Events
                 .Include(e => e.Files)
-                .Where(e => e.LeagueId == league.Id && e.Season != null)
-                .ToListAsync();
+                .Where(e => e.LeagueId == league.Id)
+                .ToListAsync()
+            : new List<Event>();
+        var localSeasonNames = new HashSet<string>(
+            localEventsByLeague.Where(e => !string.IsNullOrEmpty(e.Season)).Select(e => e.Season!),
+            StringComparer.OrdinalIgnoreCase);
+        var staleSeasonNames = hubSeasonSet == null
+            ? new List<string>()
+            : localSeasonNames.Where(s => !hubSeasonSet.Contains(s)).ToList();
 
-            var staleEvents = localEventsByLeague
-                .Where(e => !string.IsNullOrEmpty(e.Season) && !hubSeasons.Contains(e.Season!))
+        // A listed season that answered empty is suspect when local events
+        // sit in it, or when its years overlap a stale season. It can then be
+        // a renamed season that answered empty for a moment. An empty season
+        // with neither, such as an old placeholder or a future season, is fine.
+        var suspectSeasons = hubSeasonSet == null
+            ? new List<string>()
+            : emptySeasons
+                .Where(s => hubSeasonSet.Contains(s) &&
+                    (localSeasonNames.Contains(s) || staleSeasonNames.Any(t => SeasonsOverlap(s, t))))
                 .ToList();
+
+        // Only seasons the hub listed count when the list is known. The
+        // extra future seasons the sync guesses often do not exist yet.
+        var incompleteSeasons = failedSeasons
+            .Where(s => hubSeasonSet == null || hubSeasonSet.Contains(s))
+            .Concat(suspectSeasons)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // A season that failed holds back only the removals in the years it
+        // covers. An event moved within the same years can be in it. When
+        // the season list changed (stale seasons exist), a moved event can
+        // be anywhere, so a failed season holds back every removal.
+        var seasonListChanged = staleSeasonNames.Count > 0;
+        bool HeldByIncompleteSeason(string? season) =>
+            incompleteSeasons.Count > 0 &&
+            (seasonListChanged || incompleteSeasons.Any(f => SeasonsOverlap(f, season)));
+
+        if (incompleteSeasons.Count > 0)
+        {
+            _logger.LogWarning(
+                "[League Event Sync] {League}: season(s) {Seasons} failed or answered empty in this sync. {Scope} No event is removed on data the sync did not get. The next sync tries again.",
+                league.Name, string.Join(", ", incompleteSeasons),
+                seasonListChanged
+                    ? "The season list changed, so no events are removed this pass."
+                    : "Events in seasons that overlap these years are kept.");
+        }
+        if (!allowRemovals)
+        {
+            _logger.LogWarning(
+                "[League Event Sync] {League}: the season sync before this one did not finish. No events are removed this pass, because events the hub moved to a new season can still carry the old one.",
+                league.Name);
+        }
+
+        // An event with files, a download in the queue or a DVR recording is
+        // never removed on a guess. The sync asks the hub where the event is.
+        var candidateIds = localEventsByLeague.Select(e => e.Id).ToList();
+        // A download that is imported or failed, and a recording that is
+        // done, failed or cancelled, do not protect a row. Grab history, a
+        // blocklist entry and a choice the user made by hand do, because a
+        // removal would lose them.
+        var activeQueueStates = new[]
+        {
+            DownloadStatus.Queued, DownloadStatus.Downloading, DownloadStatus.Paused,
+            DownloadStatus.Warning, DownloadStatus.Importing, DownloadStatus.ImportPending,
+            // Completed waits for the import. ImportWarning holds a file the
+            // user still has to decide on.
+            DownloadStatus.Completed, DownloadStatus.ImportWarning,
+        };
+        var activeRecordingStates = new[]
+        {
+            DvrRecordingStatus.Scheduled, DvrRecordingStatus.Recording, DvrRecordingStatus.Importing,
+        };
+        var queuedLeagueEventIds = (await _db.DownloadQueue
+                .Where(q => candidateIds.Contains(q.EventId) && activeQueueStates.Contains(q.Status))
+                .Select(q => q.EventId)
+                .ToListAsync())
+            .ToHashSet();
+        var recordedEventIds = (await _db.DvrRecordings
+                .Where(r => r.EventId != null && candidateIds.Contains(r.EventId.Value) &&
+                    activeRecordingStates.Contains(r.Status))
+                .Select(r => r.EventId!.Value)
+                .ToListAsync())
+            .ToHashSet();
+        var historyEventIds = (await _db.GrabHistory
+                .Where(g => candidateIds.Contains(g.EventId))
+                .Select(g => g.EventId)
+                .ToListAsync())
+            .ToHashSet();
+        // A delayed grab is deleted with its event, so it protects the row.
+        historyEventIds.UnionWith(await _db.PendingReleases
+            .Where(p => candidateIds.Contains(p.EventId))
+            .Select(p => p.EventId)
+            .ToListAsync());
+        historyEventIds.UnionWith(await _db.Blocklist
+            .Where(b => b.EventId != null && candidateIds.Contains(b.EventId.Value))
+            .Select(b => b.EventId!.Value)
+            .ToListAsync());
+        bool IsProtected(Event e) =>
+            e.HasFile || e.Files.Any() || e.ManuallyMonitored ||
+            queuedLeagueEventIds.Contains(e.Id) || recordedEventIds.Contains(e.Id) ||
+            historyEventIds.Contains(e.Id);
+
+        var localById = localEventsByLeague.ToDictionary(e => e.Id);
+        var lookupQueue = new List<Event>();
+        var removedOrphans = 0;
+        var keptOrphans = 0;
+
+        // Events that left their season's schedule. The hub can move an event
+        // to another season and keep its id. A later season then updates the
+        // row in place and changes its season. Only the rows that still sit
+        // in the old season, and that no fetched season returned, are left.
+        if (allowRemovals)
+        {
+            var orphanSeasonById = new Dictionary<int, string>();
+            foreach (var (eventId, orphanSeason) in pendingOrphans)
+            {
+                orphanSeasonById.TryAdd(eventId, orphanSeason);
+            }
+
+            foreach (var (eventId, orphanSeason) in orphanSeasonById)
+            {
+                if (!localById.TryGetValue(eventId, out var orphan))
+                {
+                    continue;
+                }
+                if (processingFailedSeasons.Contains(orphanSeason) ||
+                    !string.Equals(orphan.Season, orphanSeason, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(orphan.ExternalId) && seenApiIds.Contains(orphan.ExternalId!)) ||
+                    HeldByIncompleteSeason(orphanSeason))
+                {
+                    keptOrphans++;
+                    continue;
+                }
+
+                // The hub can move an event to a season this sync did not
+                // fetch, such as an older season on a daily refresh. A
+                // targeted sync keeps the row and leaves the lookup to the
+                // next walk, so the poller does not ask on every cycle.
+                if (IsProtected(orphan))
+                {
+                    if (hubSeasonSet != null)
+                    {
+                        lookupQueue.Add(orphan);
+                    }
+                    else
+                    {
+                        keptOrphans++;
+                    }
+                    continue;
+                }
+
+                RemoveOrphanedEvent(orphan, orphanSeason);
+                localById.Remove(orphan.Id);
+                _seasonsNeedingRenumber.Add((league.Id, orphanSeason));
+                removedOrphans++;
+            }
+            result.RemovedCount += removedOrphans;
+        }
+
+        // Stale-season cleanup: events tagged with a Season string the
+        // API no longer lists. The per-season loop above only walks
+        // seasons the hub lists now. So events from a season that the hub
+        // merged away (for example a "1992-1993" copy that the hub merged
+        // into "1992") stay in the database. Without this cleanup a daily
+        // refresh never removes them, and the duplicate monitored rows can
+        // grab the same release twice.
+        //
+        // The cleanup compares against `fullHubSeasons`, the full season
+        // list. It does not use the local `seasons` list, because an
+        // optimized refresh holds only current and future seasons there.
+        // Every past season would then look stale.
+        //
+        // Every sync removes the stale events that have no files, no
+        // download in the queue and no recording, unless a failed season
+        // holds the pass back. A stale event that has one of these waits
+        // for a sync that fetches every listed season. That sync asks the
+        // hub where the event is, and moves the row or keeps it.
+        //
+        // A caller-supplied seasons list leaves `fullHubSeasons` null, so
+        // the cleanup does not run. Without the full list, a season the
+        // caller chose not to sync would look stale.
+        var removedFromStaleSeasons = 0;
+        var keptStale = 0;
+        var isFullPass = false;
+        if (allowRemovals && hubSeasonSet != null && hubSeasonSet.Count > 0)
+        {
+            var hubSeasons = hubSeasonSet;
+
+            // An id that a fetched season returned is still live upstream,
+            // even when the team filter kept the sync from moving the row.
+            var staleEvents = localById.Values
+                .Where(e => !string.IsNullOrEmpty(e.Season) && !hubSeasons.Contains(e.Season!))
+                .Where(e => string.IsNullOrEmpty(e.ExternalId) || !seenApiIds.Contains(e.ExternalId!))
+                .ToList();
+
+            isFullPass = hubSeasons.All(s => completeSeasons.Contains(s) ||
+                (emptySeasons.Contains(s) && !suspectSeasons.Contains(s, StringComparer.OrdinalIgnoreCase)));
 
             if (staleEvents.Any())
             {
@@ -968,29 +1588,158 @@ public class LeagueEventSyncService
                 }
                 else
                 {
-                    int removedFromStaleSeasons = 0;
                     foreach (var stale in staleEvents)
                     {
-                        if (stale.HasFile || stale.Files.Any())
+                        if (HeldByIncompleteSeason(stale.Season))
                         {
-                            _logger.LogWarning(
-                                "[League Event Sync] Removing stale-season event '{Title}' (S{Season}) which has {FileCount} file(s) on disk - files left for manual cleanup",
-                                stale.Title, stale.Season, stale.Files.Count);
-                            _db.EventFiles.RemoveRange(stale.Files);
+                            keptStale++;
+                            continue;
                         }
+
+                        if (IsProtected(stale))
+                        {
+                            if (isFullPass)
+                            {
+                                lookupQueue.Add(stale);
+                            }
+                            else
+                            {
+                                keptStale++;
+                            }
+                            continue;
+                        }
+
+                        // A season that covers this year or a later one can
+                        // drop off the hub list for a moment while the hub
+                        // makes it again. Its events stay. Only past seasons
+                        // lose their stale events here.
+                        if ((SeasonEndYear(stale.Season) ?? int.MaxValue) >= DateTime.UtcNow.Year)
+                        {
+                            keptStale++;
+                            continue;
+                        }
+
                         CaptureRemoval(stale);
                         _db.Events.Remove(stale);
+                        localById.Remove(stale.Id);
                         removedFromStaleSeasons++;
                     }
 
                     result.RemovedCount += removedFromStaleSeasons;
                     _logger.LogInformation(
-                        "[League Event Sync] Stale-season cleanup: removed {Count} event(s) across {SeasonCount} season(s) no longer in API: {Seasons}",
-                        removedFromStaleSeasons, staleSeasonCounts.Count,
+                        "[League Event Sync] Stale-season cleanup: removed {Count} event(s) and kept {Kept} across {SeasonCount} season(s) no longer in API: {Seasons}",
+                        removedFromStaleSeasons, keptStale, staleSeasonCounts.Count,
                         string.Join(", ", staleSeasonCounts.Select(kv => $"{kv.Key}={kv.Value}")));
                 }
             }
         }
+
+        // Ask the hub about each protected event. The number of requests
+        // has a cap. The window moves each day, so every event gets a turn.
+        // The lookups stop at the first failed request. A 429 also stops the
+        // sync after this pass is saved, so the caller can stop its requests.
+        HttpRequestException? rateLimited = null;
+        var movedProtected = 0;
+        var keptProtected = 0;
+        if (lookupQueue.Count > 0)
+        {
+            var ordered = lookupQueue.DistinctBy(e => e.Id).OrderBy(e => e.Id).ToList();
+            // The offset moves each day and on each sync in this process,
+            // so two walks on one day do not ask about the same events.
+            var day = (int)(DateTime.UtcNow.Date - DateTime.UnixEpoch).TotalDays;
+            var round = Interlocked.Increment(ref _lookupRound);
+            var window = PickRotatingWindow(ordered, MaxStaleEventLookups, day + round);
+            keptProtected += ordered.Count - window.Count;
+            var stopped = false;
+            var claimedIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var row in window)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    stopped = true;
+                }
+                if (stopped || string.IsNullOrEmpty(row.ExternalId))
+                {
+                    keptProtected++;
+                    continue;
+                }
+                var cacheKey = $"{league.ExternalId}|{row.ExternalId}";
+                if (_emptyLookups.TryGetValue(cacheKey, out var askAgain) && askAgain > DateTime.UtcNow)
+                {
+                    keptProtected++;
+                    continue;
+                }
+
+                (bool Answered, Event? Event) answer;
+                try
+                {
+                    answer = await _sportarrApiClient.TryLookupEventAsync(row.ExternalId!, cancellationToken);
+
+                    // The hub does not resolve a deleted short id. When it
+                    // deletes an event and makes it again, only the
+                    // TheSportsDB id leads to the new event.
+                    if (answer.Answered && answer.Event == null &&
+                        !string.IsNullOrEmpty(row.TsdbId) &&
+                        !string.Equals(row.TsdbId, row.ExternalId, StringComparison.Ordinal))
+                    {
+                        answer = await _sportarrApiClient.TryLookupEventAsync(row.TsdbId!, cancellationToken);
+                    }
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    rateLimited = ex;
+                    stopped = true;
+                    keptProtected++;
+                    continue;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // The pass is saved below, then the cancel goes on.
+                    stopped = true;
+                    keptProtected++;
+                    continue;
+                }
+                if (!answer.Answered)
+                {
+                    _logger.LogWarning(
+                        "[League Event Sync] {League}: an event lookup failed, so the other lookups wait for a later sync",
+                        league.Name);
+                    stopped = true;
+                    keptProtected++;
+                    continue;
+                }
+
+                if (answer.Event == null)
+                {
+                    _emptyLookups[cacheKey] = DateTime.UtcNow + EmptyLookupTtl;
+                }
+                if (await PlaceProtectedEventAsync(row, answer.Event, league, hubSeasonSet, localById, claimedIds))
+                {
+                    movedProtected++;
+                }
+                else
+                {
+                    keptProtected++;
+                }
+            }
+        }
+
+        if (removedOrphans > 0 || keptOrphans > 0 || movedProtected > 0 || keptProtected > 0)
+        {
+            _logger.LogInformation(
+                "[League Event Sync] {League}: removed {Removed} cancelled event(s), kept {Kept} that may still be live upstream, moved {Moved} and kept {KeptProtected} event(s) with files, downloads or recordings",
+                league.Name, removedOrphans, keptOrphans, movedProtected, keptProtected);
+        }
+        result.UpdatedCount += movedProtected;
+        await _db.SaveChangesAsync();
+        await FlushStreamAsync();
+
+        // Forget the league rows loaded for this pass. For a big league they
+        // would slow every later save in this sync.
+        _db.ChangeTracker.Clear();
+
+        // A cancel during the lookups ends the sync here. The pass is saved.
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Update league's last sync timestamp. The per-season tracker clear
         // detached the league loaded at the top, so stamping that copy would
@@ -1068,7 +1817,11 @@ public class LeagueEventSyncService
         // Refresh per-season poster art from TheSportsDB's season archive so
         // each season can carry its own poster in media servers. One hub call
         // per league sync; best-effort - season art must never fail the sync.
-        await SyncSeasonPostersAsync(league, cancellationToken);
+        // After a 429 the poster request would only meet the rate limit.
+        if (rateLimited == null)
+        {
+            await SyncSeasonPostersAsync(league, cancellationToken);
+        }
 
         // Followed-athlete monitoring: after the season writes, force-monitor
         // any event in this league that a followed athlete appears on. Runs
@@ -1110,6 +1863,14 @@ public class LeagueEventSyncService
         foreach (var shape in measure.CommandShapes.Take(10))
         {
             _logger.LogInformation("[Sync Metrics]   {Count}x {Sql}", shape.Value, shape.Key);
+        }
+
+        // The hub rate limited a lookup. The sync finished its own work, so
+        // the caller now sees the 429 and can stop its hub requests. The
+        // exception carries the result, so a caller can report the saved work.
+        if (rateLimited != null)
+        {
+            throw new LeagueSyncRateLimitedException(result, rateLimited);
         }
 
         return result;
@@ -1605,7 +2366,10 @@ public class LeagueEventSyncService
         HashSet<string> apiIds,
         HashSet<int> adoptedLocalEventIds,
         IReadOnlySet<int> cupStageSizes,
-        HashSet<string> monitoredTeamIds)
+        HashSet<string> monitoredTeamIds,
+        Dictionary<string, Event>? existingByTsdbId = null,
+        Dictionary<string, List<Event>>? staleByDateTitle = null,
+        HashSet<string>? repeatedSignatures = null)
     {
         // Two-pass match against the preloaded existence dictionary (one
         // bulk query per season replaces the former one-to-two DB
@@ -1646,6 +2410,27 @@ public class LeagueEventSyncService
             }
         }
 
+        // Step 3b: match the stored TheSportsDB id of a local row. The hub
+        // can delete an event and make it again with a new short id and a
+        // changed title or day. Its TheSportsDB id stays the same. The row
+        // must not belong to another event in this response.
+        if (existingEvent == null && existingByTsdbId != null && !string.IsNullOrEmpty(apiEvent.TsdbId) &&
+            existingByTsdbId.TryGetValue(apiEvent.TsdbId!, out var byTsdb) &&
+            (string.IsNullOrEmpty(byTsdb.ExternalId) || !apiIds.Contains(byTsdb.ExternalId!)) &&
+            !adoptedLocalEventIds.Contains(byTsdb.Id))
+        {
+            existingEvent = byTsdb;
+            adoptedLocalEventIds.Add(byTsdb.Id);
+            _logger.LogInformation(
+                "[League Event Sync] Matched event by its TheSportsDB id {TsdbId}: local row {LocalId} (old id {OldId}) takes hub id {NewId} ('{Title}')",
+                apiEvent.TsdbId, byTsdb.Id, byTsdb.ExternalId, apiEvent.ExternalId, apiEvent.Title);
+            if (!string.IsNullOrEmpty(apiEvent.ExternalId))
+            {
+                byTsdb.ExternalId = apiEvent.ExternalId;
+                existingByExternalId.TryAdd(apiEvent.ExternalId!, byTsdb);
+            }
+        }
+
         // Step 4 (last resort): neither the short_id nor the TheSportsDB id
         // paired. Before treating this as a brand-new event, try to pair it
         // with an existing local row by date + title. This rescues events the
@@ -1658,36 +2443,51 @@ public class LeagueEventSyncService
         // so we rescue a would-be orphan rather than steal a row another event
         // owns. Ambiguous matches (more than one adoptable candidate, e.g. a
         // doubleheader) are skipped so we never guess.
-        if (existingEvent == null && localByDateTitle.Count > 0)
+        if (existingEvent == null && (localByDateTitle.Count > 0 || staleByDateTitle?.Count > 0))
         {
             var signature = BuildEventMatchSignature(apiEvent.EventDate, apiEvent.Title);
-            if (localByDateTitle.TryGetValue(signature, out var candidates))
+            List<Event> Adoptable(Dictionary<string, List<Event>>? map) =>
+                map != null && map.TryGetValue(signature, out var found)
+                    ? found
+                        .Where(c => !adoptedLocalEventIds.Contains(c.Id))
+                        .Where(c => string.IsNullOrEmpty(c.ExternalId) || !apiIds.Contains(c.ExternalId!))
+                        .ToList()
+                    : new List<Event>();
+
+            // Rows of this season come first. Rows of a season the hub no
+            // longer lists count only when this season has no candidate.
+            // The stale map is not used when this answer holds more than one
+            // event with the signature, or when a row of this season with
+            // the signature belongs to a live event of this answer. A second
+            // game on the same day must not take the first game's old copy.
+            var adoptable = Adoptable(localByDateTitle);
+            var signatureIsLive = localByDateTitle.TryGetValue(signature, out var seasonRows) &&
+                seasonRows.Any(r => !string.IsNullOrEmpty(r.ExternalId) && apiIds.Contains(r.ExternalId!));
+            if (adoptable.Count == 0 && !signatureIsLive &&
+                (repeatedSignatures == null || !repeatedSignatures.Contains(signature)))
             {
-                var adoptable = candidates
-                    .Where(c => !adoptedLocalEventIds.Contains(c.Id))
-                    .Where(c => string.IsNullOrEmpty(c.ExternalId) || !apiIds.Contains(c.ExternalId!))
-                    .ToList();
+                adoptable = Adoptable(staleByDateTitle);
+            }
 
-                if (adoptable.Count == 1)
-                {
-                    existingEvent = adoptable[0];
-                    adoptedLocalEventIds.Add(existingEvent.Id);
-                    _logger.LogInformation(
-                        "[League Event Sync] Re-identified event by date+title: local row {LocalId} (old id {OldId}) adopted as hub id {NewId} ('{Title}') — preserving DVR links instead of delete + recreate",
-                        existingEvent.Id, existingEvent.ExternalId, apiEvent.ExternalId, apiEvent.Title);
+            if (adoptable.Count == 1)
+            {
+                existingEvent = adoptable[0];
+                adoptedLocalEventIds.Add(existingEvent.Id);
+                _logger.LogInformation(
+                    "[League Event Sync] Re-identified event by date+title: local row {LocalId} (old id {OldId}) adopted as hub id {NewId} ('{Title}'), so its DVR links stay",
+                    existingEvent.Id, existingEvent.ExternalId, apiEvent.ExternalId, apiEvent.Title);
 
-                    if (!string.IsNullOrEmpty(apiEvent.ExternalId))
-                    {
-                        existingEvent.ExternalId = apiEvent.ExternalId;
-                        existingByExternalId.TryAdd(apiEvent.ExternalId!, existingEvent);
-                    }
-                }
-                else if (adoptable.Count > 1)
+                if (!string.IsNullOrEmpty(apiEvent.ExternalId))
                 {
-                    _logger.LogDebug(
-                        "[League Event Sync] Skipped date+title rescue for '{Title}' on {Date:yyyy-MM-dd}: {Count} ambiguous local candidates",
-                        apiEvent.Title, apiEvent.EventDate, adoptable.Count);
+                    existingEvent.ExternalId = apiEvent.ExternalId;
+                    existingByExternalId.TryAdd(apiEvent.ExternalId!, existingEvent);
                 }
+            }
+            else if (adoptable.Count > 1)
+            {
+                _logger.LogDebug(
+                    "[League Event Sync] Skipped date+title rescue for '{Title}' on {Date:yyyy-MM-dd}: {Count} ambiguous local candidates",
+                    apiEvent.Title, apiEvent.EventDate, adoptable.Count);
             }
         }
 
@@ -2578,6 +3378,23 @@ public class LeagueEventSyncService
         return false;
     }
 
+}
+
+/// <summary>
+/// The hub rate limited a lookup at the end of a league sync. The sync saved
+/// its work before this was thrown. The status is 429, so callers that stop
+/// on a rate limit still see it.
+/// </summary>
+public class LeagueSyncRateLimitedException : HttpRequestException
+{
+    public LeagueSyncRateLimitedException(LeagueEventSyncResult result, Exception inner)
+        : base("Rate limited by Sportarr API (429) after the league sync saved its work", inner,
+            System.Net.HttpStatusCode.TooManyRequests)
+    {
+        Result = result;
+    }
+
+    public LeagueEventSyncResult Result { get; }
 }
 
 /// <summary>
