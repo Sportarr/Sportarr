@@ -27,7 +27,7 @@ public class QueueRemovalResult
 /// <summary>
 /// Removes an item from the download queue with the configured client-side
 /// and blocklist handling. Extracted from the inline DELETE /api/queue/{id}
-/// handler so the Sonarr v3 compatibility shim (DELETE /api/v3/queue) can
+/// handler so the v3 compatibility shim (DELETE /api/v3/queue) can
 /// drive the exact same removal/blocklist logic instead of a second,
 /// drifting copy - queue-cleanup tools built against the Starr API family
 /// (stalled-download removers especially) depend on that endpoint.

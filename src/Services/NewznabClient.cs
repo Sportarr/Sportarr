@@ -437,7 +437,7 @@ public class NewznabClient
                     ReleaseGroup = ReleaseGroupParser.Parse(title)
                 };
 
-                // Prowlarr/Jackett stamp each item with its true origin
+                // Indexer proxies stamp each item with its true origin
                 // indexer. Trust it over the config name so results fetched
                 // through a proxy's aggregate endpoint keep honest
                 // attribution instead of all wearing one entry's name.

@@ -8,8 +8,8 @@ namespace Sportarr.Api.Services;
 /// using ffprobe (bundled with ffmpeg, present in the Docker image).
 ///
 /// Sits as the third tier of the parser pipeline: regex (filename) -> extension
-/// hint -> THIS, the actual file-binary inspection. Mirrors Sonarr's MediaInfo
-/// augmenter, scaled down to the fields Sportarr actually consumes.
+/// hint -> THIS, the actual file-binary inspection. It reads only the
+/// fields Sportarr actually consumes.
 /// </summary>
 public class MediaFileInspector
 {

@@ -247,7 +247,7 @@ export default function Layout() {
     return false;
   };
 
-  // Auto-collapse dropdowns when navigating to a different top-level section (like Sonarr)
+  // Auto-collapse dropdowns when navigating to a different top-level section
   useEffect(() => {
     // Find which top-level menu section the current path belongs to
     const currentSection = menuItems.find((item) => {
@@ -445,7 +445,7 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Sonarr-style status bar (inside sidebar) */}
+        {/* Status bar (inside sidebar) */}
         {wideScreen && <FooterStatusBar />}
 
         {/* Logout button - only show when auth is enabled */}

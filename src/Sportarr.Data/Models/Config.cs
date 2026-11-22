@@ -218,7 +218,7 @@ public class Config
     public bool EnableEventRetention { get; set; } = false;
     public int EventRetentionDays { get; set; } = 30;
 
-    // Queue Threshold Settings (Huntarr-style)
+    // Queue Threshold Settings
     // Pause searching when download queue exceeds threshold to prevent overloading
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit, otherwise pause when queue exceeds this
 
@@ -233,7 +233,7 @@ public class Config
     // now BacklogSearchIntervalMinutes (hardcoded default 6h). Field retained so
     // existing config.xml files don't blow up on deserialization; do not read.
     [Obsolete("Use BacklogSearchIntervalMinutes. Field exists only for backwards compatibility.")]
-    public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles (default 15 minutes, Huntarr pattern)
+    public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles (default 15 minutes)
 
     // RSS Sync Settings.
     // RSS Sync pulls the latest releases from indexer RSS feeds and matches against monitored events locally.

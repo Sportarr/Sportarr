@@ -12,13 +12,13 @@ public static class V1ProwlarrEndpoints
 {
     public static IEndpointRouteBuilder MapV1ProwlarrEndpoints(this IEndpointRouteBuilder app, string dataPath)
     {
-// GET /api/v1/indexer - List all indexers (Prowlarr uses this to check existing)
+// GET /api/v1/indexer - List all indexers (the indexer manager reads this to find existing ones)
 app.MapGet("/api/v1/indexer", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogDebug("[PROWLARR] GET /api/v1/indexer - Listing indexers for Prowlarr");
     var indexers = await db.Indexers.OrderBy(i => i.Priority).ToListAsync();
 
-    // Transform to Prowlarr-compatible format
+    // Transform to the v1 indexer format
     var prowlarrIndexers = indexers.Select(i => new
     {
         id = i.Id,
@@ -37,7 +37,7 @@ app.MapGet("/api/v1/indexer", async (SportarrDbContext db, ILogger<Program> logg
     return Results.Ok(prowlarrIndexers);
 });
 
-// POST /api/v1/indexer - Add new indexer (Prowlarr pushes indexers here)
+// POST /api/v1/indexer - Add new indexer (the indexer manager pushes indexers here)
 app.MapPost("/api/v1/indexer", async (
     HttpRequest request,
     SportarrDbContext db,
@@ -50,10 +50,10 @@ app.MapPost("/api/v1/indexer", async (
         var json = await reader.ReadToEndAsync();
         logger.LogInformation("[PROWLARR] POST /api/v1/indexer - Received: {Json}", json);
 
-        // Parse Prowlarr payload
+        // Parse the indexer manager's payload
         var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
-        // Extract fields from Prowlarr format
+        // Extract fields from the indexer manager's format
         var name = prowlarrIndexer.GetProperty("name").GetString() ?? "Unknown";
         var implementation = prowlarrIndexer.GetProperty("implementation").GetString() ?? "Torznab";
         var enabled = prowlarrIndexer.TryGetProperty("enable", out var enableProp) ? enableProp.GetBoolean() : true;
@@ -76,16 +76,16 @@ app.MapPost("/api/v1/indexer", async (
         }
 
         // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
-        // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
+        // The indexer manager identifies its indexers by the baseUrl pattern (e.g., http://manager:9696/7/api)
         // Check both with and without trailing slash to handle legacy data
         //
-        // ENHANCED: Also check by URL path to handle different hostnames pointing to the same Prowlarr instance
-        // e.g., http://192.168.1.5:9696/2/, http://host.docker.internal:9696/2/, http://prowlarr:9696/2/
-        // All three have path "/2/" which is the Prowlarr indexer ID - they're the same indexer
+        // ENHANCED: Also check by URL path to handle different hostnames pointing to the same manager instance
+        // e.g., http://192.168.1.5:9696/2/, http://host.docker.internal:9696/2/, http://manager:9696/2/
+        // All three have path "/2/", which is the manager's indexer ID - they're the same indexer
         var normalizedBaseUrl = (baseUrl ?? "").TrimEnd('/').ToLowerInvariant();
         var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
 
-        // Extract URL path for secondary dedup (handles different hostnames for same Prowlarr instance)
+        // Extract URL path for secondary dedup (handles different hostnames for the same manager instance)
         string? urlPath = null;
         if (Uri.TryCreate(normalizedBaseUrlWithSlash, UriKind.Absolute, out var parsedUri))
         {
@@ -95,7 +95,7 @@ app.MapPost("/api/v1/indexer", async (
         var existingIndexer = await db.Indexers
             .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl || i.Url.ToLower() == normalizedBaseUrlWithSlash);
 
-        // If no exact URL match, try matching by name + URL path (same Prowlarr indexer via different hostname)
+        // If no exact URL match, try matching by name + URL path (same manager indexer via different hostname)
         if (existingIndexer == null && !string.IsNullOrEmpty(urlPath) && urlPath != "")
         {
             var allIndexers = await db.Indexers.ToListAsync();
@@ -104,9 +104,9 @@ app.MapPost("/api/v1/indexer", async (
                 if (!Uri.TryCreate(i.Url.TrimEnd('/') + "/", UriKind.Absolute, out var existingUri))
                     return false;
                 var existingPath = existingUri.AbsolutePath.TrimEnd('/');
-                // Same path and same name is meant to catch one Prowlarr
+                // Same path and same name is meant to catch one indexer manager
                 // reached through a different hostname. On its own it also
-                // matched a DIFFERENT Prowlarr: two of them both expose /7/api
+                // matched a DIFFERENT manager: two of them both expose /7/api
                 // and can both hold an indexer called NZBgeek, so syncing the
                 // second replaced the first one's URL and API key and searches
                 // through the original stopped. Requiring the same port makes
@@ -136,13 +136,13 @@ app.MapPost("/api/v1/indexer", async (
             existingIndexer.Url = baseUrl ?? existingIndexer.Url; // Update URL to latest hostname
             existingIndexer.ApiKey = apiKey;
 
-            // Categories: local list wins once it exists. Prowlarr's full sync
+            // Categories: local list wins once it exists. The indexer manager's full sync
             // re-pushes every indexer with the app's Sync Categories (default:
             // TV-only), which silently wiped categories users added in Sportarr
             // (e.g. Movies 2040/2045 for sports posted under Movies > HD) and
             // made those releases unfindable minutes after the user fixed them.
-            // A locally empty list still adopts Prowlarr's, so clearing the
-            // field in Sportarr re-hands control to Prowlarr.
+            // A locally empty list still adopts the manager's list, so clearing the
+            // field in Sportarr hands control back to the manager.
             var incomingCategories = !string.IsNullOrWhiteSpace(categories)
                 ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
                 : new List<string>();
@@ -217,7 +217,7 @@ app.MapPut("/api/v1/indexer/{id:int}", async (
         indexer.Enabled = prowlarrIndexer.TryGetProperty("enable", out var enableProp) ? enableProp.GetBoolean() : indexer.Enabled;
         indexer.Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : indexer.Priority;
 
-        // The connection details were ignored entirely, so Prowlarr was told
+        // The connection details were ignored entirely, so the manager was told
         // the update had worked while Sportarr went on searching the old URL
         // with the old key.
         if (prowlarrIndexer.TryGetProperty("fields", out var updateFields) &&
@@ -271,10 +271,10 @@ app.MapDelete("/api/v1/indexer/{id:int}", async (int id, SportarrDbContext db, I
     return Results.Ok();
 });
 
-// GET /api/v1/system/status - System info (Prowlarr uses this for connection test)
+// GET /api/v1/system/status - System info (the indexer manager uses this for its connection test)
 app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<Program> logger) =>
 {
-    // Prowlarr pings this on a cadence for connectivity. Middleware already
+    // The indexer manager pings this on a cadence for connectivity. Middleware already
     // logs every request at Info, and the four header/auth lines below were
     // diagnostic detail for one-time onboarding bugs. Keep at Debug so they're
     // recoverable when troubleshooting but don't run on every connection test.

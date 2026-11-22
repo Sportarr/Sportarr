@@ -10,13 +10,12 @@ namespace Sportarr.Api.Services;
 /// <summary>
 /// Writes Kodi-native local NFO files and poster/fanart images alongside
 /// imported video files. Zero network calls back to Sportarr are needed on
-/// Kodi's side - it reads these files directly during its own local scrape,
-/// the same way Sonarr/Radarr's XbmcMetadata consumer works.
+/// Kodi's side - it reads these files directly during its own local scrape.
 ///
 /// Deliberately excludes the &lt;episodeguide&gt;&lt;url&gt; tag some *arr
 /// implementations write: Kodi's local-only scraper tries to resolve that
 /// URL online and the failed lookup corrupts the local library entry
-/// (confirmed pattern in Sonarr/Radarr issue trackers). Sportarr's Kodi
+/// (a confirmed pattern in public issue trackers). Sportarr's Kodi
 /// Connect notification (NotificationService.SendKodiAsync) is the intended
 /// way to tell Kodi about new content, not an online episode guide URL.
 /// </summary>

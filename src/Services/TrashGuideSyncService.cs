@@ -20,7 +20,7 @@ public class TrashGuideSyncService
     private const string BaseUrl = "https://raw.githubusercontent.com/TRaSH-Guides/Guides/master/";
     private const string MetadataUrl = BaseUrl + "docs/json/sonarr/";
 
-    // Use Sonarr paths (TV shows - most applicable to sports events)
+    // Use the TV guide paths. TV shows are the closest fit to sports events.
     private const string CustomFormatsPath = "docs/json/sonarr/cf/";
     private const string QualityProfilesPath = "docs/json/sonarr/quality-profiles/";
 

@@ -169,7 +169,7 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
 
   // Indexer form plus the editable list of saved indexers. The API key is
-  // shown for the Prowlarr instructions so the user can copy it straight in.
+  // shown for the indexer manager instructions so the user can copy it straight in.
   const [ixProtocol, setIxProtocol] = useState<'usenet' | 'torrent'>('usenet');
   const [ixName, setIxName] = useState('');
   const [ixUrl, setIxUrl] = useState('');
@@ -330,7 +330,7 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
     return () => { cancelled = true; clearTimeout(timer); };
   }, [rootPath, stepKey]);
 
-  // Sportarr's own API key (bootstrapped on window), handed to the Prowlarr
+  // Sportarr's own API key (bootstrapped on window), handed to the indexer manager
   // instructions with a copy button so the user never leaves the wizard.
   useEffect(() => {
     if (stepKey !== 'indexer' || sportarrApiKey) return;
@@ -872,7 +872,7 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
       return;
     }
     if (stepKey === 'indexer') {
-      // Skippable: Prowlarr users add indexers from there, so an empty URL just
+      // Skippable: indexer manager users add indexers from there, so an empty URL just
       // moves on rather than blocking the step.
       if (!ixUrl.trim()) { goTo(nextKey()); return; }
       if (await saveIndexer()) goTo(nextKey());
@@ -1351,9 +1351,9 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
                 Where Sportarr searches for releases. There are two ways to do this.
               </p>
 
-              {/* Prowlarr-first recommendation with the exact steps, since
-                  Sportarr isn't in Prowlarr's app list yet and the Sonarr
-                  option is the non-obvious trick. */}
+              {/* Indexer-manager-first recommendation with the exact steps.
+                  Sportarr is not in the manager's app list yet, and the TV
+                  app option is the non-obvious trick. */}
               <div className="mb-5 rounded-lg border border-gray-800 bg-gray-900/60 p-4">
                 <div className="mb-1 text-sm font-semibold text-white">
                   Using Prowlarr? <span className="rounded bg-green-600/20 px-1.5 py-0.5 text-[10px] font-medium text-green-400">recommended</span>

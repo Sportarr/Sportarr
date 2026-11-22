@@ -7,7 +7,7 @@ using Sportarr.Api.Models;
 namespace Sportarr.Api.Middleware;
 
 /// <summary>
-/// Dynamic Authentication Middleware (Sonarr/Radarr pattern)
+/// Dynamic Authentication Middleware
 /// Selects authentication scheme based on configuration
 /// </summary>
 public class DynamicAuthenticationMiddleware
@@ -23,7 +23,7 @@ public class DynamicAuthenticationMiddleware
     {
         var path = context.Request.Path.Value?.ToLower() ?? string.Empty;
 
-        // Trace Prowlarr requests at Debug. Prowlarr polls /api/v1/* on a tight
+        // Trace indexer manager requests at Debug. The manager polls /api/v1/* on a tight
         // loop, so logging every request (plus headers) at Information floods the
         // log on any instance with an indexer proxy configured. Operators who
         // need this turn on debug logging.
@@ -154,7 +154,7 @@ public class DynamicAuthenticationMiddleware
 
         if (!shouldEnforceAuth)
         {
-            // Sonarr/Radarr model: even when the browser-facing UI auth is disabled, the
+            // Even when the browser-facing UI auth is disabled, the
             // API key gates the API itself. Without this, a port-forwarded install left at
             // the default AuthenticationMethod "none" exposes every /api/* endpoint to
             // anonymous callers (settings, download-client credentials, self-update, the
@@ -272,7 +272,7 @@ public class DynamicAuthenticationMiddleware
     internal static bool IsPublicPath(string path, string method)
     {
         return path.StartsWith("/assets/") ||
-               // Sonarr-compatible SignalR hub for Bazarr. The WebSocket
+               // v3-compatible SignalR hub for Bazarr. The WebSocket
                // transport can't send the X-Api-Key header, so Bazarr passes
                // the key as the access_token query param; the dynamic-auth gate
                // here only knows the "apikey" query name and would 401 the

@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 namespace Sportarr.Api.Authentication;
 
 /// <summary>
-/// Authentication Builder Extensions (matches Sonarr/Radarr implementation)
+/// Authentication Builder Extensions
 /// Configures all authentication schemes for Sportarr
 /// </summary>
 public static class AuthenticationBuilderExtensions

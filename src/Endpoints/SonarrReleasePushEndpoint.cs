@@ -11,7 +11,7 @@ using System.Text.RegularExpressions;
 namespace Sportarr.Api.Endpoints;
 
 /// <summary>
-/// Release push endpoint, served on the Sonarr v3 compat route
+/// Release push endpoint, served on the v3 compat route
 /// (/api/v3/release/push, see docs/API_VERSIONING.md) and the native
 /// application API route (/api/release/push, see docs/APPLICATION_API.md).
 /// External release watchers (autobrr and similar IRC announce / RSS tools)
@@ -46,7 +46,7 @@ public static class SonarrReleasePushEndpoint
 
     public static IEndpointRouteBuilder MapSonarrReleasePushEndpoint(this IEndpointRouteBuilder app)
     {
-        // Same handler on both routes: /api/v3/release/push keeps the Sonarr
+        // Same handler on both routes: /api/v3/release/push keeps the v3
         // compat surface working, /api/release/push is the native application
         // API route (docs/APPLICATION_API.md) so tools integrating Sportarr
         // directly never touch the compat prefix. The request and response
@@ -85,7 +85,7 @@ public static class SonarrReleasePushEndpoint
         if (string.IsNullOrWhiteSpace(title))
             return Results.BadRequest(new[] { ValidationFailure("Title", "'Title' must not be empty.", title ?? "") });
 
-        // Sonarr accepts either a direct download link or a magnet; the
+        // The v3 push accepts either a direct download link or a magnet; the
         // grab path treats both as the fetch URL for the download client.
         var fetchUrl = !string.IsNullOrWhiteSpace(downloadUrl) ? downloadUrl : magnetUrl;
         if (string.IsNullOrWhiteSpace(fetchUrl))

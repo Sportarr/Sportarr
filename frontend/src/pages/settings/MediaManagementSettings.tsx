@@ -577,7 +577,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
         isSaving={saving}
         hasUnsavedChanges={hasUnsavedChanges}
       >
-        {/* Show Advanced Toggle - like Sonarr */}
+        {/* Show Advanced Toggle */}
         <label className="flex items-center space-x-2 cursor-pointer text-sm">
           <input
             type="checkbox"

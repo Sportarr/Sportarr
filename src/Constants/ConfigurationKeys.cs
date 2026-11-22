@@ -43,7 +43,7 @@ public static class EnvironmentVariableNames
     /// <summary>
     /// Prefix for the Docker-secrets convention: FILE__&lt;VarName&gt; points at a file whose
     /// contents become the value of &lt;VarName&gt;. Generic - works for any Sportarr__* secret,
-    /// not just the database password (matches Radarr/Sonarr's FILE__ convention).
+    /// not just the database password.
     /// </summary>
     public const string SecretFilePrefix = "FILE__";
 

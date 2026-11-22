@@ -23,8 +23,8 @@ interface DownloadClient {
   apiKey?: string;
   urlBase?: string; // URL base path (e.g., "/sabnzbd" for SABnzbd, "" for root)
   category: string;
-  postImportCategory?: string; // Category to move downloads to after import (Sonarr-style feature)
-  directory?: string; // Override download directory (like Sonarr/Radarr)
+  postImportCategory?: string; // Category to move downloads to after import
+  directory?: string; // Override download directory
   useSsl: boolean;
   disableSslCertificateValidation?: boolean;
   enabled: boolean;
@@ -431,7 +431,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const [redownloadFailedFromInteractiveSearch, setRedownloadFailedFromInteractiveSearch] = useState(true);
   const [stalledDownloadTimeoutMinutes, setStalledDownloadTimeoutMinutes] = useState(60);
 
-  // Search Queue Management (Huntarr-style queue threshold pause)
+  // Search Queue Management (pause searches at a queue threshold)
   const [maxDownloadQueueSize, setMaxDownloadQueueSize] = useState(-1); // -1 = no limit
   const [searchSleepDuration, setSearchSleepDuration] = useState(900); // seconds
 
@@ -1673,7 +1673,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                       </p>
                     </div>
 
-                    {/* Post-Import Category (Sonarr-style feature for torrent clients) */}
+                    {/* Post-Import Category (for torrent clients) */}
                     {selectedTemplate?.fields.includes('postImportCategory') && (
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">Post-Import Category</label>
@@ -1853,7 +1853,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                     </div>
                   )}
 
-                  {/* Completed Download Handling (per-client, Sonarr v4 parity) */}
+                  {/* Completed Download Handling (per client) */}
                   {selectedTemplate?.fields.includes('removeCompletedDownloads') && (
                     <div className="space-y-4">
                       <h4 className="text-lg font-semibold text-white">Completed Download Handling</h4>

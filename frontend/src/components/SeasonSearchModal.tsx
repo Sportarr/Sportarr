@@ -936,8 +936,8 @@ export default function SeasonSearchModal({
                                         )}
                                         <div className="min-w-0 flex-1">
                                           {result.infoUrl ? (
-                                            /* Link to the release's details page on the indexer,
-                                               like Prowlarr. */
+                                            /* Link to the release's details page on the
+                                               indexer. */
                                             <a
                                               href={result.infoUrl}
                                               target="_blank"

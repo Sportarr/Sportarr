@@ -675,7 +675,7 @@ export default function EventFileDetailModal({
         </div>
       )}
 
-      {/* Reassign-to-different-event modal (Sonarr-style "Move episode to different series") */}
+      {/* Reassign-to-different-event modal (moves the file to a different event) */}
       {reassignFile && (
         <ReassignEventFileModal
           isOpen={!!reassignFile}

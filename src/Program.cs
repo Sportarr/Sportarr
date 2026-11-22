@@ -630,8 +630,8 @@ Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication
 
 builder.Services.AddHealthChecks().AddSportarrHealthChecks();
 
-// SignalR powers the Sonarr-compatible /signalr/messages hub that Bazarr (and
-// other Sonarr consumers) connect to for live status. See SonarrMessageHub.
+// SignalR serves the v3-compatible /signalr/messages hub. Bazarr and other
+// v3 clients connect to it for live status. See the hub class in Hubs/.
 builder.Services.AddSignalR();
 
 var app = builder.Build();
@@ -730,7 +730,7 @@ if (app.Environment.IsDevelopment())
 app.UseExceptionHandling();
 app.UseRequestLogging();
 
-// Add X-Application-Version header to all API responses (required for Prowlarr)
+// Add the X-Application-Version header to all API responses. The indexer manager needs it.
 app.UseVersionHeader();
 
 // ASP.NET Core Authentication & Authorization
@@ -1194,8 +1194,8 @@ app.MapEventSearchAndGrabEndpoints();
 app.MapSearchHistoryEndpoints();
 app.MapSearchAndCalendarEndpoints();
 
-// Sonarr-compatibility shims (see docs/API_VERSIONING.md) ----------------
-// /api/v1/* — Prowlarr expects this contract
+// Compatibility shims (see docs/API_VERSIONING.md) ----------------
+// /api/v1/*: the indexer manager expects this contract.
 app.MapV1ProwlarrEndpoints(dataPath);
 
 // /api/v3/* — Decypharr/Maintainerr/ArrControl/Unpackerr expect this contract
@@ -1211,7 +1211,7 @@ app.MapSonarrQueueEndpoints();
 app.MapSonarrWantedEndpoint();
 app.MapSonarrReleasePushEndpoint();
 
-// Sonarr-compatible SignalR hub. Bazarr opens a SignalR connection here and
+// v3-compatible SignalR hub. Bazarr opens a SignalR connection here and
 // reports the instance DOWN until it succeeds, independent of the REST API,
 // so without this the "Series" status stayed red even though every REST call
 // worked. Reachable without the dynamic-auth gate (see IsPublicPath) because

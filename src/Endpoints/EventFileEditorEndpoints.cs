@@ -10,7 +10,7 @@ using Sportarr.Api.Services;
 namespace Sportarr.Api.Endpoints;
 
 /// <summary>
-/// EventFile metadata editor endpoints. Mirrors Sonarr's three-endpoint shape
+/// EventFile metadata editor endpoints. They use a three-endpoint shape
 /// (single, editor, bulk) so the frontend modal logic can match the established
 /// pattern, with Sportarr-only additions (Codec, Source, IndexerFlags, Languages).
 ///
@@ -23,7 +23,7 @@ public static class EventFileEditorEndpoints
     /// <summary>
     /// Editable fields. All optional — null means "leave the existing value alone".
     /// Languages is a special case: a non-null empty list explicitly clears the
-    /// list, matching Sonarr's editor semantics.
+    /// list.
     /// </summary>
     public class EventFileEditRequest
     {
@@ -101,7 +101,7 @@ public static class EventFileEditorEndpoints
 
         // ----------------------------------------------------------------
         // PUT /api/event-files/editor
-        // Apply ONE set of values to MANY ids. Sonarr-equivalent shape.
+        // Apply ONE set of values to MANY ids.
         // ----------------------------------------------------------------
         app.MapPut("/api/event-files/editor", async (
             EventFileEditorRequest request,
@@ -224,7 +224,7 @@ public static class EventFileEditorEndpoints
             };
 
             // Source list covers both the parser's canonical normalized form
-            // (WEBDL, BLURAY) and the dash-form variants Sonarr scenes use
+            // (WEBDL, BLURAY) and the dash-form variants scene releases use
             // (WEB-DL, Blu-Ray) so users can pick whichever matches their
             // existing files without falling into Custom mode.
             var sources = new[]

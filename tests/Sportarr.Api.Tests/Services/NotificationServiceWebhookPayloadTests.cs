@@ -10,9 +10,9 @@ namespace Sportarr.Api.Tests.Services;
 /// Notifiarr developer feedback: first to fix flat-field gaps (size only
 /// in message text, no distinction between the internal eventId and an
 /// external metadata id, Grab/Import field-set drift), then a full
-/// restructure to mirror Sonarr's actual production webhook shape
-/// (Series/Release/EpisodeFile/DeletedFiles) after confirming via Sonarr's
-/// own GitHub source that this wasn't just a preference - it's the real,
+/// restructure to the nested v3 webhook shape
+/// (Series/Release/EpisodeFile/DeletedFiles) after confirming in the
+/// published source of that API that this wasn't just a preference - it's the real,
 /// shipped pattern integrators already build against. BuildWebhookPayload
 /// and WebhookJsonOptions are internal (not private) specifically so this
 /// test class can exercise the real payload-building code directly via
@@ -234,7 +234,7 @@ public class NotificationServiceWebhookPayloadTests
     {
         // Correlation gap Notifiarr flagged: tie a Download event back to
         // the Grab that produced it. Indexer now lives under release on
-        // both (Sonarr's WebhookImportPayload carries a release too).
+        // both (the v3 import payload carries a release too).
         var grabData = new NotificationEventData { EventId = 42, EventTitle = "UFC 300", Indexer = "SomeIndexer", DownloadId = "abc123" };
         var downloadData = new NotificationEventData
         {

@@ -9,7 +9,7 @@ namespace Sportarr.Api.Services;
 /// Why this exists: when a backup is restored on a different machine (or
 /// after the source machine reorganized its storage), the EventFile rows
 /// land with absolute paths that no longer exist. Manually re-importing
-/// every file is the Sonarr-equivalent of misery. The remap service walks
+/// every file by hand is slow and painful. The remap service walks
 /// the missing-file set, computes the longest common prefix of those
 /// paths, and looks for the same filenames under the locally-configured
 /// root folders to determine the new prefix. If a confident match exists,

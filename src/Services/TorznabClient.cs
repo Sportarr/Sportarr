@@ -84,7 +84,7 @@ public static class NewznabCategories
 /// <summary>
 /// Torznab indexer client for Sportarr
 /// Implements Torznab API specification for torrent indexer searches
-/// Compatible with Jackett, Prowlarr, and native Torznab indexers
+/// Compatible with indexer proxies and native Torznab indexers
 /// </summary>
 public class TorznabClient
 {
@@ -124,7 +124,7 @@ public class TorznabClient
             if (response.IsSuccessStatusCode)
             {
                 var body = await BoundedHttpContent.ReadAsStringAsync(response.Content, "The indexer response");
-                // Parse tolerantly: some Prowlarr-managed indexers answer t=caps with
+                // Parse tolerantly: some proxy-managed indexers answer t=caps with
                 // an HTML error page instead of XML, which used to throw an XmlException
                 // and fail the whole test even though RSS/search work fine.
                 if (TryGetXmlRoot(body, out var rootName))
@@ -582,9 +582,9 @@ public class TorznabClient
                     ReleaseGroup = ReleaseGroupParser.Parse(title)
                 };
 
-                // Prowlarr/Jackett stamp each item with its true origin
-                // (<prowlarrindexer id="2">IPTorrents</prowlarrindexer> /
-                // <jackettindexer>). Trust it over the config name: an entry
+                // Indexer proxies stamp each item with its true origin in a
+                // proxy-specific element (see the element names below).
+                // Trust it over the config name: an entry
                 // pointed at the proxy's AGGREGATE endpoint (base /api with
                 // no indexer id in the path) returns every tracker's results,
                 // and labeling them all with the config name told users a
@@ -671,7 +671,7 @@ public class TorznabClient
     /// <summary>
     /// Parse a Torznab caps XML document into capabilities. Categories are
     /// nested in caps output - each top-level category element can contain
-    /// subcat children (TV -> TV/HD, and Prowlarr indexer-specific forum
+    /// subcat children (TV -> TV/HD, and proxy indexer-specific forum
     /// mappings nest the same way). Reading only the category elements
     /// silently drops every subcategory, which left users unable to pick
     /// exactly the categories they cared about (the picker showed bare

@@ -15,7 +15,7 @@ public static class SonarrConfigEndpoints
 {
     public static IEndpointRouteBuilder MapSonarrConfigEndpoints(this IEndpointRouteBuilder app)
     {
-        // GET /api/v3/rootfolder - Root folders (Sonarr v3 format for Maintainerr)
+        // GET /api/v3/rootfolder - Root folders (v3 format for Maintainerr)
         app.MapGet("/api/v3/rootfolder", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/rootfolder");
@@ -30,7 +30,7 @@ public static class SonarrConfigEndpoints
             }));
         });
 
-        // GET /api/v3/qualityprofile - Quality profiles (Sonarr v3 format for Maintainerr)
+        // GET /api/v3/qualityprofile - Quality profiles (v3 format for Maintainerr)
         app.MapGet("/api/v3/qualityprofile", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/qualityprofile");
@@ -52,7 +52,7 @@ public static class SonarrConfigEndpoints
             }));
         });
 
-        // GET /api/v3/config/ui - UI configuration (Sonarr v3 shape). Queue
+        // GET /api/v3/config/ui - UI configuration (v3 shape). Queue
         // tools read uiLanguage to confirm English status messages (their
         // pattern matching depends on it); Sportarr's messages are always
         // English, so this is static.
@@ -75,11 +75,11 @@ public static class SonarrConfigEndpoints
             });
         });
 
-        // GET /api/v3/qualitydefinition - Quality definitions (Sonarr v3
+        // GET /api/v3/qualitydefinition - Quality definitions (v3
         // format). Prometheus exporters read quality.name and weight to
         // label per-quality episode counts. The quality level number doubles
         // as the weight: definitions are ordered by it and a higher level
-        // means a better quality, which is exactly what Sonarr's weight
+        // means a better quality, which is exactly what the v3 weight
         // conveys.
         app.MapGet("/api/v3/qualitydefinition", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
@@ -99,7 +99,7 @@ public static class SonarrConfigEndpoints
         });
 
         // GET /api/v3/tag/detail - Tags with the ids of the series (leagues)
-        // carrying each one (Sonarr v3 format; exporters chart series count
+        // carrying each one (v3 format; exporters chart series count
         // per tag from this).
         app.MapGet("/api/v3/tag/detail", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
@@ -124,7 +124,7 @@ public static class SonarrConfigEndpoints
             }));
         });
 
-        // GET /api/v3/tag - Tags (Sonarr v3 format for Maintainerr)
+        // GET /api/v3/tag - Tags (v3 format for Maintainerr)
         app.MapGet("/api/v3/tag", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/tag");
@@ -138,8 +138,8 @@ public static class SonarrConfigEndpoints
         });
 
         // POST /api/v3/tag - Create a tag (Maintainerr creates its exclusion
-        // tag on first use). Sonarr returns the existing tag when the label
-        // is already taken, so match that instead of erroring.
+        // tag on first use). When the label is already taken, return the
+        // existing tag instead of an error. v3 clients expect that.
         app.MapPost("/api/v3/tag", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
@@ -216,8 +216,9 @@ public static class SonarrConfigEndpoints
             return Results.Ok(new { id = tag.Id, label = tag.Label });
         });
 
-        // GET /api/v3/languageprofile - Legacy Sonarr v3 language profiles.
-        // Sonarr v4 still serves the deprecated list; consumers (request
+        // GET /api/v3/languageprofile - Legacy v3 language profiles.
+        // Release 4 of the TV server that defines this API still serves the
+        // deprecated list at this v3 route; consumers (request
         // managers among them) fetch it during setup and expect at least one
         // entry. Sports broadcasts have no language-profile concept, so a
         // single static profile satisfies the contract.
@@ -320,9 +321,9 @@ public static class SonarrConfigEndpoints
             return Results.Ok();
         });
 
-        // POST /api/v3/qualityprofile - Create a quality profile (Sonarr v3
+        // POST /api/v3/qualityprofile - Create a quality profile (v3
         // write). Mirrors the native /api/qualityprofile create, just
-        // parsed from Sonarr's wire shape instead of bound directly, since
+        // parsed from the v3 wire shape instead of bound directly, since
         // the two JSON shapes differ (nested quality/formatItems objects).
         app.MapPost("/api/v3/qualityprofile", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
         {
@@ -435,7 +436,7 @@ public static class SonarrConfigEndpoints
         });
 
         // PUT /api/v3/qualitydefinition/{id} - Update a single quality
-        // definition's size thresholds (Sonarr v3 write).
+        // definition's size thresholds (v3 write).
         app.MapPut("/api/v3/qualitydefinition/{id:int}", async (int id, HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
@@ -465,7 +466,7 @@ public static class SonarrConfigEndpoints
         });
 
         // PUT /api/v3/qualitydefinition/update - Bulk update quality
-        // definitions in one call (Sonarr's UpdateQualityDefinitions).
+        // definitions in one call.
         app.MapPut("/api/v3/qualitydefinition/update", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
@@ -509,10 +510,10 @@ public static class SonarrConfigEndpoints
         });
 
 
-        // GET /api/v3/customformat - Custom formats (Sonarr v4-only
+        // GET /api/v3/customformat - Custom formats (a v4-only
         // endpoint, still served under the /v3 prefix). Wraps the same
         // native /api/customformat data (real TRaSH-synced or hand-built
-        // scoring formats) in Sonarr's nested specifications/fields shape.
+        // scoring formats) in the nested specifications/fields shape.
         app.MapGet("/api/v3/customformat", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/customformat");
@@ -680,7 +681,7 @@ public static class SonarrConfigEndpoints
         // GET /api/v3/releaseprofile - Release profiles (required/ignored/
         // preferred keyword scoring). A real, fully native Sportarr feature
         // (src/Endpoints/ProfileAndListEndpoints.cs), just not previously
-        // exposed on the Sonarr wire.
+        // exposed on the v3 wire.
         app.MapGet("/api/v3/releaseprofile", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/releaseprofile");
@@ -752,7 +753,7 @@ public static class SonarrConfigEndpoints
             existing.Preferred = incoming.Preferred;
             existing.IncludePreferredWhenRenaming = incoming.IncludePreferredWhenRenaming;
             existing.Tags = incoming.Tags;
-            // A caller that only knows Sonarr's single indexerId field sends
+            // A caller that only knows the single v3 indexerId field sends
             // back the first of the profile's indexers. Taking that literally
             // dropped the rest, and releases from them stopped being subject
             // to this profile at all. When the payload names no more than the
@@ -814,7 +815,7 @@ public static class SonarrConfigEndpoints
 
         // GET /api/v3/importlist - Import lists. A real native Sportarr
         // feature (src/Endpoints/ProfileAndListEndpoints.cs), just flat
-        // (ListType/Url/ApiKey) where Sonarr's wire shape is schema-driven
+        // (ListType/Url/ApiKey) where the v3 wire shape is schema-driven
         // (implementation + fields[]). ListType maps to a stable
         // implementation name; the flat fields become fields[] entries.
         app.MapGet("/api/v3/importlist", async (SportarrDbContext db, ILogger<Program> logger) =>
@@ -923,7 +924,7 @@ public static class SonarrConfigEndpoints
         });
 
         // GET /api/v3/notification - Notification connections. Native
-        // ConfigJson blob maps cleanly onto Sonarr's fields[] array.
+        // ConfigJson blob maps cleanly onto the v3 fields[] array.
         app.MapGet("/api/v3/notification", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/notification");
@@ -1321,7 +1322,7 @@ public static class SonarrConfigEndpoints
         enabled = p.Enabled,
         required = SplitKeywords(p.Required),
         ignored = SplitKeywords(p.Ignored),
-        // indexerId is Sonarr's single-indexer field, kept for compatibility.
+        // indexerId is the v3 single-indexer field, kept for compatibility.
         // A profile can be scoped to several here, and a client that read this
         // back and wrote it again used to narrow it to the first one, quietly
         // letting releases from the rest bypass the profile's rules.
@@ -1397,7 +1398,7 @@ public static class SonarrConfigEndpoints
     }
 
     // --- v3 quality profile / quality definition write-path helpers ---
-    // Sonarr's wire shape nests quality under items[].quality.{id,name} and
+    // The v3 wire shape nests quality under items[].quality.{id,name} and
     // keeps v4-only scoring fields flat; the native model is the reverse
     // (flat quality id, no v4 marker needed since Sportarr is single-version).
     // These centralize that translation so POST/PUT/GET all agree on shape.

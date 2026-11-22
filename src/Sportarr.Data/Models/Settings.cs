@@ -39,7 +39,7 @@ public class AppSettings
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public int StalledDownloadTimeoutMinutes { get; set; } = 60;
 
-    // Search Queue Management (Huntarr-style queue threshold pause)
+    // Search Queue Management (pause searches at a queue threshold)
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles
 

@@ -50,7 +50,7 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
 {
     try
     {
-        // Read raw JSON to handle Prowlarr API format from frontend
+        // Read raw JSON. The frontend sends the fields-array indexer format.
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync();
         logger.LogDebug("[INDEXER CREATE] Received payload: {Json}", Sportarr.Api.Helpers.SecretRedactor.Json(json));
@@ -58,7 +58,7 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
         // Deserialize as dynamic JSON to extract fields
         var apiIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
-        // Convert Prowlarr API format to Indexer model
+        // Convert the fields-array format to the Indexer model
         var indexer = new Indexer
         {
             Name = apiIndexer.GetProperty("name").GetString() ?? "Unknown",
@@ -246,7 +246,7 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
         var indexer = await db.Indexers.FindAsync(id);
         if (indexer is null) return Results.NotFound();
 
-        // Read raw JSON to handle Prowlarr API format from frontend
+        // Read raw JSON. The frontend sends the fields-array indexer format.
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync();
         logger.LogDebug("[INDEXER UPDATE] Received payload for ID {Id}: {Json}", id, Sportarr.Api.Helpers.SecretRedactor.Json(json));
@@ -529,9 +529,9 @@ app.MapPost("/api/release/search", async (
 });
 
 // API: Fetch supported categories for an in-progress indexer config.
-// Used by the indexer edit form to render a Sonarr-style multi-select
+// Used by the indexer edit form to render a multi-select
 // of named categories rather than a free-text comma-separated ID box.
-// Takes the same payload shape as /api/indexer/test (Prowlarr-style
+// Takes the same payload shape as /api/indexer/test (a
 // fields array) so the frontend can probe before save without
 // persisting anything.
 app.MapPost("/api/indexer/caps", async (
@@ -632,7 +632,7 @@ app.MapPost("/api/indexer/test", async (
 {
     try
     {
-        // Read raw JSON to handle Prowlarr API format from frontend
+        // Read raw JSON. The frontend sends the fields-array indexer format.
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync();
         logger.LogInformation("[INDEXER TEST] Received payload: {Json}", Sportarr.Api.Helpers.SecretRedactor.Json(json));
@@ -640,7 +640,7 @@ app.MapPost("/api/indexer/test", async (
         // Deserialize as dynamic JSON to extract fields
         var apiIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
-        // Convert Prowlarr API format to Indexer model
+        // Convert the fields-array format to the Indexer model
         var indexer = new Indexer
         {
             Name = apiIndexer.GetProperty("name").GetString() ?? "Test",

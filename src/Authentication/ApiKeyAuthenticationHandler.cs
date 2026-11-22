@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Sportarr.Api.Authentication;
 
 /// <summary>
-/// API Key Authentication Handler (matches Sonarr/Radarr implementation)
+/// API Key Authentication Handler
 /// Handles authentication via API key in header, query, or bearer token
 /// </summary>
 public class ApiKeyAuthenticationOptions : AuthenticationSchemeOptions

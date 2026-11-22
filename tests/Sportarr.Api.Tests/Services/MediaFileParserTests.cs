@@ -331,8 +331,8 @@ public class MediaFileParserTests
     [InlineData("BACKUP.bdmv", "1080P", "BLURAY")]
     public void Parse_ShouldFallBackToDiscExtensionAsBluray(string filename, string expectedRes, string expectedSource)
     {
-        // .iso / .bdmv are nearly always BluRay rips at 1080p — safer default
-        // than guessing 2160p, matches Sonarr's extension hint behavior.
+        // .iso / .bdmv are nearly always BluRay rips at 1080p. That is a
+        // safer default than guessing 2160p.
         var result = _parser.Parse(filename);
 
         result.Resolution.Should().Be(expectedRes);

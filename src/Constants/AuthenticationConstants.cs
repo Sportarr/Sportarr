@@ -4,7 +4,7 @@ public static class AuthenticationConstants
 {
     /// <summary>
     /// HTTP header name used for API key authentication.
-    /// Matches Sonarr/Radarr convention so Prowlarr/Decypharr clients can authenticate.
+    /// External clients such as the indexer manager and Decypharr send this header.
     /// </summary>
     public const string ApiKeyHeader = "X-Api-Key";
 
@@ -15,7 +15,7 @@ public static class AuthenticationConstants
 
     /// <summary>
     /// Query string parameter accepted as fallback to the API key header
-    /// (Sonarr-compatible: ?apikey=...).
+    /// (v3-compatible: ?apikey=...).
     /// </summary>
     public const string ApiKeyQueryParam = "apikey";
 

@@ -5,7 +5,7 @@ namespace Sportarr.Api.Middleware;
 
 /// <summary>
 /// Middleware that adds X-Application-Version header to all API responses.
-/// This is required for Prowlarr compatibility - Prowlarr checks this header
+/// The indexer manager needs it. The manager checks this header
 /// to verify the application version during connection tests.
 /// </summary>
 public class VersionMiddleware
@@ -22,7 +22,7 @@ public class VersionMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Add version header to all API requests (required for Prowlarr)
+        // Add the version header to all API requests (the indexer manager needs it)
         if (context.Request.Path.StartsWithSegments("/api") &&
             !context.Response.Headers.ContainsKey(VERSIONHEADER))
         {

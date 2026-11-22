@@ -155,7 +155,7 @@ public static class LanguageDetector
     /// </summary>
     /// <summary>
     /// Language names by the numeric id custom formats use, the same list
-    /// Sonarr and the TRaSH guides publish.
+    /// the TRaSH guides publish.
     ///
     /// This lives here so grab-time evaluation and rename-time evaluation read
     /// one table. They used to disagree: the rename side answered "English"

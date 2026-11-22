@@ -13,7 +13,7 @@ public static class SonarrSystemEndpoints
 {
     public static IEndpointRouteBuilder MapSonarrSystemEndpoints(this IEndpointRouteBuilder app, string dataPath)
     {
-        // GET /api - Sonarr's version root. Starr-family clients (Homarr's
+        // GET /api - The v3 version root. Starr-family clients (Homarr's
         // connection test among them) probe this before anything else and
         // expect the current API version marker.
         app.MapGet("/api", (ILogger<Program> logger) =>
@@ -22,25 +22,25 @@ public static class SonarrSystemEndpoints
             return Results.Ok(new { current = "v3" });
         });
 
-        // GET /api/v3/system/status - System status (Sonarr v3 API for Prowlarr)
+        // GET /api/v3/system/status - System status (v3 API for the indexer manager)
         app.MapGet("/api/v3/system/status", async (HttpContext context, ConfigService configService, ILogger<Program> logger) =>
         {
-            // Prowlarr polls this endpoint on a cadence for connectivity checks.
+            // The indexer manager polls this endpoint on a cadence for connectivity checks.
             // Request-logging middleware already records every inbound HTTP call at
             // Info, so a second per-call announcement here is pure duplication.
             logger.LogDebug("[PROWLARR] GET /api/v3/system/status - Prowlarr requesting system status (v3 API)");
 
             return Results.Ok(new
             {
-                // The v3 shim must identify as Sonarr: consumers validate the
-                // connection by checking appName (Maintainerr rejects anything
-                // where appName.toLowerCase() != "sonarr" with "Unexpected
-                // application name returned"). instanceName stays Sportarr -
-                // that's the user-visible label, and Sonarr itself returns
-                // arbitrary user-chosen instance names there.
+                // The v3 shim must report the TV app name below: consumers
+                // validate the connection by checking appName (Maintainerr
+                // rejects any other value with "Unexpected application name
+                // returned"). instanceName stays Sportarr - that's the
+                // user-visible label, and real v3 servers return arbitrary
+                // user-chosen instance names there.
                 appName = "Sonarr",
                 instanceName = "Sportarr",
-                // Identity marker: a real Sonarr never sends this field, so
+                // Identity marker: a real v3 server never sends this field, so
                 // consumers that want to confirm they are talking to Sportarr
                 // (without breaking the appName check above) key on it.
                 sportarrVersion = Sportarr.Api.Version.AppVersion,
@@ -114,7 +114,7 @@ public static class SonarrSystemEndpoints
             return Results.Ok(entries);
         });
 
-        // GET /api/v3/system/backup - Backup file listing (Sonarr v3 format).
+        // GET /api/v3/system/backup - Backup file listing (v3 format).
         // Wraps the same BackupService the native /api/system/backup page
         // uses; golift.io/starr's GetBackupFilesContext hits this exact
         // path, so this is what makes Notifiarr's (and any other Starr-tool)

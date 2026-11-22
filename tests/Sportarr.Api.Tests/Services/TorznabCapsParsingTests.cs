@@ -5,7 +5,7 @@ namespace Sportarr.Api.Tests.Services;
 
 public class TorznabCapsParsingTests
 {
-    // Mirrors Prowlarr's caps shape: standard categories with nested subcats,
+    // Mirrors an indexer manager's caps shape: standard categories with nested subcats,
     // plus indexer-specific (100000+) forum categories that also nest.
     private const string NestedCapsXml = """
         <caps>

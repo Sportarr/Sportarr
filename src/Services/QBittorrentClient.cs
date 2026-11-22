@@ -170,7 +170,7 @@ public class QBittorrentClient
     /// True when the server speaks the qBittorrent 5.0+ WebAPI (>= 2.11.0),
     /// which renamed torrents/pause -> torrents/stop, torrents/resume ->
     /// torrents/start, and the add 'paused' parameter -> 'stopped'. This is
-    /// the same version gate Sonarr/Radarr use. Compared on Major/Minor so a
+    /// the version gate. Compared on Major/Minor so a
     /// two-component version string ("2.11") isn't mistaken for older than
     /// "2.11.0". Defaults to true (modern) when the version is unknown -
     /// qBittorrent 5.x is the current/supported line and 4.x is end-of-life.
@@ -240,7 +240,7 @@ public class QBittorrentClient
     /// <summary>
     /// Add torrent from URL with detailed result.
     /// Downloads the torrent file bytes first, then sends the bytes to qBittorrent.
-    /// This is critical for Prowlarr URLs which require authentication that qBittorrent doesn't have.
+    /// This is critical for indexer proxy URLs, which require authentication that qBittorrent doesn't have.
     /// </summary>
     public async Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
@@ -259,8 +259,8 @@ public class QBittorrentClient
             _logger.LogInformation("[qBittorrent] Category: {Category}", category);
 
             // For magnet links, pass URL directly to qBittorrent.
-            // For torrent URLs (especially Prowlarr), download bytes first then send to qBittorrent.
-            // Downloading the bytes server-side fixes issues with Prowlarr authentication.
+            // For torrent URLs (especially from an indexer proxy), download bytes first then send to qBittorrent.
+            // Downloading the bytes server-side fixes issues with indexer proxy authentication.
             byte[]? torrentBytes = null;
             string? torrentFilename = null;
 
@@ -370,7 +370,7 @@ public class QBittorrentClient
             // Handle initial state (Started, ForceStarted, Stopped) — useful for testing automation.
             // qBittorrent 5.0 (WebAPI 2.11) renamed the add parameter 'paused' to
             // 'stopped'; pick the right name by the server's WebAPI version, same
-            // as Sonarr and the pause/resume endpoint selection.
+            // as the pause/resume endpoint selection.
             var shouldPause = config.InitialState == TorrentInitialState.Stopped;
             var stoppedParam = await SupportsStartStopAsync(config, baseUrl) ? "stopped" : "paused";
             content.Add(new StringContent(shouldPause ? "true" : "false"), stoppedParam);
@@ -1633,8 +1633,8 @@ public class QBittorrentClient
 
     /// <summary>
     /// Download torrent file from URL.
-    /// Critical for Prowlarr URLs which require the request to come from Sportarr,
-    /// not from qBittorrent which doesn't have Prowlarr's authentication.
+    /// Critical for indexer proxy URLs, which require the request to come from Sportarr,
+    /// not from qBittorrent, which doesn't have the proxy's authentication.
     /// </summary>
     private Task<TorrentDownloadResult> DownloadTorrentFileAsync(string torrentUrl, bool skipSslValidation)
         // Shared with the Transmission and rTorrent paths via TorrentFileResolver,
@@ -1685,7 +1685,7 @@ public class QBittorrentClient
             using var validationClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
             // Try HEAD request first to check content type without downloading
-            // Some indexers (like Prowlarr) don't support HEAD, so we fall back to partial GET
+            // Some indexers and indexer proxies don't support HEAD, so we fall back to partial GET
             var headRequest = new HttpRequestMessage(HttpMethod.Head, uri);
             var headResponse = await validationClient.SendAsync(headRequest);
 
@@ -1988,7 +1988,7 @@ public class QBittorrentClient
     /// <summary>
     /// POST a torrents control verb for one hash, choosing the verb by the
     /// server's WebAPI version: qBittorrent 5.0 (>= 2.11.0) renamed
-    /// pause->stop and resume->start. We version-detect (same as Sonarr)
+    /// pause->stop and resume->start. We version-detect
     /// rather than calling one name and reacting to a 404.
     /// </summary>
     private async Task<bool> ControlTorrentAsync(

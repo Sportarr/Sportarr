@@ -242,7 +242,7 @@ app.MapPost("/api/release/grab", async (
     logger.LogInformation("[GRAB] Release Quality: {Quality}", release.Quality);
     logger.LogInformation("[GRAB] Release Size: {Size} bytes", release.Size);
     logger.LogInformation("[GRAB] Release Indexer: {Indexer}", release.Indexer);
-    // Sanitize download URL — Prowlarr base64 link params may contain trailing newlines
+    // Sanitize the download URL. Base64 link params from an indexer proxy can end in newlines.
     if (release.DownloadUrl.Contains('\n') || release.DownloadUrl.Contains('\r'))
     {
         logger.LogWarning("[GRAB] Download URL contains embedded newlines — sanitizing");

@@ -160,7 +160,7 @@ export default function ManualSearchModal({
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [markFailedConfirm, setMarkFailedConfirm] = useState<HistoryItem | null>(null);
 
-  // Clear search results and auto-start search when modal opens (Sonarr/Radarr behavior)
+  // Clear search results and auto-start search when the modal opens
   // Every open targets one event and one part. Indexer searches take tens of
   // seconds, so a response can arrive after the user has closed the modal and
   // reopened it on another event. Each open takes the next number and a
@@ -186,7 +186,7 @@ export default function ManualSearchModal({
       setShowFilters(false);
       checkExistingFileAndQueue();
       loadHistory();
-      // Auto-start search when modal opens (like Sonarr/Radarr)
+      // Auto-start search when the modal opens
       handleSearchOnOpen();
     }
   }, [isOpen, eventId, part]);
@@ -673,7 +673,6 @@ export default function ManualSearchModal({
   };
 
   // Get source rank for sorting (higher = better source)
-  // Matches Sonarr's quality source ordering
   const getSourceRank = (source: string | null | undefined): number => {
     if (!source) return 0;
     // Normalize: lowercase and remove hyphens/spaces for consistent matching
@@ -729,7 +728,7 @@ export default function ManualSearchModal({
 
       switch (sortField) {
         case 'score': {
-          // Score column shows Custom Format Score only (matching Sonarr)
+          // Score column shows Custom Format Score only
           const cfScoreA = typeof a.customFormatScore === 'number' ? a.customFormatScore : 0;
           const cfScoreB = typeof b.customFormatScore === 'number' ? b.customFormatScore : 0;
           comparison = cfScoreA - cfScoreB;
@@ -818,7 +817,7 @@ export default function ManualSearchModal({
     }
   };
 
-  // Get icon for history item type (matching Sonarr's conventions)
+  // Get icon for history item type
   const getHistoryIcon = (type: string) => {
     switch (type) {
       case 'grabbed':
@@ -1264,8 +1263,8 @@ export default function ManualSearchModal({
                                         <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
                                       )}
                                       {result.infoUrl ? (
-                                        /* Link to the release's details page on the indexer,
-                                           like Prowlarr. stopPropagation so opening the page
+                                        /* Link to the release's details page on the indexer.
+                                           stopPropagation so opening the page
                                            never triggers row actions. */
                                         <a
                                           href={result.infoUrl}

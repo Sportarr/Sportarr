@@ -286,7 +286,7 @@ public class RTorrentClient
     /// <summary>
     /// Set a torrent's queue priority (recent/older event queue priority,
     /// issue #220). Scale: RTorrentQueuePriority (VeryLow=0, Low=1, Normal=2,
-    /// High=3). Sonarr sets this at load time via a trailing d.priority.set
+    /// High=3). A client can set this at load time via a trailing d.priority.set
     /// command; Sportarr's AddTorrentWithHashAsync already confirms the hash
     /// before returning, so this applies it as a normal post-add call like
     /// the other torrent clients instead of threading it through the load

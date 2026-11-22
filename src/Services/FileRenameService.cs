@@ -330,7 +330,7 @@ public class FileRenameService
     /// Fire the OnRename notification for a completed rename operation.
     /// Failures are logged and swallowed. scanPath is the directory that
     /// covers the renamed files (webhook consumers like Autoscan rescan it,
-    /// mirroring how Sonarr's Rename webhook carries series.path).
+    /// the same way a v3 Rename webhook carries series.path).
     /// </summary>
     private async Task NotifyRenamedAsync(
         int count, string scopeDescription, List<int>? leagueTags = null, string? scanPath = null,

@@ -10,7 +10,7 @@ using Sportarr.Api.Services;
 namespace Sportarr.Api.Endpoints;
 
 /// <summary>
-/// Sonarr v3 queue compatibility shim. Tools built against the Sonarr/Radarr "Starr"
+/// v3 queue compatibility shim. Tools built against the "Starr"
 /// API family (Unpackerr in particular) poll GET /api/v3/queue to find downloads that
 /// are complete but still waiting on import, so they know when to step in and extract
 /// packed archives. Without this endpoint those tools get Sportarr's HTML 404 page
@@ -20,10 +20,10 @@ public static class SonarrQueueEndpoints
 {
     public static IEndpointRouteBuilder MapSonarrQueueEndpoints(this IEndpointRouteBuilder app)
     {
-        // GET /api/v3/queue - paginated queue listing (Sonarr v3 API for Unpackerr and similar tools)
+        // GET /api/v3/queue - paginated queue listing (v3 API for Unpackerr and similar tools)
         app.MapGet("/api/v3/queue", async (
             SportarrDbContext db,
-            // ILogger<SonarrQueueEndpoints> won't compile: this is a static class, and C#
+            // A logger typed on this class won't compile: this is a static class, and C#
             // forbids static types as generic type arguments (CS0718). ILogger<Program>
             // is the working pattern every other static *Endpoints class in this codebase
             // uses for the same reason.
@@ -36,7 +36,7 @@ public static class SonarrQueueEndpoints
 
             logger.LogDebug("[V3-COMPAT] GET /api/v3/queue - page={Page}, pageSize={PageSize}", pageNumber, effectivePageSize);
 
-            // Sonarr's queue only ever shows items still in flight - a fully imported
+            // The v3 queue only shows items still in flight - a fully imported
             // download has already left the queue. Matching that here means Unpackerr
             // (and anything else polling this) stops watching an item once Sportarr
             // considers it done, instead of re-processing it on every poll forever.
@@ -46,7 +46,8 @@ public static class SonarrQueueEndpoints
                 .Where(dq => dq.Status != DownloadStatus.Imported)
                 .OrderByDescending(dq => dq.Added);
 
-            // Sonarr also lists in-category downloads it never grabbed itself.
+            // A v3 TV server's queue also lists in-category downloads that the
+            // server itself never grabbed.
             // Sportarr tracks those as PendingImports, so unresolved ones join
             // the queue view as completed/importPending records - that's the
             // state archive extractors watch for. Ids are offset so they never
@@ -86,7 +87,7 @@ public static class SonarrQueueEndpoints
             });
         });
 
-        // GET /api/v3/queue/status - Aggregate queue counters (Sonarr v3
+        // GET /api/v3/queue/status - Aggregate queue counters (v3
         // shape). Dashboards and exporters poll this instead of paging the
         // whole queue. Errors/warnings mirror how the queue records classify
         // Failed status.
@@ -117,11 +118,11 @@ public static class SonarrQueueEndpoints
             });
         });
 
-        // DELETE /api/v3/queue/{id} - Sonarr v3 queue removal. Queue-cleanup
+        // DELETE /api/v3/queue/{id} - v3 queue removal. Queue-cleanup
         // tools in the Starr family (stalled-download removers especially)
-        // delete items through this endpoint; it maps Sonarr's parameter
+        // delete items through this endpoint; it maps the v3 parameter
         // vocabulary onto the same QueueRemovalService the native endpoint
-        // uses. Sonarr defaults mirrored: removeFromClient=true,
+        // uses. The v3 defaults apply: removeFromClient=true,
         // blocklist=false, skipRedownload=false, changeCategory=false.
         app.MapDelete("/api/v3/queue/{id:int}", async (
             int id,
@@ -161,7 +162,7 @@ public static class SonarrQueueEndpoints
             };
         });
 
-        // DELETE /api/v3/queue/bulk - Sonarr v3 bulk removal (body: {"ids": [...]})
+        // DELETE /api/v3/queue/bulk - v3 bulk removal (body: {"ids": [...]})
         app.MapDelete("/api/v3/queue/bulk", async (
             HttpContext context,
             QueueRemovalService queueRemovalService,
@@ -195,7 +196,7 @@ public static class SonarrQueueEndpoints
                     continue;
                 }
 
-                // Missing ids are skipped rather than failing the batch - Sonarr's
+                // Missing ids are skipped rather than failing the batch - the v3
                 // bulk delete tolerates queue items that vanished between the
                 // caller's poll and the delete.
                 var result = await queueRemovalService.RemoveAsync(id, removalMethod, blocklistAction);
@@ -217,9 +218,9 @@ public static class SonarrQueueEndpoints
     }
 
     /// <summary>
-    /// Sonarr expresses removal as flags; the native queue removal speaks in
+    /// The v3 API expresses removal as flags; the native queue removal speaks in
     /// methods. changeCategory wins over removeFromClient when both are sent,
-    /// matching Sonarr's own precedence.
+    /// which is the v3 precedence.
     /// </summary>
     private static string MapRemovalMethod(bool removeFromClient, bool changeCategory) =>
         changeCategory ? "changeCategory"
@@ -232,7 +233,7 @@ public static class SonarrQueueEndpoints
         : "blocklistAndSearch";
 
     /// <summary>
-    /// Maps a tracked queue row onto a Sonarr v3 queue record. Public for the
+    /// Maps a tracked queue row onto a v3 queue record. Public for the
     /// same reason MapStatus is: the wire shape is a frozen contract external
     /// consumers parse, so it is worth asserting on directly in tests.
     /// </summary>
@@ -240,10 +241,10 @@ public static class SonarrQueueEndpoints
     {
         var (status, trackedDownloadState, trackedDownloadStatus) = MapStatus(item.Status);
 
-        // Sonarr's stalled queue items carry this exact errorMessage, and
+        // Stalled v3 queue items carry this exact errorMessage, and
         // stalled-download removers match on the literal string. Sportarr's
         // own stall messages vary (peer-wait vs no-progress timeout), so the
-        // wire record translates any Warning-state stall onto Sonarr's
+        // wire record translates any Warning-state stall onto the v3
         // vocabulary while the native API keeps the more specific text.
         var errorMessage = item.ErrorMessage;
         if (item.Status == DownloadStatus.Warning &&
@@ -345,7 +346,7 @@ public static class SonarrQueueEndpoints
 
     /// <summary>
     /// Maps an unresolved PendingImport (external in-category download) onto a
-    /// Sonarr queue record. Always completed/importPending: the bytes are on
+    /// v3 queue record. Always completed/importPending: the bytes are on
     /// disk, Sportarr just hasn't imported them - exactly the state archive
     /// extractors act on. The id offset keeps these clear of DownloadQueue ids.
     /// </summary>
@@ -377,7 +378,7 @@ public static class SonarrQueueEndpoints
     }
 
     /// <summary>
-    /// Map Sportarr's DownloadStatus to Sonarr's three-field queue status vocabulary
+    /// Map Sportarr's DownloadStatus to the three-field v3 queue status vocabulary
     /// (status / trackedDownloadState / trackedDownloadStatus). Completed,
     /// Importing, ImportPending and ImportWarning all report status "completed",
     /// which is the field an archive extractor actually keys on: Unpackerr treats

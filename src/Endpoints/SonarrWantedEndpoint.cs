@@ -10,10 +10,10 @@ using Sportarr.Api.Services;
 namespace Sportarr.Api.Endpoints;
 
 /// <summary>
-/// Sonarr v3 wanted/missing compatibility shim. Dashboard and library tools
+/// v3 wanted/missing compatibility shim. Dashboard and library tools
 /// in the Starr family (Homarr's media widgets among them) list an
 /// instance's missing items through GET /api/v3/wanted/missing and expect
-/// Sonarr's paged episode records with an optional nested series object.
+/// paged v3 episode records with an optional nested series object.
 /// Maps Sportarr's monitored-without-file events onto that shape, mirroring
 /// the league-as-series conventions the shim calendar endpoint established.
 /// </summary>
@@ -42,7 +42,7 @@ public static class SonarrWantedEndpoint
                 .Include(e => e.League)
                 .Where(e => e.Monitored && !e.HasFile && e.EventDate <= now);
 
-            // Sonarr's default missing sort is airDateUtc; EventDate is the
+            // The default v3 missing sort is airDateUtc; EventDate is the
             // equivalent field, so both sort keys land on the same ordering.
             query = ascending
                 ? query.OrderBy(e => e.EventDate)

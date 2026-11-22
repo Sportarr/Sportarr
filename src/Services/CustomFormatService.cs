@@ -159,7 +159,7 @@ public class CustomFormatService
     }
 
     /// <summary>
-    /// TRaSH JSON uses the full Sonarr names ("ReleaseGroupSpecification");
+    /// TRaSH JSON uses the full implementation names ("ReleaseGroupSpecification");
     /// specs created in the UI use the short forms. Both must route to the
     /// same evaluator and land in the same alternatives group.
     /// </summary>

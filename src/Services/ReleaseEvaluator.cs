@@ -662,8 +662,8 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Check if a custom format matches a release, the way Sonarr evaluates
-    /// them, because TRaSH formats are written against those semantics:
+    /// Check if a custom format matches a release. TRaSH formats are
+    /// written against these semantics:
     ///   1. Evaluate ALL specifications (apply negate flag)
     ///   2. Every Required specification must match
     ///   3. Specifications of the same type are alternatives; different types

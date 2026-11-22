@@ -8,7 +8,7 @@ namespace Sportarr.Api.Helpers;
 /// Derives the numeric id alias for a league or event from its canonical
 /// ExternalId, and reverses the derivation for lookups.
 ///
-/// The Sonarr v3 compat surface (and the Plex Guid array emitted by the
+/// The v3 compat surface (and the Plex Guid array emitted by the
 /// sportarr.net metadata provider) must carry integers because the arr
 /// ecosystem's external-id fields are ints. Canonical ids are short ids
 /// (lg-000142, ev-848683), so each entity type gets a reserved integer

@@ -204,10 +204,10 @@ export default function CustomFormatsSettings({ showAdvanced = false, embedded =
 
       // If importing from within the Add/Edit modal, populate formData instead of saving directly
       if (showAddModal) {
-        // Transform specifications to handle Sonarr's full implementation names
+        // Transform specifications to handle the full implementation names
         const transformedSpecs = (parsed.specifications || []).map((spec: any) => ({
           ...spec,
-          // Normalize fields from Sonarr's array format to our object format
+          // Normalize fields from the exported array format to our object format
           fields: Array.isArray(spec.fields)
             ? spec.fields.reduce((acc: Record<string, any>, field: any) => {
                 if (field.name && field.value !== undefined) {
@@ -232,7 +232,7 @@ export default function CustomFormatsSettings({ showAdvanced = false, embedded =
         return;
       }
 
-      // Otherwise, use the dedicated import endpoint that handles Sonarr/TRaSH JSON format
+      // Otherwise, use the dedicated import endpoint that handles the TRaSH JSON format
       // Note: We parse the JSON first since apiPost will stringify it again
       const parsedJson = JSON.parse(importJson);
       const response = await apiPost('/api/customformat/import', parsedJson);

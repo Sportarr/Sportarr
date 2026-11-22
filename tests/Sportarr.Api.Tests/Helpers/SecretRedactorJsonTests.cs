@@ -45,7 +45,7 @@ public class SecretRedactorJsonTests
     [Fact]
     public void A_prowlarr_field_with_properties_between_name_and_value_is_masked()
     {
-        // Prowlarr's indexer test sends each field with its label and help
+        // The indexer manager's indexer test sends each field with its label and help
         // text between "name" and "value", so the two are never side by side.
         var json = "{\"fields\":[{\"order\":2,\"name\":\"apiKey\",\"label\":\"API Key\",\"helpText\":null," +
                    $"\"helpLink\":null,\"value\":\"{Secret}\",\"type\":\"textbox\",\"privacy\":\"apiKey\"," +

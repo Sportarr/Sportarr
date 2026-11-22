@@ -17,7 +17,7 @@ import apiClient from '../api/client';
  * outside the canonical list are preserved by appending them as a one-off
  * top option so the user's existing data is never lost or hidden.
  *
- * Field set mirrors Sonarr's bulk file editor (Quality, ReleaseGroup, Languages,
+ * Field set of the bulk file editor (Quality, ReleaseGroup, Languages,
  * IndexerFlags, plus Sportarr's Codec/Source/PartName/PartNumber/OriginalTitle).
  */
 

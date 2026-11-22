@@ -480,7 +480,7 @@ public class SabnzbdClient
             }
         }
 
-        // Try to extract from URL (look for 'file=' parameter common in Prowlarr URLs)
+        // Try to extract from URL (look for the 'file=' parameter common in indexer proxy URLs)
         try
         {
             var uri = new Uri(url);

@@ -2916,7 +2916,7 @@ export default function ActivityPage() {
           mobileFullScreen
         />
 
-        {/* Remove from Queue Dialog (Sonarr-style) - Supports single and bulk removal */}
+        {/* Remove from Queue Dialog - Supports single and bulk removal */}
         {removeQueueDialog && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
@@ -3065,7 +3065,7 @@ export default function ActivityPage() {
           </div>
         )}
 
-        {/* Remove History Item Dialog (Sonarr-style) */}
+        {/* Remove History Item Dialog */}
         {removeHistoryDialog && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">

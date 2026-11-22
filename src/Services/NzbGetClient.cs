@@ -246,7 +246,7 @@ public class NzbGetClient
     }
 
     /// <summary>
-    /// Derive a filename from a URL's 'file=' query parameter (common in Prowlarr/indexer
+    /// Derive a filename from a URL's 'file=' query parameter (common in indexer proxy/indexer
     /// URLs), falling back to a generated name. Used both when we have no HTTP response to
     /// check for a Content-Disposition header (appendurl fallback mode) and as the tail of
     /// GetNzbFilename's own fallback chain - must never return an empty string, since NZBGet

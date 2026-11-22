@@ -24,7 +24,7 @@ public class IndexerStatusService
     private static readonly DateTime _startupTime = DateTime.UtcNow;
 
     // Startup grace period: limit backoff to 5 minutes max during first 15 minutes
-    // This prevents over-penalizing indexers during initialization (matches Lidarr pattern)
+    // This prevents over-penalizing indexers during initialization
     private static readonly TimeSpan StartupGracePeriod = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan MaxBackoffDuringStartup = TimeSpan.FromMinutes(5);
 

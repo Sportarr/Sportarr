@@ -4,7 +4,7 @@ using Sportarr.Api.Services;
 namespace Sportarr.Api.Helpers;
 
 /// <summary>
-/// Sports equivalent of Sonarr's ReleaseType (SingleEpisode/MultiEpisode/SeasonPack):
+/// Release type for sports, the counterpart of single episode / multi episode / season pack:
 /// classifies a release as covering one event or a bundle of several.
 /// </summary>
 public enum ReleaseType

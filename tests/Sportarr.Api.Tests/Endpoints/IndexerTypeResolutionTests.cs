@@ -6,7 +6,7 @@ using Xunit;
 namespace Sportarr.Api.Tests.Endpoints;
 
 /// <summary>
-/// Prowlarr says which protocol an indexer speaks in its implementation name.
+/// The indexer manager says which protocol an indexer speaks in its implementation name.
 /// The mapping used to be written out at each call site, and the one that
 /// creates an indexer from a PUT was missed. Torznab is the first value of the
 /// enum, so an indexer created that way came out Torznab whatever the payload

@@ -219,7 +219,7 @@ const notificationTemplates: NotificationTemplate[] = [
     icon: '📜',
     fields: ['scriptPath', 'arguments', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onEventFileDelete', 'onEventFileDeleteForUpgrade', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired', 'onRecordingStarted', 'onRecordingCompleted', 'onRecordingFailed', 'onEpgSyncCompleted']
   },
-  // Media Server Connections (like Sonarr/Radarr)
+  // Media Server Connections
   {
     name: 'Plex Media Server',
     implementation: 'Plex',

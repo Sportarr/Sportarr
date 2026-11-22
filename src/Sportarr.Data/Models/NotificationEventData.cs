@@ -3,8 +3,8 @@ namespace Sportarr.Api.Models;
 /// <summary>
 /// One file's path/quality/size, reused for both "the file this event is
 /// about" (EpisodeFile) and "file(s) that no longer exist as of this
-/// event" (DeletedFiles) - mirrors Sonarr's WebhookEpisodeFile, which is
-/// reused the same way across their Import and Delete payloads.
+/// event" (DeletedFiles). The v3 WebhookEpisodeFile shape is reused
+/// the same way across the Import and Delete payloads.
 /// </summary>
 public class NotificationFileData
 {
@@ -56,8 +56,8 @@ public class NotificationEventData
     // Grab -> WebhookPayload.Release. Quality/Size here are the release's
     // OWN claim (a torrent/nzb title's stated quality and advertised
     // size), not a probed file - kept as separate concepts from File
-    // below, same distinction Sonarr's WebhookRelease vs WebhookEpisodeFile
-    // makes.
+    // below, the same distinction as the v3 WebhookRelease vs WebhookEpisodeFile
+    // shapes.
     public string? Indexer { get; set; }
     public string? DownloadId { get; set; }
     public string? Quality { get; set; }
@@ -169,7 +169,7 @@ public class NotificationEventData
 /// <summary>
 /// The actual JSON body sent to the Webhook and Notifiarr providers (both
 /// use this same shape - see NotificationService.BuildWebhookPayload).
-/// Mirrors Sonarr's real webhook payload shapes (WebhookSeries/
+/// Uses the nested v3 webhook payload shapes (WebhookSeries/
 /// WebhookRelease/WebhookEpisodeFile/DeletedFiles) rather than Sportarr's
 /// own earlier flat-field design, per direct feedback from an integration
 /// partner who builds against both. Serialized with camelCase property
@@ -224,7 +224,7 @@ public class WebhookPayload
     public DateTime? CompletedAt { get; set; }
 }
 
-/// <summary>Mirrors Sonarr's WebhookSeries - every identity field for the event nested in one place.</summary>
+/// <summary>v3 WebhookSeries shape - every identity field for the event nested in one place.</summary>
 public class WebhookSeriesInfo
 {
     public int? Id { get; set; }
@@ -238,7 +238,7 @@ public class WebhookSeriesInfo
     public string? Sport { get; set; }
 }
 
-/// <summary>Mirrors Sonarr's WebhookRelease - the grabbed release's own claimed facts, not a probed file.</summary>
+/// <summary>v3 WebhookRelease shape - the grabbed release's own claimed facts, not a probed file.</summary>
 public class WebhookReleaseInfo
 {
     public string? Quality { get; set; }
@@ -246,7 +246,7 @@ public class WebhookReleaseInfo
     public long? Size { get; set; }
 }
 
-/// <summary>Mirrors Sonarr's WebhookEpisodeFile - reused for both EpisodeFile and each entry in DeletedFiles.</summary>
+/// <summary>v3 WebhookEpisodeFile shape - reused for both EpisodeFile and each entry in DeletedFiles.</summary>
 public class WebhookFileInfo
 {
     public string RelativePath { get; set; } = "";

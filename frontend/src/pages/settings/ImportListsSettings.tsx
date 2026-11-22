@@ -46,9 +46,8 @@ interface Tag {
 // "Custom Script" silently persisted BellatorSchedule - see the fixed FINDINGS.md entry
 // for the incident. CustomScript (5) is intentionally omitted here: it has zero sync
 // implementation on the backend (a pure stub that always finds nothing), and shipping a
-// selectable option with no working behavior behind it isn't something Sonarr/Radarr's
-// own Import Lists page would do either - a list type only appears in their dropdowns
-// once it actually syncs something.
+// selectable option with no working behavior behind it misleads the user. A list
+// type only appears in the dropdown once it actually syncs something.
 const IMPORT_LIST_TYPES = [
   { value: 0, label: 'RSS Feed', description: 'RSS/Atom feed with event listings' },
   { value: 1, label: 'Custom API', description: 'JSON API endpoint returning event data (Tapology, Sherdog, etc.)' },

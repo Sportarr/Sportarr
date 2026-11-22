@@ -77,7 +77,7 @@ public class MediaFileParser
 
     /// <summary>
     /// Parse a filename and augment with ffprobe inspection of the file's
-    /// actual binary metadata. Sonarr-parity behavior — ffprobe always runs
+    /// actual binary metadata. ffprobe always runs
     /// when a real on-disk path is supplied, not just as a fallback when
     /// filename parsing came up short. The merge logic only fills fields the
     /// filename left null, so an informative release name still wins for

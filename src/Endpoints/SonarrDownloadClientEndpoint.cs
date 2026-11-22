@@ -13,8 +13,8 @@ public static class SonarrDownloadClientEndpoint
     public static IEndpointRouteBuilder MapSonarrDownloadClientEndpoint(this IEndpointRouteBuilder app)
     {
 
-// GET /api/v3/downloadclient - Get download clients (Sonarr v3 API for Prowlarr)
-// Prowlarr uses this to determine which protocols are supported (torrent vs usenet)
+// GET /api/v3/downloadclient - Get download clients (v3 API for the indexer manager)
+// The indexer manager reads this to find the supported protocols (torrent vs usenet)
 // Returns actual download clients configured by the user
 app.MapGet("/api/v3/downloadclient", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
@@ -38,7 +38,7 @@ app.MapGet("/api/v3/downloadclient", async (SportarrDbContext db, ILogger<Progra
             _ => "torrent"
         };
 
-        // Map type to Sonarr implementation name
+        // Map the type to its v3 implementation name
         var (implementation, implementationName, configContract, infoLink) = dc.Type switch
         {
             DownloadClientType.QBittorrent => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://github.com/Sportarr/Sportarr"),

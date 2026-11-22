@@ -541,9 +541,8 @@ public class ImportListService
     ///
     /// Only league and team hub-list items drive any action: Sportarr has
     /// no "monitor a person/venue" concept, and a bare event item has no
-    /// obvious action either (this mirrors a Trakt list import into Sonarr/
-    /// Radarr, which adds SERIES/MOVIES to monitor, not individual
-    /// episodes). Team items are only applied as MonitoredTeamIds when
+    /// obvious action either (a list import adds whole leagues to monitor,
+    /// not individual events). Team items are only applied as MonitoredTeamIds when
     /// exactly one league item is present in the list - the hub list
     /// response has no parent-league field on a team item, so scoping a
     /// team to "the right" league is only unambiguous in that single-league

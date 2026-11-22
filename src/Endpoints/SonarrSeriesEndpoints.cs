@@ -15,7 +15,7 @@ public static class SonarrSeriesEndpoints
 {
     public static IEndpointRouteBuilder MapSonarrSeriesEndpoints(this IEndpointRouteBuilder app)
     {
-        // GET /api/v3/series - Get series list (Sonarr v3 API for Decypharr/Maintainerr)
+        // GET /api/v3/series - Get series list (v3 API for Decypharr/Maintainerr)
         // Supports ?tvdbId={id} query parameter for lookup by Sportarr API external ID
         app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logger, int? tvdbId) =>
         {
@@ -310,7 +310,7 @@ public static class SonarrSeriesEndpoints
             return await UpdateSeriesAsync(id, json, db, logger);
         });
 
-        // PUT /api/v3/series - Sonarr also accepts the id in the BODY (its
+        // PUT /api/v3/series - The v3 API also accepts the id in the BODY (its
         // [RestPutById] convention), and Maintainerr uses exactly that form
         // ('series' and 'series/') for its unmonitor-season flow.
         app.MapPut("/api/v3/series", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
@@ -395,7 +395,7 @@ public static class SonarrSeriesEndpoints
 
                 var foldersToDelete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                // The recycle bin applies here too. Sonarr sends deleted series
+                // The recycle bin applies here too. A v3 server sends deleted series
                 // files to its own recycle bin, and so does every other delete
                 // in this app, so an automated cleanup calling this shim must
                 // not be the one path that destroys files outright.
@@ -507,7 +507,7 @@ public static class SonarrSeriesEndpoints
             }
 
             // Some Starr clients encode spaces as literal plus signs in the
-            // lookup term (Sonarr tolerates it); league names never contain
+            // lookup term (v3 servers tolerate it); league names never contain
             // one, so normalizing is safe.
             var trimmed = term.Trim().Replace('+', ' ');
 
@@ -576,7 +576,7 @@ public static class SonarrSeriesEndpoints
             // Text terms also consult the metadata catalog so a league that
             // isn't in the library yet can be discovered and then added via
             // POST /api/v3/series (id 0 marks a lookup-only result, matching
-            // Sonarr's convention for series not yet in the library).
+            // the v3 convention for series not yet in the library).
             var knownExternalIds = leagues
                 .Where(l => !string.IsNullOrEmpty(l.ExternalId))
                 .Select(l => l.ExternalId!)
@@ -595,7 +595,7 @@ public static class SonarrSeriesEndpoints
             return Results.Ok(results);
         });
 
-        // POST /api/v3/series - Add a league through the Sonarr contract.
+        // POST /api/v3/series - Add a league through the v3 contract.
         // Request managers look a series up (tvdb:<alias> or text), then POST
         // it here with the alias tvdbId; the alias resolves back to the
         // league's external id and the add runs through LeagueAddService -
@@ -665,7 +665,7 @@ public static class SonarrSeriesEndpoints
             var existing = await db.Leagues.FirstOrDefaultAsync(l => l.ExternalId == externalId);
             if (existing != null)
             {
-                // Sonarr answers an add of an existing series with a validation
+                // The v3 API answers an add of an existing series with a validation
                 // failure; consumers treat it as "already added".
                 return Results.BadRequest(new[] { new { errorMessage = "This series has already been added" } });
             }
@@ -722,7 +722,7 @@ public static class SonarrSeriesEndpoints
 
         // PUT /api/v3/series/editor - Batch tag add/remove (Maintainerr's
         // exclusion-tag feature). Only 'add' and 'remove' arrive in practice;
-        // 'replace' overwrites the full tag list, matching Sonarr.
+        // 'replace' overwrites the full tag list.
         app.MapPut("/api/v3/series/editor", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
@@ -774,7 +774,7 @@ public static class SonarrSeriesEndpoints
             }
         });
 
-        // GET /api/v3/history - Paged activity history (Sonarr's shape).
+        // GET /api/v3/history - Paged activity history (v3 shape).
         // Merges grab history (eventType "grabbed") with import history
         // (eventType "downloadFolderImported"), newest first. Exporters read
         // totalRecords; queue tools read per-record sourceTitle/downloadId.
@@ -882,7 +882,7 @@ public static class SonarrSeriesEndpoints
         });
 
         // GET /api/v3/history/series?seriesId= - Grab history for a series as
-        // a flat array (Sonarr's shape). Maintainerr derives torrent
+        // a flat array (v3 shape). Maintainerr derives torrent
         // infohashes from this to clean the download client when deleting.
         app.MapGet("/api/v3/history/series", async (int seriesId, SportarrDbContext db, ILogger<Program> logger) =>
         {
@@ -917,7 +917,7 @@ public static class SonarrSeriesEndpoints
 
 
         // POST /api/v3/seasonPass - Bulk-monitor many leagues at once
-        // (Sonarr's "season pass" flow). Toggles League.Monitored per id and,
+        // (the v3 "season pass" flow). Toggles League.Monitored per id and,
         // when monitoringOptions.monitor is provided, maps it onto the same
         // MonitorType Sportarr's own league settings use.
         app.MapPost("/api/v3/seasonPass", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
@@ -1135,7 +1135,7 @@ public static class SonarrSeriesEndpoints
 
     /// <summary>
     /// Series-shaped lookup entry. id 0 marks a catalog-only result (not in
-    /// the library yet), matching Sonarr's convention for lookup hits that
+    /// the library yet), which is the v3 convention for lookup hits that
     /// have not been added.
     /// </summary>
     private static object LookupResult(
@@ -1180,13 +1180,13 @@ public static class SonarrSeriesEndpoints
             cleanTitle = name.ToLowerInvariant().Replace(" ", string.Empty),
             genres = new[] { "Sports" },
             images = images.ToArray(),
-            // Sonarr's lookup carries the poster twice: in images and as the
+            // The v3 lookup carries the poster twice: in images and as the
             // flat remotePoster that request bots render directly.
             remotePoster = posterUrl ?? logoUrl ?? string.Empty,
             seasons = seasonEntries,
             // Lookup consumers read seasonCount from statistics. In-library
             // leagues carry their real seasons; catalog-only results report 0
-            // like Sonarr does for series not yet added.
+            // as v3 servers do for series not yet added.
             statistics = new { seasonCount = seasonEntries.Length, episodeCount = 0, episodeFileCount = 0, totalEpisodeCount = 0, sizeOnDisk = 0L, percentOfEpisodes = 0.0 },
             tags,
             year,

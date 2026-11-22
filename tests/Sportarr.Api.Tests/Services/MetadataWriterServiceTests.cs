@@ -118,7 +118,7 @@ public class MetadataWriterServiceTests : IDisposable
 
         // The regression this test exists to catch: an <episodeguide><url>
         // tag makes Kodi try to resolve it online and corrupts the local
-        // scrape (confirmed Sonarr/Radarr issue pattern).
+        // scrape (a confirmed pattern in public issue trackers).
         doc.Root.Element("episodeguide").Should().BeNull();
 
         // The event's own id rides in the nfo the way a tvdb id does, so

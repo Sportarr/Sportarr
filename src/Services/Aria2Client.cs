@@ -6,8 +6,7 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Aria2 JSON-RPC client for Sportarr. Torrent-only (Aria2 is a generic
-/// downloader with no usenet/PAR2-repair awareness, matching how Sonarr/
-/// Radarr scope their own Aria2 provider).
+/// downloader with no usenet/PAR2-repair awareness).
 ///
 /// Two protocol details that matter for correctness, not just "does it
 /// compile": aria2 has no category concept (same gap as Transmission - see

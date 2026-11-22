@@ -8,7 +8,7 @@ using Sportarr.Api.Services;
 namespace Sportarr.Api.Tests.Services;
 
 /// <summary>
-/// Covers TorznabClient.TestConnectionAsync lenient handling. Some Prowlarr-managed
+/// Covers TorznabClient.TestConnectionAsync lenient handling. Some proxy-managed
 /// indexers answer t=caps with an HTML error page instead of XML; the test must fall
 /// back to RSS/search rather than throwing an XmlException and rejecting the indexer.
 /// </summary>

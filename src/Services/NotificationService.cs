@@ -1054,7 +1054,7 @@ public class NotificationService : INotificationService
     };
 
     /// <summary>
-    /// Builds the webhook payload, mirroring Sonarr's real webhook shape (WebhookSeries/
+    /// Builds the webhook payload in the nested v3 webhook shape (WebhookSeries/
     /// WebhookRelease/WebhookEpisodeFile/DeletedFiles) rather than a flat field list - direct
     /// feedback from an integration partner who builds against both. Series/Release/EpisodeFile/
     /// DeletedFiles are derived here, once, from NotificationEventData's flat producer-facing
@@ -1868,7 +1868,7 @@ public class NotificationService : INotificationService
 
     /// <summary>
     /// Kodi Connect: GUI popup + VideoLibrary.Scan/Clean over Kodi's JSON-RPC
-    /// API. Mirrors Sonarr/Radarr's "Connect > Kodi" exactly, including the
+    /// API. It keeps the standard Kodi connect behavior, including the
     /// gotchas: "Always Update" means "don't check if a video is playing
     /// first," not "force a full rescan," and VideoLibrary.Clean has no
     /// path-scoped form in Kodi's API - it always sweeps the whole library.
@@ -1885,9 +1885,9 @@ public class NotificationService : INotificationService
         var (client, baseUrl) = BuildKodiClient(config, host);
         var overallSuccess = true;
 
-        // Sonarr/Radarr never pop the GUI notification for a rename (silent
-        // library update only) - match that so a rename doesn't spam a
-        // notification popup on every renamer run.
+        // A rename does not pop the GUI notification. It runs a silent
+        // library update only, so a renamer run does not spam a
+        // notification popup.
         var notify = trigger != NotificationTrigger.OnRename
             && (!config.TryGetValue("notify", out var nv) || nv.ValueKind != JsonValueKind.False);
         if (notify)

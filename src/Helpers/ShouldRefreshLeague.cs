@@ -3,9 +3,8 @@ using Sportarr.Api.Models;
 namespace Sportarr.Api.Helpers;
 
 /// <summary>
-/// Per-league refresh predicate for the 24h auto-sync. Mirrors the
-/// pattern Sonarr uses for ShouldRefreshSeries: a tiered ceiling and
-/// floor against the last successful sync timestamp so the bulk
+/// Per-league refresh predicate for the 24h auto-sync. It applies a tiered
+/// ceiling and floor against the last successful sync timestamp so the bulk
 /// scheduler walks every league but only burns upstream traffic on
 /// the ones that actually need it.
 ///

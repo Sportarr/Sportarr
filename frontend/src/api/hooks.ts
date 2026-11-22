@@ -98,7 +98,7 @@ export const useIndexers = () => {
       const { data } = await apiClient.get<Indexer[]>('/indexer');
       return data;
     },
-    refetchInterval: (query) => getRefetchIntervalWithBackoff(30000, query.state.fetchFailureCount), // Auto-refresh every 30 seconds to show Prowlarr-synced indexers
+    refetchInterval: (query) => getRefetchIntervalWithBackoff(30000, query.state.fetchFailureCount), // Auto-refresh every 30 seconds to show indexers synced by an indexer manager
   });
 };
 

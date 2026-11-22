@@ -630,7 +630,7 @@ public static class TrashNamingTemplates
             false
         )},
 
-        // Full details (similar to TRaSH Sonarr recommended)
+        // Full details (close to the TRaSH TV recommendation)
         { "full-details", (
             "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} [{Release Group}] {Sportarr Id}",
             "Full details with quality and release group",

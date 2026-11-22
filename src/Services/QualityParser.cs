@@ -589,7 +589,7 @@ public static class QualityParser
     }
 
     /// <summary>
-    /// Parse quality from file extension. Sonarr-parity fallback for filenames
+    /// Parse quality from file extension. Fallback for filenames
     /// that have no resolution/source tokens but whose container hints at the
     /// source. Conservative: only sets a quality when the extension is a strong
     /// signal on its own.
@@ -600,7 +600,7 @@ public static class QualityParser
 
         return extension switch
         {
-            // Transport stream — broadcast/IPTV captures, treated as RAWHD by Sonarr
+            // Transport stream: broadcast/IPTV captures. Treat them as RAWHD.
             "ts" or "m2ts" or "mts" => Quality.RAWHD,
             // Disc images — almost always BluRay 1080p; safer default than guessing 2160p
             "iso" or "bdmv" or "img" => Quality.Bluray1080p,

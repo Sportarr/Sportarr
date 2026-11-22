@@ -65,7 +65,7 @@ public class DelugeClient
                 return false;
             }
 
-            // Get version to verify full connectivity (matches Radarr behavior)
+            // Get the version to verify full connectivity
             // Try daemon.get_version first (Deluge 2.x), fall back to daemon.info (Deluge 1.x)
             var version = await GetVersionAsync(config);
             if (version == null)
@@ -204,7 +204,7 @@ public class DelugeClient
                 var hash = result.GetString();
                 _logger.LogInformation("[Deluge] Torrent added successfully: {Hash}", hash);
 
-                // Set label via Label plugin (like Radarr does)
+                // Set the label through the Label plugin
                 if (hash != null && !string.IsNullOrWhiteSpace(category))
                 {
                     await EnsureLabelExistsAsync(config, category);
@@ -575,7 +575,7 @@ public class DelugeClient
                                 "upload_payload_rate", "save_path", "download_location",
                                 "ratio", "time_added", "label" };
 
-            // Filter by label server-side (like Radarr's web.update_ui approach)
+            // Filter by label on the server side
             var filter = new Dictionary<string, object> { ["label"] = label };
 
             var response = await SendRpcRequestAsync(config, "core.get_torrents_status", new object[] { filter, fields });
@@ -669,7 +669,7 @@ public class DelugeClient
         return results;
     }
 
-    // Label plugin methods (matches Radarr's DelugeProxy label support)
+    // Label plugin methods
 
     /// <summary>
     /// Check if the Label plugin is enabled in Deluge
@@ -827,7 +827,7 @@ public class DelugeClient
 
     /// <summary>
     /// Get Deluge daemon version, trying daemon.get_version first (Deluge 2.x),
-    /// falling back to daemon.info (Deluge 1.x). Matches Radarr's GetVersion behavior.
+    /// falling back to daemon.info (Deluge 1.x).
     /// </summary>
     private async Task<string?> GetVersionAsync(DownloadClient config)
     {

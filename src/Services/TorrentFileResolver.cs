@@ -10,7 +10,7 @@ namespace Sportarr.Api.Services;
 /// Downloads a torrent file from an indexer/proxy URL, following redirects
 /// manually so that:
 ///   1. a redirect to a magnet: URI (common for public, magnet-only indexers
-///      proxied through Prowlarr) is detected and surfaced as a magnet link
+///      behind an indexer proxy) is detected and surfaced as a magnet link
 ///      instead of being handed to an HTTP client that can't follow a
 ///      cross-scheme redirect, and
 ///   2. malformed redirect URLs from misbehaving indexers are validated rather

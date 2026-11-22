@@ -816,7 +816,7 @@ public class SportsFileNameParser
     private static readonly Regex SeasonSpanPattern = new(
         @"\b(?<startYear>20[12]\d)(?:[\-/](?<endYear>20[12]\d|[12]\d)|\.(?<endYear>20[12]\d))\b",
         RegexOptions.Compiled);
-    // Sonarr-style season-episode marker where the year is encoded as the
+    // TV-style season-episode marker where the year is encoded as the
     // season number (e.g. "S2026E34"). YearOnlyPattern misses this because
     // the surrounding 'S' and 'E' are word characters, so the \b boundary
     // never fires. Sports releases use this format heavily -- F1 races,
@@ -1183,7 +1183,7 @@ public class SportsFileNameParser
                 }
                 else
                 {
-                    // Fallback: try the Sonarr-style SyyyyExx marker. Scene
+                    // Fallback: try the TV-style SyyyyExx marker. Scene
                     // releases for sports frequently encode the year as the
                     // season number (Formula1.S2026E34, NBA.S2025E14, etc.)
                     // and YearOnlyPattern misses it because the surrounding

@@ -6,9 +6,9 @@ namespace Sportarr.Api;
 /// ApiVersion: API compatibility version (remains stable for API consumers).
 ///
 /// App Version scheme: MAJOR.MINOR.PATCH.BUILD (4-part).
-/// Format is the Radarr-v4 versioning style (e.g., 4.0.82.140) which Prowlarr
-/// uses to gate compatibility — Prowlarr requires minimum version 4.0.4 for
-/// Radarr v4 contract support, so MAJOR stays at 4.
+/// The format is a 4-part version (e.g., 4.0.82.140). The indexer manager
+/// reads it to gate compatibility. It needs version 4.0.4 or later for the
+/// v4 contract, so MAJOR stays at 4.
 /// PATCH increments with each release. BUILD is set by CI/CD, defaults to 0
 /// for local builds.
 /// </summary>

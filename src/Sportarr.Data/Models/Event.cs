@@ -309,7 +309,7 @@ public class Event
     ///
     /// Set by the event control either way, since turning monitoring off is
     /// as much a decision as turning it on, and by the season and add-event
-    /// controls, the Sonarr compatibility surface and followed athletes when
+    /// controls, the v3 compatibility surface and followed athletes when
     /// they turn it on. A sync's own matching never sets it. It outlives an
     /// automatic unmonitor, so switching a league off and on again cannot
     /// quietly make a picked game deletable. The retention window releases it.

@@ -14,19 +14,19 @@ public static class SonarrIndexerEndpoints
 {
     public static IEndpointRouteBuilder MapSonarrIndexerEndpoints(this IEndpointRouteBuilder app)
     {
-// POST /api/v3/indexer/test - Test indexer connection (Sonarr v3 API for Prowlarr)
+// POST /api/v3/indexer/test - Test indexer connection (v3 API for the indexer manager)
 app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] POST /api/v3/indexer/test - Prowlarr testing indexer");
 
-    // Read the test indexer payload from Prowlarr
+    // Read the test indexer payload from the indexer manager
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
     // The payload carries the indexer's API key. Logging it whole put private
     // tracker credentials into anything that reads or ships the logs.
     logger.LogInformation("[PROWLARR] Test indexer payload: {Json}", SecretRedactor.Json(json));
 
-    // For now, just return success - Prowlarr is testing if we can receive indexer configs
+    // Return success. The indexer manager only tests that this app can receive indexer configs.
     // In a real implementation, we might test the indexer URL, but for connection testing this is enough
     return Results.Ok(new
     {
@@ -36,12 +36,12 @@ app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program>
     });
 });
 
-// GET /api/v3/indexer/schema - Indexer schema (Sonarr v3 API for Prowlarr)
+// GET /api/v3/indexer/schema - Indexer schema (v3 API for the indexer manager)
 app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer/schema - Prowlarr requesting indexer schema");
 
-    // Return Torznab/Newznab indexer schema matching Sonarr format exactly
+    // Return the Torznab/Newznab indexer schema in the exact v3 format
     return Results.Ok(new object[]
     {
         new
@@ -331,14 +331,14 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
     });
 });
 
-// GET /api/v3/indexer - List all indexers (Sonarr v3 API for Prowlarr)
+// GET /api/v3/indexer - List all indexers (v3 API for the indexer manager)
 app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogDebug("[PROWLARR] GET /api/v3/indexer - Prowlarr requesting indexer list");
 
     var indexers = await db.Indexers.ToListAsync();
 
-    // Convert our indexers to Sonarr v3 format
+    // Convert our indexers to the v3 format
     var sonarrIndexers = indexers.Select(i =>
     {
         var isTorznab = i.Type == IndexerType.Torznab;
@@ -348,11 +348,11 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
             new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = "false" },
             new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = i.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = "false" },
             new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = "false" },
-            // animeCategories and animeStandardFormatSearch required by Prowlarr's Sonarr integration
+            // The indexer manager requires animeCategories and animeStandardFormatSearch for a v3 app
             new { order = 4, name = "animeCategories", label = "Anime Categories", helpText = "Categories to use for Anime (not used by Sportarr)", helpLink = (string?)null, value = new int[] { }, type = "select", advanced = true, hidden = "false" },
             new { order = 5, name = "animeStandardFormatSearch", label = "Anime Standard Format Search", helpText = "Search for anime using standard numbering", helpLink = (string?)null, value = false, type = "checkbox", advanced = true, hidden = "false" },
             new { order = 6, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = i.MinimumSeeders, type = "number", advanced = false, hidden = "false" },
-            // Seed criteria fields required by Prowlarr's Sonarr integration (separate from seedCriteria object)
+            // The indexer manager requires these seed criteria fields for a v3 app (separate from the seedCriteria object)
             new { order = 7, name = "seedCriteria.seedRatio", label = "Seed Ratio", helpText = "Stop seeding once the torrent reaches this ratio", helpLink = (string?)null, value = isTorznab ? (double?)(i.SeedRatio ?? 1.0) : null, type = "number", advanced = true, hidden = "false" },
             new { order = 8, name = "seedCriteria.seedTime", label = "Seed Time", helpText = "Stop seeding after this many minutes", helpLink = (string?)null, value = isTorznab ? (int?)(i.SeedTime ?? 1) : null, type = "number", advanced = true, hidden = "false" },
             new { order = 9, name = "seedCriteria.seasonPackSeedTime", label = "Season Pack Seed Time", helpText = "Stop seeding a season pack after this many minutes", helpLink = (string?)null, value = isTorznab ? (int?)(i.SeasonPackSeedTime ?? 1) : null, type = "number", advanced = true, hidden = "false" },
@@ -381,7 +381,7 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
             supportsRss = i.EnableRss,
             supportsSearch = i.EnableAutomaticSearch || i.EnableInteractiveSearch,
             downloadClientId = i.DownloadClientId ?? 0,
-            // Prowlarr expects seedCriteria as a top-level object (always present, values > 0 for torrents, null for usenet)
+            // The indexer manager expects seedCriteria as a top-level object (always present, values > 0 for torrents, null for usenet)
             seedCriteria = new
             {
                 seedRatio = i.Type == IndexerType.Torznab ? (double?)(i.SeedRatio ?? 1.0) : null,
@@ -390,7 +390,7 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
             },
             tags = i.Tags.ToArray(),
             fields = fields.ToArray(),
-            // Prowlarr expects capabilities object with categories
+            // The indexer manager expects a capabilities object with categories
             capabilities = new
             {
                 categories = i.Categories.Select(c =>
@@ -413,7 +413,7 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
     return Results.Ok(sonarrIndexers);
 });
 
-// GET /api/v3/indexer/{id} - Get specific indexer (Sonarr v3 API for Prowlarr)
+// GET /api/v3/indexer/{id} - Get specific indexer (v3 API for the indexer manager)
 app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogDebug("[PROWLARR] GET /api/v3/indexer/{Id}", id);
@@ -438,7 +438,7 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILog
         supportsRss = indexer.EnableRss,
         supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
         downloadClientId = indexer.DownloadClientId ?? 0,
-        // Prowlarr expects seedCriteria as a top-level object (always present, values > 0 for torrents, null for usenet)
+        // The indexer manager expects seedCriteria as a top-level object (always present, values > 0 for torrents, null for usenet)
         seedCriteria = new
         {
             seedRatio = indexer.Type == IndexerType.Torznab ? (double?)(indexer.SeedRatio ?? 1.0) : null,
@@ -452,18 +452,18 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILog
             new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = "false" },
             new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = indexer.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = "false" },
             new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = "false" },
-            // animeCategories and animeStandardFormatSearch required by Prowlarr's Sonarr integration
+            // The indexer manager requires animeCategories and animeStandardFormatSearch for a v3 app
             new { order = 4, name = "animeCategories", label = "Anime Categories", helpText = "Categories to use for Anime (not used by Sportarr)", helpLink = (string?)null, value = new int[] { }, type = "select", advanced = true, hidden = "false" },
             new { order = 5, name = "animeStandardFormatSearch", label = "Anime Standard Format Search", helpText = "Search for anime using standard numbering", helpLink = (string?)null, value = false, type = "checkbox", advanced = true, hidden = "false" },
             new { order = 6, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = indexer.MinimumSeeders, type = "number", advanced = false, hidden = "false" },
-            // Seed criteria fields required by Prowlarr's Sonarr integration
+            // The indexer manager requires these seed criteria fields for a v3 app
             new { order = 7, name = "seedCriteria.seedRatio", label = "Seed Ratio", helpText = "Stop seeding once the torrent reaches this ratio", helpLink = (string?)null, value = indexer.Type == IndexerType.Torznab ? (double?)(indexer.SeedRatio ?? 1.0) : null, type = "number", advanced = true, hidden = "false" },
             new { order = 8, name = "seedCriteria.seedTime", label = "Seed Time", helpText = "Stop seeding after this many minutes", helpLink = (string?)null, value = indexer.Type == IndexerType.Torznab ? (int?)(indexer.SeedTime ?? 1) : null, type = "number", advanced = true, hidden = "false" },
             new { order = 9, name = "seedCriteria.seasonPackSeedTime", label = "Season Pack Seed Time", helpText = "Stop seeding a season pack after this many minutes", helpLink = (string?)null, value = indexer.Type == IndexerType.Torznab ? (int?)(indexer.SeasonPackSeedTime ?? 1) : null, type = "number", advanced = true, hidden = "false" },
             new { order = 10, name = "rejectBlocklistedTorrentHashesWhileGrabbing", label = "Check Torrent Hashes Against The Blocklist When Grabbing", helpText = "If a torrent is blocked, also reject releases with the same torrent hash", helpLink = (string?)null, value = indexer.RejectBlocklistedTorrentHashes, type = "checkbox", advanced = true, hidden = "false" },
             new { order = 11, name = "additionalParameters", label = "Additional Parameters", helpText = "Additional Torznab/Newznab parameters", helpLink = (string?)null, value = indexer.AdditionalParameters ?? "", type = "textbox", advanced = true, hidden = "false" }
         },
-        // Prowlarr expects capabilities object with categories
+        // The indexer manager expects a capabilities object with categories
         capabilities = new
         {
             categories = indexer.Categories.Select(c =>
@@ -483,7 +483,7 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILog
     });
 });
 
-// POST /api/v3/indexer - Add new indexer (Sonarr v3 API for Prowlarr)
+// POST /api/v3/indexer - Add new indexer (v3 API for the indexer manager)
 app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
@@ -494,7 +494,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
     {
         var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
-        // Extract fields from Prowlarr's format
+        // Extract fields from the indexer manager's format
         var name = prowlarrIndexer.GetProperty("name").GetString() ?? "Unknown";
         var implementation = prowlarrIndexer.GetProperty("implementation").GetString() ?? "Newznab";
         var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray().ToList();
@@ -508,7 +508,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
         int? seasonPackSeedTime = null;
         int? earlyReleaseLimit = null;
 
-        // Parse seedCriteria object if present (Prowlarr sends this for torrent indexers)
+        // Parse the seedCriteria object if present (the indexer manager sends it for torrent indexers)
         if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteria))
         {
             if (seedCriteria.TryGetProperty("seedRatio", out var seedRatioValue) && seedRatioValue.ValueKind != System.Text.Json.JsonValueKind.Null)
@@ -536,8 +536,8 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
         }
 
         // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
-        // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
-        // The baseUrl contains Prowlarr's URL + indexer ID, making it unique per Prowlarr instance + indexer
+        // The indexer manager identifies its indexers by the baseUrl pattern (e.g., http://manager:9696/7/api)
+        // The baseUrl holds the manager's URL + indexer ID, so it is unique per manager instance + indexer
         // Check both with and without trailing slash to handle legacy data
         var normalizedBaseUrl = baseUrl.TrimEnd('/').ToLowerInvariant();
         var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
@@ -667,7 +667,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             supportsRss = indexer.EnableRss,
             supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
             downloadClientId = indexer.DownloadClientId ?? 0,
-            // Prowlarr expects seedCriteria as a top-level object (always present, null values for usenet)
+            // The indexer manager expects seedCriteria as a top-level object (always present, null values for usenet)
             seedCriteria = new
             {
                 seedRatio = indexer.Type == IndexerType.Torznab ? indexer.SeedRatio : (double?)null,
@@ -676,7 +676,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             },
             tags = indexer.Tags.ToArray(),
             fields = responseFields.ToArray(),
-            // Add capabilities object (required for Prowlarr's BuildSonarrIndexer)
+            // Add the capabilities object. The indexer manager needs it to build its app indexer.
             capabilities = new
             {
                 categories = indexer.Categories.Select(c =>
@@ -702,7 +702,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
     }
 });
 
-// PUT /api/v3/indexer/{id} - Update indexer (Sonarr v3 API for Prowlarr)
+// PUT /api/v3/indexer/{id} - Update indexer (v3 API for the indexer manager)
 app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
@@ -713,7 +713,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
     {
         var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
-        // Extract baseUrl to identify the unique indexer (contains Prowlarr's indexer ID like /7/ or /1/)
+        // Extract baseUrl to identify the unique indexer (it holds the manager's indexer ID like /7/ or /1/)
         // Normalize by trimming trailing slash to match stored format
         var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray();
         var baseUrl = "";
@@ -746,7 +746,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
         if (indexer == null)
         {
             // Indexer doesn't exist yet - create it instead of returning NotFound
-            // This handles the case where Prowlarr tries to update before creating
+            // This handles an indexer manager that sends an update before a create
             logger.LogInformation("[PROWLARR] Indexer with baseUrl {BaseUrl} not found, creating new one", baseUrl);
 
             var name = prowlarrIndexer.GetProperty("name").GetString() ?? "Unknown";
@@ -821,7 +821,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
             indexer.Name = prowlarrIndexer.GetProperty("name").GetString() ?? indexer.Name;
             indexer.Type = ResolveIndexerType(prowlarrIndexer.GetProperty("implementation").GetString());
 
-            // Parse seedCriteria object if present (Prowlarr sends this for torrent indexers)
+            // Parse the seedCriteria object if present (the indexer manager sends it for torrent indexers)
             if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteria))
             {
                 if (seedCriteria.TryGetProperty("seedRatio", out var seedRatioValue) && seedRatioValue.ValueKind != System.Text.Json.JsonValueKind.Null)
@@ -850,14 +850,14 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
                     indexer.ApiKey = field.GetProperty("value").GetString();
                 else if (fieldName == "categories" && field.TryGetProperty("value", out var catValue) && catValue.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
-                    // Categories: local list wins once it exists. Prowlarr's app
+                    // Categories: local list wins once it exists. The indexer manager's app
                     // sync PUTs every indexer on a 6-hour cadence carrying the
                     // app's Sync Categories (default: TV-only), which silently
                     // wiped categories users added in Sportarr (movie categories
                     // for sports posted under Movies > HD is the reported case)
                     // and made those releases unfindable on every search. An
-                    // empty local list still adopts Prowlarr's, so clearing the
-                    // field in Sportarr re-hands control to Prowlarr.
+                    // empty local list still adopts the manager's list, so clearing the
+                    // field in Sportarr hands control back to the manager.
                     var pushed = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
                     if (indexer.Categories == null || indexer.Categories.Count == 0)
                     {
@@ -908,7 +908,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
             supportsRss = indexer.EnableRss,
             supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
             downloadClientId = indexer.DownloadClientId ?? 0,
-            // Prowlarr expects seedCriteria as a top-level object (always present, null values for usenet)
+            // The indexer manager expects seedCriteria as a top-level object (always present, null values for usenet)
             seedCriteria = new
             {
                 seedRatio = indexer.Type == IndexerType.Torznab ? indexer.SeedRatio : (double?)null,
@@ -924,7 +924,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
                 new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
                 new { name = "minimumSeeders", value = indexer.MinimumSeeders }
             },
-            // Add capabilities object (required for Prowlarr's BuildSonarrIndexer)
+            // Add the capabilities object. The indexer manager needs it to build its app indexer.
             capabilities = new
             {
                 categories = indexer.Categories.Select(c =>
@@ -950,7 +950,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
     }
 });
 
-// DELETE /api/v3/indexer/{id} - Delete indexer (Sonarr v3 API for Prowlarr)
+// DELETE /api/v3/indexer/{id} - Delete indexer (v3 API for the indexer manager)
 app.MapDelete("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] DELETE /api/v3/indexer/{Id}", id);
@@ -1072,7 +1072,7 @@ app.MapPost("/api/v3/indexer/bulk/delete", async (HttpRequest request, SportarrD
 
     /// <summary>
     /// Which protocol an indexer speaks, from the implementation name a
-    /// Prowlarr payload carries.
+    /// payload from the indexer manager carries.
     ///
     /// This used to be written out at each call site, and the one that
     /// creates an indexer from a PUT was missed. Torznab is the enum's first

@@ -22,7 +22,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  // If auth is disabled, allow access (matches Sonarr/Radarr behavior)
+  // If auth is disabled, allow access
   if (isAuthDisabled) {
     console.log('[PROTECTED ROUTE] Authentication disabled, allowing access');
     return <>{children}</>;

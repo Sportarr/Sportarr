@@ -1113,7 +1113,7 @@ public class DownloadClientService : IDownloadClientService
         //      torrent-add, blocking the RPC until the fetch finishes — slow,
         //      IP-scoped, or one-time-use indexer/proxy links make that hang
         //      until the RPC times out.
-        //   2. Magnet-only public indexers proxied through Prowlarr answer the
+        //   2. Magnet-only public indexers behind an indexer proxy answer the
         //      download URL with a 301 redirect to a magnet: URI. Transmission's
         //      libcurl can't follow a cross-scheme redirect to magnet:, so it
         //      stalls. TorrentFileResolver follows redirects manually and hands
@@ -1592,7 +1592,7 @@ public class DownloadClientService : IDownloadClientService
         // embedded libcurl does, so there's no need to pre-fetch a regular
         // .torrent/.nzb URL the way Transmission/Aria2 do. The one narrow
         // exception handled explicitly: a magnet-only indexer proxied
-        // through Prowlarr that redirects an https:// URL to a magnet: URI -
+        // through an indexer proxy that redirects an https:// URL to a magnet: URI -
         // DS's fetch behavior for that cross-scheme redirect isn't something
         // this codebase has verified, so a literal magnet: string (the
         // common case) still goes straight through, unresolved HTTP links

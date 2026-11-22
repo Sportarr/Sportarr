@@ -1477,8 +1477,8 @@ public class FileImportService : IFileImportService
                 // download client reporting an archive as the content path,
                 // which an extractor (Unpackerr and friends) has since unpacked
                 // NEXT TO the archive. Scan the containing job folder so the
-                // extracted video is found, matching how Sonarr's completed
-                // download handling always scans the whole job folder.
+                // extracted video is found. This fallback scans the whole
+                // job folder.
                 var parent = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
                 {

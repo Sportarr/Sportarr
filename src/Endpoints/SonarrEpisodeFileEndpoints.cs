@@ -14,7 +14,7 @@ public static class SonarrEpisodeFileEndpoints
 {
     public static IEndpointRouteBuilder MapSonarrEpisodeFileEndpoints(this IEndpointRouteBuilder app)
     {
-        // GET /api/v3/episodefile - Get episode files (Sonarr v3 API for Decypharr repair)
+        // GET /api/v3/episodefile - Get episode files (v3 API for Decypharr repair)
         app.MapGet("/api/v3/episodefile", async (SportarrDbContext db, ILogger<Program> logger, int? seriesId) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/episodefile - seriesId={SeriesId}", seriesId);
@@ -304,7 +304,7 @@ public static class SonarrEpisodeFileEndpoints
             }
         });
 
-        // GET /api/v3/episode - Get episodes (Sonarr v3 API for Decypharr repair)
+        // GET /api/v3/episode - Get episodes (v3 API for Decypharr repair)
         app.MapGet("/api/v3/episode", async (SportarrDbContext db, ILogger<Program> logger, int? seriesId, int? seasonNumber) =>
         {
             logger.LogDebug("[V3-COMPAT] GET /api/v3/episode - seriesId={SeriesId}, seasonNumber={SeasonNumber}",

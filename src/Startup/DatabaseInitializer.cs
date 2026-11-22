@@ -713,9 +713,8 @@ public static class DatabaseInitializer
         //
         // Letting legacy columns sit in the schema costs nothing — the model
         // has [NotMapped] so EF ignores them on read/write — and means a
-        // stale binary that still references them keeps working. Sonarr
-        // takes the same approach: dropping is a one-shot migration, never
-        // a recurring startup chore.
+        // stale binary that still references them keeps working. A drop is
+        // a one-shot migration, never a recurring startup chore.
 
         // Ensure RootFolders has the per-root default columns. Added so a
         // user can pin a Quality Profile and a Download Client category to

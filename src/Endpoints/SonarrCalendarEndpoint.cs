@@ -12,10 +12,10 @@ public static class SonarrCalendarEndpoint
 {
     public static IEndpointRouteBuilder MapSonarrCalendarEndpoint(this IEndpointRouteBuilder app)
     {
-        // GET /api/v3/calendar - Sonarr-compatible calendar endpoint
-        // Returns events in the date range as Sonarr Episode objects so clients
-        // configured with the Sonarr template (ArrControl, Maintainerr, dashboards, etc.)
-        // can show Sportarr events alongside Sonarr/Radarr ones.
+        // GET /api/v3/calendar - v3-compatible calendar endpoint
+        // Returns events in the date range as v3 episode objects. Clients
+        // configured with the v3 TV template (ArrControl, Maintainerr, dashboards, etc.)
+        // can then show Sportarr events alongside their other calendars.
         app.MapGet("/api/v3/calendar", async (
             DateTime? start,
             DateTime? end,
@@ -25,7 +25,7 @@ public static class SonarrCalendarEndpoint
             SportarrDbContext db,
             ILogger<Program> logger) =>
         {
-            // Sonarr default: today + 7 days when no range supplied
+            // Default range: today + 7 days when no range is supplied
             var rangeStart = start ?? DateTime.UtcNow.Date;
             var rangeEnd = end ?? DateTime.UtcNow.Date.AddDays(7);
 
@@ -129,7 +129,7 @@ public static class SonarrCalendarEndpoint
                     };
                 }
 
-                // Episode-level images (Sonarr sends stills when
+                // Episode-level images (v3 servers send stills when
                 // includeEpisodeImages is set; consumers expect the array to
                 // exist either way). The event thumbnail is the natural still.
                 // PosterUrl/ThumbUrl only carry values on API-deserialized

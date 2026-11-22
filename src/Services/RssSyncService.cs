@@ -577,7 +577,7 @@ public class RssSyncService : BackgroundService
 
     /// <summary>
     /// Run a single externally pushed release (autobrr and similar IRC
-    /// announce / RSS watchers posting to the Sonarr-compatible
+    /// announce / RSS watchers posting to the v3-compatible
     /// /api/v3/release/push endpoint) through the exact same
     /// match → evaluate → grab pipeline as the RSS sync loop, and report the
     /// decision back so the pusher can log approved/rejected with reasons.

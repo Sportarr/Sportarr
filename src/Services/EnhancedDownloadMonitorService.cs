@@ -742,7 +742,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 db);
         }
 
-        // Always handle failed downloads (no global disable — Radarr parity)
+        // Always handle failed downloads. There is no global switch to turn this off.
         if (download.Status == DownloadStatus.Failed &&
             previousStatus != DownloadStatus.Failed)
         {

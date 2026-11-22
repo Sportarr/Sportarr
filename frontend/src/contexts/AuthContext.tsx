@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           navigate(returnUrl, { replace: true });
         }
       } else {
-        // Error - assume auth disabled to avoid blocking (matches Sonarr behavior)
+        // Error - assume auth disabled to avoid blocking
         console.error('[AUTH] Auth check failed with status:', response.status);
         setAuthState({
           isAuthenticated: true,

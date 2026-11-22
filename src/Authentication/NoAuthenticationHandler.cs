@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 namespace Sportarr.Api.Authentication;
 
 /// <summary>
-/// No Authentication Handler (matches Sonarr/Radarr implementation)
+/// No Authentication Handler
 /// Allows all requests when authentication is disabled
 /// </summary>
 public class NoAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>

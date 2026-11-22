@@ -12,8 +12,8 @@ namespace Sportarr.Api.Tests.Services;
 /// past 10k. A tier format holds many non-required release group specs plus
 /// two non-required source specs (WEBDL, WEBRIP). Treating all non-required
 /// specs as one flat OR let the source spec alone satisfy the format, so the
-/// release group list stopped meaning anything. Sonarr semantics, which the
-/// TRaSH formats are written against: specs of the same type are
+/// release group list stopped meaning anything. The TRaSH formats are
+/// written against these semantics: specs of the same type are
 /// alternatives, different types are cumulative, and Required specs must
 /// always match.
 /// </summary>

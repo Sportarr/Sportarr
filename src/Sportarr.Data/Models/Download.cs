@@ -115,8 +115,8 @@ public class DownloadClient
     public TorrentInitialState InitialState { get; set; } = TorrentInitialState.Started; // Initial state when torrent is added (Started, ForceStarted, Stopped)
 
     /// <summary>
-    /// Queue priority for events that aired within the last 14 days - matches
-    /// Sonarr's "recent episode" window. Stored as a raw int rather than one
+    /// Queue priority for events that aired within the last 14 days (the
+    /// "recent" window). Stored as a raw int rather than one
     /// shared enum because each client type's real API exposes a different
     /// scale: qBittorrent/Deluge/Transmission/Vuze are binary
     /// (<see cref="DownloadPriority"/>), rTorrent has 4 levels
@@ -240,7 +240,7 @@ public class DownloadQueueItem
 
     /// <summary>
     /// Where the download client says the job landed on disk, captured from
-    /// DownloadClientStatus.SavePath on each status poll. The Sonarr v3 queue
+    /// DownloadClientStatus.SavePath on each status poll. The v3 queue
     /// shim reports it as the record's outputPath, which is how external
     /// extractors find the folder when its name differs from the release
     /// title (Unpackerr joins its configured paths with the title first and

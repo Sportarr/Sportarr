@@ -137,7 +137,7 @@ export default function IndexersSettings() {
     localStorage.setItem('sportarr-showAdvanced-indexers', showAdvanced.toString());
   }, [showAdvanced]);
 
-  // Fetch indexers from API (auto-refreshes every 30 seconds to show Prowlarr-synced indexers)
+  // Fetch indexers from API (auto-refreshes every 30 seconds to show indexers synced by an indexer manager)
   const { data: apiIndexers = [], isLoading } = useIndexers();
 
   // Mutations for creating, updating, and deleting indexers
@@ -399,7 +399,7 @@ export default function IndexersSettings() {
   // Free-text mirror for the comma-separated category IDs input.
   // Used as a fallback when the indexer's caps endpoint can't be
   // reached (offline, missing API key, plain RSS, etc.). Otherwise the
-  // categories input renders as a Sonarr-style MultiSelect populated
+  // categories input renders as a MultiSelect populated
   // from caps. Keeping the raw text in state separately avoids the
   // round-trip bug where re-parsing on every keystroke strips a
   // trailing comma the user just typed.
@@ -419,9 +419,9 @@ export default function IndexersSettings() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.categories]);
 
-  // Caps-driven category options. Sonarr renders the indexer's
+  // Caps-driven category options. Render the indexer's
   // self-reported categories as a named multi-select instead of asking
-  // users to memorize numeric IDs. We mirror that: probe the indexer's
+  // users to memorize numeric IDs. To do that, probe the indexer's
   // /caps endpoint (newznab/torznab share the same XML schema) and use
   // the result to populate a MultiSelect. Fall back to the text input
   // when caps are unavailable so the form still works for sites
@@ -1201,7 +1201,7 @@ export default function IndexersSettings() {
         hasUnsavedChanges={hasUnsavedChanges}
         saveButtonText="Save Changes"
       >
-        {/* Show Advanced Toggle - like Sonarr */}
+        {/* Show Advanced Toggle */}
         <label className="flex items-center space-x-2 cursor-pointer text-sm">
           <input
             type="checkbox"
