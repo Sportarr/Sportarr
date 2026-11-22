@@ -1,8 +1,8 @@
 namespace Sportarr.Api.Helpers;
 
 /// <summary>
-/// Tells a stream that plays the same short clip again and again apart from
-/// live footage. It uses one small fingerprint per keyframe.
+/// Tells a stream that plays the same clip again and again apart from live
+/// footage. It uses one small fingerprint per keyframe.
 ///
 /// Some IPTV providers keep a channel up after its source drops. They loop
 /// the last seconds they received. The output file keeps its normal growth,
@@ -33,6 +33,29 @@ public static class FrameRecurrence
     // picture differ by a few bits. Two keyframes of moving footage a few
     // seconds apart differ by more than a dozen bits.
     private const int SamePictureMaxDistance = 6;
+
+    // A match with a keyframe before the judged part must be this close. The
+    // judged part alone uses the wider distance above. The earlier
+    // keyframes only add repeats. Each of these repeats is 3 bits apart or
+    // less.
+    //
+    // Live footage can repeat itself at a steady cycle. Examples are an
+    // onboard camera on laps of steady length and a camera angle that comes
+    // back. In replays of 11 F1, MotoGP and Moto2 sessions, 211 matches lay
+    // more than three minutes back. Each verdict counted its matches once.
+    // None was exact, 21 were 1 or 2 bits apart, 10 were 3 bits apart, and
+    // 180 were 4 to 6 bits apart. So this distance keeps 31 of them. Nobody
+    // measured the closer matches with earlier keyframes. An early judged
+    // keyframe has those at a lag below three minutes.
+    //
+    // A loop that the provider encodes again at each pass is not exact. In
+    // FFmpeg tests on F1 race footage, two encodes of one source frame at a
+    // different quality or size were 3 bits apart or less at 95% of the
+    // moving keyframes. They were 2 bits apart or less at 90%. When one
+    // encode put its keyframes a frame later, 87% or more were 3 bits apart
+    // or less, but only 71% were 2 bits apart or less in one clip. The
+    // verdict needs 80%, so 2 bits can miss such a loop.
+    private const int EarlierSamePictureMaxDistance = 3;
     private const int MovedPictureMinDistance = 10;
 
     // Fewer moving keyframes than this are too little footage for a verdict.
@@ -66,7 +89,8 @@ public static class FrameRecurrence
 
     // When the keyframe interval does not divide the clip length, the period
     // changes by one keyframe from pass to pass. The band allows for that.
-    // The band grows with the period, so that it stays near a tenth of it.
+    // The band grows with the period, so that it stays near a tenth of it,
+    // up to two keyframes.
     // Periods of three and four keyframes get no band. A band of one keyframe
     // there accepts lags that differ by a third, and a fast studio edit fills
     // that band by chance.
@@ -79,13 +103,19 @@ public static class FrameRecurrence
     private const int MaxTolerance = 2;
 
     // This is the share of moving keyframes that must repeat at the period.
-    // In replays, re-encoded loops of race clips from 13 seconds to six
-    // minutes scored 0.99 and up. They were judged over three minutes with
-    // ten minutes to find repeats in. These replays used the verdict before
-    // the distinct-pictures and frozen rules. Across 41 recordings of races, fight
-    // nights and studio talk shows, no window of live footage scored above
-    // 0.52. One window scored 0.67. There a provider repeated twenty seconds
-    // just before its stream dropped.
+    // In the contributor's replays, loops of race clips from 13 seconds to
+    // six minutes scored 0.99 and up. Each loop was encoded in one pass. They
+    // were judged over three minutes with ten minutes to find repeats in.
+    // Across 41 recordings of races, fight nights and studio talk shows, no
+    // window of live footage scored above 0.52. One window scored 0.67.
+    // There a provider repeated twenty seconds just before its stream
+    // dropped. A later replay of 11 F1, MotoGP and Moto2 sessions limited
+    // the matches more than three minutes back to 2 bits. Its highest live
+    // window was 0.37, and every loop was still flagged at the same time.
+    //
+    // These scores come from earlier verdicts. They had no distinct-pictures
+    // rule, no frozen rule and no cap on the period band. Nobody has
+    // replayed the recordings with the current verdict.
     private const double LoopedShare = 0.8;
 
     /// <summary>
@@ -129,12 +159,6 @@ public static class FrameRecurrence
     /// again and again. All keyframes are judged.
     /// </summary>
     public static bool LooksLooped(IReadOnlyList<ulong> keyframes) => LooksLooped(keyframes, 0, null);
-
-    /// <summary>
-    /// The same verdict over keyframes with gaps. All keyframes are judged.
-    /// </summary>
-    public static bool LooksLooped(IReadOnlyList<ulong> keyframes, IReadOnlySet<int>? gapsBefore) =>
-        LooksLooped(keyframes, 0, gapsBefore);
 
     /// <summary>
     /// The verdict over the <paramref name="recent"/> keyframes. The
@@ -188,7 +212,7 @@ public static class FrameRecurrence
                 continue;
 
             moving++;
-            if (LagToPreviousMatch(keyframes, i, segmentStart) is int lag)
+            if (LagToPreviousMatch(keyframes, i, segmentStart, judgedFrom) is int lag)
                 repeats.Add((i, lag));
         }
 
@@ -211,14 +235,19 @@ public static class FrameRecurrence
         return false;
     }
 
-    /// <summary>How many keyframes back the nearest near-match of this one is.</summary>
-    private static int? LagToPreviousMatch(IReadOnlyList<ulong> keyframes, int index, int segmentStart)
+    /// <summary>
+    /// How many keyframes back the nearest near-match of this one is. A
+    /// keyframe before <paramref name="judgedFrom"/> needs the stricter
+    /// distance.
+    /// </summary>
+    private static int? LagToPreviousMatch(IReadOnlyList<ulong> keyframes, int index, int segmentStart, int judgedFrom)
     {
         // The keyframe right before is never a match. The picture moved away
         // from it, so this keyframe counts at all.
         for (var j = index - 2; j >= segmentStart; j--)
         {
-            if (Distance(keyframes[index], keyframes[j]) <= SamePictureMaxDistance)
+            var maxDistance = j < judgedFrom ? EarlierSamePictureMaxDistance : SamePictureMaxDistance;
+            if (Distance(keyframes[index], keyframes[j]) <= maxDistance)
                 return index - j;
         }
         return null;

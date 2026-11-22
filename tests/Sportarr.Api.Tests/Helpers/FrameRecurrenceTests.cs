@@ -49,11 +49,12 @@ public class FrameRecurrenceTests
     {
         // A two-minute clip with a keyframe every second outlasts a judged
         // part of 72 keyframes. None of those keyframes repeats another of
-        // them. They repeat the previous pass in the earlier keyframes.
+        // them. They repeat the previous pass in the earlier keyframes. The
+        // provider encodes each pass on its own.
         var random = new Random(8);
         var clip = Pictures(random, 120);
-        var earlier = clip.Select(p => Reencoded(p, random)).ToList();
-        var recent = clip.Take(72).Select(p => Reencoded(p, random)).ToList();
+        var earlier = clip.Select(p => Encoded(p, random)).ToList();
+        var recent = clip.Take(72).Select(p => Encoded(p, random)).ToList();
 
         FrameRecurrence.LooksLooped(earlier, recent).Should().BeTrue();
         FrameRecurrence.LooksLooped([], recent).Should().BeFalse();
@@ -212,12 +213,12 @@ public class FrameRecurrenceTests
         // A gap before a frozen tail keyframe removes one frozen comparison.
         // The window at exactly half then falls below it.
         var atHalf = FrozenBoundaryWindow(37);
-        FrameRecurrence.LooksLooped(atHalf, new HashSet<int> { 210 }).Should().BeTrue();
+        FrameRecurrence.LooksLooped(atHalf, 0, new HashSet<int> { 210 }).Should().BeTrue();
 
         // A gap before a moving keyframe removes one comparison that is not
         // frozen. The window just below half then reaches it.
         var belowHalf = FrozenBoundaryWindow(36);
-        FrameRecurrence.LooksLooped(belowHalf, new HashSet<int> { 190 }).Should().BeFalse();
+        FrameRecurrence.LooksLooped(belowHalf, 0, new HashSet<int> { 190 }).Should().BeFalse();
     }
 
     // A 13-second loop as a provider sends it. With a continuous keyframe
@@ -297,7 +298,7 @@ public class FrameRecurrenceTests
         var gaps = Enumerable.Range(1, 71).Where(i => i % ClipKeyframes == 0).ToHashSet();
 
         FrameRecurrence.LooksLooped(keyframes).Should().BeTrue();
-        FrameRecurrence.LooksLooped(keyframes, gaps).Should().BeFalse();
+        FrameRecurrence.LooksLooped(keyframes, 0, gaps).Should().BeFalse();
     }
 
     [Theory]
@@ -389,7 +390,8 @@ public class FrameRecurrenceTests
         // other footage. The lag then changes by five keyframes or more from
         // pass to pass, so there is no steady period. The judged window holds
         // about two passes. A band of a tenth of the lag, nine keyframes here,
-        // took both lags in. The band is now two keyframes at most.
+        // took both lags in. The band is now two keyframes at most. The
+        // copies are exact, so only the band keeps this from a verdict.
         var flagged = 0;
         for (var seed = 0; seed < 200; seed++)
         {
@@ -399,7 +401,7 @@ public class FrameRecurrenceTests
             for (var pass = 0; keyframes.Count < 600; pass++)
             {
                 keyframes.AddRange(Pictures(random, 5 * ((pass + seed) % 4)));
-                keyframes.AddRange(reel.Select(p => Reencoded(p, random)));
+                keyframes.AddRange(reel);
             }
 
             if (FrameRecurrence.LooksLooped(keyframes.Take(600).ToList(), 420, null))
@@ -414,34 +416,184 @@ public class FrameRecurrenceTests
     {
         // This is accepted behavior. A 150-keyframe reel that comes back after
         // other footage fills most of a 180-keyframe window with one repeat
-        // at one lag. The window cannot tell that from a loop. The watchdog
-        // needs the verdict to hold for two windows that do not overlap, so a
-        // single long replay does not stop a recording.
+        // at one lag. The window cannot tell that from a loop.
+        //
+        // The watchdog needs the verdict to hold for two windows that do not
+        // overlap. So a reel that airs twice stops a recording only when it
+        // is long and comes back soon. Both windows, three minutes apart,
+        // must then see mostly the second airing.
         var random = new Random(11);
         var reel = Pictures(random, 150);
         var keyframes = Pictures(random, 290)
-            .Concat(reel.Select(p => Reencoded(p, random)))
+            .Concat(reel.Select(p => Encoded(p, random)))
             .Concat(Pictures(random, 10))
-            .Concat(reel.Select(p => Reencoded(p, random)))
+            .Concat(reel.Select(p => Encoded(p, random)))
             .ToList();
 
         FrameRecurrence.LooksLooped(keyframes, 420, null).Should().BeTrue();
+    }
+
+    // Onboard footage over ten minutes. Each lap of the same track runs 80 to
+    // 120 seconds, and the lap time changes by up to a second. A keyframe
+    // differs by 4 to 8 bits from the keyframe one lap earlier. That is
+    // closer than most live footage, but not as close as a re-encode. With
+    // 4 to 6 bits, every lap matched the lap before when the earlier
+    // keyframes took 6 bits, and all of these windows counted as a loop.
+    [Theory]
+    [InlineData(1, 4, 8)]
+    [InlineData(2, 4, 8)]
+    [InlineData(1, 4, 6)]
+    [InlineData(2, 4, 6)]
+    public void Onboard_laps_of_steady_length_are_never_a_loop(int keyframeSeconds, int minBits, int maxBits)
+    {
+        var total = 600 / keyframeSeconds;
+        var judged = 180 / keyframeSeconds;
+        var flagged = 0;
+        for (var seed = 0; seed < 200; seed++)
+        {
+            var random = new Random(seed);
+            var lapKeyframes = random.Next(80, 121) / keyframeSeconds;
+            var lap = Pictures(random, lapKeyframes + 1);
+            var keyframes = new List<ulong>();
+            while (keyframes.Count < total)
+            {
+                lap = lap.Select(p => FlipDistinct(p, random, random.Next(minBits, maxBits + 1))).ToList();
+                keyframes.AddRange(lap.Take(lapKeyframes + random.Next(0, 2)));
+            }
+
+            if (FrameRecurrence.LooksLooped(keyframes.Take(total).ToList(), total - judged, null))
+                flagged++;
+        }
+
+        flagged.Should().Be(0);
+    }
+
+    // A provider loop of 45 seconds to seven minutes. The provider encodes
+    // each pass on its own from the same source, so two passes differ by
+    // the noise of two encodes.
+    [Theory]
+    [InlineData(45, 1)]
+    [InlineData(90, 1)]
+    [InlineData(150, 1)]
+    [InlineData(180, 1)]
+    [InlineData(240, 1)]
+    [InlineData(300, 1)]
+    [InlineData(360, 1)]
+    [InlineData(420, 1)]
+    [InlineData(46, 2)]
+    [InlineData(180, 2)]
+    [InlineData(240, 2)]
+    [InlineData(420, 2)]
+    public void A_long_loop_encoded_again_at_each_pass_is_a_loop(int clipSeconds, int keyframeSeconds)
+    {
+        var total = 600 / keyframeSeconds;
+        var judged = 180 / keyframeSeconds;
+        for (var seed = 0; seed < 50; seed++)
+        {
+            var random = new Random(seed);
+            var clip = Pictures(random, clipSeconds / keyframeSeconds);
+            var keyframes = new List<ulong>();
+            while (keyframes.Count < total)
+                keyframes.AddRange(clip.Select(p => Encoded(p, random)));
+
+            FrameRecurrence.LooksLooped(keyframes.Take(total).ToList(), total - judged, null).Should().BeTrue($"seed {seed}");
+        }
+    }
+
+    // The worst case in the FFmpeg tests. One encode put its keyframes a
+    // frame later, and 87% of the moving keyframes were then 3 bits apart
+    // or less. Here each pass differs from the one before by the measured
+    // distances, so some of them fall outside the limit. A verdict can miss
+    // a single tick. Nearly all ticks still give a loop, and the watchdog
+    // needs a streak of them.
+    [Theory]
+    [InlineData(240, 1)]
+    [InlineData(420, 1)]
+    [InlineData(240, 2)]
+    [InlineData(420, 2)]
+    public void A_long_loop_with_keyframes_a_frame_late_is_nearly_always_a_loop(int clipSeconds, int keyframeSeconds)
+    {
+        var total = 600 / keyframeSeconds;
+        var judged = 180 / keyframeSeconds;
+        var flagged = 0;
+        for (var seed = 0; seed < 100; seed++)
+        {
+            var random = new Random(seed);
+            var pass = Pictures(random, clipSeconds / keyframeSeconds);
+            var keyframes = new List<ulong>();
+            while (keyframes.Count < total)
+            {
+                keyframes.AddRange(pass);
+                pass = pass.Select(p => FlipDistinct(p, random, FrameLateBits(random))).ToList();
+            }
+
+            if (FrameRecurrence.LooksLooped(keyframes.Take(total).ToList(), total - judged, null))
+                flagged++;
+        }
+
+        flagged.Should().BeGreaterThanOrEqualTo(90);
     }
 
     [Fact]
     public void A_long_loop_with_a_period_that_changes_by_one_is_a_loop()
     {
         // A 150-second clip on a keyframe grid that does not divide it. The
-        // passes alternate between 150 and 151 keyframes.
+        // passes alternate between 150 and 151 keyframes. Each pass is
+        // encoded on its own.
         for (var seed = 0; seed < 50; seed++)
         {
             var random = new Random(seed);
             var clip = Pictures(random, 151);
             var keyframes = new List<ulong>();
             for (var pass = 0; keyframes.Count < 600; pass++)
-                keyframes.AddRange(clip.Take(pass % 2 == 0 ? 150 : 151).Select(p => Reencoded(p, random)));
+                keyframes.AddRange(clip.Take(pass % 2 == 0 ? 150 : 151).Select(p => Encoded(p, random)));
 
             FrameRecurrence.LooksLooped(keyframes.Take(600).ToList(), 420, null).Should().BeTrue($"seed {seed}");
+        }
+    }
+
+    // Live footage that comes back at a steady lap, such as an onboard
+    // camera. Each moving keyframe is as far from the keyframe one lap back
+    // as a long match in the contributor's replay of 11 F1, MotoGP and Moto2
+    // sessions. There 211 matches lay more than three minutes back: 19 at 1
+    // bit, 2 at 2, 10 at 3, 39 at 4, 66 at 5 and 75 at 6. In the replay those
+    // matches were scattered. Here every keyframe gets one, at one steady
+    // lap, which is the worst case.
+    [Theory]
+    [InlineData(80, 1)]
+    [InlineData(90, 1)]
+    [InlineData(120, 1)]
+    [InlineData(210, 1)]
+    [InlineData(300, 1)]
+    [InlineData(420, 1)]
+    [InlineData(80, 2)]
+    [InlineData(120, 2)]
+    [InlineData(210, 2)]
+    [InlineData(420, 2)]
+    public void Laps_as_close_as_the_replayed_live_matches_are_never_a_loop(int lapSeconds, int keyframeSeconds)
+    {
+        var flagged = 0;
+        for (var seed = 0; seed < 100; seed++)
+        {
+            if (FrameRecurrence.LooksLooped(Laps(new Random(seed), lapSeconds, keyframeSeconds, ReplayedLiveBits), 420 / keyframeSeconds, null))
+                flagged++;
+        }
+
+        flagged.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(210, 1)]
+    [InlineData(420, 2)]
+    public void Laps_as_close_as_an_encode_count_as_a_loop(int lapSeconds, int keyframeSeconds)
+    {
+        // This is accepted behavior, and it shows that only the distance
+        // keeps the laps above from a verdict. The same laps with each
+        // keyframe 1 to 3 bits from the lap before look like a loop.
+        for (var seed = 0; seed < 20; seed++)
+        {
+            FrameRecurrence.LooksLooped(Laps(new Random(seed), lapSeconds, keyframeSeconds, r => r.Next(1, 4)), 420 / keyframeSeconds, null)
+                .Should().BeTrue($"seed {seed}");
         }
     }
 
@@ -601,6 +753,51 @@ public class FrameRecurrenceTests
         foreach (var bit in Enumerable.Range(0, 64).OrderBy(_ => random.Next()).Take(bits))
             picture ^= 1UL << bit;
         return picture;
+    }
+
+    // One encode of a source picture. In FFmpeg tests on F1 race footage,
+    // two encodes of one frame were 0 bits apart at 38% of the moving
+    // keyframes, 1 bit at 35%, 2 at 17%, 3 at 6% and 4 to 7 at 5%. This
+    // noise gives fewer exact repeats and a few more at 4 to 6 bits. Two
+    // encodes come out 0 to 6 bits apart.
+    private static ulong Encoded(ulong picture, Random random)
+    {
+        var roll = random.Next(100);
+        return Flip(picture, random, roll < 55 ? 0 : roll < 85 ? 1 : roll < 95 ? 2 : 3);
+    }
+
+    // Ten minutes of laps. A lap changes by a keyframe at most, and each
+    // keyframe is bits(random) away from the same keyframe one lap back.
+    private static List<ulong> Laps(Random random, int lapSeconds, int keyframeSeconds, Func<Random, int> bits)
+    {
+        var total = 600 / keyframeSeconds;
+        var lapKeyframes = lapSeconds / keyframeSeconds;
+        var lap = Pictures(random, lapKeyframes + 1);
+        var keyframes = new List<ulong>(total);
+        while (keyframes.Count < total)
+        {
+            keyframes.AddRange(lap.Take(lapKeyframes + random.Next(0, 2)));
+            lap = lap.Select(p => FlipDistinct(p, random, bits(random))).ToList();
+        }
+        return keyframes.Take(total).ToList();
+    }
+
+    // The distance between two encodes when one puts its keyframes a frame
+    // later. In the FFmpeg test, 70 moving keyframes were 0 bits apart 14
+    // times, 1 bit 24, 2 bits 12, 3 bits 11, 4 bits 4, 6 bits 3, 12 bits 1
+    // and 13 bits or more 1.
+    private static int FrameLateBits(Random random)
+    {
+        var roll = random.Next(70);
+        return roll < 14 ? 0 : roll < 38 ? 1 : roll < 50 ? 2 : roll < 61 ? 3 : roll < 65 ? 4 : roll < 68 ? 6 : roll < 69 ? 12 : 13;
+    }
+
+    // The distance of a long live match, drawn from the contributor's replay:
+    // 19 at 1 bit, 2 at 2, 10 at 3, 39 at 4, 66 at 5 and 75 at 6, of 211.
+    private static int ReplayedLiveBits(Random random)
+    {
+        var roll = random.Next(211);
+        return roll < 19 ? 1 : roll < 21 ? 2 : roll < 31 ? 3 : roll < 70 ? 4 : roll < 136 ? 5 : 6;
     }
 
     private static ulong Flip(ulong picture, Random random, int bits)

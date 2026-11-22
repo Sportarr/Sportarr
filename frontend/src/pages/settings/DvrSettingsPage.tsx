@@ -1539,7 +1539,7 @@ export default function DvrSettingsPage() {
                       <div>
                         <span className="text-sm text-gray-300">Detect looping streams</span>
                         <p className="text-xs text-gray-500 mt-1">
-                          When a channel keeps replaying the same short clip, switch the recording to its fallback
+                          When a channel keeps replaying the same clip, switch the recording to its fallback
                           channel. With no fallback, it keeps recording. Applies to recordings that copy the stream
                           without re-encoding.
                         </p>

@@ -404,15 +404,14 @@ public class DvrWatchdogService : BackgroundService
         var response = await DecideOnLoopAsync(streak, now, DateTime.UtcNow, row.ScheduledStart, row.ScheduledEnd,
             row.PostPadding, () => dvrService.HasUsableFallbackAsync(row));
 
-        var minutes = (int)(now - (streak?.Since ?? now) + StreamLoopMonitor.Window).TotalMinutes;
         switch (response)
         {
             case LoopResponse.Stop:
                 _logger.LogWarning(
-                    "[DVR Watchdog] Recording {Id} has repeated the same short clip for about {Minutes} minutes. Stopping FFmpeg to rotate to a fallback channel",
-                    row.Id, minutes);
+                    "[DVR Watchdog] Recording {Id} keeps repeating the same clip. Stopping FFmpeg to rotate to a fallback channel",
+                    row.Id);
                 await StopForLoopAsync(db, row, recorder, dvrService, loopMonitor, ct,
-                    $"watchdog: stream is looping (the same short clip for about {minutes} minutes)");
+                    "watchdog: stream is looping (it keeps repeating the same clip)");
                 break;
 
             case LoopResponse.KeepRecordingNoFallback:
@@ -422,8 +421,8 @@ public class DvrWatchdogService : BackgroundService
                     : "the recording is in the last part of its window, where a stop completes it instead of rotating";
                 if (_loopWarned.Add(row.Id))
                     _logger.LogWarning(
-                        "[DVR Watchdog] Recording {Id} has repeated the same short clip for about {Minutes} minutes. Recording continues, because {Reason}",
-                        row.Id, minutes, reason);
+                        "[DVR Watchdog] Recording {Id} keeps repeating the same clip. Recording continues, because {Reason}",
+                        row.Id, reason);
                 else
                     _logger.LogDebug("[DVR Watchdog] Recording {Id} still repeats the same clip. Recording continues, because {Reason}", row.Id, reason);
                 break;
@@ -508,6 +507,8 @@ public class DvrWatchdogService : BackgroundService
     /// whole window after its first verdict. The first and the last verdict
     /// then judge two windows that do not overlap, six minutes of footage in
     /// total. A short loop in an ad break or a promo does not last that long.
+    /// A verdict can also match keyframes up to ten minutes back, but it
+    /// judges only its own window.
     /// The method asks for a fallback only when a stop is otherwise due.
     /// <paramref name="tickTime"/> is the time of this tick's verdict.
     /// <paramref name="decidedAt"/> is the current clock.

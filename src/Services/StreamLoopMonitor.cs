@@ -3,8 +3,8 @@ using Sportarr.Api.Helpers;
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Watches live captures for a provider that loops a short clip in place of
-/// a lost channel. <see cref="FrameRecurrence"/> gives the verdict.
+/// Watches live captures for a provider that loops a clip in place of a
+/// lost channel. <see cref="FrameRecurrence"/> gives the verdict.
 ///
 /// Each look fingerprints the keyframes that the recorder added to the
 /// capture since the previous look. The monitor never opens the stream, so a
