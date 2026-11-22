@@ -40,8 +40,12 @@ public class DiskScanActiveRecordingTests : IDisposable
         return new SportarrDbContext(options);
     }
 
-    private static DiskScanService CreateService() =>
-        new(Mock.Of<IServiceProvider>(), Mock.Of<ILogger<DiskScanService>>());
+    private static DiskScanService CreateService()
+    {
+        var services = new Mock<IServiceProvider>();
+        services.Setup(p => p.GetService(typeof(DownloadOwnershipCoordinator))).Returns(new DownloadOwnershipCoordinator());
+        return new(services.Object, Mock.Of<ILogger<DiskScanService>>());
+    }
 
     private static Task InvokeDiscoverAsync(DiskScanService svc, SportarrDbContext db)
     {

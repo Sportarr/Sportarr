@@ -106,6 +106,7 @@ public class SabnzbdFailedHistoryTests
         status.Should().NotBeNull();
         status!.Status.Should().Be("downloading");
         status.SavePath.Should().BeNull();
+        status.SavePathIsJobSpecific.Should().BeFalse();
     }
 
     [Fact]
@@ -117,6 +118,7 @@ public class SabnzbdFailedHistoryTests
         status.Should().NotBeNull();
         status!.Status.Should().Be("completed");
         status.SavePath.Should().Be("/downloads/complete/x");
+        status.SavePathIsJobSpecific.Should().BeTrue();
     }
 
     [Theory]

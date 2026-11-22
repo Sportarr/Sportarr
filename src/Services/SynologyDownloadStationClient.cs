@@ -473,6 +473,7 @@ public class SynologyDownloadStationClient
             Size = size,
             TimeRemaining = timeRemaining,
             SavePath = savePath,
+            SavePathIsJobSpecific = !string.IsNullOrWhiteSpace(title),
             Ratio = downloaded > 0 ? (double)uploaded / downloaded : 0,
             AddedAt = addedAt,
             CompletedAt = mapped == "completed" ? completedAt : null,

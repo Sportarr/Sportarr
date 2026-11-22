@@ -403,3 +403,26 @@ describe.each([['desktop', 1440], ['phone', 390]] as const)('Activity manual rep
     await waitFor(() => expect(row.queryByRole('button', { name: 'Import Anyway' })).not.toBeInTheDocument());
   });
 });
+
+
+it('manages ignored downloads on Blocklist separately from blocked releases', async () => {
+  const { user } = await showQueue(1000);
+  expect(screen.queryByRole('button', { name: 'Ignored' })).not.toBeInTheDocument();
+  transport.get.mockImplementation(async (path: string) => {
+    if (path === '/queue/ignored') return { data: [{ id: 12, title: 'Ignored race', clientName: 'Downloads' }] };
+    if (path.startsWith('/blocklist?')) return { data: { blocklist: [], totalPages: 1, totalRecords: 0 } };
+    throw new Error('Unexpected request ' + path);
+  });
+  await user.click(screen.getByRole('button', { name: 'Blocklist' }));
+  const ignored = await screen.findByRole('region', { name: 'Ignored downloads' });
+  const regions = screen.getAllByRole('region');
+  expect(regions.indexOf(screen.getByRole('region', { name: 'Blocked releases' }))).toBeLessThan(regions.indexOf(ignored));
+  expect(await within(ignored).findByText('Ignored race')).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Blocked releases' })).toHaveTextContent('No blocked releases');
+  await user.click(within(ignored).getByRole('button', { name: 'Unignore' }));
+  expect(transport.post).toHaveBeenCalledWith('/queue/ignored/12/resume');
+  expect(transport.post).not.toHaveBeenCalledWith('/blocklist/bulk/delete', expect.anything());
+  const reads = transport.get.mock.calls.filter(([path]) => path === '/queue/ignored').length;
+  await user.click(screen.getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(transport.get.mock.calls.filter(([path]) => path === '/queue/ignored')).toHaveLength(reads + 1));
+});

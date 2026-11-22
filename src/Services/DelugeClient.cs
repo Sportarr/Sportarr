@@ -508,6 +508,7 @@ public class DelugeClient
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
             SavePath = computedSavePath,
+            SavePathIsJobSpecific = !string.IsNullOrWhiteSpace(torrent.Name),
             ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null,
             Ratio = torrent.Ratio,
             AddedAt = torrent.TimeAdded > 0

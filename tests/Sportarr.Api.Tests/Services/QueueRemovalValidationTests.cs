@@ -8,6 +8,7 @@ using Moq;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using Sportarr.Api.Services.Interfaces;
 using Xunit;
 
 namespace Sportarr.Api.Tests.Services;
@@ -46,14 +47,14 @@ public class QueueRemovalValidationTests : IDisposable
             Mock.Of<ILogger<DownloadClientService>>(),
             new MemoryCache(new MemoryCacheOptions()),
             configService,
-            Mock.Of<Sportarr.Api.Services.Interfaces.IRemotePathMappingService>(), new DownloadOwnershipCoordinator());
+            Mock.Of<IRemotePathMappingService>(), new DownloadOwnershipCoordinator());
 
         var searchQueue = replacementQueue ?? new SearchQueueService(
             new ServiceCollection().AddSingleton(db).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             Mock.Of<ILogger<SearchQueueService>>());
 
         return new QueueRemovalService(db, downloadClientService, searchQueue,
-            Mock.Of<ILogger<QueueRemovalService>>());
+            Mock.Of<ILogger<QueueRemovalService>>(), new DownloadOwnershipCoordinator(), Mock.Of<IRemotePathMappingService>());
     }
 
     private static DownloadQueueItem QueueItem() => new()

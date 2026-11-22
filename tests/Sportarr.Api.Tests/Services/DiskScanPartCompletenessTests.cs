@@ -47,7 +47,7 @@ public class DiskScanPartCompletenessTests
                 new Dictionary<string, string?> { ["Sportarr:DataPath"] = Path.Combine(root, "config") })
                 .Build();
             var config = new ConfigService(settings, NullLogger<ConfigService>.Instance);
-            using var services = new ServiceCollection().AddSingleton(db).AddSingleton(config)
+            using var services = new ServiceCollection().AddSingleton(db).AddSingleton(config).AddSingleton<DownloadOwnershipCoordinator>()
                 .BuildServiceProvider();
             var scan = new DiskScanService(services, NullLogger<DiskScanService>.Instance);
             var method = typeof(DiskScanService).GetMethod("ScanAllFilesAsync",
@@ -100,7 +100,7 @@ public class DiskScanPartCompletenessTests
             var config = new ConfigService(settings, NullLogger<ConfigService>.Instance);
             using var services = new ServiceCollection()
                 .AddSingleton(db)
-                .AddSingleton(config)
+                .AddSingleton(config).AddSingleton<DownloadOwnershipCoordinator>()
                 .BuildServiceProvider();
             var scan = new DiskScanService(services, NullLogger<DiskScanService>.Instance);
             var method = typeof(DiskScanService).GetMethod("ScanAllFilesAsync",
@@ -168,7 +168,7 @@ public class DiskScanPartCompletenessTests
             var config = new ConfigService(settings, NullLogger<ConfigService>.Instance);
             using var services = new ServiceCollection()
                 .AddSingleton(db)
-                .AddSingleton(config)
+                .AddSingleton(config).AddSingleton<DownloadOwnershipCoordinator>()
                 .BuildServiceProvider();
             var scan = new DiskScanService(services, NullLogger<DiskScanService>.Instance);
             var method = typeof(DiskScanService).GetMethod("ScanAllFilesAsync",

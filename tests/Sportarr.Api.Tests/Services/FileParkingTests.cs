@@ -254,7 +254,7 @@ public sealed class FileParkingTests : IDisposable
         var settings = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?> { ["Sportarr:DataPath"] = Path.Combine(_root, "config") }).Build();
         var config = new ConfigService(settings, NullLogger<ConfigService>.Instance);
-        using var services = new ServiceCollection().AddSingleton(db).AddSingleton(config).BuildServiceProvider();
+        using var services = new ServiceCollection().AddSingleton(db).AddSingleton(config).AddSingleton<DownloadOwnershipCoordinator>().BuildServiceProvider();
         var scan = new DiskScanService(services, NullLogger<DiskScanService>.Instance);
         var method = typeof(DiskScanService).GetMethod("ScanAllFilesAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
         await (Task)method.Invoke(scan, new object[] { CancellationToken.None })!;
@@ -288,7 +288,7 @@ public sealed class FileParkingTests : IDisposable
         var settings = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?> { ["Sportarr:DataPath"] = Path.Combine(_root, "config") }).Build();
         var config = new ConfigService(settings, NullLogger<ConfigService>.Instance);
-        using var services = new ServiceCollection().AddSingleton(db).AddSingleton(config).BuildServiceProvider();
+        using var services = new ServiceCollection().AddSingleton(db).AddSingleton(config).AddSingleton<DownloadOwnershipCoordinator>().BuildServiceProvider();
         var scan = new DiskScanService(services, NullLogger<DiskScanService>.Instance);
         var method = typeof(DiskScanService).GetMethod("ScanAllFilesAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
         await (Task)method.Invoke(scan, new object[] { CancellationToken.None })!;

@@ -684,6 +684,7 @@ public class PendingImportWiringTests
                 .ReturnsAsync((string path, CancellationToken _) =>
                     new MediaFileInspection { FilePath = path, SportarrId = embeddedIds.GetValueOrDefault(path) });
             services.AddSingleton(inspector.Object);
+            services.AddSingleton<DownloadOwnershipCoordinator>();
             foreach (var type in new[]
             {
                 typeof(ConfigService), typeof(SportarrApiClient), typeof(MediaFileParser), typeof(SportsFileNameParser),

@@ -101,13 +101,15 @@ public class Aria2ClientTests
         handler.TokensSeen.Should().BeEmpty();
     }
 
-    [Fact]
-    public async Task GetTorrentStatusAsync_ReportsActiveDownloadingCorrectly()
+    [Theory]
+    [InlineData("MyShow.S2026E01.mkv")]
+    [InlineData("")]
+    public async Task GetTorrentStatusAsync_ReportsActiveDownloadingCorrectly(string name)
     {
         var handler = new FakeAria2Handler
         {
             ResponseFor = (method, _) => method == "aria2.tellStatus"
-                ? """{"jsonrpc":"2.0","id":"sportarr","result":{"gid":"gid1","status":"active","totalLength":"1000","completedLength":"400","uploadLength":"0","downloadSpeed":"100","dir":"/downloads","bittorrent":{"info":{"name":"MyShow.S2026E01.mkv"}}}}"""
+                ? """{"jsonrpc":"2.0","id":"sportarr","result":{"gid":"gid1","status":"active","totalLength":"1000","completedLength":"400","uploadLength":"0","downloadSpeed":"100","dir":"/downloads","bittorrent":{"info":{"name":"MyShow.S2026E01.mkv"}}}}""".Replace("MyShow.S2026E01.mkv", name, StringComparison.Ordinal)
                 : """{"jsonrpc":"2.0","id":"sportarr","result":"ok"}"""
         };
         var client = new Aria2Client(new HttpClient(handler), NullLogger<Aria2Client>.Instance);
@@ -119,7 +121,39 @@ public class Aria2ClientTests
         status.Progress.Should().BeApproximately(40.0, 0.01);
         status.Downloaded.Should().Be(400);
         status.Size.Should().Be(1000);
-        status.SavePath.Should().Be(Path.Combine("/downloads", "MyShow.S2026E01.mkv"));
+        status.SavePath.Should().Be(name.Length > 0 ? Path.Combine("/downloads", name) : "/downloads");
+        status.SavePathIsJobSpecific.Should().Be(name.Length > 0);
+    }
+
+    [Fact]
+    public async Task GetTorrentStatusAsync_PreservesNestedUriFilePathForIgnores()
+    {
+        var handler = new FakeAria2Handler
+        {
+            ResponseFor = (_, _) => """{"jsonrpc":"2.0","id":"sportarr","result":{"gid":"gid1","status":"active","dir":"/downloads","files":[{"path":"/downloads/sub/race.mkv"}]}}"""
+        };
+        var client = new Aria2Client(new HttpClient(handler), NullLogger<Aria2Client>.Instance);
+
+        var status = await client.GetTorrentStatusAsync(MakeConfig(), "gid1");
+
+        status.Should().NotBeNull();
+        status!.SavePath.Should().Be("/downloads/sub/race.mkv");
+        status.SavePathIsJobSpecific.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetTorrentStatusAsync_DoesNotVerifyAFileBasenameAsAMultiFileRoot()
+    {
+        var handler = new FakeAria2Handler
+        {
+            ResponseFor = (_, _) => """{"jsonrpc":"2.0","id":"sportarr","result":{"gid":"gid1","status":"active","dir":"/downloads","files":[{"path":"/downloads/sub/race.mkv"},{"path":"/downloads/sub/other.mkv"}]}}"""
+        };
+        var client = new Aria2Client(new HttpClient(handler), NullLogger<Aria2Client>.Instance);
+
+        var status = await client.GetTorrentStatusAsync(MakeConfig(), "gid1");
+
+        status.Should().NotBeNull();
+        status!.SavePathIsJobSpecific.Should().BeFalse();
     }
 
     [Fact]
