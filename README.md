@@ -140,12 +140,21 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                 </a>
             </td>
             <td align="center">
+                <a href="https://github.com/StrydeR79">
+                    <img src="https://avatars.githubusercontent.com/u/3256878?v=4" width="72;" alt="StrydeR79"/>
+                    <br />
+                    <sub><b>StrydeR79</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/FacePlant101">
                     <img src="https://avatars.githubusercontent.com/u/3405597?v=4" width="72;" alt="FacePlant101"/>
                     <br />
                     <sub><b>FacePlant101</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/gwyden">
                     <img src="https://avatars.githubusercontent.com/u/7458118?v=4" width="72;" alt="gwyden"/>
@@ -153,20 +162,11 @@ Sportarr is made better by everyone who has contributed code. Thank you.
                     <sub><b>gwyden</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/razzamatazm">
                     <img src="https://avatars.githubusercontent.com/u/22823590?v=4" width="72;" alt="razzamatazm"/>
                     <br />
                     <sub><b>razzamatazm</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/StrydeR79">
-                    <img src="https://avatars.githubusercontent.com/u/3256878?v=4" width="72;" alt="StrydeR79"/>
-                    <br />
-                    <sub><b>StrydeR79</b></sub>
                 </a>
             </td>
             <td align="center">
